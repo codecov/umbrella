@@ -1,0 +1,41 @@
+interface PathContent {
+  name: String!
+  path: String
+  hits: Int!
+  misses: Int!
+  partials: Int!
+  lines: Int!
+  percentCovered: Float!
+}
+
+type PathContentFile implements PathContent {
+  name: String!
+  path: String
+  hits: Int!
+  misses: Int!
+  partials: Int!
+  lines: Int!
+  percentCovered: Float!
+  isCriticalFile: Boolean!
+}
+
+type PathContentDir implements PathContent {
+  name: String!
+  path: String
+  hits: Int!
+  misses: Int!
+  partials: Int!
+  lines: Int!
+  percentCovered: Float!
+}
+
+type PathContents {
+  results: [PathContent!]!
+}
+
+union PathContentsResult =
+    PathContents
+  | MissingHeadReport
+  | MissingCoverage
+  | UnknownPath
+  | UnknownFlags

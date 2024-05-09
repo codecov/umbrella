@@ -1,0 +1,25 @@
+from codecov.commands.base import BaseInteractor
+from codecov.commands.exceptions import ValidationError
+from codecov.db import sync_to_async
+from codecov_auth.models import Owner
+from plan.service import PlanService
+
+
+class StartTrialInteractor(BaseInteractor):
+    def validate(self, current_org: Owner):
+        if not current_org:
+            raise ValidationError("Cannot find owner record in the database")
+
+    def _start_trial(self, current_org: Owner) -> None:
+        plan_service = PlanService(current_org=current_org)
+        plan_service.start_trial(current_owner=self.current_owner)
+        return
+
+    @sync_to_async
+    def execute(self, org_username: str) -> None:
+        current_org = Owner.objects.filter(
+            username=org_username, service=self.service
+        ).first()
+        self.validate(current_org=current_org)
+        self._start_trial(current_org=current_org)
+        return

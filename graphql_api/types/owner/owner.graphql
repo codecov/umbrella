@@ -1,0 +1,35 @@
+type Owner {
+  avatarUrl: String!
+  username: String
+  isCurrentUserPartOfOrg: Boolean!
+  yaml: String
+  repositories(
+    filters: RepositorySetFilters
+    ordering: RepositoryOrdering
+    orderingDirection: OrderingDirection
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): RepositoryConnection! @cost(complexity: 25, multipliers: ["first", "last"])
+  repository(name: String!): RepositoryResult!
+  repositoryDeprecated(name: String!): Repository
+  numberOfUploads: Int
+  hasPrivateRepos: Boolean
+  isAdmin: Boolean
+  hashOwnerid: String
+  ownerid: Int
+  plan: Plan
+  pretrialPlan: PlanRepresentation
+  availablePlans: [PlanRepresentation!]
+  orgUploadToken: String
+  defaultOrgUsername: String
+  isCurrentUserActivated: Boolean
+  measurements(
+    interval: MeasurementInterval!
+    after: DateTime
+    before: DateTime
+    repos: [String!]
+    isPublic: Boolean
+  ): [Measurement!]
+}

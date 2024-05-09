@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1.4
+ARG PYTHON_IMAGE=python:3.12-slim-bookworm
+
+# BUILD STAGE - Download dependencies from GitHub that require SSH access
+FROM $PYTHON_IMAGE as build
+
+
+# Pinning a specific nightly version so that builds don't suddenly break if a
+# "this feature is now stabilized" warning is promoted to an error or something.
+# We would like to keep up with nightly if we can.
+ARG RUST_VERSION=nightly-2024-02-22
+ENV RUST_VERSION=${RUST_VERSION}
+
+RUN apt-get update
+RUN apt-get install -y \
+    build-essential \
+    libffi-dev \
+    libpq-dev \
+    curl
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | bash -s -- -y --default-toolchain $RUST_VERSION
+ENV PATH="/root/.cargo/bin:$PATH"
+
+COPY requirements.txt /
+WORKDIR /pip-packages/
+RUN pip wheel -r /requirements.txt
+RUN rm -rf /pip-packages/src
+
+# RUNTIME STAGE - Copy packages from build stage and install runtime dependencies
+FROM $PYTHON_IMAGE
+
+# Our postgres driver psycopg2 requires libpq-dev as a runtime dependency
+RUN apt-get update
+RUN apt-get install -y \
+    libpq-dev \
+    make \
+    curl \
+    && pip install --upgrade pip
+
+WORKDIR /pip-packages/
+COPY --from=build /pip-packages/ /pip-packages/
+
+RUN pip install --no-deps --no-index --find-links=/pip-packages/ /pip-packages/*

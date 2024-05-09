@@ -1,0 +1,12 @@
+type Config {
+  loginProviders: [LoginProvider!]!
+  seatsUsed: Int
+  seatsLimit: Int
+  isTimescaleEnabled: Boolean!
+  hasAdmins: Boolean
+  githubEnterpriseURL: String
+  gitlabEnterpriseURL: String
+  bitbucketServerURL: String
+  selfHostedLicense: SelfHostedLicense
+  syncProviders: [SyncProvider!]!
+}

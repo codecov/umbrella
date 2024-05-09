@@ -1,0 +1,5 @@
+type Branch {
+  name: String!
+  headSha: String!
+  head: Commit
+}

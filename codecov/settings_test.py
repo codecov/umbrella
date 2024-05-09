@@ -1,0 +1,22 @@
+from .settings_base import *
+
+DEBUG = False
+ALLOWED_HOSTS = ["localhost"]
+WEBHOOK_URL = ""  # NGROK TUNNEL HERE
+STRIPE_API_KEY = ""
+CORS_ALLOWED_ORIGINS = ["http://localhost:9000", "http://localhost"]
+CORS_ALLOW_CREDENTIALS = True
+CODECOV_URL = "localhost"
+CODECOV_API_URL = get_config("setup", "codecov_api_url", default=CODECOV_URL)
+DATABASE_HOST = "postgres"
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": DATABASE_NAME,
+        "USER": DATABASE_USER,
+        "PASSWORD": DATABASE_PASSWORD,
+        "HOST": DATABASE_HOST,
+        "PORT": "5432",
+    }
+}

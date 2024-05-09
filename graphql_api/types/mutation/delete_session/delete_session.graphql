@@ -1,0 +1,5 @@
+union DeleteSessionError = UnauthenticatedError
+
+type DeleteSessionPayload {
+  error: DeleteSessionError
+}

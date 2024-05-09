@@ -1,0 +1,6 @@
+enum TierName {
+  BASIC
+  TEAM
+  PRO
+  ENTERPRISE
+}

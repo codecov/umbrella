@@ -1,0 +1,16 @@
+type File {
+    content: String
+    coverage: [CoverageAnnotation]
+    totals: CoverageTotals
+    isCriticalFile: Boolean
+    hashedPath: String!
+}
+
+type CoverageAnnotation {
+    line: Int
+    coverage: CoverageLine
+}
+
+type CriticalFile {
+  name: String!
+}

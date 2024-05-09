@@ -1,0 +1,11 @@
+
+type CoverageTotals {
+  percentCovered: Float
+  fileCount: Int
+  lineCount: Int
+  hitsCount: Int
+  missesCount: Int
+  partialsCount: Int
+
+  coverage: Float @deprecated(reason: "Use `percentCovered`")
+}

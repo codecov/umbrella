@@ -1,0 +1,12 @@
+input PathContentsFilters {
+  searchValue: String
+  displayType: PathContentDisplayType
+  ordering: PathContentsOrdering
+  flags: [String!]
+  components: [String!]
+}
+
+input PathContentsOrdering {
+  direction: OrderingDirection
+  parameter: OrderingParameter
+}
