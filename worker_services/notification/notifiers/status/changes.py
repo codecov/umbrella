@@ -1,0 +1,38 @@
+import logging
+from typing import Dict
+
+from database.enums import Notification
+from worker_services.notification.notifiers.mixins.status import StatusChangesMixin
+from worker_services.notification.notifiers.status.base import StatusNotifier
+
+log = logging.getLogger(__name__)
+
+
+class ChangesStatusNotifier(StatusChangesMixin, StatusNotifier):
+    """This status analyzes the "unexpected changes" (see services/notification/changes.py
+        for a better description) and covered lines within it
+
+    Attributes:
+        context (str): The context
+
+    Possible results
+        - 'No unexpected coverage changes found.'
+        - {0} {1} unexpected coverage changes not visible in diff
+        - Unable to determine changes, no report found at pull request base
+    """
+
+    context = "changes"
+
+    @property
+    def notification_type(self) -> Notification:
+        return Notification.status_changes
+
+    async def build_payload(self, comparison) -> Dict[str, str]:
+        if self.is_empty_upload():
+            state, message = self.get_status_check_for_empty_upload()
+            return {"state": state, "message": message}
+        state, message = await self.get_changes_status(comparison)
+        if self.should_use_upgrade_decoration():
+            message = self.get_upgrade_message()
+
+        return {"state": state, "message": message}

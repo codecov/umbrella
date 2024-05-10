@@ -16,6 +16,8 @@ RUN apt-get install -y \
     build-essential \
     libffi-dev \
     libpq-dev \
+    libxml2-dev \
+    libxslt-dev \
     curl
 
 # Install Rust
@@ -28,6 +30,8 @@ WORKDIR /pip-packages/
 RUN pip wheel -r /requirements.txt
 RUN rm -rf /pip-packages/src
 
+ENV PYCURL_SSL_LIBRARY=openssl
+
 # RUNTIME STAGE - Copy packages from build stage and install runtime dependencies
 FROM $PYTHON_IMAGE
 
@@ -35,6 +39,8 @@ FROM $PYTHON_IMAGE
 RUN apt-get update
 RUN apt-get install -y \
     libpq-dev \
+    libxml2-dev \
+    libxslt-dev \
     make \
     curl \
     && pip install --upgrade pip
@@ -43,3 +49,6 @@ WORKDIR /pip-packages/
 COPY --from=build /pip-packages/ /pip-packages/
 
 RUN pip install --no-deps --no-index --find-links=/pip-packages/ /pip-packages/*
+
+RUN addgroup --system application \
+    && adduser --system codecov --ingroup application --home /home/codecov

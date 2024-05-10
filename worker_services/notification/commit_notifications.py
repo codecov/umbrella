@@ -1,0 +1,65 @@
+import logging
+
+from database.enums import NotificationState
+from database.models import CommitNotification, Pull
+from helpers.metrics import metrics
+from worker_services.notification.notifiers.base import AbstractBaseNotifier
+
+log = logging.getLogger(__name__)
+
+
+def _get_notification_state_from_result(result_dict) -> NotificationState:
+    """
+    Take notification result_dict from notification service and convert to
+    the proper NotificationState enum
+    """
+    if result_dict is None:
+        return NotificationState.error
+
+    successful = result_dict.get("notification_successful")
+
+    if successful:
+        return NotificationState.success
+    else:
+        return NotificationState.error
+
+
+@metrics.timer("internal.services.notification.store_notification_result")
+def create_or_update_commit_notification_from_notification_result(
+    pull: Pull, notifier: AbstractBaseNotifier, result_dict
+) -> CommitNotification:
+    if not pull:
+        return
+
+    db_session = pull.get_db_session()
+
+    commit = pull.get_head_commit()
+    if not commit:
+        log.warning("Head commit not found for pull", extra=dict(pull=pull))
+        return
+
+    commit_notification = (
+        db_session.query(CommitNotification)
+        .filter(
+            CommitNotification.commit_id == commit.id_,
+            CommitNotification.notification_type == notifier.notification_type,
+        )
+        .first()
+    )
+
+    notification_state = _get_notification_state_from_result(result_dict)
+
+    if not commit_notification:
+        commit_notification = CommitNotification(
+            commit_id=commit.id_,
+            notification_type=notifier.notification_type,
+            decoration_type=notifier.decoration_type,
+            state=notification_state,
+        )
+        db_session.add(commit_notification)
+        db_session.flush()
+        return commit_notification
+
+    commit_notification.decoration_type = notifier.decoration_type
+    commit_notification.state = notification_state
+    return commit_notification

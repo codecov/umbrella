@@ -6,6 +6,6 @@ setup:
   http:
     cookie_secret: "secret"
 services:
-  database_url: "postgres://postgres:postgres@postgres/postgres"
+  database_url: "postgresql://postgres:postgres@postgres/postgres"
   minio:
     hash_key: "testixik8qdauiab1yiffydimvi72ekq" #do not edit

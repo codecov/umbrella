@@ -1,0 +1,41 @@
+from typing import Dict
+
+from database.enums import Notification
+from worker_services.notification.notifiers.checks.base import ChecksNotifier
+from worker_services.notification.notifiers.mixins.status import StatusChangesMixin
+
+
+class ChangesChecksNotifier(StatusChangesMixin, ChecksNotifier):
+    context = "changes"
+
+    @property
+    def notification_type(self) -> Notification:
+        return Notification.checks_changes
+
+    async def build_payload(self, comparison) -> Dict[str, str]:
+        if self.is_empty_upload():
+            state, message = self.get_status_check_for_empty_upload()
+            return {
+                "state": state,
+                "output": {
+                    "title": "Empty Upload",
+                    "summary": message,
+                },
+            }
+        state, message = await self.get_changes_status(comparison)
+        codecov_link = self.get_codecov_pr_link(comparison)
+
+        title = message
+
+        should_use_upgrade = self.should_use_upgrade_decoration()
+        if should_use_upgrade:
+            message = self.get_upgrade_message(comparison)
+            title = "Codecov Report"
+
+        return {
+            "state": state,
+            "output": {
+                "title": f"{title}",
+                "summary": "\n\n".join([codecov_link, message]),
+            },
+        }
