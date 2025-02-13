@@ -1,9 +1,9 @@
-[submodule "worker"]
-	path = worker
+[submodule "apps/worker"]
+	path = apps/worker
 	url = git@github.com:codecov/worker.git
-[submodule "codecov-api"]
-	path = codecov-api
+[submodule "apps/codecov-api"]
+	path = apps/codecov-api
 	url = git@github.com:codecov/codecov-api.git
-[submodule "shared"]
-	path = shared
+[submodule "libs/shared"]
+	path = libs/shared
 	url = git@github.com:codecov/shared.git
