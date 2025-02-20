@@ -238,6 +238,8 @@ googleapis-common-protos[grpc]==1.63.2
     #   grpcio-status
 graphql-core==3.2.3
     # via ariadne
+greenlet==3.1.1
+    # via sqlalchemy
 grpc-google-iam-v1==0.13.1
     # via google-cloud-pubsub
 grpcio==1.65.4
@@ -568,7 +570,6 @@ typing-extensions==4.12.2
     #   pydantic
     #   pydantic-core
     #   shared
-    #   sqlalchemy
     #   stripe
 tzdata==2024.1
     # via celery
@@ -591,7 +592,7 @@ vine==5.1.0
     #   amqp
     #   celery
     #   kombu
-virtualenv==20.26.3
+virtualenv==20.26.6
     # via pre-commit
 wcwidth==0.2.13
     # via prompt-toolkit
