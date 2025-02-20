@@ -11,6 +11,21 @@ flag_management:
       - type: patch
         target: 90
 
+component_management:
+  individual_components:
+    - component_id: worker
+      name: worker
+      paths:
+        - apps/worker/**
+    - component_id: codecov-api
+      name: codecov-api
+      paths:
+        - apps/codecov-api/**
+    - component_id: shared
+      name: shared
+      paths:
+        - libs/shared/**
+
 codecov:
   wait_for_ci: false
   require_ci_to_pass: false

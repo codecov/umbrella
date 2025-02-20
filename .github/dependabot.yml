@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/apps/worker" # pyproject.toml in root
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+    open-pull-requests-limit: 0 # Security updates only
+  - package-ecosystem: "pip"
+    directory: "/apps/codecov-api" # pyproject.toml in root
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+    open-pull-requests-limit: 0 # Security updates only
+  - package-ecosystem: "pip"
+    directory: "/libs/shared" # pyproject.toml in root
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+    open-pull-requests-limit: 0 # Security updates only
