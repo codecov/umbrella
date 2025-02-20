@@ -1,0 +1,118 @@
+name: API CI
+
+on:
+  push:
+    tags:
+      - prod-*
+    branches:
+      - main
+      - staging
+    paths:
+      - 'apps/codecov-api/**'
+      - 'apps/codecov-api'
+      - 'libs/**'
+  pull_request:
+    paths:
+      - 'apps/codecov-api/**'
+      - 'apps/codecov-api'
+      - 'libs/**'
+  merge_group:
+    paths:
+      - 'apps/codecov-api/**'
+      - 'apps/codecov-api'
+      - 'libs/**'
+
+permissions:
+  contents: "read"
+  id-token: "write"
+  issues: "write"
+  pull-requests: "write"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  api-lint:
+    name: Run Lint (API)
+    uses: codecov/gha-workflows/.github/workflows/lint.yml@v1.2.31
+    with:
+      working_directory: apps/codecov-api
+
+  api-mypy:
+    name: Patch typing (API)
+    uses: codecov/gha-workflows/.github/workflows/mypy.yml@v1.2.31
+    with:
+      working_directory: apps/codecov-api
+
+  api-build:
+    name: Build App (API)
+    uses: codecov/gha-workflows/.github/workflows/build-app.yml@v1.2.31
+    secrets: inherit
+    with:
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      working_directory: apps/codecov-api
+
+  # Runs create-commit, create-report
+  api-codecovstartup:
+    name: Codecov Startup (API)
+    needs: api-build
+    uses: codecov/gha-workflows/.github/workflows/codecov-startup.yml@v1.2.31
+    secrets: inherit
+    with:
+      working_directory: apps/codecov-api
+
+  api-test:
+    name: Test (API)
+    needs: [api-build, api-codecovstartup]
+    uses: codecov/gha-workflows/.github/workflows/run-tests-split.yml@v1.2.31
+    secrets: inherit
+    with:
+      run_integration: false
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      working_directory: apps/codecov-api
+      flag_prefix: api
+
+  api-build-self-hosted:
+    name: Build Self Hosted (API)
+    needs: [api-build, api-test]
+    uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.31
+    secrets: inherit
+    with:
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      working_directory: apps/codecov-api
+
+  api-staging:
+    name: Push Staging Image (API)
+    needs: [api-build, api-test]
+    if: ${{ github.event_name == 'push' && github.event.ref == 'refs/heads/staging' && github.repository_owner == 'codecov' }}
+    uses: codecov/gha-workflows/.github/workflows/push-env.yml@v1.2.31
+    secrets: inherit
+    with:
+      environment: staging
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      working_directory: apps/codecov-api
+      sentry_project: api
+
+  api-production:
+    name: Push Production Image (API)
+    needs: [api-build, api-test]
+    if: ${{ github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
+    uses: codecov/gha-workflows/.github/workflows/push-env.yml@v1.2.31
+    secrets: inherit
+    with:
+      environment: production
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      working_directory: apps/codecov-api
+      sentry_project: api
+
+  api-self-hosted:
+    name: Push Self Hosted Image (API)
+    needs: [api-build-self-hosted, api-test]
+    secrets: inherit
+    if: ${{ github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
+    uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.31
+    with:
+      push_rolling: true
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      working_directory: apps/codecov-api
