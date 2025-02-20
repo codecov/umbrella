@@ -1,0 +1,138 @@
+name: Shared CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'libs/shared/**'
+      - 'libs/shared'
+  pull_request:
+    paths:
+      - 'libs/shared/**'
+      - 'libs/shared'
+  merge_group:
+    paths:
+      - 'libs/shared/**'
+      - 'libs/shared'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  # TODO: get mypy running
+  shared-lint:
+    name: Run Lint (Shared)
+    uses: codecov/gha-workflows/.github/workflows/lint.yml@v1.2.31
+    with:
+      working_directory: libs/shared
+
+  shared-codecovstartup:
+    name: Codecov Startup (Shared)
+    uses: codecov/gha-workflows/.github/workflows/codecov-startup.yml@v1.2.31
+    secrets: inherit
+    with:
+      working_directory: libs/shared
+
+  shared-test:
+    name: Test (Shared)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: libs/shared
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Build test environment
+        run: |
+          make test_env.build
+
+      - name: Bring containers up
+        run: |
+          make test_env.up
+
+      - name: Run tests
+        run: |
+          make test_env.test
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: coveragefiles
+          path: libs/shared/tests/*.coverage.xml
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: junitfiles
+          path: libs/shared/tests/*junit*.xml
+
+  shared-upload-to-codecov:
+    name: Upload to Codecov (shared)
+    needs: [shared-test]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - codecov_url_secret: CODECOV_URL
+            codecov_token_secret: CODECOV_ORG_TOKEN
+            name: prod
+          - codecov_url_secret: CODECOV_STAGING_URL
+            codecov_token_secret: CODECOV_ORG_TOKEN_STAGING
+            name: staging
+          - codecov_url_secret: CODECOV_QA_URL
+            codecov_token_secret: CODECOV_QA_ORG
+            name: qa
+          - codecov_url_secret: CODECOV_PUBLIC_QA_URL
+            codecov_token_secret: CODECOV_PUBLIC_QA_TOKEN
+            name: public qa
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      - name: Download coverage
+        id: download_coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coveragefiles
+
+      - name: Download test results
+        id: download_test_results
+        uses: actions/download-artifact@v4
+        with:
+          name: junitfiles
+
+      - name: Uploading unit test coverage (${{ matrix.name }})
+        uses: codecov/codecov-action@v5
+        with:
+          files: ${{ steps.download_coverage.outputs.download-path }}/unit.coverage.xml
+          flags: shared-docker-uploader
+          disable_search: true
+          # Strange workaround: API has a `codecov` directory in the repo root
+          # which conflicts with the action's `codecov` binary
+          use_pypi: true
+          token: ${{ secrets[matrix.codecov_token_secret] }}
+          url: ${{ secrets[matrix.codecov_url_secret] }}
+          working-directory: libs/shared
+
+      - name: Uploading unit test results (${{ matrix.name }})
+        uses: codecov/test-results-action@v1
+        with:
+          files: ${{ steps.download_test_results.outputs.download-path }}/unit.junit.xml
+          flags: shared-docker-uploader
+          disable_search: true
+          token: ${{ secrets[matrix.codecov_token_secret] }}
+          url: ${{ secrets[matrix.codecov_url_secret] }}
+          # The coverage action will have installed codecovcli with pip. The
+          # actual binary will be found in $PATH.
+          binary: codecovcli
+          working-directory: libs/shared
+
