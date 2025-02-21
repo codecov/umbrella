@@ -1,35 +1,24 @@
 name: Shared CI
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'libs/shared/**'
-      - 'libs/shared'
-  pull_request:
-    paths:
-      - 'libs/shared/**'
-      - 'libs/shared'
-  merge_group:
-    paths:
-      - 'libs/shared/**'
-      - 'libs/shared'
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
+  workflow_call:
+    inputs: 
+      skip:
+        type: boolean
+        default: false
 
 jobs:
   # TODO: get mypy running
   shared-lint:
     name: Run Lint (Shared)
+    if: ${{ inputs.skip == false }}
     uses: codecov/gha-workflows/.github/workflows/lint.yml@v1.2.31
     with:
       working_directory: libs/shared
 
   shared-codecovstartup:
     name: Codecov Startup (Shared)
+    if: ${{ inputs.skip == false }}
     uses: codecov/gha-workflows/.github/workflows/codecov-startup.yml@v1.2.31
     secrets: inherit
     with:
@@ -37,6 +26,7 @@ jobs:
 
   shared-test:
     name: Test (Shared)
+    if: ${{ inputs.skip == false }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -62,17 +52,18 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: coveragefiles
+          name: shared-coveragefiles
           path: libs/shared/tests/*.coverage.xml
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: junitfiles
+          name: shared-junitfiles
           path: libs/shared/tests/*junit*.xml
 
   shared-upload-to-codecov:
     name: Upload to Codecov (shared)
+    if: ${{ inputs.skip == false }}
     needs: [shared-test]
     runs-on: ubuntu-latest
     strategy:
@@ -102,13 +93,13 @@ jobs:
         id: download_coverage
         uses: actions/download-artifact@v4
         with:
-          name: coveragefiles
+          name: shared-coveragefiles
 
       - name: Download test results
         id: download_test_results
         uses: actions/download-artifact@v4
         with:
-          name: junitfiles
+          name: shared-junitfiles
 
       - name: Uploading unit test coverage (${{ matrix.name }})
         uses: codecov/codecov-action@v5
@@ -136,3 +127,27 @@ jobs:
           binary: codecovcli
           working-directory: libs/shared
 
+  # This job works around a strange interaction between reusable workflows and
+  # path filters.
+  #
+  # When a job that uses a reusable workflow is skipped, a single check shows up
+  # for it (e.g. `API CI / Test`). If the job is _not_ skipped, that check does
+  # not appear and instead you see checks for all of the jobs nested in the
+  # reusable workflow (`API CI / Test / Run tests`). There's no single check
+  # that's consistently there which you can mark as required.
+  #
+  # Because this job does not use a reusable workflow, it will produce the same
+  # check whether or not it is skipped. So, we can make this check required and
+  # have it figure out whether the jobs we actually care about failed.
+  shared-required-checks:
+    name: Required checks (Shared)
+    if: ${{ !cancelled() && inputs.skip == false }}
+    runs-on: ubuntu-latest
+    needs: [shared-test, shared-lint]
+    steps:
+      - name: Fail lint
+        if: ${{ needs.shared-lint.result == 'failure' }}
+        run: exit 1
+      - name: Fail tests
+        if: ${{ needs.shared-test.result == 'failure' }}
+        run: exit 1

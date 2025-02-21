@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    tags:
+      - prod-*
+    branches:
+      - main
+      - staging
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: "read"
+  id-token: "write"
+  issues: "write"
+  pull-requests: "write"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  change-detection:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      worker: ${{ steps.filter.outputs.worker }}
+      codecov-api: ${{ steps.filter.outputs.codecov-api }}
+      shared: ${{ steps.filter.outputs.shared }}
+    steps:
+      # Checking out is not necessary for PRs but it is otherwise
+      - uses: actions/checkout@v4
+        if: ${{ github.event_name != 'pull_request' }}
+        with:
+          submodules: 'recursive'
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # As long as worker/api/shared are submodules, we should include
+          # patterns that match the submodule placeholder to be sure submodule
+          # updates will trigger the right workflows.
+          filters: |
+            worker:
+              - 'apps/worker'
+              - 'apps/worker/**'
+              - 'libs/shared'
+              - 'libs/shared/**'
+            codecov-api:
+              - 'apps/codecov-api'
+              - 'apps/codecov-api/**'
+              - 'libs/shared'
+              - 'libs/shared/**'
+            shared:
+              - 'libs/shared'
+              - 'libs/shared/**'
+
+  api-ci:
+    name: API CI
+    needs: change-detection
+    uses: ./.github/workflows/api-ci.yml
+    secrets: inherit
+    with:
+      skip: ${{ needs.change-detection.outputs.codecov-api == 'false' }}
+
+  worker-ci:
+    name: Worker CI
+    needs: change-detection
+    uses: ./.github/workflows/worker-ci.yml
+    secrets: inherit
+    with:
+      skip: ${{ needs.change-detection.outputs.worker == 'false' }}
+
+  shared-ci:
+    name: Shared CI
+    needs: change-detection
+    uses: ./.github/workflows/shared-ci.yml
+    secrets: inherit
+    with:
+      skip: ${{ needs.change-detection.outputs.shared == 'false' }}
