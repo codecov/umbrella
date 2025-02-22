@@ -34,7 +34,7 @@ jobs:
     uses: codecov/gha-workflows/.github/workflows/build-app.yml@v1.2.31
     secrets: inherit
     with:
-      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       working_directory: apps/codecov-api
 
   # Runs create-commit, create-report
@@ -55,7 +55,7 @@ jobs:
     secrets: inherit
     with:
       run_integration: false
-      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       working_directory: apps/codecov-api
       flag_prefix: api
 
@@ -66,7 +66,7 @@ jobs:
     uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.31
     secrets: inherit
     with:
-      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       working_directory: apps/codecov-api
 
   api-staging:
@@ -77,7 +77,7 @@ jobs:
     secrets: inherit
     with:
       environment: staging
-      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       working_directory: apps/codecov-api
       sentry_project: api
 
@@ -89,7 +89,7 @@ jobs:
     secrets: inherit
     with:
       environment: production
-      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       working_directory: apps/codecov-api
       sentry_project: api
 
@@ -101,7 +101,7 @@ jobs:
     uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.31
     with:
       push_rolling: true
-      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       working_directory: apps/codecov-api
 
   # This job works around a strange interaction between reusable workflows and

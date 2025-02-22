@@ -1,4 +1,4 @@
-iname: Create Self Hosted Release
+name: Create Self Hosted Release
 
 on:
   pull_request:
@@ -26,7 +26,7 @@ jobs:
     secrets: inherit
     with:
       push_release: true
-      repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || 'codecov/self-hosted-worker' }}
+      repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
       working_directory: apps/worker
 
   push-api-image:
@@ -36,5 +36,5 @@ jobs:
     secrets: inherit
     with:
       push_release: true
-      repo: ${{ vars.CODECOV_API_IMAGE_V2 || 'codecov/self-hosted-api' }}
+      repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       working_directory: apps/codecov-api
