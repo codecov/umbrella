@@ -51,7 +51,7 @@ jobs:
     name: Test (Worker)
     if: ${{ inputs.skip == false }}
     needs: [worker-build, worker-codecovstartup]
-    uses: codecov/gha-workflows/.github/workflows/run-tests.yml@pr45
+    uses: codecov/gha-workflows/.github/workflows/run-tests.yml@v1.2.32
     secrets: inherit
     with:
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}

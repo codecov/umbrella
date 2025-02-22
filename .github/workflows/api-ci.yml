@@ -51,7 +51,7 @@ jobs:
     name: Test (API)
     if: ${{ inputs.skip == false }}
     needs: [api-build, api-codecovstartup]
-    uses: codecov/gha-workflows/.github/workflows/run-tests-split.yml@pr45
+    uses: codecov/gha-workflows/.github/workflows/run-tests-split.yml@v1.2.32
     secrets: inherit
     with:
       run_integration: false
