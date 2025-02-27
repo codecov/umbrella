@@ -48,14 +48,17 @@ jobs:
               - 'apps/worker/**'
               - 'libs/shared'
               - 'libs/shared/**'
+              - '.github/workflows/worker-ci.yml'
             codecov-api:
               - 'apps/codecov-api'
               - 'apps/codecov-api/**'
               - 'libs/shared'
               - 'libs/shared/**'
+              - '.github/workflows/api-ci.yml'
             shared:
               - 'libs/shared'
               - 'libs/shared/**'
+              - '.github/workflows/shared-ci.yml'
 
   api-ci:
     name: API CI
