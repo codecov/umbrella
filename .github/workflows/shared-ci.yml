@@ -16,14 +16,6 @@ jobs:
     with:
       working_directory: libs/shared
 
-  shared-codecovstartup:
-    name: Codecov Startup (Shared)
-    if: ${{ inputs.skip == false }}
-    uses: codecov/gha-workflows/.github/workflows/codecov-startup.yml@v1.2.31
-    secrets: inherit
-    with:
-      working_directory: libs/shared
-
   shared-test:
     name: Test (Shared)
     if: ${{ inputs.skip == false }}
@@ -112,7 +104,7 @@ jobs:
           use_pypi: true
           token: ${{ secrets[matrix.codecov_token_secret] }}
           url: ${{ secrets[matrix.codecov_url_secret] }}
-          working-directory: libs/shared
+          recurse_submodules: true
 
       - name: Uploading unit test results (${{ matrix.name }})
         uses: codecov/test-results-action@v1
@@ -125,7 +117,7 @@ jobs:
           # The coverage action will have installed codecovcli with pip. The
           # actual binary will be found in $PATH.
           binary: codecovcli
-          working-directory: libs/shared
+          recurse_submodules: true
 
   # This job works around a strange interaction between reusable workflows and
   # path filters.

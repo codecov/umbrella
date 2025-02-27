@@ -37,21 +37,11 @@ jobs:
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
       working_directory: apps/worker
 
-  # Runs create-commit, create-report
-  worker-codecovstartup:
-    name: Codecov Startup (Worker)
-    if: ${{ inputs.skip == false }}
-    needs: worker-build
-    uses: codecov/gha-workflows/.github/workflows/codecov-startup.yml@v1.2.31
-    secrets: inherit
-    with:
-      working_directory: apps/worker
-
   worker-test:
     name: Test (Worker)
     if: ${{ inputs.skip == false }}
-    needs: [worker-build, worker-codecovstartup]
-    uses: codecov/gha-workflows/.github/workflows/run-tests.yml@v1.2.32
+    needs: [worker-build]
+    uses: codecov/gha-workflows/.github/workflows/run-tests.yml@v1.2.34
     secrets: inherit
     with:
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}

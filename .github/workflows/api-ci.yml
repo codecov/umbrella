@@ -37,21 +37,11 @@ jobs:
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       working_directory: apps/codecov-api
 
-  # Runs create-commit, create-report
-  api-codecovstartup:
-    name: Codecov Startup (API)
-    if: ${{ inputs.skip == false }}
-    needs: api-build
-    uses: codecov/gha-workflows/.github/workflows/codecov-startup.yml@v1.2.31
-    secrets: inherit
-    with:
-      working_directory: apps/codecov-api
-
   api-test:
     name: Test (API)
     if: ${{ inputs.skip == false }}
-    needs: [api-build, api-codecovstartup]
-    uses: codecov/gha-workflows/.github/workflows/run-tests-split.yml@v1.2.32
+    needs: [api-build]
+    uses: codecov/gha-workflows/.github/workflows/run-tests-split.yml@v1.2.34
     secrets: inherit
     with:
       run_integration: false
