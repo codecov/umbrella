@@ -1,54 +1,64 @@
-# syntax=docker/dockerfile:1.4
-ARG PYTHON_IMAGE=python:3.12-slim-bookworm
+ARG PYTHON_IMAGE=ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
-# BUILD STAGE - Download dependencies from GitHub that require SSH access
-FROM $PYTHON_IMAGE as build
+# Build stage:
+# builds all the dependencies, including Rust packages
+FROM $PYTHON_IMAGE AS build
+WORKDIR /app
 
-
-# Pinning a specific nightly version so that builds don't suddenly break if a
-# "this feature is now stabilized" warning is promoted to an error or something.
-# We would like to keep up with nightly if we can.
-ARG RUST_VERSION=nightly-2024-02-22
-ENV RUST_VERSION=${RUST_VERSION}
-
-RUN apt-get update
-RUN apt-get install -y \
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
     build-essential \
+    curl \
+    git \
     libffi-dev \
-    libpq-dev \
     libxml2-dev \
-    libxslt-dev \
-    curl
+    libxslt-dev
 
-# Install Rust
+# Install Rust compiler
+ARG RUST_VERSION=stable
+ENV RUST_VERSION=${RUST_VERSION}
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | bash -s -- -y --default-toolchain $RUST_VERSION
+    | bash -s -- -y --profile minimal --default-toolchain $RUST_VERSION
 ENV PATH="/root/.cargo/bin:$PATH"
 
-COPY requirements.txt /
-WORKDIR /pip-packages/
-RUN pip wheel -r /requirements.txt
-RUN rm -rf /pip-packages/src
+# Configure uv builds
+ENV UV_LINK_MODE=copy \
+UV_COMPILE_BYTECODE=1 \
+UV_PYTHON_DOWNLOADS=never \
+UV_PYTHON=python
 
-ENV PYCURL_SSL_LIBRARY=openssl
+# Install python dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=libs/shared/pyproject.toml,target=libs/shared/pyproject.toml \
+    --mount=type=bind,source=apps/codecov-api/pyproject.toml,target=apps/codecov-api/pyproject.toml \
+    --mount=type=bind,source=apps/worker/pyproject.toml,target=apps/worker/pyproject.toml \
+    uv sync --frozen --no-dev --no-install-workspace --no-editable
 
-# RUNTIME STAGE - Copy packages from build stage and install runtime dependencies
-FROM $PYTHON_IMAGE
+# Copy the project into the intermediate image
+ADD . /app
 
-# Our postgres driver psycopg2 requires libpq-dev as a runtime dependency
-RUN apt-get update
-RUN apt-get install -y \
-    libpq-dev \
-    libxml2-dev \
-    libxslt-dev \
-    make \
-    curl \
-    && pip install --upgrade pip
+# Sync the project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-editable
 
-WORKDIR /pip-packages/
-COPY --from=build /pip-packages/ /pip-packages/
+# Base stage:
+# Copies the actually installed workspace to a minimal runner image
+FROM $PYTHON_IMAGE AS base
+WORKDIR /app
 
-RUN pip install --no-deps --no-index --find-links=/pip-packages/ /pip-packages/*
+COPY --from=build --chown=app:app /app /app
 
-RUN addgroup --system application \
-    && adduser --system codecov --ingroup application --home /home/codecov
+# Test stage:
+# Based on the `base` stage, installs all the dev-dependencies to be able to run tests
+FROM base AS test
+
+ENV UV_LINK_MODE=copy
+
+# Install all dev-dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen
+
+# Add the venv to the PATH
+ENV PATH="/app/.venv/bin:$PATH"
