@@ -1,0 +1,5 @@
+[tool.uv.sources]
+shared = { workspace = true }
+
+[tool.uv.workspace]
+members = ["apps/*", "libs/*"]
