@@ -294,3 +294,21 @@ proxy.down:
 	docker kill api-proxy || true
 
 ### END PROXY Commands
+
+.PHONY: test_env
+test_env:
+	docker compose build
+	docker compose up -d
+
+.PHONY: test_shared
+test_shared:
+	docker compose exec -w /app/libs/shared umbrella pytest
+.PHONY: test_api
+test_api:
+	docker compose exec -w /app/apps/codecov-api umbrella pytest
+.PHONY: test_worker
+test_worker:
+	docker compose exec -w /app/apps/worker umbrella pytest
+
+.PHONY: test_all
+test_all: test_shared test_worker test_api

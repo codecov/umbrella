@@ -1,4 +1,5 @@
 ARG PYTHON_IMAGE=ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+ARG RUST_VERSION=stable
 
 # Build stage:
 # builds all the dependencies, including Rust packages
@@ -15,7 +16,9 @@ RUN apt-get update && apt-get install -y \
     libxslt-dev
 
 # Install Rust compiler
-ARG RUST_VERSION=stable
+# this is currently needed because we build `test-results-parser` from git.
+# we should ideally package that and consume it from pypi instead.
+ARG RUST_VERSION
 ENV RUST_VERSION=${RUST_VERSION}
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | bash -s -- -y --profile minimal --default-toolchain $RUST_VERSION
@@ -55,6 +58,9 @@ COPY --from=build --chown=app:app /app /app
 FROM base AS test
 
 ENV UV_LINK_MODE=copy
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV COVERAGE_CORE=sysmon
+ENV RUN_ENV=DEV
 
 # Install all dev-dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -62,3 +68,5 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Add the venv to the PATH
 ENV PATH="/app/.venv/bin:$PATH"
+
+CMD ["bash"]

@@ -880,39 +880,6 @@ wheels = [
 ]
 
 [[package]]
-name = "google-cloud-bigquery"
-version = "3.30.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "google-api-core", extra = ["grpc"] },
-    { name = "google-auth" },
-    { name = "google-cloud-core" },
-    { name = "google-resumable-media" },
-    { name = "packaging" },
-    { name = "python-dateutil" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f1/2f/3dda76b3ec029578838b1fe6396e6b86eb574200352240e23dea49265bb7/google_cloud_bigquery-3.30.0.tar.gz", hash = "sha256:7e27fbafc8ed33cc200fe05af12ecd74d279fe3da6692585a3cef7aee90575b6", size = 474389 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/6d/856a6ca55c1d9d99129786c929a27dd9d31992628ebbff7f5d333352981f/google_cloud_bigquery-3.30.0-py2.py3-none-any.whl", hash = "sha256:f4d28d846a727f20569c9b2d2f4fa703242daadcb2ec4240905aa485ba461877", size = 247885 },
-]
-
-[[package]]
-name = "google-cloud-bigquery-storage"
-version = "2.28.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "google-api-core", extra = ["grpc"] },
-    { name = "google-auth" },
-    { name = "proto-plus" },
-    { name = "protobuf" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/2f/3f/caa0b3da41098604ff32de95a11968bc0a8fc2e645b03abf0bb159fc4e8d/google_cloud_bigquery_storage-2.28.0.tar.gz", hash = "sha256:310c2dcc7d0a03b8e3b30ee90f34daf0bdefdb198c51a7f38db45904704f131c", size = 245885 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e0/ec/85d332f154897598ed898847973844cd93a8851eaab290b6f304b76d3f67/google_cloud_bigquery_storage-2.28.0-py2.py3-none-any.whl", hash = "sha256:7f4a42e614b6173f6d7da75eda3913aa03f74854d3e5e9b1ab462c8468d4deed", size = 251583 },
-]
-
-[[package]]
 name = "google-cloud-core"
 version = "2.4.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2687,8 +2654,6 @@ dependencies = [
     { name = "codecov-ribs" },
     { name = "django" },
     { name = "django-postgres-extra" },
-    { name = "google-cloud-bigquery" },
-    { name = "google-cloud-bigquery-storage" },
     { name = "google-cloud-pubsub" },
     { name = "google-cloud-storage" },
     { name = "grpcio" },
@@ -2739,6 +2704,7 @@ dev = [
     { name = "pytest-mock" },
     { name = "pytest-sqlalchemy" },
     { name = "respx" },
+    { name = "ruff" },
     { name = "sqlalchemy-utils" },
     { name = "time-machine" },
     { name = "urllib3" },
@@ -2756,8 +2722,6 @@ requires-dist = [
     { name = "codecov-ribs", specifier = "==0.1.18" },
     { name = "django", specifier = ">=4.2.16" },
     { name = "django-postgres-extra", specifier = ">=2.0.8" },
-    { name = "google-cloud-bigquery", specifier = ">=3.27.0" },
-    { name = "google-cloud-bigquery-storage", specifier = ">=2.27.0" },
     { name = "google-cloud-pubsub", specifier = ">=2.27.1" },
     { name = "google-cloud-storage", specifier = ">=2.10.0" },
     { name = "grpcio", specifier = ">=1.66.2" },
@@ -2808,10 +2772,11 @@ dev = [
     { name = "pytest-mock", specifier = ">=1.13.0" },
     { name = "pytest-sqlalchemy", specifier = ">=0.2.1" },
     { name = "respx", specifier = ">=0.20.2" },
+    { name = "ruff", specifier = ">=0.9.8" },
     { name = "sqlalchemy-utils", specifier = ">=0.41.2" },
     { name = "time-machine", specifier = ">=2.16.0" },
     { name = "urllib3", specifier = "==1.26.19" },
-    { name = "vcrpy", specifier = "==6.0.1" },
+    { name = "vcrpy", specifier = ">=6.0.0" },
 ]
 
 [[package]]
