@@ -231,24 +231,6 @@ test_env.container_upload_test_results:
 	--files-search-exclude-folder=graphql_api/types/** \
 	--files-search-exclude-folder=api/internal/tests/unit/views/cassetes/** || true
 
-test_env.static_analysis:
-	docker-compose exec umbrella make test_env.container_static_analysis CODECOV_STATIC_TOKEN=${CODECOV_STATIC_TOKEN}
-
-test_env.label_analysis:
-	docker-compose exec umbrella make test_env.container_label_analysis CODECOV_STATIC_TOKEN=${CODECOV_STATIC_TOKEN}
-
-test_env.ats:
-	docker-compose exec api make test_env.container_ats CODECOV_UPLOAD_TOKEN=${CODECOV_UPLOAD_TOKEN}
-
-test_env.container_static_analysis:
-	codecovcli -u ${CODECOV_URL} static-analysis --token=${CODECOV_STATIC_TOKEN}
-
-#test_env.container_label_analysis:
-#	codecovcli -u ${CODECOV_URL} label-analysis --base-sha=${merge_sha} --token=${CODECOV_STATIC_TOKEN}
-
-test_env.container_ats:
-	codecovcli -u ${CODECOV_URL} --codecov-yml-path=codecov_cli.yml upload-process --plugin pycoverage --plugin compress-pycoverage --flag smart-labels --fail-on-error
-
 test_env:
 	make test_env.up
 	make test_env.prepare
