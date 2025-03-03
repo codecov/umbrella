@@ -1,7 +1,6 @@
 volumes:
   postgres-volume:
   timescale-volume:
-  redis-volume:
   minio-volume:
 
 services:
@@ -25,10 +24,10 @@ services:
   postgres:
     image: postgres:14-alpine
     environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
       - POSTGRES_DB=postgres
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
-      - POSTGRES_HOST_AUTH_METHOD=trust
     volumes:
       - type: tmpfs
         target: /var/lib/postgresql/data
@@ -37,14 +36,10 @@ services:
 
   redis:
     image: redis:6-alpine
-    volumes:
-      - redis-volume:/data
 
   minio:
     image: minio/minio:latest
     command: server /export
-    ports:
-      - "${MINIO_PORT:-9000}:9000"
     environment:
       - MINIO_ACCESS_KEY=codecov-default-key
       - MINIO_SECRET_KEY=codecov-default-secret
@@ -52,16 +47,11 @@ services:
       - minio-volume:/export
 
   timescale:
-    image: timescale/timescaledb:latest-pg14
+    image: timescale/timescaledb-ha:pg14-latest
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
       - POSTGRES_HOST_AUTH_METHOD=trust
-    volumes:
-      - type: tmpfs
-        target: /var/lib/postgresql/data
-        tmpfs:
-          size: 1024M
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
 
   mailhog:
     image: mailhog/mailhog:latest
