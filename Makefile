@@ -22,6 +22,8 @@ PROXY_NETWORK ?= api_default
 # Codecov CLI version to use
 CODECOV_CLI_VERSION := 0.5.1
 
+include tools/devenv/Makefile.devenv
+
 update-reqs:
 	cd codecov-api && git pull
 	cd worker && git pull

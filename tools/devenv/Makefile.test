@@ -1,0 +1,28 @@
+.PHONY: devenv.test.worker
+devenv.test.worker:
+	docker exec -e COVERAGE_CORE=sysmon -it umbrella-worker-1 pytest --cov=./ --cov-report=xml:coverage.xml --junitxml=junit.xml -o junit_family=legacy
+
+.PHONY: devenv.upload.worker
+devenv.upload.worker:
+	./tools/devenv/scripts/codecovcli-helper.sh upload-process -f apps/worker/coverage.xml --disable-search -F workerunit --recurse-submodules --plugin noop
+	./tools/devenv/scripts/codecovcli-helper.sh upload-process --report-type test_results -f apps/worker/junit.xml --disable-search -F workerunit --recurse-submodules --plugin noop
+
+.PHONY: devenv.test.api
+devenv.test.api:
+	docker exec -e COVERAGE_CORE=sysmon -it umbrella-api-1 pytest --cov=./ --cov-report=xml:coverage.xml --junitxml=junit.xml -o junit_family=legacy
+
+.PHONY: devenv.upload.api
+devenv.upload.api:
+	./tools/devenv/scripts/codecovcli-helper.sh upload-process -f apps/codecov-api/coverage.xml --disable-search -F apiunit --recurse-submodules --plugin noop
+	./tools/devenv/scripts/codecovcli-helper.sh upload-process --report-type test_results -f apps/codecov-api/junit.xml --disable-search -F apiunit --recurse-submodules --plugin noop
+
+# TODO: Figure out how to plumb `COVERAGE_CORE=sysmon` into the uv environment as it speeds up coverage instrumentation
+.PHONY: devenv.test.shared
+devenv.test.shared:
+	docker exec -it umbrella-shared-1 uv run pytest --cov ./shared --cov-report=xml:tests/coverage.xml --junitxml=tests/junit.xml -o junit_family=legacy
+
+.PHONY: devenv.upload.shared
+devenv.upload.shared:
+	./tools/devenv/scripts/codecovcli-helper.sh upload-process -f libs/shared/tests/coverage.xml --disable-search -F sharedunit --recurse-submodules --plugin noop
+	./tools/devenv/scripts/codecovcli-helper.sh upload-process --report-type test_results -f libs/shared/tests/junit.xml --disable-search -F sharedunit --recurse-submodules --plugin noop
+

@@ -1,0 +1,43 @@
+.PHONY: devenv.build.worker
+devenv.build.worker:
+	$(MAKE) -C apps/worker build
+
+.PHONY: devenv.build.api
+devenv.build.api:
+	$(MAKE) -C apps/codecov-api build
+
+.PHONY: devenv.build.shared
+devenv.build.shared:
+	$(MAKE) -C libs/shared test_env.build
+
+.PHONY: devenv.build
+devenv.build: devenv.build.api devenv.build.worker devenv.build.shared
+
+.PHONY: devenv.start.deps
+devenv.start.deps:
+	docker compose up minio redis postgres timescale mailhog --detach
+
+.PHONY: devenv.start.backend
+devenv.start.backend:
+	# No-op if they have not already been started
+	docker compose down worker api
+	docker compose up worker api shared gateway --detach
+
+.PHONY: devenv.start
+devenv.start: devenv.start.deps devenv.start.backend
+
+.PHONY: devenv
+devenv:
+	$(MAKE) devenv.build
+	$(MAKE) devenv.start
+
+.PHONY: devenv.refresh
+devenv.refresh:
+	$(MAKE) devenv.build
+	$(MAKE) devenv.start.backend
+
+.PHONY: devenv.stop
+devenv.stop:
+	docker compose down
+
+include tools/devenv/Makefile.test

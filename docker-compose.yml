@@ -1,0 +1,152 @@
+version: "3.3"
+
+services:
+  gateway:
+    image: codecov/self-hosted-gateway:latest-calver
+    volumes:
+      - ./tools/devenv/config:/config
+    ports:
+      - "${CODECOV_PORT-8080}:8080"
+    environment:
+      - CODECOV_GATEWAY_MINIO_ENABLED=true
+    networks:
+      - codecov
+    depends_on:
+      - api
+      - frontend
+
+  frontend:
+    image: codecov/self-hosted-frontend:rolling
+    environment:
+      - CODECOV_BASE_HOST=localhost:8080
+      - CODECOV_API_HOST=localhost:8080
+      - CODECOV_IA_HOST=localhost:8080
+      - CODECOV_SCHEME=http
+    volumes:
+      - ./tools/devenv/config:/config
+    ports:
+      - "8080"
+      - "3000:8080"
+    networks:
+      - codecov
+
+  api:
+    image: codecov/api
+    entrypoint: sh -c "/devenv-scripts/start-api.sh"
+    environment:
+      - RUN_ENV=DEV
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./tools/devenv/config:/config:ro,cached
+      - ./tools/devenv/scripts:/devenv-scripts:ro,cached
+      - ./apps/codecov-api:/app/apps/codecov-api:cached
+      - ./libs/shared:/app/libs/shared:cached
+    ports:
+      - "8000:8000"
+    networks:
+      - codecov
+    depends_on:
+      - minio
+      - timescale
+      - postgres
+      - redis
+
+  worker:
+    image: codecov/worker
+    entrypoint: sh -c "/devenv-scripts/start-worker.sh"
+    environment:
+      - RUN_ENV=DEV
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./tools/devenv/config:/config:ro,cached
+      - ./tools/devenv/scripts:/devenv-scripts:ro,cached
+      - ./apps/worker:/app/apps/worker:cached
+      - ./libs/shared:/app/libs/shared:cached
+      - archive-volume:/archive
+    networks:
+      - codecov
+    depends_on:
+      - minio
+      - redis
+      - postgres
+      - timescale
+      # Make worker block on API so API can run migrations first
+      - api
+
+  # Dummy service to run shared tests
+  shared:
+    # This is the name of the image build in libs/shared
+    image: shared-shared
+    tty: true
+    volumes:
+      - ./libs/shared/shared:/app/libs/shared/shared
+      - ./libs/shared/tests:/app/libs/shared/tests
+      - ./libs/shared/.coveragerc:/app/libs/shared/.coveragerc
+    networks:
+      - codecov
+    depends_on:
+      - minio
+      - redis
+      - postgres
+      - timescale
+
+  redis:
+    image: redis:6.2-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-volume:/data
+    networks:
+      - codecov
+
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - postgres-volume:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - codecov
+
+  timescale:
+    image: timescale/timescaledb-ha:pg14-latest
+    environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - timescale-volume:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - codecov
+
+  minio:
+    image: minio/minio:RELEASE.2020-04-15T00-39-01Z
+    command: server /export
+    ports:
+      - "${CODECOV_MINIO_PORT-9000}:9000"
+    environment:
+      - MINIO_ACCESS_KEY=codecov-default-key
+      - MINIO_SECRET_KEY=codecov-default-secret
+    volumes:
+      - archive-volume:/export
+    networks:
+      - codecov
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    networks:
+      - codecov
+
+volumes:
+  postgres-volume:
+  timescale-volume:
+  redis-volume:
+  archive-volume:
+
+networks:
+  codecov:
+    driver: bridge

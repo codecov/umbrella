@@ -1,0 +1,3 @@
+# Ignore things that may contain secrets
+*codecov.yml*
+*.pem
