@@ -1,0 +1,26 @@
+version: "3.3"
+services:
+  livegrep-indexer:
+    image: docker.io/livegrep/indexer:${image_version:-latest}
+    command: >
+      bash -c '
+        /livegrep/bin/livegrep-github-reindex \
+          "-name=Codecov" \
+          -repo=codecov/umbrella \
+          -repo=codecov/gazebo \
+          -repo=codecov/codecov-rs \
+          -repo=codecov/test-results-parser \
+          -repo=codecov/ribs \
+          ${EXTRA_REPOS} \
+          -dir=/data/ \
+          -out=/data/index.idx \
+          -http
+      '
+    environment:
+     # If you want to index private repositories, generate a GitHub PAT and set
+     # it as the value of `GITHUB_KEY` in a `.env` file.
+     GITHUB_KEY: ${GITHUB_KEY}
+    volumes:
+     - livegrep-data:/data
+     - ~/.ssh:/root/.ssh
+

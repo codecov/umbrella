@@ -1,0 +1,11 @@
+{
+    "backends":
+    [
+        {
+            "id": "codecov",
+            "addr": "livegrep-backend-linux:9898"
+        }
+    ],
+    "reverse_proxy": true,
+    "listen": "0.0.0.0:8910"
+}
