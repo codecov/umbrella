@@ -39,7 +39,7 @@ jobs:
 
       - name: Run tests
         run: |
-          make test_env.test
+          make test_env.test PYTEST_ROOTDIR=/app
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

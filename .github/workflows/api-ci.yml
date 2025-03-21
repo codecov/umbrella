@@ -41,13 +41,14 @@ jobs:
     name: Test (API)
     if: ${{ inputs.skip == false }}
     needs: [api-build]
-    uses: codecov/gha-workflows/.github/workflows/run-tests-split.yml@v1.2.34
+    uses: codecov/gha-workflows/.github/workflows/run-tests.yml@v1.2.35
     secrets: inherit
     with:
       run_integration: false
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       working_directory: apps/codecov-api
       flag_prefix: api
+      pytest_rootdir: /app
 
   api-build-self-hosted:
     name: Build Self Hosted (API)
