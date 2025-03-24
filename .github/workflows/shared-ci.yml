@@ -16,6 +16,28 @@ jobs:
     with:
       working_directory: libs/shared
 
+  shared-benchmark:
+    name: Benchmarks (Shared)
+    if: ${{ inputs.skip == false }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: libs/shared
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+      - run: uv sync --all-extras --dev
+
+      - uses: CodSpeedHQ/action@v3
+        with:
+          working-directory: libs/shared
+          run: uv run pytest tests/benchmarks/ --codspeed
+          token: ${{ secrets.CODSPEED_TOKEN }}
+
   shared-test:
     name: Test (Shared)
     if: ${{ inputs.skip == false }}
