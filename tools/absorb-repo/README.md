@@ -4,5 +4,13 @@ This script absorbs a repository into the monorepo in a way that (mostly) preser
 
 Example usage:
 ```
+$ git checkout -b absorb-worker
 $ ./absorb-repo.sh worker git@github.com:codecov/worker.git apps/worker
+$ git push origin absorb-worker
 ```
+
+The above invocation will create one or two commits on the `absorb-worker` branch:
+- if `apps/worker` already exists (like as a submodule), a commit will be added to delete it
+- a merge commit that merges the `absorb-worker` branch with the rewritten default branch of `git@github.com:codecov/worker.git`
+
+You can run it multiple times to absorb multiple repositories in a single branch.
