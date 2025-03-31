@@ -7,7 +7,6 @@ subdirectory="$3"
 
 # Variables used throughout the script
 local_main_checkout="$repo_name-main"
-absorb_branch="absorb-$repo_name"
 current_branch="$(git rev-parse --abbrev-ref HEAD)"
 
 # Assumes this script's directory has a sibling directory called `git-filter-repo`
@@ -45,6 +44,12 @@ if [ $# -ne 3 ] || [ "$(git rev-parse --is-inside-work-tree)" != "true" ]; then
     usage
 fi
 
+if [ -d "$subdirectory" ]; then
+    echo "Removing existing $subdirectory to make room to absorb $repo_name..."
+    git rm "$subdirectory"
+    git commit -m "Removing existing $subdirectory to make room to absorb $repo_name"
+fi
+
 echo "Adding \`$remote_url\` as a remote named \`$repo_name\`..."
 git remote add $repo_name $remote_url
 
@@ -66,8 +71,7 @@ python "$GIT_FILTER_REPO_DIR/git-filter-repo" --force --refs "$local_main_checko
 echo "Done"
 echo ""
 
-echo "Merging the rewritten \`$local_main_checkout\` into our \`$absorb_branch\`"
-git checkout -b $absorb_branch $current_branch
+echo "Merging the rewritten \`$local_main_checkout\` into \`$current_branch\`"
 git merge "$local_main_checkout" --allow-unrelated-histories --no-edit
 echo "Done"
 echo ""
@@ -76,8 +80,3 @@ echo "Cleaning up after ourselves..."
 git branch -D $local_main_checkout
 git remote remove $repo_name
 echo "Done"
-
-echo "Pushing to GitHub..."
-git push origin $absorb_branch
-echo "Done. Create a PR!"
-
