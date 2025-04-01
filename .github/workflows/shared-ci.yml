@@ -34,8 +34,7 @@ jobs:
 
       - uses: CodSpeedHQ/action@v3
         with:
-          working-directory: libs/shared
-          run: uv run pytest tests/benchmarks/ --codspeed
+          run: uv run --project libs/shared pytest --rootdir=libs/shared libs/shared/tests/benchmarks/ --codspeed
           token: ${{ secrets.CODSPEED_TOKEN }}
 
   shared-test:
