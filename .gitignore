@@ -79,9 +79,6 @@ target/
 profile_default/
 ipython_config.py
 
-# pyenv
-.python-version
-
 # celery beat schedule file
 celerybeat-schedule
 
@@ -100,6 +97,7 @@ venv.bak/
 .testenv
 .envrc
 .debug
+.codspeed
 
 codecov_api/static/*
 !codecov_api/static/__init__.py
