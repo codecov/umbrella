@@ -1,16 +1,14 @@
 # syntax=docker/dockerfile:1.4
-ARG PYTHON_IMAGE=python:3.12-slim-bookworm
+ARG PYTHON_IMAGE=ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
-# BUILD STAGE - Download dependencies from GitHub that require SSH access
+ARG APP_DIR
+
+# BUILD STAGE
 FROM $PYTHON_IMAGE as build
 
+ARG APP_DIR
 
-# Pinning a specific nightly version so that builds don't suddenly break if a
-# "this feature is now stabilized" warning is promoted to an error or something.
-# We would like to keep up with nightly if we can.
-ARG RUST_VERSION=nightly-2024-02-22
-ENV RUST_VERSION=${RUST_VERSION}
-
+# Install all system packages needed by either worker OR codecov-api
 RUN apt-get update
 RUN apt-get install -y \
     build-essential \
@@ -18,37 +16,64 @@ RUN apt-get install -y \
     libpq-dev \
     libxml2-dev \
     libxslt-dev \
+    git \
     curl
 
-# Install Rust
+# Install the Rust toolchain which we need to build test-results-parser
+ARG RUST_VERSION=stable
+ENV RUST_VERSION=${RUST_VERSION}
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | bash -s -- -y --default-toolchain $RUST_VERSION
+    | bash -s -- -y --profile minimal --default-toolchain $RUST_VERSION
 ENV PATH="/root/.cargo/bin:$PATH"
 
-COPY requirements.txt /
-WORKDIR /pip-packages/
-RUN pip wheel -r /requirements.txt
-RUN rm -rf /pip-packages/src
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PYTHON=python \
+    UV_PROJECT_ENVIRONMENT=/app
 
-ENV PYCURL_SSL_LIBRARY=openssl
+# Export a requirements.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=${APP_DIR}/pyproject.toml,target=${APP_DIR}/pyproject.toml \
+    --mount=type=bind,source=${APP_DIR}/uv.lock,target=${APP_DIR}/uv.lock \
+    --mount=type=bind,source=libs/shared,target=libs/shared \
+    uv --directory ${APP_DIR} export --no-hashes --frozen --format requirements-txt > requirements.txt
 
-# RUNTIME STAGE - Copy packages from build stage and install runtime dependencies
+# The resulting requirements.txt includes ourselves as a dependency we should install
+# "editably". Filter that out, leaving only external dependencies.
+RUN grep -v '^-e ' requirements.txt > ${APP_DIR}/requirements.remote.txt
+
+# Fetch/build wheels for all external dependencies.
+RUN --mount=type=bind,source=libs/shared,target=libs/shared \
+    (cd ${APP_DIR} && pip wheel -w /wheels --find-links /wheels -r requirements.remote.txt)
+
+# Build a wheel for ourselves
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=${APP_DIR}/pyproject.toml,target=${APP_DIR}/pyproject.toml \
+    --mount=type=bind,source=${APP_DIR}/uv.lock,target=${APP_DIR}/uv.lock \
+    --mount=type=bind,source=libs/shared,target=libs/shared \
+    uv build --directory ${APP_DIR} --all-packages --wheel -o /wheels
+
+# RUNTIME STAGE
 FROM $PYTHON_IMAGE
 
-# Our postgres driver psycopg2 requires libpq-dev as a runtime dependency
+ARG APP_DIR
+
 RUN apt-get update
 RUN apt-get install -y \
-    libpq-dev \
     libxml2-dev \
     libxslt-dev \
-    make \
-    curl \
-    && pip install --upgrade pip
+    libpq-dev \
+    libexpat1 \
+    make
 
-WORKDIR /pip-packages/
-COPY --from=build /pip-packages/ /pip-packages/
+COPY --from=build /wheels/ /wheels/
 
-RUN pip install --no-deps --no-index --find-links=/pip-packages/ /pip-packages/*
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=${APP_DIR}/pyproject.toml,target=${APP_DIR}/pyproject.toml \
+    --mount=type=bind,source=${APP_DIR}/uv.lock,target=${APP_DIR}/uv.lock \
+    --mount=type=bind,source=libs/shared,target=libs/shared \
+    uv --directory ${APP_DIR} pip install --no-deps --no-index --find-links=/wheels /wheels/* --system
 
 RUN addgroup --system application \
     && adduser --system codecov --ingroup application --home /home/codecov
