@@ -1,10 +1,10 @@
 .PHONY: devenv.build.worker
 devenv.build.worker:
-	$(MAKE) -C apps/worker build
+	$(MAKE) worker.build
 
 .PHONY: devenv.build.api
 devenv.build.api:
-	$(MAKE) -C apps/codecov-api build
+	$(MAKE) api.build
 
 .PHONY: devenv.build.shared
 devenv.build.shared:

@@ -31,7 +31,7 @@ services:
       - codecov
 
   api:
-    image: codecov/api
+    image: codecov/api-umbrella
     entrypoint: sh -c "/devenv-scripts/start-api.sh"
     environment:
       - RUN_ENV=DEV
@@ -53,7 +53,7 @@ services:
       - redis
 
   worker:
-    image: codecov/worker
+    image: codecov/worker-umbrella
     entrypoint: sh -c "/devenv-scripts/start-worker.sh"
     environment:
       - RUN_ENV=DEV
