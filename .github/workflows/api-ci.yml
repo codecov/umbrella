@@ -17,9 +17,9 @@ jobs:
   api-lint:
     name: Run Lint (API)
     if: ${{ inputs.skip == false }}
-    uses: codecov/gha-workflows/.github/workflows/lint.yml@v1.2.31
+    uses: codecov/gha-workflows/.github/workflows/lint.yml@v1.2.36
     with:
-      working_directory: apps/codecov-api
+      make_target_prefix: api.
 
   api-mypy:
     name: Patch typing (API)
@@ -28,72 +28,98 @@ jobs:
     with:
       working_directory: apps/codecov-api
 
+  # Once we cut over to umbrella, we can just replace the default cache key in build-app.yml
+  # and self-hosted.yml and get rid of this step.
+  api-compute-reqs-cache-key:
+    name: Compute cache key for requirements image
+    runs-on: ubuntu-latest
+    outputs:
+      reqs-cache-key: ${{ steps.compute.outputs.cache-key }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - id: compute
+        run: |
+          echo cache-key=${{ hashFiles('apps/codecov-api/uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }} >> "$GITHUB_OUTPUT"
+
   api-build:
     name: Build App (API)
     if: ${{ inputs.skip == false }}
-    uses: codecov/gha-workflows/.github/workflows/build-app.yml@v1.2.31
+    needs: [api-compute-reqs-cache-key]
+    uses: codecov/gha-workflows/.github/workflows/build-app.yml@v1.2.36
     secrets: inherit
     with:
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
-      working_directory: apps/codecov-api
+      output_directory: apps/codecov-api
+      make_target_prefix: api.
+      reqs_cache_key: ${{ needs.api-compute-reqs-cache-key.outputs.reqs-cache-key }}
 
   api-test:
     name: Test (API)
     if: ${{ inputs.skip == false }}
     needs: [api-build]
-    uses: codecov/gha-workflows/.github/workflows/run-tests.yml@v1.2.35
+    uses: codecov/gha-workflows/.github/workflows/run-tests.yml@v1.2.36
     secrets: inherit
     with:
       run_integration: false
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
-      working_directory: apps/codecov-api
+      output_directory: apps/codecov-api
       flag_prefix: api
       pytest_rootdir: /app
+      make_target_prefix: api.
 
   api-build-self-hosted:
     name: Build Self Hosted (API)
     if: ${{ inputs.skip == false }}
     needs: [api-build, api-test]
-    uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.31
+    uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.36
     secrets: inherit
     with:
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
-      working_directory: apps/codecov-api
+      output_directory: apps/codecov-api
+      make_target_prefix: api.
+      reqs_cache_key: ${{ needs.api-compute-reqs-cache-key.outputs.reqs-cache-key }}
 
   api-staging:
     name: Push Staging Image (API)
     needs: [api-build, api-test]
     if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/staging' && github.repository_owner == 'codecov' }}
-    uses: codecov/gha-workflows/.github/workflows/push-env.yml@v1.2.31
+    uses: codecov/gha-workflows/.github/workflows/push-env.yml@v1.2.36
     secrets: inherit
     with:
       environment: staging
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
-      working_directory: apps/codecov-api
+      output_directory: apps/codecov-api
       sentry_project: api
+      make_target_prefix: api.
 
   api-production:
     name: Push Production Image (API)
     needs: [api-build, api-test]
     if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
-    uses: codecov/gha-workflows/.github/workflows/push-env.yml@v1.2.31
+    uses: codecov/gha-workflows/.github/workflows/push-env.yml@v1.2.36
     secrets: inherit
     with:
       environment: production
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
-      working_directory: apps/codecov-api
+      output_directory: apps/codecov-api
       sentry_project: api
+      make_target_prefix: api.
 
   api-self-hosted:
     name: Push Self Hosted Image (API)
     needs: [api-build-self-hosted, api-test]
     secrets: inherit
     if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
-    uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.31
+    uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.36
     with:
       push_rolling: true
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
-      working_directory: apps/codecov-api
+      output_directory: apps/codecov-api
+      make_target_prefix: api.
+      reqs_cache_key: ${{ needs.api-compute-reqs-cache-key.outputs.reqs-cache-key }}
 
   # This job works around a strange interaction between reusable workflows and
   # path filters.

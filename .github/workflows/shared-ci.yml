@@ -12,9 +12,9 @@ jobs:
   shared-lint:
     name: Run Lint (Shared)
     if: ${{ inputs.skip == false }}
-    uses: codecov/gha-workflows/.github/workflows/lint.yml@v1.2.31
+    uses: codecov/gha-workflows/.github/workflows/lint.yml@v1.2.36
     with:
-      working_directory: libs/shared
+      make_target_prefix: shared.
 
   shared-benchmark:
     name: Benchmarks (Shared)
@@ -138,7 +138,6 @@ jobs:
           # The coverage action will have installed codecovcli with pip. The
           # actual binary will be found in $PATH.
           binary: codecovcli
-          recurse_submodules: true
 
   # This job works around a strange interaction between reusable workflows and
   # path filters.
