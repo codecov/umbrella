@@ -1,0 +1,20 @@
+type Pull {
+  behindBy: Int
+  behindByCommit: String
+  title: String
+  state: PullRequestState!
+  pullId: Int!
+  author: Owner
+  updatestamp: DateTime
+  head: Commit
+  comparedTo: Commit
+  compareWithBase: ComparisonResult
+  bundleAnalysisCompareWithBase: BundleAnalysisComparisonResult
+  commits(
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): CommitConnection @cost(complexity: 10, multipliers: ["first", "last"])
+  firstPull: Boolean!
+}

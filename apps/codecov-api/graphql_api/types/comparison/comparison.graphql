@@ -1,0 +1,50 @@
+type Comparison {
+  state: String!
+  impactedFile(path: String!): ImpactedFile
+  impactedFiles(filters: ImpactedFilesFilters): ImpactedFilesResult!
+  impactedFilesCount: Int!
+  indirectChangedFilesCount: Int!
+  patchTotals: CoverageTotals
+  directChangedFilesCount: Int!
+  baseTotals: CoverageTotals
+  headTotals: CoverageTotals
+  changeCoverage: Float
+  flagComparisons(filters: FlagComparisonFilters): [FlagComparison]
+  componentComparisons(filters: ComponentsFilters): [ComponentComparison!]
+  hasDifferentNumberOfHeadAndBaseReports: Boolean!
+  flagComparisonsCount: Int!
+  componentComparisonsCount: Int!
+}
+
+type MissingBaseCommit implements ResolverError {
+  message: String!
+}
+
+type MissingHeadCommit implements ResolverError {
+  message: String!
+}
+
+type MissingComparison implements ResolverError {
+  message: String!
+}
+
+type MissingBaseReport implements ResolverError {
+  message: String!
+}
+
+type MissingHeadReport implements ResolverError {
+  message: String!
+}
+
+type FirstPullRequest {
+  message: String!
+}
+
+union ComparisonResult =
+    Comparison
+  | FirstPullRequest
+  | MissingBaseCommit
+  | MissingHeadCommit
+  | MissingComparison
+  | MissingBaseReport
+  | MissingHeadReport

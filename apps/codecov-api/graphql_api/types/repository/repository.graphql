@@ -1,0 +1,95 @@
+"""
+Repository is a named collection of files uploaded
+"""
+type Repository {
+  isFirstPullRequest: Boolean!
+  repoid: Int!
+  name: String!
+  active: Boolean!
+  activated: Boolean!
+  private: Boolean!
+  oldestCommitAt: DateTime
+  latestCommitAt: DateTime
+  updatedAt: DateTime
+  author: Owner!
+  uploadToken: String
+  branch(name: String!): Branch
+  commit(id: String!): Commit
+  pull(id: Int!): Pull
+  pulls(
+    filters: PullsSetFilters
+    orderingDirection: OrderingDirection
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): PullConnection @cost(complexity: 10, multipliers: ["first", "last"])
+  commits(
+    filters: CommitsSetFilters
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): CommitConnection @cost(complexity: 10, multipliers: ["first", "last"])
+  branches(
+    filters: BranchesSetFilters
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): BranchConnection @cost(complexity: 3, multipliers: ["first", "last"])
+  defaultBranch: String
+  graphToken: String
+  yaml: String
+  bot: Owner
+  repositoryConfig: RepositoryConfig
+  staticAnalysisToken: String
+  isATSConfigured: Boolean
+  primaryLanguage: String
+  languages: [String!]
+  bundleAnalysisEnabled: Boolean
+  coverageEnabled: Boolean
+  testAnalyticsEnabled: Boolean
+  isGithubRateLimited: Boolean
+
+  "CoverageAnalytics are fields related to Codecov's Coverage product offering"
+  coverageAnalytics: CoverageAnalytics
+
+  "TestAnalytics are fields related to Codecov's Test Analytics product offering"
+  testAnalytics: TestAnalytics
+}
+
+type PullConnection {
+  edges: [PullEdge]!
+  totalCount: Int!
+  pageInfo: PageInfo!
+}
+
+type PullEdge {
+  cursor: String!
+  node: Pull!
+}
+
+type CommitConnection {
+  edges: [CommitEdge]!
+  totalCount: Int!
+  pageInfo: PageInfo!
+}
+
+type CommitEdge {
+  cursor: String!
+  node: Commit!
+}
+
+type BranchConnection {
+  edges: [BranchEdge]!
+  totalCount: Int!
+  pageInfo: PageInfo!
+}
+
+type BranchEdge {
+  cursor: String!
+  node: Branch!
+}
+
+union RepositoryResult = Repository | NotFoundError | OwnerNotActivatedError

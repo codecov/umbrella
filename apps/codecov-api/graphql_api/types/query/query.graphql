@@ -1,0 +1,14 @@
+scalar DateTime
+
+type Query {
+  me: Me
+  owner(username: String!): Owner
+  config: Config!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}

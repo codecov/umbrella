@@ -1,0 +1,6 @@
+AVATAR_GITHUB_BASE_URL = "https://avatars0.githubusercontent.com"
+BITBUCKET_BASE_URL = "https://bitbucket.org"
+GITLAB_BASE_URL = "https://gitlab.com"
+GRAVATAR_BASE_URL = "https://www.gravatar.com"
+AVATARIO_BASE_URL = "https://avatars.io"
+OWNER_YAML_TO_STRING_KEY = "to_string"

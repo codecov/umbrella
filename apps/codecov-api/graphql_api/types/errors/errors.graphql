@@ -1,0 +1,43 @@
+interface ResolverError {
+  message: String!
+}
+
+type UnauthenticatedError implements ResolverError {
+  message: String!
+}
+
+type UnauthorizedError implements ResolverError {
+  message: String!
+}
+
+type NotFoundError implements ResolverError {
+  message: String!
+}
+
+type ValidationError implements ResolverError {
+  message: String!
+}
+
+type MissingCoverage implements ResolverError {
+  message: String!
+}
+
+type UnknownPath implements ResolverError {
+  message: String!
+}
+
+type UnknownFlags implements ResolverError {
+  message: String!
+}
+
+type ProviderError implements ResolverError {
+  message: String!
+}
+
+type OwnerNotActivatedError implements ResolverError {
+  message: String!
+}
+
+type MissingService implements ResolverError {
+  message: String!
+}

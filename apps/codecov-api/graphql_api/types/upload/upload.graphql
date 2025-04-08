@@ -1,0 +1,30 @@
+type Upload {
+  state: UploadState!
+  provider: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  flags: [String]
+  downloadUrl: String!
+  ciUrl: String
+  uploadType: UploadType!
+  jobCode: String
+  buildCode: String
+  errors: UploadErrorsConnection
+  name: String
+  id: Int
+}
+
+type UploadErrorsConnection {
+  edges: [UploadErrorsEdge]!
+  totalCount: Int!
+  pageInfo: PageInfo!
+}
+
+type UploadErrorsEdge {
+  cursor: String!
+  node: UploadError!
+}
+
+type UploadError {
+  errorCode: UploadErrorEnum
+}
