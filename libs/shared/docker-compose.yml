@@ -1,0 +1,62 @@
+volumes:
+  postgres-volume:
+  timescale-volume:
+  redis-volume:
+  archive-volume:
+
+services:
+  shared:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    tty: true
+    depends_on:
+      - minio
+      - postgres
+      - redis
+      - timescale
+    volumes:
+      - ./shared/:/app/libs/shared/shared
+      - ./tests/:/app/libs/shared/tests
+      - ./.coveragerc:/app/libs/shared/.coveragerc
+
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - type: tmpfs
+        target: /var/lib/postgresql/data
+        tmpfs:
+          size: 1024M
+
+  redis:
+    image: redis:6-alpine
+    volumes:
+      - redis-volume:/data
+
+  timescale:
+    image: timescale/timescaledb:latest-pg14
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - type: tmpfs
+        target: /var/lib/postgresql/data
+        tmpfs:
+          size: 1024M
+
+  minio:
+    image: minio/minio:latest
+    command: server /export
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+    environment:
+      - MINIO_ACCESS_KEY=codecov-default-key
+      - MINIO_SECRET_KEY=codecov-default-secret
+    volumes:
+      - archive-volume:/export
