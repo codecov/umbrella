@@ -54,6 +54,8 @@ echo "Adding \`$remote_url\` as a remote named \`$repo_name\`..."
 git remote add $repo_name $remote_url
 
 git ls-remote $repo_name | grep main > /dev/null && branch="main" || branch="master"
+# TODO delete
+branch=matt/overridable-make-vars
 git fetch $repo_name $branch
 echo "Found repository with default branch \`$branch\`"
 echo ""
