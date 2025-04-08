@@ -1,0 +1,3 @@
+-- UploadLevelTotals
+DELETE
+FROM "reports_uploadleveltotals";
