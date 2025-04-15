@@ -1,0 +1,92 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      host:
+      - bitbucket.org
+      user-agent:
+      - Default
+    method: GET
+    uri: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/diff/b92edba..6ae5f17?context=1&oauth_consumer_key=arubajamaicaohiwan&oauth_signature_method=HMAC-SHA1&oauth_token=testss3hxhcfqf1h6g&oauth_version=1.0
+  response:
+    content: "diff --git a/README.rst b/README.rst\nindex 09c90a8..405d834 100644\n---
+      a/README.rst\n+++ b/README.rst\n@@ -11,3 +11,4 @@ Overview\n \n-Main website:
+      `Codecov <https://codecov.io/>`_.\n+\n+website: `Codecov <https://codecov.io/>`_.\n
+      \n@@ -48,3 +49,3 @@ You may need to configure a ``.coveragerc`` file. Learn
+      more `here <http://cover\n \n-We highly suggest adding `source` to your ``.coveragerc``
+      which solves a number of issues collecting coverage.\n+We highly suggest adding
+      ``source`` to your ``.coveragerc``, which solves a number of issues collecting
+      coverage.\n \n@@ -54,2 +55,9 @@ We highly suggest adding `source` to your ``.coveragerc``
+      which solves a number \n    source=your_package_name\n+   \n+If there are multiple
+      sources, you instead should add ``include`` to your ``.coveragerc``\n+\n+..
+      code-block:: ini\n+\n+   [run]\n+   include=your_package_name/*\n \n@@ -152,3
+      +160,2 @@ Links\n \n-We are happy to help if you have any questions. Please
+      contact email our Support at [support@codecov.io](mailto:support@codecov.io)\n-\n+We
+      are happy to help if you have any questions. Please contact email our Support
+      at `support@codecov.io <mailto:support@codecov.io>`_.\n"
+    headers:
+      Cache-Control:
+      - must-revalidate, max-age=0
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - text/plain
+      Date:
+      - Fri, 29 Oct 2021 14:32:16 GMT
+      ETag:
+      - '"gz[b6174f21649dc111a92136a8f9ab1a4b80464f41bca0fec4989119d2fa7d1a81]"'
+      Server:
+      - nginx
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Authorization, Origin, cookie, user-context, Accept-Encoding
+      X-Accepted-OAuth-Scopes:
+      - repository
+      X-B3-TraceId:
+      - 27fa68fa2b7e2251
+      X-Cache-Info:
+      - not cacheable; response specified max-age <= 0
+      X-Consumer-Client-Id:
+      - arubajamaicaohiwan
+      X-Credential-Type:
+      - oauth1
+      X-Dc-Location:
+      - Micros
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-OAuth-Scopes:
+      - pullrequest, account
+      X-Render-Time:
+      - '0.174722909927'
+      X-Request-Count:
+      - '3471'
+      X-Served-By:
+      - 5c41b9fa51b5
+      X-Static-Version:
+      - 667d31475744
+      X-Usage-Input-Ops:
+      - '176'
+      X-Usage-Output-Ops:
+      - '0'
+      X-Usage-System-Time:
+      - '0.005862'
+      X-Usage-User-Time:
+      - '0.046338'
+      X-Version:
+      - 667d31475744
+      X-View-Name:
+      - bitbucket.apps.repo2.api.v20.diff.DiffHandler
+    http_version: HTTP/1.1
+    status_code: 200
+version: 1

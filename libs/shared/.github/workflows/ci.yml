@@ -1,0 +1,88 @@
+name: Shared CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Run Lint
+    uses: codecov/gha-workflows/.github/workflows/lint.yml@v1.2.19
+
+  codecovstartup:
+    name: Codecov Startup
+    uses: codecov/gha-workflows/.github/workflows/codecov-startup.yml@v1.2.19
+    secrets: inherit
+
+  benchmark:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+      - run: uv sync --all-extras --dev
+
+      - uses: CodSpeedHQ/action@v3
+        with:
+          run: uv run pytest tests/ --codspeed
+          token: ${{ secrets.CODSPEED_TOKEN }}
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Install docker compose
+        run: |
+          sudo curl -SL https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+      - name: Build
+        run: |
+          make test_env.build
+      - name: Bring containers up
+        run: |
+          make test_env.up
+      - name: Run tests
+        run: |
+          make test_env.test
+
+      - name: Install codecovcli
+        run: |
+          make test_env.install_cli
+
+      # Don't upload on forks for now.
+      - name: upload using codecovcli
+        if: ${{ !cancelled() && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |
+          codecovcli -v upload-process --flag shared-docker-uploader --file tests/unit.coverage.xml --token ${{ secrets.CODECOV_ORG_TOKEN }} --fail-on-error
+          codecovcli -v do-upload --report-type "test_results" --flag shared-docker-uploader --file tests/unit.junit.xml --token ${{ secrets.CODECOV_ORG_TOKEN }} --fail-on-error
+
+      - name: upload using codecovcli staging
+        if: ${{ !cancelled() && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |
+          codecovcli -v -u ${{ secrets.CODECOV_STAGING_URL }} upload-process --flag shared-docker-uploader --file tests/unit.coverage.xml --token ${{ secrets.CODECOV_ORG_TOKEN_STAGING }} --fail-on-error
+          codecovcli -v -u ${{ secrets.CODECOV_STAGING_URL }} do-upload --report-type "test_results" --flag shared-docker-uploader --file tests/unit.junit.xml --token ${{ secrets.CODECOV_ORG_TOKEN_STAGING }} || true
+
+      - name: upload using codecovcli qa
+        if: ${{ !cancelled() && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |
+          codecovcli -v -u ${{ secrets.CODECOV_QA_URL }} upload-process --flag shared-docker-uploader --file tests/unit.coverage.xml --token ${{ secrets.CODECOV_QA_TOKEN }} --fail-on-error
+          codecovcli -v -u ${{ secrets.CODECOV_QA_URL }} do-upload --report-type "test_results" --flag shared-docker-uploader --file tests/unit.junit.xml --token ${{ secrets.CODECOV_QA_TOKEN }} --fail-on-error
+
+      - name: upload using codecovcli public qa
+        if: ${{ !cancelled() && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |
+          codecovcli -v -u ${{ secrets.CODECOV_PUBLIC_QA_URL }} upload-process --flag shared-docker-uploader --file tests/unit.coverage.xml --token ${{ secrets.CODECOV_PUBLIC_QA_TOKEN }} --fail-on-error
+          codecovcli -v -u ${{ secrets.CODECOV_PUBLIC_QA_URL }} do-upload --report-type "test_results" --flag shared-docker-uploader --file tests/unit.junit.xml --token ${{ secrets.CODECOV_PUBLIC_QA_TOKEN }} || true
