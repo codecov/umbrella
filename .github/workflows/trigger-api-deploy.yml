@@ -1,0 +1,15 @@
+name: Trigger API deployment
+
+# This is a dummy workflow that Hooky will watch for in order to trigger
+# codecov-api deployments.
+
+on:
+  workflow_call:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Succeed
+        run: exit 0
+

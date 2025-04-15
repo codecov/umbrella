@@ -83,3 +83,15 @@ jobs:
     secrets: inherit
     with:
       skip: ${{ needs.change-detection.outputs.shared == 'false' }}
+
+  trigger-worker-deploy:
+    name: Trigger worker deployment
+    needs: [change-detection, worker-ci]
+    if: ${{ github.event_name == 'push' && needs.change-detection.outputs.worker == 'true' }}
+    uses: ./.github/workflows/trigger-worker-deploy.yml
+
+  trigger-api-deploy:
+    name: Trigger codecov-api deployment
+    needs: [change-detection, api-ci]
+    if: ${{ github.event_name == 'push' && needs.change-detection.outputs.codecov-api == 'true' }}
+    uses: ./.github/workflows/trigger-api-deploy.yml
