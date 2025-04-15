@@ -1,0 +1,6 @@
+union SyncWithGitProviderError = UnauthenticatedError
+
+type SyncWithGitProviderPayload {
+  me: Me
+  error: SyncWithGitProviderError
+}

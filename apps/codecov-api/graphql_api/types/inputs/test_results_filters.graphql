@@ -1,0 +1,13 @@
+input TestResultsFilters {
+  branch: String
+  parameter: TestResultsFilterParameter
+  test_suites: [String!]
+  flags: [String!]
+  interval: MeasurementInterval
+  term: String
+}
+
+input TestResultsOrdering {
+  direction: OrderingDirection
+  parameter: TestResultsOrderingParameter
+}

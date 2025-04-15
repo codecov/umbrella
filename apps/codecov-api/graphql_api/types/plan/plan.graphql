@@ -1,0 +1,22 @@
+type Plan {
+  baseUnitPrice: Int!
+  benefits: [String!]!
+  billingRate: String
+  hasSeatsLeft: Boolean!
+  isEnterprisePlan: Boolean!
+  isFreePlan: Boolean!
+  isProPlan: Boolean!
+  isSentryPlan: Boolean!
+  isTeamPlan: Boolean!
+  isTrialPlan: Boolean!
+  marketingName: String!
+  monthlyUploadLimit: Int
+  planUserCount: Int
+  pretrialUsersCount: Int
+  tierName: String!
+  trialEndDate: DateTime
+  trialStartDate: DateTime
+  trialStatus: TrialStatus!
+  trialTotalDays: Int
+  value: String!
+}

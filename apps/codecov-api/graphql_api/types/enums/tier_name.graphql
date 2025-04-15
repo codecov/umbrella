@@ -1,0 +1,8 @@
+enum TierName {
+  BASIC
+  TEAM
+  PRO
+  ENTERPRISE
+  SENTRY
+  TRIAL
+}

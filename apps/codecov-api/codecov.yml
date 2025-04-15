@@ -1,0 +1,8 @@
+ignore:
+  - "**tests**/test_*.py"
+
+codecov:
+  require_ci_to_pass: false
+
+test_analytics:
+  flake_detection: true

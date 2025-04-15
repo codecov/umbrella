@@ -1,0 +1,20 @@
+union BundleAnalysisComparisonResult =
+    BundleAnalysisComparison
+  | FirstPullRequest
+  | MissingBaseCommit
+  | MissingHeadCommit
+  | MissingHeadReport
+  | MissingBaseReport
+
+type BundleAnalysisComparison {
+  bundles: [BundleComparison]!
+  bundleData: BundleData!
+  bundleChange: BundleData!
+}
+
+type BundleComparison {
+  name: String!
+  changeType: String!
+  bundleData: BundleData!
+  bundleChange: BundleData!
+}

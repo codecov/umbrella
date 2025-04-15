@@ -1,0 +1,12 @@
+input BundleAnalysisReportFilters {
+  reportGroups: [BundleReportGroups!]
+  loadTypes: [BundleLoadTypes!]
+}
+
+input BundleAnalysisMeasurementsSetFilters {
+    assetTypes: [BundleAnalysisMeasurementsAssetType!]
+}
+
+input BundleReportFilters {
+  reportGroup: BundleReportGroups
+}

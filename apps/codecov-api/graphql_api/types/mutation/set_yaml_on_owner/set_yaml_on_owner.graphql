@@ -1,0 +1,6 @@
+union SetYamlOnOwnerError = UnauthenticatedError | ValidationError | UnauthorizedError | NotFoundError
+
+type SetYamlOnOwnerPayload {
+    error: SetYamlOnOwnerError
+    owner: Owner
+}

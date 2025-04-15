@@ -1,0 +1,11 @@
+input ImpactedFilesFilters {
+  ordering: ImpactedFilesOrdering
+  hasUnintendedChanges: Boolean
+  flags: [String!]
+  components: [String!]
+}
+
+input ImpactedFilesOrdering {
+  direction: OrderingDirection
+  parameter: ImpactedFileParameter
+}

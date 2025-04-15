@@ -1,0 +1,10 @@
+type User {
+  username: String!
+  name: String
+  avatarUrl: String!
+  student: Boolean!
+  studentCreatedAt: DateTime
+  studentUpdatedAt: DateTime
+  # this will no longer be updated from the UI with Appless
+  customerIntent: String
+}

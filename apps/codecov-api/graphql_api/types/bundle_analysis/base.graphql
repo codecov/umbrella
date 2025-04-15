@@ -1,0 +1,116 @@
+enum BundleAnalysisMeasurementsAssetType {
+    REPORT_SIZE
+    JAVASCRIPT_SIZE
+    STYLESHEET_SIZE
+    FONT_SIZE
+    IMAGE_SIZE
+    ASSET_SIZE
+    UNKNOWN_SIZE
+}
+
+enum BundleReportGroups {
+  JAVASCRIPT
+  STYLESHEET
+  FONT
+  IMAGE
+  UNKNOWN
+}
+
+enum BundleLoadTypes {
+  ENTRY
+  INITIAL
+  LAZY
+}
+
+type BundleSize {
+  gzip: Int!
+  uncompress: Int!
+}
+
+type BundleLoadTime {
+  threeG: Int!
+  highSpeed: Int!
+}
+
+type BundleData {
+  loadTime: BundleLoadTime!
+  size: BundleSize!
+}
+
+type BundleModule {
+  name: String!
+  extension: String!
+  bundleData: BundleData!
+}
+
+type BundleAsset {
+  name: String!
+  extension: String!
+  normalizedName: String!
+  modules: [BundleModule]!
+  bundleData: BundleData!
+  measurements(
+    interval: MeasurementInterval!
+    before: DateTime!
+    after: DateTime
+    branch: String
+  ): BundleAnalysisMeasurements
+  routes: [String!]
+}
+
+type BundleReportInfo {
+  version: String!
+  pluginName: String!
+  pluginVersion: String!
+  builtAt: String!
+  duration: Int!
+  bundlerName: String!
+  bundlerVersion: String!
+}
+
+type BundleReport {
+  name: String!
+  moduleCount: Int!
+  assets: [BundleAsset]!
+  asset(name: String!): BundleAsset
+  bundleData: BundleData!
+  bundleDataFiltered(filters: BundleReportFilters): BundleData!
+  measurements(
+    interval: MeasurementInterval!
+    before: DateTime!
+    after: DateTime
+    branch: String
+    orderingDirection: OrderingDirection
+    filters: BundleAnalysisMeasurementsSetFilters
+  ): [BundleAnalysisMeasurements!]
+  isCached: Boolean!
+  assetsPaginated(
+    ordering: AssetOrdering
+    orderingDirection: OrderingDirection
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): AssetConnection
+  info: BundleReportInfo!
+  cacheConfig: Boolean!
+}
+
+type BundleAnalysisMeasurements{
+    assetType: BundleAnalysisMeasurementsAssetType!
+    name: String
+    size: BundleData
+    change: BundleData
+    measurements: [Measurement!]
+}
+
+type AssetConnection {
+  edges: [AssetEdge]!
+  totalCount: Int!
+  pageInfo: PageInfo!
+}
+
+type AssetEdge {
+  cursor: String!
+  node: BundleAsset!
+}

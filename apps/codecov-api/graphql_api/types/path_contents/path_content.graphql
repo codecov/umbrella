@@ -1,0 +1,58 @@
+interface PathContent {
+  name: String!
+  path: String!
+  hits: Int!
+  misses: Int!
+  partials: Int!
+  lines: Int!
+  percentCovered: Float!
+}
+
+type PathContentFile implements PathContent {
+  name: String!
+  path: String!
+  hits: Int!
+  misses: Int!
+  partials: Int!
+  lines: Int!
+  percentCovered: Float!
+}
+
+type PathContentDir implements PathContent {
+  name: String!
+  path: String!
+  hits: Int!
+  misses: Int!
+  partials: Int!
+  lines: Int!
+  percentCovered: Float!
+}
+
+type PathContents {
+  results: [PathContent!]!
+}
+
+type PathContentEdge {
+  cursor: String!
+  node: PathContent!
+}
+
+type PathContentConnection {
+  edges: [PathContentEdge!]!
+  totalCount: Int!
+  pageInfo: PageInfo!
+}
+
+union PathContentsResult =
+    PathContents
+  | MissingHeadReport
+  | MissingCoverage
+  | UnknownPath
+  | UnknownFlags
+
+union DeprecatedPathContentsResult =
+    PathContentConnection
+  | MissingHeadReport
+  | MissingCoverage
+  | UnknownPath
+  | UnknownFlags
