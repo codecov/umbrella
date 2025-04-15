@@ -1,6 +1,3 @@
-[submodule "apps/worker"]
-	path = apps/worker
-	url = git@github.com:codecov/worker.git
 [submodule "apps/codecov-api"]
 	path = apps/codecov-api
 	url = git@github.com:codecov/codecov-api.git
