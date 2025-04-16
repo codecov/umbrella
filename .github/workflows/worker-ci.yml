@@ -85,7 +85,7 @@ jobs:
     name: Push Staging Image (Worker)
     needs: [worker-build, worker-test]
     if: ${{ inputs.skip == false && github.event_name == 'push' && (github.event.ref == 'refs/heads/main' || github.event.ref == 'refs/heads/staging') && github.repository_owner == 'codecov' }}
-    uses: codecov/gha-workflows/.github/workflows/push-env.yml@v1.2.36
+    uses: codecov/gha-workflows/.github/workflows/push-env.yml@v1.2.37
     secrets: inherit
     with:
       environment: staging
@@ -98,7 +98,7 @@ jobs:
     name: Push Production Image (Worker)
     needs: [worker-build, worker-test]
     if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
-    uses: codecov/gha-workflows/.github/workflows/push-env.yml@v1.2.36
+    uses: codecov/gha-workflows/.github/workflows/push-env.yml@v1.2.37
     secrets: inherit
     with:
       environment: production
