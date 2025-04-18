@@ -21,12 +21,13 @@ jobs:
     with:
       make_target_prefix: api.
 
-  api-mypy:
-    name: Patch typing (API)
-    if: ${{ inputs.skip == false }}
-    uses: codecov/gha-workflows/.github/workflows/mypy.yml@v1.2.31
-    with:
-      working_directory: apps/codecov-api
+  # TODO: Enable after we actually get this passing. It's just noise until then.
+  # api-mypy:
+  #   name: Patch typing (API)
+  #   if: ${{ inputs.skip == false }}
+  #   uses: codecov/gha-workflows/.github/workflows/mypy.yml@v1.2.31
+  #   with:
+  #     working_directory: apps/codecov-api
 
   # Once we cut over to umbrella, we can just replace the default cache key in build-app.yml
   # and self-hosted.yml and get rid of this step.

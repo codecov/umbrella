@@ -8,7 +8,7 @@ on:
         default: false
 
 jobs:
-  # TODO: get mypy running
+  # TODO: Get mypy passing and running. Don't enable if not passing
   shared-lint:
     name: Run Lint (Shared)
     if: ${{ inputs.skip == false }}
