@@ -6,6 +6,9 @@ on:
       skip:
         type: boolean
         default: false
+      event_name:
+        type: string
+        required: false
 
 jobs:
   # TODO: get mypy running

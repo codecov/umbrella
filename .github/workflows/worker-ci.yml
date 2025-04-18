@@ -6,6 +6,9 @@ on:
       skip:
         type: boolean
         default: false
+      event_name:
+        type: string
+        required: false
 
 permissions:
   contents: "read"
@@ -32,6 +35,7 @@ jobs:
   # and self-hosted.yml and get rid of this step.
   worker-compute-reqs-cache-key:
     name: Compute cache key for requirements image
+    if: ${{ inputs.skip == false }}
     runs-on: ubuntu-latest
     outputs:
       reqs-cache-key: ${{ steps.compute.outputs.cache-key }}
@@ -144,3 +148,9 @@ jobs:
       - name: Fail tests
         if: ${{ needs.worker-test.outputs.tests_passed == 'failure' }}
         run: exit 1
+
+  trigger-worker-deploy:
+    name: Trigger worker deployment
+    needs: [worker-required-checks, worker-production]
+    if: ${{ !cancelled() && inputs.event_name == 'push' && inputs.skip == false }}
+    uses: ./.github/workflows/trigger-worker-deploy.yml
