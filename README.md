@@ -99,7 +99,7 @@ $ make devenv.upload.shared
 ```
 
 ### Extras
-- You can browse your local MinIO (archive service) at http://localhost:9000/ with the username `codecov-default-key` and password `codecov-default-secret`
-- You can browse your local Redis by pointing the [Redis CLI](https://redis.io/docs/latest/develop/tools/cli/) or [Redis Insight GUI](https://redis.io/insight/) at 127.0.0.1:6379
-- You can browse your local Postgres database with the connection string `postgres://postgres@localhost:5432/postgres` in your preferred database browser
+- You can browse your local MinIO (archive service) at http://localhost:9001/ with the username `codecov-default-key` and password `codecov-default-secret`
+- You can browse your local Redis by pointing the [Redis CLI](https://redis.io/docs/latest/develop/tools/cli/) or [Redis Insight GUI](https://redis.io/insight/) at 127.0.0.1:6380
+- You can browse your local Postgres database with the connection string `postgres://postgres@localhost:5434/postgres` in your preferred database browser
 - You can browse your local Timescale database with the connection string `postgres://postgres@localhost:5433/postgres` in your preferred database browser

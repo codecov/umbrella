@@ -95,7 +95,7 @@ services:
   redis:
     image: redis:6.2-alpine
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis-volume:/data
     networks:
@@ -108,7 +108,7 @@ services:
     volumes:
       - postgres-volume:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5434:5432"
     networks:
       - codecov
 
@@ -127,7 +127,7 @@ services:
     image: minio/minio:latest
     command: server /export
     ports:
-      - "${CODECOV_MINIO_PORT-9000}:9000"
+      - "${CODECOV_MINIO_PORT-9001}:9000"
     environment:
       - MINIO_ACCESS_KEY=codecov-default-key
       - MINIO_SECRET_KEY=codecov-default-secret
