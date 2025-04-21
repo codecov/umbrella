@@ -42,6 +42,9 @@ From the repository root:
 # Build `umbrella` containers, pull other containers, start docker compose
 $ make devenv
 
+# Run migrations
+$ make devenv.migrate
+
 # Rebuild and restart `umbrella` containers. Necessary if dependencies change.
 # Run this after pulling if you haven't pulled in a while.
 $ make devenv.refresh
