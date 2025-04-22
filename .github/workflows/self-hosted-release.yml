@@ -47,7 +47,7 @@ jobs:
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
       output_directory: apps/worker
       make_target_prefix: worker.
-      reqs_cache_key: ${{ needs.compute-reqs-cache-key.outputs.worker-reqs-cache-key }}
+      reqs_cache_key: ${{ needs.compute-reqs-cache-keys.outputs.worker-reqs-cache-key }}
 
   push-api-image:
     needs: [create-release]
@@ -59,4 +59,4 @@ jobs:
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       output_directory: apps/codecov-api
       make_target_prefix: api.
-      reqs_cache_key: ${{ needs.compute-reqs-cache-key.outputs.api-reqs-cache-key }}
+      reqs_cache_key: ${{ needs.compute-reqs-cache-keys.outputs.api-reqs-cache-key }}
