@@ -381,10 +381,10 @@ class GithubWebhookHandler(APIView):
         if not target_id:
             log.info(
                 "Hook installation target ID is missing",
-                extra=dict(
-                    headers=dict(request.META),
-                    github_webhook_event=self.event,
-                ),
+                extra={
+                    "headers": dict(request.META),
+                    "github_webhook_event": self.event,
+                },
             )
             return False
 
@@ -392,11 +392,11 @@ class GithubWebhookHandler(APIView):
         if not is_match:
             log.info(
                 "Hook installation target ID does not match Codecov AI app ID",
-                extra=dict(
-                    target_id=target_id,
-                    ai_features_app_id=self.ai_features_app_id,
-                    github_webhook_event=self.event,
-                ),
+                extra={
+                    "target_id": target_id,
+                    "ai_features_app_id": self.ai_features_app_id,
+                    "github_webhook_event": self.event,
+                },
             )
         return is_match
 
