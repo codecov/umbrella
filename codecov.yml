@@ -27,5 +27,6 @@ component_management:
         - libs/shared/**
 
 codecov:
-  wait_for_ci: false
   require_ci_to_pass: false
+  notify:
+    wait_for_ci: false
