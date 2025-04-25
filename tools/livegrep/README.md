@@ -10,9 +10,10 @@ It should work out of the box, but if you want to index any private repositories
   ```
   GITHUB_KEY=<your PAT, which probably starts with ghp_>
   EXTRA_REPOS="-repo=codecov/one-private-repo -repo=codecov/two-private-repo"
+  EXTRA_SENTRY_REPOS="-repo=getsentry/three-private-repo"
   ```
 
-When you restart the service, it should add `codecov/one-private-repo` and `codecov/two-private-repo` to the index.
+When you restart the service, it should add `codecov/one-private-repo` and `codecov/two-private-repo` to the Codecov index and `getsentry/three-private-repo` to the Sentry index.
 
 ### Usage
 
@@ -21,4 +22,6 @@ The following command will re-run the indexer and start the service:
 $ docker compose -fdocker-compose.{,indexer.}yml run --remove-orphans livegrep-indexer && docker compose up
 ```
 
-Navigate to http://localhost:8910 and search away. Restart the service every few days to re-index everything.
+Navigate to http://localhost:8910 and search away. There is a dropdown in the top-right area where you can switch between searching Codecov repositories and Sentry repositories.
+
+Restart the service every few days to re-index everything.

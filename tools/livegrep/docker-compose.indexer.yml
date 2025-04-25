@@ -13,7 +13,15 @@ services:
           -repo=codecov/ribs \
           ${EXTRA_REPOS} \
           -dir=/data/ \
-          -out=/data/index.idx \
+          -out=/data/codecov-index.idx \
+          -http
+        /livegrep/bin/livegrep-github-reindex \
+          "-name=Sentry" \
+          -repo=getsentry/sentry \
+          -repo=getsentry/getsentry \
+          ${EXTRA_SENTRY_REPOS} \
+          -dir=/data/ \
+          -out=/data/sentry-index.idx \
           -http
       '
     environment:

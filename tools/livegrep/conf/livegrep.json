@@ -3,7 +3,11 @@
     [
         {
             "id": "codecov",
-            "addr": "livegrep-backend-linux:9898"
+            "addr": "livegrep-backend-codecov:9898"
+        },
+        {
+            "id": "sentry",
+            "addr": "livegrep-backend-sentry:9898"
         }
     ],
     "reverse_proxy": true,

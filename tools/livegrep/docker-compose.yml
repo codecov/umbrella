@@ -1,15 +1,29 @@
 version: "3.3"
 services:
-  livegrep-backend-linux:
+  livegrep-backend-codecov:
     image: "docker.io/livegrep/base:${image_version:-latest}"
     command:
       - "/livegrep/bin/codesearch"
       - "-grpc=0.0.0.0:9898"
-      - "-load_index=/data/index.idx"
+      - "-load_index=/data/codecov-index.idx"
       - "-debug=profile,index"
       - "-threads=4"
     ports:
       - "9898:9898"
+    volumes:
+      - livegrep-data:/data
+    restart: unless-stopped
+
+  livegrep-backend-sentry:
+    image: "docker.io/livegrep/base:${image_version:-latest}"
+    command:
+      - "/livegrep/bin/codesearch"
+      - "-grpc=0.0.0.0:9898"
+      - "-load_index=/data/sentry-index.idx"
+      - "-debug=profile,index"
+      - "-threads=4"
+    ports:
+      - "9899:9898"
     volumes:
       - livegrep-data:/data
     restart: unless-stopped
