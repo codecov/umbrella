@@ -19,7 +19,7 @@ pr_body=$(echo $pr_data | jq -r \""(migrated from $pull_request)\r\n\r\n\""' + .
 pr_head_repo=$(echo $pr_data | jq -r '.headRepository')
 pr_head_repo_owner=$(echo $pr_data | jq -r '.headRepositoryOwner')
 pr_head_ref=$(echo $pr_data | jq -r '.headRefName')
-pr_reviewers=$(echo $pr_data | jq -r '.reviewers' | sed 's/\[/-r /' | sed 's/,/-r /g' | sed 's/\]//')
+pr_reviewers=$(echo $pr_data | jq -r '.reviewers' | sed 's/\[/-r /' | sed 's/,/ -r /g' | sed 's/\]//')
 
 # Assumes this script's directory has a sibling directory called `git-filter-repo`
 # which contains a copy of the `git-filter-repo` script.
