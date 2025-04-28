@@ -52,8 +52,8 @@ coverage.xml
 .pytest_cache/
 cover/
 .codspeed
-*.junit.xml
-*.coverage.xml
+*junit.xml
+*coverage.xml
 
 # Translations
 *.mo
