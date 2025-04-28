@@ -1,7 +1,6 @@
 import logging
 from datetime import datetime
 
-from django.db import transaction
 from django.db.models import Q, QuerySet
 from redis.exceptions import LockError
 from shared.django_apps.reports.models import CommitReport, ReportSession
@@ -103,8 +102,6 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         unique_fields=["id"],
         update_fields=["end_date", "count", "recent_passes_count", "fail_count"],
     )
-
-    transaction.commit()
 
 
 def process_flakes_for_repo(repo_id: int):

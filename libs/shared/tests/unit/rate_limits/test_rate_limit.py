@@ -55,7 +55,7 @@ def test_determine_entity_redis_key_github_bot():
     "shared.bots.github_apps.get_github_integration_token",
     side_effect=get_github_integration_token_side_effect,
 )
-@pytest.mark.django_db(databases={"default"})
+@pytest.mark.django_db
 def test_determine_entity_redis_key_installed_gh_app_via_repository(
     mock_get_github_integration_token,
 ):
@@ -87,7 +87,7 @@ def test_determine_entity_redis_key_installed_gh_app_via_repository(
     "shared.bots.github_apps.get_github_integration_token",
     side_effect=get_github_integration_token_side_effect,
 )
-@pytest.mark.django_db(databases={"default"})
+@pytest.mark.django_db
 def test_determine_entity_redis_key_installed_gh_app_via_owner(
     mock_get_github_integration_token,
 ):
@@ -114,7 +114,7 @@ def test_determine_entity_redis_key_installed_gh_app_via_owner(
     )
 
 
-@pytest.mark.django_db(databases={"default"})
+@pytest.mark.django_db
 def test_determine_entity_redis_key_owner_token_via_repository():
     owner = OwnerFactory(
         ownerid=1428,
@@ -130,7 +130,7 @@ def test_determine_entity_redis_key_owner_token_via_repository():
     )
 
 
-@pytest.mark.django_db(databases={"default"})
+@pytest.mark.django_db
 def test_determine_entity_redis_key_owner_token_via_owner():
     owner = OwnerFactory(
         ownerid=1428,

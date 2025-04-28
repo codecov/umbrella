@@ -123,7 +123,7 @@ def test_not_joined_flag(flag, joined):
 
 
 class TestUploadFinisherTask(object):
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_upload_finisher_task_call(
         self,
         mocker,
@@ -201,7 +201,7 @@ class TestUploadFinisherTask(object):
             },
         )
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_upload_finisher_task_call_no_author(
         self, mocker, mock_configuration, dbsession, mock_storage, mock_repo_provider
     ):
@@ -675,7 +675,7 @@ class TestUploadFinisherTask(object):
             }
         )
 
-    @pytest.mark.django_db()
+    @pytest.mark.django_db
     def test_retry_on_report_lock(self, dbsession, mock_redis):
         commit = CommitFactory.create()
         dbsession.add(commit)

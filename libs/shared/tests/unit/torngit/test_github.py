@@ -1887,7 +1887,7 @@ class TestUnitGithub(object):
             assert after - before == 1
 
     @pytest.mark.asyncio
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     async def test_get_repos_from_nodeids(self, ghapp_handler):
         before = REGISTRY.get_sample_value(
             "git_provider_api_calls_github_total",

@@ -3362,9 +3362,9 @@ class TestReportService(BaseTestCase):
         assert r is not None
         assert len(mock_storage.storage["archive"]) == 0
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_initialize_and_save_report_carryforward_needed(
-        self, dbsession, sample_commit_with_report_big, mocker, mock_storage
+        self, dbsession, sample_commit_with_report_big, mock_storage
     ):
         parent_commit = sample_commit_with_report_big
         commit = CommitFactory.create(
@@ -3423,7 +3423,7 @@ class TestReportService(BaseTestCase):
         }
         assert second_upload.upload_type == "carriedforward"
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_initialize_and_save_report_report_but_no_details_carryforward_needed(
         self, dbsession, sample_commit_with_report_big, mock_storage
     ):

@@ -1128,7 +1128,7 @@ class TestGithubTestCase(object):
         assert mock_api.call_count == 2
 
     @pytest.mark.asyncio
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     async def test_list_repos(self, valid_handler, codecov_vcr):
         res = await valid_handler.list_repos()
         assert len(res) == 115
@@ -1147,7 +1147,7 @@ class TestGithubTestCase(object):
         assert one_expected_result in res
 
     @pytest.mark.asyncio
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     async def test_list_repos_generator(self, valid_handler, codecov_vcr):
         repos = []
         page_count = 0
@@ -1200,7 +1200,7 @@ class TestGithubTestCase(object):
         assert all(x in repos for x in some_expected_results)
 
     @pytest.mark.asyncio
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     async def test_list_repos_using_installation(self, valid_handler, codecov_vcr):
         res = await valid_handler.list_repos_using_installation()
         assert res == [
@@ -1217,7 +1217,7 @@ class TestGithubTestCase(object):
         ]
 
     @pytest.mark.asyncio
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     async def test_list_repos_using_installation_generator(
         self, valid_handler, codecov_vcr
     ):
@@ -1925,7 +1925,7 @@ class TestGithubTestCase(object):
         assert res is True
 
     @pytest.mark.asyncio
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     async def test_get_repos_from_nodeids_generator(self, valid_handler, codecov_vcr):
         repo_node_ids = ["R_kgDOHrbKcg", "R_kgDOLEJx2g"]
         expected = [

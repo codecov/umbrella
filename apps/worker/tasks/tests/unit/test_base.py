@@ -554,7 +554,7 @@ class TestBaseCodecovTaskApplyAsyncOverride(object):
         )
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_real_example_no_override(
         self, mocker, dbsession, mock_configuration, fake_repos
     ):
@@ -601,7 +601,7 @@ class TestBaseCodecovTaskApplyAsyncOverride(object):
         )
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_real_example_override_from_celery(
         self, mocker, dbsession, mock_configuration, fake_repos
     ):
@@ -648,7 +648,7 @@ class TestBaseCodecovTaskApplyAsyncOverride(object):
         )
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_real_example_override_from_upload(
         self, mocker, dbsession, mock_configuration, fake_repos
     ):

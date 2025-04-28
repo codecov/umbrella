@@ -515,7 +515,7 @@ def create_stale_users(
     return ([org_1, org_2], [user_1, user_2, user_3, user_4, user_5])
 
 
-@pytest.mark.django_db()
+@pytest.mark.django_db
 def test_stale_user_cleanup():
     orgs, users = create_stale_users()
 

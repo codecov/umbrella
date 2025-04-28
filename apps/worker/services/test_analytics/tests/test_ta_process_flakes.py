@@ -38,9 +38,7 @@ class SetupResult(TypedDict):
     commitid: str
 
 
-pytestmark = pytest.mark.django_db(
-    databases=["default", "ta_timeseries"], transaction=True
-)
+pytestmark = pytest.mark.django_db(databases=["default", "ta_timeseries"])
 
 
 @pytest.fixture

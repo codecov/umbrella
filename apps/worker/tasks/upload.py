@@ -10,7 +10,6 @@ import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery import chain, chord
 from django.conf import settings
-from django.db import transaction as django_transaction
 from django.utils import timezone
 from redis import Redis
 from redis.exceptions import LockError
@@ -541,7 +540,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
         # Bulk insert coverage measurements
         if measurements := create_upload_res["measurements_list"]:
-            self._bulk_insert_coverage_measurements(measurements=measurements)
+            bulk_insert_coverage_measurements(measurements=measurements)
 
         return create_upload_res["argument_list"]
 
@@ -655,10 +654,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         """
         flags = db_session.query(RepositoryFlag).filter_by(repository_id=repoid).all()
         return {flag.flag_name: flag for flag in flags} if flags else {}
-
-    def _bulk_insert_coverage_measurements(self, measurements: list[UserMeasurement]):
-        bulk_insert_coverage_measurements(measurements=measurements)
-        django_transaction.commit()
 
     def schedule_task(
         self,

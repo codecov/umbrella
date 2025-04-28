@@ -61,7 +61,7 @@ class TestGettingAdapterAuthInformation(object):
 
             return owner
 
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_owner_info(self):
             owner = self._generate_test_owner(with_bot=False)
             expected = AdapterAuthInformation(
@@ -78,7 +78,7 @@ class TestGettingAdapterAuthInformation(object):
             )
             assert get_adapter_auth_information(owner) == expected
 
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_owner_bot_info(self):
             owner = self._generate_test_owner(with_bot=True)
             expected = AdapterAuthInformation(
@@ -99,7 +99,7 @@ class TestGettingAdapterAuthInformation(object):
             "shared.bots.github_apps.get_github_integration_token",
             side_effect=get_github_integration_token_side_effect,
         )
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_owner_single_installation(
             self, mock_get_github_integration_token
         ):
@@ -138,7 +138,7 @@ class TestGettingAdapterAuthInformation(object):
             "shared.bots.github_apps.get_github_integration_token",
             side_effect=get_github_integration_token_side_effect,
         )
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_owner_single_installation_ignoring_installations(
             self, mock_get_github_integration_token
         ):
@@ -176,7 +176,7 @@ class TestGettingAdapterAuthInformation(object):
             "shared.bots.github_apps.get_github_integration_token",
             side_effect=get_github_integration_token_side_effect,
         )
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_owner_deprecated_using_integration(
             self, mock_get_github_integration_token
         ):
@@ -201,7 +201,7 @@ class TestGettingAdapterAuthInformation(object):
             "shared.bots.github_apps.get_github_integration_token",
             side_effect=get_github_integration_token_side_effect,
         )
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_owner_multiple_installations_default_name(
             self, mock_get_github_integration_token
         ):
@@ -249,7 +249,7 @@ class TestGettingAdapterAuthInformation(object):
             "shared.bots.github_apps.get_github_integration_token",
             side_effect=get_github_integration_token_side_effect,
         )
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_owner_multiple_installations_custom_name(
             self, mock_get_github_integration_token
         ):
@@ -354,7 +354,7 @@ class TestGettingAdapterAuthInformation(object):
 
             return repo
 
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_repo_info_fallback_to_owner(self):
             repo = self._generate_test_repo(with_bot=False, with_owner_bot=False)
             expected = AdapterAuthInformation(
@@ -372,7 +372,7 @@ class TestGettingAdapterAuthInformation(object):
             )
             assert get_adapter_auth_information(repo.author, repo) == expected
 
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_owner_bot_info(self):
             repo = self._generate_test_repo(with_owner_bot=True, with_bot=False)
             expected = AdapterAuthInformation(
@@ -390,7 +390,7 @@ class TestGettingAdapterAuthInformation(object):
             )
             assert get_adapter_auth_information(repo.author, repo) == expected
 
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_repo_bot_info(self):
             repo = self._generate_test_repo(with_owner_bot=True, with_bot=True)
             expected = AdapterAuthInformation(
@@ -408,7 +408,7 @@ class TestGettingAdapterAuthInformation(object):
             )
             assert get_adapter_auth_information(repo.author, repo) == expected
 
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_repo_bot_info_public_repo(self, mock_configuration):
             repo = self._generate_test_repo(
                 with_owner_bot=True, with_bot=True, private=False
@@ -454,7 +454,7 @@ class TestGettingAdapterAuthInformation(object):
             "shared.bots.github_apps.get_github_integration_token",
             side_effect=get_github_integration_token_side_effect,
         )
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_repo_single_installation(
             self, mock_get_github_integration_token
         ):
@@ -495,7 +495,7 @@ class TestGettingAdapterAuthInformation(object):
             "shared.bots.github_apps.get_github_integration_token",
             side_effect=get_github_integration_token_side_effect,
         )
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_repo_deprecated_using_integration(
             self, mock_get_github_integration_token
         ):
@@ -524,7 +524,7 @@ class TestGettingAdapterAuthInformation(object):
             "shared.bots.github_apps.get_github_integration_token",
             side_effect=get_github_integration_token_side_effect,
         )
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_repo_multiple_installations_default_name(
             self, mock_get_github_integration_token
         ):
@@ -574,7 +574,7 @@ class TestGettingAdapterAuthInformation(object):
             "shared.bots.github_apps.get_github_integration_token",
             side_effect=get_github_integration_token_side_effect,
         )
-        @pytest.mark.django_db(databases={"default"})
+        @pytest.mark.django_db
         def test_select_repo_multiple_installations_custom_name(
             self, mock_get_github_integration_token
         ):
@@ -633,7 +633,7 @@ class TestGettingAdapterAuthInformation(object):
             )
 
     @pytest.mark.parametrize("service", ["github", "gitlab"])
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_select_repo_public_with_no_token_no_admin_token_configured(
         self, service, mocker
     ):

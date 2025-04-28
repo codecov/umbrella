@@ -10,7 +10,7 @@ from shared.django_apps.reports.models import ReportLevelTotals
 from services.report.transplant import transplant_commit_report
 
 
-@pytest.mark.django_db()
+@pytest.mark.django_db
 def test_transplanting_commit(mock_storage):
     repo = RepositoryFactory()
     commit_from = CommitWithReportFactory(repository=repo)

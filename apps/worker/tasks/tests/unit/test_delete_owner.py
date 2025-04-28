@@ -31,7 +31,7 @@ from tasks.delete_owner import DeleteOwnerTask
 here = Path(__file__)
 
 
-@pytest.mark.django_db(databases=["timeseries", "default"], transaction=True)
+@pytest.mark.django_db(databases=["timeseries", "default"])
 def test_delete_owner_deletes_owner_with_ownerid(mock_storage):
     user = OwnerFactory()
     repo = RepositoryFactory(author=user)
@@ -58,7 +58,7 @@ def test_delete_owner_deletes_owner_with_ownerid(mock_storage):
     assert Repository.objects.count() == 0
 
 
-@pytest.mark.django_db(databases=["timeseries", "default"], transaction=True)
+@pytest.mark.django_db(databases=["timeseries", "default"])
 def test_delete_owner_deletes_owner_with_commit_compares(mock_storage):
     user = OwnerFactory()
     repo = RepositoryFactory(author=user)
@@ -113,7 +113,7 @@ def test_delete_owner_deletes_owner_with_commit_compares(mock_storage):
     assert DailyTestRollup.objects.count() == 0
 
 
-@pytest.mark.django_db(databases=["timeseries", "default"], transaction=True)
+@pytest.mark.django_db(databases=["timeseries", "default"])
 def test_delete_owner_from_orgs_removes_ownerid_from_organizations_of_related_owners(
     mock_storage,
 ):

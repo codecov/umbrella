@@ -34,7 +34,7 @@ def test_default_acks_late() -> None:
 
 class TestUploadProcessorTask(object):
     @pytest.mark.integration
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_upload_processor_task_call(
         self,
         mocker,
@@ -187,7 +187,7 @@ class TestUploadProcessorTask(object):
         parsed = LegacyReportParser().parse_raw_report_from_bytes(content)
         assert data == parsed.content().getvalue()
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_upload_task_call_exception_within_individual_upload(
         self,
         mocker,
@@ -260,7 +260,7 @@ class TestUploadProcessorTask(object):
             ),
         )
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_upload_task_call_with_expired_report(
         self,
         mocker,
@@ -424,7 +424,7 @@ class TestUploadProcessorTask(object):
                 {"upload_id": upload.id_},
             )
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_upload_task_call_with_empty_report(
         self,
         mocker,
@@ -506,7 +506,7 @@ class TestUploadProcessorTask(object):
 
         assert commit.state == "complete"
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_upload_task_call_no_successful_report(
         self,
         mocker,
@@ -583,7 +583,7 @@ class TestUploadProcessorTask(object):
             "error": {"code": "report_expired", "params": {}},
         }
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_upload_task_call_softtimelimit(
         self,
         mocker,
@@ -621,7 +621,7 @@ class TestUploadProcessorTask(object):
             )
         assert commit.state == "error"
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_upload_task_call_celeryerror(
         self,
         mocker,

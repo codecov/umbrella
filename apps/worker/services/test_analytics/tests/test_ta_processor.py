@@ -61,7 +61,7 @@ def test_ta_processor_impl_already_processed(update_state):
     assert result is False
 
 
-@pytest.mark.django_db(databases=["default", "timeseries"])
+@pytest.mark.django_db(databases=["default", "ta_timeseries"])
 def test_ta_processor_impl_no_storage_path(storage):
     repository = RepositoryFactory.create()
     commit = CommitFactory.create(repository=repository, branch="main")

@@ -214,7 +214,7 @@ class TestNotifyTaskHelpers(object):
         )
         assert not mock_schedule_new_user_activated_task.called
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_determine_decoration_type_from_pull_attempt_activation(
         self, dbsession, mocker, enriched_pull, with_sql_functions
     ):
