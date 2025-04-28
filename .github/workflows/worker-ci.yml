@@ -77,7 +77,7 @@ jobs:
   worker-build-self-hosted:
     name: Build Self Hosted (Worker)
     if: ${{ inputs.skip == false }}
-    needs: [worker-build, worker-test]
+    needs: [worker-compute-reqs-cache-key, worker-build, worker-test]
     uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.36
     secrets: inherit
     with:

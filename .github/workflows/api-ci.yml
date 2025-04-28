@@ -78,7 +78,7 @@ jobs:
   api-build-self-hosted:
     name: Build Self Hosted (API)
     if: ${{ inputs.skip == false }}
-    needs: [api-build, api-test]
+    needs: [api-compute-reqs-cache-key, api-build, api-test]
     uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.36
     secrets: inherit
     with:
@@ -115,7 +115,7 @@ jobs:
 
   api-self-hosted:
     name: Push Self Hosted Image (API)
-    needs: [api-build-self-hosted, api-test]
+    needs: [api-compute-reqs-cache-key, api-build-self-hosted, api-test]
     secrets: inherit
     if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
     uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.36
