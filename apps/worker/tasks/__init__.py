@@ -29,7 +29,6 @@ from tasks.github_marketplace import ghm_sync_plans_task
 from tasks.health_check import health_check_task
 from tasks.hourly_check import hourly_check_task
 from tasks.http_request import http_request_task
-from tasks.label_analysis import label_analysis_task
 from tasks.manual_trigger import manual_trigger_task
 from tasks.new_user_activated import new_user_activated_task
 from tasks.notify import notify_task
@@ -40,7 +39,6 @@ from tasks.process_flakes import process_flakes_task
 from tasks.regular_cleanup import regular_cleanup_task
 from tasks.save_commit_measurements import save_commit_measurements_task
 from tasks.send_email import send_email
-from tasks.static_analysis_suite_check import static_analysis_suite_check_task
 from tasks.status_set_error import status_set_error_task
 from tasks.status_set_pending import status_set_pending_task
 from tasks.sync_pull import pull_sync_task

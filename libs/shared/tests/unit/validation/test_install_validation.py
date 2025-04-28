@@ -164,10 +164,6 @@ def test_validate_sample_production_config(mocker):
                     "queue": "uploads",
                     "enterprise": {"hard_timelimit": 400, "soft_timelimit": 500},
                 },
-                "label_analysis": {
-                    "queue": "labelanalysis",
-                    "enterprise": {"hard_timelimit": 401, "soft_timelimit": 501},
-                },
                 "notify": {"queue": "notify", "timeout": 60},
             },
             "encryption_secret": "encryption_$ecret",
@@ -288,10 +284,6 @@ def test_validate_sample_production_config(mocker):
                     "hard_timelimit": 240,
                     "soft_timelimit": 200,
                     "enterprise": {"hard_timelimit": 400, "soft_timelimit": 500},
-                },
-                "label_analysis": {
-                    "queue": "labelanalysis",
-                    "enterprise": {"hard_timelimit": 401, "soft_timelimit": 501},
                 },
                 "upload": {
                     "queue": "uploads",

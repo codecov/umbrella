@@ -2,10 +2,8 @@ import shared.celery_config as shared_celery_config
 from codecov_auth.models import Owner
 from compare.models import CommitComparison
 from core.models import Repository
-from labelanalysis.models import LabelAnalysisRequest
 from shared.celery_router import route_tasks_based_on_user_plan
 from shared.plan.constants import DEFAULT_FREE_PLAN
-from staticanalysis.models import StaticAnalysisSuite
 
 
 def _get_user_plan_from_ownerid(ownerid, *args, **kwargs) -> str:
@@ -38,38 +36,6 @@ def _get_user_plan_from_comparison_id(comparison_id, *args, **kwargs) -> str:
     return DEFAULT_FREE_PLAN
 
 
-def _get_user_plan_from_label_request_id(request_id, *args, **kwargs) -> str:
-    label_analysis_request = (
-        LabelAnalysisRequest.objects.filter(id=request_id)
-        .select_related("head_commit__repository__author")
-        .first()
-    )
-    if (
-        label_analysis_request
-        and label_analysis_request.head_commit
-        and label_analysis_request.head_commit.repository
-        and label_analysis_request.head_commit.repository.author
-    ):
-        return label_analysis_request.head_commit.repository.author.plan
-    return DEFAULT_FREE_PLAN
-
-
-def _get_user_plan_from_suite_id(suite_id, *args, **kwargs) -> str:
-    static_analysis_suite = (
-        StaticAnalysisSuite.objects.filter(id=suite_id)
-        .select_related("commit__repository__author")
-        .first()
-    )
-    if (
-        static_analysis_suite
-        and static_analysis_suite.commit
-        and static_analysis_suite.commit.repository
-        and static_analysis_suite.commit.repository.author
-    ):
-        return static_analysis_suite.commit.repository.author.plan
-    return DEFAULT_FREE_PLAN
-
-
 def _get_user_plan_from_task(task_name: str, task_kwargs: dict) -> str:
     owner_plan_lookup_funcs = {
         # from ownerid
@@ -84,10 +50,6 @@ def _get_user_plan_from_task(task_name: str, task_kwargs: dict) -> str:
         shared_celery_config.pulls_task_name: _get_user_plan_from_repoid,
         # from comparison_id
         shared_celery_config.compute_comparison_task_name: _get_user_plan_from_comparison_id,
-        # from label_request_id
-        shared_celery_config.label_analysis_task_name: _get_user_plan_from_label_request_id,
-        # from suite_id
-        shared_celery_config.static_analysis_task_name: _get_user_plan_from_suite_id,
     }
     func_to_use = owner_plan_lookup_funcs.get(
         task_name, lambda *args, **kwargs: DEFAULT_FREE_PLAN
