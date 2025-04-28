@@ -19,6 +19,7 @@ export DOCKER_REQS_SHA := $(shell sha1sum docker/Dockerfile.requirements | head 
 # `worker.build.requirements` or `api.build.requirements`.
 _build.requirements:
 	docker pull ${AR_REPO}:${REQUIREMENTS_TAG} || docker build \
+			   --network host \
                -f docker/Dockerfile.requirements . \
                --build-arg APP_DIR=${APP_DIR} \
                -t ${AR_REPO}:${REQUIREMENTS_TAG} \
