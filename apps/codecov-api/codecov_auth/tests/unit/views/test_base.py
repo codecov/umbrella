@@ -135,12 +135,11 @@ def test_remove_state_with_with_delay(mock_redis):
     mixin = set_up_mixin()
     mock_redis.set("oauth-state-abc", "http://localhost/gh/codecov")
     mixin.remove_state("abc", delay=5)
-    initial_datetime = datetime.now()
-    with freeze_time(initial_datetime) as frozen_time:
+    with freeze_time() as frozen_time:
         assert mock_redis.get("oauth-state-abc") is not None
-        frozen_time.move_to(initial_datetime + timedelta(seconds=4))
+        frozen_time.tick(timedelta(seconds=4))
         assert mock_redis.get("oauth-state-abc") is not None
-        frozen_time.move_to(initial_datetime + timedelta(seconds=6))
+        frozen_time.tick(timedelta(seconds=6))
         assert mock_redis.get("oauth-state-abc") is None
 
 

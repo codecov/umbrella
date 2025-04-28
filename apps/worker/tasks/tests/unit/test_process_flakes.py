@@ -2,7 +2,7 @@ import datetime as dt
 from collections import defaultdict
 
 import pytest
-import time_machine
+from freezegun import freeze_time
 from shared.django_apps.core.models import Commit
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports.models import (
@@ -324,8 +324,8 @@ def test_it_handles_only_passes():
     assert len(Flake.objects.all()) == 0
 
 
-@time_machine.travel(dt.datetime.now(tz=dt.UTC), tick=False)
 @pytest.mark.django_db(transaction=True)
+@freeze_time()
 def test_it_creates_flakes_from_processed_uploads():
     rs = RepoSimulator()
     c1 = rs.create_commit()
@@ -345,8 +345,8 @@ def test_it_creates_flakes_from_processed_uploads():
     assert flake.start_date == dt.datetime.now(tz=dt.UTC)
 
 
-@time_machine.travel(dt.datetime.now(tz=dt.UTC), tick=False)
 @pytest.mark.django_db(transaction=True)
+@freeze_time()
 def test_it_does_not_create_flakes_from_flake_processed_uploads():
     rs = RepoSimulator()
     c1 = rs.create_commit()
@@ -360,8 +360,8 @@ def test_it_does_not_create_flakes_from_flake_processed_uploads():
     assert len(Flake.objects.all()) == 0
 
 
-@time_machine.travel(dt.datetime.now(tz=dt.UTC), tick=False)
 @pytest.mark.django_db(transaction=True)
+@freeze_time()
 def test_it_processes_two_commits_separately():
     rs = RepoSimulator()
     c1 = rs.create_commit()
@@ -386,7 +386,7 @@ def test_it_processes_two_commits_separately():
 
 @pytest.mark.django_db(transaction=True)
 def test_it_creates_flakes_expires():
-    with time_machine.travel(dt.datetime.now(tz=dt.UTC), tick=False) as traveller:
+    with freeze_time() as traveller:
         rs = RepoSimulator()
         commits: list[str] = []
         c1 = rs.create_commit()
@@ -395,7 +395,7 @@ def test_it_creates_flakes_expires():
         rs.run_task(rs.repo.repoid, c1.commitid)
 
         old_time = dt.datetime.now(dt.UTC)
-        traveller.shift(dt.timedelta(seconds=100))
+        traveller.tick(dt.timedelta(seconds=100))
         new_time = dt.datetime.now(dt.UTC)
 
         for _ in range(0, 29):
@@ -433,7 +433,7 @@ def test_it_creates_flakes_expires():
 
 @pytest.mark.django_db(transaction=True)
 def test_it_creates_rollups():
-    with time_machine.travel("1970-1-1T00:00:00Z"):
+    with freeze_time("1970-01-01"):
         rs = RepoSimulator()
         c1 = rs.create_commit()
         rs.add_test_instance(c1, outcome=TestInstance.Outcome.FAILURE.value)
@@ -441,7 +441,7 @@ def test_it_creates_rollups():
 
         rs.run_task(rs.repo.repoid, c1.commitid)
 
-    with time_machine.travel("1970-1-2T00:00:00Z"):
+    with freeze_time("1970-01-02"):
         c2 = rs.create_commit()
         rs.add_test_instance(c2, outcome=TestInstance.Outcome.FAILURE.value)
         rs.add_test_instance(c2, outcome=TestInstance.Outcome.FAILURE.value)

@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 
 import pytest
 from django.db import connections
+from freezegun import freeze_time
 from shared.django_apps.ta_timeseries.models import Testrun
-from time_machine import travel
 
 from services.test_analytics.ta_timeseries import (
     calc_test_id,
@@ -205,7 +205,7 @@ def test_get_testruns_for_flake_detection(db):
 
 
 @pytest.mark.django_db(databases=["ta_timeseries"])
-@travel(datetime(2025, 1, 1), tick=False)
+@freeze_time("2025-01-01")
 def test_update_testrun_to_flaky():
     insert_testrun(
         timestamp=datetime.now(),

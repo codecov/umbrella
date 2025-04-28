@@ -3,8 +3,8 @@ from itertools import chain
 from pathlib import Path
 
 import pytest
+from freezegun import freeze_time
 from shared.storage.exceptions import FileNotInStorageError
-from time_machine import travel
 
 from database.models import CommitReport, RepositoryFlag
 from database.models.reports import DailyTestRollup, Test, TestFlagBridge, TestInstance
@@ -277,7 +277,7 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
         )
 
     @pytest.mark.integration
-    @travel("2025-01-01T00:00:00Z", tick=False)
+    @freeze_time("2025-01-01T00:00:00Z")
     def test_upload_processor_task_call_existing_test(
         self,
         mocker,
@@ -467,7 +467,7 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
         mock_redis,
         celery_app,
     ):
-        with travel("1970-1-1T00:00:00Z", tick=False):
+        with freeze_time("1970-01-01"):
             first_url = "v4/raw/2019-05-22/C3C4715CA57C910D11D5EB899FC86A7E/4c4e4654ac25037ae869caeb3619d485970b6304/a84d445c-9c1e-434f-8275-f18f1f320f81.txt"
             with open(
                 here.parent.parent / "samples" / "sample_multi_test_part_1.json"
@@ -523,7 +523,7 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
                 date.today(),
             ]
 
-        with travel("1970-1-2T00:00:00Z", tick=False):
+        with freeze_time("1970-01-02"):
             second_commit = CommitFactory.create(
                 message="hello world 2",
                 commitid="bd76b0821854a780b60012aed85af0a8263004ad",
