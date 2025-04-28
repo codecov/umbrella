@@ -196,9 +196,9 @@ class TestResultsView(
         )
 
         dispatch_upload_task(
-            task_arguments,
-            repo,
             get_redis_connection(),
+            repo.repoid,
+            task_arguments,
             report_type=CommitReport.ReportType.TEST_RESULTS,
         )
 

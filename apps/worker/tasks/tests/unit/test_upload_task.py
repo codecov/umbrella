@@ -423,7 +423,6 @@ class TestUploadTaskIntegration(object):
                     "upload_pk": upload.id,
                 }
             ],
-            report_code=None,
             impl_type="old",
         )
         kwargs = dict(
@@ -534,7 +533,6 @@ class TestUploadTaskIntegration(object):
                     "upload_pk": upload.id,
                 }
             ],
-            report_code=None,
             impl_type="both",
         )
         kwargs = dict(

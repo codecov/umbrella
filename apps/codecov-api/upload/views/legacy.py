@@ -341,7 +341,7 @@ class UploadHandler(APIView, ShelterMixin):
         )
 
         # Send task to worker
-        dispatch_upload_task(task_arguments, repository, redis)
+        dispatch_upload_task(redis, repository.repoid, task_arguments)
 
         # Analytics Tracking
         analytics_upload_data = upload_params.copy()

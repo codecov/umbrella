@@ -782,7 +782,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 commitid=commit.commitid,
                 commit_yaml=commit_yaml,
                 arguments_list=list(chunk),
-                report_code=commit_report.code,
                 impl_type=new_ta_tasks,
             )
             for chunk in itertools.batched(argument_list, CHUNK_SIZE)

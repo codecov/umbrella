@@ -1,6 +1,7 @@
+import json
 import time
 from datetime import datetime, timedelta
-from json import dumps, loads
+from json import loads
 from unittest.mock import ANY, PropertyMock, patch
 from urllib.parse import urlencode
 
@@ -22,6 +23,7 @@ from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
+from shared.helpers.redis import get_redis_connection
 from shared.plan.constants import TierName
 from shared.torngit.exceptions import (
     TorngitClientGeneralError,
@@ -58,32 +60,11 @@ def mock_get_config_global_upload_tokens(*args):
 
 
 class MockRedis:
-    def __init__(self, blacklisted=False, *args, **kwargs):
+    def __init__(self, blacklisted=False):
         self.blacklisted = blacklisted
-        self.expected_task_key = kwargs.get("expected_task_key")
-        self.expected_task_arguments = kwargs.get("expected_task_arguments")
-        self.expected_expire_time = kwargs.get("expected_expire_time")
-
-    def rpush(self, key, value):
-        assert key == self.expected_task_key
-        assert value == dumps(self.expected_task_arguments)
-
-    def expire(self, key, expire_time):
-        assert key == self.expected_task_key
-        assert expire_time == self.expected_expire_time
 
     def sismember(self, key, repoid):
         return self.blacklisted
-
-    def get(self, key):
-        return 10
-
-    def setex(self, redis_key, expire_time, report):
-        return
-
-    def set(self, redis_key, value, **kwargs):
-        # This is only used when setting the cache key for the number of uploads. Will need to be refactored if we use it for something else.
-        assert self.get(redis_key) + 1 == value
 
 
 class UploadHandlerHelpersTest(TestCase):
@@ -857,15 +838,9 @@ class UploadHandlerHelpersTest(TestCase):
             "report_code": "local_report",
         }
 
-        expected_key = f"uploads/{repo.repoid}/commit123"
+        redis = get_redis_connection()
+        dispatch_upload_task(redis, repo.repoid, task_arguments)
 
-        redis = MockRedis(
-            expected_task_key=expected_key,
-            expected_task_arguments=task_arguments,
-            expected_expire_time=86400,
-        )
-
-        dispatch_upload_task(task_arguments, repo, redis)
         upload.assert_called_once_with(
             repoid=repo.repoid,
             commitid=task_arguments.get("commit"),
@@ -874,6 +849,10 @@ class UploadHandlerHelpersTest(TestCase):
             arguments=task_arguments,
             countdown=4,
         )
+        expected_key = f"uploads/{repo.repoid}/commit123"
+        real_ttl = redis.ttl(expected_key)
+        assert 86395 <= real_ttl <= 86400
+        assert json.loads(redis.lpop(expected_key)) == task_arguments
 
 
 class UploadHandlerRouteTest(APITestCase):
@@ -1023,7 +1002,7 @@ class UploadHandlerRouteTest(APITestCase):
         mock_write_file.assert_called_with(
             expected_url, b"coverage report", is_already_gzipped=False
         )
-        assert mock_dispatch_upload.call_args[0][0] == {
+        assert mock_dispatch_upload.call_args[0][2] == {
             "commit": "b521e55aef79b101f48e2544837ca99a7fa3bf6b",
             "token": "a03e5d02-9495-4413-b0d8-05651bb2e842",
             "pr": "456",
@@ -1106,7 +1085,7 @@ class UploadHandlerRouteTest(APITestCase):
         mock_write_file.assert_called_with(
             expected_url, b"coverage report", is_already_gzipped=False
         )
-        assert mock_dispatch_upload.call_args[0][0] == {
+        assert mock_dispatch_upload.call_args[0][2] == {
             "commit": "b521e55aef79b101f48e2544837ca99a7fa3bf6b",
             "token": "a03e5d02-9495-4413-b0d8-05651bb2e842",
             "pr": "456",

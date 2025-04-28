@@ -714,49 +714,35 @@ def parse_headers(
 
 
 def dispatch_upload_task(
-    task_arguments: Dict[str, Any],
-    repository: Repository,
     redis: Redis,
-    report_type: Optional[CommitReport.ReportType] = CommitReport.ReportType.COVERAGE,
+    repoid: int,
+    task_arguments: dict[str, Any],
+    report_type: CommitReport.ReportType | None = CommitReport.ReportType.COVERAGE,
 ) -> None:
-    # Store task arguments in redis
-    cache_uploads_eta = get_config(("setup", "cache", "uploads"), default=86400)
-    if report_type == CommitReport.ReportType.COVERAGE:
-        repo_queue_key = f"uploads/{repository.repoid}/{task_arguments.get('commit')}"
-    else:
-        repo_queue_key = (
-            f"uploads/{repository.repoid}/{task_arguments.get('commit')}/{report_type}"
-        )
-
-    countdown = 0
-    if task_arguments.get("version") == "v4":
-        countdown = 4
-    if (
-        report_type == CommitReport.ReportType.BUNDLE_ANALYSIS
-        or CommitReport.ReportType.TEST_RESULTS
-    ):
-        countdown = 4
-
-    redis.rpush(repo_queue_key, dumps(task_arguments))
-    redis.expire(
-        repo_queue_key, cache_uploads_eta if cache_uploads_eta is not True else 86400
-    )
-
-    if report_type == CommitReport.ReportType.COVERAGE:
-        latest_upload_key = (
-            f"latest_upload/{repository.repoid}/{task_arguments.get('commit')}"
-        )
-    else:
-        latest_upload_key = f"latest_upload/{repository.repoid}/{task_arguments.get('commit')}/{report_type}"
-    redis.setex(
-        latest_upload_key,
-        3600,
-        timezone.now().timestamp(),
-    )
     commitid = task_arguments.get("commit")
 
+    # Store task arguments in redis
+    cache_uploads_eta = get_config(("setup", "cache", "uploads"), default=86400)
+
+    if report_type == CommitReport.ReportType.COVERAGE:
+        repo_queue_key = f"uploads/{repoid}/{commitid}"
+        latest_upload_key = f"latest_upload/{repoid}/{commitid}"
+    else:
+        repo_queue_key = f"uploads/{repoid}/{commitid}/{report_type}"
+        latest_upload_key = f"latest_upload/{repoid}/{commitid}/{report_type}"
+
+    with redis.pipeline() as pipeline:
+        pipeline.rpush(repo_queue_key, dumps(task_arguments))
+        pipeline.expire(
+            repo_queue_key,
+            cache_uploads_eta if cache_uploads_eta is not True else 86400,
+        )
+        pipeline.setex(latest_upload_key, 3600, timezone.now().timestamp())
+        pipeline.execute()
+
+    countdown = 4
     TaskService().upload(
-        repoid=repository.repoid,
+        repoid=repoid,
         commitid=commitid,
         report_type=str(report_type),
         report_code=task_arguments.get("report_code"),

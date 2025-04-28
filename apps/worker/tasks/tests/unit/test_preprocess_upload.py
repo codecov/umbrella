@@ -106,7 +106,6 @@ class TestPreProcessUpload(object):
             dbsession,
             repoid=commit.repository.repoid,
             commitid=commit.commitid,
-            report_code=None,
         )
         assert result == {"preprocessed_upload": False, "reason": "already_running"}
 
@@ -120,7 +119,6 @@ class TestPreProcessUpload(object):
             dbsession,
             repoid=commit.repository.repoid,
             commitid=commit.commitid,
-            report_code=None,
         )
         assert result == {
             "preprocessed_upload": False,

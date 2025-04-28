@@ -130,7 +130,7 @@ def trigger_upload_task(
         "report_code": report.code,
         "reportid": str(report.external_id),
     }
-    dispatch_upload_task(task_arguments, repository, redis)
+    dispatch_upload_task(redis, repository.repoid, task_arguments)
 
 
 def activate_repo(repository: Repository) -> None:

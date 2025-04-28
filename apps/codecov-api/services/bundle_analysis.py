@@ -35,14 +35,11 @@ from timeseries.models import Interval, MeasurementName
 
 
 @sentry_sdk.trace
-def load_report(
-    commit: Commit, report_code: Optional[str] = None
-) -> Optional[SharedBundleAnalysisReport]:
+def load_report(commit: Commit) -> SharedBundleAnalysisReport | None:
     storage = get_appropriate_storage_service(commit.repository.repoid)
 
     commit_report = commit.reports.filter(
-        report_type=CommitReport.ReportType.BUNDLE_ANALYSIS,
-        code=report_code,
+        report_type=CommitReport.ReportType.BUNDLE_ANALYSIS, code=None
     ).first()
     if commit_report is None:
         return None

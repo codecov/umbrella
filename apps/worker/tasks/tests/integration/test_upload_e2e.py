@@ -292,7 +292,7 @@ end_of_record
     assert len(archive) == 2 + 4 + 3
 
     report_service = ReportService(UserYaml({}))
-    report = report_service.get_existing_report_for_commit(commit, report_code=None)
+    report = report_service.get_existing_report_for_commit(commit)
 
     assert report
     assert set(report.files) == {"a.rs", "b.rs"}
@@ -333,7 +333,7 @@ end_of_record
             }
         )
 
-    report = report_service.get_existing_report_for_commit(commit, report_code=None)
+    report = report_service.get_existing_report_for_commit(commit)
 
     assert report
     assert set(report.files) == {"a.rs", "b.rs", "c.rs"}
@@ -460,9 +460,7 @@ end_of_record
         )
 
     report_service = ReportService(UserYaml({}))
-    report = report_service.get_existing_report_for_commit(
-        base_commit, report_code=None
-    )
+    report = report_service.get_existing_report_for_commit(base_commit)
     assert report
 
     base_sessions = report.sessions
@@ -535,7 +533,7 @@ end_of_record
         )
 
     # with only one upload being processed so far, we still expect all "b" sessions to still exist
-    report = report_service.get_existing_report_for_commit(commit, report_code=None)
+    report = report_service.get_existing_report_for_commit(commit)
 
     assert report
     assert set(report.files) == {"a.rs", "b.rs"}
@@ -589,7 +587,7 @@ end_of_record
                 "commitid": commitid,
             }
         )
-    report = report_service.get_existing_report_for_commit(commit, report_code=None)
+    report = report_service.get_existing_report_for_commit(commit)
 
     assert report
     assert set(report.files) == {"a.rs", "b.rs"}
