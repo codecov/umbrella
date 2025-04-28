@@ -50,8 +50,14 @@ class RepositoryViewSet(
 
     def get_serializer_context(self, *args, **kwargs):
         context = super().get_serializer_context(*args, **kwargs)
+
+        # These attributes only exist if RepositoryViewSetMixin.check_object_permissions() has run.
+        # This should be cleaned up but it's old code.
+        can_edit = getattr(self, "can_edit", False)
+        can_view = getattr(self, "can_view", False)
+
         if self.action != "list":
-            context.update({"can_edit": self.can_edit, "can_view": self.can_view})
+            context.update({"can_edit": can_edit, "can_view": can_view})
         return context
 
     def get_queryset(self):
