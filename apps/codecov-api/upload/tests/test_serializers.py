@@ -42,7 +42,7 @@ def get_fake_upload_with_flags():
     return upload
 
 
-def test_serialize_upload(transactional_db, mocker):
+def test_serialize_upload(db, mocker):
     mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="presigned put",
@@ -59,7 +59,7 @@ def test_serialize_upload(transactional_db, mocker):
     assert fake_upload.name == "upload name...?"
 
 
-def test_upload_serializer_contains_expected_fields_no_flags(transactional_db, mocker):
+def test_upload_serializer_contains_expected_fields_no_flags(db, mocker):
     mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="presigned put",
@@ -84,9 +84,7 @@ def test_upload_serializer_contains_expected_fields_no_flags(transactional_db, m
     assert serializer.data == expected_data
 
 
-def test_upload_serializer_contains_expected_fields_with_flags(
-    transactional_db, mocker
-):
+def test_upload_serializer_contains_expected_fields_with_flags(db, mocker):
     mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="presigned put",
@@ -111,7 +109,7 @@ def test_upload_serializer_contains_expected_fields_with_flags(
     assert serializer.data == expected_data
 
 
-def test_upload_serializer_null_build_url_empty_flags(transactional_db, mocker):
+def test_upload_serializer_null_build_url_empty_flags(db, mocker):
     mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="presigned put",
@@ -128,7 +126,7 @@ def test_upload_serializer_null_build_url_empty_flags(transactional_db, mocker):
     assert serializer.is_valid()
 
 
-def test__create_existing_flags_map(transactional_db, mocker):
+def test__create_existing_flags_map(db, mocker):
     mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="presigned put",
@@ -147,7 +145,7 @@ def test__create_existing_flags_map(transactional_db, mocker):
     }
 
 
-def test_commit_serializer_contains_expected_fields(transactional_db, mocker):
+def test_commit_serializer_contains_expected_fields(db):
     commit = CommitFactory.create()
     serializer = CommitSerializer(commit)
     expected_data = {
@@ -177,7 +175,7 @@ def test_commit_serializer_contains_expected_fields(transactional_db, mocker):
     assert serializer.data == expected_data
 
 
-def test_commit_serializer_does_not_duplicate(transactional_db, mocker):
+def test_commit_serializer_does_not_duplicate(db):
     mock_all_plans_and_tiers()
     repository = RepositoryFactory()
     serializer = CommitSerializer()
@@ -205,7 +203,7 @@ def test_commit_serializer_does_not_duplicate(transactional_db, mocker):
     assert saved_commit1 == saved_commit2
 
 
-def test_invalid_update_data(transactional_db, mocker):
+def test_invalid_update_data(db):
     commit = CommitFactory.create()
     new_data = {"pullid": "1"}
     serializer = CommitSerializer(commit, new_data)
@@ -215,7 +213,7 @@ def test_invalid_update_data(transactional_db, mocker):
     }
 
 
-def test_valid_update_data(transactional_db, mocker):
+def test_valid_update_data(db):
     commit = CommitFactory.create(pullid=1)
     new_data = {"pullid": "20", "commitid": "abc"}
     serializer = CommitSerializer(commit)
@@ -225,7 +223,7 @@ def test_valid_update_data(transactional_db, mocker):
     assert commit == res
 
 
-def test_commit_report_serializer(transactional_db, mocker):
+def test_commit_report_serializer(db):
     report = CommitReportFactory.create()
     serializer = CommitReportSerializer(report)
     expected_data = {

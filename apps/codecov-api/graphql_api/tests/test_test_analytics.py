@@ -179,7 +179,7 @@ def cursor(row: dict) -> str:
 
 
 @pytest.fixture(autouse=True)
-def repository(mocker, transactional_db):
+def repository(db):
     owner = OwnerFactory(username="codecov-user")
     repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
 
@@ -239,12 +239,10 @@ def store_in_redis_with_duplicate_names(repository):
     )
 
 
-class TestAnalyticsTestCase(
-    GraphQLTestHelper,
-):
+class TestAnalyticsTestCase(GraphQLTestHelper):
     def test_get_test_results(
         self,
-        transactional_db,
+        db,
         repository,
         store_in_redis,
         store_in_storage,
@@ -254,12 +252,10 @@ class TestAnalyticsTestCase(
 
         assert results.equals(dedup_table(test_results_table))
 
-    def test_get_test_results_no_storage(self, transactional_db, repository):
+    def test_get_test_results_no_storage(self, db, repository):
         assert get_results(repository.repoid, repository.branch, 30) is None
 
-    def test_get_test_results_no_redis(
-        self, mocker, transactional_db, repository, store_in_storage
-    ):
+    def test_get_test_results_no_redis(self, mocker, db, repository, store_in_storage):
         m = mocker.patch("services.task.TaskService.cache_test_results_redis")
         results = get_results(repository.repoid, repository.branch, 30)
         assert results is not None
@@ -267,7 +263,7 @@ class TestAnalyticsTestCase(
 
         m.assert_called_once_with(repository.repoid, repository.branch)
 
-    def test_test_results(self, transactional_db, repository, store_in_redis, snapshot):
+    def test_test_results(self, db, repository, store_in_redis, snapshot):
         test_results = generate_test_results(
             repoid=repository.repoid,
             ordering=TestResultsOrderingParameter.UPDATED_AT,
@@ -288,9 +284,7 @@ class TestAnalyticsTestCase(
             if isinstance(row["node"], TestResultsRow)
         ]
 
-    def test_test_results_asc(
-        self, transactional_db, repository, store_in_redis, snapshot
-    ):
+    def test_test_results_asc(self, db, repository, store_in_redis, snapshot):
         test_results = generate_test_results(
             repoid=repository.repoid,
             ordering=TestResultsOrderingParameter.UPDATED_AT,

@@ -21,7 +21,7 @@ def read_table(mock_storage, storage_path: str):
 
 
 @freeze_time()
-def test_cache_test_rollups(mock_storage, transactional_db):
+def test_cache_test_rollups(mock_storage, db):
     repo = RepositoryFactory()
     flag = RepositoryFlagFactory(
         repository=repo,
@@ -178,7 +178,7 @@ def test_cache_test_rollups(mock_storage, transactional_db):
 
 
 @freeze_time()
-def test_cache_test_rollups_no_update_date(mock_storage, transactional_db):
+def test_cache_test_rollups_no_update_date(mock_storage, db):
     repo = RepositoryFactory()
     rollup_date = LastCacheRollupDateFactory(
         repository=repo,
@@ -200,7 +200,7 @@ def test_cache_test_rollups_no_update_date(mock_storage, transactional_db):
 
 
 @freeze_time()
-def test_cache_test_rollups_update_date(mock_storage, transactional_db):
+def test_cache_test_rollups_update_date(mock_storage, db):
     repo = RepositoryFactory()
 
     rollup_date = LastCacheRollupDateFactory(
@@ -240,7 +240,7 @@ def test_cache_test_rollups_update_date_does_not_exist(mock_storage, db):
 
 
 @freeze_time()
-def test_cache_test_rollups_both(mock_storage, transactional_db, mocker):
+def test_cache_test_rollups_both(mock_storage, db, mocker):
     mock_cache_rollups = mocker.patch("tasks.cache_test_rollups.cache_rollups")
     task = CacheTestRollupsTask()
     mocker.patch.object(task, "run_impl_within_lock")

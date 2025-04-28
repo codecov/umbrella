@@ -7,7 +7,7 @@ from tasks.cache_rollup_cron_task import CacheRollupTask
 from tasks.cache_test_rollups import cache_test_rollups_task_name
 
 
-def test_cache_rollup_cron_task(mock_storage, transactional_db, mocker):
+def test_cache_rollup_cron_task(mock_storage, db, mocker):
     mocked_app = mocker.patch.object(
         CacheRollupTask,
         "app",
@@ -31,7 +31,7 @@ def test_cache_rollup_cron_task(mock_storage, transactional_db, mocker):
     )
 
 
-def test_cache_rollup_cron_task_delete(mock_storage, transactional_db, mocker):
+def test_cache_rollup_cron_task_delete(mock_storage, db, mocker):
     mocked_app = mocker.patch.object(
         CacheRollupTask,
         "app",
