@@ -38,16 +38,12 @@ jobs:
   api-test:
     name: Test (API)
     if: ${{ inputs.skip == false }}
-    needs: [api-build]
     uses: ./.github/workflows/_run-tests.yml
     secrets: inherit
     with:
-      run_integration: false
-      repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
+      make_target_suffix: api
       output_directory: apps/codecov-api
       flag_prefix: api
-      pytest_rootdir: /app
-      make_target_prefix: api.
 
   api-build-self-hosted:
     name: Build Self Hosted (API)

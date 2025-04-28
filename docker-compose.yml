@@ -1,5 +1,3 @@
-version: "3.3"
-
 services:
   gateway:
     image: codecov/self-hosted-gateway:latest-calver
@@ -73,31 +71,29 @@ services:
       - redis
       - timescale
 
-  # Dummy service to run shared tests
-  shared:
-    # This is the name of the image build in libs/shared
-    image: shared-shared
+  umbrella:
+    build:
+      context: .
+      target: test
     tty: true
-    environment:
-      - SETUP__TA_TIMESERIES__ENABLED=true
     volumes:
-      - ./libs/shared/shared:/app/libs/shared/shared
-      - ./libs/shared/tests:/app/libs/shared/tests
-      - ./libs/shared/.coveragerc:/app/libs/shared/.coveragerc
+      - ./apps/codecov-api/:/app/apps/codecov-api/
+      - ./apps/worker/:/app/apps/worker/
+      - ./libs/shared/:/app/libs/shared/
+      - ./tools/devenv/config/test.yml:/config/codecov.yml
     networks:
       - codecov
     depends_on:
-      - minio
       - postgres
       - redis
+      - minio
       - timescale
+      - mailhog
 
   redis:
     image: redis:6.2-alpine
     ports:
       - "6380:6379"
-    volumes:
-      - redis-volume:/data
     networks:
       - codecov
 
@@ -145,7 +141,6 @@ services:
 volumes:
   postgres-volume:
   timescale-volume:
-  redis-volume:
   archive-volume:
 
 networks:

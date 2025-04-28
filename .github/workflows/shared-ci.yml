@@ -35,39 +35,12 @@ jobs:
   shared-test:
     name: Test (Shared)
     if: ${{ inputs.skip == false }}
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: libs/shared
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
-
-      - name: Build test environment
-        run: |
-          make test_env.build
-
-      - name: Bring containers up
-        run: |
-          make test_env.up
-
-      - name: Run tests
-        run: |
-          make test_env.test PYTEST_ROOTDIR=/app
-
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: shared-coveragefiles
-          path: libs/shared/tests/*.coverage.xml
-
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: shared-junitfiles
-          path: libs/shared/tests/*junit*.xml
+    uses: ./.github/workflows/_run-tests.yml
+    secrets: inherit
+    with:
+      make_target_suffix: shared
+      output_directory: libs/shared
+      flag_prefix: shared
 
   shared-upload-to-codecov:
     name: Upload to Codecov (shared)
