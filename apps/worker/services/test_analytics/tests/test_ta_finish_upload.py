@@ -147,7 +147,7 @@ def test_ta_finish_upload(
             "cache_rollup": call(
                 "app.tasks.cache_rollup.CacheTestRollupsTask",
                 kwargs={
-                    "repoid": repo.repoid,
+                    "repo_id": repo.repoid,
                     "branch": commit.branch,
                     "impl_type": "new",
                 },
