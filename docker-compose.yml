@@ -118,6 +118,7 @@ services:
       - POSTGRES_HOST_AUTH_METHOD=trust
     volumes:
       - timescale-volume:/var/lib/postgresql/data
+      - ./docker/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
     ports:
       - "5433:5432"
     networks:

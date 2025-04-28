@@ -43,6 +43,7 @@ devenv.migrate:
 	$(MAKE) devenv.start.deps
 	docker compose run --entrypoint python api manage.py migrate
 	docker compose run --entrypoint python worker manage.py migrate
+	docker compose run --entrypoint python worker migrate_timeseries.py
 
 .PHONY: devenv.stop
 devenv.stop:
