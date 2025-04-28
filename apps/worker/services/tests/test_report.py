@@ -3,6 +3,7 @@ from decimal import Decimal
 import mock
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
+from shared.api_archive.archive import ArchiveService
 from shared.reports.resources import Report, ReportFile, Session, SessionType
 from shared.reports.types import ReportLine, ReportTotals
 from shared.torngit.exceptions import TorngitRateLimitError
@@ -11,7 +12,6 @@ from shared.yaml import UserYaml
 from database.models import CommitReport, RepositoryFlag, Upload
 from database.tests.factories import CommitFactory
 from helpers.exceptions import RepositoryWithoutValidBotError
-from services.archive import ArchiveService
 from services.report import NotReadyToBuildReportYetError, ReportService
 from services.report import log as report_log
 from services.report.raw_upload_processor import (
@@ -204,11 +204,9 @@ def sample_commit_with_report_big(dbsession, mock_storage):
     )
     dbsession.add(commit)
     dbsession.flush()
-    with open("tasks/tests/samples/sample_chunks_4_sessions.txt") as f:
-        content = f.read().encode()
-        archive_hash = ArchiveService.get_archive_hash(commit.repository)
-        chunks_url = f"v4/repos/{archive_hash}/commits/{commit.commitid}/chunks.txt"
-        mock_storage.write_file("archive", chunks_url, content)
+    with open("tasks/tests/samples/sample_chunks_4_sessions.txt", "rb") as f:
+        archive_service = ArchiveService(commit.repository)
+        archive_service.write_chunks(commit.commitid, f.read())
     return commit
 
 
@@ -249,11 +247,9 @@ def sample_commit_with_report_big_with_labels(dbsession, mock_storage):
     )
     dbsession.add(commit)
     dbsession.flush()
-    with open("tasks/tests/samples/sample_chunks_with_header.txt") as f:
-        content = f.read().encode()
-        archive_hash = ArchiveService.get_archive_hash(commit.repository)
-        chunks_url = f"v4/repos/{archive_hash}/commits/{commit.commitid}/chunks.txt"
-        mock_storage.write_file("archive", chunks_url, content)
+    with open("tasks/tests/samples/sample_chunks_with_header.txt", "rb") as f:
+        archive_service = ArchiveService(commit.repository)
+        archive_service.write_chunks(commit.commitid, f.read())
     return commit
 
 
@@ -399,11 +395,9 @@ def sample_commit_with_report_big_already_carriedforward(dbsession, mock_storage
     )
     dbsession.add(commit)
     dbsession.flush()
-    with open("tasks/tests/samples/sample_chunks_4_sessions.txt") as f:
-        content = f.read().encode()
-        archive_hash = ArchiveService.get_archive_hash(commit.repository)
-        chunks_url = f"v4/repos/{archive_hash}/commits/{commit.commitid}/chunks.txt"
-        mock_storage.write_file("archive", chunks_url, content)
+    with open("tasks/tests/samples/sample_chunks_4_sessions.txt", "rb") as f:
+        archive_service = ArchiveService(commit.repository)
+        archive_service.write_chunks(commit.commitid, f.read())
     return commit
 
 

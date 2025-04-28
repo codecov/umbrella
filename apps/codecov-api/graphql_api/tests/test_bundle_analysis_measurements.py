@@ -1,5 +1,4 @@
-from unittest.mock import patch
-
+import pytest
 from django.test import TestCase
 from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis import StoragePaths
@@ -9,7 +8,6 @@ from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
-from shared.storage.memory import MemoryStorageService
 
 from reports.models import CommitReport
 from reports.tests.factories import CommitReportFactory
@@ -18,6 +16,7 @@ from timeseries.tests.factories import MeasurementFactory
 from .helper import GraphQLTestHelper
 
 
+@pytest.mark.usefixtures("mock_storage_cls")
 class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
     databases = {"default", "timeseries"}
 
@@ -85,17 +84,13 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
                 value=item[3],
             )
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_report_measurements(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_report_measurements(self):
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=self.head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchMeasurements(
@@ -722,17 +717,13 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_asset_measurements(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_asset_measurements(self):
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=self.head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchMeasurements(
@@ -902,17 +893,13 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_report_measurements_carryovers(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_report_measurements_carryovers(self):
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=self.head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchMeasurements(
@@ -1485,17 +1472,13 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_report_no_carryovers(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_report_no_carryovers(self):
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=self.head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchMeasurements(
@@ -2176,8 +2159,7 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_report_branch(self, get_storage_service):
+    def test_bundle_report_branch(self):
         measurements_data = [
             # 2024-06-10
             ["bundle_analysis_report_size", "super", "2024-06-10T19:07:23", 123],
@@ -2197,15 +2179,12 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
                 value=item[3],
             )
 
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=self.head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchMeasurements(
@@ -2437,8 +2416,7 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_report_no_after(self, get_storage_service):
+    def test_bundle_report_no_after(self):
         measurements_data = [
             # 2024-06-10
             ["bundle_analysis_report_size", "super", "2024-06-10T19:07:23", 123],
@@ -2458,15 +2436,12 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
                 value=item[3],
             )
 
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=self.head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchMeasurements(
@@ -2710,8 +2685,7 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_report_bad_data_check(self, get_storage_service):
+    def test_bundle_report_bad_data_check(self):
         measurements_data = [
             # 2024-06-10
             ["bundle_analysis_report_size", "super", "2024-06-10T19:07:23", 123],
@@ -2733,15 +2707,12 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
                 value=item[3],
             )
 
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=self.head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchMeasurements(
@@ -2970,17 +2941,13 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_report_measurements_only_unknown(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_report_measurements_only_unknown(self):
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=self.head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchMeasurements(
@@ -3129,17 +3096,13 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_report_measurements_no_data_in_range(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_report_measurements_no_data_in_range(self):
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=self.head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchMeasurements(

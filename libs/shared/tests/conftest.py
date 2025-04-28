@@ -6,6 +6,7 @@ import vcr
 from shared.config import ConfigHelper
 from shared.reports.resources import Report, ReportFile, Session
 from shared.reports.types import LineSession, ReportLine
+from shared.storage.memory import MemoryStorageService
 
 
 @pytest.fixture
@@ -55,10 +56,10 @@ def codecov_vcr(request):
 
 @pytest.fixture
 def mock_storage(mocker):
-    m = mocker.patch("covreports.storage.MinioStorageService")
-    redis_server = mocker.MagicMock()
-    m.return_value = redis_server
-    yield redis_server
+    m = mocker.patch("shared.storage.get_appropriate_storage_service")
+    storage_server = MemoryStorageService({})
+    m.return_value = storage_server
+    return storage_server
 
 
 @pytest.fixture

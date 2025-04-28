@@ -3,6 +3,7 @@ import logging
 import typing
 
 import sentry_sdk
+from shared.api_archive.archive import ArchiveService
 from shared.storage.exceptions import FileNotInStorageError
 
 from database.models.staticanalysis import (
@@ -10,7 +11,6 @@ from database.models.staticanalysis import (
     StaticAnalysisSuite,
     StaticAnalysisSuiteFilepath,
 )
-from services.archive import ArchiveService
 from services.static_analysis.git_diff_parser import DiffChange, DiffChangeType
 from services.static_analysis.single_file_analyzer import (
     AntecessorFindingResult,

@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, PropertyMock, patch
 
+import pytest
 import yaml
 from django.test import TestCase
 from shared.api_archive.archive import ArchiveService
@@ -16,7 +17,6 @@ from shared.django_apps.core.tests.factories import (
     RepositoryFactory,
 )
 from shared.reports.types import LineSession
-from shared.storage.memory import MemoryStorageService
 
 from compare.models import CommitComparison
 from compare.tests.factories import CommitComparisonFactory
@@ -106,6 +106,7 @@ class EmptyReport(MockReport):
         return None
 
 
+@pytest.mark.usefixtures("mock_storage_cls")
 class TestCommit(GraphQLTestHelper, TestCase):
     def setUp(self):
         asyncio.set_event_loop(asyncio.new_event_loop())
@@ -788,11 +789,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
         commit = data["owner"]["repository"]["commit"]
         assert commit["compareWithParent"]["changeCoverage"] == 5.0
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_compare(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_analysis_compare(self):
         base_commit_report = CommitReportFactory(
             commit=self.parent_commit,
             report_type=CommitReport.ReportType.BUNDLE_ANALYSIS,
@@ -806,14 +803,14 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=base_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         with open("./services/tests/samples/head_bundle_report.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = (
             query_commit
@@ -897,8 +894,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             "bundleChange": {"size": {"uncompress": 36555}},
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_compare_with_compare_sha(self, get_storage_service):
+    def test_bundle_analysis_compare_with_compare_sha(self):
         """
         This tests creates 3 commits C1 -> C2 -> C3
         C1 uses Report1, C2 and C3 uses Report2
@@ -908,9 +904,6 @@ class TestCommit(GraphQLTestHelper, TestCase):
         Now when doing comparison of C3, it would now select C1 as the parent
         therefore show correct comparison in numbers between Report1 and Report2
         """
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
         commit_1 = CommitFactory(
             repository=self.repo,
             commitid="6ca727b0142bf5625bb82af2555d308862063222",
@@ -942,14 +935,14 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=commit_report_1.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         with open("./services/tests/samples/head_bundle_report.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=commit_report_2.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         with open(
             "./services/tests/samples/head_bundle_report_with_compare_sha_6ca727b0142bf5625bb82af2555d308862063222.sqlite",
@@ -959,7 +952,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=commit_report_3.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = (
             query_commit
@@ -997,11 +990,8 @@ class TestCommit(GraphQLTestHelper, TestCase):
             "bundleChange": {"size": {"uncompress": 36555}},
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_sqlite_file_deleted(self, get_storage_service):
+    def test_bundle_analysis_sqlite_file_deleted(self):
         os.system("rm -rf /tmp/bundle_analysis_*")
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
 
         base_commit_report = CommitReportFactory(
             commit=self.parent_commit,
@@ -1016,14 +1006,14 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=base_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         with open("./services/tests/samples/head_bundle_report.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = (
             query_commit
@@ -1055,14 +1045,9 @@ class TestCommit(GraphQLTestHelper, TestCase):
         os.system("rm -rf /tmp/bundle_analysis_*")
 
     @patch("graphql_api.views.os.unlink")
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_sqlite_file_not_deleted(
-        self, get_storage_service, os_unlink_mock
-    ):
+    def test_bundle_analysis_sqlite_file_not_deleted(self, os_unlink_mock):
         os.system("rm -rf /tmp/bundle_analysis_*")
         os_unlink_mock.side_effect = Exception("something went wrong")
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
 
         base_commit_report = CommitReportFactory(
             commit=self.parent_commit,
@@ -1077,14 +1062,14 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=base_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         with open("./services/tests/samples/head_bundle_report.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = (
             query_commit
@@ -1146,11 +1131,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             "message": "Missing head report",
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_report(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_analysis_report(self):
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -1160,7 +1141,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit($org: String!, $repo: String!, $commit: String!) {
@@ -1339,13 +1320,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             "isCached": False,
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_report_assets_paginated_first_after(
-        self, get_storage_service
-    ):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_analysis_report_assets_paginated_first_after(self):
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -1355,7 +1330,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit(
@@ -1444,13 +1419,9 @@ class TestCommit(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
     def test_bundle_analysis_report_assets_paginated_first_after_non_existing_cursor(
-        self, get_storage_service
+        self,
     ):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -1460,7 +1431,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit(
@@ -1549,13 +1520,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_report_assets_paginated_last_before(
-        self, get_storage_service
-    ):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_analysis_report_assets_paginated_last_before(self):
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -1565,7 +1530,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit(
@@ -1654,13 +1619,9 @@ class TestCommit(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
     def test_bundle_analysis_report_assets_paginated_last_before_non_existing_cursor(
-        self, get_storage_service
+        self,
     ):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -1670,7 +1631,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit(
@@ -1759,13 +1720,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_report_assets_paginated_before_and_after_error(
-        self, get_storage_service
-    ):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_analysis_report_assets_paginated_before_and_after_error(self):
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -1775,7 +1730,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit(
@@ -1831,13 +1786,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             == "After and before can not be used at the same time"
         )
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_report_assets_paginated_first_and_last_error(
-        self, get_storage_service
-    ):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_analysis_report_assets_paginated_first_and_last_error(self):
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -1847,7 +1796,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit(
@@ -1903,11 +1852,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             == "First and last can not be used at the same time"
         )
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_asset(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_analysis_asset(self):
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -1919,7 +1864,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit($org: String!, $repo: String!, $commit: String!) {
@@ -2045,13 +1990,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
         }
 
     @patch("shared.bundle_analysis.BundleReport.asset_reports")
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_asset_filtering(
-        self, get_storage_service, asset_reports_mock
-    ):
-        storage = MemoryStorageService({})
-
-        get_storage_service.return_value = storage
+    def test_bundle_analysis_asset_filtering(self, asset_reports_mock):
         asset_reports_mock.return_value = []
 
         head_commit_report = CommitReportFactory(
@@ -2065,7 +2004,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit($org: String!, $repo: String!, $commit: String!, $filters: BundleAnalysisReportFilters) {
@@ -2501,11 +2440,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
         assert commit["coverageStatus"] == CommitStatus.PENDING.value
         assert commit["bundleStatus"] == CommitStatus.PENDING.value
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_report_gzip_size_total(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_analysis_report_gzip_size_total(self):
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -2517,7 +2452,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit($org: String!, $repo: String!, $commit: String!) {
@@ -2805,11 +2740,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             "message": "Missing head report",
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_coverage_bundle_analysis_report(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_coverage_bundle_analysis_report(self):
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -2819,7 +2750,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit($org: String!, $repo: String!, $commit: String!) {
@@ -2993,11 +2924,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             "isCached": False,
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_coverage_bundle_analysis_compare(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_coverage_bundle_analysis_compare(self):
         base_commit_report = CommitReportFactory(
             commit=self.parent_commit,
             report_type=CommitReport.ReportType.BUNDLE_ANALYSIS,
@@ -3011,14 +2938,14 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=base_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         with open("./services/tests/samples/head_bundle_report.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = (
             query_commit
@@ -3102,10 +3029,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             "bundleChange": {"size": {"uncompress": 36555}},
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_report_size_filtered(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
+    def test_bundle_analysis_report_size_filtered(self):
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -3116,7 +3040,8 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
+
         query = """
             query FetchCommit($org: String!, $repo: String!, $commit: String!, $bundleFilters: BundleReportFilters) {
                 owner(username: $org) {
@@ -3161,10 +3086,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_report_size_filtered_no_value(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
+    def test_bundle_analysis_report_size_filtered_no_value(self):
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -3175,7 +3097,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
         query = """
             query FetchCommit($org: String!, $repo: String!, $commit: String!, $bundleFilters: BundleReportFilters) {
                 owner(username: $org) {
@@ -3220,11 +3142,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             },
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_asset_routes(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_analysis_asset_routes(self):
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -3236,7 +3154,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit($org: String!, $repo: String!, $commit: String!) {
@@ -3420,11 +3338,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
             },
         ]
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_report_info(self, get_storage_service):
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
-
+    def test_bundle_analysis_report_info(self):
         head_commit_report = CommitReportFactory(
             commit=self.commit, report_type=CommitReport.ReportType.BUNDLE_ANALYSIS
         )
@@ -3436,7 +3350,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repo),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             query FetchCommit($org: String!, $repo: String!, $commit: String!) {

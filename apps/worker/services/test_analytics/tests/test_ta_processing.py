@@ -4,13 +4,13 @@ from datetime import datetime
 
 import pytest
 import test_results_parser
+from shared.api_archive.archive import ArchiveService
 from shared.django_apps.reports.models import UploadError
 from shared.django_apps.reports.tests.factories import UploadFactory
 from shared.django_apps.ta_timeseries.models import Testrun
 from shared.storage import get_appropriate_storage_service
 from shared.storage.exceptions import BucketAlreadyExistsError, FileNotInStorageError
 
-from services.archive import ArchiveService
 from services.test_analytics.ta_processing import (
     handle_file_not_found,
     handle_parsing_error,

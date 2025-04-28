@@ -1,4 +1,5 @@
 import pytest
+from shared.api_archive.archive import ArchiveService
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     CommitWithReportFactory,
@@ -6,7 +7,6 @@ from shared.django_apps.core.tests.factories import (
 )
 from shared.django_apps.reports.models import ReportLevelTotals
 
-from services.archive import ArchiveService
 from services.report.transplant import transplant_commit_report
 
 

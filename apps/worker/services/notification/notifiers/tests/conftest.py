@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 import pytest
+from shared.api_archive.archive import ArchiveService
 from shared.reports.readonly import ReadOnlyReport
 from shared.reports.reportfile import ReportFile
 from shared.reports.resources import Report
@@ -13,7 +14,6 @@ from database.tests.factories import (
     PullFactory,
     RepositoryFactory,
 )
-from services.archive import ArchiveService
 from services.comparison import ComparisonProxy
 from services.comparison.types import Comparison, FullCommit
 from services.report import ReportService
@@ -257,12 +257,9 @@ def sample_commit_with_report_already_carriedforward(dbsession, mock_storage):
     dbsession.add(commit)
     dbsession.flush()
 
-    with open("tasks/tests/samples/sample_chunks_4_sessions.txt") as f:
-        content = f.read().encode()
-        archive_hash = ArchiveService.get_archive_hash(commit.repository)
-        chunks_url = f"v4/repos/{archive_hash}/commits/{commit.commitid}/chunks.txt"
-        mock_storage.write_file("archive", chunks_url, content)
-
+    with open("tasks/tests/samples/sample_chunks_4_sessions.txt", "rb") as f:
+        archive_service = ArchiveService(commit.repository)
+        archive_service.write_chunks(commit.commitid, f.read())
     return commit
 
 

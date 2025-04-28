@@ -10,6 +10,7 @@ import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
+from shared.api_archive.archive import ArchiveService
 from shared.django_apps.reports.models import ReportType
 from shared.reports.carryforward import generate_carryforward_report
 from shared.reports.enums import UploadState, UploadType
@@ -37,7 +38,6 @@ from helpers.exceptions import (
     RepositoryWithoutValidBotError,
 )
 from rollouts import CARRYFORWARD_BASE_SEARCH_RANGE_BY_OWNER
-from services.archive import ArchiveService
 from services.processing.metrics import (
     PYREPORT_CHUNKS_FILE_SIZE,
     PYREPORT_REPORT_JSON_SIZE,

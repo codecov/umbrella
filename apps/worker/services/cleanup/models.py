@@ -5,6 +5,7 @@ from functools import partial
 
 import sentry_sdk
 from django.db.models import Model, Q, QuerySet
+from shared.api_archive.archive import ArchiveService, MinioEndpoints
 from shared.bundle_analysis import StoragePaths
 from shared.django_apps.compare.models import CommitComparison
 from shared.django_apps.core.models import Commit, Pull, Repository
@@ -20,7 +21,6 @@ from shared.storage.exceptions import FileNotInStorageError
 from shared.timeseries.helpers import is_timeseries_enabled
 from shared.utils.sessions import SessionType
 
-from services.archive import ArchiveService, MinioEndpoints
 from services.cleanup.relations import reverse_filter
 from services.cleanup.utils import CleanupContext, CleanupResult
 

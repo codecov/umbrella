@@ -1,4 +1,3 @@
-import json
 from base64 import b16encode
 from hashlib import md5
 
@@ -15,7 +14,10 @@ pytestmark = pytest.mark.django_db
 class TestMinioEndpoints:
     def test_get_path(self):
         path = MinioEndpoints.chunks.get_path(
-            version="v4", repo_hash="abc123", commitid="def456"
+            version="v4",
+            repo_hash="abc123",
+            commitid="def456",
+            chunks_file_name="chunks",
         )
         assert path == "v4/repos/abc123/commits/def456/chunks.txt"
 
@@ -100,7 +102,7 @@ class TestArchiveService:
         archive_service.write_file("test/path", "test data")
 
         result = archive_service.read_file("test/path")
-        assert result == "test data"
+        assert result == b"test data"
 
     def test_delete_file(self, mock_config, archive_service):
         archive_service.write_file("test/path", "test data")
@@ -112,12 +114,14 @@ class TestArchiveService:
 
     def test_read_chunks(self, mock_config, archive_service):
         expected_path = MinioEndpoints.chunks.get_path(
-            version="v4", repo_hash=archive_service.storage_hash, commitid="commit123"
+            version="v4",
+            repo_hash=archive_service.storage_hash,
+            commitid="commit123",
+            chunks_file_name="chunks",
         )
         archive_service.write_file(expected_path, "chunk data")
 
         result = archive_service.read_chunks("commit123")
-
         assert result == "chunk data"
 
     def test_read_chunks_no_hash(self, mocker):
@@ -160,8 +164,7 @@ class TestArchiveService:
         assert path == expected_path
 
         result = archive_service.read_file(path)
-        expected_data = json.dumps(data, cls=ReportEncoder)
-        assert result == expected_data
+        assert result == b'{"key": "value"}'
 
     def test_write_json_data_to_storage_without_commit(
         self, mock_config, archive_service
@@ -182,8 +185,7 @@ class TestArchiveService:
         assert path == expected_path
 
         result = archive_service.read_file(path)
-        expected_data = json.dumps(data, cls=ReportEncoder)
-        assert result == expected_data
+        assert result == b'{"key": "value"}'
 
     def test_write_json_data_to_storage_no_hash(self, mocker):
         mock_get_config = mocker.patch("shared.api_archive.archive.get_config")
@@ -221,5 +223,4 @@ class TestArchiveService:
         mock_json_dumps.assert_called_once_with(data, cls=CustomEncoder)
 
         result = archive_service.read_file(path)
-
-        assert result == '{"key": "value"}'
+        assert result == b'{"key": "value"}'

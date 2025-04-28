@@ -1,11 +1,11 @@
 import logging
 from typing import Any
 
+from shared.api_archive.archive import ArchiveService
 from shared.django_apps.reports.models import ReportSession
 from shared.storage.exceptions import FileNotInStorageError
 from test_results_parser import parse_raw_upload
 
-from services.archive import ArchiveService
 from services.processing.types import UploadArguments
 from services.test_analytics.ta_metrics import write_tests_summary
 from services.test_analytics.ta_processing import (

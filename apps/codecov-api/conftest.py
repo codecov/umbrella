@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest import mock
 
 import fakeredis
 import pytest
@@ -6,6 +7,7 @@ import vcr
 from django.conf import settings
 from shared.reports.resources import Report, ReportFile
 from shared.reports.types import ReportLine
+from shared.storage.memory import MemoryStorageService
 from shared.utils.sessions import Session
 
 # we need to enable this in the test environment since we're often creating
@@ -46,6 +48,23 @@ def mock_redis(mocker):
     redis_server = fakeredis.FakeStrictRedis()
     m.return_value = redis_server
     yield redis_server
+
+
+@pytest.fixture
+def mock_storage(mocker):
+    m = mocker.patch("shared.storage.get_appropriate_storage_service")
+    storage_server = MemoryStorageService({})
+    m.return_value = storage_server
+    return storage_server
+
+
+@pytest.fixture(scope="class")
+def mock_storage_cls(request):
+    with mock.patch("shared.storage.get_appropriate_storage_service") as m:
+        storage_server = MemoryStorageService({})
+        m.return_value = storage_server
+        request.cls.storage = storage_server
+        yield
 
 
 @pytest.fixture(scope="class")

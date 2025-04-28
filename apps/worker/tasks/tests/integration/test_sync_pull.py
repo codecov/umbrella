@@ -1,7 +1,8 @@
 from pathlib import Path
 
+from shared.api_archive.archive import ArchiveService
+
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
-from services.archive import ArchiveService
 from tasks.sync_pull import PullSyncTask
 
 here = Path(__file__)
@@ -66,13 +67,10 @@ class TestPullSyncTask(object):
             branch="new_branch",
             _report_json=report_json,
         )
-        archive_hash = ArchiveService.get_archive_hash(repository)
-        with open(here.parent.parent / "samples" / "sample_chunks_1.txt") as f:
-            head_chunks_url = (
-                f"v4/repos/{archive_hash}/commits/{head_commit.commitid}/chunks.txt"
-            )
-            content = f.read()
-            mock_storage.write_file("archive", head_chunks_url, content)
+        with open(here.parent.parent / "samples" / "sample_chunks_1.txt", "rb") as f:
+            archive_service = ArchiveService(head_commit.repository)
+            archive_service.write_chunks(head_commit.commitid, f.read())
+
         pull = PullFactory.create(
             pullid=17,
             repository=repository,

@@ -996,8 +996,7 @@ class UploadHandlerRouteTest(APITestCase):
 
         archive_service = ArchiveService(self.repo)
         datetime = timezone.now().strftime("%Y-%m-%d")
-        repo_hash = archive_service.get_archive_hash(self.repo)
-        expected_url = f"v4/raw/{datetime}/{repo_hash}/b521e55aef79b101f48e2544837ca99a7fa3bf6b/dec1f00b-1883-40d0-afd6-6dcb876510be.txt"
+        expected_url = f"v4/raw/{datetime}/{archive_service.storage_hash}/b521e55aef79b101f48e2544837ca99a7fa3bf6b/dec1f00b-1883-40d0-afd6-6dcb876510be.txt"
 
         mock_write_file.assert_called_with(
             expected_url, b"coverage report", is_already_gzipped=False
@@ -1079,8 +1078,7 @@ class UploadHandlerRouteTest(APITestCase):
 
         archive_service = ArchiveService(self.repo)
         datetime = timezone.now().strftime("%Y-%m-%d")
-        repo_hash = archive_service.get_archive_hash(self.repo)
-        expected_url = f"v4/raw/{datetime}/{repo_hash}/b521e55aef79b101f48e2544837ca99a7fa3bf6b/dec1f00b-1883-40d0-afd6-6dcb876510be.txt"
+        expected_url = f"v4/raw/{datetime}/{archive_service.storage_hash}/b521e55aef79b101f48e2544837ca99a7fa3bf6b/dec1f00b-1883-40d0-afd6-6dcb876510be.txt"
 
         mock_write_file.assert_called_with(
             expected_url, b"coverage report", is_already_gzipped=False

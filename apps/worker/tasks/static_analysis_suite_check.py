@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
 
+from shared.api_archive.archive import ArchiveService
 from shared.celery_config import static_analysis_task_name
 from shared.staticanalysis import StaticAnalysisSingleFileSnapshotState
 from shared.storage.exceptions import FileNotInStorageError
@@ -11,7 +12,6 @@ from database.models.staticanalysis import (
     StaticAnalysisSuite,
     StaticAnalysisSuiteFilepath,
 )
-from services.archive import ArchiveService
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

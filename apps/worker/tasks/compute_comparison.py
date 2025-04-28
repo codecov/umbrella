@@ -1,9 +1,11 @@
 import logging
 from typing import Literal, TypedDict
 
+import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery import group
+from shared.api_archive.archive import ArchiveService
 from shared.celery_config import compute_comparison_task_name
 from shared.components import Component
 from shared.helpers.flag import Flag
@@ -17,7 +19,6 @@ from database.models.reports import RepositoryFlag
 from helpers.comparison import minimal_totals
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from rollouts import PARALLEL_COMPONENT_COMPARISON
-from services.archive import ArchiveService
 from services.comparison import ComparisonProxy, FilteredComparison
 from services.comparison_utils import get_comparison_proxy
 from services.report import ReportService
@@ -97,10 +98,7 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             return {"successful": False, "error": "torngit_rate_limit"}
 
         log.info("Files impact calculated", extra=log_extra)
-        path = self.store_results(comparison, impacted_files)
-
-        comparison.report_storage_path = path
-        db_session.commit()
+        self.store_results(comparison, impacted_files)
 
         comparison.state = CompareCommitState.processed.value
         log.info("Computing comparison successful", extra=log_extra)
@@ -313,10 +311,16 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         db_session.flush()
 
     @sentry_sdk.trace
-    def store_results(self, comparison, impacted_files):
+    def store_results(self, comparison: CompareCommit, impacted_files):
         repository = comparison.compare_commit.repository
         storage_service = ArchiveService(repository)
-        return storage_service.write_computed_comparison(comparison, impacted_files)
+
+        path = (
+            f"v4/repos/{storage_service.storage_hash}/comparisons/{comparison.id}.json"
+        )
+        storage_service.write_file(path, orjson.dumps(impacted_files))
+
+        comparison.report_storage_path = path
 
 
 RegisteredComputeComparisonTask = celery_app.register_task(ComputeComparisonTask())

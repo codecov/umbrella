@@ -3,6 +3,7 @@ from unittest.mock import ANY
 
 import pytest
 from redis.exceptions import LockError
+from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.storage import get_bucket_name
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.storage.exceptions import PutRequestRateLimitError
@@ -10,7 +11,6 @@ from shared.storage.exceptions import PutRequestRateLimitError
 from database.enums import ReportType
 from database.models import CommitReport, Upload
 from database.tests.factories import CommitFactory, RepositoryFactory, UploadFactory
-from services.archive import ArchiveService
 from tasks.bundle_analysis_processor import BundleAnalysisProcessorTask
 from tasks.bundle_analysis_save_measurements import (
     bundle_analysis_save_measurements_task_name,

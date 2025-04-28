@@ -7,6 +7,7 @@ from typing import Literal, TypedDict
 
 import sentry_sdk
 import test_results_parser
+from shared.api_archive.archive import ArchiveService
 from shared.celery_config import test_results_processor_task_name
 from shared.config import get_config
 from shared.yaml import UserYaml
@@ -24,7 +25,6 @@ from database.models import (
     TestInstance,
     Upload,
 )
-from services.archive import ArchiveService
 from services.processing.types import UploadArguments
 from services.test_analytics.ta_metrics import write_tests_summary
 from services.test_analytics.ta_processor import ta_processor_impl

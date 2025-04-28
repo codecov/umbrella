@@ -1,12 +1,10 @@
 from typing import Union
 
-from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis import (
     BundleAnalysisReportLoader,
     MissingBaseReportError,
     MissingHeadReportError,
 )
-from shared.storage import get_appropriate_storage_service
 
 from core.models import Commit
 from graphql_api.types.comparison.comparison import MissingBaseReport, MissingHeadReport
@@ -29,10 +27,7 @@ def load_bundle_analysis_comparison(
     if base_report is None:
         return MissingBaseReport()
 
-    loader = BundleAnalysisReportLoader(
-        storage_service=get_appropriate_storage_service(head_commit.repository.repoid),
-        repo_key=ArchiveService.get_archive_hash(head_commit.repository),
-    )
+    loader = BundleAnalysisReportLoader(head_commit.repository)
 
     try:
         return BundleAnalysisComparison(
@@ -56,10 +51,7 @@ def load_bundle_analysis_report(
     if report is None:
         return MissingHeadReport()
 
-    loader = BundleAnalysisReportLoader(
-        storage_service=get_appropriate_storage_service(commit.repository.repoid),
-        repo_key=ArchiveService.get_archive_hash(commit.repository),
-    )
+    loader = BundleAnalysisReportLoader(commit.repository)
     report = loader.load(report.external_id)
     if report is None:
         return MissingHeadReport()

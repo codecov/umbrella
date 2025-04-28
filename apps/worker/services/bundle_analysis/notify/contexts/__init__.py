@@ -3,7 +3,6 @@ from functools import cached_property
 from typing import Generic, Literal, Self, TypeVar
 
 import sentry_sdk
-import shared.storage
 from shared.bundle_analysis import BundleAnalysisReport, BundleAnalysisReportLoader
 from shared.torngit.base import TorngitBaseAdapter
 from shared.typings.torngit import AdditionalData, UploadType
@@ -13,7 +12,6 @@ from shared.yaml import UserYaml
 from database.enums import ReportType
 from database.models.core import Commit, Repository
 from database.models.reports import CommitReport
-from services.archive import ArchiveService
 from services.bundle_analysis.notify.helpers import to_BundleThreshold
 from services.bundle_analysis.notify.types import (
     NotificationType,
@@ -167,13 +165,9 @@ class NotificationContextBuilder:
         """
         if self.is_field_loaded("bundle_analysis_report"):
             return self
-        repo_hash = ArchiveService.get_archive_hash(
+        analysis_report_loader = BundleAnalysisReportLoader(
             self._notification_context.repository
         )
-        storage_service = shared.storage.get_appropriate_storage_service(
-            self._notification_context.repository.repoid
-        )
-        analysis_report_loader = BundleAnalysisReportLoader(storage_service, repo_hash)
         bundle_analysis_report = analysis_report_loader.load(
             self._notification_context.commit_report.external_id
         )

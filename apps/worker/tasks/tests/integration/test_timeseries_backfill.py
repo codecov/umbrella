@@ -1,10 +1,10 @@
 import pytest
+from shared.api_archive.archive import ArchiveService
 from shared.celery_config import timeseries_save_commit_measurements_task_name
 
 from database.models import MeasurementName
 from database.tests.factories import CommitFactory, RepositoryFactory
 from database.tests.factories.timeseries import DatasetFactory
-from services.archive import ArchiveService
 from tasks.timeseries_backfill import TimeseriesBackfillCommitsTask
 
 
@@ -38,15 +38,9 @@ def test_backfill_dataset_run_impl(dbsession, mocker, mock_storage):
     dbsession.add(commit)
     dbsession.flush()
 
-    with open("tasks/tests/samples/sample_chunks_1.txt") as f:
-        content = f.read().encode()
-        archive_hash = ArchiveService.get_archive_hash(commit.repository)
-        chunks_url = f"v4/repos/{archive_hash}/commits/{commit.commitid}/chunks.txt"
-        mock_storage.write_file("archive", chunks_url, content)
-        master_chunks_url = (
-            f"v4/repos/{archive_hash}/commits/{commit.commitid}/chunks.txt"
-        )
-        mock_storage.write_file("archive", master_chunks_url, content)
+    with open("tasks/tests/samples/sample_chunks_1.txt", "rb") as f:
+        archive_service = ArchiveService(commit.repository)
+        archive_service.write_chunks(commit.commitid, f.read())
 
     task = TimeseriesBackfillCommitsTask()
     dataset_names = [

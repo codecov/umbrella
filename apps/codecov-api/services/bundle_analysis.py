@@ -8,7 +8,6 @@ from typing import Any, Dict, Iterable, List, Optional, Union
 import sentry_sdk
 from asgiref.sync import sync_to_async
 from django.utils.functional import cached_property
-from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis import AssetReport as SharedAssetReport
 from shared.bundle_analysis import (
     BundleAnalysisComparison as SharedBundleAnalysisComparison,
@@ -22,7 +21,6 @@ from shared.bundle_analysis.models import AssetType
 from shared.django_apps.bundle_analysis.service.bundle_analysis import (
     BundleAnalysisCacheConfigService,
 )
-from shared.storage import get_appropriate_storage_service
 
 from core.models import Commit, Repository
 from graphql_api.actions.measurements import (
@@ -36,18 +34,13 @@ from timeseries.models import Interval, MeasurementName
 
 @sentry_sdk.trace
 def load_report(commit: Commit) -> SharedBundleAnalysisReport | None:
-    storage = get_appropriate_storage_service(commit.repository.repoid)
-
     commit_report = commit.reports.filter(
         report_type=CommitReport.ReportType.BUNDLE_ANALYSIS, code=None
     ).first()
     if commit_report is None:
         return None
 
-    loader = BundleAnalysisReportLoader(
-        storage_service=storage,
-        repo_key=ArchiveService.get_archive_hash(commit.repository),
-    )
+    loader = BundleAnalysisReportLoader(commit.repository)
     return loader.load(commit_report.external_id)
 
 

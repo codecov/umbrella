@@ -1,6 +1,5 @@
 from functools import cached_property
 
-import shared.storage
 from shared.bundle_analysis import (
     BundleAnalysisComparison,
     BundleAnalysisReportLoader,
@@ -9,7 +8,6 @@ from shared.bundle_analysis import (
 from database.enums import ReportType
 from database.models.core import Commit, Repository
 from database.models.reports import CommitReport
-from services.archive import ArchiveService
 from services.bundle_analysis.exceptions import (
     MissingBaseCommit,
     MissingBaseReport,
@@ -68,12 +66,7 @@ class ComparisonLoader:
         return commit_report
 
     def get_comparison(self) -> BundleAnalysisComparison:
-        loader = BundleAnalysisReportLoader(
-            storage_service=shared.storage.get_appropriate_storage_service(
-                self.repository.repoid
-            ),
-            repo_key=ArchiveService.get_archive_hash(self.repository),
-        )
+        loader = BundleAnalysisReportLoader(self.repository)
 
         return BundleAnalysisComparison(
             loader=loader,

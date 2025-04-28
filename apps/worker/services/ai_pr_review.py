@@ -6,13 +6,13 @@ from functools import cached_property
 from typing import Dict, List, Optional
 
 from openai import AsyncOpenAI
+from shared.api_archive.archive import ArchiveService
 from shared.config import get_config
 from shared.storage.exceptions import FileNotInStorageError
 from shared.torngit.base import TokenType, TorngitBaseAdapter
 
 from database.models.core import Repository
 from helpers.metrics import metrics
-from services.archive import ArchiveService
 from services.repository import get_repo_provider_service
 
 log = logging.getLogger(__name__)

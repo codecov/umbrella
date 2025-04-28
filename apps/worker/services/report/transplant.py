@@ -1,7 +1,6 @@
+from shared.api_archive.archive import ArchiveService
 from shared.django_apps.core.models import Commit
 from shared.django_apps.reports.models import CommitReport, ReportType
-
-from services.archive import ArchiveService
 
 
 def transplant_commit_report(repo_id: int, from_sha: str, to_sha: str):

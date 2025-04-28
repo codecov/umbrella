@@ -1,12 +1,12 @@
 from pathlib import Path
 
+from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.storage import get_bucket_name
 
 from database.enums import ReportType
 from database.models.core import Commit, Repository
 from database.models.reports import CommitReport
 from database.tests.factories.core import CommitFactory, PullFactory
-from services.archive import ArchiveService
 from services.repository import EnrichedPull
 
 SAMPLE_FOLDER_PATH = Path(__file__).resolve().parent / "tests" / "samples"

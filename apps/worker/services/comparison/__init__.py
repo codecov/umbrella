@@ -4,6 +4,7 @@ from typing import Any
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
+from shared.api_archive.archive import ArchiveService
 from shared.reports.changes import run_comparison_using_rust
 from shared.reports.types import Change, ReportTotals
 from shared.torngit.base import TorngitBaseAdapter
@@ -12,7 +13,6 @@ from shared.utils.sessions import SessionType
 
 from database.enums import CompareCommitState
 from database.models import CompareCommit
-from services.archive import ArchiveService
 from services.comparison.changes import get_changes
 from services.comparison.types import Comparison, FullCommit, ReportUploadedCount
 from services.repository import get_repo_provider_service

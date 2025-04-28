@@ -5,9 +5,9 @@ from typing import Optional
 
 import sentry_sdk
 
+from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.report import BundleAnalysisReport
 from shared.config import get_config
-from shared.storage.base import BaseStorageService
 from shared.storage.exceptions import FileNotInStorageError, PutRequestRateLimitError
 
 log = logging.getLogger(__name__)
@@ -32,9 +32,11 @@ class BundleAnalysisReportLoader:
     that identifies a repo in the storage layer.
     """
 
-    def __init__(self, storage_service: BaseStorageService, repo_key: str):
-        self.storage_service = storage_service
-        self.repo_key = repo_key
+    def __init__(self, repository):
+        archive_service = ArchiveService(repository)
+
+        self.repo_key = archive_service.storage_hash
+        self.storage_service = archive_service.storage
         self.bucket_name = get_bucket_name()
 
     @sentry_sdk.trace

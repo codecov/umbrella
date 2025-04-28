@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 from freezegun import freeze_time
+from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis import StoragePaths
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports.models import ReportSession as Upload
@@ -10,7 +11,6 @@ from shared.django_apps.reports.tests.factories import (
     UploadFactory,
 )
 
-from services.archive import ArchiveService
 from services.cleanup.regular import run_regular_cleanup
 from services.cleanup.tests.test_relations import dump_delete_queries
 from services.cleanup.uploads import create_upload_cleanup_queries

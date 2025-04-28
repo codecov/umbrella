@@ -14,7 +14,6 @@ from shared.bundle_analysis import (
     RouteChange,
 )
 from shared.bundle_analysis.models import Bundle, get_db_session
-from shared.storage.memory import MemoryStorageService
 
 here = Path(__file__)
 base_report_bundle_stats_path = (
@@ -48,11 +47,8 @@ base_report_bundle_stats_zero_size_asset = (
 )
 
 
-def test_bundle_analysis_comparison():
-    loader = BundleAnalysisReportLoader(
-        storage_service=MemoryStorageService({}),
-        repo_key="testing",
-    )
+def test_bundle_analysis_comparison(mock_storage):
+    loader = BundleAnalysisReportLoader(None)
 
     comparison = BundleAnalysisComparison(
         loader=loader,
@@ -122,11 +118,8 @@ def test_bundle_analysis_comparison():
         comparison.bundle_comparison("new")
 
 
-def test_bundle_asset_comparison_using_closest_size_delta():
-    loader = BundleAnalysisReportLoader(
-        storage_service=MemoryStorageService({}),
-        repo_key="testing",
-    )
+def test_bundle_asset_comparison_using_closest_size_delta(mock_storage):
+    loader = BundleAnalysisReportLoader(None)
 
     comparison = BundleAnalysisComparison(
         loader=loader,
@@ -356,7 +349,7 @@ def test_bundle_asset_comparison_using_closest_size_delta():
     )
 
 
-def test_bundle_asset_comparison_using_uuid():
+def test_bundle_asset_comparison_using_uuid(mock_storage):
     """
     In the default setup we have:
         (base:index-666d2e09.js, head:index-666d2e09.js): 144577 -> 144577
@@ -370,10 +363,7 @@ def test_bundle_asset_comparison_using_uuid():
         (base:index-666d2e09.js, head:index-c8676264.js): 144577 -> 254
         (base:index-c8676264.js, head:index-666d2e09.js): 154 -> 144577
     """
-    loader = BundleAnalysisReportLoader(
-        storage_service=MemoryStorageService({}),
-        repo_key="testing",
-    )
+    loader = BundleAnalysisReportLoader(None)
 
     comparison = BundleAnalysisComparison(
         loader=loader,
@@ -537,12 +527,9 @@ def test_bundle_asset_comparison_using_uuid():
     )
 
 
-def test_bundle_analysis_total_size_delta():
+def test_bundle_analysis_total_size_delta(mock_storage):
     try:
-        loader = BundleAnalysisReportLoader(
-            storage_service=MemoryStorageService({}),
-            repo_key="testing",
-        )
+        loader = BundleAnalysisReportLoader(None)
 
         comparison = BundleAnalysisComparison(
             loader=loader,
@@ -577,11 +564,8 @@ def test_bundle_analysis_total_size_delta():
         head_report.cleanup()
 
 
-def test_bundle_analysis_route_comparison_by_bundle_name():
-    loader = BundleAnalysisReportLoader(
-        storage_service=MemoryStorageService({}),
-        repo_key="testing",
-    )
+def test_bundle_analysis_route_comparison_by_bundle_name(mock_storage):
+    loader = BundleAnalysisReportLoader(None)
 
     comparison = BundleAnalysisComparison(
         loader=loader,
@@ -650,11 +634,8 @@ def test_bundle_analysis_route_comparison_by_bundle_name():
     assert sorted_route_changes == expected_changes
 
 
-def test_bundle_analysis_route_comparison_all_bundles():
-    loader = BundleAnalysisReportLoader(
-        storage_service=MemoryStorageService({}),
-        repo_key="testing",
-    )
+def test_bundle_analysis_route_comparison_all_bundles(mock_storage):
+    loader = BundleAnalysisReportLoader(None)
 
     comparison = BundleAnalysisComparison(
         loader=loader,
@@ -763,11 +744,8 @@ def test_bundle_analysis_route_comparison_all_bundles():
     assert sorted_route_changes == expected_bundle2_changes
 
 
-def test_bundle_analysis_route_comparison_by_bundle_name_not_exist():
-    loader = BundleAnalysisReportLoader(
-        storage_service=MemoryStorageService({}),
-        repo_key="testing",
-    )
+def test_bundle_analysis_route_comparison_by_bundle_name_not_exist(mock_storage):
+    loader = BundleAnalysisReportLoader(None)
 
     comparison = BundleAnalysisComparison(
         loader=loader,
@@ -798,11 +776,8 @@ def test_bundle_analysis_route_comparison_by_bundle_name_not_exist():
         comparison.bundle_routes_changes_by_bundle("bundle2")
 
 
-def test_bundle_analysis_route_comparison_different_bundle_names():
-    loader = BundleAnalysisReportLoader(
-        storage_service=MemoryStorageService({}),
-        repo_key="testing",
-    )
+def test_bundle_analysis_route_comparison_different_bundle_names(mock_storage):
+    loader = BundleAnalysisReportLoader(None)
 
     comparison = BundleAnalysisComparison(
         loader=loader,
@@ -897,11 +872,8 @@ def test_bundle_analysis_route_comparison_different_bundle_names():
     )
 
 
-def test_bundle_analysis_zero_asset_size_base_and_head():
-    loader = BundleAnalysisReportLoader(
-        storage_service=MemoryStorageService({}),
-        repo_key="testing",
-    )
+def test_bundle_analysis_zero_asset_size_base_and_head(mock_storage):
+    loader = BundleAnalysisReportLoader(None)
 
     comparison = BundleAnalysisComparison(
         loader=loader,
@@ -942,11 +914,8 @@ def test_bundle_analysis_zero_asset_size_base_and_head():
     )
 
 
-def test_bundle_analysis_zero_asset_size_base_sized_head():
-    loader = BundleAnalysisReportLoader(
-        storage_service=MemoryStorageService({}),
-        repo_key="testing",
-    )
+def test_bundle_analysis_zero_asset_size_base_sized_head(mock_storage):
+    loader = BundleAnalysisReportLoader(None)
 
     comparison = BundleAnalysisComparison(
         loader=loader,

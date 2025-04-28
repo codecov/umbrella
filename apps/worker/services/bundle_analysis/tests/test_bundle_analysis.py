@@ -3,6 +3,7 @@ from typing import Dict, List
 from unittest.mock import PropertyMock
 
 import pytest
+from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.comparison import (
     AssetChange,
     AssetComparison,
@@ -18,7 +19,6 @@ from database.enums import ReportType
 from database.models import CommitReport, MeasurementName
 from database.tests.factories import CommitFactory, PullFactory, UploadFactory
 from database.tests.factories.timeseries import DatasetFactory, Measurement
-from services.archive import ArchiveService
 from services.bundle_analysis.notify import (
     BundleAnalysisNotifyReturn,
     BundleAnalysisNotifyService,

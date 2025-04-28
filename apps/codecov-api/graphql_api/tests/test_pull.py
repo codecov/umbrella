@@ -2,6 +2,7 @@ import os
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+import pytest
 from django.test import TestCase
 from freezegun import freeze_time
 from shared.api_archive.archive import ArchiveService
@@ -13,7 +14,6 @@ from shared.django_apps.core.tests.factories import (
     PullFactory,
     RepositoryFactory,
 )
-from shared.storage.memory import MemoryStorageService
 
 from compare.tests.factories import CommitComparisonFactory
 from core.models import Commit
@@ -143,6 +143,7 @@ query_pull_request_detail = """{
 """
 
 
+@pytest.mark.usefixtures("mock_storage_cls")
 class TestPullRequestList(GraphQLTestHelper, TestCase):
     def fetch_list_pull_request(self):
         data = self.gql_request(query_list_pull_request, owner=self.owner)
@@ -279,11 +280,8 @@ class TestPullRequestList(GraphQLTestHelper, TestCase):
         }
         mock_task_service.return_value.pulls_sync.assert_not_called()
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_when_repository_has_null_head_has_parent_report(self, get_storage_service):
+    def test_when_repository_has_null_head_has_parent_report(self):
         os.system("rm -rf /tmp/bundle_analysis_*")
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
 
         parent_commit = CommitFactory(repository=self.repository)
 
@@ -307,7 +305,7 @@ class TestPullRequestList(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repository),
                 report_key=base_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             bundleAnalysisCompareWithBase {
@@ -497,11 +495,8 @@ class TestPullRequestList(GraphQLTestHelper, TestCase):
             "bundleAnalysisCompareWithBase": {"__typename": "MissingBaseReport"}
         }
 
-    @patch("graphql_api.dataloader.bundle_analysis.get_appropriate_storage_service")
-    def test_bundle_analysis_sqlite_file_deleted(self, get_storage_service):
+    def test_bundle_analysis_sqlite_file_deleted(self):
         os.system("rm -rf /tmp/bundle_analysis_*")
-        storage = MemoryStorageService({})
-        get_storage_service.return_value = storage
 
         parent_commit = CommitFactory(repository=self.repository)
         commit = CommitFactory(
@@ -533,14 +528,14 @@ class TestPullRequestList(GraphQLTestHelper, TestCase):
                 repo_key=ArchiveService.get_archive_hash(self.repository),
                 report_key=base_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         with open("./services/tests/samples/head_bundle_report.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repository),
                 report_key=head_commit_report.external_id,
             )
-            storage.write_file(get_bucket_name(), storage_path, f)
+            self.storage.write_file(get_bucket_name(), storage_path, f)
 
         query = """
             bundleAnalysisCompareWithBase {

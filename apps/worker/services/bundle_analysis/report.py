@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import sentry_sdk
-import shared.storage
 from shared.bundle_analysis import BundleAnalysisReport, BundleAnalysisReportLoader
 from shared.bundle_analysis.models import AssetType, MetadataKey
 from shared.bundle_analysis.storage import get_bucket_name
@@ -24,7 +23,6 @@ from database.enums import ReportType
 from database.models.core import Commit
 from database.models.reports import CommitReport, Upload, UploadError
 from database.models.timeseries import Measurement, MeasurementName
-from services.archive import ArchiveService
 from services.report import BaseReportService
 from services.timeseries import repository_datasets_query
 
@@ -235,9 +233,8 @@ class BundleAnalysisReportService(BaseReportService):
         merge the results into a bundle report.
         """
         commit_report: CommitReport = upload.report
-        repo_hash = ArchiveService.get_archive_hash(commit_report.commit.repository)
-        storage_service = shared.storage.get_appropriate_storage_service(commit.repoid)
-        bundle_loader = BundleAnalysisReportLoader(storage_service, repo_hash)
+        bundle_loader = BundleAnalysisReportLoader(commit_report.commit.repository)
+        storage_service = bundle_loader.storage_service
 
         # fetch existing bundle report from storage
         bundle_report = bundle_loader.load(commit_report.external_id)
@@ -392,11 +389,7 @@ class BundleAnalysisReportService(BaseReportService):
         """
         try:
             commit_report: CommitReport = upload.report
-            repo_hash = ArchiveService.get_archive_hash(commit_report.commit.repository)
-            storage_service = shared.storage.get_appropriate_storage_service(
-                commit.repoid
-            )
-            bundle_loader = BundleAnalysisReportLoader(storage_service, repo_hash)
+            bundle_loader = BundleAnalysisReportLoader(commit.repository)
 
             # fetch existing bundle report from storage
             bundle_analysis_report = bundle_loader.load(commit_report.external_id)

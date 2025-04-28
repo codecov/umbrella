@@ -136,7 +136,7 @@ def sample_report_impacted():
     return report
 
 
-mock_data_from_archive = """
+mock_data_from_archive = b"""
 {
     "files": [{
         "head_name": "fileA",

@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 from redis import Redis
+from shared.api_archive.archive import ArchiveService
 from shared.helpers.redis import get_redis_connection
 from shared.reports.resources import Report, ReportFile
 from shared.reports.types import ReportLine
@@ -17,7 +18,6 @@ from database.models.core import Commit, CompareCommit, Repository
 from database.models.reports import Upload
 from database.tests.factories import CommitFactory, RepositoryFactory
 from database.tests.factories.core import PullFactory
-from services.archive import ArchiveService
 from services.report import ReportService
 from tasks.tests.utils import hook_repo_provider, hook_session, run_tasks
 from tasks.upload import upload_task

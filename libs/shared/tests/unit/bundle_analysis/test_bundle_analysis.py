@@ -22,7 +22,6 @@ from shared.bundle_analysis.models import (
     get_db_session,
 )
 from shared.storage.exceptions import PutRequestRateLimitError
-from shared.storage.memory import MemoryStorageService
 
 sample_bundle_stats_path = (
     Path(__file__).parent.parent.parent / "samples" / "sample_bundle_stats.json"
@@ -414,15 +413,12 @@ def test_bundle_report_asset_routes_unsupported_plugin():
         report.cleanup()
 
 
-def test_save_load_bundle_report():
+def test_save_load_bundle_report(mock_storage):
     try:
         created_report = BundleAnalysisReport()
         created_report.ingest(sample_bundle_stats_path)
 
-        loader = BundleAnalysisReportLoader(
-            storage_service=MemoryStorageService({}),
-            repo_key="testing",
-        )
+        loader = BundleAnalysisReportLoader(None)
         test_key = "8d1099f1-ba73-472f-957f-6908eced3f42"
         loader.save(created_report, test_key)
 
@@ -596,7 +592,7 @@ def test_bundle_name_not_valid():
         report.cleanup()
 
 
-def test_bundle_file_save_rate_limit_error():
+def test_bundle_file_save_rate_limit_error(mock_storage):
     with patch(
         "shared.storage.memory.MemoryStorageService.write_file",
         side_effect=Exception("TooManyRequests"),
@@ -606,10 +602,7 @@ def test_bundle_file_save_rate_limit_error():
                 report = BundleAnalysisReport()
                 report.ingest(sample_bundle_stats_path)
 
-                loader = BundleAnalysisReportLoader(
-                    storage_service=MemoryStorageService({}),
-                    repo_key="testing",
-                )
+                loader = BundleAnalysisReportLoader(None)
                 test_key = "8d1099f1-ba73-472f-957f-6908eced3f42"
                 loader.save(report, test_key)
 
@@ -619,7 +612,7 @@ def test_bundle_file_save_rate_limit_error():
                 report.cleanup()
 
 
-def test_bundle_file_save_unknown_error():
+def test_bundle_file_save_unknown_error(mock_storage):
     with patch(
         "shared.storage.memory.MemoryStorageService.write_file",
         side_effect=Exception("UnknownError"),
@@ -629,10 +622,7 @@ def test_bundle_file_save_unknown_error():
                 report = BundleAnalysisReport()
                 report.ingest(sample_bundle_stats_path)
 
-                loader = BundleAnalysisReportLoader(
-                    storage_service=MemoryStorageService({}),
-                    repo_key="testing",
-                )
+                loader = BundleAnalysisReportLoader(None)
                 test_key = "8d1099f1-ba73-472f-957f-6908eced3f42"
                 loader.save(report, test_key)
 

@@ -3,12 +3,12 @@ from unittest.mock import patch
 
 import pytest
 from mock import AsyncMock, PropertyMock
+from shared.api_archive.archive import ArchiveService
 from shared.validation.types import CoverageCommentRequiredChanges
 
 from database.models import Pull
 from database.models.core import CompareCommit
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
-from services.archive import ArchiveService
 from services.comparison import get_or_create_comparison
 from services.notification.notifiers.base import NotificationResult
 from services.repository import EnrichedPull
@@ -80,15 +80,12 @@ class TestNotifyTask(object):
         dbsession.add(commit)
         dbsession.add(master_commit)
         dbsession.flush()
-        with open("tasks/tests/samples/sample_chunks_1.txt") as f:
-            content = f.read().encode()
-            archive_hash = ArchiveService.get_archive_hash(commit.repository)
-            chunks_url = f"v4/repos/{archive_hash}/commits/{commit.commitid}/chunks.txt"
-            mock_storage.write_file("archive", chunks_url, content)
-            master_chunks_url = (
-                f"v4/repos/{archive_hash}/commits/{master_commit.commitid}/chunks.txt"
-            )
-            mock_storage.write_file("archive", master_chunks_url, content)
+        with open("tasks/tests/samples/sample_chunks_1.txt", "rb") as f:
+            content = f.read()
+            archive_service = ArchiveService(commit.repository)
+            archive_service.write_chunks(commit.commitid, content)
+            archive_service.write_chunks(master_commit.commitid, content)
+
         task = NotifyTask()
         result = task.run_impl(
             dbsession, repoid=commit.repoid, commitid=commit.commitid, current_yaml={}
@@ -207,15 +204,12 @@ class TestNotifyTask(object):
         get_or_create_comparison(dbsession, master_commit, commit)
         dbsession.flush()
         task = NotifyTask()
-        with open("tasks/tests/samples/sample_chunks_1.txt") as f:
-            content = f.read().encode()
-            archive_hash = ArchiveService.get_archive_hash(commit.repository)
-            chunks_url = f"v4/repos/{archive_hash}/commits/{commit.commitid}/chunks.txt"
-            mock_storage.write_file("archive", chunks_url, content)
-            master_chunks_url = (
-                f"v4/repos/{archive_hash}/commits/{master_commit.commitid}/chunks.txt"
-            )
-            mock_storage.write_file("archive", master_chunks_url, content)
+        with open("tasks/tests/samples/sample_chunks_1.txt", "rb") as f:
+            content = f.read()
+            archive_service = ArchiveService(commit.repository)
+            archive_service.write_chunks(commit.commitid, content)
+            archive_service.write_chunks(master_commit.commitid, content)
+
         result = task.run_impl_within_lock(
             dbsession,
             repoid=commit.repoid,
@@ -404,15 +398,12 @@ class TestNotifyTask(object):
         dbsession.add(master_commit)
         dbsession.flush()
         task = NotifyTask()
-        with open("tasks/tests/samples/sample_chunks_1.txt") as f:
-            content = f.read().encode()
-            archive_hash = ArchiveService.get_archive_hash(commit.repository)
-            chunks_url = f"v4/repos/{archive_hash}/commits/{commit.commitid}/chunks.txt"
-            mock_storage.write_file("archive", chunks_url, content)
-            master_chunks_url = (
-                f"v4/repos/{archive_hash}/commits/{master_commit.commitid}/chunks.txt"
-            )
-            mock_storage.write_file("archive", master_chunks_url, content)
+        with open("tasks/tests/samples/sample_chunks_1.txt", "rb") as f:
+            content = f.read()
+            archive_service = ArchiveService(commit.repository)
+            archive_service.write_chunks(commit.commitid, content)
+            archive_service.write_chunks(master_commit.commitid, content)
+
         result = task.run_impl_within_lock(
             dbsession,
             repoid=commit.repoid,
@@ -623,15 +614,12 @@ class TestNotifyTask(object):
         dbsession.add(master_commit)
         dbsession.flush()
         task = NotifyTask()
-        with open("tasks/tests/samples/sample_chunks_1.txt") as f:
-            content = f.read().encode()
-            archive_hash = ArchiveService.get_archive_hash(commit.repository)
-            chunks_url = f"v4/repos/{archive_hash}/commits/{commit.commitid}/chunks.txt"
-            mock_storage.write_file("archive", chunks_url, content)
-            master_chunks_url = (
-                f"v4/repos/{archive_hash}/commits/{master_commit.commitid}/chunks.txt"
-            )
-            mock_storage.write_file("archive", master_chunks_url, content)
+        with open("tasks/tests/samples/sample_chunks_1.txt", "rb") as f:
+            content = f.read()
+            archive_service = ArchiveService(commit.repository)
+            archive_service.write_chunks(commit.commitid, content)
+            archive_service.write_chunks(master_commit.commitid, content)
+
         result = task.run_impl_within_lock(
             dbsession,
             repoid=commit.repoid,
@@ -847,15 +835,12 @@ class TestNotifyTask(object):
         dbsession.add(master_commit)
         dbsession.flush()
         task = NotifyTask()
-        with open("tasks/tests/samples/sample_chunks_1.txt") as f:
-            content = f.read().encode()
-            archive_hash = ArchiveService.get_archive_hash(commit.repository)
-            chunks_url = f"v4/repos/{archive_hash}/commits/{commit.commitid}/chunks.txt"
-            mock_storage.write_file("archive", chunks_url, content)
-            master_chunks_url = (
-                f"v4/repos/{archive_hash}/commits/{master_commit.commitid}/chunks.txt"
-            )
-            mock_storage.write_file("archive", master_chunks_url, content)
+        with open("tasks/tests/samples/sample_chunks_1.txt", "rb") as f:
+            content = f.read()
+            archive_service = ArchiveService(commit.repository)
+            archive_service.write_chunks(commit.commitid, content)
+            archive_service.write_chunks(master_commit.commitid, content)
+
         result = task.run_impl_within_lock(
             dbsession,
             repoid=commit.repoid,
@@ -1301,13 +1286,12 @@ class TestNotifyTask(object):
         dbsession.add(master_commit)
         dbsession.flush()
         task = NotifyTask()
-        with open("tasks/tests/samples/sample_chunks_1.txt") as f:
-            content = f.read().encode()
-            archive_hash = ArchiveService.get_archive_hash(commit.repository)
-            master_chunks_url = (
-                f"v4/repos/{archive_hash}/commits/{master_commit.commitid}/chunks.txt"
-            )
-            mock_storage.write_file("archive", master_chunks_url, content)
+        with open("tasks/tests/samples/sample_chunks_1.txt", "rb") as f:
+            content = f.read()
+            archive_service = ArchiveService(commit.repository)
+            archive_service.write_chunks(commit.commitid, content)
+            archive_service.write_chunks(master_commit.commitid, content)
+
         result = task.run_impl_within_lock(
             dbsession,
             repoid=commit.repoid,
@@ -1372,13 +1356,11 @@ class TestNotifyTask(object):
         dbsession.flush()
 
         task = NotifyTask()
-        with open("tasks/tests/samples/sample_chunks_1.txt") as f:
-            content = f.read().encode()
-            archive_hash = ArchiveService.get_archive_hash(commit.repository)
-            master_chunks_url = (
-                f"v4/repos/{archive_hash}/commits/{master_commit.commitid}/chunks.txt"
-            )
-            mock_storage.write_file("archive", master_chunks_url, content)
+        with open("tasks/tests/samples/sample_chunks_1.txt", "rb") as f:
+            content = f.read()
+            archive_service = ArchiveService(commit.repository)
+            archive_service.write_chunks(commit.commitid, content)
+            archive_service.write_chunks(master_commit.commitid, content)
 
         mocker.patch("tasks.notify.NotifyTask.fetch_and_update_whether_ci_passed")
         mocker.patch(
