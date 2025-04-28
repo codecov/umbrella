@@ -4,6 +4,7 @@ services:
   api:
     image: ${API_DOCKER_REPO}:${API_DOCKER_VERSION}
     depends_on:
+      - minio
       - postgres
       - redis
       - timescale
@@ -30,7 +31,7 @@ services:
       - type: tmpfs
         target: /var/lib/postgresql/data
         tmpfs:
-          size: 2048M
+          size: 1024M
 
   timescale:
     image: timescale/timescaledb-ha:pg14-latest

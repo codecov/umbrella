@@ -48,9 +48,9 @@ services:
       - codecov
     depends_on:
       - minio
-      - timescale
       - postgres
       - redis
+      - timescale
 
   worker:
     image: codecov/worker
@@ -64,13 +64,12 @@ services:
       - ./tools/devenv/scripts:/devenv-scripts:ro,cached
       - ./apps/worker:/app/apps/worker:cached
       - ./libs/shared:/app/libs/shared:cached
-      - archive-volume:/archive
     networks:
       - codecov
     depends_on:
       - minio
-      - redis
       - postgres
+      - redis
       - timescale
       # Make worker block on API so API can run migrations first
       - api
@@ -88,8 +87,8 @@ services:
       - codecov
     depends_on:
       - minio
-      - redis
       - postgres
+      - redis
       - timescale
 
   redis:

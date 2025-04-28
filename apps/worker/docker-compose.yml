@@ -4,10 +4,10 @@ services:
   worker:
     image: ${WORKER_DOCKER_REPO}:${WORKER_DOCKER_VERSION}
     depends_on:
+      - minio
       - postgres
       - redis
       - timescale
-      - minio
     volumes:
       - ./:/app/apps/worker
       - ./docker/test_codecov_config.yml:/config/codecov.yml
@@ -31,7 +31,7 @@ services:
       - type: tmpfs
         target: /var/lib/postgresql/data
         tmpfs:
-          size: 2048M
+          size: 1024M
 
   timescale:
     image: timescale/timescaledb-ha:pg14-latest
@@ -42,11 +42,12 @@ services:
     volumes:
       - ./docker/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
 
+  redis:
+    image: redis:6-alpine
+
   minio:
     image: minio/minio:latest
     command: server /export
-    ports:
-      - "${MINIO_PORT:-9000}:9000"
     environment:
       - MINIO_ACCESS_KEY=codecov-default-key
       - MINIO_SECRET_KEY=codecov-default-secret
@@ -55,8 +56,6 @@ services:
         target: /export
         tmpfs:
           size: 256M
-  redis:
-    image: redis:6-alpine
 
   mailhog:
     image: mailhog/mailhog:latest
