@@ -22,15 +22,19 @@ jobs:
           python-version: '3.13'
       - name: Install UV
         run: pip install uv
+      - name: Create virtual environment
+        working-directory: apps/${{ matrix.app }}
+        run: |
+          uv venv .venv
       - name: Install Project Dependencies
         working-directory: apps/${{ matrix.app }}
         run: |
-          uv export --format requirements-txt > requirements.txt
-          uv pip install -r requirements.txt --system
+          uv sync
+          source .venv/bin/activate
       - name: Install Static Analysis Tools
+        working-directory: apps/${{ matrix.app }}
         run: |
-          pip install mypy==1.15.0
-          pip install ruff==0.9.8
+          uv pip install mypy==1.15.0 ruff==0.9.8
       - name: Install Overwatch CLI
         run: |
           curl -o overwatch-cli https://overwatch.codecov.dev/linux/cli
@@ -44,4 +48,4 @@ jobs:
             --auth-token ${{ secrets.SENTRY_AUTH_TOKEN }} \
             --organization-slug codecov \
             python \
-            --python-path $(which python3)
+            --python-path .venv/bin/python
