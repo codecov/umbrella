@@ -91,12 +91,11 @@ jobs:
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.CODECOV_SENTRY_RELEASE_TOKEN }}
           SENTRY_ORG: ${{ secrets.CODECOV_SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ inputs.sentry_project != '' && inputs.sentry_project || secrets.CODECOV_SENTRY_PROJECT }}
+          SENTRY_PROJECT: ${{ inputs.sentry_project }}
         with:
           environment: ${{ inputs.environment }}
           version: ${{ inputs.environment }}-release-${{ steps.sha.outputs.short_sha }}
           ignore_missing: true
-          output_directory: ${{ inputs.output_directory }}
   rolling:
     name: Push Rolling Image
     if: inputs.push_rolling == true && github.repository_owner == 'codecov' && !github.event.pull_request.head.repo.fork
