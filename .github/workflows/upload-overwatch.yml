@@ -22,15 +22,10 @@ jobs:
           python-version: '3.13'
       - name: Install UV
         run: pip install uv
-      - name: Create virtual environment
-        working-directory: apps/${{ matrix.app }}
-        run: |
-          uv venv .venv
       - name: Install Project Dependencies
         working-directory: apps/${{ matrix.app }}
         run: |
           uv sync
-          source .venv/bin/activate
       - name: Install Static Analysis Tools
         working-directory: apps/${{ matrix.app }}
         run: |
