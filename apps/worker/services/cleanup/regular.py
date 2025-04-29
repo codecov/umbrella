@@ -6,6 +6,8 @@ from django.db.models.query import QuerySet
 from services.cleanup.cleanup import run_cleanup
 from services.cleanup.uploads import cleanup_old_uploads
 from services.cleanup.utils import CleanupResult, CleanupSummary, cleanup_context
+from shared.django_apps.reports.models import CommitReport
+from shared.django_apps.staticanalysis.models import StaticAnalysisSingleFileSnapshot
 
 log = logging.getLogger(__name__)
 
@@ -14,7 +16,10 @@ def run_regular_cleanup() -> CleanupSummary:
     log.info("Starting regular cleanup job")
     complete_summary = CleanupSummary(CleanupResult(0), summary={})
 
-    cleanups_to_run: list[QuerySet] = []
+    cleanups_to_run: list[QuerySet] = [
+        StaticAnalysisSingleFileSnapshot.objects.all(),
+        CommitReport.objects.filter(code__isnull=False),
+    ]
 
     # as we expect this job to have frequent retries, and cleanup to take a long time,
     # lets shuffle the various cleanups so that each one of those makes a little progress.
