@@ -46,32 +46,6 @@ test.unit:
 test.integration:
 	COVERAGE_CORE=sysmon pytest --cov=./ -m "integration" --cov-report=xml:integration.coverage.xml --junitxml=integration.junit.xml -o junit_family=legacy -c pytest.ini --rootdir=${PYTEST_ROOTDIR}
 
-lint:
-	make lint.install
-	make lint.run
-
-lint.install:
-	echo "Installing..."
-	pip install -Iv ruff
-
-lint.local:
-	make lint.install.local
-	make lint.run
-
-lint.install.local:
-	echo "Installing..."
-	uv add --dev ruff
-
-lint.run:
-	ruff check
-	ruff format
-
-lint.check:
-	echo "Linting..."
-	ruff check
-	echo "Formatting..."
-	ruff format --check
-
 build.requirements:
 	# If make was given a different requirements tag, we assume a suitable image
 	# was already built (e.g. by umbrella) and don't want to build this one.

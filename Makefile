@@ -104,3 +104,33 @@ shared.%:
 # Development environment targets
 ######
 include tools/devenv/Makefile.devenv
+
+lint:
+	make lint.install
+	make lint.run
+
+# used for CI
+lint.install:
+	echo "Installing..."
+	pip install -Iv ruff
+
+lint.local:
+	make lint.install.local
+	make lint.run
+
+lint.install.local:
+	echo "Installing..."
+	uv add --dev ruff
+
+# The preferred method (for now) w.r.t. fixable rules is to manually update the makefile
+# with --fix and re-run 'make lint.' Since ruff is constantly adding rules this is a slight
+# amount of "needed" friction imo.
+lint.run:
+	ruff check
+	ruff format
+
+lint.check:
+	echo "Linting..."
+	ruff check
+	echo "Formatting..."
+	ruff format --check
