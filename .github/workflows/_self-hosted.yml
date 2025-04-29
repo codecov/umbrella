@@ -1,0 +1,172 @@
+name: Self Hosted Build and Release
+on:
+  workflow_call:
+    inputs:
+      push_rolling:
+        type: boolean
+        default: false
+        description: "Whether to push the rolling image"
+      push_release:
+        type: boolean
+        default: false
+        description: "Whether to push the release image"
+      repo:
+        type: string
+        required: true
+      cache_requirements:
+        type: boolean
+        default: true
+      cache_file:
+        type: string
+        default: "requirements.txt"
+      output_directory:
+        type: string
+        default: .
+      reqs_cache_key:
+        type: string
+        required: false
+      make_target_prefix:
+        type: string
+        default: ""
+
+env:
+  AR_REPO: ${{ inputs.repo }}
+
+jobs:
+  build-self-hosted:
+    name: Build Self Hosted App
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - id: "auth"
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' && inputs.cache_requirements }}
+        name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v2.1.2"
+        with:
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
+          service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
+
+      - name: Docker configuration
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' && inputs.cache_requirements }}
+        run: |-
+          echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
+
+      - name: Cache Requirements
+        id: cache-requirements
+        if: inputs.cache_requirements
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ inputs.repo }}-requirements
+        with:
+          path: |
+            ${{ inputs.output_directory }}/requirements.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ inputs.reqs_cache_key || format('{0}-{1}', hashFiles(format('{0}/**/{1}', inputs.output_directory, inputs.cache_file)), hashFiles(format('{0}/**/docker/Dockerfile.requirements', inputs.output_directory))) }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache-name }}-
+
+      - name: Cache Self hosted
+        id: cache-self-hosted
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ inputs.repo }}-self-hosted
+        with:
+          path: |
+            ${{ inputs.output_directory }}/self-hosted-runtime.tar
+            ${{ inputs.output_directory }}/self-hosted.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+
+      - name: Load requirements from cache
+        if: ${{ steps.cache-requirements.outputs.cache-hit == 'true' && inputs.cache_requirements }}
+        run: |
+          make ${{ inputs.make_target_prefix }}load.requirements
+
+      - name: Build/pull requirements
+        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && inputs.cache_requirements }}
+        run: |
+          make ${{ inputs.make_target_prefix }}build.requirements
+
+      - name: Load built image
+        if: ${{ steps.cache-self-hosted.outputs.cache-hit == 'true' }}
+        run: |
+          make ${{ inputs.make_target_prefix }}load.self-hosted
+
+      - name: Build self hosted
+        if: ${{ steps.cache-self-hosted.outputs.cache-hit != 'true' }}
+        run: |
+          make ${{ inputs.make_target_prefix }}build.self-hosted
+          make ${{ inputs.make_target_prefix }}save.self-hosted
+
+  self-hosted:
+    name: Push Self Hosted Image
+    needs: [build-self-hosted]
+    if: inputs.push_rolling == true && github.repository_owner == 'codecov' && !github.event.pull_request.head.repo.fork
+    runs-on: ubuntu-latest
+    environment: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+      - name: Cache Self hosted
+        id: cache-self-hosted
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ inputs.repo }}-self-hosted
+        with:
+          path: |
+            ${{ inputs.output_directory }}/self-hosted-runtime.tar
+            ${{ inputs.output_directory }}/self-hosted.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+      - name: Load built image
+        run: |
+          make ${{ inputs.make_target_prefix }}load.self-hosted
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3.1.0
+        with:
+          username: ${{ secrets.CODECOV_DEVOPS_DOCKER_USERNAME }}
+          password: ${{ secrets.CODECOV_DEVOPS_DOCKER_PASSWORD }}
+      - name: Push Self Hosted Rolling
+        run: |
+          make ${{ inputs.make_target_prefix }}tag.self-hosted-rolling
+          make ${{ inputs.make_target_prefix }}push.self-hosted-rolling
+  self-hosted-release:
+    name: Push Self Hosted Release Image
+    needs: [build-self-hosted]
+    if: inputs.push_release == true && github.repository_owner == 'codecov' && !github.event.pull_request.head.repo.fork
+    runs-on: ubuntu-latest
+    environment: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+      - name: Cache Self hosted
+        id: cache-self-hosted
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ inputs.repo }}-self-hosted
+        with:
+          path: |
+            ${{ inputs.output_directory }}/self-hosted-runtime.tar
+            ${{ inputs.output_directory }}/self-hosted.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+      - name: Load built image
+        run: |
+          make ${{ inputs.make_target_prefix }}load.self-hosted
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3.1.0
+        with:
+          username: ${{ secrets.CODECOV_DEVOPS_DOCKER_USERNAME }}
+          password: ${{ secrets.CODECOV_DEVOPS_DOCKER_PASSWORD }}
+      - name: Push self hosted release
+        run: |
+          make ${{ inputs.make_target_prefix }}tag.self-hosted-release
+          make ${{ inputs.make_target_prefix }}push.self-hosted-release
+

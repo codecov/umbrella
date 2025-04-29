@@ -20,7 +20,7 @@ jobs:
   worker-lint:
     name: Run Lint (Worker)
     if: ${{ inputs.skip == false }}
-    uses: codecov/gha-workflows/.github/workflows/lint.yml@v1.2.36
+    uses: ./.github/workflows/_lint.yml
     with:
       make_target_prefix: worker.
 
@@ -53,7 +53,7 @@ jobs:
     name: Build App (Worker)
     if: ${{ inputs.skip == false }}
     needs: [worker-compute-reqs-cache-key]
-    uses: codecov/gha-workflows/.github/workflows/build-app.yml@v1.2.36
+    uses: ./.github/workflows/_build-app.yml
     secrets: inherit
     with:
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
@@ -65,7 +65,7 @@ jobs:
     name: Test (Worker)
     if: ${{ inputs.skip == false }}
     needs: [worker-build]
-    uses: codecov/gha-workflows/.github/workflows/run-tests.yml@v1.2.36
+    uses: ./.github/workflows/_run-tests.yml
     secrets: inherit
     with:
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
@@ -78,7 +78,7 @@ jobs:
     name: Build Self Hosted (Worker)
     if: ${{ inputs.skip == false }}
     needs: [worker-compute-reqs-cache-key, worker-build, worker-test]
-    uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.36
+    uses: ./.github/workflows/_self-hosted.yml
     secrets: inherit
     with:
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
@@ -90,7 +90,7 @@ jobs:
     name: Push Staging Image (Worker)
     needs: [worker-build, worker-test]
     if: ${{ inputs.skip == false && github.event_name == 'push' && (github.event.ref == 'refs/heads/main' || github.event.ref == 'refs/heads/staging') && github.repository_owner == 'codecov' }}
-    uses: codecov/gha-workflows/.github/workflows/push-env.yml@v1.2.37
+    uses: ./.github/workflows/_push-env.yml
     secrets: inherit
     with:
       environment: staging
@@ -103,7 +103,7 @@ jobs:
     name: Push Production Image (Worker)
     needs: [worker-build, worker-test]
     if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
-    uses: codecov/gha-workflows/.github/workflows/push-env.yml@v1.2.37
+    uses: ./.github/workflows/_push-env.yml
     secrets: inherit
     with:
       environment: production
@@ -117,7 +117,7 @@ jobs:
     needs: [worker-compute-reqs-cache-key, worker-build-self-hosted, worker-test]
     secrets: inherit
     if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
-    uses: codecov/gha-workflows/.github/workflows/self-hosted.yml@v1.2.36
+    uses: ./.github/workflows/_self-hosted.yml
     with:
       push_rolling: true
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}

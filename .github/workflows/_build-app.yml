@@ -1,0 +1,94 @@
+name: Build App
+
+on:
+  workflow_call:
+    inputs:
+      repo:
+        type: string
+        required: true
+      cache_requirements:
+        type: boolean
+        default: true
+      output_directory:
+        type: string
+        default: .
+      reqs_cache_key:
+        type: string
+        required: false
+      cache_file:
+        type: string
+        default: "requirements.txt"
+      make_target_prefix:
+        type: string
+        default: ""
+
+env:
+  AR_REPO: ${{ inputs.repo }}
+
+jobs:
+  build:
+    name: Build App
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          submodules: 'recursive'
+      - id: "auth"
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v2.1.2"
+        with:
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
+          service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
+
+      - name: Docker configuration
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |-
+          echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
+
+      - name: Cache Requirements
+        id: cache-requirements
+        if: inputs.cache_requirements
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ inputs.repo }}-requirements
+        with:
+          path: |
+            ${{ inputs.output_directory }}/requirements.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ inputs.reqs_cache_key || format('{0}-{1}', hashFiles(format('{0}/**/{1}', inputs.output_directory, inputs.cache_file)), hashFiles(format('{0}/**/docker/Dockerfile.requirements', inputs.output_directory))) }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache-name }}-
+
+      - name: Cache App
+        id: cache-app
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ inputs.repo }}-app
+        with:
+          path: |
+            ${{ inputs.output_directory }}/app.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+
+      - name: Load requirements from cache
+        if: ${{ steps.cache-requirements.outputs.cache-hit == 'true' && inputs.cache_requirements }}
+        run: |
+          make ${{ inputs.make_target_prefix }}load.requirements
+
+      - name: Build/pull requirements
+        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && inputs.cache_requirements }}
+        run: |
+          make ${{ inputs.make_target_prefix }}build.requirements
+          make ${{ inputs.make_target_prefix }}save.requirements
+
+      - name: Push Requirements
+        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' && inputs.cache_requirements }}
+        run: |
+          make ${{ inputs.make_target_prefix }}push.requirements
+      - name: Build app
+        run: |
+          make ${{ inputs.make_target_prefix }}build.app
+          make ${{ inputs.make_target_prefix }}save.app
+

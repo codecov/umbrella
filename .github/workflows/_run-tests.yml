@@ -1,0 +1,179 @@
+name: Run Tests
+
+on:
+  workflow_call:
+    inputs:
+      run_integration:
+        required: false
+        type: boolean
+        default: true
+      repo:
+        type: string
+        required: true
+      flag_prefix:
+        type: string
+        default: ''
+      pytest_rootdir:
+        type: string
+        default: .
+      output_directory:
+        type: string
+        default: .
+      make_target_prefix:
+        type: string
+        default: ""
+    outputs:
+      tests_passed:
+        # Silly issue with returning job results as workflow outputs
+        # https://github.com/actions/runner/issues/2495
+        value: ${{ fromJSON(toJSON(jobs.test)).result }}
+
+env:
+  AR_REPO: ${{ inputs.repo }}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+      - name: Cache App
+        id: cache-app
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ inputs.repo }}-app
+        with:
+          path: |
+            ${{ inputs.output_directory }}/app.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+      - name: Load built image
+        run: |
+          docker load --input ${{ inputs.output_directory }}/app.tar
+      - name: Install docker compose
+        run: |
+          sudo curl -SL https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+      - name: Bring test env up
+        run: |
+          make ${{ inputs.make_target_prefix }}test_env.up
+      - name: Prepare for tests
+        run: |
+          make ${{ inputs.make_target_prefix }}test_env.prepare
+          make ${{ inputs.make_target_prefix }}test_env.check_db
+      - name: Run unit tests
+        run: |
+          make ${{ inputs.make_target_prefix }}test_env.run_unit PYTEST_ROOTDIR=${{ inputs.pytest_rootdir }}
+      - name: Run integration tests
+        if: ${{ !cancelled() && inputs.run_integration == true }}
+        run: |
+          make ${{ inputs.make_target_prefix }}test_env.run_integration PYTEST_ROOTDIR=${{ inputs.pytest_rootdir }}
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: ${{ inputs.flag_prefix }}-coveragefiles
+          path: ${{ inputs.output_directory }}/*.coverage.xml
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: ${{ inputs.flag_prefix }}-junitfiles
+          path: ${{ inputs.output_directory }}/*junit*.xml
+
+  upload:
+    name: Upload to Codecov
+    runs-on: ubuntu-latest
+    needs: [test]
+    strategy:
+      matrix:
+        include:
+          - codecov_url_secret: CODECOV_URL
+            codecov_token_secret: CODECOV_ORG_TOKEN
+            name: prod
+          - codecov_url_secret: CODECOV_STAGING_URL
+            codecov_token_secret: CODECOV_ORG_TOKEN_STAGING
+            name: staging
+          - codecov_url_secret: CODECOV_QA_URL
+            codecov_token_secret: CODECOV_QA_ORG
+            name: qa
+          - codecov_url_secret: CODECOV_PUBLIC_QA_URL
+            codecov_token_secret: CODECOV_PUBLIC_QA_TOKEN
+            name: public qa
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      - name: Download coverage
+        id: download_coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.flag_prefix }}-coveragefiles
+
+      - name: Download test results
+        id: download_test_results
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.flag_prefix }}-junitfiles
+
+      - name: Uploading unit test coverage (${{ matrix.name }})
+        uses: codecov/codecov-action@v5
+        with:
+          files: ${{ steps.download_coverage.outputs.download-path }}/unit.coverage.xml
+          flags: ${{ format('{0}unit', inputs.flag_prefix) }}
+          disable_search: true
+          # Strange workaround: API has a `codecov` directory in the repo root
+          # which conflicts with the action's `codecov` binary
+          use_pypi: true
+          token: ${{ secrets[matrix.codecov_token_secret] }}
+          url: ${{ secrets[matrix.codecov_url_secret] }}
+          recurse_submodules: true
+
+      - name: Uploading integration test coverage (${{ matrix.name }})
+        if: ${{ inputs.run_integration == true }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: ${{ steps.download_coverage.outputs.download-path }}/integration.coverage.xml
+          flags: ${{ format('{0}integration', inputs.flag_prefix) }}
+          disable_search: true
+          # Strange workaround: API has a `codecov` directory in the repo root
+          # which conflicts with the action's `codecov` binary
+          use_pypi: true
+          token: ${{ secrets[matrix.codecov_token_secret] }}
+          url: ${{ secrets[matrix.codecov_url_secret] }}
+          recurse_submodules: true
+
+      - name: Uploading unit test results (${{ matrix.name }})
+        uses: codecov/test-results-action@v1
+        with:
+          files: ${{ steps.download_test_results.outputs.download-path }}/unit.junit.xml
+          flags: ${{ format('{0}unit', inputs.flag_prefix) }}
+          disable_search: true
+          token: ${{ secrets[matrix.codecov_token_secret] }}
+          url: ${{ secrets[matrix.codecov_url_secret] }}
+          # The coverage action will have installed codecovcli with pip. The
+          # actual binary will be found in $PATH.
+          binary: codecovcli
+          working-directory: ${{ inputs.output_directory }}
+
+      - name: Uploading integration test results (${{ matrix.name }})
+        if: ${{ inputs.run_integration == true }}
+        uses: codecov/test-results-action@v1
+        with:
+          files: ${{ steps.download_test_results.outputs.download-path }}/integration.junit.xml
+          flags: ${{ format('{0}integration', inputs.flag_prefix) }}
+          disable_search: true
+          token: ${{ secrets[matrix.codecov_token_secret] }}
+          url: ${{ secrets[matrix.codecov_url_secret] }}
+          # The coverage action will have installed codecovcli with pip. The
+          # actual binary will be found in $PATH.
+          binary: codecovcli
+          working-directory: ${{ inputs.output_directory }}
+

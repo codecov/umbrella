@@ -15,7 +15,7 @@ jobs:
   shared-lint:
     name: Run Lint (Shared)
     if: ${{ inputs.skip == false }}
-    uses: codecov/gha-workflows/.github/workflows/lint.yml@v1.2.36
+    uses: ./.github/workflows/_lint.yml
     with:
       make_target_prefix: shared.
 
