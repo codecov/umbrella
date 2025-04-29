@@ -58,7 +58,6 @@ from tasks.timeseries_delete import timeseries_delete_task
 from tasks.transplant_report import transplant_report_task
 from tasks.trial_expiration import trial_expiration_task
 from tasks.trial_expiration_cron import trial_expiration_cron_task
-from tasks.update_branches import update_branches_task_name
 from tasks.upload import upload_task
 from tasks.upload_finisher import upload_finisher_task
 from tasks.upload_processor import upload_processor_task
