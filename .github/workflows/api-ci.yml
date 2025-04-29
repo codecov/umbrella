@@ -32,34 +32,15 @@ jobs:
   #   with:
   #     working_directory: apps/codecov-api
 
-  # Once we cut over to umbrella, we can just replace the default cache key in build-app.yml
-  # and self-hosted.yml and get rid of this step.
-  api-compute-reqs-cache-key:
-    name: Compute cache key for requirements image
-    if: ${{ inputs.skip == false }}
-    runs-on: ubuntu-latest
-    outputs:
-      reqs-cache-key: ${{ steps.compute.outputs.cache-key }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
-      - id: compute
-        run: |
-          echo cache-key=${{ hashFiles('apps/codecov-api/uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }} >> "$GITHUB_OUTPUT"
-
   api-build:
     name: Build App (API)
     if: ${{ inputs.skip == false }}
-    needs: [api-compute-reqs-cache-key]
     uses: ./.github/workflows/_build-app.yml
     secrets: inherit
     with:
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       output_directory: apps/codecov-api
       make_target_prefix: api.
-      reqs_cache_key: ${{ needs.api-compute-reqs-cache-key.outputs.reqs-cache-key }}
 
   api-test:
     name: Test (API)
@@ -78,14 +59,13 @@ jobs:
   api-build-self-hosted:
     name: Build Self Hosted (API)
     if: ${{ inputs.skip == false }}
-    needs: [api-compute-reqs-cache-key, api-build, api-test]
+    needs: [api-build, api-test]
     uses: ./.github/workflows/_self-hosted.yml
     secrets: inherit
     with:
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       output_directory: apps/codecov-api
       make_target_prefix: api.
-      reqs_cache_key: ${{ needs.api-compute-reqs-cache-key.outputs.reqs-cache-key }}
 
   api-staging:
     name: Push Staging Image (API)
@@ -115,7 +95,7 @@ jobs:
 
   api-self-hosted:
     name: Push Self Hosted Image (API)
-    needs: [api-compute-reqs-cache-key, api-build-self-hosted, api-test]
+    needs: [api-build-self-hosted, api-test]
     secrets: inherit
     if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
     uses: ./.github/workflows/_self-hosted.yml
@@ -124,7 +104,6 @@ jobs:
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       output_directory: apps/codecov-api
       make_target_prefix: api.
-      reqs_cache_key: ${{ needs.api-compute-reqs-cache-key.outputs.reqs-cache-key }}
 
   # This job works around a strange interaction between reusable workflows and
   # path filters.

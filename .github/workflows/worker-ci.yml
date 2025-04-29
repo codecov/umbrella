@@ -32,34 +32,15 @@ jobs:
   #   with:
   #     working_directory: apps/worker
 
-  # Once we cut over to umbrella, we can just replace the default cache key in build-app.yml
-  # and self-hosted.yml and get rid of this step.
-  worker-compute-reqs-cache-key:
-    name: Compute cache key for requirements image
-    if: ${{ inputs.skip == false }}
-    runs-on: ubuntu-latest
-    outputs:
-      reqs-cache-key: ${{ steps.compute.outputs.cache-key }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
-      - id: compute
-        run: |
-          echo cache-key=${{ hashFiles('apps/worker/uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }} >> "$GITHUB_OUTPUT"
-
   worker-build:
     name: Build App (Worker)
     if: ${{ inputs.skip == false }}
-    needs: [worker-compute-reqs-cache-key]
     uses: ./.github/workflows/_build-app.yml
     secrets: inherit
     with:
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
       output_directory: apps/worker
       make_target_prefix: worker.
-      reqs_cache_key: ${{ needs.worker-compute-reqs-cache-key.outputs.reqs-cache-key }}
 
   worker-test:
     name: Test (Worker)
@@ -77,14 +58,13 @@ jobs:
   worker-build-self-hosted:
     name: Build Self Hosted (Worker)
     if: ${{ inputs.skip == false }}
-    needs: [worker-compute-reqs-cache-key, worker-build, worker-test]
+    needs: [worker-build, worker-test]
     uses: ./.github/workflows/_self-hosted.yml
     secrets: inherit
     with:
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
       output_directory: apps/worker
       make_target_prefix: worker.
-      reqs_cache_key: ${{ needs.worker-compute-reqs-cache-key.outputs.reqs-cache-key }}
 
   worker-staging:
     name: Push Staging Image (Worker)
@@ -114,7 +94,7 @@ jobs:
 
   worker-self-hosted:
     name: Push Self Hosted Image (Worker)
-    needs: [worker-compute-reqs-cache-key, worker-build-self-hosted, worker-test]
+    needs: [worker-build-self-hosted, worker-test]
     secrets: inherit
     if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
     uses: ./.github/workflows/_self-hosted.yml
@@ -123,7 +103,6 @@ jobs:
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
       output_directory: apps/worker
       make_target_prefix: worker.
-      reqs_cache_key: ${{ needs.worker-compute-reqs-cache-key.outputs.reqs-cache-key }}
 
   # This job works around a strange interaction between reusable workflows and
   # path filters.
