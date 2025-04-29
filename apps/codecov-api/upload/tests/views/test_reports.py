@@ -60,7 +60,7 @@ def test_deactivated_repo(db):
         args=["github", repo_slug, commit.commitid],
     )
     response = client.post(
-        url, data={"code": "code1"}, headers={"User-Agent": "codecov-cli/0.4.7"}
+        url, data={"code": "default"}, headers={"User-Agent": "codecov-cli/0.4.7"}
     )
     response_json = response.json()
     assert response.status_code == 400
@@ -84,7 +84,7 @@ def test_reports_post(client, db, mocker):
         args=["github", "codecov::::the_repo", commit.commitid],
     )
     response = client.post(
-        url, data={"code": "code1"}, headers={"User-Agent": "codecov-cli/0.4.7"}
+        url, data={"code": "default"}, headers={"User-Agent": "codecov-cli/0.4.7"}
     )
 
     assert (
@@ -92,9 +92,9 @@ def test_reports_post(client, db, mocker):
     )
     assert response.status_code == 201
     assert CommitReport.objects.filter(
-        commit_id=commit.id, code="code1", report_type=CommitReport.ReportType.COVERAGE
+        commit_id=commit.id, code=None, report_type=CommitReport.ReportType.COVERAGE
     ).exists()
-    mocked_call.assert_called_with(repository.repoid, commit.commitid, "code1")
+    mocked_call.assert_called_with(repository.repoid, commit.commitid)
     mock_prometheus_metrics.assert_called_with(
         **{
             "agent": "cli",
@@ -132,16 +132,16 @@ def test_reports_post_github_oidc_auth(
         "new_upload.reports",
         args=["github", "codecov::::the_repo", commit.commitid],
     )
-    response = client.post(url, data={"code": "code1"})
+    response = client.post(url, data={"code": "default"})
 
     assert (
         url == f"/upload/github/codecov::::the_repo/commits/{commit.commitid}/reports"
     )
     assert response.status_code == 201
     assert CommitReport.objects.filter(
-        commit_id=commit.id, code="code1", report_type=CommitReport.ReportType.COVERAGE
+        commit_id=commit.id, code=None, report_type=CommitReport.ReportType.COVERAGE
     ).exists()
-    mocked_call.assert_called_with(repository.repoid, commit.commitid, "code1")
+    mocked_call.assert_called_with(repository.repoid, commit.commitid)
 
 
 @pytest.mark.parametrize("private", [False, True])
@@ -175,7 +175,7 @@ def test_reports_post_tokenless(client, db, mocker, private, branch, branch_sent
         args=["github", "codecov::::the_repo", commit.commitid],
     )
 
-    data = {"code": "code1"}
+    data = {"code": "default"}
     if branch_sent:
         data["branch"] = branch_sent
     response = client.post(
@@ -191,15 +191,15 @@ def test_reports_post_tokenless(client, db, mocker, private, branch, branch_sent
         assert response.status_code == 201
         assert CommitReport.objects.filter(
             commit_id=commit.id,
-            code="code1",
+            code=None,
             report_type=CommitReport.ReportType.COVERAGE,
         ).exists()
-        mocked_call.assert_called_with(repository.repoid, commit.commitid, "code1")
+        mocked_call.assert_called_with(repository.repoid, commit.commitid)
     else:
         assert response.status_code == 401
         assert not CommitReport.objects.filter(
             commit_id=commit.id,
-            code="code1",
+            code="None",
             report_type=CommitReport.ReportType.COVERAGE,
         ).exists()
         assert response.json().get("detail") == "Not valid tokenless upload"
@@ -245,7 +245,7 @@ def test_reports_post_upload_token_required_auth_check(
         args=["github", "codecov::::the_repo", commit.commitid],
     )
 
-    data = {"code": "code1"}
+    data = {"code": "default"}
     if branch_sent:
         data["branch"] = branch_sent
     response = client.post(
@@ -269,15 +269,15 @@ def test_reports_post_upload_token_required_auth_check(
         assert response.status_code == 201
         assert CommitReport.objects.filter(
             commit_id=commit.id,
-            code="code1",
+            code=None,
             report_type=CommitReport.ReportType.COVERAGE,
         ).exists()
-        mocked_call.assert_called_with(repository.repoid, commit.commitid, "code1")
+        mocked_call.assert_called_with(repository.repoid, commit.commitid)
     else:
         assert response.status_code == 401
         assert not CommitReport.objects.filter(
             commit_id=commit.id,
-            code="code1",
+            code=None,
             report_type=CommitReport.ReportType.COVERAGE,
         ).exists()
         assert response.json().get("detail") == "Not valid tokenless upload"
@@ -289,7 +289,7 @@ def test_create_report_already_exists(client, db, mocker):
         name="the_repo", author__username="codecov", author__service="github"
     )
     commit = CommitFactory(repository=repository)
-    CommitReport.objects.create(commit=commit, code="code")
+    CommitReport.objects.create(commit=commit)
 
     repository.save()
     client = APIClient()
@@ -298,14 +298,14 @@ def test_create_report_already_exists(client, db, mocker):
         "new_upload.reports",
         args=["github", "codecov::::the_repo", commit.commitid],
     )
-    response = client.post(url, data={"code": "code"})
+    response = client.post(url, data={"code": "default"})
 
     assert (
         url == f"/upload/github/codecov::::the_repo/commits/{commit.commitid}/reports"
     )
     assert response.status_code == 201
     assert CommitReport.objects.filter(
-        commit_id=commit.id, code="code", report_type=CommitReport.ReportType.COVERAGE
+        commit_id=commit.id, code=None, report_type=CommitReport.ReportType.COVERAGE
     ).exists()
     mocked_call.assert_not_called()
 
@@ -343,7 +343,7 @@ def test_reports_results_post_successful(client, db, mocker):
         name="the_repo", author__username="codecov", author__service="github"
     )
     commit = CommitFactory(repository=repository)
-    commit_report = CommitReport.objects.create(commit=commit, code="code")
+    commit_report = CommitReport.objects.create(commit=commit)
     repository.save()
     commit_report.save()
 
@@ -352,13 +352,13 @@ def test_reports_results_post_successful(client, db, mocker):
     client.force_authenticate(user=owner)
     url = reverse(
         "new_upload.reports_results",
-        args=["github", "codecov::::the_repo", commit.commitid, "code"],
+        args=["github", "codecov::::the_repo", commit.commitid, "default"],
     )
     response = client.post(url, content_type="application/json", data={})
 
     assert (
         url
-        == f"/upload/github/codecov::::the_repo/commits/{commit.commitid}/reports/code/results"
+        == f"/upload/github/codecov::::the_repo/commits/{commit.commitid}/reports/default/results"
     )
     assert response.status_code == 201
 
@@ -381,7 +381,7 @@ def test_reports_results_post_successful_github_oidc_auth(
     }
     token = "ThisValueDoesNotMatterBecauseOf_mock_jwt_decode"
     commit = CommitFactory(repository=repository)
-    commit_report = CommitReport.objects.create(commit=commit, code="code")
+    commit_report = CommitReport.objects.create(commit=commit)
     repository.save()
     commit_report.save()
 
@@ -389,7 +389,7 @@ def test_reports_results_post_successful_github_oidc_auth(
     client.credentials(HTTP_AUTHORIZATION=f"token {token}")
     url = reverse(
         "new_upload.reports_results",
-        args=["github", "codecov::::the_repo", commit.commitid, "code"],
+        args=["github", "codecov::::the_repo", commit.commitid, "default"],
     )
     response = client.post(
         url,
@@ -400,7 +400,7 @@ def test_reports_results_post_successful_github_oidc_auth(
 
     assert (
         url
-        == f"/upload/github/codecov::::the_repo/commits/{commit.commitid}/reports/code/results"
+        == f"/upload/github/codecov::::the_repo/commits/{commit.commitid}/reports/default/results"
     )
     assert response.status_code == 201
 
@@ -434,7 +434,7 @@ def test_reports_results_post_upload_token_required_auth_check(
         author__upload_token_required_for_public_repos=upload_token_required_for_public_repos,
     )
     commit = CommitFactory(repository=repository)
-    commit_report = CommitReport.objects.create(commit=commit, code="code")
+    commit_report = CommitReport.objects.create(commit=commit)
     commit.branch = branch
     repository.save()
     commit.save()
@@ -443,10 +443,10 @@ def test_reports_results_post_upload_token_required_auth_check(
     client = APIClient()
     url = reverse(
         "new_upload.reports_results",
-        args=["github", "codecov::::the_repo", commit.commitid, "code"],
+        args=["github", "codecov::::the_repo", commit.commitid, "default"],
     )
 
-    data = {"code": "code1"}
+    data = {"code": "default"}
     if branch_sent:
         data["branch"] = branch_sent
     response = client.post(
@@ -457,7 +457,7 @@ def test_reports_results_post_upload_token_required_auth_check(
 
     assert (
         url
-        == f"/upload/github/codecov::::the_repo/commits/{commit.commitid}/reports/code/results"
+        == f"/upload/github/codecov::::the_repo/commits/{commit.commitid}/reports/default/results"
     )
 
     # when TokenlessAuthentication is removed, this test should use `if private == False and upload_token_required_for_public_repos == False:`
@@ -482,7 +482,7 @@ def test_report_results_get_successful(client, db, mocker):
         name="the_repo", author__username="codecov", author__service="github"
     )
     commit = CommitFactory(repository=repository)
-    commit_report = CommitReport.objects.create(commit=commit, code="code")
+    commit_report = CommitReport.objects.create(commit=commit)
     repository.save()
     commit_report.save()
 
@@ -491,13 +491,13 @@ def test_report_results_get_successful(client, db, mocker):
     client.force_authenticate(user=owner)
     url = reverse(
         "new_upload.reports_results",
-        args=["github", "codecov::::the_repo", commit.commitid, "code"],
+        args=["github", "codecov::::the_repo", commit.commitid, "default"],
     )
     response = client.get(url, content_type="application/json", data={})
 
     assert (
         url
-        == f"/upload/github/codecov::::the_repo/commits/{commit.commitid}/reports/code/results"
+        == f"/upload/github/codecov::::the_repo/commits/{commit.commitid}/reports/default/results"
     )
     assert response.status_code == 200
     assert response.json() == EMPTY_RESPONSE

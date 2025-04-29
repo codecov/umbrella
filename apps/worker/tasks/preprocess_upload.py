@@ -29,23 +29,15 @@ class PreProcessUpload(BaseCodecovTask, name="app.tasks.upload.PreProcessUpload"
     uploading a report to codecov
     """
 
-    def run_impl(
-        self,
-        db_session,
-        *,
-        repoid: int,
-        commitid: str,
-        report_code: Optional[str] = None,
-        **kwargs,
-    ):
+    def run_impl(self, db_session, *, repoid: int, commitid: str, **kwargs):
         log.info(
             "Received preprocess upload task",
-            extra=dict(repoid=repoid, commit=commitid, report_code=report_code),
+            extra=dict(repoid=repoid, commit=commitid),
         )
-        lock_name = f"preprocess_upload_lock_{repoid}_{commitid}_{report_code}"
+        lock_name = f"preprocess_upload_lock_{repoid}_{commitid}_{None}"
         redis_connection = get_redis_connection()
-        # This task only needs to run once per commit (per report_code)
-        # To generate the report. So if one is already running we don't need another
+        # This task only needs to run once per commit to generate the report.
+        # So if one is already running we don't need another.
         if redis_connection.get(lock_name):
             log.info(
                 "PreProcess task is already running",
@@ -62,7 +54,6 @@ class PreProcessUpload(BaseCodecovTask, name="app.tasks.upload.PreProcessUpload"
                     db_session=db_session,
                     repoid=repoid,
                     commitid=commitid,
-                    report_code=report_code,
                 )
         except LockError:
             log.warning(
@@ -76,13 +67,7 @@ class PreProcessUpload(BaseCodecovTask, name="app.tasks.upload.PreProcessUpload"
             )
             return {"preprocessed_upload": False, "reason": "unable_to_acquire_lock"}
 
-    def process_impl_within_lock(
-        self,
-        db_session,
-        repoid,
-        commitid,
-        report_code,
-    ):
+    def process_impl_within_lock(self, db_session, repoid, commitid):
         commit = (
             db_session.query(Commit)
             .filter(Commit.repoid == repoid, Commit.commitid == commitid)
@@ -112,10 +97,9 @@ class PreProcessUpload(BaseCodecovTask, name="app.tasks.upload.PreProcessUpload"
         report_service = ReportService(
             commit_yaml, gh_app_installation_name=installation_name_to_use
         )
-        # For parallel upload processing experiment, saving the report to GCS happens here
-        commit_report = report_service.initialize_and_save_report(commit, report_code)
+        commit_report = report_service.initialize_and_save_report(commit)
         # Persist changes from within the lock
-        db_session.flush()
+        db_session.commit()
         return {
             "preprocessed_upload": True,
             "reportid": str(commit_report.external_id),

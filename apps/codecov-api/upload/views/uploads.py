@@ -115,19 +115,13 @@ def trigger_upload_task(
 ) -> None:
     log.info(
         "Triggering upload task",
-        extra=dict(
-            repo=repository.name,
-            commit=commit_sha,
-            upload_id=upload.id,
-            report_code=report.code,
-        ),
+        extra=dict(repo=repository.name, commit=commit_sha, upload_id=upload.id),
     )
     redis = get_redis_connection()
     task_arguments = {
         "commit": commit_sha,
         "upload_id": upload.id,
         "version": "v4",
-        "report_code": report.code,
         "reportid": str(report.external_id),
     }
     dispatch_upload_task(redis, repository.repoid, task_arguments)

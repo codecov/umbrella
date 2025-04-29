@@ -305,28 +305,8 @@ class TestUploadFinisherTask(object):
                 commit,
                 commit_yaml,
                 [{"arguments": {"url": "url"}, "successful": True}],
-                None,
             )
             == ShouldCallNotifyResult.NOTIFY
-        )
-
-    def test_should_call_notifications_local_upload(self, dbsession):
-        commit_yaml = {"codecov": {"max_report_age": "1y ago"}}
-        commit = CommitFactory.create(
-            message="dsidsahdsahdsa",
-            commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
-            repository__yaml=commit_yaml,
-        )
-        dbsession.add(commit)
-        dbsession.flush()
-
-        assert (
-            UploadFinisherTask().should_call_notifications(
-                commit, commit_yaml, [], "local_report1"
-            )
-            == ShouldCallNotifyResult.DO_NOT_NOTIFY
         )
 
     def test_should_call_notifications_manual_trigger(self, dbsession):
@@ -342,9 +322,7 @@ class TestUploadFinisherTask(object):
         dbsession.flush()
 
         assert (
-            UploadFinisherTask().should_call_notifications(
-                commit, commit_yaml, [], None
-            )
+            UploadFinisherTask().should_call_notifications(commit, commit_yaml, [])
             == ShouldCallNotifyResult.DO_NOT_NOTIFY
         )
 
@@ -367,7 +345,6 @@ class TestUploadFinisherTask(object):
                 commit,
                 commit_yaml,
                 [{"arguments": {"url": "url"}, "successful": True}],
-                None,
             )
             == ShouldCallNotifyResult.NOTIFY
         )
@@ -403,7 +380,6 @@ class TestUploadFinisherTask(object):
                 commit,
                 commit_yaml,
                 12 * [{"arguments": {"url": "url"}, "successful": False}],
-                None,
             )
             == result
         )
@@ -431,7 +407,6 @@ class TestUploadFinisherTask(object):
                 commit,
                 commit_yaml,
                 9 * [{"arguments": {"url": "url"}, "successful": True}],
-                None,
             )
             == ShouldCallNotifyResult.DO_NOT_NOTIFY
         )
@@ -459,7 +434,6 @@ class TestUploadFinisherTask(object):
                 commit,
                 commit_yaml,
                 2 * [{"arguments": {"url": "url"}, "successful": True}],
-                None,
             )
             == ShouldCallNotifyResult.NOTIFY
         )
@@ -479,11 +453,7 @@ class TestUploadFinisherTask(object):
 
         _start_upload_flow(mocker)
         res = UploadFinisherTask().finish_reports_processing(
-            dbsession,
-            commit,
-            UserYaml(commit_yaml),
-            [{"successful": True}],
-            None,
+            dbsession, commit, UserYaml(commit_yaml), [{"successful": True}]
         )
         assert res == {"notifications_called": True}
         mocked_app.tasks["app.tasks.notify.Notify"].apply_async.assert_called_with(
@@ -533,11 +503,7 @@ class TestUploadFinisherTask(object):
 
         _start_upload_flow(mocker)
         res = UploadFinisherTask().finish_reports_processing(
-            dbsession,
-            commit,
-            UserYaml(commit_yaml),
-            [{"successful": True}],
-            None,
+            dbsession, commit, UserYaml(commit_yaml), [{"successful": True}]
         )
         assert res == {"notifications_called": True}
         mocked_app.tasks["app.tasks.notify.Notify"].apply_async.assert_called_with(
@@ -592,11 +558,7 @@ class TestUploadFinisherTask(object):
 
         _start_upload_flow(mocker)
         res = UploadFinisherTask().finish_reports_processing(
-            dbsession,
-            commit,
-            UserYaml(commit_yaml),
-            [{"successful": False}],
-            None,
+            dbsession, commit, UserYaml(commit_yaml), [{"successful": False}]
         )
         assert res == {"notifications_called": False}
         if notify_error:

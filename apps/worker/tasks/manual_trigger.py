@@ -30,13 +30,12 @@ class ManualTriggerTask(
         *,
         repoid: int,
         commitid: str,
-        report_code: str,
         current_yaml=None,
         **kwargs,
     ):
         log.info(
             "Received manual trigger task",
-            extra=dict(repoid=repoid, commit=commitid, report_code=report_code),
+            extra=dict(repoid=repoid, commit=commitid),
         )
         repoid = int(repoid)
         lock_name = f"manual_trigger_lock_{repoid}_{commitid}"
@@ -52,7 +51,6 @@ class ManualTriggerTask(
                     repoid=repoid,
                     commitid=commitid,
                     commit_yaml=current_yaml,
-                    report_code=report_code,
                     **kwargs,
                 )
         except LockError:
@@ -74,7 +72,6 @@ class ManualTriggerTask(
         repoid,
         commitid,
         commit_yaml,
-        report_code,
         **kwargs,
     ):
         commit = (
@@ -89,7 +86,7 @@ class ManualTriggerTask(
             db_session.query(Upload)
             .join(CommitReport)
             .filter(
-                CommitReport.code == report_code,
+                CommitReport.code == None,  # noqa: E711
                 CommitReport.commit == commit,
                 (CommitReport.report_type == None)  # noqa: E711
                 | (CommitReport.report_type == ReportType.COVERAGE.value),

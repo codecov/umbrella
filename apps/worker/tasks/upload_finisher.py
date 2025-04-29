@@ -79,7 +79,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         repoid: int,
         commitid: str,
         commit_yaml,
-        report_code: str | None = None,
         **kwargs,
     ):
         try:
@@ -122,7 +121,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
                 if diff:
                     report.apply_diff(diff)
-                report_service.save_report(commit, report, report_code)
+                report_service.save_report(commit, report)
 
                 db_session.commit()
                 state.mark_uploads_as_merged(upload_ids)
@@ -148,11 +147,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         try:
             with redis_connection.lock(lock_name, timeout=60 * 5, blocking_timeout=5):
                 result = self.finish_reports_processing(
-                    db_session,
-                    commit,
-                    commit_yaml,
-                    processing_results,
-                    report_code,
+                    db_session, commit, commit_yaml, processing_results
                 )
                 if is_timeseries_enabled():
                     dataset_names = [
@@ -191,7 +186,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit: Commit,
         commit_yaml: UserYaml,
         processing_results: list[ProcessingResult],
-        report_code,
     ):
         log.debug("In finish_reports_processing for commit: %s" % commit)
         commitid = commit.commitid
@@ -201,7 +195,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         notifications_called = False
         if not regexp_ci_skip.search(commit.message or ""):
             match self.should_call_notifications(
-                commit, commit_yaml, processing_results, report_code
+                commit, commit_yaml, processing_results
             ):
                 case ShouldCallNotifyResult.NOTIFY:
                     notifications_called = True
@@ -292,14 +286,12 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit: Commit,
         commit_yaml: UserYaml,
         processing_results: list[ProcessingResult],
-        report_code,
     ) -> ShouldCallNotifyResult:
         extra_dict = {
             "repoid": commit.repoid,
             "commitid": commit.commitid,
             "commit_yaml": commit_yaml,
             "processing_results": processing_results,
-            "report_code": report_code,
             "parent_task": self.request.parent_id,
         }
 
@@ -309,13 +301,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         if manual_trigger:
             log.info(
                 "Not scheduling notify because manual trigger is used",
-                extra=extra_dict,
-            )
-            return ShouldCallNotifyResult.DO_NOT_NOTIFY
-        # Notifications should be off in case of local uploads, and report code wouldn't be null in that case
-        if report_code is not None:
-            log.info(
-                "Not scheduling notify because it's a local upload",
                 extra=extra_dict,
             )
             return ShouldCallNotifyResult.DO_NOT_NOTIFY

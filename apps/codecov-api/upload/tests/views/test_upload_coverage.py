@@ -129,7 +129,7 @@ def test_upload_coverage_post(db, mocker):
             "branch": "branch",
             "ci_service": "ci_service",
             "ci_url": "ci_url",
-            "code": "code",
+            "code": "default",
             "commitid": commit.commitid,
             "flags": ["flag1", "flag2"],
             "job_code": "job_code",
@@ -140,7 +140,7 @@ def test_upload_coverage_post(db, mocker):
     response_json = response.json()
     upload = ReportSession.objects.filter(
         report__commit=commit,
-        report__code="code",
+        report__code=None,
         upload_extras={"format_version": "v1"},
     ).first()
     assert response.status_code == 201
@@ -168,7 +168,7 @@ def test_upload_coverage_post(db, mocker):
 
     assert ReportSession.objects.filter(
         report__commit=commit,
-        report__code="code",
+        report__code=None,
         upload_extras={"format_version": "v1"},
     ).exists()
     assert RepositoryFlag.objects.filter(
@@ -239,7 +239,7 @@ def test_upload_coverage_post_shelter(db, mocker):
             "branch": "branch",
             "ci_service": "ci_service",
             "ci_url": "ci_url",
-            "code": "code",
+            "code": "default",
             "commitid": commit.commitid,
             "flags": ["flag1", "flag2"],
             "job_code": "job_code",
@@ -255,7 +255,7 @@ def test_upload_coverage_post_shelter(db, mocker):
     response_json = response.json()
     upload = ReportSession.objects.filter(
         report__commit=commit,
-        report__code="code",
+        report__code=None,
         upload_extras={"format_version": "v1"},
     ).first()
     assert response.status_code == 201
@@ -272,7 +272,7 @@ def test_upload_coverage_post_shelter(db, mocker):
 
     assert ReportSession.objects.filter(
         report__commit=commit,
-        report__code="code",
+        report__code=None,
         upload_extras={"format_version": "v1"},
     ).exists()
     assert RepositoryFlag.objects.filter(

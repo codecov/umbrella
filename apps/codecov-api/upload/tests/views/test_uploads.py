@@ -221,7 +221,7 @@ def test_uploads_post(db, mocker, mock_redis):
         name="the_repo", author__username="codecov", author__service="github"
     )
     commit = CommitFactory(repository=repository)
-    commit_report = CommitReport.objects.create(commit=commit, code="code")
+    commit_report = CommitReport.objects.create(commit=commit)
     repository.save()
     commit_report.save()
 
@@ -230,12 +230,7 @@ def test_uploads_post(db, mocker, mock_redis):
     client.force_authenticate(user=owner)
     url = reverse(
         "new_upload.uploads",
-        args=[
-            "github",
-            "codecov::::the_repo",
-            commit.commitid,
-            commit_report.code,
-        ],
+        args=["github", "codecov::::the_repo", commit.commitid, "default"],
     )
     response = client.post(
         url,
@@ -338,7 +333,7 @@ def test_uploads_post_tokenless(db, mocker, mock_redis, private, branch, branch_
     )
     commit = CommitFactory(repository=repository)
     commit.branch = branch
-    commit_report = CommitReport.objects.create(commit=commit, code="code")
+    commit_report = CommitReport.objects.create(commit=commit)
     repository.save()
     commit_report.save()
     commit.save()
@@ -346,12 +341,7 @@ def test_uploads_post_tokenless(db, mocker, mock_redis, private, branch, branch_
     client = APIClient()
     url = reverse(
         "new_upload.uploads",
-        args=[
-            "github",
-            "codecov::::the_repo",
-            commit.commitid,
-            commit_report.code,
-        ],
+        args=["github", "codecov::::the_repo", commit.commitid, "default"],
     )
     if branch_sent is not None:
         data = {
@@ -483,7 +473,7 @@ def test_uploads_post_token_required_auth_check(
     )
     commit = CommitFactory(repository=repository)
     commit.branch = branch
-    commit_report = CommitReport.objects.create(commit=commit, code="code")
+    commit_report = CommitReport.objects.create(commit=commit)
     repository.save()
     commit_report.save()
     commit.save()
@@ -491,12 +481,7 @@ def test_uploads_post_token_required_auth_check(
     client = APIClient()
     url = reverse(
         "new_upload.uploads",
-        args=[
-            "github",
-            "codecov::::the_repo",
-            commit.commitid,
-            commit_report.code,
-        ],
+        args=["github", "codecov::::the_repo", commit.commitid, "default"],
     )
     if branch_sent is not None:
         data = {
@@ -637,17 +622,12 @@ def test_uploads_post_github_oidc_auth(
     token = "ThisValueDoesNotMatterBecauseOf_mock_jwt_decode"
 
     commit = CommitFactory(repository=repository)
-    commit_report = CommitReport.objects.create(commit=commit, code="code")
+    commit_report = CommitReport.objects.create(commit=commit)
 
     client = APIClient()
     url = reverse(
         "new_upload.uploads",
-        args=[
-            "github",
-            "codecov::::the_repo",
-            commit.commitid,
-            commit_report.code,
-        ],
+        args=["github", "codecov::::the_repo", commit.commitid, "default"],
     )
     response = client.post(
         url,
@@ -750,7 +730,7 @@ def test_uploads_post_shelter(db, mocker, mock_redis):
         name="the_repo", author__username="codecov", author__service="github"
     )
     commit = CommitFactory(repository=repository)
-    commit_report = CommitReport.objects.create(commit=commit, code="code")
+    commit_report = CommitReport.objects.create(commit=commit)
     repository.save()
     commit_report.save()
 
@@ -759,12 +739,7 @@ def test_uploads_post_shelter(db, mocker, mock_redis):
     client.force_authenticate(user=owner)
     url = reverse(
         "new_upload.uploads",
-        args=[
-            "github",
-            "codecov::::the_repo",
-            commit.commitid,
-            commit_report.code,
-        ],
+        args=["github", "codecov::::the_repo", commit.commitid, "default"],
     )
     response = client.post(
         url,
@@ -817,7 +792,7 @@ def test_deactivated_repo(db, mocker, mock_redis):
         activated=False,
     )
     commit = CommitFactory(repository=repository)
-    commit_report = CommitReport.objects.create(commit=commit, code="code")
+    commit_report = CommitReport.objects.create(commit=commit)
     repository.save()
     commit_report.save()
 
@@ -826,12 +801,7 @@ def test_deactivated_repo(db, mocker, mock_redis):
     client.force_authenticate(user=owner)
     url = reverse(
         "new_upload.uploads",
-        args=[
-            "github",
-            "codecov::::the_repo",
-            commit.commitid,
-            commit_report.code,
-        ],
+        args=["github", "codecov::::the_repo", commit.commitid, "default"],
     )
     response = client.post(
         url,
@@ -918,7 +888,7 @@ class TestGitlabEnterpriseOIDC(APITestCase):
         token = "ThisValueDoesNotMatterBecauseOf_mock_jwt_decode"
 
         commit = CommitFactory(repository=repository)
-        commit_report = CommitReport.objects.create(commit=commit, code="code")
+        CommitReport.objects.create(commit=commit)
 
         client = APIClient()
         url = reverse(
@@ -927,7 +897,7 @@ class TestGitlabEnterpriseOIDC(APITestCase):
                 "github_enterprise",
                 "codecov::::the_repo",
                 commit.commitid,
-                commit_report.code,
+                "default",
             ],
         )
         response = client.post(
@@ -976,7 +946,7 @@ class TestGitlabEnterpriseOIDC(APITestCase):
         token = "ThisValueDoesNotMatterBecauseOf_mock_jwt_decode"
 
         commit = CommitFactory(repository=repository)
-        commit_report = CommitReport.objects.create(commit=commit, code="code")
+        CommitReport.objects.create(commit=commit)
 
         client = APIClient()
         url = reverse(
@@ -985,7 +955,7 @@ class TestGitlabEnterpriseOIDC(APITestCase):
                 "github_enterprise",
                 "codecov::::the_repo",
                 commit.commitid,
-                commit_report.code,
+                "default",
             ],
         )
         response = client.post(

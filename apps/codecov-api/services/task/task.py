@@ -106,7 +106,6 @@ class TaskService(object):
         repoid,
         commitid,
         report_type=None,
-        report_code=None,
         arguments=None,
         debug=False,
         rebuild=False,
@@ -118,7 +117,6 @@ class TaskService(object):
                 repoid=repoid,
                 commitid=commitid,
                 report_type=report_type,
-                report_code=report_code,
                 arguments=arguments,
                 debug=debug,
                 rebuild=rebuild,
@@ -131,7 +129,6 @@ class TaskService(object):
         repoid,
         commitid,
         report_type=None,
-        report_code=None,
         arguments=None,
         countdown=0,
         debug=False,
@@ -141,7 +138,6 @@ class TaskService(object):
             repoid,
             commitid,
             report_type=report_type,
-            report_code=report_code,
             arguments=arguments,
             debug=debug,
             rebuild=rebuild,
@@ -329,27 +325,16 @@ class TaskService(object):
             kwargs=dict(repoid=repository_id),
         ).apply_async()
 
-    def manual_upload_completion_trigger(
-        self, repoid, commitid, report_code=None, current_yaml=None
-    ):
+    def manual_upload_completion_trigger(self, repoid, commitid, current_yaml=None):
         self._create_signature(
             "app.tasks.upload.ManualUploadCompletionTrigger",
-            kwargs=dict(
-                commitid=commitid,
-                repoid=repoid,
-                report_code=report_code,
-                current_yaml=current_yaml,
-            ),
+            kwargs=dict(commitid=commitid, repoid=repoid, current_yaml=current_yaml),
         ).apply_async()
 
-    def preprocess_upload(self, repoid, commitid, report_code):
+    def preprocess_upload(self, repoid, commitid):
         self._create_signature(
             "app.tasks.upload.PreProcessUpload",
-            kwargs=dict(
-                repoid=repoid,
-                commitid=commitid,
-                report_code=report_code,
-            ),
+            kwargs=dict(repoid=repoid, commitid=commitid),
         ).apply_async()
 
     def send_email(

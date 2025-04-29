@@ -101,9 +101,7 @@ class BaseReportService:
             current_yaml = UserYaml(current_yaml)
         self.current_yaml = current_yaml
 
-    def initialize_and_save_report(
-        self, commit: Commit, report_code: str | None = None
-    ) -> CommitReport:
+    def initialize_and_save_report(self, commit: Commit) -> CommitReport:
         raise NotImplementedError()
 
     def create_report_upload(
@@ -157,9 +155,7 @@ class ReportService(BaseReportService):
         )
 
     @sentry_sdk.trace
-    def initialize_and_save_report(
-        self, commit: Commit, report_code: str | None = None
-    ) -> CommitReport:
+    def initialize_and_save_report(self, commit: Commit) -> CommitReport:
         """
             Initializes the commit report
 
@@ -181,7 +177,7 @@ class ReportService(BaseReportService):
         db_session = commit.get_db_session()
         current_report_row = (
             db_session.query(CommitReport)
-            .filter_by(commit_id=commit.id_, code=report_code)
+            .filter_by(commit_id=commit.id_, code=None)
             .filter(
                 (CommitReport.report_type == None)  # noqa: E711
                 | (CommitReport.report_type == ReportType.COVERAGE.value)
@@ -193,15 +189,13 @@ class ReportService(BaseReportService):
             # or backfilled
             current_report_row = CommitReport(
                 commit_id=commit.id_,
-                code=report_code,
+                code=None,
                 report_type=ReportType.COVERAGE.value,
             )
             db_session.add(current_report_row)
             db_session.flush()
 
-            actual_report = self.get_existing_report_for_commit(
-                commit, report_code=report_code
-            )
+            actual_report = self.get_existing_report_for_commit(commit)
             if actual_report is not None:
                 log.info(
                     "Backfilling reports tables from commits.report",
@@ -215,7 +209,7 @@ class ReportService(BaseReportService):
             report = self.create_new_report_for_commit(commit)
             if not report.is_empty():
                 # This means there is a report to carryforward
-                self.save_full_report(commit, report, report_code)
+                self.save_full_report(commit, report)
 
         return current_report_row
 
@@ -258,7 +252,7 @@ class ReportService(BaseReportService):
 
     @sentry_sdk.trace
     def get_existing_report_for_commit(
-        self, commit: Commit, report_class=None, report_code=None
+        self, commit: Commit, report_class=None
     ) -> Report | None:
         commitid = commit.commitid
         if not self.has_initialized_report(commit):
@@ -266,13 +260,11 @@ class ReportService(BaseReportService):
 
         try:
             archive_service = self.get_archive_service(commit.repository)
-            chunks = archive_service.read_chunks(commitid, report_code)
+            chunks = archive_service.read_chunks(commitid)
         except FileNotInStorageError:
             log.warning(
                 "File for chunks not found in storage",
-                extra=dict(
-                    commit=commitid, repo=commit.repoid, report_code=report_code
-                ),
+                extra=dict(commit=commitid, repo=commit.repoid),
             )
             return None
 
@@ -475,7 +467,7 @@ class ReportService(BaseReportService):
         #      but I'm unsure if we should try to clean it up at this point. Cleaning it up requires going through
         #      all lines of the report. It will be handled by a dedicated task that is encoded by the UploadFinisher
         #   3. We deepcopy the header so we can change them independently
-        #   4. The parent_commit always uses the default report to carryforward (i.e. report_code for parent_commit is None)
+        #   4. The parent_commit always uses the default report to carryforward
         # parent_commit and commit should belong to the same repository
         carryforward_report.header = copy.deepcopy(parent_report.header)
 
@@ -661,7 +653,7 @@ class ReportService(BaseReportService):
             return result
 
     @sentry_sdk.trace
-    def save_report(self, commit: Commit, report: Report, report_code=None):
+    def save_report(self, commit: Commit, report: Report):
         archive_service = self.get_archive_service(commit.repository)
 
         report_json, chunks, _totals = report.serialize()
@@ -669,7 +661,7 @@ class ReportService(BaseReportService):
         PYREPORT_REPORT_JSON_SIZE.observe(len(report_json))
         PYREPORT_CHUNKS_FILE_SIZE.observe(len(chunks))
 
-        chunks_url = archive_service.write_chunks(commit.commitid, chunks, report_code)
+        chunks_url = archive_service.write_chunks(commit.commitid, chunks)
 
         commit.state = "complete" if report else "error"
         commit.totals = legacy_totals(report)
@@ -727,9 +719,7 @@ class ReportService(BaseReportService):
         return {"url": chunks_url}
 
     @sentry_sdk.trace
-    def save_full_report(
-        self, commit: Commit, report: Report, report_code=None
-    ) -> dict:
+    def save_full_report(self, commit: Commit, report: Report) -> dict:
         """
         Saves the report (into database and storage) AND takes care of backfilling its sessions
         like they were never in the database (useful for backfilling and carryforward cases)
@@ -740,7 +730,7 @@ class ReportService(BaseReportService):
         precision: int = read_yaml_field(
             self.current_yaml, ("coverage", "precision"), 2
         )
-        res = self.save_report(commit, report, report_code)
+        res = self.save_report(commit, report)
         db_session = commit.get_db_session()
         for sess_id, session in report.sessions.items():
             upload = Upload(

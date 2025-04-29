@@ -108,16 +108,14 @@ class ProcessingResult:
 
 
 class BundleAnalysisReportService(BaseReportService):
-    def initialize_and_save_report(
-        self, commit: Commit, report_code: str | None = None
-    ) -> CommitReport:
+    def initialize_and_save_report(self, commit: Commit) -> CommitReport:
         db_session = commit.get_db_session()
 
         commit_report = (
             db_session.query(CommitReport)
             .filter_by(
                 commit_id=commit.id_,
-                code=report_code,
+                code=None,
                 report_type=ReportType.BUNDLE_ANALYSIS.value,
             )
             .first()
@@ -125,7 +123,7 @@ class BundleAnalysisReportService(BaseReportService):
         if not commit_report:
             commit_report = CommitReport(
                 commit_id=commit.id_,
-                code=report_code,
+                code=None,
                 report_type=ReportType.BUNDLE_ANALYSIS.value,
             )
             db_session.add(commit_report)

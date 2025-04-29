@@ -89,7 +89,6 @@ def test_upload_test_results(db, client, mocker, mock_redis):
         "service": "github-actions",
         "url": f"test_results/v1/raw/{date}/{repo_hash}/{commit_sha}/{reportid}.txt",
         "commit": commit_sha,
-        "report_code": None,
         "flags": None,
     }
 
@@ -101,7 +100,6 @@ def test_upload_test_results(db, client, mocker, mock_redis):
     upload.assert_called_with(
         commitid=commit_sha,
         repoid=repository.repoid,
-        report_code=None,
         report_type="test_results",
         arguments=args,
         countdown=4,
@@ -447,7 +445,6 @@ def test_upload_test_results_file_not_found(db, client, mocker, mock_redis):
         "service": "github-actions",
         "url": None,
         "commit": commit_sha,
-        "report_code": None,
         "flags": None,
     }
 
@@ -459,7 +456,6 @@ def test_upload_test_results_file_not_found(db, client, mocker, mock_redis):
     upload.assert_called_with(
         commitid=commit_sha,
         repoid=repository.repoid,
-        report_code=None,
         report_type="test_results",
         arguments=args,
         countdown=4,
@@ -505,7 +501,6 @@ def test_upload_test_results_tokenless_authentication(db, client, mocker, mock_r
     upload.assert_called_with(
         commitid=commit_sha,
         repoid=repository.repoid,
-        report_code=None,
         report_type="test_results",
         arguments=mocker.ANY,
         countdown=4,

@@ -43,9 +43,7 @@ def create_report(
         report_type=CommitReport.ReportType.COVERAGE,
     )
     if was_created:
-        TaskService().preprocess_upload(
-            repository.repoid, commit.commitid, instance.code
-        )
+        TaskService().preprocess_upload(repository.repoid, commit.commitid)
     return instance
 
 

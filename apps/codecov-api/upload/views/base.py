@@ -68,9 +68,10 @@ class GetterMixin(ShelterMixin):
         ] = CommitReport.ReportType.COVERAGE,
     ) -> CommitReport:
         report_code = self.kwargs.get("report_code")
-        if report_code == "default":
-            report_code = None
-        queryset = CommitReport.objects.filter(code=report_code, commit=commit)
+        if report_code not in (None, "default"):
+            raise ValidationError("Report not found")
+
+        queryset = CommitReport.objects.filter(code=None, commit=commit)
         if report_type == CommitReport.ReportType.COVERAGE:
             queryset = queryset.coverage_reports()
         else:
@@ -79,7 +80,7 @@ class GetterMixin(ShelterMixin):
         if report is None:
             log.warning(
                 "Report not found",
-                extra=dict(commit_sha=commit.commitid, report_code=report_code),
+                extra=dict(commit_sha=commit.commitid),
             )
             raise ValidationError("Report not found")
         if report.report_type is None:

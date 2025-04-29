@@ -745,7 +745,6 @@ def dispatch_upload_task(
         repoid=repoid,
         commitid=commitid,
         report_type=str(report_type),
-        report_code=task_arguments.get("report_code"),
         arguments=task_arguments,
         countdown=max(
             countdown, int(get_config("setup", "upload_processing_delay") or 0)

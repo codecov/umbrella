@@ -78,21 +78,15 @@ class UploadContext:
         repoid: int,
         commitid: str,
         report_type: ReportType = ReportType.COVERAGE,
-        report_code: str | None = None,
         redis_connection: Redis | None = None,
     ):
         self.repoid = repoid
         self.commitid = commitid
         self.report_type = report_type
-        self.report_code = report_code
         self.redis_connection = redis_connection or get_redis_connection()
 
     def log_extra(self, **kwargs) -> dict:
-        return dict(
-            report_type=self.report_type.value,
-            report_code=self.report_code,
-            **kwargs,
-        )
+        return dict(report_type=self.report_type.value, **kwargs)
 
     def lock_name(self, lock_type: str):
         if self.report_type == ReportType.COVERAGE:
@@ -138,7 +132,6 @@ class UploadContext:
             repoid=self.repoid,
             commitid=self.commitid,
             report_type=self.report_type.value,
-            report_code=self.report_code,
         )
 
     def arguments_list(self):
@@ -253,21 +246,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         repoid: int,
         commitid: str,
         report_type: str = "coverage",
-        report_code: str | None = None,
         *args,
         **kwargs,
     ):
         upload_context = UploadContext(
-            repoid=int(repoid),
-            commitid=commitid,
-            report_type=ReportType(report_type),
-            report_code=report_code,
+            repoid=int(repoid), commitid=commitid, report_type=ReportType(report_type)
         )
-        if report_code:
-            sentry_sdk.capture_message(
-                "Customer is using non-default `report_code`",
-                tags={"report_type": report_type, "report_code": report_code},
-            )
 
         # If we're a retry, kwargs will already have our first checkpoint.
         # If not, log it directly into kwargs so we can pass it onto other tasks
@@ -456,9 +440,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
         try:
             log.info("Initializing and saving report", extra=upload_context.log_extra())
-            commit_report = report_service.initialize_and_save_report(
-                commit, upload_context.report_code
-            )
+            commit_report = report_service.initialize_and_save_report(commit)
         except NotReadyToBuildReportYetError:
             log.warning(
                 "Commit not yet ready to build its initial report. Retrying in 60s.",
@@ -726,7 +708,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             "repoid": commit.repoid,
             "commitid": commit.commitid,
             "commit_yaml": commit_yaml,
-            "report_code": commit_report.code,
         }
         finisher_kwargs = UploadFlow.save_to_kwargs(finisher_kwargs)
         finish_parallel_sig = upload_finisher_task.signature(kwargs=finisher_kwargs)

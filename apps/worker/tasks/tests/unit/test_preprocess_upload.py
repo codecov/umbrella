@@ -59,10 +59,7 @@ class TestPreProcessUpload(object):
         commit, report = self.create_commit_and_report(dbsession)
 
         result = PreProcessUpload().process_impl_within_lock(
-            dbsession,
-            repoid=commit.repository.repoid,
-            commitid=commit.commitid,
-            report_code=None,
+            dbsession, repoid=commit.repository.repoid, commitid=commit.commitid
         )
         for sess_id in sample_report.sessions.keys():
             upload = (
@@ -164,10 +161,7 @@ class TestPreProcessUpload(object):
         dbsession.add(commit)
         dbsession.flush()
         res = PreProcessUpload().process_impl_within_lock(
-            db_session=dbsession,
-            repoid=commit.repoid,
-            commitid=commit.commitid,
-            report_code=None,
+            db_session=dbsession, repoid=commit.repoid, commitid=commit.commitid
         )
         assert res == {
             "preprocessed_upload": False,

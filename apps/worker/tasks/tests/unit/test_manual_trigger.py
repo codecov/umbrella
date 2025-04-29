@@ -43,11 +43,7 @@ class TestUploadCompletionTask(object):
         dbsession.add(pull)
         dbsession.flush()
         result = ManualTriggerTask().run_impl(
-            dbsession,
-            repoid=commit.repoid,
-            commitid=commit.commitid,
-            report_code=None,
-            current_yaml={},
+            dbsession, repoid=commit.repoid, commitid=commit.commitid, current_yaml={}
         )
         assert {
             "notifications_called": True,
@@ -101,7 +97,6 @@ class TestUploadCompletionTask(object):
                 dbsession,
                 repoid=commit.repoid,
                 commitid=commit.commitid,
-                report_code=None,
                 current_yaml={},
             )
             assert {

@@ -169,7 +169,6 @@ class BundleAnalysisView(APIView, ShelterMixin):
             "url": storage_path,  # storage_path
             # these are used for dispatching the task below
             "commit": commit.commitid,
-            "report_code": None,
             # custom comparison sha for the current uploaded commit sha
             "bundle_analysis_compare_sha": data.get("compareSha"),
         }

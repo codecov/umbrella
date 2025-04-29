@@ -832,11 +832,7 @@ class UploadHandlerHelpersTest(TestCase):
     @patch("services.task.TaskService.upload")
     def test_dispatch_upload_task(self, upload):
         repo = RepositoryFactory()
-        task_arguments = {
-            "commit": "commit123",
-            "version": "v4",
-            "report_code": "local_report",
-        }
+        task_arguments = {"commit": "commit123", "version": "v4"}
 
         redis = get_redis_connection()
         dispatch_upload_task(redis, repo.repoid, task_arguments)
@@ -845,7 +841,6 @@ class UploadHandlerHelpersTest(TestCase):
             repoid=repo.repoid,
             commitid=task_arguments.get("commit"),
             report_type="coverage",
-            report_code="local_report",
             arguments=task_arguments,
             countdown=4,
         )

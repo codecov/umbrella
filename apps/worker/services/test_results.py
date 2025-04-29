@@ -42,15 +42,13 @@ class TestResultsReportService(BaseReportService):
         super().__init__(current_yaml)
         self.flag_dict = None
 
-    def initialize_and_save_report(
-        self, commit: Commit, report_code: str | None = None
-    ) -> CommitReport:
+    def initialize_and_save_report(self, commit: Commit) -> CommitReport:
         db_session = commit.get_db_session()
         current_report_row = (
             db_session.query(CommitReport)
             .filter_by(
                 commit_id=commit.id_,
-                code=report_code,
+                code=None,
                 report_type=ReportType.TEST_RESULTS.value,
             )
             .first()
@@ -60,7 +58,7 @@ class TestResultsReportService(BaseReportService):
             # or backfilled
             current_report_row = CommitReport(
                 commit_id=commit.id_,
-                code=report_code,
+                code=None,
                 report_type=ReportType.TEST_RESULTS.value,
             )
             db_session.add(current_report_row)

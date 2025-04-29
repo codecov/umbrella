@@ -183,7 +183,6 @@ class TestResultsView(
             "url": storage_path,  # storage_path
             # these are used for dispatching the task below
             "commit": commit.commitid,
-            "report_code": None,
         }
 
         log.info(

@@ -195,7 +195,6 @@ class TestUploadTaskIntegration(object):
             repoid=commit.repoid,
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
             commit_yaml={"codecov": {"max_report_age": "1y ago"}},
-            report_code=None,
         )
         kwargs[_kwargs_key(UploadFlow)] = mocker.ANY
         finisher = upload_finisher_task.signature(kwargs=kwargs)
@@ -802,7 +801,6 @@ class TestUploadTaskIntegration(object):
             repoid=commit.repoid,
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
             commit_yaml={"codecov": {"max_report_age": "1y ago"}},
-            report_code=None,
         )
         kwargs[_kwargs_key(UploadFlow)] = mocker.ANY
         t_final = upload_finisher_task.signature(kwargs=kwargs)
@@ -1237,7 +1235,6 @@ class TestUploadTaskUnit(object):
                 "repoid": commit.repoid,
                 "commitid": commit.commitid,
                 "commit_yaml": commit_yaml,
-                "report_code": None,
                 _kwargs_key(UploadFlow): mocker.ANY,
             }
         )
