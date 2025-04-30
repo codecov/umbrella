@@ -37,4 +37,4 @@ class LabelAnalysisProcessingError(CodecovBaseModel, MixinBaseClass):
     error_params = Column(postgresql.JSON, nullable=True)
 
     def to_representation(self):
-        return dict(error_code=self.error_code, error_params=self.error_params)
+        return {"error_code": self.error_code, "error_params": self.error_params}

@@ -224,7 +224,7 @@ def new_impl(
 
     notif_failures = transform_failures(upload_ids, failures)
 
-    flaky_tests = dict()
+    flaky_tests = {}
 
     # flake detection if appropriate
     if should_do_flaky_detection(repo, commit_yaml):

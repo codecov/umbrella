@@ -34,7 +34,7 @@ def get_repo_appropriate_bot(repo: Repository) -> Owner:
     if repo.bot is not None and repo.bot.oauth_token is not None:
         log.info(
             "Repo has specific bot",
-            extra=dict(repoid=repo.repoid, botid=repo.bot.ownerid),
+            extra={"repoid": repo.repoid, "botid": repo.bot.ownerid},
         )
         return repo.bot
     try:
@@ -49,9 +49,11 @@ def get_repo_appropriate_bot_token(
     repo: Repository,
     installation_info: GithubInstallationInfo | None = None,
 ) -> TokenWithOwner:
-    extra_info_to_log = dict(
-        repoid=repo.repoid, is_private=repo.private, service=repo.service
-    )
+    extra_info_to_log = {
+        "repoid": repo.repoid,
+        "is_private": repo.private,
+        "service": repo.service,
+    }
     log.info(
         "Get repo appropriate bot token",
         extra={"installation_info": installation_info, **extra_info_to_log},

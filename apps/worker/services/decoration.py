@@ -114,11 +114,11 @@ def determine_decoration_details(
         if not pr_author:
             log.info(
                 "PR author not found in database",
-                extra=dict(
-                    author_service=org.service,
-                    author_service_id=provider_pull["author"]["id"],
-                    author_username=provider_pull["author"]["username"],
-                ),
+                extra={
+                    "author_service": org.service,
+                    "author_service_id": provider_pull["author"]["id"],
+                    "author_username": provider_pull["author"]["username"],
+                },
             )
             return DecorationDetails(
                 decoration_type=Decoration.upgrade,

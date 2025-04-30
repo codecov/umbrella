@@ -39,10 +39,10 @@ def get_owner_provider_service(
         token=adapter_auth_info["token"],
         verify_ssl=get_verify_ssl(service.value),
         timeouts=_timeouts,
-        oauth_consumer_token=dict(
-            key=get_config(service, "client_id"),
-            secret=get_config(service, "client_secret"),
-        ),
+        oauth_consumer_token={
+            "key": get_config(service, "client_id"),
+            "secret": get_config(service, "client_secret"),
+        },
         # if using integration we will use the integration token
         # not the owner's token
         on_token_refresh=get_token_refresh_callback(adapter_auth_info["token_owner"]),

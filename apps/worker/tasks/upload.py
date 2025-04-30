@@ -319,7 +319,11 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             log.warning(
                 "Unable to acquire lock for key %s.",
                 lock_name,
-                extra=dict(commit=commitid, repoid=repoid, report_type=report_type),
+                extra={
+                    "commit": commitid,
+                    "repoid": repoid,
+                    "report_type": report_type,
+                },
             )
             if not upload_context.has_pending_jobs():
                 log.info(
@@ -370,9 +374,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             try:
                 UploadFlow.log(UploadFlow.PROCESSING_BEGIN)
             except ValueError as e:
-                log.warning(
-                    "CheckpointLogger failed to log/submit", extra=dict(error=e)
-                )
+                log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
 
         commit = (
             db_session.query(Commit)
@@ -850,11 +852,11 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         if should_post_webhook or needs_webhook_secret_backfill:
             log.info(
                 "Setting or editing webhook",
-                extra=dict(
-                    repoid=repository.repoid,
-                    commit=commit.commitid,
-                    action="SET" if should_post_webhook else "EDIT",
-                ),
+                extra={
+                    "repoid": repository.repoid,
+                    "commit": commit.commitid,
+                    "action": "SET" if should_post_webhook else "EDIT",
+                },
             )
             try:
                 if repository_service.service in ["gitlab", "gitlab_enterprise"]:
@@ -871,12 +873,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     hookid = hook_result["id"]
                     log.info(
                         "Registered hook",
-                        extra=dict(
-                            repoid=commit.repoid,
-                            commit=commit.commitid,
-                            hookid=hookid,
-                            action="SET",
-                        ),
+                        extra={
+                            "repoid": commit.repoid,
+                            "commit": commit.commitid,
+                            "hookid": hookid,
+                            "action": "SET",
+                        },
                     )
                     repository.hookid = hookid
                     repo_data["repo"]["hookid"] = hookid
@@ -891,23 +893,23 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     repository.webhook_secret = webhook_secret
                     log.info(
                         "Updated hook",
-                        extra=dict(
-                            repository_service=repository_service.service,
-                            repoid=repository.repoid,
-                            commit=commit.commitid,
-                            hookid=repository.hookid,
-                            action="EDIT",
-                        ),
+                        extra={
+                            "repository_service": repository_service.service,
+                            "repoid": repository.repoid,
+                            "commit": commit.commitid,
+                            "hookid": repository.hookid,
+                            "action": "EDIT",
+                        },
                     )
                     return False  # was_setup
             except TorngitClientError:
                 log.warning(
                     "Failed to create or update project webhook",
-                    extra=dict(
-                        repoid=repository.repoid,
-                        commit=commit.commitid,
-                        action="SET" if should_post_webhook else "EDIT",
-                    ),
+                    extra={
+                        "repoid": repository.repoid,
+                        "commit": commit.commitid,
+                        "action": "SET" if should_post_webhook else "EDIT",
+                    },
                     exc_info=True,
                 )
         return False

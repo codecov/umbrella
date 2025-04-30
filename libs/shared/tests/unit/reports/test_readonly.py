@@ -150,51 +150,51 @@ class TestReadOnly(object):
                 }
             }
         )
-        assert res["general"].asdict() == dict(
-            files=2,
-            lines=5,
-            hits=3,
-            misses=0,
-            partials=2,
-            coverage="60.00000",
-            branches=2,
-            methods=0,
-            messages=0,
-            sessions=0,
-            complexity=0,
-            complexity_total=0,
-            diff=0,
-        )
-        assert res["files"]["location/file_1.py"].asdict() == dict(
-            files=0,
-            lines=2,
-            hits=0,
-            misses=0,
-            partials=2,
-            coverage="0",
-            branches=2,
-            methods=0,
-            messages=0,
-            sessions=0,
-            complexity=0,
-            complexity_total=0,
-            diff=0,
-        )
-        assert res["files"]["file_1.go"].asdict() == dict(
-            files=0,
-            lines=3,
-            hits=3,
-            misses=0,
-            partials=0,
-            coverage="100",
-            branches=0,
-            methods=0,
-            messages=0,
-            sessions=0,
-            complexity=0,
-            complexity_total=0,
-            diff=0,
-        )
+        assert res["general"].asdict() == {
+            "files": 2,
+            "lines": 5,
+            "hits": 3,
+            "misses": 0,
+            "partials": 2,
+            "coverage": "60.00000",
+            "branches": 2,
+            "methods": 0,
+            "messages": 0,
+            "sessions": 0,
+            "complexity": 0,
+            "complexity_total": 0,
+            "diff": 0,
+        }
+        assert res["files"]["location/file_1.py"].asdict() == {
+            "files": 0,
+            "lines": 2,
+            "hits": 0,
+            "misses": 0,
+            "partials": 2,
+            "coverage": "0",
+            "branches": 2,
+            "methods": 0,
+            "messages": 0,
+            "sessions": 0,
+            "complexity": 0,
+            "complexity_total": 0,
+            "diff": 0,
+        }
+        assert res["files"]["file_1.go"].asdict() == {
+            "files": 0,
+            "lines": 3,
+            "hits": 3,
+            "misses": 0,
+            "partials": 0,
+            "coverage": "100",
+            "branches": 0,
+            "methods": 0,
+            "messages": 0,
+            "sessions": 0,
+            "complexity": 0,
+            "complexity_total": 0,
+            "diff": 0,
+        }
 
     def test_get_file_totals(self, sample_report, mocker):
         r = ReadOnlyReport.create_from_report(sample_report)

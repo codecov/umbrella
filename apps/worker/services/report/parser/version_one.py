@@ -45,6 +45,6 @@ class VersionOneReportParser(object):
             return zlib.decompress(base64.b64decode(coverage_file["data"]))
         log.warning(
             "Unkown format found while parsing upload",
-            extra=dict(coverage_file_filename=coverage_file["filename"]),
+            extra={"coverage_file_filename": coverage_file["filename"]},
         )
         return coverage_file["data"]

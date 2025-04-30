@@ -224,8 +224,8 @@ class TestBundleAnalysisNotifyService:
                 NotificationType.PR_COMMENT,
                 NotificationType.COMMIT_STATUS,
             ),
-            notifications_attempted=tuple(),
-            notifications_successful=tuple(),
+            notifications_attempted=(),
+            notifications_successful=(),
         )
 
     @pytest.mark.parametrize(

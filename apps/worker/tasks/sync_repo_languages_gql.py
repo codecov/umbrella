@@ -49,13 +49,13 @@ class SyncRepoLanguagesGQLTask(BaseCodecovTask, name=sync_repo_languages_gql_tas
         except TorngitRateLimitError:
             log.warning(
                 "Unable to fetch repositories due to rate limit error",
-                extra=dict(current_owner_id=current_owner_id, org_id=org.ownerid),
+                extra={"current_owner_id": current_owner_id, "org_id": org.ownerid},
             )
             return {"successful": False, "error": "torngit_rate_limit_error"}
         except TorngitError:
             log.warning(
                 "There was an error in torngit",
-                extra=dict(current_owner_id=current_owner_id, org_id=org.ownerid),
+                extra={"current_owner_id": current_owner_id, "org_id": org.ownerid},
             )
             return {"successful": False, "error": "torngit_error"}
 
@@ -79,7 +79,7 @@ class SyncRepoLanguagesGQLTask(BaseCodecovTask, name=sync_repo_languages_gql_tas
 
         log.info(
             "Repo languages sync done",
-            extra=dict(username=org_username, repoids=updated_repoids_for_logging),
+            extra={"username": org_username, "repoids": updated_repoids_for_logging},
         )
 
         return {"successful": True}

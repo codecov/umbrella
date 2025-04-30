@@ -97,35 +97,35 @@ class TestNotificationService(object):
         "repo_data,outcome",
         [
             (
-                dict(
-                    using_integration=True,
-                    owner__integration_id=12341234,
-                    owner__service="github",
-                ),
+                {
+                    "using_integration": True,
+                    "owner__integration_id": 12341234,
+                    "owner__service": "github",
+                },
                 True,
             ),
             (
-                dict(
-                    using_integration=True,
-                    owner__integration_id=12341234,
-                    owner__service="gitlab",
-                ),
+                {
+                    "using_integration": True,
+                    "owner__integration_id": 12341234,
+                    "owner__service": "gitlab",
+                },
                 False,
             ),
             (
-                dict(
-                    using_integration=True,
-                    owner__integration_id=12341234,
-                    owner__service="github_enterprise",
-                ),
+                {
+                    "using_integration": True,
+                    "owner__integration_id": 12341234,
+                    "owner__service": "github_enterprise",
+                },
                 True,
             ),
             (
-                dict(
-                    using_integration=False,
-                    owner__integration_id=None,
-                    owner__service="github",
-                ),
+                {
+                    "using_integration": False,
+                    "owner__integration_id": None,
+                    "owner__service": "github",
+                },
                 False,
             ),
         ],

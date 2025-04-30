@@ -268,7 +268,7 @@ class Report:
         if file is None:
             log.warning(
                 "Fetching file totals for a file that isn't in the report",
-                extra=dict(path=path),
+                extra={"path": path},
             )
             return None
 

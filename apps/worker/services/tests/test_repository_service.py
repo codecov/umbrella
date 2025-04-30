@@ -313,7 +313,7 @@ async def test_token_refresh_callback(dbsession):
     dbsession.add(repo)
     dbsession.flush()
     res = get_repo_provider_service(repo)
-    new_token = dict(key="new_access_token", refresh_token="new_refresh_token")
+    new_token = {"key": "new_access_token", "refresh_token": "new_refresh_token"}
     await res._on_token_refresh(new_token)
     owner = dbsession.query(Owner).filter_by(ownerid=repo.owner.ownerid).first()
     encryptor = get_encryptor_from_configuration()
@@ -756,7 +756,7 @@ def test_upsert_author_already_exists(dbsession):
         service_id=service_id,
         email=email,
         username=username,
-        yaml=dict(a=["12", "3"]),
+        yaml={"a": ["12", "3"]},
     )
     dbsession.add(owner)
     dbsession.flush()
@@ -790,7 +790,7 @@ def test_upsert_author_needs_update(dbsession):
         service_id=service_id,
         email=email,
         username=username,
-        yaml=dict(a=["12", "3"]),
+        yaml={"a": ["12", "3"]},
     )
     dbsession.add(owner)
     dbsession.flush()

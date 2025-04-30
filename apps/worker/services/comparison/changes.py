@@ -151,12 +151,12 @@ def get_changes(
                 # Seems to only happen when there is a 'moved file' in a weird situation
                 log.info(
                     "File not in the diff, not in base, but still not a 'new_file'",
-                    extra=dict(
-                        diff_keys=sorted(diff_keys),
-                        missing_filename=filename,
-                        base_is_none=base_report_file is None,
-                        moved_files=sorted(moved_files),
-                    ),
+                    extra={
+                        "diff_keys": sorted(diff_keys),
+                        "missing_filename": filename,
+                        "base_is_none": base_report_file is None,
+                        "moved_files": sorted(moved_files),
+                    },
                 )
                 new_files.add(filename)
                 continue

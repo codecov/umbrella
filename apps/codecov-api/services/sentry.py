@@ -54,14 +54,14 @@ def decode_state(state: str) -> Optional[SentryState]:
         # signed with a different secret
         log.error(
             "Sentry state has invalid signature",
-            extra=dict(sentry_state=state),
+            extra={"sentry_state": state},
         )
         return None
     except jwt.exceptions.DecodeError:
         # malformed JWT
         log.error(
             "Sentry state is malformed",
-            extra=dict(sentry_state=state),
+            extra={"sentry_state": state},
         )
         return None
 
@@ -74,7 +74,7 @@ def save_sentry_state(owner: Owner, encoded_state: str):
     if decoded_state is None:
         log.error(
             "Invalid Sentry state",
-            extra=dict(owner_id=owner.pk, sentry_state=encoded_state),
+            extra={"owner_id": owner.pk, "sentry_state": encoded_state},
         )
         raise SentryInvalidStateError()
 
@@ -87,11 +87,11 @@ def save_sentry_state(owner: Owner, encoded_state: str):
     except IntegrityError:
         log.error(
             "Sentry user already exists",
-            extra=dict(
-                owner_id=owner.pk,
-                sentry_user_id=decoded_state.user_id,
-                sentry_user_data=decoded_state.data,
-            ),
+            extra={
+                "owner_id": owner.pk,
+                "sentry_user_id": decoded_state.user_id,
+                "sentry_user_data": decoded_state.data,
+            },
         )
         raise SentryUserAlreadyExistsError()
 

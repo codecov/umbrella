@@ -36,11 +36,11 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
 
         log.info(
             "Starting bundle analysis notify",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                commit_yaml=commit_yaml,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "commit_yaml": commit_yaml,
+            },
         )
 
         lock_manager = LockManager(
@@ -78,12 +78,12 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
     ):
         log.info(
             "Running bundle analysis notify",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                commit_yaml=commit_yaml,
-                parent_task=self.request.parent_id,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "commit_yaml": commit_yaml,
+                "parent_task": self.request.parent_id,
+            },
         )
 
         commit = (
@@ -112,13 +112,13 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
 
         log.info(
             "Finished bundle analysis notify",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                commit_yaml=commit_yaml,
-                parent_task=self.request.parent_id,
-                result=result,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "commit_yaml": commit_yaml,
+                "parent_task": self.request.parent_id,
+                "result": result,
+            },
         )
 
         return {

@@ -13,14 +13,16 @@ MOCK_BASE = "https://bitbucketserver.codecov.dev"
 def valid_handler(mock_configuration):
     mock_configuration._params["bitbucket_server"] = {"url": MOCK_BASE}
     return BitbucketServer(
-        repo=dict(name="example-python"),
-        owner=dict(
-            username="ThiagoCodecov", service_id="6ef29b63-aaaa-aaaa-aaaa-aaaa03f5cd49"
-        ),
-        oauth_consumer_token=dict(
-            key="arubajamaicaohiwan", secret="natakeyoubermudabahamacomeonpret"
-        ),
-        token=dict(secret="KeyLargoMontegobabywhydontwego", key="waydowntokokomo"),
+        repo={"name": "example-python"},
+        owner={
+            "username": "ThiagoCodecov",
+            "service_id": "6ef29b63-aaaa-aaaa-aaaa-aaaa03f5cd49",
+        },
+        oauth_consumer_token={
+            "key": "arubajamaicaohiwan",
+            "secret": "natakeyoubermudabahamacomeonpret",
+        },
+        token={"secret": "KeyLargoMontegobabywhydontwego", "key": "waydowntokokomo"},
     )
 
 
@@ -56,7 +58,7 @@ class TestBitbucketServer(object):
     async def test_get_repo_languages(self):
         expected_result = ["javascript"]
         handler = BitbucketServer(
-            repo=dict(name="example-python", private=True),
+            repo={"name": "example-python", "private": True},
         )
         res = await handler.get_repo_languages(None, "JavaScript")
         assert res == expected_result
@@ -65,7 +67,7 @@ class TestBitbucketServer(object):
     async def test_get_repo_no_languages(self):
         expected_result = []
         handler = BitbucketServer(
-            repo=dict(name="example-python", private=True),
+            repo={"name": "example-python", "private": True},
         )
         res = await handler.get_repo_languages(None, None)
         assert res == expected_result

@@ -285,7 +285,7 @@ class Account(BaseModel):
             log.info(
                 "User was not removed from account because they currently are "
                 "activated on another organization.",
-                extra=dict(owner_id=owner_user.ownerid, account_id=self.id),
+                extra={"owner_id": owner_user.ownerid, "account_id": self.id},
             )
         return
 
@@ -733,7 +733,7 @@ class GithubAppInstallation(
         if installation_default_app_id is None:
             log.error(
                 "Can't find default app ID in the YAML. Assuming installation is configured to prevent the app from breaking itself.",
-                extra=dict(installation_id=self.id, installation_name=self.name),
+                extra={"installation_id": self.id, "installation_name": self.name},
             )
             return True
         return str(self.app_id) == str(installation_default_app_id)

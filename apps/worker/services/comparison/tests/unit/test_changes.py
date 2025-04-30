@@ -85,7 +85,7 @@ class TestDiffTotals(object):
 def test_get_segment_offsets(segments, result):
     assert (
         get_segment_offsets(
-            [dict(header=seg[0], lines=list(seg[1])) for seg in segments]
+            [{"header": seg[0], "lines": list(seg[1])} for seg in segments]
         )
         == result
     )

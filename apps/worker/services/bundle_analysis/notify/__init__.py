@@ -80,9 +80,10 @@ class BundleAnalysisNotifyService:
         except NotificationContextBuildError as exp:
             log.warning(
                 "Failed to build NotificationContext",
-                extra=dict(
-                    notification_type="base_context", failed_step=exp.failed_step
-                ),
+                extra={
+                    "notification_type": "base_context",
+                    "failed_step": exp.failed_step,
+                },
             )
         return None
 
@@ -133,9 +134,10 @@ class BundleAnalysisNotifyService:
         except NotificationContextBuildError as exp:
             log.warning(
                 "Failed to build NotificationContext",
-                extra=dict(
-                    notification_type=notification_type, failed_step=exp.failed_step
-                ),
+                extra={
+                    "notification_type": notification_type,
+                    "failed_step": exp.failed_step,
+                },
             )
             return None
 
@@ -173,8 +175,8 @@ class BundleAnalysisNotifyService:
             log.warning("Skipping ALL notifications because there's no base context")
             return BundleAnalysisNotifyReturn(
                 notifications_configured=notification_types,
-                notifications_attempted=tuple(),
-                notifications_successful=tuple(),
+                notifications_attempted=(),
+                notifications_successful=(),
             )
 
         notification_full_contexts = self.get_notification_contexts(
@@ -191,10 +193,10 @@ class BundleAnalysisNotifyService:
                 notifications_successful.append(notification_context.notification_type)
             log.info(
                 "Notification done",
-                extra=dict(
-                    notification_type=notification_context.notification_type,
-                    notification_result=result,
-                ),
+                extra={
+                    "notification_type": notification_context.notification_type,
+                    "notification_result": result,
+                },
             )
 
         return BundleAnalysisNotifyReturn(

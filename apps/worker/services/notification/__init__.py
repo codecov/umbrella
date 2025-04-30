@@ -260,15 +260,15 @@ class NotificationService(object):
             return []
         log.debug(
             f"Notifying with decoration type {self.decoration_type}",
-            extra=dict(
-                head_commit=comparison.head.commit.commitid,
-                base_commit=(
+            extra={
+                "head_commit": comparison.head.commit.commitid,
+                "base_commit": (
                     comparison.project_coverage_base.commit.commitid
                     if comparison.project_coverage_base.commit is not None
                     else "NO_BASE"
                 ),
-                repoid=comparison.head.commit.repoid,
-            ),
+                "repoid": comparison.head.commit.repoid,
+            },
         )
 
         status_or_checks_notifiers, all_other_notifiers = split_notifiers(

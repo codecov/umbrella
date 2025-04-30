@@ -68,8 +68,8 @@ class TestCommitNotificationsServiceTestCase(object):
             notification_attempted=True,
             notification_successful=False,
             explanation=None,
-            data_received=dict(id=123),
-            data_sent=dict(a=1, b=2),
+            data_received={"id": 123},
+            data_sent={"a": 1, "b": 2},
         )
 
         res = create_or_update_commit_notification_from_notification_result(
@@ -102,8 +102,8 @@ class TestCommitNotificationsServiceTestCase(object):
             notification_attempted=True,
             notification_successful=True,
             explanation=None,
-            data_received=dict(id=123),
-            data_sent=dict(a=1, b=2),
+            data_received={"id": 123},
+            data_sent={"a": 1, "b": 2},
             github_app_used=app.id,
         )
 
@@ -167,8 +167,8 @@ class TestCommitNotificationsServiceTestCase(object):
             notification_attempted=True,
             notification_successful=True,
             explanation=None,
-            data_received=dict(id=123),
-            data_sent=dict(a=1, b=2),
+            data_received={"id": 123},
+            data_sent={"a": 1, "b": 2},
         )
         res = create_or_update_commit_notification_from_notification_result(
             comparison, notifier, notify_res
@@ -206,8 +206,8 @@ class TestCommitNotificationsServiceTestCase(object):
             notification_attempted=True,
             notification_successful=True,
             explanation=None,
-            data_received=dict(id=123),
-            data_sent=dict(a=1, b=2),
+            data_received={"id": 123},
+            data_sent={"a": 1, "b": 2},
         )
         res = create_or_update_commit_notification_from_notification_result(
             comparison, notifier, notify_res

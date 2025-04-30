@@ -237,11 +237,11 @@ class ScheduleDetailSerializer(serializers.Serializer):
             # after manual intervention on a subscription.
             log.error(
                 "Expecting schedule object to have 2 phases, returning None",
-                extra=dict(
-                    ownerid=schedule.metadata.get("obo_organization"),
-                    requesting_user_id=schedule.metadata.get("obo"),
-                    phases=schedule.get("phases", "no phases"),
-                ),
+                extra={
+                    "ownerid": schedule.metadata.get("obo_organization"),
+                    "requesting_user_id": schedule.metadata.get("obo"),
+                    "phases": schedule.get("phases", "no phases"),
+                },
             )
             return None
 

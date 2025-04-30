@@ -20,13 +20,13 @@ from shared.torngit.gitlab import Gitlab
 @pytest.fixture
 def valid_handler():
     return Gitlab(
-        repo=dict(service_id="187725", name="codecov-test"),
-        owner=dict(username="ThiagoCodecov", service_id="109479"),
-        oauth_consumer_token=dict(
-            key="client_id",
-            secret="client_secret",
-        ),
-        token=dict(key="access_token", refresh_token="refresh_token"),
+        repo={"service_id": "187725", "name": "codecov-test"},
+        owner={"username": "ThiagoCodecov", "service_id": "109479"},
+        oauth_consumer_token={
+            "key": "client_id",
+            "secret": "client_secret",
+        },
+        token={"key": "access_token", "refresh_token": "refresh_token"},
     )
 
 
@@ -359,7 +359,7 @@ class TestUnitGitlab(object):
                 )
             pytest.fail("Wrong token received")
 
-        assert valid_handler._oauth == dict(key="client_id", secret="client_secret")
+        assert valid_handler._oauth == {"key": "client_id", "secret": "client_secret"}
 
         with respx.mock:
             mocked_refresh = respx.post("https://gitlab.com/oauth/token").mock(
@@ -367,18 +367,20 @@ class TestUnitGitlab(object):
             )
             await valid_handler.refresh_token(valid_handler.get_client())
             assert mocked_refresh.call_count == 1
-            assert valid_handler._token == dict(
-                key="new_access_token", refresh_token="new_refresh_token"
-            )
+            assert valid_handler._token == {
+                "key": "new_access_token",
+                "refresh_token": "new_refresh_token",
+            }
 
             await valid_handler.refresh_token(valid_handler.get_client())
             assert mocked_refresh.call_count == 2
-            assert valid_handler._token == dict(
-                key="newer_access_token", refresh_token="newer_refresh_token"
-            )
+            assert valid_handler._token == {
+                "key": "newer_access_token",
+                "refresh_token": "newer_refresh_token",
+            }
 
         # Make sure that changing the token doesn't change the _oauth
-        assert valid_handler._oauth == dict(key="client_id", secret="client_secret")
+        assert valid_handler._oauth == {"key": "client_id", "secret": "client_secret"}
         after = REGISTRY.get_sample_value(
             "git_provider_api_calls_gitlab_total",
             labels={"endpoint": "refresh_token"},
@@ -448,7 +450,7 @@ class TestUnitGitlab(object):
             "ahead_by": None,
         }
         handler = Gitlab(
-            repo=dict(name="example-python", private=True),
+            repo={"name": "example-python", "private": True},
         )
         res = await handler.get_distance_in_commits("branch", "commit")
         assert res == expected_result
@@ -473,9 +475,9 @@ class TestUnitGitlab(object):
                 )
             )
             handler = Gitlab(
-                repo=dict(name="example-python", service_id="187725"),
-                owner=dict(username="codecove2e", service_id="109479"),
-                token=dict(key=10 * "a280"),
+                repo={"name": "example-python", "service_id": "187725"},
+                owner={"username": "codecove2e", "service_id": "109479"},
+                token={"key": 10 * "a280"},
             )
             with pytest.raises(TorngitObjectNotFoundError) as excinfo:
                 await handler.get_pull_request_files(4)
@@ -507,9 +509,9 @@ class TestUnitGitlab(object):
                 )
             )
             handler = Gitlab(
-                repo=dict(name="example-python", service_id="187725"),
-                owner=dict(username="codecove2e", service_id="109479"),
-                token=dict(key=10 * "a280"),
+                repo={"name": "example-python", "service_id": "187725"},
+                owner={"username": "codecove2e", "service_id": "109479"},
+                token={"key": 10 * "a280"},
             )
             with pytest.raises(TorngitClientError) as excinfo:
                 await handler.get_pull_request_files(4)
@@ -530,9 +532,9 @@ class TestUnitGitlab(object):
         m = mocker.patch("shared.torngit.gitlab.Gitlab.api")
 
         handler = Gitlab(
-            repo=dict(name="example-python", service_id="187725"),
-            owner=dict(username="codecove2e", service_id="109479"),
-            token=dict(key=10 * "a280"),
+            repo={"name": "example-python", "service_id": "187725"},
+            owner={"username": "codecove2e", "service_id": "109479"},
+            token={"key": 10 * "a280"},
         )
 
         await handler.post_webhook(
@@ -567,9 +569,9 @@ class TestUnitGitlab(object):
         m = mocker.patch("shared.torngit.gitlab.Gitlab.api")
 
         handler = Gitlab(
-            repo=dict(name="example-python", service_id="187725"),
-            owner=dict(username="codecove2e", service_id="109479"),
-            token=dict(key=10 * "a280"),
+            repo={"name": "example-python", "service_id": "187725"},
+            owner={"username": "codecove2e", "service_id": "109479"},
+            token={"key": 10 * "a280"},
         )
 
         await handler.edit_webhook(

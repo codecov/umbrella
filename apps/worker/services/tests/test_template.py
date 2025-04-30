@@ -8,13 +8,13 @@ class TestTemplate(object):
     def test_get_template(self):
         ts = TemplateService()
         template = ts.get_template("test.txt")
-        populated_template = template.render(**dict(username="test_username"))
+        populated_template = template.render(**{"username": "test_username"})
         assert populated_template == "Test template test_username"
 
     def test_get_template_html(self):
         ts = TemplateService()
         template = ts.get_template("test.html")
-        populated_template = template.render(**dict(username="test_username"))
+        populated_template = template.render(**{"username": "test_username"})
         expected_result = """<!DOCTYPE html>
 <html lang="en">
 

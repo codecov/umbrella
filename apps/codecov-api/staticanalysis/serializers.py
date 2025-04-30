@@ -57,15 +57,15 @@ def _dict_to_suite_filepath(
         ) = StaticAnalysisSingleFileSnapshot.objects.get_or_create(
             file_hash=file_dict["file_hash"],
             repository=repository,
-            defaults=dict(
-                state_id=StaticAnalysisSingleFileSnapshotState.CREATED.db_id,
-                content_location=path,
-            ),
+            defaults={
+                "state_id": StaticAnalysisSingleFileSnapshotState.CREATED.db_id,
+                "content_location": path,
+            },
         )
     if was_created:
         log.debug(
             "Created new snapshot for repository",
-            extra=dict(repoid=repository.repoid, snapshot_id=db_element.id),
+            extra={"repoid": repository.repoid, "snapshot_id": db_element.id},
         )
     return StaticAnalysisSuiteFilepath(
         filepath=file_dict["filepath"],
@@ -149,8 +149,9 @@ class StaticAnalysisSuiteSerializer(serializers.ModelSerializer):
         StaticAnalysisSuiteFilepath.objects.bulk_create(created_filepaths)
         log.info(
             "Created static analysis filepaths",
-            extra=dict(
-                created_ids=[f.id for f in created_filepaths], repoid=repository.repoid
-            ),
+            extra={
+                "created_ids": [f.id for f in created_filepaths],
+                "repoid": repository.repoid,
+            },
         )
         return obj

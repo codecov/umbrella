@@ -32,11 +32,11 @@ class OrgLevelTokenService(object):
         if created:
             log.info(
                 "New OrgLevelToken created",
-                extra=dict(
-                    ownerid=org.ownerid,
-                    valid_until=token.valid_until,
-                    token_type=token.token_type,
-                ),
+                extra={
+                    "ownerid": org.ownerid,
+                    "valid_until": token.valid_until,
+                    "token_type": token.token_type,
+                },
             )
         return token
 
@@ -48,7 +48,7 @@ class OrgLevelTokenService(object):
             token.save()
         except OrganizationLevelToken.DoesNotExist:
             raise ValidationError(
-                "Token to refresh was not found", params=dict(tokenid=tokenid)
+                "Token to refresh was not found", params={"tokenid": tokenid}
             )
 
     @classmethod

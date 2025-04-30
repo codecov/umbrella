@@ -474,8 +474,8 @@ external_endpoint_template = Template("${username}/${name}/commit/${commitid}")
 
 
 class GitHubGraphQLQueries(object):
-    _queries = dict(
-        REPOS_FROM_NODEIDS="""
+    _queries = {
+        "REPOS_FROM_NODEIDS": """
 query GetReposFromNodeIds($node_ids: [ID!]!) {
     nodes(ids: $node_ids) {
         __typename
@@ -499,7 +499,7 @@ query GetReposFromNodeIds($node_ids: [ID!]!) {
     }
 }
 """,
-        OWNER_FROM_NODEID="""
+        "OWNER_FROM_NODEID": """
 query GetOwnerFromNodeId($node_id: ID!) {
     node(id: $node_id) {
         __typename
@@ -514,7 +514,7 @@ query GetOwnerFromNodeId($node_id: ID!) {
     }
 }
 """,
-        REPO_LANGUAGES_FROM_OWNER="""
+        "REPO_LANGUAGES_FROM_OWNER": """
 query Repos($owner: String!, $cursor: String, $first: Int!) {
   repositoryOwner(login: $owner) {
     repositories(
@@ -543,7 +543,7 @@ query Repos($owner: String!, $cursor: String, $first: Int!) {
   }
 }
 """,
-    )
+    }
 
     def get(self, query_name: str) -> str | None:
         return self._queries.get(query_name, None)
@@ -610,7 +610,7 @@ class Github(TorngitBaseAdapter):
     async def build_comment_request_body(
         self, body: dict, issueid: int | None = None
     ) -> dict:
-        body = dict(body=body)
+        body = {"body": body}
         upload_type = self.data.get("additional_data", {}).get("upload_type")
         if upload_type in [UploadType.BUNDLE_ANALYSIS, UploadType.TEST_RESULTS]:
             return body
@@ -645,11 +645,11 @@ class Github(TorngitBaseAdapter):
 
         log.info(
             "Making Github API call",
-            extra=dict(
-                has_token=bool(token),
-                has_self_token=bool(self.token),
-                is_same_token=(token == self.token),
-            ),
+            extra={
+                "has_token": bool(token),
+                "has_self_token": bool(self.token),
+                "is_same_token": (token == self.token),
+            },
         )
 
         if not token_to_use:
@@ -695,14 +695,14 @@ class Github(TorngitBaseAdapter):
             except UnicodeDecodeError as uerror:
                 log.warning(
                     "Unable to parse Github response",
-                    extra=dict(
-                        first_bytes=res.content[:100],
-                        final_bytes=res.content[-100:],
-                        errored_bytes=res.content[
+                    extra={
+                        "first_bytes": res.content[:100],
+                        "final_bytes": res.content[-100:],
+                        "errored_bytes": res.content[
                             (uerror.start - 10) : (uerror.start + 10)
                         ],
-                        declared_contenttype=res.headers.get("content-type"),
-                    ),
+                        "declared_contenttype": res.headers.get("content-type"),
+                    },
                 )
                 return res.text
 
@@ -723,7 +723,7 @@ class Github(TorngitBaseAdapter):
         if retry_in_seconds is None and reset_timestamp is None:
             log.warning(
                 "Can't mark entity as rate limited because TTL is missing",
-                extra=dict(entity_key_name=entity_key_name),
+                extra={"entity_key_name": entity_key_name},
             )
             return
         ttl_seconds = retry_in_seconds
@@ -736,10 +736,10 @@ class Github(TorngitBaseAdapter):
         if ttl_seconds > 0:
             log.info(
                 "Marking entity as rate limited",
-                extra=dict(
-                    entity_key_name=entity_key_name,
-                    rate_limit_duration_seconds=ttl_seconds,
-                ),
+                extra={
+                    "entity_key_name": entity_key_name,
+                    "rate_limit_duration_seconds": ttl_seconds,
+                },
             )
             set_entity_to_rate_limited(
                 redis_connection=self._redis_connection,
@@ -772,7 +772,7 @@ class Github(TorngitBaseAdapter):
             self.service, installation_id, **installation_info
         )
         # ! side effect: update the token so subsequent requests won't fail
-        self.set_token(dict(key=token_to_use))
+        self.set_token({"key": token_to_use})
         self.data["installation"] = {
             # Put the installation_id back into the info
             "installation_id": installation_id,
@@ -803,14 +803,14 @@ class Github(TorngitBaseAdapter):
 
         method = (method or "GET").upper()
         if url[0] == "/":
-            log_dict = dict(
-                event="api",
-                endpoint=url,
-                method=method,
-                bot=token_to_use.get("username"),
-                repo_slug=self.slug,
-                loggable_token=self.loggable_token(token_to_use),
-            )
+            log_dict = {
+                "event": "api",
+                "endpoint": url,
+                "method": method,
+                "bot": token_to_use.get("username"),
+                "repo_slug": self.slug,
+                "loggable_token": self.loggable_token(token_to_use),
+            }
             url = self.api_url + url
 
         url = url_concat(url, args).replace(" ", "%20")
@@ -820,9 +820,11 @@ class Github(TorngitBaseAdapter):
         elif url.startswith(self.service_url) and self.host_header is not None:
             _headers["Host"] = self.host_header
 
-        kwargs = dict(
-            json=body if body else None, headers=_headers, follow_redirects=False
-        )
+        kwargs = {
+            "json": body if body else None,
+            "headers": _headers,
+            "follow_redirects": False,
+        }
         max_number_retries = 3
         tried_refresh = False
         for current_retry in range(1, max_number_retries + 1):
@@ -982,9 +984,10 @@ class Github(TorngitBaseAdapter):
         ! raises TorngitRefreshTokenFailedError
         """
         creds_from_token = self._oauth_consumer_token()
-        creds_to_send = dict(
-            client_id=creds_from_token["key"], client_secret=creds_from_token["secret"]
-        )
+        creds_to_send = {
+            "client_id": creds_from_token["key"],
+            "client_secret": creds_from_token["secret"],
+        }
 
         if self.token.get("refresh_token") is None:
             log.warning("Trying to refresh Github token with no refresh_token saved")
@@ -1010,11 +1013,11 @@ class Github(TorngitBaseAdapter):
         )
         if res.status_code >= 300:
             raise TorngitRefreshTokenFailedError(
-                dict(
-                    status_code=res.status_code,
-                    response_text=res.text,
-                    original_url=original_url,
-                )
+                {
+                    "status_code": res.status_code,
+                    "response_text": res.text,
+                    "original_url": original_url,
+                }
             )
         response_text = self._parse_response(res)
         session = parse_qs(response_text)
@@ -1034,11 +1037,11 @@ class Github(TorngitBaseAdapter):
         # should be succeeding. We've decided to not prioritize a fix for now.
         # Changed from log.error to log.warning to supress Sentry spam.
         log.warning(
-            dict(
-                error="No access_token in response",
-                gh_error=session.get("error"),
-                gh_error_description=session.get("error_description"),
-            )
+            {
+                "error": "No access_token in response",
+                "gh_error": session.get("error"),
+                "gh_error_description": session.get("error_description"),
+            }
         )
         # Retunring None will let the code handle the request failure gracefully
         # Instead of probably throwing 500
@@ -1103,12 +1106,12 @@ class Github(TorngitBaseAdapter):
             if session.get("access_token"):
                 # set current token
                 self.set_token(
-                    dict(
-                        key=session["access_token"],
+                    {
+                        "key": session["access_token"],
                         # Refresh token only exists if the app is configured
                         # to have expiring tokens
-                        refresh_token=session.get("refresh_token", None),
-                    )
+                        "refresh_token": session.get("refresh_token", None),
+                    }
                 )
                 url = self.count_and_get_url_template(
                     url_name="get_authenticated_user"
@@ -1130,11 +1133,11 @@ class Github(TorngitBaseAdapter):
                     # https://docs.github.com/en/apps/oauth-apps/maintaining-oauth-apps/troubleshooting-oauth-app-access-token-request-errors
                     log.error(
                         "Error fetching GitHub access token",
-                        extra=dict(
-                            error=session.get("error"),
-                            error_description=session.get("error_description"),
-                            error_uri=session.get("error_uri"),
-                        ),
+                        extra={
+                            "error": session.get("error"),
+                            "error_description": session.get("error_description"),
+                            "error_uri": session.get("error_uri"),
+                        },
                     )
                 return None
 
@@ -1178,49 +1181,49 @@ class Github(TorngitBaseAdapter):
         parent = res.get("parent")
 
         if parent:
-            fork = dict(
-                owner=dict(
-                    service_id=str(parent["owner"]["id"]),
-                    username=parent["owner"]["login"],
-                ),
-                repo=dict(
-                    service_id=str(parent["id"]),
-                    name=parent["name"],
-                    language=self._validate_language(parent["language"]),
-                    private=parent["private"],
-                    branch=parent["default_branch"],
-                ),
-            )
+            fork = {
+                "owner": {
+                    "service_id": str(parent["owner"]["id"]),
+                    "username": parent["owner"]["login"],
+                },
+                "repo": {
+                    "service_id": str(parent["id"]),
+                    "name": parent["name"],
+                    "language": self._validate_language(parent["language"]),
+                    "private": parent["private"],
+                    "branch": parent["default_branch"],
+                },
+            }
         else:
             fork = None
 
-        return dict(
-            owner=dict(service_id=str(res["owner"]["id"]), username=username),
-            repo=dict(
-                service_id=str(res["id"]),
-                name=repo,
-                language=self._validate_language(res["language"]),
-                private=res["private"],
-                fork=fork,
-                branch=res["default_branch"] or "main",
-            ),
-        )
+        return {
+            "owner": {"service_id": str(res["owner"]["id"]), "username": username},
+            "repo": {
+                "service_id": str(res["id"]),
+                "name": repo,
+                "language": self._validate_language(res["language"]),
+                "private": res["private"],
+                "fork": fork,
+                "branch": res["default_branch"] or "main",
+            },
+        }
 
     def _process_repository_page(self, page):
         def process(repo):
-            return dict(
-                owner=dict(
-                    service_id=str(repo["owner"]["id"]),
-                    username=repo["owner"]["login"],
-                ),
-                repo=dict(
-                    service_id=str(repo["id"]),
-                    name=repo["name"],
-                    language=self._validate_language(repo["language"]),
-                    private=repo["private"],
-                    branch=repo["default_branch"] or "main",
-                ),
-            )
+            return {
+                "owner": {
+                    "service_id": str(repo["owner"]["id"]),
+                    "username": repo["owner"]["login"],
+                },
+                "repo": {
+                    "service_id": str(repo["id"]),
+                    "name": repo["name"],
+                    "language": self._validate_language(repo["language"]),
+                    "private": repo["private"],
+                    "branch": repo["default_branch"] or "main",
+                },
+            }
 
         return list(map(process, page))
 
@@ -1242,11 +1245,13 @@ class Github(TorngitBaseAdapter):
 
         log.info(
             "Fetched page of repos using installation",
-            extra=dict(
-                page_size=page_size,
-                page=page,
-                repo_names=[repo["name"] for repo in repos] if len(repos) > 0 else [],
-            ),
+            extra={
+                "page_size": page_size,
+                "page": page,
+                "repo_names": [repo["name"] for repo in repos]
+                if len(repos) > 0
+                else [],
+            },
         )
 
         return self._process_repository_page(repos)
@@ -1268,12 +1273,14 @@ class Github(TorngitBaseAdapter):
 
         log.info(
             "Fetched page of repos",
-            extra=dict(
-                page_size=page_size,
-                page=page,
-                repo_names=[repo["name"] for repo in repos] if len(repos) > 0 else [],
-                username=username,
-            ),
+            extra={
+                "page_size": page_size,
+                "page": page,
+                "repo_names": [repo["name"] for repo in repos]
+                if len(repos) > 0
+                else [],
+                "username": username,
+            },
         )
 
         return self._process_repository_page(repos)
@@ -1300,7 +1307,7 @@ class Github(TorngitBaseAdapter):
         believing that the max number of node_ids we can use is 100.
         """
         token = self.get_token_by_type_if_none(token, TokenType.read)
-        owners_seen = dict()
+        owners_seen = {}
         async with self.get_client() as client:
             max_index = len(repo_node_ids)
             curr_index = 0
@@ -1496,17 +1503,17 @@ class Github(TorngitBaseAdapter):
                         ).substitute(login=organization["login"])
                         org = await self.api(client, "get", url, token=token)  # noqa: PLW2901
                         data.append(
-                            dict(
-                                name=organization.get("name", org["login"]),
-                                id=str(organization["id"]),
-                                email=organization.get("email"),
-                                username=organization["login"],
-                            )
+                            {
+                                "name": organization.get("name", org["login"]),
+                                "id": str(organization["id"]),
+                                "email": organization.get("email"),
+                                "username": organization["login"],
+                            }
                         )
                     except TorngitClientGeneralError:
                         log.exception(
                             "Unable to load organization",
-                            extra=dict(url=organization["url"]),
+                            extra={"url": organization["url"]},
                         )
                 if len(orgs) < 30:
                     break
@@ -1557,12 +1564,12 @@ class Github(TorngitBaseAdapter):
                 client,
                 "post",
                 api_url,
-                body=dict(
-                    name="web",
-                    active=True,
-                    events=events,
-                    config=dict(url=url, secret=secret, content_type="json"),
-                ),
+                body={
+                    "name": "web",
+                    "active": True,
+                    "events": events,
+                    "config": {"url": url, "secret": secret, "content_type": "json"},
+                },
                 token=token,
             )
             return res
@@ -1579,12 +1586,16 @@ class Github(TorngitBaseAdapter):
                     client,
                     "patch",
                     api_url,
-                    body=dict(
-                        name="web",
-                        active=True,
-                        events=events,
-                        config=dict(url=url, secret=secret, content_type="json"),
-                    ),
+                    body={
+                        "name": "web",
+                        "active": True,
+                        "events": events,
+                        "config": {
+                            "url": url,
+                            "secret": secret,
+                            "content_type": "json",
+                        },
+                    },
                     token=token,
                 )
         except TorngitClientError as ce:
@@ -1688,12 +1699,12 @@ class Github(TorngitBaseAdapter):
                     client,
                     "post",
                     api_url,
-                    body=dict(
-                        state=status,
-                        target_url=url,
-                        context=context,
-                        description=description,
-                    ),
+                    body={
+                        "state": status,
+                        "target_url": url,
+                        "context": context,
+                        "description": description,
+                    },
                     token=token,
                 )
             except TorngitClientError:
@@ -1706,12 +1717,12 @@ class Github(TorngitBaseAdapter):
                     client,
                     "post",
                     api_url,
-                    body=dict(
-                        state=status,
-                        target_url=url,
-                        context=merge_commit[1],
-                        description=description,
-                    ),
+                    body={
+                        "state": status,
+                        "target_url": url,
+                        "context": merge_commit[1],
+                        "description": description,
+                    },
                     token=token,
                 )
             return res
@@ -1788,7 +1799,7 @@ class Github(TorngitBaseAdapter):
                 )
             raise
 
-        return dict(content=content["content"], commitid=content["sha"])
+        return {"content": content["content"], "commitid": content["sha"]}
 
     @cache.cache_function(ttl=60 * 60)
     async def get_commit_diff(self, commit, context=None, token=None):
@@ -1858,23 +1869,23 @@ class Github(TorngitBaseAdapter):
             files.update(diff["files"])
 
         # commits are returned in reverse chronological order. ie [newest...oldest]
-        return dict(
-            diff=dict(files=files),
-            commits=[
-                dict(
-                    commitid=c["sha"],
-                    message=c["commit"]["message"],
-                    timestamp=c["commit"]["author"]["date"],
-                    author=dict(
-                        id=(c["author"] or {}).get("id"),
-                        username=(c["author"] or {}).get("login"),
-                        name=c["commit"]["author"]["name"],
-                        email=c["commit"]["author"]["email"],
-                    ),
-                )
+        return {
+            "diff": {"files": files},
+            "commits": [
+                {
+                    "commitid": c["sha"],
+                    "message": c["commit"]["message"],
+                    "timestamp": c["commit"]["author"]["date"],
+                    "author": {
+                        "id": (c["author"] or {}).get("id"),
+                        "username": (c["author"] or {}).get("login"),
+                        "name": c["commit"]["author"]["name"],
+                        "email": c["commit"]["author"]["email"],
+                    },
+                }
                 for c in ([res["base_commit"]] + res["commits"])
             ][::-1],
-        )
+        }
 
     async def get_distance_in_commits(
         self, base_branch, base, context=None, with_commits=True, token=None
@@ -1891,12 +1902,12 @@ class Github(TorngitBaseAdapter):
         if behind_by is None or behind_by_commit is None:
             behind_by = None
             behind_by_commit = None
-        return dict(
-            behind_by=behind_by,
-            behind_by_commit=behind_by_commit,
-            status=res.get("status"),
-            ahead_by=res.get("ahead_by"),
-        )
+        return {
+            "behind_by": behind_by,
+            "behind_by_commit": behind_by_commit,
+            "status": res.get("status"),
+            "ahead_by": res.get("ahead_by"),
+        }
 
     @cache.cache_function(ttl=60 * 60)
     async def get_commit(self, commit, token=None):
@@ -1923,18 +1934,18 @@ class Github(TorngitBaseAdapter):
                     message=f"Repo {self.slug} cannot be found by this user",
                 )
             raise
-        return dict(
-            author=dict(
-                id=str(res["author"]["id"]) if res["author"] else None,
-                username=res["author"]["login"] if res["author"] else None,
-                email=res["commit"]["author"].get("email"),
-                name=res["commit"]["author"].get("name"),
-            ),
-            commitid=commit,
-            parents=[p["sha"] for p in res["parents"]],
-            message=res["commit"]["message"],
-            timestamp=res["commit"]["committer"].get("date"),
-        )
+        return {
+            "author": {
+                "id": str(res["author"]["id"]) if res["author"] else None,
+                "username": res["author"]["login"] if res["author"] else None,
+                "email": res["commit"]["author"].get("email"),
+                "name": res["commit"]["author"].get("name"),
+            },
+            "commitid": commit,
+            "parents": [p["sha"] for p in res["parents"]],
+            "message": res["commit"]["message"],
+            "timestamp": res["commit"]["committer"].get("date"),
+        }
 
     # Pull Requests
     # -------------
@@ -1999,7 +2010,7 @@ class Github(TorngitBaseAdapter):
             if current_level == [res["head"]["sha"]]:
                 log.warning(
                     "Head not found in PR. PR has probably too many commits to list all of them",
-                    extra=dict(number_commits=len(commits), pullid=pullid),
+                    extra={"number_commits": len(commits), "pullid": pullid},
                 )
             else:
                 possible_bases = [
@@ -2008,12 +2019,12 @@ class Github(TorngitBaseAdapter):
                 if possible_bases and result["base"]["commitid"] not in possible_bases:
                     log.info(
                         "Github base differs from original base",
-                        extra=dict(
-                            current_level=current_level,
-                            github_base=result["base"]["commitid"],
-                            possible_bases=possible_bases,
-                            pullid=pullid,
-                        ),
+                        extra={
+                            "current_level": current_level,
+                            "github_base": result["base"]["commitid"],
+                            "possible_bases": possible_bases,
+                            "pullid": pullid,
+                        },
                     )
                     result["base"]["commitid"] = possible_bases[0]
             return result
@@ -2067,12 +2078,12 @@ class Github(TorngitBaseAdapter):
                     if len(prs_with_commit) > 1:
                         log.warning(
                             "Commit is referenced in multiple PRs.",
-                            extra=dict(
-                                prs=prs_with_commit,
-                                commit=commit,
-                                slug=self.slug,
-                                state=state,
-                            ),
+                            extra={
+                                "prs": prs_with_commit,
+                                "commit": commit,
+                                "slug": self.slug,
+                                "state": state,
+                            },
                         )
                     return prs_with_commit[0]
             except TorngitClientGeneralError as exp:
@@ -2170,7 +2181,7 @@ class Github(TorngitBaseAdapter):
                 client,
                 "post",
                 url,
-                body=dict(name=check_name, head_sha=head_sha, status=status),
+                body={"name": check_name, "head_sha": head_sha, "status": status},
                 token=token,
             )
             return res["id"]
@@ -2278,7 +2289,7 @@ class Github(TorngitBaseAdapter):
         url=None,
         token=None,
     ):
-        body = dict(conclusion=conclusion, status=status, output=output)
+        body = {"conclusion": conclusion, "status": status, "output": output}
         if url:
             body["details_url"] = url
         async with self.get_client() as client:
@@ -2299,14 +2310,14 @@ class Github(TorngitBaseAdapter):
         public = True
         if run["repository"]["private"]:
             public = False
-        return dict(
-            start_time=run["created_at"],
-            finish_time=run["updated_at"],
-            status=run["status"],
-            public=public,
-            slug=run["repository"]["full_name"],
-            commit_sha=run["head_sha"],
-        )
+        return {
+            "start_time": run["created_at"],
+            "finish_time": run["updated_at"],
+            "status": run["status"],
+            "public": public,
+            "slug": run["repository"]["full_name"],
+            "commit_sha": run["head_sha"],
+        }
 
     async def get_workflow_run(self, run_id, token=None):
         """

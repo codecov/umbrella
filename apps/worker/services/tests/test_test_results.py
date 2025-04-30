@@ -39,7 +39,7 @@ def test_send_to_provider():
     tn._pull = mock.Mock()
     tn._pull.database_pull.commentid = None
     tn._repo_service = mock_repo_service()
-    m = dict(id=1)
+    m = {"id": 1}
     tn._repo_service.post_comment.return_value = m
 
     res = tn.send_to_provider(tn._pull, "hello world")
@@ -57,7 +57,7 @@ def test_send_to_provider_edit():
     tn._pull = mock.Mock()
     tn._pull.database_pull.commentid = 1
     tn._repo_service = mock_repo_service()
-    m = dict(id=1)
+    m = {"id": 1}
     tn._repo_service.edit_comment.return_value = m
 
     res = tn.send_to_provider(tn._pull, "hello world")

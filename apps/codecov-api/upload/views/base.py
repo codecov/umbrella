@@ -31,9 +31,7 @@ class GetterMixin(ShelterMixin):
         try:
             service_enum = Service(service)
         except ValueError:
-            log.warning(
-                f"Service not found: {service}", extra=dict(repo_slug=repo_slug)
-            )
+            log.warning(f"Service not found: {service}", extra={"repo_slug": repo_slug})
             raise ValidationError(f"Service not found: {service}")
 
         repository = get_repository_from_string(service_enum, repo_slug)
@@ -41,7 +39,7 @@ class GetterMixin(ShelterMixin):
         if not repository:
             log.warning(
                 "Repository not found",
-                extra=dict(repo_slug=repo_slug),
+                extra={"repo_slug": repo_slug},
             )
             raise ValidationError("Repository not found")
         return repository
@@ -56,7 +54,7 @@ class GetterMixin(ShelterMixin):
         except Commit.DoesNotExist:
             log.warning(
                 "Commit SHA not found",
-                extra=dict(repo=repo.name, commit_sha=commit_sha),
+                extra={"repo": repo.name, "commit_sha": commit_sha},
             )
             raise ValidationError("Commit SHA not found")
 
@@ -80,7 +78,7 @@ class GetterMixin(ShelterMixin):
         if report is None:
             log.warning(
                 "Report not found",
-                extra=dict(commit_sha=commit.commitid),
+                extra={"commit_sha": commit.commitid},
             )
             raise ValidationError("Report not found")
         if report.report_type is None:

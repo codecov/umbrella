@@ -57,9 +57,9 @@ class TestGithubEnterprise(object):
             "api_url": "https://api.github.dev",
         }
         gl = GithubEnterprise(
-            repo=dict(service_id="187725", name="codecov-test"),
-            owner=dict(username="stevepeak", service_id="109479"),
-            token=dict(key="fake_token"),
+            repo={"service_id": "187725", "name": "codecov-test"},
+            owner={"username": "stevepeak", "service_id": "109479"},
+            token={"key": "fake_token"},
         )
         res = await gl.post_comment("pullid", "body")
         assert res == {}
@@ -94,9 +94,9 @@ class TestGithubEnterprise(object):
         )
         mocker.patch.object(GithubEnterprise, "get_client", return_value=client)
         gl = GithubEnterprise(
-            repo=dict(service_id="187725", name="codecov-test"),
-            owner=dict(username="stevepeak", service_id="109479"),
-            token=dict(key="fake_token"),
+            repo={"service_id": "187725", "name": "codecov-test"},
+            owner={"username": "stevepeak", "service_id": "109479"},
+            token={"key": "fake_token"},
         )
         method = "GET"
         url = "/random_url"
@@ -130,9 +130,9 @@ class TestGithubEnterprise(object):
         )
         mocker.patch.object(GithubEnterprise, "get_client", return_value=client)
         gl = GithubEnterprise(
-            repo=dict(service_id="187725", name="codecov-test"),
-            owner=dict(username="stevepeak", service_id="109479"),
-            token=dict(key="fake_token"),
+            repo={"service_id": "187725", "name": "codecov-test"},
+            owner={"username": "stevepeak", "service_id": "109479"},
+            token={"key": "fake_token"},
         )
         method = "GET"
         url = f"https://{mock_host}/random_url"

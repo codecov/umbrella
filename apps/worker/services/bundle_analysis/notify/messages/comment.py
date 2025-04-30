@@ -109,11 +109,11 @@ class BundleAnalysisCommentMarkdownStrategy(MessageStrategyInterface):
             changed_files = None
             log.error(
                 "Unable to retrieve PR files",
-                extra=dict(
-                    commit=context.commit.commitid,
-                    report_key=context.commit_report.external_id,
-                    pullid=pull.pullid,
-                ),
+                extra={
+                    "commit": context.commit.commitid,
+                    "report_key": context.commit_report.external_id,
+                    "pullid": pull.pullid,
+                },
                 exc_info=True,
             )
 
@@ -187,11 +187,11 @@ class BundleAnalysisCommentMarkdownStrategy(MessageStrategyInterface):
         except TorngitClientError:
             log.error(
                 "Error creating/updating PR comment",
-                extra=dict(
-                    commit=context.commit.commitid,
-                    report_key=context.commit_report.external_id,
-                    pullid=pull.pullid,
-                ),
+                extra={
+                    "commit": context.commit.commitid,
+                    "report_key": context.commit_report.external_id,
+                    "pullid": pull.pullid,
+                },
             )
             return NotificationResult(
                 notification_attempted=True,

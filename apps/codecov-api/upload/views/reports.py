@@ -78,7 +78,7 @@ class ReportViews(ListCreateAPIView, GetterMixin):
         commit = self.get_commit(repository)
         log.info(
             "Request to create new report",
-            extra=dict(repo=repository.name, commit=commit.commitid),
+            extra={"repo": repository.name, "commit": commit.commitid},
         )
         instance = create_report(serializer, repository, commit)
 

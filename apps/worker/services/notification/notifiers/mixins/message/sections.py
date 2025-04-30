@@ -215,13 +215,13 @@ class HeaderSectionWriter(BaseSectionWriter):
             # Temporary log so we understand when this happens
             log.info(
                 "Notifying user that current head and pull head differ",
-                extra=dict(
-                    repoid=comparison.head.commit.repoid,
-                    commit=comparison.head.commit.commitid,
-                    pull_head=comparison.enriched_pull.provider_pull["head"][
+                extra={
+                    "repoid": comparison.head.commit.repoid,
+                    "commit": comparison.head.commit.commitid,
+                    "pull_head": comparison.enriched_pull.provider_pull["head"][
                         "commitid"
                     ],
-                ),
+                },
             )
             yield ""
             pull_head = comparison.enriched_pull.provider_pull["head"]["commitid"][:7]
@@ -727,16 +727,16 @@ class MessagesToUserSectionWriter(BaseSectionWriter):
             aggregated_upload_diff = sum(
                 (diff["head_count"] - diff["base_count"] for diff in upload_diff)
             )
-            context = dict(
-                aggregated_upload_diff=abs(aggregated_upload_diff),
-                more_or_less="more" if aggregated_upload_diff > 0 else "less",
-                plural="s" if abs(aggregated_upload_diff) > 1 else "",
-                base_short_sha=comparison.project_coverage_base.commit.commitid[:7],
-                head_short_sha=comparison.head.commit.commitid[:7],
-                per_flag_diff_lines="".join(
+            context = {
+                "aggregated_upload_diff": abs(aggregated_upload_diff),
+                "more_or_less": "more" if aggregated_upload_diff > 0 else "less",
+                "plural": "s" if abs(aggregated_upload_diff) > 1 else "",
+                "base_short_sha": comparison.project_coverage_base.commit.commitid[:7],
+                "head_short_sha": comparison.head.commit.commitid[:7],
+                "per_flag_diff_lines": "".join(
                     [get_line_for_flag_diff(info) for info in upload_diff]
                 ),
-            )
+            }
 
             return template.format(**context)
         return ""

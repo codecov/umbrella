@@ -262,7 +262,7 @@ class GitHubOIDCTokenAuthentication(authentication.TokenAuthentication):
 
         log.info(
             "GitHubOIDCTokenAuthentication Success",
-            extra=dict(repository=str(repository)),  # Repo<author/name>
+            extra={"repository": str(repository)},  # Repo<author/name>
         )
 
         return (

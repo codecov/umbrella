@@ -1093,13 +1093,19 @@ class PullRequestComparison(Comparison):
             changes = json.loads(redis.get(key) or json.dumps(None))
             log.info(
                 f"Found {len(changes) if changes else 0} files with changes in cache.",
-                extra=dict(repoid=self.pull.repository.repoid, pullid=self.pull.pullid),
+                extra={
+                    "repoid": self.pull.repository.repoid,
+                    "pullid": self.pull.pullid,
+                },
             )
             return changes
         except OSError as e:
             log.warning(
                 f"Error connecting to redis: {e}",
-                extra=dict(repoid=self.pull.repository.repoid, pullid=self.pull.pullid),
+                extra={
+                    "repoid": self.pull.repository.repoid,
+                    "pullid": self.pull.pullid,
+                },
             )
 
     def _set_files_with_changes_in_cache(self, files_with_changes):
@@ -1110,7 +1116,7 @@ class PullRequestComparison(Comparison):
         )
         log.info(
             f"Stored {len(files_with_changes)} files with changes in cache",
-            extra=dict(repoid=self.pull.repository.repoid, pullid=self.pull.pullid),
+            extra={"repoid": self.pull.repository.repoid, "pullid": self.pull.pullid},
         )
 
     @cached_property

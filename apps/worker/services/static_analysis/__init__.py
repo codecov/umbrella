@@ -107,7 +107,7 @@ class StaticAnalysisComparisonService(object):
         except FileNotInStorageError:
             log.warning(
                 "Unable to load file for static analysis comparison",
-                extra=dict(filepath=filepath, content_location=content_location),
+                extra={"filepath": filepath, "content_location": content_location},
             )
             return None
 
@@ -135,11 +135,11 @@ class StaticAnalysisComparisonService(object):
             if head_analysis_file_data is None or base_analysis_file_data is None:
                 log.warning(
                     "Failed to load snapshot for file. Fallback to all lines in the file",
-                    extra=dict(
-                        file_path=change.after_filepath,
-                        is_missing_head=(head_analysis_file_data is None),
-                        is_missing_base=(base_analysis_file_data is None),
-                    ),
+                    extra={
+                        "file_path": change.after_filepath,
+                        "is_missing_head": (head_analysis_file_data is None),
+                        "is_missing_base": (base_analysis_file_data is None),
+                    },
                 )
                 return {"all": True, "lines": None}
 
@@ -183,6 +183,6 @@ class StaticAnalysisComparisonService(object):
             return result_so_far
         log.warning(
             "Unknown type of change. Fallback to all lines",
-            extra=dict(change_type=change.change_type),
+            extra={"change_type": change.change_type},
         )
         return {"all": True, "lines": None}

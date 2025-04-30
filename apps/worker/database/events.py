@@ -57,7 +57,7 @@ def after_insert_repo(mapper, connection, target: Repository):
         return
 
     # Send to shelter service
-    log.info("After insert signal", extra=dict(repoid=target.repoid))
+    log.info("After insert signal", extra={"repoid": target.repoid})
     _sync_repo(target)
 
 
@@ -80,6 +80,6 @@ def after_update_repo(mapper, connection, target: Repository):
                 old_value = history.deleted[0]
                 new_value = history.added[0]
                 if old_value != new_value:
-                    log.info("After update signal", extra=dict(repoid=target.repoid))
+                    log.info("After update signal", extra={"repoid": target.repoid})
                     _sync_repo(target)
                     break

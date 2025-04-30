@@ -18,7 +18,7 @@ class UserOnboardingMetricsService:
     @staticmethod
     def create_user_onboarding_metric(org_id: int, event: str, payload: Dict[str, Any]):
         if event not in UserOnboardingMetricsService.ALLOWED_EVENTS:
-            log.warning("Incompatible event type", extra=dict(event_name=event))
+            log.warning("Incompatible event type", extra={"event_name": event})
             return
 
         metric, created = UserOnboardingLifeCycleMetrics.objects.get_or_create(

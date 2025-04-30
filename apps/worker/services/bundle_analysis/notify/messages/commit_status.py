@@ -72,14 +72,14 @@ class CommitStatusMessageStrategy(MessageStrategyInterface):
 
     def _cache_key(self, context: CommitStatusNotificationContext) -> str:
         return "cache:" + make_hash_sha256(
-            dict(
-                type="status_check_notification",
-                repoid=context.repository.repoid,
-                base_commitid=context.base_commit.commitid,
-                head_commitid=context.commit.commitid,
-                notifier_name="bundle_analysis_commit_status",
-                notifier_title="codecov/bundles",
-            )
+            {
+                "type": "status_check_notification",
+                "repoid": context.repository.repoid,
+                "base_commitid": context.base_commit.commitid,
+                "head_commitid": context.commit.commitid,
+                "notifier_name": "bundle_analysis_commit_status",
+                "notifier_title": "codecov/bundles",
+            }
         )
 
     @sentry_sdk.trace
@@ -117,10 +117,10 @@ class CommitStatusMessageStrategy(MessageStrategyInterface):
         except TorngitClientError:
             log.error(
                 "Failed to set commit status",
-                extra=dict(
-                    commit=context.commit.commitid,
-                    report_key=context.commit_report.external_id,
-                ),
+                extra={
+                    "commit": context.commit.commitid,
+                    "report_key": context.commit_report.external_id,
+                },
             )
             return NotificationResult(
                 notification_attempted=True,

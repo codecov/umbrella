@@ -69,11 +69,11 @@ class AmplitudeEventPublisher(EventPublisher):
             )
             log.error(
                 "Failed to publish Amplitude event",
-                extra=dict(
-                    event_type=event_type,
-                    error_name=e.__class__.__name__,
-                    error_message=str(e),
-                ),
+                extra={
+                    "event_type": event_type,
+                    "error_name": e.__class__.__name__,
+                    "error_message": str(e),
+                },
             )
 
     def _unsafe_publish(

@@ -59,9 +59,11 @@ class UploadCompletionView(CreateAPIView, GetterMixin):
         if not uploads_queryset or uploads_count == 0:
             log.info(
                 "Cannot trigger notifications as we didn't find any uploads for the provided commit",
-                extra=dict(
-                    repo=repo.name, commit=commit.commitid, pullid=commit.pullid
-                ),
+                extra={
+                    "repo": repo.name,
+                    "commit": commit.commitid,
+                    "pullid": commit.pullid,
+                },
             )
             return Response(
                 data={

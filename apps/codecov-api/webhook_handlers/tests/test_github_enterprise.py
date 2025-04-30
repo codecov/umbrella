@@ -893,14 +893,14 @@ class GithubEnterpriseWebhookHandlerTests(APITestCase):
         # Because we throw these into a set we need to order them here
         # In practive it doesn't matter, but for the test it does.
         kwargs["repos_affected"].sort()
-        assert kwargs == dict(
-            ownerid=owner.ownerid,
-            username=owner.username,
-            sync_teams=False,
-            sync_repos=True,
-            using_integration=True,
-            repos_affected=[("12321", "R_12321CAT"), ("12343", "R_12343DOG")],
-        )
+        assert kwargs == {
+            "ownerid": owner.ownerid,
+            "username": owner.username,
+            "sync_teams": False,
+            "sync_repos": True,
+            "using_integration": True,
+            "repos_affected": [("12321", "R_12321CAT"), ("12343", "R_12343DOG")],
+        }
 
     @patch("services.task.TaskService.refresh")
     def test_organization_with_removed_action_removes_user_from_org_and_activated_user_list(

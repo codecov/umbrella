@@ -49,10 +49,10 @@ class TestUrlsUtil(BaseTestCase):
     @pytest.mark.parametrize(
         "url, args, expected",
         [
-            ("http://example.com/foo", dict(c="d"), "http://example.com/foo?c=d"),
+            ("http://example.com/foo", {"c": "d"}, "http://example.com/foo?c=d"),
             (
                 "http://example.com/foo?a=b",
-                dict(c="d"),
+                {"c": "d"},
                 "http://example.com/foo?a=b&c=d",
             ),
             (

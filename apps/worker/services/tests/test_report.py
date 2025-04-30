@@ -3796,16 +3796,16 @@ class TestReportService(BaseTestCase):
         mock_provider_service.assert_called()
         mock_log_error.assert_called_with(
             "Failed to shift carryforward report lines.",
-            extra=dict(
-                reason="Can't get diff",
-                commit=commit.commitid,
-                error=str(
+            extra={
+                "reason": "Can't get diff",
+                "commit": commit.commitid,
+                "error": str(
                     TorngitRateLimitError(response_data="", message="error", reset=None)
                 ),
-                error_type=type(
+                "error_type": type(
                     TorngitRateLimitError(response_data="", message="error", reset=None)
                 ),
-            ),
+            },
         )
 
     def test_possibly_shift_carryforward_report_bot_error(
@@ -3831,11 +3831,11 @@ class TestReportService(BaseTestCase):
         mock_provider_service.assert_called()
         mock_log_error.assert_called_with(
             "Failed to shift carryforward report lines",
-            extra=dict(
-                reason="Can't get provider_service",
-                commit=commit.commitid,
-                error=str(RepositoryWithoutValidBotError()),
-            ),
+            extra={
+                "reason": "Can't get provider_service",
+                "commit": commit.commitid,
+                "error": str(RepositoryWithoutValidBotError()),
+            },
         )
 
     def test_possibly_shift_carryforward_report_random_processing_error(
@@ -3852,7 +3852,7 @@ class TestReportService(BaseTestCase):
             raise Exception("Very random and hard to get exception")
 
         mock_repo_provider.get_compare = mock.AsyncMock(
-            side_effect=lambda *args, **kwargs: dict(diff={})
+            side_effect=lambda *args, **kwargs: {"diff": {}}
         )
         mock_report = mocker.Mock()
         mock_report.shift_lines_by_diff = raise_error
@@ -3863,10 +3863,10 @@ class TestReportService(BaseTestCase):
         mock_log_error.assert_called_with(
             "Failed to shift carryforward report lines.",
             exc_info=True,
-            extra=dict(
-                reason="Unknown",
-                commit=commit.commitid,
-            ),
+            extra={
+                "reason": "Unknown",
+                "commit": commit.commitid,
+            },
         )
 
     def test_possibly_shift_carryforward_report_softtimelimit_reraised(

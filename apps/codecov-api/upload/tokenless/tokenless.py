@@ -30,12 +30,12 @@ class TokenlessUploadHandler(object):
     def verify_upload(self):
         log.info(
             f"Started {self.ci_type} tokenless upload",
-            extra=dict(
-                commit=self.upload_params.get("commit"),
-                repo_name=self.upload_params.get("repo"),
-                job=self.upload_params.get("job"),
-                owner=self.upload_params.get("owner"),
-            ),
+            extra={
+                "commit": self.upload_params.get("commit"),
+                "repo_name": self.upload_params.get("repo"),
+                "job": self.upload_params.get("job"),
+                "owner": self.upload_params.get("owner"),
+            },
         )
         try:
             return self.verifier(self.upload_params).verify()

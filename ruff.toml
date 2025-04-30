@@ -16,7 +16,6 @@ select = [
     "W",     # pycodestyle - warning rules
 ]
 ignore = [
-    "C408",    # Unnecessary `{kind}()` call (rewrite as a literal)
     "E501",    # Line too long ({width} > {limit})
     "E712",    # Avoid equality comparisons to `True`; use `if {cond}:` for truth checks
     "F403",    # `from {name} import *` used; unable to detect undefined names

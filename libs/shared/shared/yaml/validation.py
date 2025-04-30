@@ -129,7 +129,7 @@ class UserGivenSecret(object):
                 res = self.decode(value, self.required_prefix)
                 log.info(
                     "Valid secret was used by customer",
-                    extra=dict(extra_data=self.required_prefix.split("/")),
+                    extra={"extra_data": self.required_prefix.split("/")},
                 )
                 return res
             except UserGivenSecret.InvalidSecret:

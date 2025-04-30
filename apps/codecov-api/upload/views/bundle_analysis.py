@@ -175,11 +175,11 @@ class BundleAnalysisView(APIView, ShelterMixin):
 
         log.info(
             "Dispatching bundle analysis upload to worker",
-            extra=dict(
-                commit=commit.commitid,
-                repoid=repo.repoid,
-                task_arguments=task_arguments,
-            ),
+            extra={
+                "commit": commit.commitid,
+                "repoid": repo.repoid,
+                "task_arguments": task_arguments,
+            },
         )
 
         dispatch_upload_task(
@@ -206,11 +206,11 @@ class BundleAnalysisView(APIView, ShelterMixin):
                 if created:
                     log.info(
                         "Created new timescale dataset for bundle analysis",
-                        extra=dict(
-                            commit=commit.commitid,
-                            repoid=repo.repoid,
-                            measurement_type=measurement_type,
-                        ),
+                        extra={
+                            "commit": commit.commitid,
+                            "repoid": repo.repoid,
+                            "measurement_type": measurement_type,
+                        },
                     )
 
         return ("success", Response({"url": url}, status=201))
@@ -236,9 +236,9 @@ class BundleAnalysisView(APIView, ShelterMixin):
         except Exception as e:
             log.error(
                 "Error handling bundle analysis upload",
-                extra=dict(
-                    error=e,
-                ),
+                extra={
+                    "error": e,
+                },
                 exc_info=True,
             )
             upload_result = "error"

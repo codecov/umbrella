@@ -23,7 +23,7 @@ class StatusSetErrorTask(BaseCodecovTask, name=status_set_error_task_name):
     def run_impl(self, db_session, repoid, commitid, *, message=None, **kwargs):
         log.info(
             "Set error",
-            extra=dict(repoid=repoid, commitid=commitid, description=message),
+            extra={"repoid": repoid, "commitid": commitid, "description": message},
         )
 
         # TODO: need to check for enterprise license once licences are implemented
@@ -65,9 +65,11 @@ class StatusSetErrorTask(BaseCodecovTask, name=status_set_error_task_name):
                             status_set = True
                             log.info(
                                 "Status set",
-                                extra=dict(
-                                    context=context, description=message, state=state
-                                ),
+                                extra={
+                                    "context": context,
+                                    "description": message,
+                                    "state": state,
+                                },
                             )
 
         return {"status_set": status_set}

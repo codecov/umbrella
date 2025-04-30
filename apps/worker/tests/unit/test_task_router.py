@@ -202,7 +202,12 @@ def test_get_user_plan_from_task(
 ):
     (repo, repo_enterprise_cloud) = fake_repos
     compare_commit = fake_comparison_commit[0]
-    task_kwargs = dict(repoid=repo.repoid, commitid=0, debug=False, rebuild=False)
+    task_kwargs = {
+        "repoid": repo.repoid,
+        "commitid": 0,
+        "debug": False,
+        "rebuild": False,
+    }
     assert (
         _get_user_plan_from_task(
             dbsession, shared_celery_config.upload_task_name, task_kwargs
@@ -210,9 +215,12 @@ def test_get_user_plan_from_task(
         == PlanName.CODECOV_PRO_MONTHLY.value
     )
 
-    task_kwargs = dict(
-        repoid=repo_enterprise_cloud.repoid, commitid=0, debug=False, rebuild=False
-    )
+    task_kwargs = {
+        "repoid": repo_enterprise_cloud.repoid,
+        "commitid": 0,
+        "debug": False,
+        "rebuild": False,
+    }
     assert (
         _get_user_plan_from_task(
             dbsession, shared_celery_config.upload_task_name, task_kwargs
@@ -220,7 +228,7 @@ def test_get_user_plan_from_task(
         == PlanName.ENTERPRISE_CLOUD_YEARLY.value
     )
 
-    task_kwargs = dict(ownerid=repo.ownerid)
+    task_kwargs = {"ownerid": repo.ownerid}
     assert (
         _get_user_plan_from_task(
             dbsession, shared_celery_config.delete_owner_task_name, task_kwargs
@@ -228,7 +236,7 @@ def test_get_user_plan_from_task(
         == PlanName.CODECOV_PRO_MONTHLY.value
     )
 
-    task_kwargs = dict(org_ownerid=repo.ownerid, user_ownerid=20)
+    task_kwargs = {"org_ownerid": repo.ownerid, "user_ownerid": 20}
     assert (
         _get_user_plan_from_task(
             dbsession, shared_celery_config.new_user_activated_task_name, task_kwargs
@@ -236,7 +244,7 @@ def test_get_user_plan_from_task(
         == PlanName.CODECOV_PRO_MONTHLY.value
     )
 
-    task_kwargs = dict(comparison_id=compare_commit.id)
+    task_kwargs = {"comparison_id": compare_commit.id}
     assert (
         _get_user_plan_from_task(
             dbsession, shared_celery_config.compute_comparison_task_name, task_kwargs
@@ -244,9 +252,12 @@ def test_get_user_plan_from_task(
         == PlanName.CODECOV_PRO_MONTHLY.value
     )
 
-    task_kwargs = dict(
-        repoid=repo_enterprise_cloud.repoid, commitid=0, debug=False, rebuild=False
-    )
+    task_kwargs = {
+        "repoid": repo_enterprise_cloud.repoid,
+        "commitid": 0,
+        "debug": False,
+        "rebuild": False,
+    }
     assert (
         _get_user_plan_from_task(dbsession, "unknown task", task_kwargs)
         == DEFAULT_FREE_PLAN
@@ -261,7 +272,12 @@ def test_route_task(mocker, dbsession, fake_repos):
     mock_get_db_session.return_value = dbsession
     mock_route_tasks_shared.return_value = {"queue": "correct queue"}
     repo = fake_repos[0]
-    task_kwargs = dict(repoid=repo.repoid, commitid=0, debug=False, rebuild=False)
+    task_kwargs = {
+        "repoid": repo.repoid,
+        "commitid": 0,
+        "debug": False,
+        "rebuild": False,
+    }
     response = route_task(shared_celery_config.upload_task_name, [], task_kwargs, {})
     assert response == {"queue": "correct queue"}
     mock_get_db_session.assert_called()

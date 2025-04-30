@@ -3,14 +3,14 @@ from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse, urlunparse
 
 from shared.config import get_config
 
-services_short = dict(
-    github="gh",
-    github_enterprise="ghe",
-    bitbucket="bb",
-    bitbucket_server="bbs",
-    gitlab="gl",
-    gitlab_enterprise="gle",
-)
+services_short = {
+    "github": "gh",
+    "github_enterprise": "ghe",
+    "bitbucket": "bb",
+    "bitbucket_server": "bbs",
+    "gitlab": "gl",
+    "gitlab_enterprise": "gle",
+}
 
 
 def escape(string, escape=False):

@@ -22,12 +22,12 @@ class TokenlessAzureHandler(BaseTokenlessUploadHandler):
         except (ConnectionError, HTTPError) as e:
             log.warning(
                 f"Request error {e}",
-                extra=dict(
-                    commit=self.upload_params.get("commit"),
-                    repo_name=self.upload_params.get("repo"),
-                    job=self.upload_params.get("job"),
-                    owner=self.upload_params.get("owner"),
-                ),
+                extra={
+                    "commit": self.upload_params.get("commit"),
+                    "repo_name": self.upload_params.get("repo"),
+                    "job": self.upload_params.get("job"),
+                    "owner": self.upload_params.get("owner"),
+                },
             )
             raise NotFound(
                 "Unable to locate build via Azure API. Please upload with the Codecov repository upload token to resolve issue."
@@ -42,13 +42,13 @@ class TokenlessAzureHandler(BaseTokenlessUploadHandler):
         except JSONDecodeError as e:
             log.warning(
                 f"Expected JSON in Azure response, got error {e} instead",
-                extra=dict(
-                    commit=self.upload_params.get("commit"),
-                    repo_name=self.upload_params.get("repo"),
-                    job=self.upload_params.get("job"),
-                    owner=self.upload_params.get("owner"),
-                    response=response,
-                ),
+                extra={
+                    "commit": self.upload_params.get("commit"),
+                    "repo_name": self.upload_params.get("repo"),
+                    "job": self.upload_params.get("job"),
+                    "owner": self.upload_params.get("owner"),
+                    "response": response,
+                },
             )
             raise NotFound(
                 "Unable to locate build via Azure API. Project is likely private, please upload with the Codecov repository upload token to resolve issue."
@@ -105,12 +105,12 @@ class TokenlessAzureHandler(BaseTokenlessUploadHandler):
         if build["buildNumber"] != self.upload_params.get("build"):
             log.warning(
                 f"Azure build numbers do not match. Upload build number: {self.upload_params.get('build')}, Azure build number: {self.upload_params.get('buildNumber')}",
-                extra=dict(
-                    commit=self.upload_params.get("commit"),
-                    repo_name=self.upload_params.get("repo"),
-                    job=self.upload_params.get("job"),
-                    owner=self.upload_params.get("owner"),
-                ),
+                extra={
+                    "commit": self.upload_params.get("commit"),
+                    "repo_name": self.upload_params.get("repo"),
+                    "job": self.upload_params.get("job"),
+                    "owner": self.upload_params.get("owner"),
+                },
             )
             raise NotFound(
                 "Build numbers do not match. Please upload with the Codecov repository upload token to resolve issue."
@@ -123,12 +123,12 @@ class TokenlessAzureHandler(BaseTokenlessUploadHandler):
         ):
             log.warning(
                 "Commit sha does not match Azure build",
-                extra=dict(
-                    commit=self.upload_params.get("commit"),
-                    repo_name=self.upload_params.get("repo"),
-                    job=self.upload_params.get("job"),
-                    owner=self.upload_params.get("owner"),
-                ),
+                extra={
+                    "commit": self.upload_params.get("commit"),
+                    "repo_name": self.upload_params.get("repo"),
+                    "job": self.upload_params.get("job"),
+                    "owner": self.upload_params.get("owner"),
+                },
             )
             raise NotFound(
                 "Commit sha does not match Azure build. Please upload with the Codecov repository upload token to resolve issue."

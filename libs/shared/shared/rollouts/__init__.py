@@ -279,7 +279,7 @@ class Feature:
         if not self._is_valid_rollout():
             log.warning(
                 "Feature flag is using invalid values for rollout",
-                extra=dict(feature_flag_name=self.name),
+                extra={"feature_flag_name": self.name},
             )
 
     # NOTE: `@lru_cache` on instance methods is ordinarily a bad idea:

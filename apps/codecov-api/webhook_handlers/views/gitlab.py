@@ -60,7 +60,7 @@ class GitLabWebhookHandler(APIView):
         """
         event = self.request.META.get(GitLabHTTPHeaders.EVENT)
 
-        log.info("GitLab webhook message received", extra=dict(event=event))
+        log.info("GitLab webhook message received", extra={"event": event})
 
         project_id = request.data.get("project_id") or request.data.get(
             "object_attributes", {}
@@ -186,7 +186,7 @@ class GitLabWebhookHandler(APIView):
         else:
             log.warning(
                 "Unhandled Gitlab webhook merge_request action",
-                extra=dict(action=action),
+                extra={"action": action},
             )
 
         return Response(data=message)

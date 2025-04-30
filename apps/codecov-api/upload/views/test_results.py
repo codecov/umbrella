@@ -187,11 +187,11 @@ class TestResultsView(
 
         log.info(
             "Dispatching test results upload to worker",
-            extra=dict(
-                commit=commit.commitid,
-                repoid=repo.repoid,
-                task_arguments=task_arguments,
-            ),
+            extra={
+                "commit": commit.commitid,
+                "repoid": repo.repoid,
+                "task_arguments": task_arguments,
+            },
         )
 
         dispatch_upload_task(

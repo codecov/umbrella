@@ -37,5 +37,6 @@ class AnalyticsToolManager:
                     )
                 except Exception as exc:
                     log.error(
-                        "Got an error sending events", extra=dict(tool=tool, error=exc)
+                        "Got an error sending events",
+                        extra={"tool": tool, "error": exc},
                     )

@@ -115,7 +115,7 @@ def trigger_upload_task(
 ) -> None:
     log.info(
         "Triggering upload task",
-        extra=dict(repo=repository.name, commit=commit_sha, upload_id=upload.id),
+        extra={"repo": repository.name, "commit": commit_sha, "upload_id": upload.id},
     )
     redis = get_redis_connection()
     task_arguments = {
@@ -240,13 +240,13 @@ class UploadViews(ListCreateAPIView, GetterMixin):
 
         log.info(
             "Request to create new upload",
-            extra=dict(
-                repo=repository.name,
-                commit=commit.commitid,
-                cli_version=serializer.validated_data["version"]
+            extra={
+                "repo": repository.name,
+                "commit": commit.commitid,
+                "cli_version": serializer.validated_data["version"]
                 if "version" in serializer.validated_data
                 else None,
-            ),
+            },
         )
 
         instance = create_upload(

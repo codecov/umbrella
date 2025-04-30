@@ -16,16 +16,16 @@ class GitlabEnterpriseLoginView(GitlabLoginView):
     @property
     def repo_service_instance(self):
         return GitlabEnterprise(
-            oauth_consumer_token=dict(
-                key=settings.GITLAB_ENTERPRISE_CLIENT_ID,
-                secret=settings.GITLAB_ENTERPRISE_CLIENT_SECRET,
-            )
+            oauth_consumer_token={
+                "key": settings.GITLAB_ENTERPRISE_CLIENT_ID,
+                "secret": settings.GITLAB_ENTERPRISE_CLIENT_SECRET,
+            }
         )
 
     @property
     def redirect_info(self):
-        return dict(
-            redirect_uri=settings.GITLAB_ENTERPRISE_REDIRECT_URI,
-            repo_service=GitlabEnterprise(),
-            client_id=settings.GITLAB_ENTERPRISE_CLIENT_ID,
-        )
+        return {
+            "redirect_uri": settings.GITLAB_ENTERPRISE_REDIRECT_URI,
+            "repo_service": GitlabEnterprise(),
+            "client_id": settings.GITLAB_ENTERPRISE_CLIENT_ID,
+        }

@@ -36,27 +36,31 @@ def respx_vcr():
 @pytest.fixture
 def valid_handler():
     return Github(
-        repo=dict(name="example-python"),
-        owner=dict(username="ThiagoCodecov"),
-        token=dict(key="some_key", refresh_token="refresh_token", installation_id=0),
-        oauth_consumer_token=dict(
-            key="client_id",
-            secret="client_secret",
-        ),
+        repo={"name": "example-python"},
+        owner={"username": "ThiagoCodecov"},
+        token={
+            "key": "some_key",
+            "refresh_token": "refresh_token",
+            "installation_id": 0,
+        },
+        oauth_consumer_token={
+            "key": "client_id",
+            "secret": "client_secret",
+        },
     )
 
 
 @pytest.fixture
 def ghapp_handler():
     return Github(
-        repo=dict(name="example-python", using_integration=True),
-        owner=dict(username="codecov-e2e", integration_id=10000),
-        token=dict(key="integration_token", installation_id=1111),
-        oauth_consumer_token=dict(
-            key="client_id",
-            secret="client_secret",
-            refresh_token="refresh_token",
-        ),
+        repo={"name": "example-python", "using_integration": True},
+        owner={"username": "codecov-e2e", "integration_id": 10000},
+        token={"key": "integration_token", "installation_id": 1111},
+        oauth_consumer_token={
+            "key": "client_id",
+            "secret": "client_secret",
+            "refresh_token": "refresh_token",
+        },
     )
 
 
@@ -113,9 +117,9 @@ class TestUnitGithub(object):
                 )
             )
             handler = Github(
-                repo=dict(name="aaaaa"),
-                owner=dict(username="aaaaa"),
-                token=dict(key="aaaaa"),
+                repo={"name": "aaaaa"},
+                owner={"username": "aaaaa"},
+                token={"key": "aaaaa"},
             )
             with pytest.raises(TorngitRateLimitError) as excinfo:
                 async with handler.get_client() as client:
@@ -140,9 +144,9 @@ class TestUnitGithub(object):
                 )
             )
             handler = Github(
-                repo=dict(name="aaaaa"),
-                owner=dict(username="aaaaa"),
-                token=dict(key="aaaaa"),
+                repo={"name": "aaaaa"},
+                owner={"username": "aaaaa"},
+                token={"key": "aaaaa"},
             )
             with pytest.raises(TorngitClientError) as excinfo:
                 async with handler.get_client() as client:
@@ -291,45 +295,45 @@ class TestUnitGithub(object):
         [
             pytest.param(
                 Github(
-                    repo=dict(name="example-python"),
-                    owner=dict(username="ThiagoCodecov"),
-                    token=dict(key="some_key"),
+                    repo={"name": "example-python"},
+                    owner={"username": "ThiagoCodecov"},
+                    token={"key": "some_key"},
                 ),
                 "f7CMr",
                 id="no_username_handler",
             ),
             pytest.param(
                 Github(
-                    repo=dict(name="example-python"),
-                    owner=dict(username="ThiagoCodecov"),
-                    token=dict(key="some_key", username="Thiago"),
+                    repo={"name": "example-python"},
+                    owner={"username": "ThiagoCodecov"},
+                    token={"key": "some_key", "username": "Thiago"},
                 ),
                 "Thiago's token",
                 id="with_username_handler",
             ),
             pytest.param(
                 Github(
-                    repo=dict(name="example-python"),
-                    owner=dict(username="ThiagoCodecov"),
-                    token=dict(key=None),
+                    repo={"name": "example-python"},
+                    owner={"username": "ThiagoCodecov"},
+                    token={"key": None},
                 ),
                 "notoken",
                 id="no_token_handler",
             ),
             pytest.param(
                 Github(
-                    repo=dict(),
-                    owner=dict(username="ThiagoCodecov"),
-                    token=dict(key="some_key"),
+                    repo={},
+                    owner={"username": "ThiagoCodecov"},
+                    token={"key": "some_key"},
                 ),
                 "2vwGK",
                 id="no_repo_handler",
             ),
             pytest.param(
                 Github(
-                    repo=dict(),
-                    owner=dict(username="ThiagoCodecov"),
-                    token=dict(key="some_key"),
+                    repo={},
+                    owner={"username": "ThiagoCodecov"},
+                    token={"key": "some_key"},
                     installation=None,
                 ),
                 "2vwGK",
@@ -337,9 +341,9 @@ class TestUnitGithub(object):
             ),
             pytest.param(
                 Github(
-                    repo=dict(),
-                    owner=dict(username="ThiagoCodecov"),
-                    token=dict(key="some_key"),
+                    repo={},
+                    owner={"username": "ThiagoCodecov"},
+                    token={"key": "some_key"},
                     installation={"installation_id": 1234},
                 ),
                 "GitHub_installation_1234",
@@ -447,9 +451,9 @@ class TestUnitGithub(object):
                 )
             )
             handler = Github(
-                repo=dict(name="aaaaa"),
-                owner=dict(username="aaaaa"),
-                token=dict(key="aaaaa"),
+                repo={"name": "aaaaa"},
+                owner={"username": "aaaaa"},
+                token={"key": "aaaaa"},
             )
             async with handler.get_client() as client:
                 res = await handler.api(client, "get", "/endpoint")
@@ -462,9 +466,9 @@ class TestUnitGithub(object):
             labels={"endpoint": "find_pull_request"},
         )
         handler = Github(
-            repo=dict(name="repo_name"),
-            owner=dict(username="username"),
-            token=dict(key="aaaaa"),
+            repo={"name": "repo_name"},
+            owner={"username": "username"},
+            token={"key": "aaaaa"},
         )
         commit_sha = "some_commit_sha"
         mock_log = mocker.patch.object(
@@ -523,12 +527,12 @@ class TestUnitGithub(object):
             assert res == 18
             mock_log.assert_called_with(
                 "Commit is referenced in multiple PRs.",
-                extra=dict(
-                    prs=[18, 19],
-                    commit="some_commit_sha",
-                    slug="username/repo_name",
-                    state="open",
-                ),
+                extra={
+                    "prs": [18, 19],
+                    "commit": "some_commit_sha",
+                    "slug": "username/repo_name",
+                    "state": "open",
+                },
             )
             after = REGISTRY.get_sample_value(
                 "git_provider_api_calls_github_total",
@@ -543,9 +547,9 @@ class TestUnitGithub(object):
             labels={"endpoint": "find_pull_request"},
         )
         handler = Github(
-            repo=dict(name="repo_name"),
-            owner=dict(username="username"),
-            token=dict(key="aaaaa"),
+            repo={"name": "repo_name"},
+            owner={"username": "username"},
+            token={"key": "aaaaa"},
         )
         res = await handler.find_pull_request(commit=None)
         assert res is None
@@ -562,8 +566,8 @@ class TestUnitGithub(object):
             labels={"endpoint": "find_pull_request"},
         )
         handler = Github(
-            owner=dict(username="username"),
-            token=dict(key="aaaaa"),
+            owner={"username": "username"},
+            token={"key": "aaaaa"},
         )
         commit_sha = "some_commit_sha"
         assert handler.slug is None
@@ -582,9 +586,9 @@ class TestUnitGithub(object):
             labels={"endpoint": "find_pull_request"},
         )
         handler = Github(
-            repo=dict(name="repo_name"),
-            owner=dict(username="username"),
-            token=dict(key="aaaaa"),
+            repo={"name": "repo_name"},
+            owner={"username": "username"},
+            token={"key": "aaaaa"},
         )
         commit_sha = "some_commit_sha"
         with respx.mock:
@@ -614,9 +618,9 @@ class TestUnitGithub(object):
             labels={"endpoint": "get_distance_in_commits"},
         )
         handler = Github(
-            repo=dict(name="repo_name"),
-            owner=dict(username="username"),
-            token=dict(key="aaaaa"),
+            repo={"name": "repo_name"},
+            owner={"username": "username"},
+            token={"key": "aaaaa"},
         )
         base_commit_sha = "some_commit_sha"
         repos_default_branch = "branch"
@@ -663,9 +667,9 @@ class TestUnitGithub(object):
             labels={"endpoint": "get_distance_in_commits"},
         )
         handler = Github(
-            repo=dict(name="repo_name"),
-            owner=dict(username="username"),
-            token=dict(key="aaaaa"),
+            repo={"name": "repo_name"},
+            owner={"username": "username"},
+            token={"key": "aaaaa"},
         )
         base_commit_sha = "some_commit_sha"
         repos_default_branch = "branch"
@@ -1137,17 +1141,17 @@ class TestUnitGithub(object):
         )
 
         handler = Github(
-            repo=dict(name="example-python"),
-            owner=dict(username="ThiagoCodecov"),
-            token=dict(
-                key="some_key",
-                refresh_token="refresh_token",
-                entity_name="default_app_1500",
-            ),
-            oauth_consumer_token=dict(
-                key="client_id",
-                secret="client_secret",
-            ),
+            repo={"name": "example-python"},
+            owner={"username": "ThiagoCodecov"},
+            token={
+                "key": "some_key",
+                "refresh_token": "refresh_token",
+                "entity_name": "default_app_1500",
+            },
+            oauth_consumer_token={
+                "key": "client_id",
+                "secret": "client_secret",
+            },
             installation=GithubInstallationInfo(
                 installation_id=1500,
             ),
@@ -1374,9 +1378,9 @@ class TestUnitGithub(object):
             ).mock(
                 return_value=httpx.Response(
                     status_code=200,
-                    headers=dict(
-                        link='<https://api.github.com/app/hook/deliveries?per_page=50&cursor=v1_17323292984>; rel="next"'
-                    ),
+                    headers={
+                        "link": '<https://api.github.com/app/hook/deliveries?per_page=50&cursor=v1_17323292984>; rel="next"'
+                    },
                     json=[
                         {
                             "id": 17324040107,
@@ -1535,9 +1539,9 @@ class TestUnitGithub(object):
                 )
             )
             handler = Github(
-                repo=dict(name="example-python"),
-                owner=dict(username="codecove2e"),
-                token=dict(key=10 * "a280"),
+                repo={"name": "example-python"},
+                owner={"username": "codecove2e"},
+                token={"key": 10 * "a280"},
             )
             handler._on_token_refresh = token_refresh_fake_callback
             with pytest.raises(TorngitObjectNotFoundError) as excinfo:
@@ -1570,9 +1574,9 @@ class TestUnitGithub(object):
                 )
             )
             handler = Github(
-                repo=dict(name="example-python"),
-                owner=dict(username="codecove2e"),
-                token=dict(key=10 * "a280"),
+                repo={"name": "example-python"},
+                owner={"username": "codecove2e"},
+                token={"key": 10 * "a280"},
             )
             with pytest.raises(TorngitClientError) as excinfo:
                 await handler.get_pull_request_files(4)
@@ -1602,9 +1606,9 @@ class TestUnitGithub(object):
                 )
             )
             handler = Github(
-                repo=dict(name="example-python"),
-                owner=dict(username="codecove2e"),
-                token=dict(key=10 * "a280"),
+                repo={"name": "example-python"},
+                owner={"username": "codecove2e"},
+                token={"key": 10 * "a280"},
             )
             with pytest.raises(TorngitRateLimitError) as excinfo:
                 await handler.get_pull_request_files(4)
@@ -1709,7 +1713,7 @@ class TestUnitGithub(object):
                 )
             pytest.fail("Wrong token received")
 
-        assert valid_handler._oauth == dict(key="client_id", secret="client_secret")
+        assert valid_handler._oauth == {"key": "client_id", "secret": "client_secret"}
 
         with respx.mock:
             mocked_refresh = respx.post(
@@ -1719,20 +1723,22 @@ class TestUnitGithub(object):
                 valid_handler.get_client(), "original_request_url"
             )
             assert mocked_refresh.call_count == 1
-            assert valid_handler._token == dict(
-                key="new_access_token", refresh_token="new_refresh_token"
-            )
+            assert valid_handler._token == {
+                "key": "new_access_token",
+                "refresh_token": "new_refresh_token",
+            }
 
             await valid_handler.refresh_token(
                 valid_handler.get_client(), "original_request_url"
             )
             assert mocked_refresh.call_count == 2
-            assert valid_handler._token == dict(
-                key="newer_access_token", refresh_token="newer_refresh_token"
-            )
+            assert valid_handler._token == {
+                "key": "newer_access_token",
+                "refresh_token": "newer_refresh_token",
+            }
 
         # Make sure that changing the token doesn't change the _oauth
-        assert valid_handler._oauth == dict(key="client_id", secret="client_secret")
+        assert valid_handler._oauth == {"key": "client_id", "secret": "client_secret"}
         after = REGISTRY.get_sample_value(
             "git_provider_api_calls_github_total", labels={"endpoint": "refresh_token"}
         )

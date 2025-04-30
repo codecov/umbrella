@@ -47,9 +47,10 @@ class V1ValidateYamlHandler(APIView):
             if not isinstance(yaml_dict, dict):
                 log.warning(
                     "yaml_dict result from loading validate request body is not a dict",
-                    extra=dict(
-                        yaml_dict=yaml_dict, request_body=str(self.request.body)
-                    ),
+                    extra={
+                        "yaml_dict": yaml_dict,
+                        "request_body": str(self.request.body),
+                    },
                 )
                 return HttpResponse(
                     "No file posted.",
@@ -88,7 +89,7 @@ class V2ValidateYamlHandler(V1ValidateYamlHandler):
         source = self.request.query_params.get("source", "unknown")
         inc_counter(
             API_VALIDATE_V2_COUNTER,
-            labels=dict(source=source),
+            labels={"source": source},
         )
 
         if not self.request.body:
@@ -106,9 +107,10 @@ class V2ValidateYamlHandler(V1ValidateYamlHandler):
             if not isinstance(yaml_dict, dict):
                 log.warning(
                     "yaml_dict result from loading validate request body is not a dict",
-                    extra=dict(
-                        yaml_dict=yaml_dict, request_body=str(self.request.body)
-                    ),
+                    extra={
+                        "yaml_dict": yaml_dict,
+                        "request_body": str(self.request.body),
+                    },
                 )
                 return Response(
                     {

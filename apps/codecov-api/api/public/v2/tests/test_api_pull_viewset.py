@@ -32,7 +32,12 @@ class PullViewsetTests(InternalAPITest):
         )
         self.client = APIClient()
         self.client.force_login_owner(self.current_owner)
-        self.no_patch_response = dict(hits=0, misses=0, partials=0, coverage=0.0)
+        self.no_patch_response = {
+            "hits": 0,
+            "misses": 0,
+            "partials": 0,
+            "coverage": 0.0,
+        }
 
     @patch("api.public.v2.pull.serializers.PullSerializer.get_patch")
     def test_list(self, mock_patch):

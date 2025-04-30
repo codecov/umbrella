@@ -313,11 +313,11 @@ class BundleAnalysisReportService(BaseReportService):
             log.error(
                 "Unable to parse upload for bundle analysis",
                 exc_info=True,
-                extra=dict(
-                    repoid=commit.repoid,
-                    commit=commit.commitid,
-                    error_type=error_type,
-                ),
+                extra={
+                    "repoid": commit.repoid,
+                    "commit": commit.commitid,
+                    "error_type": error_type,
+                },
             )
             return ProcessingResult(
                 upload=upload,
@@ -370,10 +370,10 @@ class BundleAnalysisReportService(BaseReportService):
                 Measurement.commit_sha,
                 Measurement.timestamp,
             ],
-            set_=dict(
-                branch=command.excluded.branch,
-                value=command.excluded.value,
-            ),
+            set_={
+                "branch": command.excluded.branch,
+                "value": command.excluded.value,
+            },
         )
         db_session.execute(command)
         db_session.flush()

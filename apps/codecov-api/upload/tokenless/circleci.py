@@ -24,12 +24,12 @@ class TokenlessCircleciHandler(BaseTokenlessUploadHandler):
         except (ConnectionError, HTTPError) as e:
             log.warning(
                 f"Request error {e}",
-                extra=dict(
-                    commit=self.upload_params.get("commit"),
-                    repo_name=self.upload_params.get("repo"),
-                    job=self.upload_params.get("job"),
-                    owner=self.upload_params.get("owner"),
-                ),
+                extra={
+                    "commit": self.upload_params.get("commit"),
+                    "repo_name": self.upload_params.get("repo"),
+                    "job": self.upload_params.get("job"),
+                    "owner": self.upload_params.get("owner"),
+                },
             )
             raise NotFound(
                 "Unable to locate build via CircleCI API. Please upload with the Codecov repository upload token to resolve issue."
@@ -59,13 +59,13 @@ class TokenlessCircleciHandler(BaseTokenlessUploadHandler):
         if build.get("vcs_revision", "") != self.upload_params.get("commit"):
             log.warning(
                 "Failed to fetch commit from CircleCI",
-                extra=dict(
-                    commit=self.upload_params.get("commit"),
-                    vcs_revision=build.get("vcs_revision", ""),
-                    repo_name=self.upload_params.get("repo"),
-                    build_num=self.build.split(".")[0],
-                    owner=self.upload_params.get("owner"),
-                ),
+                extra={
+                    "commit": self.upload_params.get("commit"),
+                    "vcs_revision": build.get("vcs_revision", ""),
+                    "repo_name": self.upload_params.get("repo"),
+                    "build_num": self.build.split(".")[0],
+                    "owner": self.upload_params.get("owner"),
+                },
             )
             raise NotFound(
                 "Commit sha does not match Circle build. Please upload with the Codecov repository upload token to resolve issue."

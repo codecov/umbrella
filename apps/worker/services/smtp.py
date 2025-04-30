@@ -45,12 +45,12 @@ class SMTPService:
         except smtplib.SMTPNotSupportedError:
             log.warning(
                 "Server does not support TLS, continuing initialization of SMTP connection",
-                extra=dict(
-                    host=self.host,
-                    port=self.port,
-                    username=self.username,
-                    password=self.password,
-                ),
+                extra={
+                    "host": self.host,
+                    "port": self.port,
+                    "username": self.username,
+                    "password": self.password,
+                },
             )
         except smtplib.SMTPResponseException as exc:
             log.warning("Error doing STARTTLS command on SMTP", extra=self.extra_dict)

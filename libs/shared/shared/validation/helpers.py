@@ -383,7 +383,7 @@ class PathPatternSchemaField(object):
         if not value.endswith("$") and not value.endswith("*"):
             log.warning(
                 "Old glob behavior would have interpreted this glob as prefix",
-                extra=dict(glob=value),
+                extra={"glob": value},
             )
         return translate_glob_to_regex(value)
 

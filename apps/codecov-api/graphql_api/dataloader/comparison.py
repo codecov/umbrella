@@ -101,10 +101,10 @@ class ComparisonLoader(BaseLoader):
             # Not sure why this would happen but curious to see if we see this line in the logs
             log.warning(
                 "Failed to refetch all commit comparisons",
-                extra=dict(
-                    created_count=len(comparisons),
-                    fetched_count=len(results),
-                ),
+                extra={
+                    "created_count": len(comparisons),
+                    "fetched_count": len(results),
+                },
             )
 
         return results

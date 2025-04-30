@@ -66,9 +66,9 @@ class TestCommitUpdate(object):
             repository__owner__username="test-acc9",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
         )
-        mock_repo_provider.data = dict(
-            repo=dict(repoid=commit.repoid, commit=commit.commitid)
-        )
+        mock_repo_provider.data = {
+            "repo": {"repoid": commit.repoid, "commit": commit.commitid}
+        }
         dbsession.add(commit)
         dbsession.flush()
 

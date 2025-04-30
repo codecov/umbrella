@@ -531,12 +531,12 @@ class AccountAdmin(AdminMixin, admin.ModelAdmin):
             if total > 0:
                 log.info(
                     f"Admin operation for {account} - Created a User for {total} Owners",
-                    extra=dict(
-                        owners_with_new_user_objects=[
+                    extra={
+                        "owners_with_new_user_objects": [
                             str(owner) for owner in owners_with_new_user_objects
                         ],
-                        account_id=account.id,
-                    ),
+                        "account_id": account.id,
+                    },
                 )
 
             # redo this query to get all Owners and Users
@@ -579,11 +579,11 @@ class AccountAdmin(AdminMixin, admin.ModelAdmin):
             if len(total) > 0 or deleted_count > 0:
                 log.info(
                     f"Admin operation for {account} - Created {len(total)} AccountsUsers, removed {deleted_count} AccountsUsers",
-                    extra=dict(
-                        new_accounts_users=total,
-                        removed_accounts_users_ids=deleted_ids_for_log,
-                        account_id=account.id,
-                    ),
+                    extra={
+                        "new_accounts_users": total,
+                        "removed_accounts_users_ids": deleted_ids_for_log,
+                        "account_id": account.id,
+                    },
                 )
 
 

@@ -89,13 +89,13 @@ class LabelAnalysisRequestProcessingTask(
         if label_analysis_request is None:
             metrics.incr("label_analysis_task.failed_to_calculate.larq_not_found")
             log.error(
-                "LabelAnalysisRequest not found", extra=dict(request_id=request_id)
+                "LabelAnalysisRequest not found", extra={"request_id": request_id}
             )
             self.add_processing_error(
                 larq_id=request_id,
                 error_code=LabelAnalysisProcessingErrorCode.NOT_FOUND,
                 error_msg="LabelAnalysisRequest not found",
-                error_extra=dict(),
+                error_extra={},
             )
             response = {
                 "success": False,
@@ -109,11 +109,11 @@ class LabelAnalysisRequestProcessingTask(
             return response
         log.info(
             "Starting label analysis request",
-            extra=dict(
-                request_id=request_id,
-                external_id=label_analysis_request.external_id,
-                commit=label_analysis_request.head_commit.commitid,
-            ),
+            extra={
+                "request_id": request_id,
+                "external_id": label_analysis_request.external_id,
+                "commit": label_analysis_request.head_commit.commitid,
+            },
         )
 
         if label_analysis_request.state_id == LabelAnalysisRequestState.FINISHED.db_id:
@@ -179,11 +179,11 @@ class LabelAnalysisRequestProcessingTask(
             metrics.incr("label_analysis_task.failed_to_calculate.exception")
             log.exception(
                 "Label analysis failed to calculate",
-                extra=dict(
-                    request_id=request_id,
-                    commit=label_analysis_request.head_commit.commitid,
-                    external_id=label_analysis_request.external_id,
-                ),
+                extra={
+                    "request_id": request_id,
+                    "commit": label_analysis_request.head_commit.commitid,
+                    "external_id": label_analysis_request.external_id,
+                },
             )
             label_analysis_request.result = None
             label_analysis_request.state_id = LabelAnalysisRequestState.ERROR.db_id
@@ -191,7 +191,7 @@ class LabelAnalysisRequestProcessingTask(
                 larq_id=request_id,
                 error_code=LabelAnalysisProcessingErrorCode.FAILED,
                 error_msg="Failed to calculate",
-                error_extra=dict(),
+                error_extra={},
             )
             response = {
                 "success": False,
@@ -206,13 +206,13 @@ class LabelAnalysisRequestProcessingTask(
         metrics.incr("label_analysis_task.failed_to_calculate.missing_info")
         log.warning(
             "We failed to get some information that was important to label analysis",
-            extra=dict(
-                has_relevant_lines=(lines_relevant_to_diff is not None),
-                has_base_report=(base_report is not None),
-                commit=label_analysis_request.head_commit.commitid,
-                external_id=label_analysis_request.external_id,
-                request_id=request_id,
-            ),
+            extra={
+                "has_relevant_lines": (lines_relevant_to_diff is not None),
+                "has_base_report": (base_report is not None),
+                "commit": label_analysis_request.head_commit.commitid,
+                "external_id": label_analysis_request.external_id,
+                "request_id": request_id,
+            },
         )
         label_analysis_request.state_id = LabelAnalysisRequestState.FINISHED.db_id
         result_to_save = {
@@ -237,7 +237,7 @@ class LabelAnalysisRequestProcessingTask(
         error = LabelAnalysisProcessingError(
             label_analysis_request_id=larq_id,
             error_code=error_code.value,
-            error_params=dict(message=error_msg, extra=error_extra),
+            error_params={"message": error_msg, "extra": error_extra},
         )
         self.errors.append(error.to_representation())
         self.dbsession.add(error)
@@ -247,11 +247,11 @@ class LabelAnalysisRequestProcessingTask(
         # Except possibly the absent labels
         log.info(
             "Label analysis request was already calculated",
-            extra=dict(
-                request_id=larq.id,
-                external_id=larq.external_id,
-                commit=larq.head_commit.commitid,
-            ),
+            extra={
+                "request_id": larq.id,
+                "external_id": larq.external_id,
+                "commit": larq.head_commit.commitid,
+            },
         )
         if larq.requested_labels:
             saved_result = larq.result
@@ -338,12 +338,12 @@ class LabelAnalysisRequestProcessingTask(
             # And to tweak the heuristics
             log.info(
                 "Lines relevant to diff",
-                extra=dict(
-                    lines_relevant_to_diff=executable_lines_relevant_to_diff,
-                    commit=label_analysis_request.head_commit.commitid,
-                    external_id=label_analysis_request.external_id,
-                    request_id=label_analysis_request.id_,
-                ),
+                extra={
+                    "lines_relevant_to_diff": executable_lines_relevant_to_diff,
+                    "commit": label_analysis_request.head_commit.commitid,
+                    "external_id": label_analysis_request.external_id,
+                    "request_id": label_analysis_request.id_,
+                },
             )
             return executable_lines_relevant_to_diff
         return None
@@ -365,20 +365,20 @@ class LabelAnalysisRequestProcessingTask(
             # temporary general catch while we find possible problems on this
             log.exception(
                 "Label analysis failed to parse git diff",
-                extra=dict(
-                    request_id=label_analysis_request.id,
-                    external_id=label_analysis_request.external_id,
-                    commit=label_analysis_request.head_commit.commitid,
-                ),
+                extra={
+                    "request_id": label_analysis_request.id,
+                    "external_id": label_analysis_request.external_id,
+                    "commit": label_analysis_request.head_commit.commitid,
+                },
             )
             self.add_processing_error(
                 larq_id=label_analysis_request.id,
                 error_code=LabelAnalysisProcessingErrorCode.FAILED,
                 error_msg="Failed to parse git diff",
-                error_extra=dict(
-                    head_commit=label_analysis_request.head_commit.commitid,
-                    base_commit=label_analysis_request.base_commit.commitid,
-                ),
+                error_extra={
+                    "head_commit": label_analysis_request.head_commit.commitid,
+                    "base_commit": label_analysis_request.base_commit.commitid,
+                },
             )
             return None
 
@@ -393,19 +393,19 @@ class LabelAnalysisRequestProcessingTask(
         if report is None:
             log.warning(
                 "No report found for label analysis",
-                extra=dict(
-                    request_id=label_analysis_request.id,
-                    commit=label_analysis_request.head_commit.commitid,
-                ),
+                extra={
+                    "request_id": label_analysis_request.id,
+                    "commit": label_analysis_request.head_commit.commitid,
+                },
             )
             self.add_processing_error(
                 larq_id=label_analysis_request.id,
                 error_code=LabelAnalysisProcessingErrorCode.MISSING_DATA,
                 error_msg="Missing base report",
-                error_extra=dict(
-                    head_commit=label_analysis_request.head_commit.commitid,
-                    base_commit=label_analysis_request.base_commit.commitid,
-                ),
+                error_extra={
+                    "head_commit": label_analysis_request.head_commit.commitid,
+                    "base_commit": label_analysis_request.base_commit.commitid,
+                },
             )
         return report
 
@@ -422,13 +422,13 @@ class LabelAnalysisRequestProcessingTask(
         global_level_labels = existing_labels.global_level_labels
         log.info(
             "Final info",
-            extra=dict(
-                executable_lines_labels=sorted(executable_lines_labels),
-                all_report_labels=all_report_labels,
-                requested_labels=requested_labels,
-                global_level_labels=sorted(global_level_labels),
-                commit=commit_sha,
-            ),
+            extra={
+                "executable_lines_labels": sorted(executable_lines_labels),
+                "all_report_labels": all_report_labels,
+                "requested_labels": requested_labels,
+                "global_level_labels": sorted(global_level_labels),
+                "commit": commit_sha,
+            },
         )
         if requested_labels is not None:
             requested_labels = set(requested_labels)
@@ -471,26 +471,26 @@ class LabelAnalysisRequestProcessingTask(
             # TODO : Proper handling of this case
             log.info(
                 "Trying to make prediction where there are no static analyses",
-                extra=dict(
-                    base_static_analysis=base_static_analysis.id_
+                extra={
+                    "base_static_analysis": base_static_analysis.id_
                     if base_static_analysis is not None
                     else None,
-                    head_static_analysis=head_static_analysis.id_
+                    "head_static_analysis": head_static_analysis.id_
                     if head_static_analysis is not None
                     else None,
-                    commit=label_analysis_request.head_commit.commitid,
-                ),
+                    "commit": label_analysis_request.head_commit.commitid,
+                },
             )
             self.add_processing_error(
                 larq_id=label_analysis_request.id,
                 error_code=LabelAnalysisProcessingErrorCode.MISSING_DATA,
                 error_msg="Missing static analysis info",
-                error_extra=dict(
-                    head_commit=label_analysis_request.head_commit.commitid,
-                    base_commit=label_analysis_request.base_commit.commitid,
-                    has_base_static_analysis=(base_static_analysis is not None),
-                    has_head_static_analysis=(head_static_analysis is not None),
-                ),
+                error_extra={
+                    "head_commit": label_analysis_request.head_commit.commitid,
+                    "base_commit": label_analysis_request.base_commit.commitid,
+                    "has_base_static_analysis": (base_static_analysis is not None),
+                    "has_head_static_analysis": (head_static_analysis is not None),
+                },
             )
             return None
         static_analysis_comparison_service = StaticAnalysisComparisonService(

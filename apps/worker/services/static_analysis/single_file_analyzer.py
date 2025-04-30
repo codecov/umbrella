@@ -78,11 +78,11 @@ class SingleFileSnapshotAnalyzer(object):
         # change no code. So it won't have a corresponding executable line
         log.warning(
             "Not able to find corresponding executable line",
-            extra=dict(
-                filepath_=self._filepath,
-                line_number=line_number,
-                allstuff=self._analysis_file_data["statements"],
-            ),
+            extra={
+                "filepath_": self._filepath,
+                "line_number": line_number,
+                "allstuff": self._analysis_file_data["statements"],
+            },
         )
         return None
 
@@ -113,12 +113,12 @@ class SingleFileSnapshotAnalyzer(object):
                 return (AntecessorFindingResult.function, f["identifier"])
         log.warning(
             "Somehow not able to find antecessor line",
-            extra=dict(
-                filepath_=self._filepath,
-                line_number=line_number,
-                lines_to_not_consider=lines_to_not_consider,
-                allstuff=self._analysis_file_data["statements"],
-            ),
+            extra={
+                "filepath_": self._filepath,
+                "line_number": line_number,
+                "lines_to_not_consider": lines_to_not_consider,
+                "allstuff": self._analysis_file_data["statements"],
+            },
         )
         return (AntecessorFindingResult.file, self._filepath)
 

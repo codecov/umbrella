@@ -203,13 +203,13 @@ def get_specific_github_app_details(
     if app is None:
         log.exception(
             "Can't find requested app",
-            extra=dict(ghapp_id=github_app_id, commitid=commitid),
+            extra={"ghapp_id": github_app_id, "commitid": commitid},
         )
         raise RequestedGithubAppNotFound()
     if not app.is_configured():
         log.warning(
             "Request for specific app that is not configured",
-            extra=dict(ghapp_id=id, commitid=commitid),
+            extra={"ghapp_id": id, "commitid": commitid},
         )
     return GithubInstallationInfo(
         id=app.id,
@@ -271,10 +271,10 @@ def get_github_app_info_for_owner(
     Raises:
         NoConfiguredAppsAvailable: Owner has app installations available, but they are all currently rate limited.
     """
-    extra_info_to_log = dict(
-        ownerid=owner.ownerid,
-        repoid=getattr(repository, "repoid", None),
-    )
+    extra_info_to_log = {
+        "ownerid": owner.ownerid,
+        "repoid": getattr(repository, "repoid", None),
+    }
     log.info(
         "Getting owner's GitHub Apps info",
         extra=dict(
@@ -319,13 +319,13 @@ def get_github_app_info_for_owner(
         ]
         log.info(
             "Selected installation to communicate with github",
-            extra=dict(
-                installation_id=info_to_get_tokens[0]["installation_id"],
-                installation_name=main_name,
-                fallback_installations=[
+            extra={
+                "installation_id": info_to_get_tokens[0]["installation_id"],
+                "installation_name": main_name,
+                "fallback_installations": [
                     obj["installation_id"] for obj in info_to_get_tokens
                 ],
-            ),
+            },
         )
         return info_to_get_tokens
     elif apps_matching_criteria_count > 0:

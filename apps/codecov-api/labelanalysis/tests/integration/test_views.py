@@ -67,7 +67,7 @@ def test_simple_label_analysis_call_flow(db, mocker):
         apply_async_kwargs={},
     )
     get_url = reverse(
-        "view_label_analysis", kwargs=dict(external_id=produced_object.external_id)
+        "view_label_analysis", kwargs={"external_id": produced_object.external_id}
     )
     response = client.get(
         get_url,
@@ -162,7 +162,7 @@ def test_simple_label_analysis_call_flow_with_fallback_on_base(db, mocker):
         apply_async_kwargs={},
     )
     get_url = reverse(
-        "view_label_analysis", kwargs=dict(external_id=produced_object.external_id)
+        "view_label_analysis", kwargs={"external_id": produced_object.external_id}
     )
     response = client.get(
         get_url,
@@ -342,7 +342,7 @@ def test_simple_label_analysis_only_get(db, mocker):
         ],
     }
     get_url = reverse(
-        "view_label_analysis", kwargs=dict(external_id=produced_object.external_id)
+        "view_label_analysis", kwargs={"external_id": produced_object.external_id}
     )
     response = client.get(
         get_url,
@@ -358,7 +358,7 @@ def test_simple_label_analysis_get_does_not_exist(db, mocker):
     )
     client = APIClient()
     client.credentials(HTTP_AUTHORIZATION="repotoken " + token.key)
-    get_url = reverse("view_label_analysis", kwargs=dict(external_id=uuid4()))
+    get_url = reverse("view_label_analysis", kwargs={"external_id": uuid4()})
     response = client.get(
         get_url,
         format="json",
@@ -399,7 +399,7 @@ def test_simple_label_analysis_put_labels(db, mocker):
         "errors": [],
     }
     patch_url = reverse(
-        "view_label_analysis", kwargs=dict(external_id=produced_object.external_id)
+        "view_label_analysis", kwargs={"external_id": produced_object.external_id}
     )
     response = client.patch(
         patch_url,
@@ -414,8 +414,8 @@ def test_simple_label_analysis_put_labels(db, mocker):
     assert response.json() == expected_response_json
     mocked_task_service.assert_called_with(
         label_analysis_task_name,
-        kwargs=dict(request_id=label_analysis.id),
-        apply_async_kwargs=dict(),
+        kwargs={"request_id": label_analysis.id},
+        apply_async_kwargs={},
     )
 
 
@@ -442,7 +442,7 @@ def test_simple_label_analysis_put_labels_wrong_base_return_404(db, mocker):
     assert produced_object == label_analysis
     assert produced_object.requested_labels is None
     patch_url = reverse(
-        "view_label_analysis", kwargs=dict(external_id=produced_object.external_id)
+        "view_label_analysis", kwargs={"external_id": produced_object.external_id}
     )
     response = client.patch(
         patch_url,

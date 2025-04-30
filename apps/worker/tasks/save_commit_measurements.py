@@ -36,7 +36,7 @@ def save_commit_measurements(commit: Commit, dataset_names: Sequence[str]) -> No
     if report is None:
         log.warning(
             "No report found for commit",
-            extra=dict(commitid=commit.commitid, repoid=commit.repoid),
+            extra={"commitid": commit.commitid, "repoid": commit.repoid},
         )
         return
 
@@ -78,12 +78,12 @@ class SaveCommitMeasurementsTask(
     ):
         log.info(
             "Received save_commit_measurements task",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                dataset_names=dataset_names,
-                parent_task=self.request.parent_id,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "dataset_names": dataset_names,
+                "parent_task": self.request.parent_id,
+            },
         )
 
         commit = (
@@ -109,7 +109,7 @@ class SaveCommitMeasurementsTask(
         except Exception:
             log.exception(
                 "An error happened while saving commit measurements",
-                extra=dict(commitid=commitid, task_args=args, task_kwargs=kwargs),
+                extra={"commitid": commitid, "task_args": args, "task_kwargs": kwargs},
             )
             return {"successful": False, "error": "exception"}
 

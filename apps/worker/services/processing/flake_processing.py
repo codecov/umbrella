@@ -26,7 +26,7 @@ def process_flake_for_repo_commit(
 
     log.info(
         "Successfully processed flakes",
-        extra=dict(repoid=repo_id, commit=commit_id),
+        extra={"repoid": repo_id, "commit": commit_id},
     )
 
     return {"successful": True}
@@ -44,7 +44,7 @@ def process_flake_in_transaction(
     )
 
     curr_flakes = fetch_curr_flakes(repo_id)
-    new_flakes: dict[str, Flake] = dict()
+    new_flakes: dict[str, Flake] = {}
 
     rollups_to_update: list[DailyTestRollup] = []
 
@@ -155,12 +155,12 @@ def create_flake(
     else:
         log.warning(
             "Could not find rollup when trying to update its flaky fail count",
-            extra=dict(
-                repoid=repo_id,
-                testid=test_instance.test_id,
-                branch=test_instance.branch,
-                date=test_instance.created_at.date(),
-            ),
+            extra={
+                "repoid": repo_id,
+                "testid": test_instance.test_id,
+                "branch": test_instance.branch,
+                "date": test_instance.created_at.date(),
+            },
         )
 
     f = Flake(

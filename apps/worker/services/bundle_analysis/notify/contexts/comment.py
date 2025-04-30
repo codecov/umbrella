@@ -134,10 +134,10 @@ class BundleAnalysisPRCommentContextBuilder(NotificationContextBuilder):
         if pull.database_pull.bundle_analysis_commentid:
             log.info(
                 "Skipping required_changes verification because comment already exists",
-                extra=dict(
-                    pullid=pull.database_pull.id,
-                    commitid=self._notification_context.commit.commitid,
-                ),
+                extra={
+                    "pullid": pull.database_pull.id,
+                    "commitid": self._notification_context.commit.commitid,
+                },
             )
             return self
         comparison = self._notification_context.bundle_analysis_comparison

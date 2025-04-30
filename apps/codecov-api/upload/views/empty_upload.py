@@ -199,10 +199,10 @@ class EmptyUploadView(CreateAPIView, GetterMixin):
         except TorngitClientError:
             log.warning(
                 "Request client error",
-                extra=dict(
-                    commit=commit.commitid,
-                    repoid=commit.repository.repoid,
-                ),
+                extra={
+                    "commit": commit.commitid,
+                    "repoid": commit.repository.repoid,
+                },
                 exc_info=True,
             )
             raise NotFound("Unable to get pull request's files.")
@@ -219,10 +219,10 @@ class EmptyUploadView(CreateAPIView, GetterMixin):
         except TorngitClientGeneralError:
             log.warning(
                 "Request client error",
-                extra=dict(
-                    commit=commit.commitid,
-                    repoid=commit.repository.repoid,
-                ),
+                extra={
+                    "commit": commit.commitid,
+                    "repoid": commit.repository.repoid,
+                },
                 exc_info=True,
             )
             raise NotFound(f"Unable to get pull request for commit: {commit.commitid}")

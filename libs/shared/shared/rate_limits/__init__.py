@@ -77,7 +77,7 @@ def determine_if_entity_is_rate_limited(redis_connection: Redis, key_name: str) 
     except RedisError:
         log.exception(
             "Failed to check if the key name is rate_limited due to RedisError",
-            extra=dict(key_name=key_name),
+            extra={"key_name": key_name},
         )
         return False
 
@@ -111,5 +111,5 @@ def set_entity_to_rate_limited(
     except RedisError:
         log.exception(
             "Failed to mark entity as rate_limited due to RedisError",
-            extra=dict(entity_id=key_name),
+            extra={"entity_id": key_name},
         )

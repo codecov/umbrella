@@ -96,8 +96,8 @@ def test_sync_error(mock_instance, mock_publish, mock_log):
 
     mock_log.assert_called_once_with(
         "Failed to publish a message",
-        extra=dict(
-            data_to_publish={"type": "owner", "sync": "one", "id": 12345},
-            error=mock_publish.side_effect,
-        ),
+        extra={
+            "data_to_publish": {"type": "owner", "sync": "one", "id": 12345},
+            "error": mock_publish.side_effect,
+        },
     )

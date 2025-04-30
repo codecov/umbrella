@@ -190,7 +190,7 @@ class HasEnoughRequiredChanges(NotifyCondition):
         if comparison.pull and comparison.pull.commentid:
             log.info(
                 "Comment already exists. Skipping required_changes verification to update comment",
-                extra=dict(pull=comparison.pull.pullid, commit=comparison.pull.head),
+                extra={"pull": comparison.pull.pullid, "commit": comparison.pull.head},
             )
             return True
         required_changes = notifier.notifier_yaml_settings.get(

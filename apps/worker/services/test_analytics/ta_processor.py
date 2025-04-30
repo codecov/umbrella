@@ -28,11 +28,11 @@ def ta_processor_impl(
 ) -> bool:
     log.info(
         "Processing single TA argument",
-        extra=dict(
-            upload_id=argument.get("upload_id"),
-            repoid=repoid,
-            commitid=commitid,
-        ),
+        extra={
+            "upload_id": argument.get("upload_id"),
+            "repoid": repoid,
+            "commitid": commitid,
+        },
     )
 
     upload_id = argument.get("upload_id")

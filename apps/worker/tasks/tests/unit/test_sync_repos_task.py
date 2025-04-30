@@ -693,19 +693,19 @@ class TestSyncReposTaskUnit(object):
         dbsession.flush()
 
         list_repos_result = [
-            dict(
-                owner=dict(
-                    service_id=repo.owner.service_id,
-                    username=repo.owner.username,
-                ),
-                repo=dict(
-                    service_id=repo.service_id,
-                    name=repo.name,
-                    language=repo.language,
-                    private=repo.private,
-                    branch=repo.branch or "master",
-                ),
-            )
+            {
+                "owner": {
+                    "service_id": repo.owner.service_id,
+                    "username": repo.owner.username,
+                },
+                "repo": {
+                    "service_id": repo.service_id,
+                    "name": repo.name,
+                    "language": repo.language,
+                    "private": repo.private,
+                    "branch": repo.branch or "master",
+                },
+            }
             for repo in repos
         ]
 

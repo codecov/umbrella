@@ -34,10 +34,10 @@ class UploadsPerCommitThrottle(BaseThrottle):
             if new_session_count > max_upload_limit:
                 log.warning(
                     "Too many uploads to this commit",
-                    extra=dict(
-                        commit=commit.commitid,
-                        repoid=repository.repoid,
-                    ),
+                    extra={
+                        "commit": commit.commitid,
+                        "repoid": repository.repoid,
+                    },
                 )
                 return False
             return True
@@ -68,9 +68,10 @@ class UploadsPerWindowThrottle(BaseThrottle):
                         ):
                             log.warning(
                                 "User exceeded its limits for usage",
-                                extra=dict(
-                                    ownerid=owner.ownerid, repoid=commit.repository_id
-                                ),
+                                extra={
+                                    "ownerid": owner.ownerid,
+                                    "repoid": commit.repository_id,
+                                },
                             )
                             return False
             return True

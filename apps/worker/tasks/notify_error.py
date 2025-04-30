@@ -38,7 +38,7 @@ class NotifyErrorTask(BaseCodecovTask, name=notify_error_task_name):
     ):
         log.info(
             "Starting notify error task",
-            extra=dict(commit=commitid, repoid=repoid, commit_yaml=current_yaml),
+            extra={"commit": commitid, "repoid": repoid, "commit_yaml": current_yaml},
         )
 
         # get all upload errors for this commit
@@ -68,12 +68,12 @@ class NotifyErrorTask(BaseCodecovTask, name=notify_error_task_name):
 
         log.info(
             "Notifying upload errors",
-            extra=dict(
-                repoid=repoid,
-                commitid=commitid,
-                num_failed_upload=num_failed_upload,
-                num_total_upload=num_total_upload,
-            ),
+            extra={
+                "repoid": repoid,
+                "commitid": commitid,
+                "num_failed_upload": num_failed_upload,
+                "num_total_upload": num_total_upload,
+            },
         )
 
         error_notifier = ErrorNotifier(
@@ -87,13 +87,13 @@ class NotifyErrorTask(BaseCodecovTask, name=notify_error_task_name):
             case NotifierResult.COMMENT_POSTED:
                 log.info(
                     "Finished notify error task",
-                    extra=dict(
-                        commit=commitid,
-                        repoid=repoid,
-                        commit_yaml=current_yaml,
-                        num_failed_upload=num_failed_upload,
-                        num_total_upload=num_total_upload,
-                    ),
+                    extra={
+                        "commit": commitid,
+                        "repoid": repoid,
+                        "commit_yaml": current_yaml,
+                        "num_failed_upload": num_failed_upload,
+                        "num_total_upload": num_total_upload,
+                    },
                 )
                 UploadFlow.log(UploadFlow.NOTIFIED_ERROR)
                 return {"success": True}
@@ -101,14 +101,14 @@ class NotifyErrorTask(BaseCodecovTask, name=notify_error_task_name):
                 UploadFlow.log(UploadFlow.ERROR_NOTIFYING_ERROR)
                 log.info(
                     "Failed to comment in notify error task",
-                    extra=dict(
-                        commit=commitid,
-                        repoid=repoid,
-                        commit_yaml=current_yaml,
-                        num_failed_upload=num_failed_upload,
-                        num_total_upload=num_total_upload,
-                        notification_result=notification_result.value,
-                    ),
+                    extra={
+                        "commit": commitid,
+                        "repoid": repoid,
+                        "commit_yaml": current_yaml,
+                        "num_failed_upload": num_failed_upload,
+                        "num_total_upload": num_total_upload,
+                        "notification_result": notification_result.value,
+                    },
                 )
                 return {"success": False}
 

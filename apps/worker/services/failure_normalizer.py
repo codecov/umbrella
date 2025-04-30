@@ -77,7 +77,7 @@ class FailureNormalizer:
     ):
         flags = regex.MULTILINE
 
-        self.dict_of_regex = dict()
+        self.dict_of_regex = {}
         self.key_analysis_order = key_analysis_order
 
         if not ignore_predefined:

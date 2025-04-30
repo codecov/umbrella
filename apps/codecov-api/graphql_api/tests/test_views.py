@@ -113,9 +113,9 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         assert timer_after - timer_before == 1
         patched_log.assert_called_with(
             "Could not match gql query format for logging",
-            extra=dict(
-                query_slice="{ failing }",
-            ),
+            extra={
+                "query_slice": "{ failing }",
+            },
         )
 
     @override_settings(DEBUG=False)
@@ -164,11 +164,11 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         assert data["errors"][0]["extensions"]["cost"]["maximumAvailable"] == 1000
         mock_error_logger.assert_called_with(
             "Query Cost Exceeded",
-            extra=dict(
-                requested_cost=2000,
-                maximum_cost=1000,
-                request_body=dict(query="{ stuff }"),
-            ),
+            extra={
+                "requested_cost": 2000,
+                "maximum_cost": 1000,
+                "request_body": {"query": "{ stuff }"},
+            },
         )
 
     @patch("logging.Logger.info")
@@ -199,9 +199,9 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         assert extension.operation_name == "unknown_name"
         patched_log.assert_called_with(
             "Could not match gql query format for logging",
-            extra=dict(
-                query_slice="{ failing }",
-            ),
+            extra={
+                "query_slice": "{ failing }",
+            },
         )
 
     @patch("regex.match")
@@ -218,15 +218,15 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
 
         patched_info_log.assert_called_with(
             "Could not match gql query format for logging",
-            extra=dict(
-                query_slice=sample_named_query[:30],
-            ),
+            extra={
+                "query_slice": sample_named_query[:30],
+            },
         )
         patched_error_log.assert_called_with(
             "Regex Timeout Error",
-            extra=dict(
-                query_slice=sample_named_query[:30],
-            ),
+            extra={
+                "query_slice": sample_named_query[:30],
+            },
         )
         assert extension.operation_type == "unknown_type"
         assert extension.operation_name == "unknown_name"

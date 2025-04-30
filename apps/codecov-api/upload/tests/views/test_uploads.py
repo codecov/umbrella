@@ -114,14 +114,14 @@ def test_get_repo(db):
     )
     repository.save()
     upload_views = UploadViews()
-    upload_views.kwargs = dict(repo="codecov::::the_repo", service="github")
+    upload_views.kwargs = {"repo": "codecov::::the_repo", "service": "github"}
     recovered_repo = upload_views.get_repo()
     assert recovered_repo == repository
 
 
 def test_get_repo_with_invalid_service(db):
     upload_views = UploadViews()
-    upload_views.kwargs = dict(repo="repo", service="wrong service")
+    upload_views.kwargs = {"repo": "repo", "service": "wrong service"}
     with pytest.raises(ValidationError) as exp:
         upload_views.get_repo()
     assert exp.match("Service not found: wrong service")
@@ -129,7 +129,7 @@ def test_get_repo_with_invalid_service(db):
 
 def test_get_repo_not_found(db):
     upload_views = UploadViews()
-    upload_views.kwargs = dict(repo="repo", service="github")
+    upload_views.kwargs = {"repo": "repo", "service": "github"}
     with pytest.raises(ValidationError) as exp:
         upload_views.get_repo()
     assert exp.match("Repository not found")
@@ -141,7 +141,7 @@ def test_get_commit(db):
     repository.save()
     commit.save()
     upload_views = UploadViews()
-    upload_views.kwargs = dict(repo=repository.name, commit_sha=commit.commitid)
+    upload_views.kwargs = {"repo": repository.name, "commit_sha": commit.commitid}
     recovered_commit = upload_views.get_commit(repository)
     assert recovered_commit == commit
 
@@ -150,7 +150,7 @@ def test_get_commit_error(db):
     repository = RepositoryFactory(name="the_repo", author__username="codecov")
     repository.save()
     upload_views = UploadViews()
-    upload_views.kwargs = dict(repo=repository.name, commit_sha="missing_commit")
+    upload_views.kwargs = {"repo": repository.name, "commit_sha": "missing_commit"}
     with pytest.raises(ValidationError) as exp:
         upload_views.get_commit(repository)
     assert exp.match("Commit SHA not found")
@@ -164,9 +164,11 @@ def test_get_report(db):
     commit.save()
     report.save()
     upload_views = UploadViews()
-    upload_views.kwargs = dict(
-        repo=repository.name, commit_sha=commit.commitid, report_code=report.code
-    )
+    upload_views.kwargs = {
+        "repo": repository.name,
+        "commit_sha": commit.commitid,
+        "report_code": report.code,
+    }
     recovered_report = upload_views.get_report(commit)
     assert recovered_report == report
 
@@ -179,9 +181,11 @@ def test_get_default_report(db):
     commit.save()
     report.save()
     upload_views = UploadViews()
-    upload_views.kwargs = dict(
-        repo=repository.name, commit_sha=commit.commitid, report_code="default"
-    )
+    upload_views.kwargs = {
+        "repo": repository.name,
+        "commit_sha": commit.commitid,
+        "report_code": "default",
+    }
     recovered_report = upload_views.get_report(commit)
     assert recovered_report == report
 
@@ -192,9 +196,11 @@ def test_get_report_error(db):
     repository.save()
     commit.save()
     upload_views = UploadViews()
-    upload_views.kwargs = dict(
-        repo=repository.name, commit_sha=commit.commitid, report_code="random_code"
-    )
+    upload_views.kwargs = {
+        "repo": repository.name,
+        "commit_sha": commit.commitid,
+        "report_code": "random_code",
+    }
     with pytest.raises(ValidationError) as exp:
         upload_views.get_report(commit)
     assert exp.match("Non-default `report_code` has been deprecated")

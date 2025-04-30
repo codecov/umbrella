@@ -28,7 +28,7 @@ class UpsertComponentTask(BaseCodecovTask, name=task_name):
         *args,
         **kwargs,
     ):
-        log.info("Upserting component", extra=dict(commitid=commitid, repoid=repoid))
+        log.info("Upserting component", extra={"commitid": commitid, "repoid": repoid})
 
         commit = (
             db_session.query(Commit)

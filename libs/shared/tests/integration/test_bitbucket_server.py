@@ -5,10 +5,10 @@ from shared.torngit.bitbucket_server import BitbucketServer
 
 def valid_handler():
     return BitbucketServer(
-        repo=dict(name="python-standard"),
-        owner=dict(username="TEST"),
-        oauth_consumer_token=dict(key=""),
-        token=dict(secret="", key=""),
+        repo={"name": "python-standard"},
+        owner={"username": "TEST"},
+        oauth_consumer_token={"key": ""},
+        token={"secret": "", "key": ""},
     )
 
 

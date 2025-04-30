@@ -107,10 +107,10 @@ class TestBaseCodecovTask(object):
     def test_sample_run(self, mocker, dbsession):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         mock_task_request = mocker.patch("tasks.base.BaseCodecovTask.request")
-        fake_request_values = dict(
-            created_timestamp="2023-06-13 10:00:00.000000",
-            delivery_info={"routing_key": "my-queue"},
-        )
+        fake_request_values = {
+            "created_timestamp": "2023-06-13 10:00:00.000000",
+            "delivery_info": {"routing_key": "my-queue"},
+        }
         mock_task_request.get.side_effect = (
             lambda key, default: fake_request_values.get(key, default)
         )
@@ -318,7 +318,7 @@ class TestBaseCodecovTask(object):
         mock_save_commit_error.assert_called_with(
             mock_commit,
             error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
-            error_params=dict(repoid=5),
+            error_params={"repoid": 5},
         )
 
 
@@ -495,17 +495,17 @@ class TestBaseCodecovTaskApplyAsyncOverride(object):
         mock_celery_task_router = mocker.patch("tasks.base._get_user_plan_from_task")
         mock_route_tasks = mocker.patch(
             "tasks.base.route_tasks_based_on_user_plan",
-            return_value=dict(
-                queue="some_queue",
-                extra_config=dict(soft_timelimit=200, hard_timelimit=400),
-            ),
+            return_value={
+                "queue": "some_queue",
+                "extra_config": {"soft_timelimit": 200, "hard_timelimit": 400},
+            },
         )
 
         task = BaseCodecovTask()
         task.name = "app.tasks.upload.FakeTask"
         mocked_apply_async = mocker.patch.object(base_celery_app.Task, "apply_async")
 
-        kwargs = dict(n=10)
+        kwargs = {"n": 10}
         task.apply_async(kwargs=kwargs)
         assert mock_get_db_session.call_count == 1
         assert mock_celery_task_router.call_count == 1
@@ -513,7 +513,7 @@ class TestBaseCodecovTaskApplyAsyncOverride(object):
         mocked_apply_async.assert_called_with(
             args=None,
             kwargs=kwargs,
-            headers=dict(created_timestamp="2023-06-13T10:01:01.000123"),
+            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
             time_limit=400,
             soft_time_limit=200,
             user_plan=mock_celery_task_router(),
@@ -525,10 +525,10 @@ class TestBaseCodecovTaskApplyAsyncOverride(object):
         mock_celery_task_router = mocker.patch("tasks.base._get_user_plan_from_task")
         mock_route_tasks = mocker.patch(
             "tasks.base.route_tasks_based_on_user_plan",
-            return_value=dict(
-                queue="some_queue",
-                extra_config=dict(soft_timelimit=200, hard_timelimit=400),
-            ),
+            return_value={
+                "queue": "some_queue",
+                "extra_config": {"soft_timelimit": 200, "hard_timelimit": 400},
+            },
         )
 
         task = BaseCodecovTask()
@@ -536,7 +536,7 @@ class TestBaseCodecovTaskApplyAsyncOverride(object):
         mocked_apply_async = mocker.patch.object(base_celery_app.Task, "apply_async")
 
         chain(
-            [task.signature(kwargs=dict(n=1)), task.signature(kwargs=dict(n=10))]
+            [task.signature(kwargs={"n": 1}), task.signature(kwargs={"n": 10})]
         ).apply_async()
         assert mock_get_db_session.call_count == 1
         assert mock_celery_task_router.call_count == 1
@@ -549,9 +549,9 @@ class TestBaseCodecovTaskApplyAsyncOverride(object):
         assert "chain" in kwargs and len(kwargs.get("chain")) == 1
         assert "task_id" in kwargs
         assert "headers" in kwargs
-        assert kwargs.get("headers") == dict(
-            created_timestamp="2023-06-13T10:01:01.000123"
-        )
+        assert kwargs.get("headers") == {
+            "created_timestamp": "2023-06-13T10:01:01.000123"
+        }
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
     @pytest.mark.django_db
@@ -588,14 +588,14 @@ class TestBaseCodecovTaskApplyAsyncOverride(object):
         )
         repo, _ = fake_repos
 
-        kwargs = dict(ownerid=repo.ownerid)
+        kwargs = {"ownerid": repo.ownerid}
         task.apply_async(kwargs=kwargs)
         assert mock_get_db_session.call_count == 1
         mocked_super_apply_async.assert_called_with(
             args=None,
             kwargs=kwargs,
             soft_time_limit=None,
-            headers=dict(created_timestamp="2023-06-13T10:01:01.000123"),
+            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
             time_limit=None,
             user_plan="users-pr-inappm",
         )
@@ -635,14 +635,14 @@ class TestBaseCodecovTaskApplyAsyncOverride(object):
         )
         _, repo_enterprise_cloud = fake_repos
 
-        kwargs = dict(ownerid=repo_enterprise_cloud.ownerid)
+        kwargs = {"ownerid": repo_enterprise_cloud.ownerid}
         task.apply_async(kwargs=kwargs)
         assert mock_get_db_session.call_count == 1
         mocked_super_apply_async.assert_called_with(
             args=None,
             kwargs=kwargs,
             soft_time_limit=500,
-            headers=dict(created_timestamp="2023-06-13T10:01:01.000123"),
+            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
             time_limit=600,
             user_plan="users-enterprisey",
         )
@@ -682,14 +682,14 @@ class TestBaseCodecovTaskApplyAsyncOverride(object):
         )
         _, repo_enterprise_cloud = fake_repos
 
-        kwargs = dict(repoid=repo_enterprise_cloud.repoid)
+        kwargs = {"repoid": repo_enterprise_cloud.repoid}
         task.apply_async(kwargs=kwargs)
         assert mock_get_db_session.call_count == 1
         mocked_super_apply_async.assert_called_with(
             args=None,
             kwargs=kwargs,
             soft_time_limit=400,
-            headers=dict(created_timestamp="2023-06-13T10:01:01.000123"),
+            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
             time_limit=450,
             user_plan="users-enterprisey",
         )

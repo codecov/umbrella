@@ -27,7 +27,7 @@ def get_installation_name_for_owner_for_task(task_name: str, owner: Owner) -> st
     if config_for_owner:
         log.info(
             "Owner has dedicated app for this task",
-            extra=dict(this_task=task_name, ownerid=owner.ownerid),
+            extra={"this_task": task_name, "ownerid": owner.ownerid},
         )
         return config_for_owner.installation_name
     return GITHUB_APP_INSTALLATION_DEFAULT_NAME

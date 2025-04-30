@@ -2706,12 +2706,12 @@ class TestCommentNotifier(object):
         send_comment_default_behavior_mocker = mocker.patch.object(
             CommentNotifier,
             "send_comment_default_behavior",
-            return_value=dict(
-                notification_attempted=True,
-                notification_successful=True,
-                explanation=None,
-                data_received=None,
-            ),
+            return_value={
+                "notification_attempted": True,
+                "notification_successful": True,
+                "explanation": None,
+                "data_received": None,
+            },
         )
         notifier = CommentNotifier(
             repository=sample_comparison.head.commit.repository,

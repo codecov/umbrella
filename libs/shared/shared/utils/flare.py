@@ -26,13 +26,13 @@ class Dict(dict):
 def _dict_to_children(n, d, color, classes):
     if type(d) is tuple:
         c = color(d[2])
-        return dict(
-            name=n,
-            _class=classes.get(n),
-            lines=d[0],
-            coverage=d[2],
-            color=getattr(c, "hex", c),
-        )
+        return {
+            "name": n,
+            "_class": classes.get(n),
+            "lines": d[0],
+            "coverage": d[2],
+            "color": getattr(c, "hex", c),
+        }
     try:
         coverage = float(d["__h"]) / float(d["__l"]) * 100.0
     except ZeroDivisionError:
@@ -51,14 +51,14 @@ def _dict_to_children(n, d, color, classes):
         children[0]["name"] = "%s/%s" % (n, children[0]["name"])
         return children[0]
 
-    return dict(
-        coverage=coverage,
-        lines=d["__l"],
-        color=getattr(c, "hex", c),
-        _class=classes.get(n),
-        name=n,
-        children=children,
-    )
+    return {
+        "coverage": coverage,
+        "lines": d["__l"],
+        "color": getattr(c, "hex", c),
+        "_class": classes.get(n),
+        "name": n,
+        "children": children,
+    }
 
 
 def report_to_flare(files, color, classes=None):

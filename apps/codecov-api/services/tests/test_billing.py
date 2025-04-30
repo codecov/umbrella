@@ -719,7 +719,7 @@ class StripeServiceTests(TestCase):
             [
                 call(
                     f"Plan {desired_plan_name} not found",
-                    extra=dict(owner_id=owner.ownerid),
+                    extra={"owner_id": owner.ownerid},
                 ),
             ]
         )
@@ -1721,9 +1721,9 @@ class StripeServiceTests(TestCase):
         create_checkout_session_mock.assert_not_called()
         logger_error_mock.assert_called_once_with(
             f"Plan {desired_plan['value']} not found",
-            extra=dict(
-                owner_id=owner.ownerid,
-            ),
+            extra={
+                "owner_id": owner.ownerid,
+            },
         )
 
     def test_get_subscription_when_no_subscription(self):

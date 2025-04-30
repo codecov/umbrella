@@ -215,7 +215,7 @@ class ConfigHelper(object):
             except FileNotFoundError:
                 log.exception(
                     "Unable to read file specified in config",
-                    extra=dict(file_location=location, path_args=list(args)),
+                    extra={"file_location": location, "path_args": list(args)},
                 )
                 raise
         return self.loaded_files[args]

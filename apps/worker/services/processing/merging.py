@@ -26,7 +26,7 @@ def merge_reports(
     master_report: Report,
     intermediate_reports: list[IntermediateReport],
 ) -> tuple[Report, MergeResult]:
-    session_mapping: dict[int, int] = dict()
+    session_mapping: dict[int, int] = {}
     deleted_sessions: set[int] = set()
 
     for intermediate_report in intermediate_reports:
@@ -154,17 +154,17 @@ def make_upload_totals(
     else:
         coverage = Decimal(0)
 
-    return dict(
-        upload_id=upload_id,
-        branches=totals.branches,
-        coverage=coverage,
-        hits=totals.hits,
-        lines=totals.lines,
-        methods=totals.methods,
-        misses=totals.misses,
-        partials=totals.partials,
-        files=totals.files,
-    )
+    return {
+        "upload_id": upload_id,
+        "branches": totals.branches,
+        "coverage": coverage,
+        "hits": totals.hits,
+        "lines": totals.lines,
+        "methods": totals.methods,
+        "misses": totals.misses,
+        "partials": totals.partials,
+        "files": totals.files,
+    }
 
 
 def get_joined_flag(commit_yaml: UserYaml, flags: list[str]) -> bool:

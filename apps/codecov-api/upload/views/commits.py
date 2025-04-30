@@ -85,7 +85,7 @@ class CommitViews(ListCreateAPIView, GetterMixin):
 
         log.info(
             "Request to create new commit",
-            extra=dict(repo=repository.name, commit=commit.commitid),
+            extra={"repo": repository.name, "commit": commit.commitid},
         )
 
         inc_counter(

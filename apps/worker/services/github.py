@@ -58,9 +58,7 @@ def set_github_app_for_commit(
         )
         return True
     except RedisError:
-        log.exception(
-            "Failed to set app for commit", extra=dict(commit=commit.commitid)
-        )
+        log.exception("Failed to set app for commit", extra={"commit": commit.commitid})
         return False
 
 
@@ -73,7 +71,5 @@ def get_github_app_for_commit(commit: Commit) -> str | None:
         value = redis.get(COMMIT_GHAPP_KEY_NAME(commit.id))
         return value if value is None else value.decode()
     except RedisError:
-        log.exception(
-            "Failed to get app for commit", extra=dict(commit=commit.commitid)
-        )
+        log.exception("Failed to get app for commit", extra={"commit": commit.commitid})
         return None

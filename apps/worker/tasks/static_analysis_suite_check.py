@@ -30,7 +30,7 @@ class StaticAnalysisSuiteCheckTask(BaseCodecovTask, name=static_analysis_task_na
         if suite is None:
             log.warning("Checking Static Analysis that does not exist yet")
             return {"successful": False, "changed_count": None}
-        log.info("Checking static analysis suite", extra=dict(suite_id=suite_id))
+        log.info("Checking static analysis suite", extra={"suite_id": suite_id})
         query = (
             db_session.query(
                 StaticAnalysisSingleFileSnapshot,
@@ -59,7 +59,7 @@ class StaticAnalysisSuiteCheckTask(BaseCodecovTask, name=static_analysis_task_na
             except FileNotInStorageError:
                 log.warning(
                     "File not found to be analyzed",
-                    extra=dict(filepath_id=elem.id, suite_id=suite_id),
+                    extra={"filepath_id": elem.id, "suite_id": suite_id},
                 )
 
         db_session.commit()

@@ -316,7 +316,7 @@ def resolve_is_github_rate_limited(
     except Exception:
         log.warning(
             "Error when checking rate limit",
-            extra=dict(repo_id=repository.repoid, has_owner=bool(repo_owner)),
+            extra={"repo_id": repository.repoid, "has_owner": bool(repo_owner)},
         )
         return None
 

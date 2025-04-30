@@ -455,15 +455,15 @@ async def test__get_teams_info(client, mocker):
             match = re.search(r"&page=(\d+)", url)
             page_number = match.group(1)
             if page_number == "1":
-                return [dict(name="My team")]
+                return [{"name": "My team"}]
             elif page_number == "2":
-                return [dict(name="My team in another page")]
+                return [{"name": "My team in another page"}]
             return []
         return None
 
     mocker.patch.object(Github, "api", side_effect=helper_api)
     result = await github._get_teams_data(repo_service)
-    assert result == [dict(name="My team"), dict(name="My team in another page")]
+    assert result == [{"name": "My team"}, {"name": "My team in another page"}]
 
 
 @pytest.mark.asyncio
@@ -475,7 +475,7 @@ async def test__get_teams_info_fails(client, mocker):
     async def helper_api(*args):
         raise TorngitClientGeneralError(
             status_code=500,
-            response_data=dict(error="generic error"),
+            response_data={"error": "generic error"},
             message="generic error",
         )
 

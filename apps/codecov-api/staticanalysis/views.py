@@ -30,8 +30,8 @@ class StaticAnalysisSuiteViewSet(mixins.CreateModelMixin, viewsets.GenericViewSe
         # TODO: remove this once the CLI is calling the `finish` endpoint
         TaskService().schedule_task(
             static_analysis_task_name,
-            kwargs=dict(suite_id=instance.id),
-            apply_async_kwargs=dict(countdown=10),
+            kwargs={"suite_id": instance.id},
+            apply_async_kwargs={"countdown": 10},
         )
         return instance
 
@@ -40,7 +40,7 @@ class StaticAnalysisSuiteViewSet(mixins.CreateModelMixin, viewsets.GenericViewSe
         suite = self.get_object()
         TaskService().schedule_task(
             static_analysis_task_name,
-            kwargs=dict(suite_id=suite.pk),
+            kwargs={"suite_id": suite.pk},
             apply_async_kwargs={},
         )
         return HttpResponse(status=204)

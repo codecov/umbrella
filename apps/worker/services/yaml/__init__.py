@@ -55,50 +55,50 @@ async def get_current_yaml(commit: Commit, repository_service) -> UserYaml:
         save_commit_error(
             commit,
             error_code=CommitErrorTypes.INVALID_YAML.value,
-            error_params=dict(
-                repoid=repository.repoid,
-                commit_yaml=commit_yaml,
-                error_location=ex.error_location,
-            ),
+            error_params={
+                "repoid": repository.repoid,
+                "commit_yaml": commit_yaml,
+                "error_location": ex.error_location,
+            },
         )
 
         log.warning(
             "Unable to use yaml from commit because it is invalid",
-            extra=dict(
-                repoid=repository.repoid,
-                commit=commit.commitid,
-                error_location=ex.error_location,
-            ),
+            extra={
+                "repoid": repository.repoid,
+                "commit": commit.commitid,
+                "error_location": ex.error_location,
+            },
             exc_info=True,
         )
     except TorngitClientError:
         save_commit_error(
             commit,
             error_code=CommitErrorTypes.YAML_CLIENT_ERROR.value,
-            error_params=dict(
-                repoid=repository.repoid,
-                commit_yaml=commit_yaml,
-            ),
+            error_params={
+                "repoid": repository.repoid,
+                "commit_yaml": commit_yaml,
+            },
         )
 
         log.warning(
             "Unable to use yaml from commit because it cannot be fetched due to client issues",
-            extra=dict(repoid=repository.repoid, commit=commit.commitid),
+            extra={"repoid": repository.repoid, "commit": commit.commitid},
             exc_info=True,
         )
     except TorngitError:
         save_commit_error(
             commit,
             error_code=CommitErrorTypes.YAML_UNKNOWN_ERROR.value,
-            error_params=dict(
-                repoid=repository.repoid,
-                commit_yaml=commit_yaml,
-            ),
+            error_params={
+                "repoid": repository.repoid,
+                "commit_yaml": commit_yaml,
+            },
         )
 
         log.warning(
             "Unable to use yaml from commit because it cannot be fetched due to unknown issues",
-            extra=dict(repoid=repository.repoid, commit=commit.commitid),
+            extra={"repoid": repository.repoid, "commit": commit.commitid},
             exc_info=True,
         )
     context = OwnerContext(

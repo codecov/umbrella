@@ -121,23 +121,23 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
         except RepositoryWithoutValidBotError:
             log.warning(
                 "Unable to reach git provider because repo doesn't have a valid bot",
-                extra=dict(repoid=repoid, commit=commitid),
+                extra={"repoid": repoid, "commit": commitid},
             )
         except TorngitRepoNotFoundError:
             log.warning(
                 "Unable to reach git provider because this specific bot/integration can't see that repository",
-                extra=dict(repoid=repoid, commit=commitid),
+                extra={"repoid": repoid, "commit": commitid},
             )
         except TorngitClientError:
             log.warning(
                 "Unable to reach git provider because there was a 4xx error",
-                extra=dict(repoid=repoid, commit=commitid),
+                extra={"repoid": repoid, "commit": commitid},
                 exc_info=True,
             )
         if was_updated:
             log.info(
                 "Commit updated successfully",
-                extra=dict(commitid=commitid, repoid=repoid),
+                extra={"commitid": commitid, "repoid": repoid},
             )
         return {"was_updated": was_updated}
 

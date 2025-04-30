@@ -308,7 +308,7 @@ class ReportFile:
             self._raw_lines = None
             log.warning(
                 "Doing something weird because of weird .rb logic",
-                extra=dict(report_filename=self.name),
+                extra={"report_filename": self.name},
             )
 
         elif (

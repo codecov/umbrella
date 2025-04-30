@@ -15,19 +15,19 @@ async def fetch_current_yaml_from_provider_via_reference(
     if not location:
         log.info(
             "We were not able to find the yaml on the provider API",
-            extra=dict(commit=ref, repoid=repoid),
+            extra={"commit": ref, "repoid": repoid},
         )
         return None
     log.info(
         "Yaml was found on provider API",
-        extra=dict(commit=ref, repoid=repoid, location=location),
+        extra={"commit": ref, "repoid": repoid, "location": location},
     )
     try:
         content = await repository_service.get_source(location, ref)
         return content["content"]
     except TorngitObjectNotFoundError:
         log.exception(
-            "File not in %s for commit", extra=dict(commit=ref, location=location)
+            "File not in %s for commit", extra={"commit": ref, "location": location}
         )
 
 

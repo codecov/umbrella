@@ -54,16 +54,16 @@ def test_backfill_dataset_run_impl(dbsession, mocker):
 
     expected_signatures = [
         timeseries_backfill_commits_task.signature(
-            kwargs=dict(
-                commit_ids=[commit3.id_, commit2.id_],
-                dataset_names=[dataset.name],
-            ),
+            kwargs={
+                "commit_ids": [commit3.id_, commit2.id_],
+                "dataset_names": [dataset.name],
+            },
         ),
         timeseries_backfill_commits_task.signature(
-            kwargs=dict(
-                commit_ids=[commit1.id_],
-                dataset_names=[dataset.name],
-            ),
+            kwargs={
+                "commit_ids": [commit1.id_],
+                "dataset_names": [dataset.name],
+            },
         ),
     ]
     mock_group.assert_called_once_with(expected_signatures)

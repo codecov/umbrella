@@ -43,7 +43,7 @@ class BaseNotifier:
         if self._pull is None and do_log:
             log.info(
                 "Not notifying since there is no pull request associated with this commit",
-                extra=dict(commitid=self.commit.commitid),
+                extra={"commitid": self.commit.commitid},
             )
 
         return self._pull
@@ -70,10 +70,10 @@ class BaseNotifier:
         except TorngitClientError:
             log.error(
                 "Error creating/updating PR comment",
-                extra=dict(
-                    commitid=self.commit.commitid,
-                    pullid=pullid,
-                ),
+                extra={
+                    "commitid": self.commit.commitid,
+                    "pullid": pullid,
+                },
             )
             return False
 

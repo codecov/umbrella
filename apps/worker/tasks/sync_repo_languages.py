@@ -48,10 +48,10 @@ class SyncRepoLanguagesTask(BaseCodecovTask, name=sync_repo_languages_task_name)
         if not should_sync_languages:
             return {"successful": True, "synced": False}
 
-        log_extra = dict(
-            owner_id=repository.ownerid or "",
-            repository_id=repository.repoid,
-        )
+        log_extra = {
+            "owner_id": repository.ownerid or "",
+            "repository_id": repository.repoid,
+        }
         log.info("Syncing repository languages", extra=log_extra)
 
         installation_name_to_use = get_installation_name_for_owner_for_task(
@@ -83,7 +83,7 @@ class SyncRepoLanguagesTask(BaseCodecovTask, name=sync_repo_languages_task_name)
         except TorngitError:
             log.warning(
                 "Unable to find languages for this repository",
-                extra=dict(repoid=repoid),
+                extra={"repoid": repoid},
             )
             return {"successful": False, "error": "no_repo_in_provider"}
 

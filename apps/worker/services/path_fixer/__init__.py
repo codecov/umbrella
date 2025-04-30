@@ -167,7 +167,7 @@ class BasePathAwarePathFixer(PathFixer):
     ) -> str | None:
         if not path:
             return None
-        bases_to_try = bases_to_try or tuple()
+        bases_to_try = bases_to_try or ()
         key = (path, bases_to_try)
 
         if key not in self._resolved_paths:

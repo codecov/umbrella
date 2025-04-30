@@ -41,7 +41,7 @@ def maybe_upsert_flag_measurements(commit, dataset_names, db_session, report):
                 if not flag_id:
                     log.warning(
                         "Repository flag not found.  Created repository flag.",
-                        extra=dict(repoid=commit.repoid, flag_name=flag_name),
+                        extra={"repoid": commit.repoid, "flag_name": flag_name},
                     )
                     repo_flag = RepositoryFlag(
                         repository_id=commit.repoid,
@@ -63,11 +63,11 @@ def maybe_upsert_flag_measurements(commit, dataset_names, db_session, report):
         if len(measurements) > 0:
             log.info(
                 "Upserting flag coverage measurements",
-                extra=dict(
-                    repoid=commit.repoid,
-                    commit_id=commit.id_,
-                    count=len(measurements),
-                ),
+                extra={
+                    "repoid": commit.repoid,
+                    "commit_id": commit.id_,
+                    "count": len(measurements),
+                },
             )
             upsert_measurements(db_session, measurements)
 
@@ -117,25 +117,27 @@ def upsert_components_measurements(
         upsert_measurements(db_session, measurements)
         log.info(
             "Upserted component coverage measurements",
-            extra=dict(
-                repoid=commit.repoid, commit_id=commit.id_, count=len(measurements)
-            ),
+            extra={
+                "repoid": commit.repoid,
+                "commit_id": commit.id_,
+                "count": len(measurements),
+            },
         )
 
 
 def create_measurement_dict(
     name: str, commit: Commit, measurable_id: str, value: float
 ) -> dict[str, Any]:
-    return dict(
-        name=name,
-        owner_id=commit.repository.ownerid,
-        repo_id=commit.repoid,
-        measurable_id=measurable_id,
-        branch=commit.branch,
-        commit_sha=commit.commitid,
-        timestamp=commit.timestamp,
-        value=value,
-    )
+    return {
+        "name": name,
+        "owner_id": commit.repository.ownerid,
+        "repo_id": commit.repoid,
+        "measurable_id": measurable_id,
+        "branch": commit.branch,
+        "commit_sha": commit.commitid,
+        "timestamp": commit.timestamp,
+        "value": value,
+    }
 
 
 def upsert_measurements(
@@ -151,10 +153,10 @@ def upsert_measurements(
             Measurement.commit_sha,
             Measurement.timestamp,
         ],
-        set_=dict(
-            branch=command.excluded.branch,
-            value=command.excluded.value,
-        ),
+        set_={
+            "branch": command.excluded.branch,
+            "value": command.excluded.value,
+        },
     )
     db_session.execute(command)
     db_session.flush()

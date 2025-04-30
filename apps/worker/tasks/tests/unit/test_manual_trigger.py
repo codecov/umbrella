@@ -50,9 +50,11 @@ class TestUploadCompletionTask(object):
             "message": "All uploads are processed. Triggering notifications.",
         } == result
         mocked_app.tasks["app.tasks.notify.Notify"].apply_async.assert_called_with(
-            kwargs=dict(
-                commitid=commit.commitid, current_yaml=None, repoid=commit.repoid
-            )
+            kwargs={
+                "commitid": commit.commitid,
+                "current_yaml": None,
+                "repoid": commit.repoid,
+            }
         )
         mocked_app.tasks["app.tasks.pulls.Sync"].apply_async.assert_called_with(
             kwargs={

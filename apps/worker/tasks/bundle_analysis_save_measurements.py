@@ -35,11 +35,11 @@ class BundleAnalysisSaveMeasurementsTask(
 
         log.info(
             "Starting bundle analysis save measurements",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                previous_result=previous_result,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "previous_result": previous_result,
+            },
         )
 
         commit = (
@@ -51,12 +51,12 @@ class BundleAnalysisSaveMeasurementsTask(
         if upload is None:
             log.info(
                 "Skipping bundle analysis save measurements - cached bundle",
-                extra=dict(
-                    repoid=repoid,
-                    commit=commitid,
-                    uploadid=uploadid,
-                    success=True,
-                ),
+                extra={
+                    "repoid": repoid,
+                    "commit": commitid,
+                    "uploadid": uploadid,
+                    "success": True,
+                },
             )
             return {"successful": True}
 
@@ -80,12 +80,12 @@ class BundleAnalysisSaveMeasurementsTask(
 
         log.info(
             "Finished bundle analysis save measurements",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                uploadid=uploadid,
-                success=save_measurements,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "uploadid": uploadid,
+                "success": save_measurements,
+            },
         )
 
         return {"successful": save_measurements}

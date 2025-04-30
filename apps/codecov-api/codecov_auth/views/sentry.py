@@ -50,12 +50,12 @@ class SentryLoginView(LoginMixin, StateMixin, View):
     def _redirect_to_consent(self) -> HttpResponse:
         state = self.generate_state()
         qs = urlencode(
-            dict(
-                response_type="code",
-                client_id=settings.SENTRY_OAUTH_CLIENT_ID,
-                scope="openid email profile",
-                state=state,
-            )
+            {
+                "response_type": "code",
+                "client_id": settings.SENTRY_OAUTH_CLIENT_ID,
+                "scope": "openid email profile",
+                "state": state,
+            }
         )
         redirect_url = f"{OAUTH_AUTHORIZE_URL}?{qs}"
         response = redirect(redirect_url)
@@ -75,9 +75,9 @@ class SentryLoginView(LoginMixin, StateMixin, View):
                 log.warning(
                     "Invalid issuer of OIDC ID token",
                     exc_info=True,
-                    extra=dict(
-                        id_payload=id_payload,
-                    ),
+                    extra={
+                        "id_payload": id_payload,
+                    },
                 )
                 return False
 
@@ -87,9 +87,9 @@ class SentryLoginView(LoginMixin, StateMixin, View):
             log.warning(
                 "Unable to verify signature of OIDC ID token",
                 exc_info=True,
-                extra=dict(
-                    id_payload=id_payload,
-                ),
+                extra={
+                    "id_payload": id_payload,
+                },
             )
             return False
 
@@ -138,9 +138,10 @@ class SentryLoginView(LoginMixin, StateMixin, View):
             if sentry_user and sentry_user.user != request.user:
                 log.warning(
                     "Sentry account already linked to another user",
-                    extra=dict(
-                        current_user_id=request.user.pk, sentry_user_id=sentry_user.pk
-                    ),
+                    extra={
+                        "current_user_id": request.user.pk,
+                        "sentry_user_id": sentry_user.pk,
+                    },
                 )
                 # Logout the current user and login the user who already
                 # claimed this Sentry account (below)
@@ -151,7 +152,7 @@ class SentryLoginView(LoginMixin, StateMixin, View):
             if sentry_user:
                 log.info(
                     "Existing Sentry user logging in",
-                    extra=dict(sentry_user_id=sentry_user.pk),
+                    extra={"sentry_user_id": sentry_user.pk},
                 )
                 current_user = sentry_user.user
             else:
@@ -171,7 +172,7 @@ class SentryLoginView(LoginMixin, StateMixin, View):
             )
             log.info(
                 "Created Sentry user",
-                extra=dict(sentry_user_id=sentry_user.pk),
+                extra={"sentry_user_id": sentry_user.pk},
             )
 
         login(request, current_user)

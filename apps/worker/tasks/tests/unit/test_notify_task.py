@@ -257,10 +257,10 @@ class TestNotifyTaskHelpers(object):
         assert new_user_activation_call == call(
             new_user_activated_task_name,
             args=None,
-            kwargs=dict(
-                org_ownerid=enriched_pull.database_pull.repository.owner.ownerid,
-                user_ownerid=pr_author.ownerid,
-            ),
+            kwargs={
+                "org_ownerid": enriched_pull.database_pull.repository.owner.ownerid,
+                "user_ownerid": pr_author.ownerid,
+            },
         )
         assert account_user_activation_call[0] == (
             activate_account_user_task_name,
@@ -831,9 +831,11 @@ class TestNotifyTask(object):
         assert not res
         set_error_task_caller.apply_async.assert_called_with(
             args=None,
-            kwargs=dict(
-                repoid=commit.repoid, commitid=commit.commitid, message="CI failed."
-            ),
+            kwargs={
+                "repoid": commit.repoid,
+                "commitid": commit.commitid,
+                "message": "CI failed.",
+            },
         )
 
     def test_should_send_notifications_after_n_builds(self, dbsession, mocker):

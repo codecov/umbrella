@@ -404,6 +404,6 @@ def validate_install_configuration(inputted_dict):
     if not is_valid:
         log.debug(
             "Configuration considered invalid, using dict as it is",
-            extra=dict(errors=validator.errors),
+            extra={"errors": validator.errors},
         )
     return validator.document
