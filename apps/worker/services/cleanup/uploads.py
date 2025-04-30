@@ -23,8 +23,8 @@ def cleanup_old_uploads(context: CleanupContext) -> CleanupSummary:
             if len(upload_ids) == 0:
                 break
 
-            query = Upload.objects.filter(pk__in=upload_ids)
-            summary = run_cleanup(query, context=context)
+            uploads_query = Upload.objects.filter(pk__in=upload_ids)
+            summary = run_cleanup(uploads_query, context=context)
 
             complete_summary.add(summary)
 
