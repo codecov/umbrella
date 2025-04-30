@@ -317,9 +317,7 @@ class BundleAnalysisCommentMarkdownStrategy(MessageStrategyInterface):
 
                 # Determine what asset name styling and change icon to use
                 asset_display_name_1 = f"```{asset_change.asset_name}```"
-                asset_display_name_2 = asset_display_name_2 = (
-                    f"**```{asset_change.asset_name}```**"
-                )
+                asset_display_name_2 = f"**```{asset_change.asset_name}```**"
                 exceeds_threshold = (
                     warning_threshold.type == "percentage"
                     and asset_change.percentage_delta > warning_threshold.threshold

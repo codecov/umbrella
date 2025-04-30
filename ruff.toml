@@ -10,17 +10,18 @@ select = [
     "PERF",  # perflint - performance anti-pattern rules
     "PLC",   # pylint - convention rules
     "PLE",   # pylint - error rules
+    "PLW",   # pylint - warning rules
     "T20",   # flake8-print - print statements
     # TODO: 
     # "C4",   # flake8-comprehensions - list/set/dict/generator comprehensions
-    # "PLW",  # pylint - warning rules
     # "W",    # pycodestyle - warning rules
 ]
 ignore = [
-    "C408", # Unnecessary `{kind}()` call (rewrite as a literal)
-    "E501", # Line too long ({width} > {limit})
-    "E712", # Avoid equality comparisons to `True`; use `if {cond}:` for truth checks
-    "F403", # `from {name} import *` used; unable to detect undefined names
-    "F405", # `{name}` may be undefined, or defined from star imports
-    "F841", # Local variable `{name}` is assigned to but never used
+    "C408",    # Unnecessary `{kind}()` call (rewrite as a literal)
+    "E501",    # Line too long ({width} > {limit})
+    "E712",    # Avoid equality comparisons to `True`; use `if {cond}:` for truth checks
+    "F403",    # `from {name} import *` used; unable to detect undefined names
+    "F405",    # `{name}` may be undefined, or defined from star imports
+    "F841",    # Local variable `{name}` is assigned to but never used
+    "PLW2901", # Outer {outer_kind} variable {name} overwritten by inner {inner_kind} target
 ]

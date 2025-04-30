@@ -9,7 +9,7 @@ _version = None
 
 
 def _get_version():
-    global _version
+    global _version  # noqa: PLW0603
     if _version is None:
         _version = Constants.objects.get(key="version")
     return _version

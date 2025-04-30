@@ -20,7 +20,7 @@ def _is_shelter_enabled():
 
 
 def _get_pubsub_publisher():
-    global _pubsub_publisher
+    global _pubsub_publisher  # noqa: PLW0603
     if not _pubsub_publisher:
         _pubsub_publisher = pubsub_v1.PublisherClient()
     return _pubsub_publisher

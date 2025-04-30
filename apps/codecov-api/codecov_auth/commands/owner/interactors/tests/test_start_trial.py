@@ -29,7 +29,6 @@ class StartTrialInteractorTest(TestCase):
 
     @async_to_sync
     def execute(self, current_user, org_username=None):
-        current_user = current_user
         return StartTrialInteractor(current_user, "github").execute(
             org_username=org_username,
         )
