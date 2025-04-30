@@ -14,7 +14,7 @@ select = [
     "T20",   # flake8-print - print statements
     # TODO: 
     # "C4",   # flake8-comprehensions - list/set/dict/generator comprehensions
-    # "W",    # pycodestyle - warning rules
+    "W", # pycodestyle - warning rules
 ]
 ignore = [
     "C408",    # Unnecessary `{kind}()` call (rewrite as a literal)
@@ -24,4 +24,7 @@ ignore = [
     "F405",    # `{name}` may be undefined, or defined from star imports
     "F841",    # Local variable `{name}` is assigned to but never used
     "PLW2901", # Outer {outer_kind} variable {name} overwritten by inner {inner_kind} target
+    # Trailing whitespace, and blank lines which we use in test assertions:
+    "W291",
+    "W293",
 ]
