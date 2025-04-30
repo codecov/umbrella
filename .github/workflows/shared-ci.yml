@@ -11,14 +11,6 @@ on:
         required: false
 
 jobs:
-  # TODO: Get mypy passing and running. Don't enable if not passing
-  shared-lint:
-    name: Run Lint (Shared)
-    if: ${{ inputs.skip == false }}
-    uses: ./.github/workflows/_lint.yml
-    with:
-      make_target_prefix: shared.
-
   shared-benchmark:
     name: Benchmarks (Shared)
     if: ${{ inputs.skip == false }}
@@ -158,11 +150,8 @@ jobs:
     name: Required checks (Shared)
     if: ${{ !cancelled() && inputs.skip == false }}
     runs-on: ubuntu-latest
-    needs: [shared-test, shared-lint]
+    needs: [shared-test]
     steps:
-      - name: Fail lint
-        if: ${{ needs.shared-lint.result == 'failure' }}
-        run: exit 1
       - name: Fail tests
         if: ${{ needs.shared-test.result == 'failure' }}
         run: exit 1

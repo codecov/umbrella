@@ -60,7 +60,6 @@ dev-dependencies = [
     "coverage>=7.5.0",
     "factory-boy>=3.2.0",
     "mock>=4.0.3",
-    "pre-commit>=3.4.0",
     "pytest>=8.1.1",
     "pytest-asyncio>=0.14.0",
     "pytest-celery>=0.0.0",
@@ -71,7 +70,6 @@ dev-dependencies = [
     "pytest-mock>=1.13.0",
     "pytest-sqlalchemy>=0.2.1",
     "respx>=0.20.2",
-    "ruff>=0.9.8",
     "sqlalchemy-utils>=0.41.2",
     # NOTE: some weird interaction between existing `vcrpy` snapshots and the way
     # `oauth2` / `minio` deal with requests forces us to downgrade `urllib3`:

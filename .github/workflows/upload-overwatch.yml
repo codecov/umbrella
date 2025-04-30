@@ -18,24 +18,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - name: Install UV
-        run: pip install uv
-      - name: Install Project Dependencies
+
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
         working-directory: apps/${{ matrix.app }}
-        run: |
-          uv sync
-      - name: Install Static Analysis Tools
+      - run: uv pip install mypy==1.15.0 ruff==0.11.7
         working-directory: apps/${{ matrix.app }}
-        run: |
-          uv pip install mypy==1.15.0 ruff==0.9.8
+      
       - name: Install Overwatch CLI
         run: |
           curl -o overwatch-cli https://overwatch.codecov.dev/linux/cli
           chmod +x overwatch-cli
           # Move the CLI to a location accessible from working directories
           mv overwatch-cli /usr/local/bin/overwatch-cli
+
       - name: Run Overwatch CLI
         working-directory: apps/${{ matrix.app }}
         run: |

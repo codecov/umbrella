@@ -95,9 +95,9 @@ ENV/
 env.bak/
 venv.bak/
 .testenv
-.envrc
 .debug
 .codspeed
+.ruff_cache
 
 codecov_api/static/*
 !codecov_api/static/__init__.py
@@ -123,7 +123,6 @@ dmypy.json
 # vim temp files
 *.swp
 *.swo
-.vscode/
 
 # PyCharm stuff
 .idea

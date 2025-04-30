@@ -18,24 +18,6 @@ test:
 test.path:
 	docker compose exec shared uv run pytest $(TEST_PATH)
 
-lint:
-	make lint.install
-	make lint.run
-
-lint.install:
-	echo "Installing..."
-	pip install -Iv ruff
-
-lint.run:
-	ruff check
-	ruff format
-
-lint.check:
-	echo "Linting..."
-	ruff check --fix
-	echo "Formatting..."
-	ruff format --check
-
 requirements.install:
 	uv sync
 	. .venv/bin/activate
