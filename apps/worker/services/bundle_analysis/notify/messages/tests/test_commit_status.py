@@ -2,10 +2,6 @@ from unittest.mock import MagicMock
 
 import pytest
 from mock import AsyncMock
-from shared.config import PATCH_CENTRIC_DEFAULT_CONFIG
-from shared.torngit.exceptions import TorngitClientError
-from shared.typings.torngit import TorngitInstanceData
-from shared.yaml import UserYaml
 
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import PullFactory
@@ -24,6 +20,10 @@ from services.bundle_analysis.notify.messages.commit_status import (
 )
 from services.notification.notifiers.base import NotificationResult
 from services.seats import SeatActivationInfo, ShouldActivateSeat
+from shared.config import PATCH_CENTRIC_DEFAULT_CONFIG
+from shared.torngit.exceptions import TorngitClientError
+from shared.typings.torngit import TorngitInstanceData
+from shared.yaml import UserYaml
 from tests.helpers import mock_all_plans_and_tiers
 
 

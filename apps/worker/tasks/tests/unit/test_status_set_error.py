@@ -2,10 +2,10 @@ from pathlib import Path
 
 import mock
 import pytest
-from shared.torngit.status import Status
-from shared.yaml import UserYaml
 
 from database.tests.factories import CommitFactory
+from shared.torngit.status import Status
+from shared.yaml import UserYaml
 from tasks.status_set_error import StatusSetErrorTask
 
 here = Path(__file__)

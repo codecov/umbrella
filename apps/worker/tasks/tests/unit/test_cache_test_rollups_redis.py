@@ -2,7 +2,6 @@ import shared.storage
 from shared.django_apps.core.tests.factories import RepositoryFactory
 from shared.helpers.redis import get_redis_connection
 from shared.storage.exceptions import BucketAlreadyExistsError
-
 from tasks.cache_test_rollups_redis import CacheTestRollupsRedisTask
 
 

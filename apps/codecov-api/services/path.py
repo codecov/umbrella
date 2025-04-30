@@ -8,14 +8,14 @@ from typing import Iterable
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from django.conf import settings
-from shared.reports.filtered import FilteredReport, FilteredReportFile
-from shared.reports.resources import Report
-from shared.reports.types import ReportTotals
-from shared.torngit.exceptions import TorngitClientError
 
 from codecov_auth.models import Owner
 from core.models import Commit
 from services.repo_providers import RepoProviderService
+from shared.reports.filtered import FilteredReport, FilteredReportFile
+from shared.reports.resources import Report
+from shared.reports.types import ReportTotals
+from shared.torngit.exceptions import TorngitClientError
 
 
 class PathNode:

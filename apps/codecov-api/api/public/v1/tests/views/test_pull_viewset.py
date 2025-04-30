@@ -2,14 +2,14 @@ import json
 from unittest.mock import patch
 
 from rest_framework.test import APIClient, APITestCase
+
+from core.models import Pull
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
     PullFactory,
     RepositoryFactory,
 )
-
-from core.models import Pull
 
 
 class PullViewSetTests(APITestCase):

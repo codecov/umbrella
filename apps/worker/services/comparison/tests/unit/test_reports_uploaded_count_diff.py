@@ -1,12 +1,12 @@
 from unittest.mock import MagicMock
 
 import pytest
-from shared.reports.resources import Report
-from shared.utils.sessions import Session, SessionType
-from shared.yaml import UserYaml
 
 from services.comparison import ComparisonProxy
 from services.comparison.types import Comparison, FullCommit, ReportUploadedCount
+from shared.reports.resources import Report
+from shared.utils.sessions import Session, SessionType
+from shared.yaml import UserYaml
 
 
 @pytest.mark.parametrize(

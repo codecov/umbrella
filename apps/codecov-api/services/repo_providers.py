@@ -4,8 +4,6 @@ from typing import Callable, Dict, Optional
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from shared.encryption.token import encode_token
-from shared.torngit import get
 
 from codecov_auth.models import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
@@ -14,6 +12,8 @@ from codecov_auth.models import (
     Service,
 )
 from core.models import Repository
+from shared.encryption.token import encode_token
+from shared.torngit import get
 from utils.config import get_config
 from utils.encryption import encryptor
 

@@ -6,9 +6,9 @@ from asgiref.sync import async_to_sync
 from django.conf import settings
 from rest_framework import exceptions
 from rest_framework.exceptions import NotFound
+
 from shared.torngit import get
 from shared.torngit.exceptions import TorngitClientError, TorngitRateLimitError
-
 from upload.tokenless.base import BaseTokenlessUploadHandler
 
 log = logging.getLogger(__name__)

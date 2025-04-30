@@ -1,12 +1,12 @@
 from unittest.mock import Mock, PropertyMock, patch
 
 from django.test import TestCase
+
+from services.path import Dir, File
 from shared.django_apps.core.tests.factories import CommitFactory
 from shared.reports.resources import Report, ReportFile
 from shared.reports.types import ReportLine, ReportTotals
 from shared.utils.sessions import Session
-
-from services.path import Dir, File
 
 from ..types.commit.commit import resolve_path_contents
 from ..types.errors.errors import MissingCoverage, UnknownPath

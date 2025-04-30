@@ -6,13 +6,13 @@ from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.shortcuts import redirect
 from django.views import View
+
+from codecov_auth.views.base import LoginMixin, StateMixin
 from shared.django_apps.codecov_metrics.service.codecov_metrics import (
     UserOnboardingMetricsService,
 )
 from shared.torngit import Github
 from shared.torngit.exceptions import TorngitError
-
-from codecov_auth.views.base import LoginMixin, StateMixin
 from utils.config import get_config
 
 log = logging.getLogger(__name__)

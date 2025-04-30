@@ -4,14 +4,6 @@ from typing import List, Literal, TypedDict
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from django.template import loader
-from shared.bundle_analysis import (
-    BundleAnalysisComparison,
-    BundleChange,
-    MissingBundleError,
-)
-from shared.bundle_analysis.comparison import AssetChange, RouteChange
-from shared.torngit.exceptions import TorngitClientError
-from shared.validation.types import BundleThreshold
 
 from services.bundle_analysis.notify.contexts.comment import (
     BundleAnalysisPRCommentNotificationContext,
@@ -25,6 +17,14 @@ from services.bundle_analysis.notify.messages import MessageStrategyInterface
 from services.license import requires_license
 from services.notification.notifiers.base import NotificationResult
 from services.urls import get_bundle_analysis_pull_url, get_members_url
+from shared.bundle_analysis import (
+    BundleAnalysisComparison,
+    BundleChange,
+    MissingBundleError,
+)
+from shared.bundle_analysis.comparison import AssetChange, RouteChange
+from shared.torngit.exceptions import TorngitClientError
+from shared.validation.types import BundleThreshold
 
 log = logging.getLogger(__name__)
 

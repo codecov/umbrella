@@ -2,8 +2,6 @@ import json
 from unittest.mock import PropertyMock
 
 from mock import MagicMock, patch
-from shared.plan.constants import DEFAULT_FREE_PLAN
-from shared.storage.exceptions import FileNotInStorageError
 from sqlalchemy.orm import Session
 
 from database.models import (
@@ -30,6 +28,8 @@ from database.tests.factories import (
     RepositoryFactory,
 )
 from database.tests.factories.core import UserFactory
+from shared.plan.constants import DEFAULT_FREE_PLAN
+from shared.storage.exceptions import FileNotInStorageError
 
 
 class TestReprModels(object):

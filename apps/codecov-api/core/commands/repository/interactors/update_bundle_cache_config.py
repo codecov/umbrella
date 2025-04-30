@@ -1,14 +1,14 @@
 from typing import Dict, List
 
 from asgiref.sync import sync_to_async
-from shared.django_apps.bundle_analysis.models import CacheConfig
-from shared.django_apps.bundle_analysis.service.bundle_analysis import (
-    BundleAnalysisCacheConfigService,
-)
 
 from codecov.commands.base import BaseInteractor
 from codecov.commands.exceptions import ValidationError
 from core.models import Repository
+from shared.django_apps.bundle_analysis.models import CacheConfig
+from shared.django_apps.bundle_analysis.service.bundle_analysis import (
+    BundleAnalysisCacheConfigService,
+)
 
 
 class UpdateBundleCacheConfigInteractor(BaseInteractor):

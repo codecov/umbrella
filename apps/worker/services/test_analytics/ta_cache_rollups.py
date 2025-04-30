@@ -3,8 +3,8 @@ from io import BytesIO
 from typing import cast
 
 import polars as pl
-import shared.storage
 
+import shared.storage
 from django_scaffold import settings
 from services.test_analytics.ta_metrics import (
     read_rollups_from_db_summary,

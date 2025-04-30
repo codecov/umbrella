@@ -1,9 +1,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-from shared.config import PATCH_CENTRIC_DEFAULT_CONFIG
-from shared.validation.types import BundleThreshold
-from shared.yaml import UserYaml
 
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import CommitFactory, PullFactory
@@ -25,6 +22,9 @@ from services.bundle_analysis.notify.contexts.commit_status import (
 from services.bundle_analysis.notify.types import NotificationUserConfig
 from services.repository import EnrichedPull
 from services.seats import SeatActivationInfo, ShouldActivateSeat
+from shared.config import PATCH_CENTRIC_DEFAULT_CONFIG
+from shared.validation.types import BundleThreshold
+from shared.yaml import UserYaml
 from tests.helpers import mock_all_plans_and_tiers
 
 

@@ -1,13 +1,13 @@
 from unittest.mock import PropertyMock
 
 import pytest
-from shared.reports.readonly import ReadOnlyReport
 
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
 from services.comparison import ComparisonContext, ComparisonProxy
 from services.comparison.types import Comparison, EnrichedPull, FullCommit
 from services.decoration import Decoration
 from services.notification.notifiers.comment import CommentNotifier
+from shared.reports.readonly import ReadOnlyReport
 from tests.helpers import mock_all_plans_and_tiers
 
 

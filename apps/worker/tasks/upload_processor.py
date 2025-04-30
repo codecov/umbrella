@@ -1,13 +1,13 @@
 import logging
 
-from shared.celery_config import upload_processor_task_name
-from shared.config import get_config
-from shared.yaml import UserYaml
 from sqlalchemy.orm import Session as DbSession
 
 from app import celery_app
 from services.processing.processing import UploadArguments, process_upload
 from services.report import ProcessingError
+from shared.celery_config import upload_processor_task_name
+from shared.config import get_config
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

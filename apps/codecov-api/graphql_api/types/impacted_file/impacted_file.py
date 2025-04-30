@@ -5,8 +5,6 @@ import sentry_sdk
 from ariadne import ObjectType, UnionType
 from asgiref.sync import sync_to_async
 from graphql import GraphQLResolveInfo
-from shared.reports.types import ReportTotals
-from shared.torngit.exceptions import TorngitClientError
 
 from graphql_api.types.errors import ProviderError, UnknownPath
 from graphql_api.types.errors.errors import UnknownFlags
@@ -16,6 +14,8 @@ from services.comparison import (
     ImpactedFile,
     MissingComparisonReport,
 )
+from shared.reports.types import ReportTotals
+from shared.torngit.exceptions import TorngitClientError
 
 impacted_file_bindable = ObjectType("ImpactedFile")
 

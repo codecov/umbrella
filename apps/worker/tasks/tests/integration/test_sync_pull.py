@@ -1,8 +1,7 @@
 from pathlib import Path
 
-from shared.api_archive.archive import ArchiveService
-
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
+from shared.api_archive.archive import ArchiveService
 from tasks.sync_pull import PullSyncTask
 
 here = Path(__file__)

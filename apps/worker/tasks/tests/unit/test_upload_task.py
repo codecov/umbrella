@@ -8,12 +8,6 @@ import pytest
 from celery.exceptions import Retry
 from mock import AsyncMock, call
 from redis.exceptions import LockError
-from shared.helpers.redis import get_redis_connection
-from shared.reports.enums import UploadState, UploadType
-from shared.torngit import GitlabEnterprise
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
-from shared.torngit.gitlab import Gitlab
-from shared.utils.sessions import SessionType
 
 from database.enums import ReportType
 from database.models import Upload
@@ -29,6 +23,12 @@ from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.log_context import LogContext, set_log_context
 from services.report import NotReadyToBuildReportYetError, ReportService
+from shared.helpers.redis import get_redis_connection
+from shared.reports.enums import UploadState, UploadType
+from shared.torngit import GitlabEnterprise
+from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.torngit.gitlab import Gitlab
+from shared.utils.sessions import SessionType
 from tasks.bundle_analysis_notify import bundle_analysis_notify_task
 from tasks.bundle_analysis_processor import bundle_analysis_processor_task
 from tasks.test_results_finisher import test_results_finisher_task

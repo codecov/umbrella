@@ -5,6 +5,15 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import sentry_sdk
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.orm import Session
+
+from database.enums import ReportType
+from database.models.core import Commit
+from database.models.reports import CommitReport, Upload, UploadError
+from database.models.timeseries import Measurement, MeasurementName
+from services.report import BaseReportService
+from services.timeseries import repository_datasets_query
 from shared.bundle_analysis import BundleAnalysisReport, BundleAnalysisReportLoader
 from shared.bundle_analysis.models import AssetType, MetadataKey
 from shared.bundle_analysis.storage import get_bucket_name
@@ -16,15 +25,6 @@ from shared.metrics import Counter
 from shared.reports.enums import UploadState, UploadType
 from shared.storage.exceptions import FileNotInStorageError, PutRequestRateLimitError
 from shared.utils.sessions import SessionType
-from sqlalchemy.dialects import postgresql
-from sqlalchemy.orm import Session
-
-from database.enums import ReportType
-from database.models.core import Commit
-from database.models.reports import CommitReport, Upload, UploadError
-from database.models.timeseries import Measurement, MeasurementName
-from services.report import BaseReportService
-from services.timeseries import repository_datasets_query
 
 log = logging.getLogger(__name__)
 

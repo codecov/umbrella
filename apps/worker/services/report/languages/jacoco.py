@@ -3,12 +3,12 @@ from collections import defaultdict
 
 import sentry_sdk
 from lxml.etree import Element
-from shared.utils.merge import LineType, branch_type
 from timestring import Date
 
 from helpers.exceptions import ReportExpiredException
 from services.report.languages.base import BaseLanguageProcessor
 from services.report.report_builder import CoverageType, ReportBuilderSession
+from shared.utils.merge import LineType, branch_type
 
 log = logging.getLogger(__name__)
 

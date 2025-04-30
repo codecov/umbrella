@@ -2,6 +2,11 @@ from datetime import datetime, timezone
 
 import pytest
 from freezegun import freeze_time
+
+from services.cleanup.regular import run_regular_cleanup
+from services.cleanup.tests.test_relations import dump_delete_queries
+from services.cleanup.uploads import create_upload_cleanup_queries
+from services.cleanup.utils import CleanupResult, CleanupSummary
 from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis import StoragePaths
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
@@ -10,11 +15,6 @@ from shared.django_apps.reports.tests.factories import (
     CommitReportFactory,
     UploadFactory,
 )
-
-from services.cleanup.regular import run_regular_cleanup
-from services.cleanup.tests.test_relations import dump_delete_queries
-from services.cleanup.uploads import create_upload_cleanup_queries
-from services.cleanup.utils import CleanupResult, CleanupSummary
 
 
 @pytest.mark.django_db

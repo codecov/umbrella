@@ -1,15 +1,14 @@
 from typing import Union
 
+from core.models import Commit
+from graphql_api.types.comparison.comparison import MissingBaseReport, MissingHeadReport
+from reports.models import CommitReport
+from services.bundle_analysis import BundleAnalysisComparison, BundleAnalysisReport
 from shared.bundle_analysis import (
     BundleAnalysisReportLoader,
     MissingBaseReportError,
     MissingHeadReportError,
 )
-
-from core.models import Commit
-from graphql_api.types.comparison.comparison import MissingBaseReport, MissingHeadReport
-from reports.models import CommitReport
-from services.bundle_analysis import BundleAnalysisComparison, BundleAnalysisReport
 
 
 def load_bundle_analysis_comparison(

@@ -4,7 +4,6 @@ from typing import Any, Optional, TypedDict
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from shared.torngit.exceptions import TorngitClientError, TorngitError
 
 from services.comparison import ComparisonProxy, FilteredComparison
 from services.notification.notifiers.base import NotificationResult
@@ -17,6 +16,7 @@ from services.urls import (
     get_pull_url,
 )
 from services.yaml.reader import get_paths_from_flags
+from shared.torngit.exceptions import TorngitClientError, TorngitError
 
 log = logging.getLogger(__name__)
 

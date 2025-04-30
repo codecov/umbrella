@@ -8,10 +8,11 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from yaml import YAMLError, safe_load
+
 from shared.metrics import Counter, inc_counter
 from shared.validation.exceptions import InvalidYamlException
 from shared.yaml.validation import validate_yaml
-from yaml import YAMLError, safe_load
 
 log = logging.getLogger(__name__)
 

@@ -4,6 +4,8 @@ from unittest.mock import ANY, patch
 
 from django.urls import reverse
 from rest_framework.test import APIClient
+
+from services.task import TaskService
 from shared.django_apps.codecov_auth.tests.factories import (
     OrganizationLevelTokenFactory,
 )
@@ -15,8 +17,6 @@ from shared.django_apps.core.tests.factories import (
 )
 from shared.events.amplitude import UNKNOWN_USER_OWNERID
 from shared.helpers.redis import get_redis_connection
-
-from services.task import TaskService
 
 
 def test_upload_test_results(db, client, mocker, mock_redis):

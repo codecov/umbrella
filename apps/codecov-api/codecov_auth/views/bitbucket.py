@@ -7,13 +7,13 @@ from django.conf import settings
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.views import View
+
+from codecov_auth.views.base import LoginMixin
 from shared.django_apps.codecov_metrics.service.codecov_metrics import (
     UserOnboardingMetricsService,
 )
 from shared.torngit import Bitbucket
 from shared.torngit.exceptions import TorngitServerFailureError
-
-from codecov_auth.views.base import LoginMixin
 from utils.encryption import encryptor
 
 log = logging.getLogger(__name__)

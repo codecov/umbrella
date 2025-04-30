@@ -1,12 +1,12 @@
 from asgiref.sync import async_to_sync
 from django.test import TestCase
+
+from core.models import PullStates
 from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     PullFactory,
     RepositoryFactory,
 )
-
-from core.models import PullStates
 
 from ..fetch_pull_requests import FetchPullRequestsInteractor
 

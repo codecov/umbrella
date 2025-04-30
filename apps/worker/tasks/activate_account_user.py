@@ -1,10 +1,10 @@
 import logging
 
-from shared.celery_config import activate_account_user_task_name
-from shared.django_apps.codecov_auth.models import Account, Owner
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
+from shared.celery_config import activate_account_user_task_name
+from shared.django_apps.codecov_auth.models import Account, Owner
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

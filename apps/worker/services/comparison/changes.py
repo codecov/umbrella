@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Any, Iterator, Tuple, Union
 
 import sentry_sdk
+
 from shared.helpers.numeric import ratio
 from shared.reports.resources import Report
 from shared.reports.types import Change, ReportTotals

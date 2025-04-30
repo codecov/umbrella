@@ -3,14 +3,13 @@ import logging
 from enum import Enum
 from typing import Any, List, Sequence
 
+from helpers.labels import SpecialLabelsEnum
+from services.path_fixer import PathFixer
+from services.yaml.reader import read_yaml_field
 from shared.reports.reportfile import ReportFile
 from shared.reports.resources import Report
 from shared.reports.types import CoverageDatapoint, LineSession, ReportLine
 from shared.yaml.user_yaml import UserYaml
-
-from helpers.labels import SpecialLabelsEnum
-from services.path_fixer import PathFixer
-from services.yaml.reader import read_yaml_field
 
 log = logging.getLogger(__name__)
 

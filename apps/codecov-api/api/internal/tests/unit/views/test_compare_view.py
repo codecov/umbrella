@@ -3,6 +3,9 @@ from unittest.mock import PropertyMock, patch
 
 from rest_framework import status
 from rest_framework.reverse import reverse
+
+from api.internal.commit.serializers import CommitTotalsSerializer
+from codecov.tests.base_test import InternalAPITest
 from shared.django_apps.core.tests.factories import (
     BranchFactory,
     CommitWithReportFactory,
@@ -10,9 +13,6 @@ from shared.django_apps.core.tests.factories import (
     PullFactory,
     RepositoryFactory,
 )
-
-from api.internal.commit.serializers import CommitTotalsSerializer
-from codecov.tests.base_test import InternalAPITest
 
 
 def build_commits(client):

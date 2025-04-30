@@ -1,11 +1,6 @@
 from typing import Dict, List
 
 import pytest
-from shared.validation.types import (
-    CoverageCommentRequiredChanges,
-    CoverageCommentRequiredChangesANDGroup,
-)
-from shared.yaml import UserYaml
 
 from database.enums import Decoration
 from database.models.core import Repository
@@ -15,6 +10,11 @@ from services.notification.notifiers.comment.conditions import (
     HasEnoughRequiredChanges,
     NoAutoActivateMessageIfAutoActivateIsOff,
 )
+from shared.validation.types import (
+    CoverageCommentRequiredChanges,
+    CoverageCommentRequiredChangesANDGroup,
+)
+from shared.yaml import UserYaml
 
 
 def _get_notifier(

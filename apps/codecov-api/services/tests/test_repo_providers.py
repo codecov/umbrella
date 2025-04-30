@@ -5,8 +5,6 @@ import pytest
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
-from shared.torngit import Bitbucket, Github, Gitlab
 
 from codecov_auth.models import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
@@ -15,6 +13,8 @@ from codecov_auth.models import (
     Service,
 )
 from services.repo_providers import RepoProviderService, get_token_refresh_callback
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
+from shared.torngit import Bitbucket, Github, Gitlab
 from utils.encryption import encryptor
 
 

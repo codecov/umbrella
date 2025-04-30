@@ -1,15 +1,15 @@
 from collections import Counter
 
 from django.test import TestCase
+
+from graphql_api.actions.commits import repo_commits
+from reports.models import CommitReport
+from reports.tests.factories import CommitReportFactory, UploadFactory
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
     RepositoryFactory,
 )
-
-from graphql_api.actions.commits import repo_commits
-from reports.models import CommitReport
-from reports.tests.factories import CommitReportFactory, UploadFactory
 
 
 class RepoCommitsTests(TestCase):

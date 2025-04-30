@@ -1,7 +1,4 @@
 import pytest
-from shared.reports.reportfile import ReportFile
-from shared.reports.resources import Report
-from shared.reports.types import ReportLine, ReportTotals
 
 from services.comparison.changes import (
     Change,
@@ -9,6 +6,9 @@ from services.comparison.changes import (
     get_changes,
     get_segment_offsets,
 )
+from shared.reports.reportfile import ReportFile
+from shared.reports.resources import Report
+from shared.reports.types import ReportLine, ReportTotals
 
 
 class TestDiffTotals(object):

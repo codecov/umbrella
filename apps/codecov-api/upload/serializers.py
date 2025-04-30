@@ -3,12 +3,12 @@ from typing import Any, Dict, List
 from django.conf import settings
 from django.db.models import QuerySet
 from rest_framework import serializers
-from shared.api_archive.archive import ArchiveService
 
 from codecov_auth.models import Owner
 from core.models import Commit, Repository
 from reports.models import CommitReport, ReportSession, RepositoryFlag
 from services.task import TaskService
+from shared.api_archive.archive import ArchiveService
 
 
 class FlagListField(serializers.ListField):

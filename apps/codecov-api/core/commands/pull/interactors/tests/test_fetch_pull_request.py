@@ -3,6 +3,7 @@ from datetime import datetime
 import pytest
 from django.test import TestCase
 from freezegun import freeze_time
+
 from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     PullFactory,

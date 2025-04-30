@@ -1,9 +1,9 @@
 import pytest
 from celery.exceptions import Retry
-from shared.reports.enums import UploadState
 
 from database.tests.factories import CommitFactory, PullFactory
 from database.tests.factories.core import UploadFactory
+from shared.reports.enums import UploadState
 from tasks.manual_trigger import ManualTriggerTask
 
 

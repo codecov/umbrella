@@ -5,13 +5,13 @@ from typing import Any
 
 import sentry_sdk
 import test_results_parser
+
+from services.test_analytics.ta_timeseries import get_flaky_tests_set, insert_testrun
+from services.yaml import UserYaml, read_yaml_field
 from shared.api_archive.archive import ArchiveService
 from shared.config import get_config
 from shared.django_apps.core.models import Commit, Repository
 from shared.django_apps.reports.models import ReportSession, UploadError
-
-from services.test_analytics.ta_timeseries import get_flaky_tests_set, insert_testrun
-from services.yaml import UserYaml, read_yaml_field
 
 
 @dataclass

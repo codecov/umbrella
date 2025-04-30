@@ -1,8 +1,6 @@
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
-from shared.django_apps.core.tests.factories import OwnerFactory
-from shared.license import LicenseInformation
 
 from codecov_auth.models import Owner
 from services.self_hosted import (
@@ -19,6 +17,8 @@ from services.self_hosted import (
     is_autoactivation_enabled,
     license_seats,
 )
+from shared.django_apps.core.tests.factories import OwnerFactory
+from shared.license import LicenseInformation
 
 
 @override_settings(IS_ENTERPRISE=True)

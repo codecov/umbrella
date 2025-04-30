@@ -2,11 +2,11 @@ import logging
 from datetime import datetime
 
 from asgiref.sync import async_to_sync
-from shared.celery_config import sync_teams_task_name
 
 from app import celery_app
 from database.models import Owner
 from services.owner import get_owner_provider_service
+from shared.celery_config import sync_teams_task_name
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

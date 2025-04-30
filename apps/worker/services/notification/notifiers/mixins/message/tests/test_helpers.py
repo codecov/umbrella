@@ -1,11 +1,11 @@
 import pytest
-from shared.reports.resources import Report, ReportTotals
 
 from services.comparison import ComparisonProxy
 from services.notification.notifiers.mixins.message.helpers import (
     has_project_status,
     is_coverage_drop_significant,
 )
+from shared.reports.resources import Report, ReportTotals
 
 
 @pytest.mark.parametrize(

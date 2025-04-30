@@ -1,7 +1,5 @@
 import mock
 import pytest
-from shared.plan.constants import DEFAULT_FREE_PLAN
-from shared.torngit.exceptions import TorngitClientError
 
 from database.tests.factories import (
     CommitFactory,
@@ -23,6 +21,8 @@ from services.test_results import (
 )
 from services.urls import services_short_dict
 from services.yaml import UserYaml
+from shared.plan.constants import DEFAULT_FREE_PLAN
+from shared.torngit.exceptions import TorngitClientError
 from tests.helpers import mock_all_plans_and_tiers
 
 

@@ -3,6 +3,7 @@ import time
 from typing import Any, Callable, Optional
 
 import orjson
+
 from shared.api_archive.archive import ArchiveService
 from shared.storage.exceptions import FileNotInStorageError
 from shared.utils.ReportEncoder import ReportEncoder

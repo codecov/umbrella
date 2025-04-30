@@ -1,9 +1,8 @@
-from shared.celery_config import timeseries_save_commit_measurements_task_name
-
 from database.models import MeasurementName
 from database.tests.factories import RepositoryFactory
 from database.tests.factories.core import CommitFactory
 from database.tests.factories.timeseries import DatasetFactory
+from shared.celery_config import timeseries_save_commit_measurements_task_name
 from tasks.timeseries_backfill import TimeseriesBackfillCommitsTask
 
 

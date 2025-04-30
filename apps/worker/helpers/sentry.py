@@ -6,9 +6,9 @@ from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.httpx import HttpxIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-from shared.config import get_config
 
 from helpers.version import get_current_version
+from shared.config import get_config
 
 
 def is_sentry_enabled() -> bool:

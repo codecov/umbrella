@@ -1,9 +1,8 @@
-from shared.staticanalysis import StaticAnalysisSingleFileSnapshotState
-
 from database.tests.factories.staticanalysis import (
     StaticAnalysisSuiteFactory,
     StaticAnalysisSuiteFilepathFactory,
 )
+from shared.staticanalysis import StaticAnalysisSingleFileSnapshotState
 from tasks.static_analysis_suite_check import StaticAnalysisSuiteCheckTask
 
 

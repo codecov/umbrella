@@ -6,8 +6,6 @@ import pytest
 from celery.exceptions import Retry
 from mock.mock import MagicMock
 from redis.exceptions import LockError
-from shared.reports.types import Change
-from shared.torngit.exceptions import TorngitClientError
 
 from database.models import Commit, Pull, Repository
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
@@ -15,6 +13,8 @@ from database.tests.factories.reports import TestFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from services.repository import EnrichedPull
 from services.yaml import UserYaml
+from shared.reports.types import Change
+from shared.torngit.exceptions import TorngitClientError
 from tasks.sync_pull import PullSyncTask
 from tests.helpers import mock_all_plans_and_tiers
 

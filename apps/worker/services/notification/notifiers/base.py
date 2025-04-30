@@ -2,12 +2,11 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Mapping, Optional
 
-from shared.torngit.base import TorngitBaseAdapter
-from shared.yaml import UserYaml
-
 from database.models import Repository
 from services.comparison import ComparisonProxy
 from services.decoration import Decoration
+from shared.torngit.base import TorngitBaseAdapter
+from shared.yaml import UserYaml
 
 log = logging.getLogger(__name__)
 

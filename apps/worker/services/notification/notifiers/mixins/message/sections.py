@@ -7,10 +7,6 @@ from enum import Enum, auto
 from itertools import starmap
 from urllib.parse import urlencode
 
-from shared.helpers.yaml import walk
-from shared.reports.resources import Report
-from shared.validation.helpers import LayoutStructure
-
 from helpers.environment import is_enterprise
 from helpers.reports import get_totals_from_file_in_reports
 from services.comparison import ComparisonProxy
@@ -28,6 +24,9 @@ from services.notification.notifiers.mixins.message.helpers import (
 )
 from services.urls import get_commit_url_from_commit_sha, get_pull_graph_url
 from services.yaml.reader import get_components_from_yaml, round_number
+from shared.helpers.yaml import walk
+from shared.reports.resources import Report
+from shared.validation.helpers import LayoutStructure
 
 log = logging.getLogger(__name__)
 

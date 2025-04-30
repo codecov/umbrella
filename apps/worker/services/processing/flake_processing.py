@@ -2,6 +2,7 @@ import logging
 
 from django.db import transaction as django_transaction
 from django.db.models import Q
+
 from shared.django_apps.reports.models import (
     CommitReport,
     DailyTestRollup,

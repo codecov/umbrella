@@ -13,6 +13,13 @@ from django.http import HttpRequest
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.html import format_html
+
+from codecov.admin import AdminMixin
+from codecov.commands.exceptions import ValidationError
+from codecov_auth.helpers import History
+from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
+from codecov_auth.services.org_level_token_service import OrgLevelTokenService
+from services.task import TaskService
 from shared.django_apps.codecov_auth.models import (
     Account,
     AccountsUsers,
@@ -22,13 +29,6 @@ from shared.django_apps.codecov_auth.models import (
     Tier,
 )
 from shared.plan.service import PlanService
-
-from codecov.admin import AdminMixin
-from codecov.commands.exceptions import ValidationError
-from codecov_auth.helpers import History
-from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
-from codecov_auth.services.org_level_token_service import OrgLevelTokenService
-from services.task import TaskService
 from utils.services import get_short_service_name
 
 log = logging.getLogger(__name__)

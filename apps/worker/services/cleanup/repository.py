@@ -3,11 +3,11 @@ from uuid import uuid4
 
 import sentry_sdk
 from django.db import DatabaseError, IntegrityError, transaction
-from shared.django_apps.codecov_auth.models import Owner
-from shared.django_apps.core.models import Repository
 
 from services.cleanup.cleanup import run_cleanup
 from services.cleanup.utils import CleanupResult, CleanupSummary
+from shared.django_apps.codecov_auth.models import Owner
+from shared.django_apps.core.models import Repository
 
 log = logging.getLogger(__name__)
 

@@ -7,15 +7,15 @@ from typing import TypedDict
 import test_results_parser
 from django.db import connections
 from django.db.models import Q
+
+from services.test_analytics.utils import calc_test_id
+from services.test_results import FlakeInfo
 from shared.django_apps.ta_timeseries.models import (
     Testrun,
     TestrunBranchSummary,
     TestrunSummary,
 )
 from shared.django_apps.test_analytics.models import Flake
-
-from services.test_analytics.utils import calc_test_id
-from services.test_results import FlakeInfo
 
 LOWER_BOUND_NUM_DAYS = 60
 

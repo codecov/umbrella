@@ -1,13 +1,12 @@
 import logging
 
-from shared.celery_config import send_email_task_name
-from shared.config import get_config
-
 import services.smtp
 from app import celery_app
 from helpers.email import Email
 from helpers.metrics import metrics
 from services.template import TemplateService
+from shared.celery_config import send_email_task_name
+from shared.config import get_config
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

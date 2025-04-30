@@ -4,10 +4,10 @@ from typing import Iterable, List, Optional, Tuple
 
 from celery import Celery, chain, group, signature
 from sentry_sdk import set_tag
-from shared import celery_config
 
 from core.models import Repository
 from services.task.task_router import route_task
+from shared import celery_config
 from timeseries.models import Dataset, MeasurementName
 
 celery_app = Celery("tasks")

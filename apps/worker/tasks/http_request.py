@@ -1,9 +1,9 @@
 import logging
 
 import httpx
-from shared.config import get_config
 
 from app import celery_app
+from shared.config import get_config
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

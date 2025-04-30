@@ -2,10 +2,10 @@ from functools import cached_property
 from typing import List, Optional
 
 from ariadne import ObjectType
-from shared.utils.merge import LineType
 
 from graphql_api.types.enums import CoverageLine
 from services.comparison import LineComparison
+from shared.utils.merge import LineType
 
 line_coverages = {
     LineType.hit: CoverageLine.H,

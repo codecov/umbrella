@@ -1,8 +1,7 @@
-from shared.bundle_analysis.storage import get_bucket_name
-
 from database.models import CommitReport
 from database.tests.factories import CommitFactory, UploadFactory
 from services.bundle_analysis.report import ProcessingResult
+from shared.bundle_analysis.storage import get_bucket_name
 from tasks.bundle_analysis_save_measurements import BundleAnalysisSaveMeasurementsTask
 
 

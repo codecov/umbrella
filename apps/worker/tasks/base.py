@@ -5,10 +5,6 @@ import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from shared.celery_router import route_tasks_based_on_user_plan
-from shared.metrics import Counter, Histogram
-from shared.torngit.base import TorngitBaseAdapter
-from shared.typings.torngit import AdditionalData
 from sqlalchemy.exc import (
     DataError,
     IntegrityError,
@@ -32,6 +28,10 @@ from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValid
 from helpers.log_context import LogContext, set_log_context
 from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
+from shared.celery_router import route_tasks_based_on_user_plan
+from shared.metrics import Counter, Histogram
+from shared.torngit.base import TorngitBaseAdapter
+from shared.typings.torngit import AdditionalData
 
 log = logging.getLogger("worker")
 

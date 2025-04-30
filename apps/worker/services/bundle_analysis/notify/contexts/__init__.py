@@ -3,11 +3,6 @@ from functools import cached_property
 from typing import Generic, Literal, Self, TypeVar
 
 import sentry_sdk
-from shared.bundle_analysis import BundleAnalysisReport, BundleAnalysisReportLoader
-from shared.torngit.base import TorngitBaseAdapter
-from shared.typings.torngit import AdditionalData, UploadType
-from shared.validation.types import BundleThreshold
-from shared.yaml import UserYaml
 
 from database.enums import ReportType
 from database.models.core import Commit, Repository
@@ -18,6 +13,11 @@ from services.bundle_analysis.notify.types import (
     NotificationUserConfig,
 )
 from services.repository import get_repo_provider_service
+from shared.bundle_analysis import BundleAnalysisReport, BundleAnalysisReportLoader
+from shared.torngit.base import TorngitBaseAdapter
+from shared.typings.torngit import AdditionalData, UploadType
+from shared.validation.types import BundleThreshold
+from shared.yaml import UserYaml
 
 T = TypeVar("T")
 

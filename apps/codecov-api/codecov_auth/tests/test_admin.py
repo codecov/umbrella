@@ -7,6 +7,27 @@ from django.contrib.admin.sites import AdminSite
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
+
+from billing.helpers import mock_all_plans_and_tiers
+from codecov.commands.exceptions import ValidationError
+from codecov_auth.admin import (
+    AccountAdmin,
+    InvoiceBillingAdmin,
+    OrgUploadTokenInline,
+    OwnerAdmin,
+    StripeBillingAdmin,
+    UserAdmin,
+    find_and_remove_stale_users,
+)
+from codecov_auth.models import (
+    OrganizationLevelToken,
+    Owner,
+    Plan,
+    SentryUser,
+    Tier,
+    User,
+)
+from core.models import Pull
 from shared.django_apps.codecov_auth.models import (
     Account,
     AccountsUsers,
@@ -30,27 +51,6 @@ from shared.plan.constants import (
     DEFAULT_FREE_PLAN,
     PlanName,
 )
-
-from billing.helpers import mock_all_plans_and_tiers
-from codecov.commands.exceptions import ValidationError
-from codecov_auth.admin import (
-    AccountAdmin,
-    InvoiceBillingAdmin,
-    OrgUploadTokenInline,
-    OwnerAdmin,
-    StripeBillingAdmin,
-    UserAdmin,
-    find_and_remove_stale_users,
-)
-from codecov_auth.models import (
-    OrganizationLevelToken,
-    Owner,
-    Plan,
-    SentryUser,
-    Tier,
-    User,
-)
-from core.models import Pull
 
 
 class OwnerAdminTest(TestCase):

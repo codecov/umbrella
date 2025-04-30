@@ -4,8 +4,6 @@ from enum import Enum
 from typing import Literal
 
 from asgiref.sync import async_to_sync
-from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError
 
 from database.models import Commit
 from services.repository import (
@@ -14,6 +12,8 @@ from services.repository import (
     get_repo_provider_service,
 )
 from services.yaml import UserYaml
+from shared.torngit.base import TorngitBaseAdapter
+from shared.torngit.exceptions import TorngitClientError
 
 log = logging.getLogger(__name__)
 

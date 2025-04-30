@@ -8,11 +8,11 @@ from django.conf import settings
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.views import View
-from shared.torngit import BitbucketServer
-from shared.torngit.exceptions import TorngitServerFailureError
 
 from codecov_auth.models import SERVICE_BITBUCKET_SERVER
 from codecov_auth.views.base import LoginMixin
+from shared.torngit import BitbucketServer
+from shared.torngit.exceptions import TorngitServerFailureError
 from utils.encryption import encryptor
 
 log = logging.getLogger(__name__)

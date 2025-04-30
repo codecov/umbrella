@@ -1,13 +1,13 @@
 import logging
 from typing import Dict, List
 
-import shared.reports.api_report_service as report_service
 from rest_framework import serializers
-from shared.reports.types import TOTALS_MAP
 
+import shared.reports.api_report_service as report_service
 from api.internal.owner.serializers import OwnerSerializer
 from api.shared.commit.serializers import CommitTotalsSerializer
 from core.models import Commit
+from shared.reports.types import TOTALS_MAP
 
 log = logging.getLogger(__name__)
 

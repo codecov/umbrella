@@ -1,9 +1,5 @@
 import logging
 
-from shared.celery_config import (
-    activate_account_user_task_name,
-    new_user_activated_task_name,
-)
 from sqlalchemy import func
 from sqlalchemy.sql import text
 
@@ -13,6 +9,10 @@ from services.license import (
     get_current_license,
     get_installation_plan_activated_users,
     requires_license,
+)
+from shared.celery_config import (
+    activate_account_user_task_name,
+    new_user_activated_task_name,
 )
 
 log = logging.getLogger(__name__)

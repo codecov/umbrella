@@ -1,9 +1,9 @@
 import pytest
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
 from database.models import Owner, Repository
 from database.tests.factories import OwnerFactory, RepositoryFactory
 from services.github_marketplace import GitHubMarketplaceService
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from tasks.github_marketplace import SyncPlansTask
 
 # DONT WORRY, this is generated for the purposes of validation

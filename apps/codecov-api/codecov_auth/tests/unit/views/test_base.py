@@ -8,16 +8,16 @@ from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.test import RequestFactory, TestCase, override_settings
 from freezegun import freeze_time
+
+from codecov_auth.models import DjangoSession, Owner, OwnerProfile, Session
+from codecov_auth.tests.factories import DjangoSessionFactory
+from codecov_auth.views.base import LoginMixin, StateMixin
 from shared.django_apps.codecov_auth.tests.factories import (
     OwnerFactory,
     SessionFactory,
     UserFactory,
 )
 from shared.license import LicenseInformation
-
-from codecov_auth.models import DjangoSession, Owner, OwnerProfile, Session
-from codecov_auth.tests.factories import DjangoSessionFactory
-from codecov_auth.views.base import LoginMixin, StateMixin
 
 
 def set_up_mixin(to=None):

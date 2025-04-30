@@ -1,17 +1,17 @@
 import json
 
 from celery import group
-from shared.reports.readonly import ReadOnlyReport
-from shared.reports.resources import Report
-from shared.reports.types import ReportTotals
-from shared.torngit.exceptions import TorngitRateLimitError
-from shared.yaml import UserYaml
 
 from database.enums import CompareCommitError, CompareCommitState
 from database.models import CompareComponent, CompareFlag, RepositoryFlag
 from database.tests.factories import CompareCommitFactory
 from rollouts import PARALLEL_COMPONENT_COMPARISON
 from services.report import ReportService
+from shared.reports.readonly import ReadOnlyReport
+from shared.reports.resources import Report
+from shared.reports.types import ReportTotals
+from shared.torngit.exceptions import TorngitRateLimitError
+from shared.yaml import UserYaml
 from tasks.compute_comparison import ComputeComparisonTask
 
 

@@ -6,15 +6,6 @@ from django.test import override_settings
 from django.urls import reverse
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient, APITestCase
-from shared.api_archive.archive import ArchiveService, MinioEndpoints
-from shared.django_apps.codecov_auth.tests.factories import PlanFactory, TierFactory
-from shared.django_apps.core.tests.factories import (
-    CommitFactory,
-    OwnerFactory,
-    RepositoryFactory,
-)
-from shared.plan.constants import PlanName, TierName
-from shared.utils.test_utils import mock_config_helper
 
 from billing.helpers import mock_all_plans_and_tiers
 from codecov_auth.authentication.repo_auth import OrgLevelTokenRepositoryAuth
@@ -26,6 +17,15 @@ from reports.models import (
     UploadFlagMembership,
 )
 from reports.tests.factories import CommitReportFactory, UploadFactory
+from shared.api_archive.archive import ArchiveService, MinioEndpoints
+from shared.django_apps.codecov_auth.tests.factories import PlanFactory, TierFactory
+from shared.django_apps.core.tests.factories import (
+    CommitFactory,
+    OwnerFactory,
+    RepositoryFactory,
+)
+from shared.plan.constants import PlanName, TierName
+from shared.utils.test_utils import mock_config_helper
 from upload.views.uploads import (
     CanDoCoverageUploadsPermission,
     UploadViews,

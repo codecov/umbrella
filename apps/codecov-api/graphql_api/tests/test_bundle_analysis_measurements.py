@@ -1,5 +1,8 @@
 import pytest
 from django.test import TestCase
+
+from reports.models import CommitReport
+from reports.tests.factories import CommitReportFactory
 from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis import StoragePaths
 from shared.bundle_analysis.storage import get_bucket_name
@@ -8,9 +11,6 @@ from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
-
-from reports.models import CommitReport
-from reports.tests.factories import CommitReportFactory
 from timeseries.tests.factories import MeasurementFactory
 
 from .helper import GraphQLTestHelper

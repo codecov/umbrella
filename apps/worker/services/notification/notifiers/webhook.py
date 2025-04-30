@@ -1,11 +1,10 @@
 import logging
 
-from shared.torngit.enums import Endpoints
-
 from database.enums import Notification
 from services.comparison.types import Comparison, FullCommit
 from services.notification.notifiers.generics import RequestsYamlBasedNotifier
 from services.urls import get_commit_url, get_repository_url
+from shared.torngit.enums import Endpoints
 
 log = logging.getLogger(__name__)
 

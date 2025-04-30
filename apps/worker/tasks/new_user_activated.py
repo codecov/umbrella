@@ -2,13 +2,12 @@ import logging
 from datetime import datetime, timedelta
 from typing import Iterator
 
-from shared.celery_config import new_user_activated_task_name, notify_task_name
-from shared.plan.service import PlanService
-
 from app import celery_app
 from database.enums import Decoration
 from database.models import Owner, Pull, Repository
 from helpers.metrics import metrics
+from shared.celery_config import new_user_activated_task_name, notify_task_name
+from shared.plan.service import PlanService
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

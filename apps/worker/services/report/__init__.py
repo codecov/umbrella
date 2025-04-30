@@ -10,17 +10,6 @@ import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
-from shared.api_archive.archive import ArchiveService
-from shared.django_apps.reports.models import ReportType
-from shared.reports.carryforward import generate_carryforward_report
-from shared.reports.enums import UploadState, UploadType
-from shared.reports.resources import Report
-from shared.reports.types import TOTALS_MAP
-from shared.storage.exceptions import FileNotInStorageError
-from shared.torngit.exceptions import TorngitError
-from shared.upload.constants import UploadErrorCode
-from shared.utils.sessions import Session, SessionType
-from shared.yaml import UserYaml
 from sqlalchemy.orm import Session as DbSession
 
 from database.models import Commit, Repository, Upload, UploadError
@@ -53,6 +42,17 @@ from services.report.prometheus_metrics import (
 from services.report.raw_upload_processor import process_raw_upload
 from services.repository import get_repo_provider_service
 from services.yaml.reader import get_paths_from_flags, read_yaml_field
+from shared.api_archive.archive import ArchiveService
+from shared.django_apps.reports.models import ReportType
+from shared.reports.carryforward import generate_carryforward_report
+from shared.reports.enums import UploadState, UploadType
+from shared.reports.resources import Report
+from shared.reports.types import TOTALS_MAP
+from shared.storage.exceptions import FileNotInStorageError
+from shared.torngit.exceptions import TorngitError
+from shared.upload.constants import UploadErrorCode
+from shared.utils.sessions import Session, SessionType
+from shared.yaml import UserYaml
 
 
 @dataclass

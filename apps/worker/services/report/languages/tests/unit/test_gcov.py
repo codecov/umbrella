@@ -1,6 +1,5 @@
-from shared.reports.resources import Report
-
 from services.report.languages import gcov
+from shared.reports.resources import Report
 from test_utils.base import BaseTestCase
 
 from . import create_report_builder_session

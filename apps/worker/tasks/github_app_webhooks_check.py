@@ -5,6 +5,10 @@ from itertools import groupby
 from typing import Iterable, List
 
 from asgiref.sync import async_to_sync
+
+from app import celery_app
+from helpers.environment import is_enterprise
+from services.github import get_github_integration_token
 from shared.celery_config import gh_app_webhook_check_task_name
 from shared.config import get_config
 from shared.metrics import Counter
@@ -14,10 +18,6 @@ from shared.torngit.exceptions import (
     TorngitServer5xxCodeError,
     TorngitUnauthorizedError,
 )
-
-from app import celery_app
-from helpers.environment import is_enterprise
-from services.github import get_github_integration_token
 from tasks.crontasks import CodecovCronTask
 
 log = logging.getLogger(__name__)

@@ -9,16 +9,6 @@ import minio
 import pytest
 import pytz
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import (
-    CommitFactory,
-    OwnerFactory,
-    PullFactory,
-    RepositoryFactory,
-)
-from shared.reports.api_report_service import SerializableReport
-from shared.reports.resources import ReportFile
-from shared.reports.types import ReportTotals
-from shared.utils.merge import LineType
 
 from compare.models import CommitComparison
 from compare.tests.factories import CommitComparisonFactory
@@ -38,6 +28,16 @@ from services.comparison import (
     PullRequestComparison,
     Segment,
 )
+from shared.django_apps.core.tests.factories import (
+    CommitFactory,
+    OwnerFactory,
+    PullFactory,
+    RepositoryFactory,
+)
+from shared.reports.api_report_service import SerializableReport
+from shared.reports.resources import ReportFile
+from shared.reports.types import ReportTotals
+from shared.utils.merge import LineType
 
 # Pulled from shared.django_apps.core.tests.factories.CommitFactory files.
 # Contents don't actually matter, it's just for providing a format

@@ -6,6 +6,10 @@ import pytest
 from django.conf import settings
 from django.test import TestCase
 from rest_framework.exceptions import Throttled, ValidationError
+
+from billing.helpers import mock_all_plans_and_tiers
+from codecov_auth.models import GithubAppInstallation, Service
+from reports.tests.factories import CommitReportFactory, UploadFactory
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -14,10 +18,6 @@ from shared.django_apps.core.tests.factories import (
 from shared.django_apps.reports.models import ReportType
 from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.upload.utils import UploaderType, insert_coverage_measurement
-
-from billing.helpers import mock_all_plans_and_tiers
-from codecov_auth.models import GithubAppInstallation, Service
-from reports.tests.factories import CommitReportFactory, UploadFactory
 from upload.helpers import (
     check_commit_upload_constraints,
     determine_repo_for_upload,

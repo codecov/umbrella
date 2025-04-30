@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 from rest_framework import status
 from rest_framework.reverse import reverse
+
+from codecov.tests.base_test import InternalAPITest
 from shared.django_apps.core.tests.factories import (
     BranchFactory,
     CommitFactory,
@@ -10,8 +12,6 @@ from shared.django_apps.core.tests.factories import (
     PullFactory,
     RepositoryFactory,
 )
-
-from codecov.tests.base_test import InternalAPITest
 from utils.test_utils import Client
 
 get_permissions_method = (

@@ -2,12 +2,12 @@ import pytest
 from django.core import signing
 from django.http.cookie import SimpleCookie
 from django.urls import reverse
-from shared.torngit.exceptions import TorngitClientGeneralError
 
 from codecov_auth.models import Owner
 from codecov_auth.views.bitbucket_server import (
     BitbucketServer,
 )
+from shared.torngit.exceptions import TorngitClientGeneralError
 from utils.encryption import encryptor
 
 

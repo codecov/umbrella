@@ -1,9 +1,9 @@
 import sentry_sdk
 from lxml.etree import Element
-from shared.helpers.numeric import maxint
-from shared.reports.resources import ReportFile
 
 from services.report.report_builder import CoverageType, ReportBuilderSession
+from shared.helpers.numeric import maxint
+from shared.reports.resources import ReportFile
 
 from .base import BaseLanguageProcessor
 from .helpers import child_text

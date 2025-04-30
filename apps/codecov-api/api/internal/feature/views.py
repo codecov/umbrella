@@ -6,11 +6,11 @@ from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from api.internal.feature.helpers import get_flag_cache_redis_key, get_identifier
 from shared.django_apps.rollouts.models import FeatureFlag
 from shared.helpers.redis import get_redis_connection
 from shared.rollouts import Feature
-
-from api.internal.feature.helpers import get_flag_cache_redis_key, get_identifier
 from utils.config import get_config
 
 from .serializers import FeatureRequestSerializer

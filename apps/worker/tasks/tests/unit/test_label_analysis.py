@@ -2,9 +2,6 @@ import json
 
 import pytest
 from mock import patch
-from shared.reports.reportfile import ReportFile
-from shared.reports.resources import Report
-from shared.reports.types import CoverageDatapoint, LineSession, ReportLine
 
 from database.models.labelanalysis import LabelAnalysisRequest
 from database.tests.factories import RepositoryFactory
@@ -16,6 +13,9 @@ from database.tests.factories.staticanalysis import (
 )
 from services.report import ReportService
 from services.static_analysis import StaticAnalysisComparisonService
+from shared.reports.reportfile import ReportFile
+from shared.reports.resources import Report
+from shared.reports.types import CoverageDatapoint, LineSession, ReportLine
 from tasks.label_analysis import (
     LabelAnalysisRequestProcessingTask,
     LabelAnalysisRequestState,

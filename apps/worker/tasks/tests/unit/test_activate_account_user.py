@@ -3,13 +3,13 @@ from typing import Any
 import pytest
 from pytest import LogCaptureFixture
 from pytest_mock import MockFixture
+
 from shared.django_apps.codecov_auth.models import AccountsUsers
 from shared.django_apps.codecov_auth.tests.factories import (
     AccountFactory,
     OwnerFactory,
     UserFactory,
 )
-
 from tasks.activate_account_user import ActivateAccountUserTask
 
 

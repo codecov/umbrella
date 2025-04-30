@@ -1,11 +1,10 @@
 from dataclasses import dataclass
 from typing import Optional, TypedDict
 
-from shared.reports.readonly import ReadOnlyReport
-from shared.yaml import UserYaml
-
 from database.models import Commit
 from services.repository import EnrichedPull
+from shared.reports.readonly import ReadOnlyReport
+from shared.yaml import UserYaml
 
 
 @dataclass

@@ -3,18 +3,15 @@ from hashlib import sha1
 from typing import Any, Coroutine, Iterable, List, Optional
 
 import sentry_sdk
-import shared.rate_limits as rate_limits
 import stripe
 import yaml
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from graphql import GraphQLResolveInfo
-from shared.helpers.redis import get_redis_connection
-from shared.plan.constants import DEFAULT_FREE_PLAN
-from shared.plan.service import PlanService
 
 import services.activation as activation
+import shared.rate_limits as rate_limits
 import timeseries.helpers as timeseries_helpers
 from codecov_auth.constants import OWNER_YAML_TO_STRING_KEY
 from codecov_auth.helpers import current_user_part_of_org
@@ -44,6 +41,9 @@ from graphql_api.types.enums import OrderingDirection, RepositoryOrdering
 from graphql_api.types.errors.errors import NotFoundError
 from graphql_api.types.repository.repository import TOKEN_UNAVAILABLE
 from services.billing import BillingService
+from shared.helpers.redis import get_redis_connection
+from shared.plan.constants import DEFAULT_FREE_PLAN
+from shared.plan.service import PlanService
 from timeseries.helpers import fill_sparse_measurements
 from timeseries.models import Interval
 from utils.config import get_config

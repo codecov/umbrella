@@ -4,24 +4,6 @@ from typing import Optional
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
-from shared.bots.github_apps import (
-    get_github_app_token,
-    get_specific_github_app_details,
-)
-from shared.celery_config import (
-    activate_account_user_task_name,
-    new_user_activated_task_name,
-    notify_task_name,
-    status_set_error_task_name,
-)
-from shared.config import get_config
-from shared.django_apps.codecov_auth.models import Service
-from shared.helpers.redis import Redis, get_redis_connection
-from shared.reports.readonly import ReadOnlyReport
-from shared.torngit.base import TokenType, TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError, TorngitServerFailureError
-from shared.typings.torngit import OwnerInfo, RepoInfo, TorngitInstanceData
-from shared.yaml import UserYaml
 from sqlalchemy import and_
 from sqlalchemy.orm.session import Session
 
@@ -62,6 +44,24 @@ from services.repository import (
     get_repo_provider_service,
 )
 from services.yaml import get_current_yaml, read_yaml_field
+from shared.bots.github_apps import (
+    get_github_app_token,
+    get_specific_github_app_details,
+)
+from shared.celery_config import (
+    activate_account_user_task_name,
+    new_user_activated_task_name,
+    notify_task_name,
+    status_set_error_task_name,
+)
+from shared.config import get_config
+from shared.django_apps.codecov_auth.models import Service
+from shared.helpers.redis import Redis, get_redis_connection
+from shared.reports.readonly import ReadOnlyReport
+from shared.torngit.base import TokenType, TorngitBaseAdapter
+from shared.torngit.exceptions import TorngitClientError, TorngitServerFailureError
+from shared.typings.torngit import OwnerInfo, RepoInfo, TorngitInstanceData
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.upload_processor import UPLOAD_PROCESSING_LOCK_NAME
 

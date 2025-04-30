@@ -2,13 +2,12 @@ import re
 from decimal import Decimal
 from typing import List, Sequence
 
-from shared.reports.resources import ReportTotals
-from shared.yaml.user_yaml import UserYaml
-
 from services.comparison import ComparisonProxy
 from services.comparison.changes import Change
 from services.yaml import read_yaml_field
 from services.yaml.reader import get_minimum_precision, round_number
+from shared.reports.resources import ReportTotals
+from shared.yaml.user_yaml import UserYaml
 
 zero_change_regex = re.compile("0.0+%?")
 

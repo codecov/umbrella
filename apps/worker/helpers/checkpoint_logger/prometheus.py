@@ -1,7 +1,6 @@
-from shared.metrics import Counter, Histogram
-
 from helpers.log_context import get_log_context
 from rollouts import CHECKPOINT_ENABLED_REPOSITORIES
+from shared.metrics import Counter, Histogram
 
 _subflow_buckets = [
     0.05,

@@ -1,6 +1,5 @@
-from shared.metrics import Counter, Histogram
-
 from helpers.metrics import BYTE_SIZE_BUCKETS
+from shared.metrics import Counter, Histogram
 
 LABELS_USAGE = Counter(
     "worker_labels_usage",

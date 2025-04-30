@@ -1,11 +1,11 @@
 import datetime as dt
 import logging
 
-from shared.django_apps.reports.models import LastCacheRollupDate
 from sqlalchemy.orm import Session
 
 from app import celery_app
 from celery_config import cache_rollup_cron_task_name
+from shared.django_apps.reports.models import LastCacheRollupDate
 from tasks.cache_test_rollups import cache_test_rollups_task_name
 from tasks.crontasks import CodecovCronTask
 

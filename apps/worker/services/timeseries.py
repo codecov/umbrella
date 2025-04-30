@@ -3,7 +3,6 @@ import logging
 from datetime import datetime
 from typing import Any, Iterable, Mapping, Optional
 
-from shared.reports.resources import Report
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -12,6 +11,7 @@ from database.models.core import Repository
 from database.models.reports import RepositoryFlag
 from helpers.timeseries import backfill_max_batch_size
 from services.yaml import UserYaml, get_repo_yaml
+from shared.reports.resources import Report
 
 log = logging.getLogger(__name__)
 

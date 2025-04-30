@@ -4,10 +4,10 @@ from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
 import sentry_sdk
-from shared.reports.resources import ReportFile
 
 from services.report.languages.base import BaseLanguageProcessor
 from services.report.report_builder import CoverageType, ReportBuilderSession
+from shared.reports.resources import ReportFile
 
 log = logging.getLogger(__name__)
 

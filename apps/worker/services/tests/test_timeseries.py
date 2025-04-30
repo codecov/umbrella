@@ -2,12 +2,6 @@ from datetime import datetime, timezone
 
 import pytest
 from celery import group
-from shared.reports.readonly import ReadOnlyReport
-from shared.reports.reportfile import ReportFile
-from shared.reports.resources import Report
-from shared.reports.types import ReportLine
-from shared.utils.sessions import Session
-from shared.yaml import UserYaml
 
 from database.models.timeseries import Dataset, Measurement, MeasurementName
 from database.tests.factories import CommitFactory, RepositoryFactory
@@ -20,6 +14,12 @@ from services.timeseries import (
     repository_commits_query,
     repository_datasets_query,
 )
+from shared.reports.readonly import ReadOnlyReport
+from shared.reports.reportfile import ReportFile
+from shared.reports.resources import Report
+from shared.reports.types import ReportLine
+from shared.utils.sessions import Session
+from shared.yaml import UserYaml
 from tasks.save_commit_measurements import save_commit_measurements
 
 

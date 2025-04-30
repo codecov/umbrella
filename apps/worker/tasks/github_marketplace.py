@@ -2,13 +2,13 @@ import logging
 from datetime import datetime
 
 import requests
-from shared.celery_config import ghm_sync_plans_task_name
-from shared.plan.constants import DEFAULT_FREE_PLAN
 
 from app import celery_app
 from database.models import Owner, Repository
 from services.github_marketplace import GitHubMarketplaceService
 from services.stripe import stripe
+from shared.celery_config import ghm_sync_plans_task_name
+from shared.plan.constants import DEFAULT_FREE_PLAN
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

@@ -5,6 +5,11 @@ from unittest.mock import patch
 import pytest
 from django.test import TestCase
 from freezegun import freeze_time
+
+from compare.tests.factories import CommitComparisonFactory
+from core.models import Commit
+from reports.models import CommitReport
+from reports.tests.factories import CommitReportFactory, ReportLevelTotalsFactory
 from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis import StoragePaths
 from shared.bundle_analysis.storage import get_bucket_name
@@ -14,11 +19,6 @@ from shared.django_apps.core.tests.factories import (
     PullFactory,
     RepositoryFactory,
 )
-
-from compare.tests.factories import CommitComparisonFactory
-from core.models import Commit
-from reports.models import CommitReport
-from reports.tests.factories import CommitReportFactory, ReportLevelTotalsFactory
 
 from .helper import GraphQLTestHelper, paginate_connection
 

@@ -1,9 +1,6 @@
 import datetime as dt
 import logging
 
-from shared.celery_config import commit_update_task_name
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
-
 from app import celery_app
 from database.models import Branch, Commit, Pull
 from helpers.exceptions import RepositoryWithoutValidBotError
@@ -12,6 +9,8 @@ from services.repository import (
     get_repo_provider_service,
     possibly_update_commit_from_provider_info,
 )
+from shared.celery_config import commit_update_task_name
+from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

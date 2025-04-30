@@ -2,10 +2,6 @@ import logging
 from typing import Any, Literal
 
 from asgiref.sync import async_to_sync
-from shared.helpers.redis import get_redis_connection
-from shared.reports.types import UploadType
-from shared.typings.torngit import AdditionalData
-from shared.yaml import UserYaml
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -38,6 +34,10 @@ from services.test_results import (
     latest_failures_for_commit,
     should_do_flaky_detection,
 )
+from shared.helpers.redis import get_redis_connection
+from shared.reports.types import UploadType
+from shared.typings.torngit import AdditionalData
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.cache_test_rollups import cache_test_rollups_task_name
 from tasks.notify import notify_task_name

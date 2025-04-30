@@ -2,11 +2,11 @@ from collections import defaultdict
 from fractions import Fraction
 
 import sentry_sdk
-from shared.reports.resources import ReportFile
-from shared.utils.merge import partials_to_line
 
 from services.report.languages.base import BaseLanguageProcessor
 from services.report.report_builder import CoverageType, ReportBuilderSession
+from shared.reports.resources import ReportFile
+from shared.utils.merge import partials_to_line
 
 
 class NodeProcessor(BaseLanguageProcessor):

@@ -1,6 +1,5 @@
 import pytest
 from mock import AsyncMock
-from shared.torngit.exceptions import TorngitClientError
 
 from database.tests.factories import (
     CommitFactory,
@@ -10,6 +9,7 @@ from database.tests.factories import (
     UploadFactory,
 )
 from services.repository import EnrichedPull
+from shared.torngit.exceptions import TorngitClientError
 from tasks.notify_error import ErrorNotifier, NotifyErrorTask
 
 

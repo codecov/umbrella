@@ -1,8 +1,8 @@
 import pytest
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import CommitFactory
 
 from graphql_api.dataloader.loader import BaseLoader
+from shared.django_apps.core.tests.factories import CommitFactory
 
 
 class GraphQLResolveInfo:

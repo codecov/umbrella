@@ -12,11 +12,6 @@ from factory.faker import faker
 from pytz import UTC
 from rest_framework.exceptions import ValidationError
 from rest_framework.reverse import reverse
-from shared.django_apps.core.tests.factories import (
-    CommitFactory,
-    OwnerFactory,
-    RepositoryFactory,
-)
 
 from api.internal.chart.filters import apply_default_filters, apply_simple_filters
 from api.internal.chart.helpers import (
@@ -27,6 +22,11 @@ from api.internal.chart.helpers import (
 )
 from codecov.tests.base_test import InternalAPITest
 from core.models import Commit
+from shared.django_apps.core.tests.factories import (
+    CommitFactory,
+    OwnerFactory,
+    RepositoryFactory,
+)
 from utils.test_utils import Client
 
 fake = faker.Faker()

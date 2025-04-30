@@ -7,7 +7,6 @@ from rest_framework import serializers
 from rest_framework.exceptions import NotAuthenticated
 from rest_framework.generics import ListCreateAPIView
 from rest_framework.response import Response
-from shared.metrics import inc_counter
 
 from codecov_auth.authentication.repo_auth import (
     GitHubOIDCTokenAuthentication,
@@ -19,6 +18,7 @@ from codecov_auth.authentication.repo_auth import (
     repo_auth_custom_exception_handler,
 )
 from core.models import Commit, Repository
+from shared.metrics import inc_counter
 from upload.helpers import (
     generate_upload_prometheus_metrics_labels,
     validate_activated_repo,

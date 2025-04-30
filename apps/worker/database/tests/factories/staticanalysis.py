@@ -1,7 +1,6 @@
 from uuid import uuid4
 
 import factory
-from shared.labelanalysis import LabelAnalysisRequestState
 
 from database.models.staticanalysis import (
     StaticAnalysisSingleFileSnapshot,
@@ -9,6 +8,7 @@ from database.models.staticanalysis import (
     StaticAnalysisSuiteFilepath,
 )
 from database.tests.factories.core import CommitFactory, RepositoryFactory
+from shared.labelanalysis import LabelAnalysisRequestState
 
 
 class StaticAnalysisSuiteFactory(factory.Factory):

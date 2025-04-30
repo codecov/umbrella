@@ -1,4 +1,5 @@
 from django.test import TestCase
+
 from shared.django_apps.codecov_auth.tests.factories import (
     OwnerFactory,
     UserTokenFactory,

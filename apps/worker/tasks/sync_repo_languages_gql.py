@@ -2,8 +2,6 @@ import logging
 from typing import List, Optional
 
 from asgiref.sync import async_to_sync
-from shared.celery_config import sync_repo_languages_gql_task_name
-from shared.torngit.exceptions import TorngitError, TorngitRateLimitError
 from sqlalchemy import String
 from sqlalchemy.orm.session import Session
 
@@ -11,6 +9,8 @@ from app import celery_app
 from database.models.core import Owner, Repository
 from helpers.clock import get_utc_now
 from services.owner import get_owner_provider_service
+from shared.celery_config import sync_repo_languages_gql_task_name
+from shared.torngit.exceptions import TorngitError, TorngitRateLimitError
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

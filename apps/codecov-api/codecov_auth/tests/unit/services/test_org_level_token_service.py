@@ -4,6 +4,9 @@ from unittest.mock import patch
 import pytest
 from django.forms import ValidationError
 from django.test import TestCase
+
+from codecov_auth.models import OrganizationLevelToken
+from codecov_auth.services.org_level_token_service import OrgLevelTokenService
 from shared.django_apps.codecov_auth.tests.factories import (
     OrganizationLevelTokenFactory,
     OwnerFactory,
@@ -11,9 +14,6 @@ from shared.django_apps.codecov_auth.tests.factories import (
     TierFactory,
 )
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TierName
-
-from codecov_auth.models import OrganizationLevelToken
-from codecov_auth.services.org_level_token_service import OrgLevelTokenService
 
 
 @patch(

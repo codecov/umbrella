@@ -1,7 +1,7 @@
 import pytest
-from shared.django_apps.core.tests.factories import OwnerFactory
 
 from services.activation import _get_activator
+from shared.django_apps.core.tests.factories import OwnerFactory
 
 
 @pytest.mark.django_db

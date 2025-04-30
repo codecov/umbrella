@@ -2,17 +2,16 @@ import logging
 from abc import ABC, abstractmethod
 from decimal import Decimal
 
-from shared.validation.types import (
-    CoverageCommentRequiredChanges,
-    CoverageCommentRequiredChangesORGroup,
-)
-
 from services.comparison import ComparisonProxy
 from services.notification.notifiers.base import (
     AbstractBaseNotifier,
     NotificationResult,
 )
 from services.yaml import read_yaml_field
+from shared.validation.types import (
+    CoverageCommentRequiredChanges,
+    CoverageCommentRequiredChangesORGroup,
+)
 
 log = logging.getLogger(__name__)
 

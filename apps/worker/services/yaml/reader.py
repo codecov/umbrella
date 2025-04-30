@@ -2,10 +2,9 @@ import logging
 from decimal import Decimal
 from typing import Any, List, Mapping
 
-from shared.yaml.user_yaml import UserYaml
-
 from helpers.components import Component
 from helpers.number import precise_round
+from shared.yaml.user_yaml import UserYaml
 
 log = logging.getLogger(__name__)
 

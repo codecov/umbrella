@@ -5,11 +5,10 @@ from enum import Enum
 from typing import List
 from urllib.parse import parse_qs, quote_plus, urlencode, urlparse, urlunparse
 
-from shared.config import get_config
-from shared.django_apps.codecov_auth.models import Service
-
 from database.models import Commit, Pull, Repository
 from services.license import requires_license
+from shared.config import get_config
+from shared.django_apps.codecov_auth.models import Service
 
 services_short_dict = dict(
     github="gh",

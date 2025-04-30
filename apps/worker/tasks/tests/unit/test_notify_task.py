@@ -7,20 +7,6 @@ import pytest
 import respx
 from celery.exceptions import MaxRetriesExceededError, Retry
 from freezegun import freeze_time
-from shared.celery_config import (
-    activate_account_user_task_name,
-    new_user_activated_task_name,
-)
-from shared.reports.resources import Report
-from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import (
-    TorngitClientGeneralError,
-    TorngitServer5xxCodeError,
-)
-from shared.torngit.gitlab import Gitlab
-from shared.typings.oauth_token_types import Token
-from shared.typings.torngit import GithubInstallationInfo, TorngitInstanceData
-from shared.yaml import UserYaml
 
 from database.enums import Decoration, Notification, NotificationState
 from database.models.core import CommitNotification, GithubAppInstallation
@@ -45,6 +31,20 @@ from services.notification.notifiers.base import (
 )
 from services.report import ReportService
 from services.repository import EnrichedPull
+from shared.celery_config import (
+    activate_account_user_task_name,
+    new_user_activated_task_name,
+)
+from shared.reports.resources import Report
+from shared.torngit.base import TorngitBaseAdapter
+from shared.torngit.exceptions import (
+    TorngitClientGeneralError,
+    TorngitServer5xxCodeError,
+)
+from shared.torngit.gitlab import Gitlab
+from shared.typings.oauth_token_types import Token
+from shared.typings.torngit import GithubInstallationInfo, TorngitInstanceData
+from shared.yaml import UserYaml
 from tasks.notify import (
     NotifyTask,
     _possibly_pin_commit_to_github_app,

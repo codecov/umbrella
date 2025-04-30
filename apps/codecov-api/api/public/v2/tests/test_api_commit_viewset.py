@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from django.test import TestCase
 from django.urls import reverse
+
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     CommitWithReportFactory,
@@ -9,7 +10,6 @@ from shared.django_apps.core.tests.factories import (
     RepositoryFactory,
 )
 from shared.reports.types import ReportTotals
-
 from utils.test_utils import APIClient
 
 

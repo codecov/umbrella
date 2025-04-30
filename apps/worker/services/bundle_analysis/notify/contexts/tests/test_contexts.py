@@ -1,8 +1,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-from shared.validation.types import BundleThreshold
-from shared.yaml import UserYaml
 
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from services.bundle_analysis.notify.conftest import (
@@ -16,6 +14,8 @@ from services.bundle_analysis.notify.contexts import (
     NotificationContextBuildError,
 )
 from services.bundle_analysis.notify.types import NotificationUserConfig
+from shared.validation.types import BundleThreshold
+from shared.yaml import UserYaml
 
 
 class TestBaseBundleAnalysisNotificationContextBuild:

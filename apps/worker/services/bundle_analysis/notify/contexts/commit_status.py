@@ -2,11 +2,6 @@ from typing import Self
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from shared.bundle_analysis import (
-    BundleAnalysisComparison,
-)
-from shared.config import get_config
-from shared.yaml import UserYaml
 
 from database.models.core import Commit
 from services.bundle_analysis.comparison import ComparisonLoader
@@ -35,6 +30,11 @@ from services.seats import (
     check_seat_activation,
 )
 from services.urls import get_bundle_analysis_pull_url, get_commit_url
+from shared.bundle_analysis import (
+    BundleAnalysisComparison,
+)
+from shared.config import get_config
+from shared.yaml import UserYaml
 
 
 class CommitStatusNotificationContext(BaseBundleAnalysisNotificationContext):

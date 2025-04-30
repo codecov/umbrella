@@ -1,8 +1,6 @@
 import logging
 
 from asgiref.sync import async_to_sync
-from shared.celery_config import sync_repo_languages_task_name
-from shared.torngit.exceptions import TorngitError
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
@@ -10,6 +8,8 @@ from database.models.core import Repository
 from helpers.clock import get_utc_now
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from services.repository import get_repo_provider_service
+from shared.celery_config import sync_repo_languages_task_name
+from shared.torngit.exceptions import TorngitError
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

@@ -2,11 +2,11 @@ import json
 import logging
 
 from google.cloud import pubsub_v1
-from shared.config import get_config
 from sqlalchemy import event, inspect
 
 from database.models.core import Repository
 from helpers.environment import is_enterprise
+from shared.config import get_config
 
 _pubsub_publisher = None
 

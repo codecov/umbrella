@@ -1,12 +1,11 @@
 import enum
 from typing import List, Optional
 
-from shared.utils.match import Matcher
-
 import services.components as components
 from codecov.commands.base import BaseInteractor
 from services.comparison import Comparison, ComparisonReport, ImpactedFile
 from services.report import files_belonging_to_flags
+from shared.utils.match import Matcher
 
 
 class ImpactedFileParameter(enum.Enum):

@@ -2,9 +2,9 @@ from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 from django_better_admin_arrayfield.admin.mixins import DynamicArrayMixin
-from shared.django_apps.rollouts.models import FeatureFlag, FeatureFlagVariant
 
 from codecov.forms import AutocompleteSearchForm
+from shared.django_apps.rollouts.models import FeatureFlag, FeatureFlagVariant
 
 
 class AdminMixin(object):

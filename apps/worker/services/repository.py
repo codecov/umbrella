@@ -5,8 +5,18 @@ from datetime import datetime
 from typing import Any, Mapping, Optional, Tuple
 
 import sentry_sdk
-import shared.torngit as torngit
 from asgiref.sync import async_to_sync
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Query, Session, lazyload
+
+import shared.torngit as torngit
+from database.enums import CommitErrorTypes
+from database.models import Commit, Owner, Pull, Repository
+from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
+from helpers.save_commit_error import save_commit_error
+from helpers.token_refresh import get_token_refresh_callback
+from services.yaml import read_yaml_field, save_repo_yaml_to_database_if_needed
+from services.yaml.fetcher import fetch_commit_yaml_from_provider
 from shared.bots import get_adapter_auth_information
 from shared.config import get_config, get_verify_ssl
 from shared.torngit.base import TorngitBaseAdapter
@@ -24,16 +34,6 @@ from shared.typings.torngit import (
 from shared.validation.exceptions import InvalidYamlException
 from shared.yaml import UserYaml
 from shared.yaml.user_yaml import OwnerContext
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Query, Session, lazyload
-
-from database.enums import CommitErrorTypes
-from database.models import Commit, Owner, Pull, Repository
-from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
-from helpers.save_commit_error import save_commit_error
-from helpers.token_refresh import get_token_refresh_callback
-from services.yaml import read_yaml_field, save_repo_yaml_to_database_if_needed
-from services.yaml.fetcher import fetch_commit_yaml_from_provider
 
 log = logging.getLogger(__name__)
 

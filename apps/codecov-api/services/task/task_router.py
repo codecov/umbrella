@@ -1,11 +1,10 @@
 import shared.celery_config as shared_celery_config
-from shared.celery_router import route_tasks_based_on_user_plan
-from shared.plan.constants import DEFAULT_FREE_PLAN
-
 from codecov_auth.models import Owner
 from compare.models import CommitComparison
 from core.models import Repository
 from labelanalysis.models import LabelAnalysisRequest
+from shared.celery_router import route_tasks_based_on_user_plan
+from shared.plan.constants import DEFAULT_FREE_PLAN
 from staticanalysis.models import StaticAnalysisSuite
 
 

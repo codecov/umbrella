@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
 
 from asgiref.sync import sync_to_async
-from shared.django_apps.core.models import Pull, Repository
 
 from codecov.commands.base import BaseInteractor
 from services.task.task import TaskService
+from shared.django_apps.core.models import Pull, Repository
 
 
 class FetchPullRequestInteractor(BaseInteractor):

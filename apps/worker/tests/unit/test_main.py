@@ -3,9 +3,9 @@ import sys
 from unittest import mock
 
 from click.testing import CliRunner
-from shared.celery_config import BaseCeleryConfig
 
 from main import _get_queues_param_from_queue_input, cli, main, setup_worker, test, web
+from shared.celery_config import BaseCeleryConfig
 
 
 def test_get_queues_param_from_queue_input():

@@ -1,11 +1,10 @@
 import shared.celery_config as shared_celery_config
-from shared.celery_router import route_tasks_based_on_user_plan
-from shared.plan.constants import DEFAULT_FREE_PLAN
-
 from database.engine import get_db_session
 from database.models.core import Commit, CompareCommit, Owner, Repository
 from database.models.labelanalysis import LabelAnalysisRequest
 from database.models.staticanalysis import StaticAnalysisSuite
+from shared.celery_router import route_tasks_based_on_user_plan
+from shared.plan.constants import DEFAULT_FREE_PLAN
 
 
 def _get_user_plan_from_ownerid(db_session, ownerid, *args, **kwargs) -> str:

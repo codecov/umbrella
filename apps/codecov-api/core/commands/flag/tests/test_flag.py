@@ -1,7 +1,6 @@
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
-from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 
 from codecov.commands.exceptions import (
     NotFound,
@@ -10,6 +9,7 @@ from codecov.commands.exceptions import (
     ValidationError,
 )
 from reports.tests.factories import RepositoryFlagFactory
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 
 from ..flag import FlagCommands
 

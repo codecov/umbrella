@@ -2,7 +2,6 @@ from unittest.mock import call
 
 from shared.django_apps.core.models import Pull, PullStates
 from shared.django_apps.core.tests.factories import PullFactory, RepositoryFactory
-
 from tasks.flare_cleanup import FlareCleanupTask
 
 

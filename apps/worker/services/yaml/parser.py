@@ -1,9 +1,10 @@
 from typing import Dict, Optional
 
-from shared.validation.exceptions import InvalidYamlException
-from shared.yaml.validation import validate_yaml
 from yaml import safe_load
 from yaml.error import YAMLError
+
+from shared.validation.exceptions import InvalidYamlException
+from shared.yaml.validation import validate_yaml
 
 
 def parse_yaml_file(content: str, show_secrets_for) -> Optional[Dict]:

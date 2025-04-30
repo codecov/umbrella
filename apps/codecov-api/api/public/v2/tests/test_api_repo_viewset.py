@@ -4,13 +4,13 @@ from unittest.mock import patch
 from django.urls import reverse
 from django.utils import timezone
 from freezegun import freeze_time
+
+from codecov.tests.base_test import InternalAPITest
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
     RepositoryFactory,
 )
-
-from codecov.tests.base_test import InternalAPITest
 from utils.test_utils import APIClient
 
 

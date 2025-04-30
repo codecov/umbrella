@@ -5,7 +5,6 @@ from datetime import datetime
 from functools import cached_property
 from typing import Optional
 
-from shared.plan.constants import DEFAULT_FREE_PLAN
 from sqlalchemy import Column, ForeignKey, Index, UniqueConstraint, types
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session, backref, relationship, validates
@@ -16,6 +15,7 @@ from database.base import CodecovBaseModel, MixinBaseClass, MixinBaseClassNoExte
 from database.enums import Decoration, Notification, NotificationState, ReportType
 from database.utils import ArchiveField
 from helpers.config import should_write_data_to_storage_config_check
+from shared.plan.constants import DEFAULT_FREE_PLAN
 
 
 class AccountsUsers(CodecovBaseModel, MixinBaseClassNoExternalID):

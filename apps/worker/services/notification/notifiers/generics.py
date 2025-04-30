@@ -6,7 +6,6 @@ from urllib.parse import urlparse
 
 import httpx
 import sentry_sdk
-from shared.config import get_config
 
 from helpers.match import match
 from helpers.metrics import metrics
@@ -18,6 +17,7 @@ from services.notification.notifiers.base import (
 )
 from services.urls import get_commit_url, get_pull_url
 from services.yaml.reader import get_paths_from_flags, round_number
+from shared.config import get_config
 
 log = logging.getLogger(__name__)
 

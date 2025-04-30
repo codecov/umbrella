@@ -9,6 +9,14 @@ from freezegun import freeze_time
 from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
+
+from billing.helpers import mock_all_plans_and_tiers
+from codecov_auth.models import (
+    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+    GithubAppInstallation,
+    Owner,
+    Service,
+)
 from shared.django_apps.core.tests.factories import (
     BranchFactory,
     CommitFactory,
@@ -18,14 +26,6 @@ from shared.django_apps.core.tests.factories import (
 )
 from shared.plan.constants import PlanName
 from shared.utils.test_utils import mock_config_helper
-
-from billing.helpers import mock_all_plans_and_tiers
-from codecov_auth.models import (
-    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-    GithubAppInstallation,
-    Owner,
-    Service,
-)
 from webhook_handlers.constants import (
     GitHubHTTPHeaders,
     GitHubWebhookEvents,

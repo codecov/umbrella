@@ -1,9 +1,9 @@
 import hashlib
 
 from ariadne import ObjectType
-from shared.utils.merge import LineType, line_type
 
 from graphql_api.types.enums import CoverageLine
+from shared.utils.merge import LineType, line_type
 
 file_bindable = ObjectType("File")
 

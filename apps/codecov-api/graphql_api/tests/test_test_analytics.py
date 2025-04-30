@@ -6,11 +6,6 @@ from typing import Any
 import polars as pl
 import pytest
 from django.conf import settings
-from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
-from shared.django_apps.core.tests.factories import RepositoryFactory
-from shared.helpers.redis import get_redis_connection
-from shared.storage import get_appropriate_storage_service
-from shared.storage.exceptions import BucketAlreadyExistsError
 
 from graphql_api.types.enums import (
     OrderingDirection,
@@ -23,6 +18,11 @@ from graphql_api.types.test_analytics.test_analytics import (
     generate_test_results,
     get_results,
 )
+from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
+from shared.django_apps.core.tests.factories import RepositoryFactory
+from shared.helpers.redis import get_redis_connection
+from shared.storage import get_appropriate_storage_service
+from shared.storage.exceptions import BucketAlreadyExistsError
 from utils.test_results import dedup_table
 
 from .helper import GraphQLTestHelper

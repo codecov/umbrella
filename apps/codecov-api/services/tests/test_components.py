@@ -2,6 +2,14 @@ from unittest.mock import PropertyMock, patch
 
 from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase
+
+from services.comparison import Comparison
+from services.components import (
+    ComponentComparison,
+    commit_components,
+    component_filtered_report,
+    filter_components_by_name_or_id,
+)
 from shared.components import Component
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
@@ -12,14 +20,6 @@ from shared.reports.resources import Report, ReportFile
 from shared.reports.types import ReportLine
 from shared.utils.sessions import Session
 from shared.yaml.user_yaml import UserYaml
-
-from services.comparison import Comparison
-from services.components import (
-    ComponentComparison,
-    commit_components,
-    component_filtered_report,
-    filter_components_by_name_or_id,
-)
 
 
 def sample_report():

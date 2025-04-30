@@ -2,6 +2,7 @@ import datetime as dt
 
 import polars as pl
 from freezegun import freeze_time
+
 from shared.django_apps.core.tests.factories import RepositoryFactory
 from shared.django_apps.reports.models import LastCacheRollupDate
 from shared.django_apps.reports.tests.factories import (
@@ -11,7 +12,6 @@ from shared.django_apps.reports.tests.factories import (
     TestFactory,
     TestFlagBridgeFactory,
 )
-
 from tasks.cache_test_rollups import CacheTestRollupsTask
 
 

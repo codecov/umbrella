@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import pytest
+
+from services.cleanup.utils import CleanupResult, CleanupSummary
 from shared.django_apps.codecov_auth.models import Owner
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.django_apps.compare.models import CommitComparison
@@ -24,8 +26,6 @@ from shared.django_apps.reports.tests.factories import (
     TestInstanceFactory,
     UploadFactory,
 )
-
-from services.cleanup.utils import CleanupResult, CleanupSummary
 from tasks.delete_owner import DeleteOwnerTask
 
 here = Path(__file__)

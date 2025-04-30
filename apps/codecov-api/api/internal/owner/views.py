@@ -6,8 +6,6 @@ from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
-from shared.django_apps.codecov_auth.models import Owner
-from shared.plan.constants import DEFAULT_FREE_PLAN
 
 from api.shared.mixins import OwnerPropertyMixin
 from api.shared.owner.mixins import OwnerViewSetMixin, UserViewSetMixin
@@ -16,6 +14,8 @@ from billing.helpers import on_enterprise_plan
 from services.billing import BillingService
 from services.decorators import stripe_safe
 from services.task import TaskService
+from shared.django_apps.codecov_auth.models import Owner
+from shared.plan.constants import DEFAULT_FREE_PLAN
 
 from .serializers import (
     AccountDetailsSerializer,

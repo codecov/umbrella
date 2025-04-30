@@ -8,6 +8,11 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
+from stripe import StripeError
+
+from api.internal.tests.test_utils import GetAdminProviderAdapter
+from billing.helpers import mock_all_plans_and_tiers
+from codecov_auth.models import Service
 from shared.django_apps.codecov_auth.tests.factories import (
     AccountFactory,
     InvoiceBillingFactory,
@@ -15,11 +20,6 @@ from shared.django_apps.codecov_auth.tests.factories import (
     UserFactory,
 )
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TrialStatus
-from stripe import StripeError
-
-from api.internal.tests.test_utils import GetAdminProviderAdapter
-from billing.helpers import mock_all_plans_and_tiers
-from codecov_auth.models import Service
 from utils.test_utils import APIClient
 
 curr_path = os.path.dirname(__file__)

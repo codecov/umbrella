@@ -6,6 +6,7 @@ from io import StringIO
 
 import pytest
 from django.core.management import call_command
+
 from shared.config import ConfigHelper
 from shared.django_apps.codecov_auth.models import Plan, Tier
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory

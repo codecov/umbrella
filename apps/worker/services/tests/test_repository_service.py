@@ -5,22 +5,6 @@ from unittest.mock import MagicMock, patch
 import mock
 import pytest
 from freezegun import freeze_time
-from shared.encryption.oauth import get_encryptor_from_configuration
-from shared.rate_limits import gh_app_key_name, owner_key_name
-from shared.reports.types import UploadType
-from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import (
-    TorngitClientError,
-    TorngitObjectNotFoundError,
-    TorngitServerUnreachableError,
-)
-from shared.typings.torngit import (
-    AdditionalData,
-    GithubInstallationInfo,
-    OwnerInfo,
-    RepoInfo,
-    TorngitInstanceData,
-)
 
 from database.models import Owner
 from database.models.core import (
@@ -45,6 +29,22 @@ from services.repository import (
     get_repo_provider_service_by_id,
     update_commit_from_provider_info,
     upsert_author,
+)
+from shared.encryption.oauth import get_encryptor_from_configuration
+from shared.rate_limits import gh_app_key_name, owner_key_name
+from shared.reports.types import UploadType
+from shared.torngit.base import TorngitBaseAdapter
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitObjectNotFoundError,
+    TorngitServerUnreachableError,
+)
+from shared.typings.torngit import (
+    AdditionalData,
+    GithubInstallationInfo,
+    OwnerInfo,
+    RepoInfo,
+    TorngitInstanceData,
 )
 from tasks.notify import get_repo_provider_service_for_specific_commit
 

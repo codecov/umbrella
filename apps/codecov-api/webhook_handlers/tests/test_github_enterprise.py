@@ -9,6 +9,9 @@ from freezegun import freeze_time
 from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
+
+from billing.helpers import mock_all_plans_and_tiers
+from codecov_auth.models import GithubAppInstallation, Owner, Service
 from shared.django_apps.core.tests.factories import (
     BranchFactory,
     CommitFactory,
@@ -17,9 +20,6 @@ from shared.django_apps.core.tests.factories import (
     RepositoryFactory,
 )
 from shared.plan.constants import PlanName
-
-from billing.helpers import mock_all_plans_and_tiers
-from codecov_auth.models import GithubAppInstallation, Owner, Service
 from utils.config import get_config
 from webhook_handlers.constants import (
     GitHubHTTPHeaders,

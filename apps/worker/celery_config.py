@@ -7,6 +7,10 @@ from datetime import timedelta
 from celery import signals
 from celery.beat import BeatLazyFunc
 from celery.schedules import crontab
+
+from celery_task_router import route_task
+from helpers.clock import get_utc_now_as_iso_format
+from helpers.health_check import get_health_check_interval_seconds
 from shared.celery_config import (
     BaseCeleryConfig,
     brolly_stats_rollup_task_name,
@@ -17,10 +21,6 @@ from shared.celery_config import (
 from shared.config import get_config
 from shared.helpers.cache import RedisBackend, cache
 from shared.helpers.redis import get_redis_connection
-
-from celery_task_router import route_task
-from helpers.clock import get_utc_now_as_iso_format
-from helpers.health_check import get_health_check_interval_seconds
 
 log = logging.getLogger(__name__)
 

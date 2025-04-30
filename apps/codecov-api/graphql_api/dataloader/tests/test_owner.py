@@ -1,9 +1,9 @@
 import asyncio
 
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import OwnerFactory
 
 from graphql_api.dataloader.owner import OwnerLoader
+from shared.django_apps.core.tests.factories import OwnerFactory
 
 
 class GraphQLResolveInfo:

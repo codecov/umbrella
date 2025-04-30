@@ -1,11 +1,11 @@
 from io import BytesIO
 
 import sentry_sdk
-from shared.helpers.numeric import maxint
 
 from services.report.languages.base import BaseLanguageProcessor
 from services.report.languages.helpers import remove_non_ascii
 from services.report.report_builder import ReportBuilderSession
+from shared.helpers.numeric import maxint
 
 START_PARTIAL = "\033[0;41m"
 END_PARTIAL = "\033[0m"

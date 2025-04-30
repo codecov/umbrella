@@ -2,17 +2,17 @@ import pytest
 import sqlparse
 from django.db.models.query import QuerySet
 from django.db.models.sql.subqueries import DeleteQuery
-from shared.django_apps.codecov_auth.models import Owner
-from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
-from shared.django_apps.core.models import Repository
-from shared.django_apps.core.tests.factories import RepositoryFactory
-from shared.django_apps.reports.models import TestInstance, UploadLevelTotals
 
 from services.cleanup.relations import (
     build_relation_graph,
     reverse_filter,
     simplified_lookup,
 )
+from shared.django_apps.codecov_auth.models import Owner
+from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
+from shared.django_apps.core.models import Repository
+from shared.django_apps.core.tests.factories import RepositoryFactory
+from shared.django_apps.reports.models import TestInstance, UploadLevelTotals
 
 
 def dump_delete_queries(queryset: QuerySet) -> str:

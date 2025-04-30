@@ -1,7 +1,6 @@
 import pytest
-import shared.celery_config as shared_celery_config
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
+import shared.celery_config as shared_celery_config
 from celery_task_router import (
     _get_user_plan_from_comparison_id,
     _get_user_plan_from_label_request_id,
@@ -20,6 +19,7 @@ from database.tests.factories.core import (
 )
 from database.tests.factories.labelanalysis import LabelAnalysisRequestFactory
 from database.tests.factories.staticanalysis import StaticAnalysisSuiteFactory
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
 
 @pytest.fixture

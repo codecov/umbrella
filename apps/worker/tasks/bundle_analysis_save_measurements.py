@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-from shared.yaml import UserYaml
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
@@ -10,6 +9,7 @@ from services.bundle_analysis.report import (
     BundleAnalysisReportService,
     ProcessingResult,
 )
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

@@ -2,8 +2,6 @@ import logging
 from typing import Optional
 
 from redis.exceptions import LockError
-from shared.helpers.redis import get_redis_connection
-from shared.torngit.base import TorngitBaseAdapter
 
 from app import celery_app
 from database.enums import CommitErrorTypes
@@ -17,6 +15,8 @@ from services.repository import (
     get_repo_provider_service,
     possibly_update_commit_from_provider_info,
 )
+from shared.helpers.redis import get_redis_connection
+from shared.torngit.base import TorngitBaseAdapter
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

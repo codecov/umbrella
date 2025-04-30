@@ -1,5 +1,6 @@
 from django.test import TestCase
 from freezegun import freeze_time
+
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory, SessionFactory
 
 from .helper import GraphQLTestHelper, paginate_connection

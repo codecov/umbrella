@@ -1,11 +1,10 @@
 import json
 from unittest.mock import PropertyMock
 
-from shared.storage.exceptions import FileNotInStorageError
-
 from database.models.core import Commit
 from database.tests.factories.core import CommitFactory
 from database.utils import ArchiveField, ArchiveFieldInterface
+from shared.storage.exceptions import FileNotInStorageError
 
 
 class TestArchiveField(object):

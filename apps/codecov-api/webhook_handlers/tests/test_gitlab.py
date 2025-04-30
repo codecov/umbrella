@@ -4,14 +4,14 @@ from unittest.mock import patch
 from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
+
+from core.models import Commit, PullStates
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
     PullFactory,
     RepositoryFactory,
 )
-
-from core.models import Commit, PullStates
 from webhook_handlers.constants import (
     GitLabHTTPHeaders,
     GitLabWebhookEvents,

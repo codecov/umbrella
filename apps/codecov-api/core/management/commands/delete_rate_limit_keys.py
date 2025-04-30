@@ -1,4 +1,5 @@
 from django.core.management.base import BaseCommand, CommandParser
+
 from shared.helpers.redis import get_redis_connection
 
 

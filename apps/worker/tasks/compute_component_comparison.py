@@ -1,9 +1,6 @@
 import logging
 
 from asgiref.sync import async_to_sync
-from shared.components import Component
-from shared.utils.enums import TaskConfigGroup
-from shared.yaml import UserYaml
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -13,6 +10,9 @@ from services.comparison import ComparisonProxy, FilteredComparison
 from services.comparison_utils import get_comparison_proxy
 from services.report import ReportService
 from services.yaml import get_current_yaml, get_repo_yaml
+from shared.components import Component
+from shared.utils.enums import TaskConfigGroup
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

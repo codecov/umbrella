@@ -1,10 +1,10 @@
 import sentry_sdk
-from shared.reports.readonly import ReadOnlyReport
 
 from database.models import CompareCommit
 from services.comparison import ComparisonContext, ComparisonProxy
 from services.comparison.types import Comparison, FullCommit
 from services.report import ReportService
+from shared.reports.readonly import ReadOnlyReport
 
 
 @sentry_sdk.trace

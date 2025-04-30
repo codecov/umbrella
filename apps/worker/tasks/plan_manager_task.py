@@ -1,11 +1,11 @@
 import logging
 
-from shared.plan.constants import PlanName
 from sqlalchemy.orm import Session
 
 from app import celery_app
 from celery_config import daily_plan_manager_task_name
 from database.models.core import OrganizationLevelToken, Owner
+from shared.plan.constants import PlanName
 from tasks.crontasks import CodecovCronTask
 
 log = logging.getLogger(__name__)

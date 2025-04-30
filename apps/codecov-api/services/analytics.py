@@ -2,6 +2,7 @@ import logging
 import re
 
 from django.conf import settings
+
 from shared.analytics_tracking import analytics_manager
 from shared.analytics_tracking.events import Events
 

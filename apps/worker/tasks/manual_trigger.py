@@ -2,6 +2,12 @@ import logging
 
 from celery.exceptions import MaxRetriesExceededError
 from redis.exceptions import LockError
+
+from app import celery_app
+from database.enums import ReportType
+from database.models import Commit, Pull
+from database.models.reports import CommitReport, Upload
+from services.comparison import get_or_create_comparison
 from shared.celery_config import (
     compute_comparison_task_name,
     manual_upload_completion_trigger_task_name,
@@ -10,12 +16,6 @@ from shared.celery_config import (
 )
 from shared.helpers.redis import get_redis_connection
 from shared.reports.enums import UploadState
-
-from app import celery_app
-from database.enums import ReportType
-from database.models import Commit, Pull
-from database.models.reports import CommitReport, Upload
-from services.comparison import get_or_create_comparison
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

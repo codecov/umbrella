@@ -2,14 +2,14 @@ from pathlib import Path
 from unittest.mock import PropertyMock, patch
 
 from rest_framework.reverse import reverse
+
+from codecov.tests.base_test import InternalAPITest
 from shared.django_apps.core.tests.factories import (
     CommitWithReportFactory,
     PullFactory,
     RepositoryFactory,
 )
 from shared.reports.types import ReportTotals
-
-from codecov.tests.base_test import InternalAPITest
 
 current_file = Path(__file__)
 

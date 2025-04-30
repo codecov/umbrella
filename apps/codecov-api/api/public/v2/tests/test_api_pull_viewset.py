@@ -3,14 +3,14 @@ from unittest.mock import MagicMock, patch
 from django.test import override_settings
 from django.urls import reverse
 from freezegun import freeze_time
+
+from codecov.tests.base_test import InternalAPITest
+from core.models import Pull
 from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     PullFactory,
     RepositoryFactory,
 )
-
-from codecov.tests.base_test import InternalAPITest
-from core.models import Pull
 from utils.test_utils import APIClient
 
 

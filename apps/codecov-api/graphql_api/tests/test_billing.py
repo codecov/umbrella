@@ -1,8 +1,9 @@
 from unittest.mock import patch
 
 from django.test import TestCase
-from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from stripe.api_resources import PaymentIntent, SetupIntent
+
+from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 
 from .helper import GraphQLTestHelper
 

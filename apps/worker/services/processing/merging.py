@@ -3,9 +3,6 @@ import logging
 from decimal import Decimal
 
 import sentry_sdk
-from shared.reports.enums import UploadState
-from shared.reports.resources import Report, ReportTotals
-from shared.yaml import UserYaml
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session as DbSession
 
@@ -14,6 +11,9 @@ from helpers.number import precise_round
 from services.report import delete_uploads_by_sessionid
 from services.report.raw_upload_processor import clear_carryforward_sessions
 from services.yaml.reader import read_yaml_field
+from shared.reports.enums import UploadState
+from shared.reports.resources import Report, ReportTotals
+from shared.yaml import UserYaml
 
 from .types import IntermediateReport, MergeResult, ProcessingResult
 

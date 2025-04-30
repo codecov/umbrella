@@ -2,9 +2,9 @@ from pathlib import Path
 
 import mock
 import pytest
-from shared.torngit.status import Status
 
 from database.tests.factories import CommitFactory
+from shared.torngit.status import Status
 from tasks.status_set_pending import StatusSetPendingTask
 
 here = Path(__file__)

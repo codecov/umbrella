@@ -4,9 +4,9 @@ from dataclasses import asdict, dataclass, field, replace
 
 import sentry_sdk
 from sentry_sdk import get_current_span
-from shared.config import get_config
 
 from database.models.core import Owner, Repository
+from shared.config import get_config
 
 log = logging.getLogger("log_context")
 

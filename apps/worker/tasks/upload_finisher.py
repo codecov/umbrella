@@ -8,19 +8,6 @@ import sentry_sdk
 from asgiref.sync import async_to_sync
 from redis.exceptions import LockError
 from redis.lock import Lock
-from shared.celery_config import (
-    compute_comparison_task_name,
-    notify_task_name,
-    pulls_task_name,
-    timeseries_save_commit_measurements_task_name,
-    upload_finisher_task_name,
-)
-from shared.helpers.cache import cache
-from shared.helpers.redis import get_redis_connection
-from shared.reports.resources import Report
-from shared.timeseries.helpers import is_timeseries_enabled
-from shared.torngit.exceptions import TorngitError
-from shared.yaml import UserYaml
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -43,6 +30,19 @@ from services.report import ReportService
 from services.repository import get_repo_provider_service
 from services.timeseries import repository_datasets_query
 from services.yaml import read_yaml_field
+from shared.celery_config import (
+    compute_comparison_task_name,
+    notify_task_name,
+    pulls_task_name,
+    timeseries_save_commit_measurements_task_name,
+    upload_finisher_task_name,
+)
+from shared.helpers.cache import cache
+from shared.helpers.redis import get_redis_connection
+from shared.reports.resources import Report
+from shared.timeseries.helpers import is_timeseries_enabled
+from shared.torngit.exceptions import TorngitError
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.upload_processor import MAX_RETRIES, UPLOAD_PROCESSING_LOCK_NAME
 

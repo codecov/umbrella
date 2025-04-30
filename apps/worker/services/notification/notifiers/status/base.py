@@ -3,9 +3,6 @@ from typing import Optional
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from shared.config import get_config
-from shared.helpers.cache import NO_VALUE, cache, make_hash_sha256
-from shared.torngit.exceptions import TorngitClientError, TorngitError
 
 from helpers.match import match
 from services.comparison import ComparisonProxy, FilteredComparison
@@ -16,6 +13,9 @@ from services.notification.notifiers.base import (
 from services.urls import get_commit_url, get_pull_url
 from services.yaml import read_yaml_field
 from services.yaml.reader import get_paths_from_flags
+from shared.config import get_config
+from shared.helpers.cache import NO_VALUE, cache, make_hash_sha256
+from shared.torngit.exceptions import TorngitClientError, TorngitError
 
 log = logging.getLogger(__name__)
 

@@ -6,7 +6,6 @@ from rest_framework import status
 from rest_framework.generics import ListCreateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from shared.metrics import inc_counter
 
 from codecov_auth.authentication.repo_auth import (
     GitHubOIDCTokenAuthentication,
@@ -20,6 +19,7 @@ from codecov_auth.authentication.repo_auth import (
 from core.models import Commit, Repository
 from reports.models import CommitReport
 from services.task import TaskService
+from shared.metrics import inc_counter
 from upload.helpers import (
     generate_upload_prometheus_metrics_labels,
     validate_activated_repo,

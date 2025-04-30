@@ -12,18 +12,18 @@ import logging  # noqa: E402
 import sys  # noqa: E402
 
 import click  # noqa: E402
-import shared.storage  # noqa: E402
 from celery.signals import worker_process_shutdown  # noqa: E402
 from prometheus_client import REGISTRY, CollectorRegistry, multiprocess  # noqa: E402
+
+import app  # noqa: E402
+import shared.storage  # noqa: E402
+from helpers.environment import get_external_dependencies_folder  # noqa: E402
+from helpers.version import get_current_version  # noqa: E402
 from shared.celery_config import BaseCeleryConfig  # noqa: E402
 from shared.config import get_config  # noqa: E402
 from shared.license import startup_license_logging  # noqa: E402
 from shared.metrics import start_prometheus  # noqa: E402
 from shared.storage.exceptions import BucketAlreadyExistsError  # noqa: E402
-
-import app  # noqa: E402
-from helpers.environment import get_external_dependencies_folder  # noqa: E402
-from helpers.version import get_current_version  # noqa: E402
 
 log = logging.getLogger(__name__)
 

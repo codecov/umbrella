@@ -3,12 +3,12 @@ from unittest.mock import call
 
 import pytest
 from django.test import TestCase, override_settings
+
 from shared.django_apps.codecov_auth.models import Service
 from shared.django_apps.codecov_auth.tests.factories import (
     OrganizationLevelTokenFactory,
     OwnerFactory,
 )
-
 from utils.shelter import ShelterPubsub
 
 

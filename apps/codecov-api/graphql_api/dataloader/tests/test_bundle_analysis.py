@@ -1,7 +1,6 @@
 from unittest.mock import patch
 
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 
 from graphql_api.dataloader.bundle_analysis import (
     MissingBaseReportError,
@@ -12,6 +11,7 @@ from graphql_api.dataloader.bundle_analysis import (
 from graphql_api.types.comparison.comparison import MissingBaseReport, MissingHeadReport
 from reports.models import CommitReport
 from reports.tests.factories import CommitReportFactory
+from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 
 
 class MockReportLoader:

@@ -1,9 +1,9 @@
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
-from shared.reports.types import ReportTotals
 
 from compare.models import ComponentComparison
 from services.components import Component
+from shared.reports.types import ReportTotals
 
 component_comparison_bindable = ObjectType("ComponentComparison")
 

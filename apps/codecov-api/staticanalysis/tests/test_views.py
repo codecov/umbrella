@@ -2,13 +2,13 @@ from uuid import uuid4
 
 from django.urls import reverse
 from rest_framework.test import APIClient
+
+from services.task import TaskService
 from shared.celery_config import static_analysis_task_name
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     RepositoryTokenFactory,
 )
-
-from services.task import TaskService
 from staticanalysis.models import StaticAnalysisSuite
 from staticanalysis.tests.factories import StaticAnalysisSuiteFactory
 

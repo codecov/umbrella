@@ -2,9 +2,8 @@ import logging
 import smtplib
 import ssl
 
-from shared.config import get_config
-
 from helpers.email import Email
+from shared.config import get_config
 
 log = logging.getLogger(__name__)
 

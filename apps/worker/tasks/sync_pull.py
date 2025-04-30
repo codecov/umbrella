@@ -9,13 +9,6 @@ from typing import Any, Dict, List, Sequence
 import sqlalchemy.orm
 from asgiref.sync import async_to_sync
 from redis.exceptions import LockError
-from shared.celery_config import notify_task_name, pulls_task_name
-from shared.helpers.redis import get_redis_connection
-from shared.metrics import Counter, inc_counter
-from shared.reports.types import Change
-from shared.torngit.exceptions import TorngitClientError
-from shared.yaml import UserYaml
-from shared.yaml.user_yaml import OwnerContext
 
 from app import celery_app
 from database.models import Commit, Pull, Repository
@@ -32,6 +25,13 @@ from services.repository import (
 )
 from services.test_results import should_do_flaky_detection
 from services.yaml.reader import read_yaml_field
+from shared.celery_config import notify_task_name, pulls_task_name
+from shared.helpers.redis import get_redis_connection
+from shared.metrics import Counter, inc_counter
+from shared.reports.types import Change
+from shared.torngit.exceptions import TorngitClientError
+from shared.yaml import UserYaml
+from shared.yaml.user_yaml import OwnerContext
 from tasks.base import BaseCodecovTask
 from tasks.process_flakes import process_flakes_task_name
 

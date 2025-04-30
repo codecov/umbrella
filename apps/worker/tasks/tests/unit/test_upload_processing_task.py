@@ -3,6 +3,13 @@ from pathlib import Path
 import celery
 import pytest
 from celery.exceptions import Retry
+
+from database.models import CommitReport
+from database.tests.factories import CommitFactory, UploadFactory
+from helpers.exceptions import ReportEmptyError, ReportExpiredException
+from services.processing.processing import process_upload
+from services.report import ProcessingError, RawReportInfo, ReportService
+from services.report.parser.legacy import LegacyReportParser
 from shared.api_archive.archive import ArchiveService
 from shared.config import get_config
 from shared.reports.reportfile import ReportFile
@@ -11,13 +18,6 @@ from shared.reports.types import ReportLine, ReportTotals
 from shared.storage.exceptions import FileNotInStorageError
 from shared.upload.constants import UploadErrorCode
 from shared.yaml import UserYaml
-
-from database.models import CommitReport
-from database.tests.factories import CommitFactory, UploadFactory
-from helpers.exceptions import ReportEmptyError, ReportExpiredException
-from services.processing.processing import process_upload
-from services.report import ProcessingError, RawReportInfo, ReportService
-from services.report.parser.legacy import LegacyReportParser
 from tasks.upload_processor import UploadProcessorTask
 
 here = Path(__file__)

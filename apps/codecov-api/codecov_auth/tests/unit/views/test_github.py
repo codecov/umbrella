@@ -8,14 +8,14 @@ from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from freezegun import freeze_time
+
+from codecov_auth.models import Owner
+from codecov_auth.views.github import GithubLoginView
 from shared.config import ConfigHelper
 from shared.django_apps.core.tests.factories import OwnerFactory
 from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.torngit import Github
 from shared.torngit.exceptions import TorngitClientGeneralError
-
-from codecov_auth.models import Owner
-from codecov_auth.views.github import GithubLoginView
 
 
 def _get_state_from_redis(mock_redis):

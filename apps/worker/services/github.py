@@ -2,12 +2,12 @@ import logging
 from typing import Optional
 
 from redis import RedisError
-from shared.github import InvalidInstallationError
-from shared.github import get_github_integration_token as _get_github_integration_token
-from shared.helpers.redis import get_redis_connection
 
 from database.models.core import Commit
 from helpers.exceptions import RepositoryWithoutValidBotError
+from shared.github import InvalidInstallationError
+from shared.github import get_github_integration_token as _get_github_integration_token
+from shared.helpers.redis import get_redis_connection
 
 log = logging.getLogger(__name__)
 

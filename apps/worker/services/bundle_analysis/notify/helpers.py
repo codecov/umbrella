@@ -1,14 +1,13 @@
 import numbers
 from typing import Literal, Optional
 
+from database.models.core import Owner
+from services.bundle_analysis.notify.types import NotificationType
 from shared.bundle_analysis import BundleAnalysisComparison, BundleChange
 from shared.django_apps.codecov_auth.models import Service
 from shared.torngit.base import TorngitBaseAdapter
 from shared.validation.types import BundleThreshold
 from shared.yaml import UserYaml
-
-from database.models.core import Owner
-from services.bundle_analysis.notify.types import NotificationType
 
 
 def is_commit_status_configured(

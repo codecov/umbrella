@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from django.test import TestCase
+
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,

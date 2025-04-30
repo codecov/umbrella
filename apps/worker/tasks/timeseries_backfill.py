@@ -4,18 +4,18 @@ from typing import Iterable, Optional
 
 from celery import group
 from celery.canvas import Signature
-from shared.celery_config import (
-    timeseries_backfill_commits_task_name,
-    timeseries_backfill_dataset_task_name,
-    timeseries_save_commit_measurements_task_name,
-)
-from shared.timeseries.helpers import is_timeseries_enabled
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
 from database.models import Commit, Repository
 from database.models.timeseries import Dataset
 from services.timeseries import backfill_batch_size, repository_commits_query
+from shared.celery_config import (
+    timeseries_backfill_commits_task_name,
+    timeseries_backfill_dataset_task_name,
+    timeseries_save_commit_measurements_task_name,
+)
+from shared.timeseries.helpers import is_timeseries_enabled
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

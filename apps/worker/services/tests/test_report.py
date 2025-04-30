@@ -3,11 +3,6 @@ from decimal import Decimal
 import mock
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
-from shared.api_archive.archive import ArchiveService
-from shared.reports.resources import Report, ReportFile, Session, SessionType
-from shared.reports.types import ReportLine, ReportTotals
-from shared.torngit.exceptions import TorngitRateLimitError
-from shared.yaml import UserYaml
 
 from database.models import CommitReport, RepositoryFlag, Upload
 from database.tests.factories import CommitFactory
@@ -18,6 +13,11 @@ from services.report.raw_upload_processor import (
     SessionAdjustmentResult,
     clear_carryforward_sessions,
 )
+from shared.api_archive.archive import ArchiveService
+from shared.reports.resources import Report, ReportFile, Session, SessionType
+from shared.reports.types import ReportLine, ReportTotals
+from shared.torngit.exceptions import TorngitRateLimitError
+from shared.yaml import UserYaml
 from test_utils.base import BaseTestCase
 
 

@@ -3,12 +3,12 @@ from datetime import datetime
 
 from django.db.models import Q, QuerySet
 from redis.exceptions import LockError
+
+from services.test_analytics.ta_metrics import process_flakes_summary
 from shared.django_apps.reports.models import CommitReport, ReportSession
 from shared.django_apps.ta_timeseries.models import Testrun
 from shared.django_apps.test_analytics.models import Flake
 from shared.helpers.redis import get_redis_connection
-
-from services.test_analytics.ta_metrics import process_flakes_summary
 
 log = logging.getLogger(__name__)
 

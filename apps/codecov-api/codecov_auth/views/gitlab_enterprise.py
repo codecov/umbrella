@@ -1,6 +1,7 @@
 import logging
 
 from django.conf import settings
+
 from shared.torngit import GitlabEnterprise
 
 from .gitlab import GitlabLoginView

@@ -3,11 +3,11 @@ import json
 import logging
 
 import httpx
-from shared.celery_config import brolly_stats_rollup_task_name
-from shared.config import get_config
 
 from app import celery_app
 from database.models import Commit, Constants, Repository, Upload, User
+from shared.celery_config import brolly_stats_rollup_task_name
+from shared.config import get_config
 from tasks.crontasks import CodecovCronTask
 
 log = logging.getLogger(__name__)

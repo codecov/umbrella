@@ -4,14 +4,14 @@ import pytest
 from django.conf import settings
 from django.urls import reverse
 from rest_framework.test import APIClient
+
+from reports.models import CommitReport
+from services.task.task import TaskService
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
     RepositoryFactory,
 )
-
-from reports.models import CommitReport
-from services.task.task import TaskService
 from upload.views.reports import EMPTY_RESPONSE
 from upload.views.uploads import CanDoCoverageUploadsPermission
 

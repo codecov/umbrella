@@ -1,7 +1,6 @@
 import logging
 from typing import List, Optional
 
-from shared.config import get_config
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
@@ -19,6 +18,7 @@ from helpers.backfills import (
     maybe_set_installation_to_all_repos,
 )
 from services.owner import get_owner_provider_service
+from shared.config import get_config
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

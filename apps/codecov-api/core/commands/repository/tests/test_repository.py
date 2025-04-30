@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase
+
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 
 from ..repository import RepositoryCommands

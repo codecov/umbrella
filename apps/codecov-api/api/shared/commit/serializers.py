@@ -1,7 +1,7 @@
 from rest_framework import serializers
+
 from shared.reports.resources import Report, ReportFile
 from shared.utils.merge import line_type
-
 from utils import round_decimals_down
 
 

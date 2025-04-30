@@ -1,10 +1,10 @@
 from django.test import TestCase
+
+from graphql_api.tests.helper import GraphQLTestHelper
 from shared.django_apps.codecov_auth.tests.factories import (
     OwnerFactory,
     UserTokenFactory,
 )
-
-from graphql_api.tests.helper import GraphQLTestHelper
 
 query = """
 mutation($input: RevokeUserTokenInput!) {

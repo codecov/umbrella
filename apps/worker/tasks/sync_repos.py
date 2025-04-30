@@ -5,6 +5,12 @@ from typing import List, Optional, Tuple
 from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
 from redis.exceptions import LockError
+from sqlalchemy import and_
+from sqlalchemy.orm.session import Session
+
+from app import celery_app
+from database.models import Owner, Repository
+from services.owner import get_owner_provider_service
 from shared.celery_config import (
     sync_repo_languages_gql_task_name,
     sync_repo_languages_task_name,
@@ -14,12 +20,6 @@ from shared.config import get_config
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitClientError, TorngitServerFailureError
-from sqlalchemy import and_
-from sqlalchemy.orm.session import Session
-
-from app import celery_app
-from database.models import Owner, Repository
-from services.owner import get_owner_provider_service
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

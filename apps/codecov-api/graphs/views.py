@@ -1,6 +1,5 @@
 import logging
 
-import shared.reports.api_report_service as report_service
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import Http404
 from rest_framework import exceptions
@@ -8,14 +7,15 @@ from rest_framework.exceptions import NotFound
 from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
-from shared.django_apps.core.models import Commit
-from shared.metrics import Counter, inc_counter
 
+import shared.reports.api_report_service as report_service
 from api.shared.mixins import RepoPropertyMixin
 from core.models import Branch, Pull
 from graphs.settings import settings
 from services.bundle_analysis import load_report
 from services.components import commit_components
+from shared.django_apps.core.models import Commit
+from shared.metrics import Counter, inc_counter
 
 from .helpers.badge import (
     format_bundle_bytes,

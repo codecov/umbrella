@@ -1,9 +1,6 @@
 import logging
 from typing import Any
 
-from shared.api_archive.archive import ArchiveService
-from shared.django_apps.reports.models import ReportSession
-from shared.storage.exceptions import FileNotInStorageError
 from test_results_parser import parse_raw_upload
 
 from services.processing.types import UploadArguments
@@ -15,6 +12,9 @@ from services.test_analytics.ta_processing import (
     insert_testruns_timeseries,
     rewrite_or_delete_upload,
 )
+from shared.api_archive.archive import ArchiveService
+from shared.django_apps.reports.models import ReportSession
+from shared.storage.exceptions import FileNotInStorageError
 
 log = logging.getLogger(__name__)
 

@@ -9,8 +9,6 @@ from celery.contrib.testing.mocks import TaskMessage
 from celery.exceptions import Retry, SoftTimeLimitExceeded
 from mock import call
 from prometheus_client import REGISTRY
-from shared.celery_config import sync_repos_task_name, upload_task_name
-from shared.plan.constants import PlanName
 from sqlalchemy.exc import (
     DBAPIError,
     IntegrityError,
@@ -22,6 +20,8 @@ from database.enums import CommitErrorTypes
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import OwnerFactory, RepositoryFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
+from shared.celery_config import sync_repos_task_name, upload_task_name
+from shared.plan.constants import PlanName
 from tasks.base import BaseCodecovRequest, BaseCodecovTask
 from tasks.base import celery_app as base_celery_app
 from tests.helpers import mock_all_plans_and_tiers

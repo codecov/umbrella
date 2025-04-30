@@ -1,11 +1,11 @@
 from django.test import TestCase
+
+from graphql_api.dataloader.commit import CommitLoader
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     PullFactory,
     RepositoryFactory,
 )
-
-from graphql_api.dataloader.commit import CommitLoader
 
 
 class GraphQLResolveInfo:

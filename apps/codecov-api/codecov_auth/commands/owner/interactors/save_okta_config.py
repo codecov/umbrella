@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 
 from asgiref.sync import sync_to_async
-from shared.django_apps.codecov_auth.models import AccountsUsers, User
 
 from codecov.commands.base import BaseInteractor
 from codecov.commands.exceptions import Unauthenticated, Unauthorized, ValidationError
 from codecov_auth.models import Account, OktaSettings, Owner
+from shared.django_apps.codecov_auth.models import AccountsUsers, User
 
 
 @dataclass

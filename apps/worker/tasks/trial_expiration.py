@@ -1,10 +1,9 @@
 import logging
 
-from shared.django_apps.codecov_auth.models import Owner
-from shared.plan.service import PlanService
-
 from app import celery_app
 from celery_config import trial_expiration_task_name
+from shared.django_apps.codecov_auth.models import Owner
+from shared.plan.service import PlanService
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

@@ -6,15 +6,15 @@ import pytest
 from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
+
+from core.models import Commit
+from services.task import TaskService
 from shared.django_apps.codecov_auth.tests.factories import (
     OrganizationLevelTokenFactory,
 )
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.events.amplitude import UNKNOWN_USER_OWNERID
 from shared.helpers.redis import get_redis_connection
-
-from core.models import Commit
-from services.task import TaskService
 from timeseries.models import Dataset, MeasurementName
 
 

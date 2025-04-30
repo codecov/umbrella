@@ -2,14 +2,14 @@ from unittest.mock import patch
 
 import pytest
 from django.test import TestCase
+
+import services.yaml as yaml
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
     RepositoryFactory,
 )
 from shared.torngit.exceptions import TorngitObjectNotFoundError
-
-import services.yaml as yaml
 
 
 class YamlServiceTest(TestCase):

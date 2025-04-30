@@ -1,4 +1,6 @@
 import pytest
+
+from services.cleanup.utils import CleanupResult, CleanupSummary
 from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis import StoragePaths
 from shared.django_apps.compare.models import CommitComparison, FlagComparison
@@ -20,8 +22,6 @@ from shared.django_apps.reports.tests.factories import (
     RepositoryFlagFactory,
     UploadFactory,
 )
-
-from services.cleanup.utils import CleanupResult, CleanupSummary
 from tasks.flush_repo import FlushRepoTask
 
 

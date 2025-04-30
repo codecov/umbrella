@@ -3,6 +3,8 @@ from unittest.mock import patch
 from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
+
+from core.models import Branch, Commit, PullStates
 from shared.django_apps.core.tests.factories import (
     BranchFactory,
     CommitFactory,
@@ -10,8 +12,6 @@ from shared.django_apps.core.tests.factories import (
     PullFactory,
     RepositoryFactory,
 )
-
-from core.models import Branch, Commit, PullStates
 from webhook_handlers.constants import (
     BitbucketHTTPHeaders,
     BitbucketWebhookEvents,

@@ -1,10 +1,10 @@
 import logging
 
 import requests
-import shared.torngit as torngit
-from shared.config import get_config
 
+import shared.torngit as torngit
 from services.github import get_github_integration_token
+from shared.config import get_config
 
 log = logging.getLogger(__name__)
 

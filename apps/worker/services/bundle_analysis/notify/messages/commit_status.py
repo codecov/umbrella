@@ -4,8 +4,6 @@ from typing import TypedDict
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from django.template import loader
-from shared.helpers.cache import cache, make_hash_sha256
-from shared.torngit.exceptions import TorngitClientError
 
 from services.bundle_analysis.notify.contexts.commit_status import (
     CommitStatusLevel,
@@ -14,6 +12,8 @@ from services.bundle_analysis.notify.contexts.commit_status import (
 from services.bundle_analysis.notify.helpers import bytes_readable, get_github_app_used
 from services.bundle_analysis.notify.messages import MessageStrategyInterface
 from services.notification.notifiers.base import NotificationResult
+from shared.helpers.cache import cache, make_hash_sha256
+from shared.torngit.exceptions import TorngitClientError
 
 log = logging.getLogger(__name__)
 

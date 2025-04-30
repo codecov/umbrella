@@ -6,14 +6,14 @@ import stripe
 from django.conf import settings
 from django.test import TestCase
 from freezegun import freeze_time
-from shared.django_apps.core.tests.factories import OwnerFactory
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from stripe import InvalidRequestError
 from stripe.api_resources import PaymentIntent, SetupIntent
 
 from billing.helpers import mock_all_plans_and_tiers
 from codecov_auth.models import Plan, Service
 from services.billing import AbstractPaymentService, BillingService, StripeService
+from shared.django_apps.core.tests.factories import OwnerFactory
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
 SCHEDULE_RELEASE_OFFSET = 10
 

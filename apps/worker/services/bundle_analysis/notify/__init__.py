@@ -2,7 +2,6 @@ import logging
 from typing import NamedTuple, Never
 
 import sentry_sdk
-from shared.yaml import UserYaml
 
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME, Commit, Owner
 from services.bundle_analysis.notify.contexts import (
@@ -25,6 +24,7 @@ from services.bundle_analysis.notify.messages.commit_status import (
     CommitStatusMessageStrategy,
 )
 from services.bundle_analysis.notify.types import NotificationSuccess, NotificationType
+from shared.yaml import UserYaml
 
 log = logging.getLogger(__name__)
 

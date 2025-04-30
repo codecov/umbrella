@@ -3,10 +3,6 @@ from typing import Self
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from shared.bundle_analysis import (
-    BundleAnalysisComparison,
-)
-from shared.yaml import UserYaml
 
 from database.models.core import Commit
 from services.bundle_analysis.comparison import ComparisonLoader
@@ -34,6 +30,10 @@ from services.repository import (
 from services.seats import (
     check_seat_activation,
 )
+from shared.bundle_analysis import (
+    BundleAnalysisComparison,
+)
+from shared.yaml import UserYaml
 
 log = logging.getLogger(__name__)
 

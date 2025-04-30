@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
-from shared.torngit.exceptions import TorngitUnauthorizedError
 
+from shared.torngit.exceptions import TorngitUnauthorizedError
 from tasks.github_app_webhooks_check import Github, GitHubAppWebhooksCheckTask
 
 

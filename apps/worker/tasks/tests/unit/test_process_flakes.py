@@ -3,6 +3,13 @@ from collections import defaultdict
 
 import pytest
 from freezegun import freeze_time
+
+from services.processing.flake_processing import (
+    create_flake,
+    fetch_curr_flakes,
+    get_test_instances,
+    update_flake,
+)
 from shared.django_apps.core.models import Commit
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports.models import (
@@ -19,13 +26,6 @@ from shared.django_apps.reports.tests.factories import (
     UploadFactory,
 )
 from shared.helpers.redis import get_redis_connection
-
-from services.processing.flake_processing import (
-    create_flake,
-    fetch_curr_flakes,
-    get_test_instances,
-    update_flake,
-)
 from tasks.process_flakes import (
     NEW_KEY,
     OLD_KEY,

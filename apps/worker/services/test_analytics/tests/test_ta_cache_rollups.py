@@ -3,6 +3,9 @@ from typing import cast
 
 import polars as pl
 import pytest
+
+from services.test_analytics.ta_cache_rollups import VERSION
+from services.test_analytics.utils import calc_test_id
 from shared.config import get_config
 from shared.django_apps.ta_timeseries.models import (
     Testrun,
@@ -10,9 +13,6 @@ from shared.django_apps.ta_timeseries.models import (
     TestrunSummary,
 )
 from shared.storage.minio import MinioStorageService
-
-from services.test_analytics.ta_cache_rollups import VERSION
-from services.test_analytics.utils import calc_test_id
 from tasks.cache_test_rollups import CacheTestRollupsTask
 
 

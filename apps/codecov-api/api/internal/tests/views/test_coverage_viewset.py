@@ -4,6 +4,8 @@ from urllib.parse import urlencode
 from django.db import connection
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
+
+from services.components import Component
 from shared.django_apps.core.tests.factories import (
     BranchFactory,
     CommitFactory,
@@ -13,8 +15,6 @@ from shared.django_apps.core.tests.factories import (
 from shared.reports.resources import Report, ReportFile
 from shared.reports.types import ReportLine
 from shared.utils.sessions import Session
-
-from services.components import Component
 from utils.test_utils import Client
 
 

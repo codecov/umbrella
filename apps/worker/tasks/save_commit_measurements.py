@@ -2,8 +2,6 @@ import logging
 from typing import Sequence
 
 from celery import group
-from shared.celery_config import timeseries_save_commit_measurements_task_name
-from shared.reports.readonly import ReadOnlyReport
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -18,6 +16,8 @@ from services.timeseries import (
     upsert_components_measurements,
 )
 from services.yaml import get_repo_yaml
+from shared.celery_config import timeseries_save_commit_measurements_task_name
+from shared.reports.readonly import ReadOnlyReport
 from tasks.base import BaseCodecovTask
 from tasks.upsert_component import upsert_component_task
 

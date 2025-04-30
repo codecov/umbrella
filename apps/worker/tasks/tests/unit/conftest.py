@@ -1,6 +1,7 @@
 # TODO: Clean this
 
 import pytest
+
 from shared.reports.reportfile import ReportFile
 from shared.reports.resources import Report
 from shared.reports.types import ReportLine

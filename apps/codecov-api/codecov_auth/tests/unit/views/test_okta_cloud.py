@@ -7,18 +7,18 @@ import pytest
 from django.test import override_settings
 from pytest import LogCaptureFixture
 from pytest_mock import MockerFixture
-from shared.django_apps.codecov_auth.models import Account, OktaSettings, Owner
-from shared.django_apps.codecov_auth.tests.factories import (
-    AccountFactory,
-    OktaSettingsFactory,
-)
-from shared.django_apps.core.tests.factories import OwnerFactory
 
 from codecov_auth.views.okta_cloud import (
     OKTA_CURRENT_SESSION,
     OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY,
 )
 from codecov_auth.views.okta_mixin import OktaIdTokenPayload
+from shared.django_apps.codecov_auth.models import Account, OktaSettings, Owner
+from shared.django_apps.codecov_auth.tests.factories import (
+    AccountFactory,
+    OktaSettingsFactory,
+)
+from shared.django_apps.core.tests.factories import OwnerFactory
 from utils.test_utils import Client as TestClient
 
 

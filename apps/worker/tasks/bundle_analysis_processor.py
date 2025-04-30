@@ -2,8 +2,6 @@ import logging
 from typing import Any
 
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
-from shared.reports.enums import UploadState
-from shared.yaml import UserYaml
 
 from app import celery_app
 from database.enums import ReportType
@@ -14,6 +12,8 @@ from services.bundle_analysis.report import (
 )
 from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.types import UploadArguments
+from shared.reports.enums import UploadState
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.bundle_analysis_save_measurements import (
     bundle_analysis_save_measurements_task_name,

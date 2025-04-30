@@ -1,8 +1,8 @@
 from freezegun import freeze_time
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
 from database.models import Owner, Repository
 from database.tests.factories import OwnerFactory, RepositoryFactory
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from tasks.github_marketplace import SyncPlansTask
 
 

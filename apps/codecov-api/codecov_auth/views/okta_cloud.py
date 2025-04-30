@@ -5,13 +5,13 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.views import View
 from requests.auth import HTTPBasicAuth
-from shared.django_apps.codecov_auth.models import Account, OktaSettings, Owner
 
 from codecov_auth.views.okta_mixin import (
     OktaLoginMixin,
     OktaTokenResponse,
     validate_id_token,
 )
+from shared.django_apps.codecov_auth.models import Account, OktaSettings, Owner
 
 # The key for accessing the Okta signed in accounts list in the session
 OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY = "okta_signed_in_accounts"

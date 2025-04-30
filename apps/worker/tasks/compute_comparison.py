@@ -5,12 +5,6 @@ import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery import group
-from shared.api_archive.archive import ArchiveService
-from shared.celery_config import compute_comparison_task_name
-from shared.components import Component
-from shared.helpers.flag import Flag
-from shared.torngit.exceptions import TorngitRateLimitError
-from shared.yaml import UserYaml
 
 from app import celery_app
 from database.enums import CompareCommitError, CompareCommitState
@@ -23,6 +17,12 @@ from services.comparison import ComparisonProxy, FilteredComparison
 from services.comparison_utils import get_comparison_proxy
 from services.report import ReportService
 from services.yaml import get_current_yaml, get_repo_yaml
+from shared.api_archive.archive import ArchiveService
+from shared.celery_config import compute_comparison_task_name
+from shared.components import Component
+from shared.helpers.flag import Flag
+from shared.torngit.exceptions import TorngitRateLimitError
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.compute_component_comparison import compute_component_comparison_task
 

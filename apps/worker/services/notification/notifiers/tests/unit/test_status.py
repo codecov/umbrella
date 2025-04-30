@@ -2,18 +2,6 @@ from unittest.mock import MagicMock
 
 import pytest
 from mock import AsyncMock
-from shared.reports.readonly import ReadOnlyReport
-from shared.reports.reportfile import ReportFile
-from shared.reports.resources import Report
-from shared.reports.types import ReportLine, ReportTotals
-from shared.torngit.exceptions import (
-    TorngitClientError,
-    TorngitRepoNotFoundError,
-    TorngitServerUnreachableError,
-)
-from shared.torngit.status import Status
-from shared.typings.torngit import GithubInstallationInfo, TorngitInstanceData
-from shared.yaml.user_yaml import UserYaml
 
 from database.enums import Notification
 from database.tests.factories.core import CommitFactory
@@ -33,6 +21,18 @@ from services.notification.notifiers.status import (
 )
 from services.notification.notifiers.status.base import StatusNotifier
 from services.urls import get_pull_url
+from shared.reports.readonly import ReadOnlyReport
+from shared.reports.reportfile import ReportFile
+from shared.reports.resources import Report
+from shared.reports.types import ReportLine, ReportTotals
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRepoNotFoundError,
+    TorngitServerUnreachableError,
+)
+from shared.torngit.status import Status
+from shared.typings.torngit import GithubInstallationInfo, TorngitInstanceData
+from shared.yaml.user_yaml import UserYaml
 
 
 def test_notification_type(mocker):

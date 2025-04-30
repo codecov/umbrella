@@ -4,13 +4,13 @@ from pathlib import PurePosixPath, PureWindowsPath
 from typing import Sequence
 
 import sentry_sdk
-from shared.yaml import UserYaml
 
 from helpers.pathmap import Tree
 from services.path_fixer.fixpaths import remove_known_bad_paths
 from services.path_fixer.user_path_fixes import UserPathFixes
 from services.path_fixer.user_path_includes import UserPathIncludes
 from services.yaml import read_yaml_field
+from shared.yaml import UserYaml
 
 log = logging.getLogger(__name__)
 

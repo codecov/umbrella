@@ -1,13 +1,12 @@
 import logging
 from typing import Optional
 
-from shared.torngit.exceptions import TorngitClientError
-
 from services.comparison import ComparisonProxy
 from services.notification.notifiers.base import (
     AbstractBaseNotifier,
     NotificationResult,
 )
+from shared.torngit.exceptions import TorngitClientError
 
 log = logging.getLogger(__name__)
 

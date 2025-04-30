@@ -1,12 +1,12 @@
 import pytest
 from django.test import TestCase
+
+from codecov.commands.exceptions import Unauthenticated
 from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
     RepositoryTokenFactory,
 )
-
-from codecov.commands.exceptions import Unauthenticated
 
 from ..get_repository_token import GetRepositoryTokenInteractor
 

@@ -1,8 +1,8 @@
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import OwnerFactory
 
 from legacy_migrations.models import YamlHistory
 from legacy_migrations.tests.factories import YamlHistoryFactory
+from shared.django_apps.core.tests.factories import OwnerFactory
 
 
 class TestYamlHistory(TestCase):

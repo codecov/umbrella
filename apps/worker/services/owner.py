@@ -1,6 +1,7 @@
 import logging
 
 import shared.torngit as torngit
+from helpers.token_refresh import get_token_refresh_callback
 from shared.bots import get_adapter_auth_information
 from shared.config import get_config, get_verify_ssl
 from shared.django_apps.codecov_auth.models import Service
@@ -8,8 +9,6 @@ from shared.typings.torngit import (
     OwnerInfo,
     TorngitInstanceData,
 )
-
-from helpers.token_refresh import get_token_refresh_callback
 
 log = logging.getLogger(__name__)
 

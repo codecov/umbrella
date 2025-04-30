@@ -3,13 +3,13 @@ from io import BytesIO
 from itertools import groupby
 
 import sentry_sdk
-from shared.utils import merge
-from shared.utils.merge import LineType, line_type, partials_to_line
 
 from helpers.exceptions import CorruptRawReportError
 from services.report.languages.base import BaseLanguageProcessor
 from services.report.languages.helpers import Region, SourceLocation
 from services.report.report_builder import ReportBuilderSession
+from shared.utils import merge
+from shared.utils.merge import LineType, line_type, partials_to_line
 
 
 class GoProcessor(BaseLanguageProcessor):

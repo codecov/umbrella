@@ -3,8 +3,6 @@ from typing import Dict, List, NamedTuple, Optional, Set, Tuple, TypedDict, Unio
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from shared.celery_config import label_analysis_task_name
-from shared.labelanalysis import LabelAnalysisRequestState
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -22,6 +20,8 @@ from services.repository import get_repo_provider_service
 from services.static_analysis import StaticAnalysisComparisonService
 from services.static_analysis.git_diff_parser import DiffChange, parse_git_diff_json
 from services.yaml import get_repo_yaml
+from shared.celery_config import label_analysis_task_name
+from shared.labelanalysis import LabelAnalysisRequestState
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

@@ -1,8 +1,6 @@
 import pytest
-import shared.celery_config as shared_celery_config
-from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
+import shared.celery_config as shared_celery_config
 from compare.tests.factories import CommitComparisonFactory
 from labelanalysis.tests.factories import LabelAnalysisRequestFactory
 from services.task.task_router import (
@@ -14,6 +12,8 @@ from services.task.task_router import (
     _get_user_plan_from_task,
     route_task,
 )
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from staticanalysis.tests.factories import StaticAnalysisSuiteFactory
 
 

@@ -1,11 +1,11 @@
 from django.test import TestCase
+
+from graphql_api.tests.helper import GraphQLTestHelper
 from shared.django_apps.core.tests.factories import (
     BranchFactory,
     OwnerFactory,
     RepositoryFactory,
 )
-
-from graphql_api.tests.helper import GraphQLTestHelper
 
 query = """
 mutation($input: UpdateRepositoryInput!) {

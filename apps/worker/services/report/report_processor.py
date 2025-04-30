@@ -4,8 +4,6 @@ from typing import Literal
 import orjson
 import sentry_sdk
 from lxml import etree
-from shared.metrics import Counter, Histogram
-from shared.reports.resources import Report
 
 from helpers.exceptions import CorruptRawReportError
 from helpers.metrics import KiB, MiB
@@ -13,6 +11,8 @@ from services.report.languages.base import BaseLanguageProcessor
 from services.report.languages.helpers import remove_non_ascii
 from services.report.parser.types import ParsedUploadedReportFile
 from services.report.report_builder import ReportBuilder
+from shared.metrics import Counter, Histogram
+from shared.reports.resources import Report
 
 from .languages.bullseye import BullseyeProcessor
 from .languages.clover import CloverProcessor

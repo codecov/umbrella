@@ -7,10 +7,10 @@ from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.httpx import HttpxIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
+
 from shared.django_apps.db_settings import *
 from shared.helpers.redis import get_redis_url
 from shared.license import startup_license_logging
-
 from utils.config import SettingsModule, get_config, get_settings_module
 
 SECRET_KEY = get_config("django", "secret_key", default="*")

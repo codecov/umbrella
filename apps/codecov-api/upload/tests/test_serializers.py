@@ -1,16 +1,16 @@
 from django.conf import settings
 from rest_framework.exceptions import ErrorDetail
-from shared.django_apps.core.tests.factories import (
-    CommitFactory,
-    OwnerFactory,
-    RepositoryFactory,
-)
 
 from billing.helpers import mock_all_plans_and_tiers
 from reports.tests.factories import (
     CommitReportFactory,
     RepositoryFlagFactory,
     UploadFactory,
+)
+from shared.django_apps.core.tests.factories import (
+    CommitFactory,
+    OwnerFactory,
+    RepositoryFactory,
 )
 from upload.serializers import (
     CommitReportSerializer,

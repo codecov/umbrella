@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 import stripe
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
-from shared.plan.constants import PlanBillingRate, TierName
-from shared.plan.service import PlanService
 
 from billing.constants import REMOVED_INVOICE_STATUSES
 from codecov_auth.models import Owner, Plan
+from shared.plan.constants import PlanBillingRate, TierName
+from shared.plan.service import PlanService
 
 log = logging.getLogger(__name__)
 

@@ -3,9 +3,9 @@ from dataclasses import dataclass
 import polars as pl
 from ariadne import ObjectType
 from graphql import GraphQLResolveInfo
-from shared.django_apps.core.models import Repository
 
 from graphql_api.types.enums.enum_types import MeasurementInterval
+from shared.django_apps.core.models import Repository
 from utils.test_results import get_results
 
 

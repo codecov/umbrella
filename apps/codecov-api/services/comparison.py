@@ -10,22 +10,22 @@ from typing import List, Optional, Tuple
 import minio
 import pytz
 import sentry_sdk
-import shared.reports.api_report_service as report_service
 from asgiref.sync import async_to_sync
 from django.db.models import Prefetch, QuerySet
 from django.utils.functional import cached_property
+
+import shared.reports.api_report_service as report_service
+from compare.models import CommitComparison
+from core.models import Commit, Pull
+from reports.models import CommitReport
+from services import ServiceException
+from services.repo_providers import RepoProviderService
 from shared.api_archive.archive import ArchiveService
 from shared.helpers.redis import get_redis_connection
 from shared.helpers.yaml import walk
 from shared.reports.types import ReportTotals
 from shared.torngit.base import TorngitBaseAdapter
 from shared.utils.merge import LineType, line_type
-
-from compare.models import CommitComparison
-from core.models import Commit, Pull
-from reports.models import CommitReport
-from services import ServiceException
-from services.repo_providers import RepoProviderService
 from utils.config import get_config
 
 log = logging.getLogger(__name__)

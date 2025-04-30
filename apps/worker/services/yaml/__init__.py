@@ -1,18 +1,17 @@
 import logging
 from typing import Any, Mapping
 
-from shared.django_apps.utils.model_utils import get_ownerid_if_member
-from shared.torngit.exceptions import TorngitClientError, TorngitError
-from shared.validation.exceptions import InvalidYamlException
-from shared.yaml import UserYaml
-from shared.yaml.user_yaml import OwnerContext
-
 from database.enums import CommitErrorTypes
 from database.models import Commit
 from database.models.core import Repository
 from helpers.save_commit_error import save_commit_error
 from services.yaml.fetcher import fetch_commit_yaml_from_provider
 from services.yaml.reader import read_yaml_field
+from shared.django_apps.utils.model_utils import get_ownerid_if_member
+from shared.torngit.exceptions import TorngitClientError, TorngitError
+from shared.validation.exceptions import InvalidYamlException
+from shared.yaml import UserYaml
+from shared.yaml.user_yaml import OwnerContext
 
 log = logging.getLogger(__name__)
 

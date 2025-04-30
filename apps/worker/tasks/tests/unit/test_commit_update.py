@@ -1,15 +1,15 @@
 import datetime as dt
 
 import pytest
+
+from database.models import Branch
+from database.tests.factories import BranchFactory, CommitFactory, PullFactory
+from helpers.exceptions import RepositoryWithoutValidBotError
 from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitObjectNotFoundError,
     TorngitRepoNotFoundError,
 )
-
-from database.models import Branch
-from database.tests.factories import BranchFactory, CommitFactory, PullFactory
-from helpers.exceptions import RepositoryWithoutValidBotError
 from tasks.commit_update import CommitUpdateTask
 
 

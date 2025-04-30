@@ -2,12 +2,12 @@ from unittest.mock import patch
 
 from asgiref.sync import async_to_sync
 from django.test import TestCase, override_settings
+
+from api.shared.permissions import is_admin_on_provider
 from shared.django_apps.codecov_auth.tests.factories import (
     GetAdminProviderAdapter,
     OwnerFactory,
 )
-
-from api.shared.permissions import is_admin_on_provider
 
 from ..get_is_current_user_an_admin import GetIsCurrentUserAnAdminInteractor
 

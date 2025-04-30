@@ -3,11 +3,11 @@ import logging
 from django.http import HttpResponse
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
-from shared.celery_config import static_analysis_task_name
 
 from codecov_auth.authentication.repo_auth import RepositoryTokenAuthentication
 from codecov_auth.permissions import SpecificScopePermission
 from services.task import TaskService
+from shared.celery_config import static_analysis_task_name
 from staticanalysis.models import StaticAnalysisSuite
 from staticanalysis.serializers import StaticAnalysisSuiteSerializer
 

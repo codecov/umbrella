@@ -3,8 +3,6 @@ from unittest.mock import patch
 
 import pytest
 from mock import AsyncMock, PropertyMock
-from shared.api_archive.archive import ArchiveService
-from shared.validation.types import CoverageCommentRequiredChanges
 
 from database.models import Pull
 from database.models.core import CompareCommit
@@ -12,6 +10,8 @@ from database.tests.factories import CommitFactory, PullFactory, RepositoryFacto
 from services.comparison import get_or_create_comparison
 from services.notification.notifiers.base import NotificationResult
 from services.repository import EnrichedPull
+from shared.api_archive.archive import ArchiveService
+from shared.validation.types import CoverageCommentRequiredChanges
 from tasks.notify import NotifyTask
 from tests.helpers import mock_all_plans_and_tiers
 

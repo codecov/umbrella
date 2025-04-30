@@ -7,16 +7,6 @@ from unittest.mock import AsyncMock, PropertyMock, patch
 import pytest
 import yaml
 from django.test import TestCase
-from shared.api_archive.archive import ArchiveService
-from shared.bundle_analysis import StoragePaths
-from shared.bundle_analysis.storage import get_bucket_name
-from shared.django_apps.core.tests.factories import (
-    CommitErrorFactory,
-    CommitFactory,
-    OwnerFactory,
-    RepositoryFactory,
-)
-from shared.reports.types import LineSession
 
 from compare.models import CommitComparison
 from compare.tests.factories import CommitComparisonFactory
@@ -33,6 +23,16 @@ from reports.tests.factories import (
 )
 from services.comparison import MissingComparisonReport
 from services.components import Component
+from shared.api_archive.archive import ArchiveService
+from shared.bundle_analysis import StoragePaths
+from shared.bundle_analysis.storage import get_bucket_name
+from shared.django_apps.core.tests.factories import (
+    CommitErrorFactory,
+    CommitFactory,
+    OwnerFactory,
+    RepositoryFactory,
+)
+from shared.reports.types import LineSession
 
 from .helper import GraphQLTestHelper, paginate_connection
 

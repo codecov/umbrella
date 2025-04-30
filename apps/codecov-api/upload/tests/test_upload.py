@@ -16,6 +16,10 @@ from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
+from simplejson import JSONDecodeError
+
+from core.models import Commit
+from reports.tests.factories import CommitReportFactory, UploadFactory
 from shared.api_archive.archive import ArchiveService
 from shared.django_apps.codecov_auth.tests.factories import PlanFactory, TierFactory
 from shared.django_apps.core.tests.factories import (
@@ -30,10 +34,6 @@ from shared.torngit.exceptions import (
     TorngitObjectNotFoundError,
     TorngitRateLimitError,
 )
-from simplejson import JSONDecodeError
-
-from core.models import Commit
-from reports.tests.factories import CommitReportFactory, UploadFactory
 from upload.helpers import (
     determine_repo_for_upload,
     determine_upload_branch_to_use,

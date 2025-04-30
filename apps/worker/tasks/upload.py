@@ -13,15 +13,6 @@ from django.conf import settings
 from django.utils import timezone
 from redis import Redis
 from redis.exceptions import LockError
-from shared.celery_config import upload_task_name
-from shared.config import get_config
-from shared.django_apps.user_measurements.models import UserMeasurement
-from shared.helpers.redis import get_redis_connection
-from shared.metrics import Histogram
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
-from shared.upload.utils import UploaderType, bulk_insert_coverage_measurements
-from shared.yaml import UserYaml
-from shared.yaml.user_yaml import OwnerContext
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -46,6 +37,15 @@ from services.repository import (
     possibly_update_commit_from_provider_info,
 )
 from services.test_results import TestResultsReportService
+from shared.celery_config import upload_task_name
+from shared.config import get_config
+from shared.django_apps.user_measurements.models import UserMeasurement
+from shared.helpers.redis import get_redis_connection
+from shared.metrics import Histogram
+from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.upload.utils import UploaderType, bulk_insert_coverage_measurements
+from shared.yaml import UserYaml
+from shared.yaml.user_yaml import OwnerContext
 from tasks.base import BaseCodecovTask
 from tasks.bundle_analysis_notify import bundle_analysis_notify_task
 from tasks.bundle_analysis_processor import bundle_analysis_processor_task

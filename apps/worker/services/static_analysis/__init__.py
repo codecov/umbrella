@@ -3,8 +3,6 @@ import logging
 import typing
 
 import sentry_sdk
-from shared.api_archive.archive import ArchiveService
-from shared.storage.exceptions import FileNotInStorageError
 
 from database.models.staticanalysis import (
     StaticAnalysisSingleFileSnapshot,
@@ -16,6 +14,8 @@ from services.static_analysis.single_file_analyzer import (
     AntecessorFindingResult,
     SingleFileSnapshotAnalyzer,
 )
+from shared.api_archive.archive import ArchiveService
+from shared.storage.exceptions import FileNotInStorageError
 
 log = logging.getLogger(__name__)
 

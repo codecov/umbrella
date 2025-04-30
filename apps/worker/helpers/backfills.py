@@ -1,9 +1,9 @@
 import logging
 
-import shared.torngit as torngit
 from asgiref.sync import async_to_sync
 from sqlalchemy.orm.session import Session
 
+import shared.torngit as torngit
 from database.models.core import GithubAppInstallation, Repository
 
 log = logging.getLogger(__name__)

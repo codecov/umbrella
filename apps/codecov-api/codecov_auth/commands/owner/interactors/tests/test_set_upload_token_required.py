@@ -1,9 +1,9 @@
 import pytest
 from asgiref.sync import async_to_sync
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import OwnerFactory
 
 from codecov.commands.exceptions import Unauthenticated, Unauthorized, ValidationError
+from shared.django_apps.core.tests.factories import OwnerFactory
 
 from ..set_upload_token_required import SetUploadTokenRequiredInteractor
 

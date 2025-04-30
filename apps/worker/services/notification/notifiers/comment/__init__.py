@@ -4,13 +4,6 @@ from typing import Any, Mapping, Optional
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from shared.metrics import Counter, inc_counter
-from shared.plan.constants import PlanName
-from shared.torngit.exceptions import (
-    TorngitClientError,
-    TorngitObjectNotFoundError,
-    TorngitServerFailureError,
-)
 
 from database.enums import Notification
 from services.comparison import ComparisonProxy
@@ -31,6 +24,13 @@ from services.notification.notifiers.comment.conditions import (
 )
 from services.notification.notifiers.mixins.message import MessageMixin
 from services.urls import append_tracking_params_to_urls, get_members_url, get_plan_url
+from shared.metrics import Counter, inc_counter
+from shared.plan.constants import PlanName
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitObjectNotFoundError,
+    TorngitServerFailureError,
+)
 
 log = logging.getLogger(__name__)
 

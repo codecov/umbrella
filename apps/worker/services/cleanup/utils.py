@@ -2,8 +2,9 @@ import dataclasses
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 
-import shared.storage
 from django.db.models import Model
+
+import shared.storage
 from shared.config import get_config
 from shared.storage.base import BaseStorageService
 

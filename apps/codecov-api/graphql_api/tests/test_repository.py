@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from freezegun import freeze_time
+
+from graphql_api.types.repository.repository import TOKEN_UNAVAILABLE
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -10,8 +12,6 @@ from shared.django_apps.core.tests.factories import (
     RepositoryFactory,
     RepositoryTokenFactory,
 )
-
-from graphql_api.types.repository.repository import TOKEN_UNAVAILABLE
 
 from .helper import GraphQLTestHelper
 

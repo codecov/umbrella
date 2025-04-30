@@ -2,13 +2,13 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 
-from shared.plan.service import PlanService
 from sqlalchemy.orm import Session
 
 from database.models import Owner
 from services.activation import activate_user, schedule_new_user_activated_task
 from services.decoration import _is_bot_account
 from services.repository import EnrichedPull
+from shared.plan.service import PlanService
 
 log = logging.getLogger(__name__)
 

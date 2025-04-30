@@ -3,11 +3,11 @@ from unittest.mock import MagicMock, patch
 
 from django.contrib.admin.sites import AdminSite
 from django.test import TestCase
-from shared.django_apps.codecov_auth.tests.factories import UserFactory
-from shared.django_apps.core.tests.factories import RepositoryFactory
 
 from core.admin import RepositoryAdmin, RepositoryAdminForm
 from core.models import Repository
+from shared.django_apps.codecov_auth.tests.factories import UserFactory
+from shared.django_apps.core.tests.factories import RepositoryFactory
 from utils.test_utils import Client
 
 

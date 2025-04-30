@@ -2,11 +2,11 @@ from unittest.mock import patch
 
 from asgiref.sync import async_to_sync
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 
 from compare.models import CommitComparison
 from compare.tests.factories import CommitComparisonFactory
 from graphql_api.dataloader.comparison import ComparisonLoader
+from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 
 
 class GraphQLResolveInfo:
