@@ -80,4 +80,4 @@ def test_get_report_error(db):
     )
     with pytest.raises(ValidationError) as exp:
         generic_class.get_report(commit)
-    assert exp.match("Report not found")
+    assert exp.match("Non-default `report_code` has been deprecated")

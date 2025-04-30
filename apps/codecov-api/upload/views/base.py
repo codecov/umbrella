@@ -69,7 +69,7 @@ class GetterMixin(ShelterMixin):
     ) -> CommitReport:
         report_code = self.kwargs.get("report_code")
         if report_code not in (None, "default"):
-            raise ValidationError("Report not found")
+            raise ValidationError("Non-default `report_code` has been deprecated")
 
         queryset = CommitReport.objects.filter(code=None, commit=commit)
         if report_type == CommitReport.ReportType.COVERAGE:

@@ -197,7 +197,7 @@ def test_get_report_error(db):
     )
     with pytest.raises(ValidationError) as exp:
         upload_views.get_report(commit)
-    assert exp.match("Report not found")
+    assert exp.match("Non-default `report_code` has been deprecated")
 
 
 def test_uploads_post(db, mocker, mock_redis):
