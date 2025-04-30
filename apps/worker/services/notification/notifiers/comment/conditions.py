@@ -168,10 +168,7 @@ class HasEnoughRequiredChanges(NotifyCondition):
     ) -> bool:
         if condition_group == CoverageCommentRequiredChanges.no_requirements.value:
             return True
-        cache_results = {
-            individual_condition: None
-            for individual_condition in CoverageCommentRequiredChanges
-        }
+        cache_results = dict.fromkeys(CoverageCommentRequiredChanges)
         functions_lookup = {
             CoverageCommentRequiredChanges.any_change: HasEnoughRequiredChanges._check_any_change,
             CoverageCommentRequiredChanges.coverage_drop: HasEnoughRequiredChanges._check_coverage_drop,

@@ -14,7 +14,7 @@ def matches(string, pattern):
 class Status(object):
     def __init__(self, statuses):
         self._statuses = self._fetch_most_relevant_status_per_context(statuses)
-        states = set(map(lambda s: s["state"], self._statuses))
+        states = {s["state"] for s in self._statuses}
         self._state = (
             "success"
             if all(state == "success" for state in states)

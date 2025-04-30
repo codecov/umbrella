@@ -33,7 +33,7 @@ class UserPathIncludes:
         if not self.path_patterns:
             return
 
-        includes = set(p for p in path_patterns if not p.startswith("!"))
+        includes = {p for p in path_patterns if not p.startswith("!")}
         excludes = set(path_patterns) - includes
 
         # create lists of pass/fails

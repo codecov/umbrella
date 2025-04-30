@@ -281,7 +281,7 @@ class Bitbucket(TorngitBaseAdapter):
         if username is None:
             # get all teams a user is member of
             teams = await self.list_teams(token)
-            usernames = set([team["username"] for team in teams])
+            usernames = {team["username"] for team in teams}
             # get permission of all repositories a user is member of
             permissions = await self.list_permissions(token=token)
             # get repo owners

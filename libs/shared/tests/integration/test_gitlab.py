@@ -363,7 +363,7 @@ class TestGitlabTestCase(object):
     @pytest.mark.asyncio
     async def test_get_branches(self, valid_handler, codecov_vcr):
         branches = sorted(await valid_handler.get_branches())
-        assert list(map(lambda a: a[0], branches)) == ["main", "other-branch"]
+        assert [a[0] for a in branches] == ["main", "other-branch"]
 
     @pytest.mark.asyncio
     async def test_get_branch(self, valid_handler, codecov_vcr):
@@ -504,7 +504,7 @@ class TestGitlabTestCase(object):
             ],
         }
         res = await valid_handler.get_compare(base, head)
-        assert sorted(list(res.keys())) == sorted(list(expected_result.keys()))
+        assert sorted(res.keys()) == sorted(expected_result.keys())
         for key in res:
             assert res[key] == expected_result[key]
         assert res == expected_result
@@ -999,7 +999,7 @@ class TestGitlabTestCase(object):
         )
         res = [i async for i in res]
         assert len(res) == 1
-        assert list(len(p) for p in res) == [8]
+        assert [len(p) for p in res] == [8]
         after = REGISTRY.get_sample_value(
             "git_provider_api_calls_gitlab_total",
             labels={"endpoint": "list_teams"},
@@ -1023,7 +1023,7 @@ class TestGitlabTestCase(object):
         )
         res = [i async for i in res]
         assert len(res) == 3
-        assert list(len(p) for p in res) == [4, 4, 1]
+        assert [len(p) for p in res] == [4, 4, 1]
         assert codecov_vcr.play_count == 3
         after = REGISTRY.get_sample_value(
             "git_provider_api_calls_gitlab_total",
@@ -1052,7 +1052,7 @@ class TestGitlabTestCase(object):
         )
         res = [i async for i in res]
         assert len(res) == 2
-        assert list(len(p) for p in res) == [3, 3]
+        assert [len(p) for p in res] == [3, 3]
         after = REGISTRY.get_sample_value(
             "git_provider_api_calls_gitlab_total",
             labels={"endpoint": "list_teams"},

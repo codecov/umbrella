@@ -38,7 +38,7 @@ class UserPathFixes:
         self.sub_regex = None
         self.sub_replacements = []
 
-        prefixes = set(f for f in yaml_fixes if f.startswith("::"))
+        prefixes = {f for f in yaml_fixes if f.startswith("::")}
         custom_fixes = list(set(yaml_fixes) - prefixes)
 
         if prefixes:

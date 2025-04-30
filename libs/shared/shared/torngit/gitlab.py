@@ -685,7 +685,7 @@ class Gitlab(TorngitBaseAdapter):
                     + mode
                     + d["diff"]
                 )
-            return super().diff_to_json("\n".join(map(lambda a: a["diff"], diff)))
+            return super().diff_to_json("\n".join((a["diff"] for a in diff)))
         else:
             return super().diff_to_json(self, diff)
 
@@ -1310,7 +1310,7 @@ class Gitlab(TorngitBaseAdapter):
             service_id=self.data["repo"]["service_id"]
         )
         res = await self.api("get", url, token=token)
-        return list(k.lower() for k in res.keys())
+        return [k.lower() for k in res.keys()]
 
     async def get_source(self, path, ref, token=None):
         token = self.get_token_by_type_if_none(token, TokenType.read)

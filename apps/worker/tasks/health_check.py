@@ -25,17 +25,13 @@ class HealthCheckTask(CodecovCronTask, name=health_check_task_name):
         default_queue_name = get_config(
             "setup", "tasks", "celery", "default_queue", default="celery"
         )
-        queue_names_in_config = set(
-            [
-                item["queue"]
-                for _, item in tasks_config.items()
-                if item.get("queue") is not None
-            ]
-        )
+        queue_names_in_config = {
+            item["queue"]
+            for _, item in tasks_config.items()
+            if item.get("queue") is not None
+        }
         queue_names_in_config.add(default_queue_name)
-        enterprise_queues = set(
-            map(lambda queue: "enterprise_" + queue, queue_names_in_config)
-        )
+        enterprise_queues = {"enterprise_" + queue for queue in queue_names_in_config}
         return queue_names_in_config | enterprise_queues
 
     def _get_correct_redis_connection(self):

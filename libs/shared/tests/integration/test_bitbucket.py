@@ -341,7 +341,7 @@ class TestBitbucketTestCase(object):
     @pytest.mark.asyncio
     async def test_get_branches(self, valid_handler, codecov_vcr):
         branches = sorted(await valid_handler.get_branches())
-        assert list(map(lambda a: a[0], branches)) == [
+        assert [a[0] for a in branches] == [
             "example",
             "f/new-branch",
             "future",
@@ -525,7 +525,7 @@ class TestBitbucketTestCase(object):
             "commits": [{"commitid": "b92edba"}, {"commitid": "6ae5f17"}],
         }
         res = await valid_handler.get_compare(base, head)
-        assert sorted(list(res.keys())) == sorted(list(expected_result.keys()))
+        assert sorted(res.keys()) == sorted(expected_result.keys())
         assert res == expected_result
 
     @pytest.mark.asyncio
@@ -536,7 +536,7 @@ class TestBitbucketTestCase(object):
             "commits": [{"commitid": "6ae5f17"}, {"commitid": "6ae5f17"}],
         }
         res = await valid_handler.get_compare(base, head)
-        assert sorted(list(res.keys())) == sorted(list(expected_result.keys()))
+        assert sorted(res.keys()) == sorted(expected_result.keys())
         assert res == expected_result
 
     @pytest.mark.asyncio

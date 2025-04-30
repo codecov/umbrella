@@ -141,7 +141,7 @@ def get_pr_comment_agg(repo_id: int, commit_sha: str) -> PRCommentAgg:
             """,
             [repo_id, commit_sha],
         )
-        outcome_dict = {outcome: count for outcome, count in cursor.fetchall()}
+        outcome_dict = dict(cursor.fetchall())
 
         return {
             "passed": outcome_dict.get("pass", 0),

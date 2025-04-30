@@ -27,29 +27,29 @@ class TestFixes(unittest.TestCase):
             lambda a: a.replace("./", ""),
         )
         assert res == {
-            "file.kt": {"eof": 188, "lines": set([2])},
+            "file.kt": {"eof": 188, "lines": {2}},
             "lcov": {"lines": set([10, 21] + list(range(11, 21)))},
-            "file.go": {"lines": set([20, 21, 23, 50, 52, 22, 51])},
-            "file.php": {"lines": set([23, 17])},
+            "file.go": {"lines": {20, 21, 23, 50, 52, 22, 51}},
+            "file.php": {"lines": {23, 17}},
         }
 
     def test_fixes_multiple(self):
         res = fixes.get_fixes_from_raw("file:1,2,3", str)
-        assert res == {"file": {"lines": set([1, 2, 3])}}
+        assert res == {"file": {"lines": {1, 2, 3}}}
 
     def test_fixes_single(self):
         res = fixes.get_fixes_from_raw("file:1:a", str)
-        assert res == {"file": {"lines": set([1])}}
+        assert res == {"file": {"lines": {1}}}
 
     def test_fixes_lcov(self):
         res = fixes.get_fixes_from_raw(
             "file:1:LCOV_EXCL_START\nfile:5:LCOV_EXCL_STOP", str
         )
-        assert res == {"file": {"lines": set([1, 5, 2, 3, 4])}}
+        assert res == {"file": {"lines": {1, 5, 2, 3, 4}}}
 
     def test_fixes_comment(self):
         res = fixes.get_fixes_from_raw("file:1:/*\nfile:5:*/", str)
-        assert res == {"file": {"lines": set([1, 5, 2, 3, 4])}}
+        assert res == {"file": {"lines": {1, 5, 2, 3, 4}}}
 
     def test_get_fixes_from_raw_with_both_eof_and_lines(self):
         content = [

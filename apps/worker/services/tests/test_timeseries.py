@@ -1080,17 +1080,15 @@ class TestTimeseriesService(object):
         dbsession.flush()
         save_commit_measurements(other_commit, dataset_names=dataset_names)
 
-        flag_ids = set(
-            [
-                flag.measurable_id
-                for flag in (
-                    dbsession.query(Measurement).filter_by(
-                        repo_id=repository.repoid,
-                        name=MeasurementName.flag_coverage.value,
-                    )
+        flag_ids = {
+            flag.measurable_id
+            for flag in (
+                dbsession.query(Measurement).filter_by(
+                    repo_id=repository.repoid,
+                    name=MeasurementName.flag_coverage.value,
                 )
-            ]
-        )
+            )
+        }
 
         m = dbsession.query(Measurement).filter_by(repo_id=repository.repoid).all()
 

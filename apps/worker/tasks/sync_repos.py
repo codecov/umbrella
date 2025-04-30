@@ -138,16 +138,14 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         repoids_added = []
         # Casting to str in case celery interprets the service ID as a integer for some reason
         # As that has caused issues with testing locally
-        service_ids = set(str(x[0]) for x in repository_service_ids)
+        service_ids = {str(x[0]) for x in repository_service_ids}
         # Check what repos we already have in the DB
-        existing_repos = set(
-            map(
-                lambda row_result: row_result[0],
-                db_session.query(Repository.service_id)
-                .filter(Repository.service_id.in_(service_ids))
-                .all(),
-            )
-        )
+        existing_repos = {
+            row_result[0]
+            for row_result in db_session.query(Repository.service_id)
+            .filter(Repository.service_id.in_(service_ids))
+            .all()
+        }
         missing_repo_service_ids = service_ids.difference(existing_repos)
 
         log.info(

@@ -146,9 +146,7 @@ class ReadOnlyReport(object):
         if paths is None and flags is None:
             return self
         matcher = Matcher(paths)
-        matching_files = (
-            set(f for f in self.files if matcher.match(f)) if paths else None
-        )
+        matching_files = {f for f in self.files if matcher.match(f)} if paths else None
         rust_analyzer = FilterAnalyzer(
             files=matching_files, flags=flags if flags else None
         )

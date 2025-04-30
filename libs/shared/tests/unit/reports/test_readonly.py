@@ -453,7 +453,7 @@ class TestReadOnly(object):
 
     def test_get_uploaded_flags_only_uploaded(self, sample_report):
         r = ReadOnlyReport.create_from_report(sample_report)
-        assert r.get_uploaded_flags() == set(["complex", "simple"])
+        assert r.get_uploaded_flags() == {"complex", "simple"}
 
     def test_get_uploaded_flags(self, sample_report):
         sample_report.add_session(
@@ -466,10 +466,6 @@ class TestReadOnly(object):
             Session(flags=["chocolate", "apple"], session_type=SessionType.uploaded)
         )
         r = ReadOnlyReport.create_from_report(sample_report)
-        assert r.get_uploaded_flags() == set(
-            ["complex", "simple", "apple", "chocolate"]
-        )
+        assert r.get_uploaded_flags() == {"complex", "simple", "apple", "chocolate"}
         # second call to use the cached value
-        assert r.get_uploaded_flags() == set(
-            ["complex", "simple", "apple", "chocolate"]
-        )
+        assert r.get_uploaded_flags() == {"complex", "simple", "apple", "chocolate"}

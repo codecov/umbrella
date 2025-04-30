@@ -241,10 +241,9 @@ class ReportBuilder(object):
         old_flag_with_carryforward_labels = False
         if old_flag_style:
             old_flag_with_carryforward_labels = any(
-                map(
-                    lambda flag_definition: flag_definition.get("carryforward_mode")
-                    == "labels",
-                    old_flag_style.values(),
+                (
+                    flag_definition.get("carryforward_mode") == "labels"
+                    for flag_definition in old_flag_style.values()
                 )
             )
         # Check if some of the flags or default rules use labels
@@ -256,10 +255,9 @@ class ReportBuilder(object):
                 == "labels"
             )
             flag_management_flag_with_carryforward_labels = any(
-                map(
-                    lambda flag_definition: flag_definition.get("carryforward_mode")
-                    == "labels",
-                    flag_management.get("individual_flags", []),
+                (
+                    flag_definition.get("carryforward_mode") == "labels"
+                    for flag_definition in flag_management.get("individual_flags", [])
                 )
             )
         return (

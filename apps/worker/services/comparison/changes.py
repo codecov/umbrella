@@ -79,7 +79,7 @@ def get_segment_offsets(segments) -> tuple[dict[int, Any], list[int], list[int]]
                 additions.append(ln + offset_r)
                 offsets[ln + offset_r] -= 1
                 offset_l -= 1
-    return dict([(k, v) for k, v in offsets.items() if v != 0]), additions, removals
+    return {k: v for k, v in offsets.items() if v != 0}, additions, removals
 
 
 @sentry_sdk.trace
@@ -126,7 +126,7 @@ def get_changes(
 
     # moved files
     moved_files = (
-        set([d["before"] for k, d in diff_json["files"].items() if d.get("before")])
+        {d["before"] for k, d in diff_json["files"].items() if d.get("before")}
         if diff_json
         else set()
     )
@@ -211,7 +211,7 @@ def get_changes(
             # by the diff
             if diff.get("type") != "deleted":
                 base_report_file = base_report.get(possibly_deleted_filename)
-                present_lines_on_base = set(x[0] for x in base_report_file.lines)
+                present_lines_on_base = {x[0] for x in base_report_file.lines}
                 _, _, line_removals = get_segment_offsets(diff["segments"])
                 lines_unnaccounted_for = present_lines_on_base - set(line_removals)
                 if lines_unnaccounted_for:

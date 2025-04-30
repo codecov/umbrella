@@ -25,8 +25,8 @@ def escape(string, escape=False):
 
 
 def make_url(repository, *args, **kwargs):
-    args = list(map(lambda a: escape(a, True), list(args)))
-    kwargs = dict([(k, escape(v)) for k, v in kwargs.items() if v is not None])
+    args = [escape(a, True) for a in list(args)]
+    kwargs = {k: escape(v) for k, v in kwargs.items() if v is not None}
     if repository:
         return url_concat(
             "/".join(

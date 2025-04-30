@@ -349,9 +349,9 @@ class NewFilesSectionWriter(BaseSectionWriter):
             if _diff.get("totals")
         ]
 
-        all_files = set(f[1] for f in files_in_diff or []) | set(
+        all_files = {f[1] for f in files_in_diff or []} | {
             c.path for c in changes or []
-        )
+        }
         if files_in_diff:
             table_header = "| Patch % | Lines |"
             table_layout = "|---|---|---|"
@@ -425,9 +425,9 @@ class FileSectionWriter(BaseSectionWriter):
             if _diff.get("totals")
         ]
 
-        all_files = set(f[1] for f in files_in_diff or []) | set(
+        all_files = {f[1] for f in files_in_diff or []} | {
             c.path for c in changes or []
-        )
+        }
         if files_in_diff:
             table_header = get_table_header(self.show_complexity)
             table_layout = get_table_layout(self.show_complexity)
@@ -725,7 +725,7 @@ class MessagesToUserSectionWriter(BaseSectionWriter):
                 )
 
             aggregated_upload_diff = sum(
-                map(lambda diff: diff["head_count"] - diff["base_count"], upload_diff)
+                (diff["head_count"] - diff["base_count"] for diff in upload_diff)
             )
             context = dict(
                 aggregated_upload_diff=abs(aggregated_upload_diff),

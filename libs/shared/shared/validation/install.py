@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 def check_task_config_key(field, value, error):
     if value == "celery":
         return
-    if value in set(group.value for group in TaskConfigGroup):
+    if value in {group.value for group in TaskConfigGroup}:
         return
     error(field, "Not a valid TaskConfigGroup")
 

@@ -285,7 +285,7 @@ class BitbucketServer(TorngitBaseAdapter):
 
         return dict(
             commitid=None,  # [FUTURE] unknown atm
-            content="\n".join(map(lambda a: a.get("text", ""), content)),
+            content="\n".join((a.get("text", "") for a in content)),
         )
 
     async def get_ancestors_tree(self, commitid, token=None):

@@ -47,7 +47,7 @@ def write_raw_upload(
 
 
 def lines(lines: Iterable[tuple[int, ReportLine]]) -> list[tuple[int, int]]:
-    return list(((lineno, line.coverage) for lineno, line in lines))
+    return [(lineno, line.coverage) for lineno, line in lines]
 
 
 def get_base_report():

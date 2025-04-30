@@ -112,7 +112,7 @@ class SMTPService:
             )
             if len(errs) != 0:
                 err_msg = " ".join(
-                    list(map(lambda err_tuple: f"{err_tuple[0]} {err_tuple[1]}", errs))
+                    [f"{err_tuple[0]} {err_tuple[1]}" for err_tuple in errs]
                 )
                 log.warning(f"Error sending email message: {err_msg}")
                 raise SMTPServiceError(f"Error sending email message: {err_msg}")

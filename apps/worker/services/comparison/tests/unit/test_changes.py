@@ -422,7 +422,7 @@ class TestChanges(object):
                 totals=None,
             ),
         ]
-        assert set([x.path for x in res]) == set([x.path for x in expected_result])
+        assert {x.path for x in res} == {x.path for x in expected_result}
         for individual_result, individual_expected_result in zip(
             sorted(res, key=lambda x: x.path),
             sorted(expected_result, key=lambda x: x.path),

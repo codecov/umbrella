@@ -98,7 +98,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                 conditions_text = _line.get("missing-branches", None)
                 if conditions_text:
                     conditions = conditions_text.split(",")
-                    if len(conditions) > 1 and set(conditions) == set(("exit",)):
+                    if len(conditions) > 1 and set(conditions) == {"exit"}:
                         # python: "return [...] missed"
                         conditions = ["loop", "exit"]
                     missing_branches = conditions

@@ -689,7 +689,7 @@ class TestGithubTestCase(object):
             "thiago/test-1",
         ]
         branches = sorted(await valid_handler.get_branches())
-        assert sorted(map(lambda a: a[0], branches)) == expected_result
+        assert sorted((a[0] for a in branches)) == expected_result
 
     @pytest.mark.asyncio
     async def test_get_branch(self, valid_handler, codecov_vcr):
@@ -909,7 +909,7 @@ class TestGithubTestCase(object):
         }
 
         res = await valid_handler.get_compare(base, head)
-        assert sorted(list(res.keys())) == sorted(list(expected_result.keys()))
+        assert sorted(res.keys()) == sorted(expected_result.keys())
         assert res == expected_result
 
     @pytest.mark.asyncio
@@ -922,7 +922,7 @@ class TestGithubTestCase(object):
             "ahead_by": 2,
         }
         res = await generic_valid_handler.get_distance_in_commits(base_branch, head)
-        assert sorted(list(res.keys())) == sorted(list(expected_result.keys()))
+        assert sorted(res.keys()) == sorted(expected_result.keys())
         assert res == expected_result
 
     @pytest.mark.asyncio
@@ -945,7 +945,7 @@ class TestGithubTestCase(object):
             ],
         }
         res = await valid_handler.get_compare(base, head)
-        assert sorted(list(res.keys())) == sorted(list(expected_result.keys()))
+        assert sorted(res.keys()) == sorted(expected_result.keys())
         assert len(res["commits"]) == len(expected_result["commits"])
         assert res["commits"][0] == expected_result["commits"][0]
         assert res == expected_result

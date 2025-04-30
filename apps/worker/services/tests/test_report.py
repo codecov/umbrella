@@ -3513,7 +3513,7 @@ class TestReportService(BaseTestCase):
             == 2
         )
         storage_keys = mock_storage.storage["archive"].keys()
-        assert any(map(lambda key: key.endswith("chunks.txt"), storage_keys))
+        assert any((key.endswith("chunks.txt") for key in storage_keys))
 
     def test_initialize_and_save_report_existing_report(
         self, mock_storage, sample_report, dbsession, mocker

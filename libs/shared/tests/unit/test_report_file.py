@@ -6,13 +6,11 @@ from shared.reports.types import ReportLine
 
 def format_lines_idx_and_coverage_only(lines):
     return [
-        tuple(
-            [
-                idx,
-                f"ReportLine(coverage={report_line.coverage})"
-                if hasattr(report_line, "coverage")
-                else report_line,
-            ]
+        (
+            idx,
+            f"ReportLine(coverage={report_line.coverage})"
+            if hasattr(report_line, "coverage")
+            else report_line,
         )
         for idx, report_line in enumerate(lines, start=1)
     ]

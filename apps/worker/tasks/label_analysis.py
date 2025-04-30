@@ -543,7 +543,7 @@ class LabelAnalysisRequestProcessingTask(
         for sess_id in full_sessions:
             global_level_labels.update(self.get_labels_per_session(report, sess_id))
         return (
-            labels - set([GLOBAL_LEVEL_LABEL_IDX, GLOBAL_LEVEL_LABEL]),
+            labels - {GLOBAL_LEVEL_LABEL_IDX, GLOBAL_LEVEL_LABEL},
             global_level_labels,
         )
 

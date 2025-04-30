@@ -147,9 +147,7 @@ class TestGettingGitHubAppTokenSideEffect(object):
             side_effect=InvalidInstallationError("installation_suspended"),
         )
 
-        assert all(
-            [installation.is_suspended == False for installation in installations]
-        )
+        assert all(installation.is_suspended == False for installation in installations)
 
         with pytest.raises(InvalidInstallationError):
             get_github_app_token(Service(owner.service), installation_info)
@@ -172,9 +170,7 @@ class TestGettingGitHubAppTokenSideEffect(object):
             side_effect=InvalidInstallationError("installation_not_found"),
         )
 
-        assert all(
-            [installation.is_suspended == False for installation in installations]
-        )
+        assert all(installation.is_suspended == False for installation in installations)
 
         with pytest.raises(InvalidInstallationError):
             get_github_app_token(Service(owner.service), installation_info)
@@ -197,9 +193,7 @@ class TestGettingGitHubAppTokenSideEffect(object):
             side_effect=InvalidInstallationError("installation_not_found"),
         )
 
-        assert all(
-            [installation.is_suspended == False for installation in installations]
-        )
+        assert all(installation.is_suspended == False for installation in installations)
 
         with pytest.raises(InvalidInstallationError):
             get_github_app_token(Service(owner.service), installation_info)
@@ -222,15 +216,11 @@ class TestGettingGitHubAppTokenSideEffect(object):
             side_effect=InvalidInstallationError("permission_error"),
         )
 
-        assert all(
-            [installation.is_suspended == False for installation in installations]
-        )
+        assert all(installation.is_suspended == False for installation in installations)
 
         with pytest.raises(InvalidInstallationError):
             get_github_app_token(Service(owner.service), installation_info)
 
         installations[0].refresh_from_db()
         installations[1].refresh_from_db()
-        assert all(
-            [installation.is_suspended == False for installation in installations]
-        )
+        assert all(installation.is_suspended == False for installation in installations)

@@ -97,14 +97,10 @@ class UserYaml(object):
         # The individual components inherit the values from default_definition if they don't have a particular key defined in the default rules
         default_definition = component_definitions.get("default_rules", {})
 
-        individual_components = list(
-            map(
-                lambda component_dict: Component.from_dict(
-                    {**default_definition, **component_dict}
-                ),
-                component_definitions.get("individual_components", []),
-            )
-        )
+        individual_components = [
+            Component.from_dict({**default_definition, **component_dict})
+            for component_dict in component_definitions.get("individual_components", [])
+        ]
         return individual_components
 
     def __eq__(self, other):
@@ -205,5 +201,5 @@ def merge_yamls(d1, d2):
     if not isinstance(d1, dict) or not isinstance(d2, dict):
         return deepcopy(d2)
     res = deepcopy(d1)
-    res.update(dict([(k, merge_yamls(d1.get(k, {}), v)) for k, v in d2.items()]))
+    res.update({k: merge_yamls(d1.get(k, {}), v) for k, v in d2.items()})
     return res

@@ -308,17 +308,15 @@ def get_github_app_info_for_owner(
     if apps_to_consider:
         # There's at least 1 app that matches all the criteria and can be used to communicate with GitHub
         main_name = apps_to_consider[0].name
-        info_to_get_tokens = list(
-            map(
-                lambda obj: GithubInstallationInfo(
-                    id=obj.id,
-                    installation_id=obj.installation_id,
-                    app_id=obj.app_id,
-                    pem_path=obj.pem_path,
-                ),
-                apps_to_consider,
+        info_to_get_tokens = [
+            GithubInstallationInfo(
+                id=obj.id,
+                installation_id=obj.installation_id,
+                app_id=obj.app_id,
+                pem_path=obj.pem_path,
             )
-        )
+            for obj in apps_to_consider
+        ]
         log.info(
             "Selected installation to communicate with github",
             extra=dict(

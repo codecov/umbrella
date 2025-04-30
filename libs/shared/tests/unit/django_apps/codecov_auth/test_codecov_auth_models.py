@@ -622,9 +622,11 @@ class TestGithubAppInstallationModel(TestCase):
         )
         assert list(owner.github_app_installations.all()) == [installation_obj]
         assert installation_obj.repository_queryset().exists()
-        assert set(installation_obj.repository_queryset().all()) == set(
-            [repo1, repo2, repo3]
-        )
+        assert set(installation_obj.repository_queryset().all()) == {
+            repo1,
+            repo2,
+            repo3,
+        }
 
     def test_covers_some_repos(self):
         owner = OwnerFactory()

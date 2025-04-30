@@ -4,6 +4,7 @@ src = ["apps/*", "libs/*"]
 # https://docs.astral.sh/ruff/rules/
 select = [
     "ASYNC", # flake8-async - async checks
+    "C4",    # flake8-comprehensions - list/set/dict/generator comprehensions
     "E",     # pycodestyle - error rules
     "F",     # pyflakes - general Python errors, undefined names
     "I",     # isort - import sorting
@@ -12,9 +13,7 @@ select = [
     "PLE",   # pylint - error rules
     "PLW",   # pylint - warning rules
     "T20",   # flake8-print - print statements
-    # TODO: 
-    # "C4",   # flake8-comprehensions - list/set/dict/generator comprehensions
-    "W", # pycodestyle - warning rules
+    "W",     # pycodestyle - warning rules
 ]
 ignore = [
     "C408",    # Unnecessary `{kind}()` call (rewrite as a literal)

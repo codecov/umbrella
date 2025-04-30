@@ -27,7 +27,7 @@ class Event:
         self.data = data
 
     def _get_event_name(self, event_name: str):
-        if event_name not in list(event.value for event in Events):
+        if event_name not in [event.value for event in Events]:
             raise ValueError("Invalid event name: " + event_name)
         return event_name
 

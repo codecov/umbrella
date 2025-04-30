@@ -470,32 +470,30 @@ class UserGivenBranchRegex(object):
 
 
 class LayoutStructure(object):
-    acceptable_objects = set(
-        [
-            "changes",
-            "diff",
-            "file",
-            "files",
-            "flag",
-            "flags",
-            "footer",
-            "header",
-            "reach",
-            "components",
-            "suggestions",
-            "betaprofiling",
-            "sunburst",
-            "tree",
-            "uncovered",
-            "newheader",  # deprecated, keeping it for backward compatibility
-            "newfooter",  # deprecated, keeping it for backward compatibility
-            "feedback",
-            "newfiles",  # deprecated, keeping it for backward compatibility
-            "condensed_header",
-            "condensed_footer",
-            "condensed_files",
-        ]
-    )
+    acceptable_objects = {
+        "changes",
+        "diff",
+        "file",
+        "files",
+        "flag",
+        "flags",
+        "footer",
+        "header",
+        "reach",
+        "components",
+        "suggestions",
+        "betaprofiling",
+        "sunburst",
+        "tree",
+        "uncovered",
+        "newheader",  # deprecated, keeping it for backward compatibility
+        "newfooter",  # deprecated, keeping it for backward compatibility
+        "feedback",
+        "newfiles",  # deprecated, keeping it for backward compatibility
+        "condensed_header",
+        "condensed_footer",
+        "condensed_files",
+    }
 
     def validate(self, value):
         values = value.split(",")

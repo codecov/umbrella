@@ -274,11 +274,11 @@ class Account(BaseModel):
             return
 
         organizations_in_account: list[Owner] = self.organizations.all()
-        all_owner_users_for_account: set[AutoField] = set(
+        all_owner_users_for_account: set[AutoField] = {
             ownerid
             for org in organizations_in_account
             for ownerid in org.plan_activated_users
-        )
+        }
         if owner_user.ownerid not in all_owner_users_for_account:
             self.users.remove(owner_user.user)
         else:

@@ -38,7 +38,7 @@ class TorngitBaseAdapter(object):
     _token: Token | None = None
     verify_ssl = None
 
-    valid_languages = set(language.value for language in Repository.Languages)
+    valid_languages = {language.value for language in Repository.Languages}
 
     def __init__(
         self,

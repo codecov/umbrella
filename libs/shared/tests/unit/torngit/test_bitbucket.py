@@ -399,7 +399,7 @@ class TestUnitBitbucket(object):
             "commits": [{"commitid": "b92edba"}, {"commitid": "6ae5f17"}],
         }
         res = await valid_handler.get_compare(base, head)
-        assert sorted(list(res.keys())) == sorted(list(expected_result.keys()))
+        assert sorted(res.keys()) == sorted(expected_result.keys())
         assert res == expected_result
 
     @pytest.mark.asyncio

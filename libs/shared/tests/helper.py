@@ -49,9 +49,9 @@ def v2_to_v3(report):
 
     return {
         "files": files,
-        "sessions": dict(
-            [(int(sid), data) for sid, data in report.get("sessions", {}).items()]
-        ),
+        "sessions": {
+            int(sid): data for sid, data in report.get("sessions", {}).items()
+        },
         "totals": report.get("totals", {}),
         "chunks": chunks,
     }

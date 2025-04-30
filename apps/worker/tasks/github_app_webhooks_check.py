@@ -126,9 +126,9 @@ class GitHubAppWebhooksCheckTask(CodecovCronTask, name=gh_app_webhook_check_task
         """
         if len(deliveries_to_request) == 0:
             return 0
-        redelivery_coroutines = map(
-            lambda item: gh_handler.request_webhook_redelivery(item["id"]),
-            deliveries_to_request,
+        redelivery_coroutines = (
+            gh_handler.request_webhook_redelivery(item["id"])
+            for item in deliveries_to_request
         )
         results = await asyncio.gather(*redelivery_coroutines)
         return sum(results)

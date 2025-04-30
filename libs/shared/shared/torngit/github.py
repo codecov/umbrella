@@ -1988,7 +1988,7 @@ class Github(TorngitBaseAdapter):
             commit_mapping = {
                 val["sha"]: [k["sha"] for k in val["parents"]] for val in commits
             }
-            all_commits_in_pr = set([val["sha"] for val in commits])
+            all_commits_in_pr = {val["sha"] for val in commits}
             current_level = [res["head"]["sha"]]
             while current_level and all(x in all_commits_in_pr for x in current_level):
                 new_level = []
@@ -2219,7 +2219,7 @@ class Github(TorngitBaseAdapter):
                 url_name="get_repo_languages"
             ).substitute(slug=self.slug)
             res = await self.api(client, "get", url, token=token)
-        return list(k.lower() for k in res.keys())
+        return [k.lower() for k in res.keys()]
 
     async def get_repos_with_languages_graphql(
         self, owner_username: str, token=None, first=100

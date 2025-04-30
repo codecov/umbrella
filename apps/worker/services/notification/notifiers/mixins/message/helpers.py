@@ -253,7 +253,7 @@ def list_to_text_table(rows, padding=0) -> List[str]:
     column_w = list(
         map(
             max,
-            zip(*map(lambda row: map(lambda cell: len(cell.strip("|")), row), rows)),
+            zip(*((len(cell.strip("|")) for cell in row) for row in rows)),
         )
     )
 
@@ -268,7 +268,7 @@ def list_to_text_table(rows, padding=0) -> List[str]:
 
     # now they are filled with spaces
     spacing = (" " * padding).join
-    return list(map(lambda row: spacing(map(_fill, zip(column_w, row))), rows))
+    return [spacing(map(_fill, zip(column_w, row))) for row in rows]
 
 
 def diff_to_string(current_yaml, base_title, base, head_title, head) -> List[str]:

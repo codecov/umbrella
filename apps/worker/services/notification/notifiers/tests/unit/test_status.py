@@ -547,7 +547,7 @@ class TestBaseStatusNotifier(object):
         mocker,
     ):
         comparison = sample_comparison
-        comparison.context.gitlab_extra_shas = set(["extra_sha"])
+        comparison.context.gitlab_extra_shas = {"extra_sha"}
         payload = {
             "message": "something to say",
             "state": "success",

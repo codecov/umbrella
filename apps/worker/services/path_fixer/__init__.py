@@ -79,7 +79,7 @@ class PathFixer(object):
         self.toc = toc or []
 
         self.yaml_fixes = yaml_fixes or []
-        self.path_patterns = set(path_patterns) or set([])
+        self.path_patterns = set(path_patterns) or set()
         self.should_disable_default_pathfixes = should_disable_default_pathfixes
 
         self.custom_fixes = UserPathFixes(self.yaml_fixes)
