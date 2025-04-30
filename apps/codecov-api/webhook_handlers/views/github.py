@@ -505,9 +505,7 @@ class GithubWebhookHandler(APIView):
                 )
             )
             if was_created:
-                installer_username = request.data.get("sender", {}).get(
-                    "login", None
-                )
+                installer_username = request.data.get("sender", {}).get("login", None)
                 installer = (
                     Owner.objects.filter(
                         service=self.service_name,
@@ -553,7 +551,8 @@ class GithubWebhookHandler(APIView):
                         obj["id"] for obj in request.data.get("repositories_added", [])
                     }
                     repositories_removed_service_ids = {
-                        obj["id"] for obj in request.data.get("repositories_removed", [])
+                        obj["id"]
+                        for obj in request.data.get("repositories_removed", [])
                     }
                     repo_list_to_save = current_repos.union(
                         repositories_added_service_ids
