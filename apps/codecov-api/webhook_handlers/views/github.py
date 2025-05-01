@@ -109,7 +109,7 @@ class GithubWebhookHandler(APIView):
 
     def _get_repo(self, request):
         """
-        Attempts to fetch the repo first via the index on o(wnerid, service_id),
+        Attempts to fetch the repo first via the index on (ownerid, service_id),
         then naively on service, service_id if that fails.
         """
         repo_data = self.request.data.get("repository", {})
@@ -493,15 +493,14 @@ class GithubWebhookHandler(APIView):
         installation_id = request.data["installation"]["id"]
 
         # https://docs.github.com/en/webhooks/webhook-events-and-payloads#installation
-        if action == "deleted":
-            if event == GitHubWebhookEvents.INSTALLATION:
-                ghapp_installation: Optional[GithubAppInstallation] = (
-                    owner.github_app_installations.filter(
-                        installation_id=installation_id
-                    ).first()
-                )
-                if ghapp_installation is not None:
-                    ghapp_installation.delete()
+        if action == "deleted" and event == GitHubWebhookEvents.INSTALLATION:
+            ghapp_installation: Optional[GithubAppInstallation] = (
+                owner.github_app_installations.filter(
+                    installation_id=installation_id
+                ).first()
+            )
+            if ghapp_installation is not None:
+                ghapp_installation.delete()
             log.info(
                 "Owner deleted app integration",
                 extra={"ownerid": owner.ownerid, "github_webhook_event": self.event},
@@ -541,7 +540,10 @@ class GithubWebhookHandler(APIView):
             ghapp_installation.app_id = app_id
             ghapp_installation.name = self._decide_app_name(ghapp_installation)
 
-            all_repos_affected = request.data.get("repository_selection") == "all"
+            all_repos_affected = (
+                request.data.get("installation", {}).get("repository_selection")
+                == "all"
+            )
             if all_repos_affected:
                 ghapp_installation.repository_service_ids = None
             else:
@@ -567,19 +569,19 @@ class GithubWebhookHandler(APIView):
                     ).difference(repositories_removed_service_ids)
                     ghapp_installation.repository_service_ids = list(repo_list_to_save)
 
-                if action in ["suspend", "unsuspend"]:
-                    log.info(
-                        "Request to suspend/unsuspend App",
-                        extra={
-                            "action": action,
-                            "is_currently_suspended": ghapp_installation.is_suspended,
-                            "ownerid": owner.ownerid,
-                            "installation_id": request.data["installation"]["id"],
-                        },
-                    )
-                    ghapp_installation.is_suspended = action == "suspend"
+            if action in ["suspend", "unsuspend"]:
+                log.info(
+                    "Request to suspend/unsuspend App",
+                    extra={
+                        "action":action,
+                        "is_currently_suspended":ghapp_installation.is_suspended,
+                        "ownerid":owner.ownerid,
+                        "installation_id":request.data["installation"]["id"],
+                    },
+                )
+                ghapp_installation.is_suspended = action == "suspend"
 
-                ghapp_installation.save()
+            ghapp_installation.save()
 
             log.info(
                 "Triggering refresh task to sync repos",
