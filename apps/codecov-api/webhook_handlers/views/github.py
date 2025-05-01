@@ -370,7 +370,27 @@ class GithubWebhookHandler(APIView):
 
     def _is_ai_features_request(self, request):
         target_id = request.META.get(GitHubHTTPHeaders.HOOK_INSTALLATION_TARGET_ID, "")
-        return str(target_id) == str(self.ai_features_app_id)
+        if not target_id:
+            log.info(
+                "Hook installation target ID is missing",
+                extra=dict(
+                    headers=dict(request.META),
+                    github_webhook_event=self.event,
+                ),
+            )
+            return False
+
+        is_match = str(target_id) == str(self.ai_features_app_id)
+        if not is_match:
+            log.info(
+                "Hook installation target ID does not match Codecov AI app ID",
+                extra=dict(
+                    target_id=target_id,
+                    ai_features_app_id=self.ai_features_app_id,
+                    github_webhook_event=self.event,
+                ),
+            )
+        return is_match
 
     def pull_request(self, request, *args, **kwargs):
         if self._is_ai_features_request(request):
