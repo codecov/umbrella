@@ -10,10 +10,9 @@ export branch := $(shell git branch | grep \* | cut -f2 -d' ')
 
 export DOCKER_BUILDKIT=1
 
-# If we haven't cut over yet, this requires that the submodules are initialized.
-# If you see a bunch of "tar: ...: Cannot stat: No such file or directory" errors,
-# run `git submodule update --init`
-export SHARED_SHA := $(shell git ls-files --recurse-submodules libs/shared | sort | xargs sha1sum | cut -d ' ' -f 1 | sha1sum | head -c 40)
+# `LC_ALL=C` is added to `sort` to ensure you get the same order across systems.
+# Otherwise, a Mac may sort according to en_US.UTF-8 while CI may sort according to C/POSIX.
+export SHARED_SHA := $(shell git ls-files libs/shared | LC_ALL=C sort | xargs sha1sum | cut -d ' ' -f 1 | sha1sum | head -c 40)
 export DOCKER_REQS_SHA := $(shell sha1sum docker/Dockerfile.requirements | head -c 40)
 
 # Generic target for building a requirements image. You probably want
