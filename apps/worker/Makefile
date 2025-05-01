@@ -1,6 +1,6 @@
 sha ?= $(shell git rev-parse --short=7 HEAD)
 full_sha ?= $(shell git rev-parse HEAD)
-release_version = `cat VERSION`
+release_version ?= `cat VERSION`
 _gcr := ${CODECOV_WORKER_GCR_REPO_BASE}
 merge_sha ?= $(shell git merge-base HEAD^ origin/main)
 build_date ?= $(shell git show -s --date=iso8601-strict --pretty=format:%cd $$sha)

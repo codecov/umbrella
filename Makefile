@@ -2,6 +2,7 @@ export sha := $(shell git rev-parse --short=7 HEAD)
 export full_sha := $(shell git rev-parse HEAD)
 export long_sha := ${full_sha}
 export merge_sha := $(shell git merge-base HEAD^ origin/main)
+export release_version := `cat VERSION`
 export VERSION := release-${sha}
 
 export build_date ?= $(shell git show -s --date=iso8601-strict --pretty=format:%cd $$sha)

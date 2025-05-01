@@ -1,7 +1,7 @@
 sha ?= $(shell git rev-parse --short=7 HEAD)
 long_sha ?= $(shell git rev-parse HEAD)
 merge_sha ?= $(shell git merge-base HEAD^ origin/main)
-release_version := `cat VERSION`
+release_version ?= `cat VERSION`
 build_date ?= $(shell git show -s --date=iso8601-strict --pretty=format:%cd $$sha)
 branch ?= $(shell git branch | grep \* | cut -f2 -d' ')
 epoch ?= $(shell date +"%s")
