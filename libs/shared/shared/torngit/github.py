@@ -1028,8 +1028,12 @@ class Github(TorngitBaseAdapter):
                 }
             )
             return self.token
-        # https://docs.github.com/apps/managing-oauth-apps/troubleshooting-oauth-app-access-token-request-errors
-        log.error(
+
+        # See https://github.com/codecov/internal-issues/issues/1234
+        # TL;DR this can be the result of a race condition when a refresh
+        # should be succeeding. We've decided to not prioritize a fix for now.
+        # Changed from log.error to log.warning to supress Sentry spam.
+        log.warning(
             dict(
                 error="No access_token in response",
                 gh_error=session.get("error"),
