@@ -31,7 +31,7 @@ services:
       - codecov
 
   api:
-    image: codecov/api
+    image: ${AR_REPO_PREFIX-codecov}/api
     entrypoint: sh -c "/devenv-scripts/start-api.sh"
     environment:
       - RUN_ENV=DEV
@@ -53,7 +53,7 @@ services:
       - timescale
 
   worker:
-    image: codecov/worker
+    image: ${AR_REPO_PREFIX-codecov}/worker
     entrypoint: sh -c "/devenv-scripts/start-worker.sh"
     environment:
       - RUN_ENV=DEV

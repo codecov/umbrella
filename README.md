@@ -22,21 +22,33 @@ These instructions assume you're using macOS (or at least a POSIX-y platform) bu
 
 `Makefile` (via `tools/devenv/Makefile.devenv` and `tools/devenv/Makefile.test`) exposes `make` targets that take care of setting up and updating your local Codecov instance.
 
-### Prereqs
+## Prereqs
 
-- [Docker Desktop](https://docs.docker.com/desktop/).
-  - If using a Mac, ensure that `General > Use Rosetta for x86/amd64 emulation on Apple Silicon` is turned on in the settings or the timescale container will fail to start.
+- Docker, either through [Docker Desktop](https://docs.docker.com/desktop/) or [Sentry's development environment](https://develop.sentry.dev/development-infrastructure/environment/).
+  - If using Docker Desktop on macOS, enable `General > Use Rosetta for x86/amd64 emulation on Apple Silicon` if containers fail to start
 - `make`
 - (Optional) `codecovcli` (install with `pip install codecov-cli`)
+- (Optional) `direnv` (install with `brew install direnv`, run `direnv allow` in this directory)
+- (Optional) `gcloud` (install with `brew install --cask google-cloud-sdk`, run `gcloud auth login` and `gcloud auth configure-docker`)
+
+## Configuration
 
 ### `tools/devenv/config/codecov.yml`
-Codecov needs API keys and secrets to run, and we obviously aren't putting ours on GitHub. We expect you to put those secrets at `tools/devenv/config/codecov.yml`. This is sometimes called the "install yaml".
+`umbrella` needs a configuration file at `tools/devenv/config/codecov.yml` to run. This is sometimes called the "install yaml".
 
-If you work at Codecov/Sentry, you should have access to the "Codecov Engineering" 1Password vault; copy the contents of the "umbrella secrets" item to `tools/devenv/config/codecov.yml`.
+If you work here, you should have access to the "Codecov Engineering" 1Password vault; copy the contents of the "umbrella secrets" item to `tools/devenv/config/codecov.yml`. Otherwise, try copying [our example self-hosted configuration](https://github.com/codecov/self-hosted/blob/main/config/codecov.yml) or following our [self-hosted configuration guide](https://docs.codecov.com/docs/configuration).
 
-If you don't work here, try copying [our example self-hosted configuration](https://github.com/codecov/self-hosted/blob/main/config/codecov.yml) or following our [self-hosted configuration guide](https://docs.codecov.com/docs/configuration).
+### `.envrc.private`
 
-### Ready to go
+If you create `.envrc.private`, it will be loaded by this repository's `.envrc`. You can use this to customize your environment, override `Makefile` variables, or anything else you may want to do.
+
+If you work here, you can use `.envrc.private` to set the `AR_REPO_PREFIX` variable to our private registry and pull prebuilt images to save on build time:
+```
+export AR_REPO_PREFIX=<gcr host>/<gcp project>/codecov
+```
+This requires that you've run `gcloud auth login` and `gcloud auth configure-docker us-docker.pkg.dev`.
+
+## Ready to go
 From the repository root:
 ```
 # Build `umbrella` containers, pull other containers, start docker compose
@@ -60,7 +72,7 @@ Access your local instance of Codecov at http://localhost:8080.
 
 You can view logs with `docker compose logs api` / `docker compose logs worker` or in the Docker Desktop UI.
 
-### Running tests locally
+## Running tests locally
 
 ```
 # Runs worker tests and emits coverage and test result data in `apps/worker`
@@ -101,7 +113,7 @@ $ make devenv.upload.api
 $ make devenv.upload.shared
 ```
 
-### Extras
+## Extras
 - You can browse your local MinIO (archive service) at http://localhost:9001/ with the username `codecov-default-key` and password `codecov-default-secret`
 - You can browse your local Redis by pointing the [Redis CLI](https://redis.io/docs/latest/develop/tools/cli/) or [Redis Insight GUI](https://redis.io/insight/) at 127.0.0.1:6380
 - You can browse your local Postgres database with the connection string `postgres://postgres@localhost:5434/postgres` in your preferred database browser

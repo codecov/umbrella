@@ -16,6 +16,9 @@ export DOCKER_BUILDKIT=1
 export SHARED_SHA := $(shell git ls-files --recurse-submodules libs/shared | sort | xargs sha1sum | cut -d ' ' -f 1 | sha1sum | head -c 40)
 export DOCKER_REQS_SHA := $(shell sha1sum docker/Dockerfile.requirements | head -c 40)
 
+# This can be overridden with an environment variable to pull from a GCR registry.
+export AR_REPO_PREFIX ?= codecov
+
 # Generic target for building a requirements image. You probably want
 # `worker.build.requirements` or `api.build.requirements`.
 _build.requirements:
@@ -36,7 +39,7 @@ define api_rule_prefix
 .PHONY: $(1)
 $(1): export APP_DIR := apps/codecov-api
 $(1): export REQUIREMENTS_TAG := ${API_REQS_TAG}
-$(1): export AR_REPO ?= codecov/api
+$(1): export AR_REPO ?= ${AR_REPO_PREFIX}/api
 $(1): export DOCKERHUB_REPO ?= codecov/self-hosted-api
 $(1): export CI_REQS_REPO ?= codecov/api-ci-requirements
 endef
@@ -69,7 +72,7 @@ define worker_rule_prefix
 .PHONY: $(1)
 $(1): export APP_DIR := apps/worker
 $(1): export REQUIREMENTS_TAG := ${WORKER_REQS_TAG}
-$(1): export AR_REPO ?= codecov/worker
+$(1): export AR_REPO ?= ${AR_REPO_PREFIX}/worker
 $(1): export DOCKERHUB_REPO ?= codecov/self-hosted-worker
 $(1): export CI_REQS_REPO ?= codecov/worker-ci-requirements
 endef
