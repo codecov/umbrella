@@ -32,7 +32,7 @@ FLARE_USE_COUNTER = Counter(
     "graph_activity",
     "How are graphs and flare being used?",
     [
-        "position",
+        "flare_request",
     ],
 )
 FLARE_SUCCESS_COUNTER = Counter(
@@ -287,7 +287,7 @@ class GraphHandler(APIView, RepoPropertyMixin, GraphBadgeAPIMixin):
         graph = self.kwargs.get("graph")
 
         # a flare graph has been requested
-        inc_counter(FLARE_USE_COUNTER, labels={"position": 0})
+        inc_counter(FLARE_USE_COUNTER, labels={"flare_request": "received"})
         log.info(
             msg="flare graph activity",
             extra={"position": "start", "graph_type": graph, "kwargs": self.kwargs},
@@ -295,7 +295,9 @@ class GraphHandler(APIView, RepoPropertyMixin, GraphBadgeAPIMixin):
 
         flare = self.get_flare()
         # flare success, will generate and return graph
-        inc_counter(FLARE_USE_COUNTER, labels={"position": 20})
+        inc_counter(
+            FLARE_USE_COUNTER, labels={"flare_request": "completed_successfully"}
+        )
 
         if graph == "tree":
             options["width"] = int(
@@ -366,15 +368,12 @@ class GraphHandler(APIView, RepoPropertyMixin, GraphBadgeAPIMixin):
 
         if not pullid:
             # pullid not in kwargs, try to generate flare from commit
-            inc_counter(FLARE_USE_COUNTER, labels={"position": 12})
             return self.get_commit_flare()
         else:
             # pullid was included in the request
-            inc_counter(FLARE_USE_COUNTER, labels={"position": 1})
             pull_flare = self.get_pull_flare(pullid)
             if pull_flare is None:
-                # failed to get flare from pull OR commit - graph request failed
-                inc_counter(FLARE_USE_COUNTER, labels={"position": 15})
+                # failed to get or generate flare from pull OR commit - graph request failed
                 raise NotFound(
                     "Not found. Note: private repositories require ?token arguments"
                 )
@@ -385,59 +384,60 @@ class GraphHandler(APIView, RepoPropertyMixin, GraphBadgeAPIMixin):
 
         if commit is None:
             # could not find a commit - graph request failed
-            inc_counter(FLARE_USE_COUNTER, labels={"position": 13})
             raise NotFound(
                 "Not found. Note: private repositories require ?token arguments"
             )
 
         # will attempt to build a report from a commit
-        inc_counter(FLARE_USE_COUNTER, labels={"position": 10})
+        inc_counter(
+            FLARE_USE_COUNTER, labels={"flare_request": "generating_fresh_flare"}
+        )
         report = report_service.build_report_from_commit(commit)
 
         if report is None:
             # report generation failed
-            inc_counter(FLARE_USE_COUNTER, labels={"position": 14})
             raise NotFound("Not found. Note: file for chunks not found in storage")
 
         # report successfully generated
-        inc_counter(FLARE_USE_COUNTER, labels={"position": 11})
+        inc_counter(
+            FLARE_USE_COUNTER,
+            labels={"flare_request": "successfully_generated_fresh_flare"},
+        )
         return report.flare(None, [70, 100])
 
     def get_pull_flare(self, pullid):
         try:
             repo = self.repo
-            # repo was included
-            inc_counter(FLARE_USE_COUNTER, labels={"position": 2})
         except Http404:
             return None
         pull = Pull.objects.filter(pullid=pullid, repository_id=repo.repoid).first()
         if pull is not None:
             # pull found
-            inc_counter(FLARE_USE_COUNTER, labels={"position": 3})
             if pull._flare is not None or pull._flare_storage_path is not None:
                 # pull has flare
-                inc_counter(FLARE_USE_COUNTER, labels={"position": 4})
+                storage_location = "db" if pull._flare else "archive"
+                inc_counter(
+                    FLARE_USE_COUNTER,
+                    labels={"flare_request": f"using_flare_from_{storage_location}"},
+                )
                 return pull.flare
+
         # pull not found or pull does not have flare, try to generate flare
-        inc_counter(FLARE_USE_COUNTER, labels={"position": 5})
         return self.get_commit_flare()
 
     def get_commit(self):
         try:
             repo = self.repo
             # repo included in request
-            inc_counter(FLARE_USE_COUNTER, labels={"position": 6})
         except Http404:
             return None
         if repo.private and repo.image_token != self.request.query_params.get("token"):
             # failed auth
-            inc_counter(FLARE_USE_COUNTER, labels={"position": 7})
             return None
 
         commitid = self.kwargs.get("commit")
         if commitid:
             # commitid included on request
-            inc_counter(FLARE_USE_COUNTER, labels={"position": 8})
             commit = repo.commits.filter(commitid=commitid).first()
         else:
             branch_name = self.kwargs.get("branch") or repo.branch
@@ -446,11 +446,9 @@ class GraphHandler(APIView, RepoPropertyMixin, GraphBadgeAPIMixin):
             ).first()
             if branch is None:
                 # failed to get a commit
-                inc_counter(FLARE_USE_COUNTER, labels={"position": 16})
                 return None
 
             # found a commit by finding a branch
-            inc_counter(FLARE_USE_COUNTER, labels={"position": 9})
             commit = repo.commits.filter(commitid=branch.head).first()
 
         return commit
