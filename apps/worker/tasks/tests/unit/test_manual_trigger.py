@@ -1,9 +1,9 @@
 import pytest
 from celery.exceptions import Retry
-from shared.reports.enums import UploadState
 
 from database.tests.factories import CommitFactory, PullFactory
 from database.tests.factories.core import UploadFactory
+from shared.reports.enums import UploadState
 from tasks.manual_trigger import ManualTriggerTask
 
 
@@ -50,9 +50,11 @@ class TestUploadCompletionTask(object):
             "message": "All uploads are processed. Triggering notifications.",
         } == result
         mocked_app.tasks["app.tasks.notify.Notify"].apply_async.assert_called_with(
-            kwargs=dict(
-                commitid=commit.commitid, current_yaml=None, repoid=commit.repoid
-            )
+            kwargs={
+                "commitid": commit.commitid,
+                "current_yaml": None,
+                "repoid": commit.repoid,
+            }
         )
         mocked_app.tasks["app.tasks.pulls.Sync"].apply_async.assert_called_with(
             kwargs={

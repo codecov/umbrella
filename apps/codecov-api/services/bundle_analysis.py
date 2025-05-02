@@ -8,6 +8,13 @@ from typing import Any, Dict, Iterable, List, Optional, Union
 import sentry_sdk
 from asgiref.sync import sync_to_async
 from django.utils.functional import cached_property
+
+from core.models import Commit, Repository
+from graphql_api.actions.measurements import (
+    measurements_by_ids,
+    measurements_last_uploaded_before_start_date,
+)
+from reports.models import CommitReport
 from shared.bundle_analysis import AssetReport as SharedAssetReport
 from shared.bundle_analysis import (
     BundleAnalysisComparison as SharedBundleAnalysisComparison,
@@ -21,13 +28,6 @@ from shared.bundle_analysis.models import AssetType
 from shared.django_apps.bundle_analysis.service.bundle_analysis import (
     BundleAnalysisCacheConfigService,
 )
-
-from core.models import Commit, Repository
-from graphql_api.actions.measurements import (
-    measurements_by_ids,
-    measurements_last_uploaded_before_start_date,
-)
-from reports.models import CommitReport
 from timeseries.helpers import fill_sparse_measurements
 from timeseries.models import Interval, MeasurementName
 

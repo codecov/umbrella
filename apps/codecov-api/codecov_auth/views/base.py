@@ -14,14 +14,14 @@ from django.http.request import HttpRequest
 from django.http.response import HttpResponse
 from django.utils import timezone
 from django.utils.timezone import now
-from shared.encryption.token import encode_token
-from shared.events.amplitude import AmplitudeEventPublisher
-from shared.helpers.redis import get_redis_connection
-from shared.license import LICENSE_ERRORS_MESSAGES, get_current_license
 
 from codecov_auth.models import Owner, OwnerProfile, Session, User
 from services.analytics import AnalyticsService
 from services.refresh import RefreshService
+from shared.encryption.token import encode_token
+from shared.events.amplitude import AmplitudeEventPublisher
+from shared.helpers.redis import get_redis_connection
+from shared.license import LICENSE_ERRORS_MESSAGES, get_current_license
 from utils.config import get_config
 from utils.encryption import encryptor
 from utils.services import get_long_service_name, get_short_service_name
@@ -222,12 +222,12 @@ class LoginMixin(object):
                     owner.save()
                     log.info(
                         "User claimed owner",
-                        extra=dict(user_id=request.user.pk, ownerid=owner.ownerid),
+                        extra={"user_id": request.user.pk, "ownerid": owner.ownerid},
                     )
             elif request.user != owner.user:
                 log.warning(
                     "Owner already linked to another user",
-                    extra=dict(user_id=request.user.pk, ownerid=owner.ownerid),
+                    extra={"user_id": request.user.pk, "ownerid": owner.ownerid},
                 )
                 # TEMPORARY: We may want to handle this better in the future by indicating
                 # the issue to the user and letting them decide how to proceeed.  For now
@@ -254,7 +254,7 @@ class LoginMixin(object):
             login(request, current_user)
             log.info(
                 "User logged in",
-                extra=dict(user_id=request.user.pk, ownerid=owner.ownerid),
+                extra={"user_id": request.user.pk, "ownerid": owner.ownerid},
             )
 
         request.session["current_owner_id"] = owner.pk
@@ -266,7 +266,7 @@ class LoginMixin(object):
     def get_and_modify_owner(self, user_dict: dict, request: HttpRequest) -> Owner:
         user_orgs = user_dict["orgs"]
         formatted_orgs = [
-            dict(username=org["username"], id=str(org["id"])) for org in user_orgs
+            {"username": org["username"], "id": str(org["id"])} for org in user_orgs
         ]
 
         self._check_enterprise_organizations_membership(user_dict, formatted_orgs)
@@ -296,7 +296,7 @@ class LoginMixin(object):
         if owner.bot is not None:
             log.info(
                 "Clearing user bot field",
-                extra=dict(ownerid=owner.ownerid, old_bot=owner.bot),
+                extra={"ownerid": owner.ownerid, "old_bot": owner.bot},
             )
             owner.bot = None
             fields_to_update.append("bot")

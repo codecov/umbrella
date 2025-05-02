@@ -2,6 +2,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.test import TestCase
+
+from reports.tests.factories import UploadFactory, UploadFlagMembershipFactory
+from services.report import files_belonging_to_flags
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     CommitWithReportFactory,
@@ -11,9 +14,6 @@ from shared.reports.resources import Report, ReportFile
 from shared.reports.types import ReportLine
 from shared.storage.exceptions import FileNotInStorageError
 from shared.utils.sessions import Session
-
-from reports.tests.factories import UploadFactory, UploadFlagMembershipFactory
-from services.report import files_belonging_to_flags
 
 current_file = Path(__file__)
 

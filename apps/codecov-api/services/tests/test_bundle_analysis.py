@@ -1,15 +1,6 @@
 from unittest.mock import patch
 
 import pytest
-from shared.api_archive.archive import ArchiveService
-from shared.bundle_analysis import BundleAnalysisReport as SharedBundleAnalysisReport
-from shared.bundle_analysis import (
-    BundleAnalysisReportLoader,
-    BundleChange,
-    StoragePaths,
-)
-from shared.bundle_analysis.storage import get_bucket_name
-from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 
 from reports.models import CommitReport
 from reports.tests.factories import CommitReportFactory
@@ -20,6 +11,15 @@ from services.bundle_analysis import (
     BundleReport,
     load_report,
 )
+from shared.api_archive.archive import ArchiveService
+from shared.bundle_analysis import BundleAnalysisReport as SharedBundleAnalysisReport
+from shared.bundle_analysis import (
+    BundleAnalysisReportLoader,
+    BundleChange,
+    StoragePaths,
+)
+from shared.bundle_analysis.storage import get_bucket_name
+from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 
 
 @pytest.mark.django_db

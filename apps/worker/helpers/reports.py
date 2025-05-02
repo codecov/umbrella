@@ -1,7 +1,6 @@
+from services.yaml.reader import read_yaml_field
 from shared.config import get_config
 from shared.yaml import UserYaml
-
-from services.yaml.reader import read_yaml_field
 
 
 def get_totals_from_file_in_reports(report, path):

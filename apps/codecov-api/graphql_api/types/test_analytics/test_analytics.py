@@ -8,7 +8,6 @@ import polars as pl
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
 from graphql.type.definition import GraphQLResolveInfo
-from shared.django_apps.core.models import Repository
 
 from codecov.commands.exceptions import ValidationError
 from graphql_api.types.enums import (
@@ -25,6 +24,7 @@ from graphql_api.types.test_results_aggregates.test_results_aggregates import (
     TestResultsAggregates,
     generate_test_results_aggregates,
 )
+from shared.django_apps.core.models import Repository
 from utils.test_results import get_results
 
 log = logging.getLogger(__name__)

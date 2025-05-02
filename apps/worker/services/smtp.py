@@ -2,9 +2,8 @@ import logging
 import smtplib
 import ssl
 
-from shared.config import get_config
-
 from helpers.email import Email
+from shared.config import get_config
 
 log = logging.getLogger(__name__)
 
@@ -46,12 +45,12 @@ class SMTPService:
         except smtplib.SMTPNotSupportedError:
             log.warning(
                 "Server does not support TLS, continuing initialization of SMTP connection",
-                extra=dict(
-                    host=self.host,
-                    port=self.port,
-                    username=self.username,
-                    password=self.password,
-                ),
+                extra={
+                    "host": self.host,
+                    "port": self.port,
+                    "username": self.username,
+                    "password": self.password,
+                },
             )
         except smtplib.SMTPResponseException as exc:
             log.warning("Error doing STARTTLS command on SMTP", extra=self.extra_dict)
@@ -113,7 +112,7 @@ class SMTPService:
             )
             if len(errs) != 0:
                 err_msg = " ".join(
-                    list(map(lambda err_tuple: f"{err_tuple[0]} {err_tuple[1]}", errs))
+                    [f"{err_tuple[0]} {err_tuple[1]}" for err_tuple in errs]
                 )
                 log.warning(f"Error sending email message: {err_msg}")
                 raise SMTPServiceError(f"Error sending email message: {err_msg}")

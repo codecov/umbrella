@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 
 from django.test import TestCase
+
+from reports.tests.factories import CommitReportFactory, UploadFactory
 from shared.django_apps.codecov_auth.tests.factories import PlanFactory, TierFactory
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
@@ -10,8 +12,6 @@ from shared.django_apps.core.tests.factories import (
 from shared.django_apps.reports.models import ReportType
 from shared.plan.constants import PlanName, TierName, TrialStatus
 from shared.upload.utils import UploaderType, insert_coverage_measurement
-
-from reports.tests.factories import CommitReportFactory, UploadFactory
 
 from ..get_uploads_number_per_user import GetUploadsNumberPerUserInteractor
 

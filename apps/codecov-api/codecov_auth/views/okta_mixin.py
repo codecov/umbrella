@@ -99,13 +99,13 @@ class OktaLoginMixin(StateMixin):
     ) -> HttpResponse:
         state = self.generate_state()
         qs = urlencode(
-            dict(
-                response_type="code",
-                client_id=client_id,
-                scope="openid email profile",
-                redirect_uri=oauth_redirect_url,
-                state=state,
-            )
+            {
+                "response_type": "code",
+                "client_id": client_id,
+                "scope": "openid email profile",
+                "redirect_uri": oauth_redirect_url,
+                "state": state,
+            }
         )
         redirect_url = f"{iss}/oauth2/v1/authorize?{qs}"
         response = redirect(redirect_url)

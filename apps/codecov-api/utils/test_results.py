@@ -3,13 +3,13 @@ from datetime import date, timedelta
 
 import polars as pl
 from django.conf import settings
+
+from rollouts import READ_NEW_TA
+from services.task import TaskService
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Summary
 from shared.storage import get_appropriate_storage_service
 from shared.storage.exceptions import FileNotInStorageError
-
-from rollouts import READ_NEW_TA
-from services.task import TaskService
 
 get_results_summary = Summary(
     "test_results_get_results", "Time it takes to download results from GCS", ["impl"]

@@ -3,6 +3,9 @@ from unittest.mock import PropertyMock, patch
 from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
+
+import services.comparison as comparison
+from api.shared.commit.serializers import ReportTotalsSerializer
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -13,9 +16,6 @@ from shared.reports.api_report_service import SerializableReport
 from shared.reports.resources import ReportFile
 from shared.reports.types import ReportTotals
 from shared.utils.merge import LineType
-
-import services.comparison as comparison
-from api.shared.commit.serializers import ReportTotalsSerializer
 from utils.test_utils import Client
 
 

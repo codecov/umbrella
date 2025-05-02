@@ -1,7 +1,7 @@
 from django.urls import reverse
 from rest_framework.test import APIClient
-from shared.django_apps.core.tests.factories import RepositoryFactory
 
+from shared.django_apps.core.tests.factories import RepositoryFactory
 from upload.views.uploads import CanDoCoverageUploadsPermission
 
 

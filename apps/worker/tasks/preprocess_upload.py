@@ -2,8 +2,6 @@ import logging
 from typing import Optional
 
 from redis.exceptions import LockError
-from shared.helpers.redis import get_redis_connection
-from shared.torngit.base import TorngitBaseAdapter
 
 from app import celery_app
 from database.enums import CommitErrorTypes
@@ -17,6 +15,8 @@ from services.repository import (
     get_repo_provider_service,
     possibly_update_commit_from_provider_info,
 )
+from shared.helpers.redis import get_redis_connection
+from shared.torngit.base import TorngitBaseAdapter
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class PreProcessUpload(BaseCodecovTask, name="app.tasks.upload.PreProcessUpload"
     def run_impl(self, db_session, *, repoid: int, commitid: str, **kwargs):
         log.info(
             "Received preprocess upload task",
-            extra=dict(repoid=repoid, commit=commitid),
+            extra={"repoid": repoid, "commit": commitid},
         )
         lock_name = f"preprocess_upload_lock_{repoid}_{commitid}_{None}"
         redis_connection = get_redis_connection()
@@ -41,7 +41,7 @@ class PreProcessUpload(BaseCodecovTask, name="app.tasks.upload.PreProcessUpload"
         if redis_connection.get(lock_name):
             log.info(
                 "PreProcess task is already running",
-                extra=dict(commit=commitid, repoid=repoid),
+                extra={"commit": commitid, "repoid": repoid},
             )
             return {"preprocessed_upload": False, "reason": "already_running"}
         try:
@@ -58,12 +58,12 @@ class PreProcessUpload(BaseCodecovTask, name="app.tasks.upload.PreProcessUpload"
         except LockError:
             log.warning(
                 "Unable to acquire lock",
-                extra=dict(
-                    commit=commitid,
-                    repoid=repoid,
-                    number_retries=self.request.retries,
-                    lock_name=lock_name,
-                ),
+                extra={
+                    "commit": commitid,
+                    "repoid": repoid,
+                    "number_retries": self.request.retries,
+                    "lock_name": lock_name,
+                },
             )
             return {"preprocessed_upload": False, "reason": "unable_to_acquire_lock"}
 
@@ -81,7 +81,7 @@ class PreProcessUpload(BaseCodecovTask, name="app.tasks.upload.PreProcessUpload"
         if repository_service is None:
             log.warning(
                 "Failed to get repository_service",
-                extra=dict(commit=commitid, repo=repoid),
+                extra={"commit": commitid, "repo": repoid},
             )
             return {
                 "preprocessed_upload": False,
@@ -119,13 +119,14 @@ class PreProcessUpload(BaseCodecovTask, name="app.tasks.upload.PreProcessUpload"
             save_commit_error(
                 commit,
                 error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
-                error_params=dict(
-                    repoid=commit.repoid, repository_service=repository_service
-                ),
+                error_params={
+                    "repoid": commit.repoid,
+                    "repository_service": repository_service,
+                },
             )
             log.warning(
                 "Unable to reach git provider because repo doesn't have a valid bot",
-                extra=dict(repoid=commit.repoid, commit=commit.commitid),
+                extra={"repoid": commit.repoid, "commit": commit.commitid},
             )
 
         return repository_service

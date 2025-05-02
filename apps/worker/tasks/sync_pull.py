@@ -9,13 +9,6 @@ from typing import Any, Dict, List, Sequence
 import sqlalchemy.orm
 from asgiref.sync import async_to_sync
 from redis.exceptions import LockError
-from shared.celery_config import notify_task_name, pulls_task_name
-from shared.helpers.redis import get_redis_connection
-from shared.metrics import Counter, inc_counter
-from shared.reports.types import Change
-from shared.torngit.exceptions import TorngitClientError
-from shared.yaml import UserYaml
-from shared.yaml.user_yaml import OwnerContext
 
 from app import celery_app
 from database.models import Commit, Pull, Repository
@@ -32,6 +25,13 @@ from services.repository import (
 )
 from services.test_results import should_do_flaky_detection
 from services.yaml.reader import read_yaml_field
+from shared.celery_config import notify_task_name, pulls_task_name
+from shared.helpers.redis import get_redis_connection
+from shared.metrics import Counter, inc_counter
+from shared.reports.types import Change
+from shared.torngit.exceptions import TorngitClientError
+from shared.yaml import UserYaml
+from shared.yaml.user_yaml import OwnerContext
 from tasks.base import BaseCodecovTask
 from tasks.process_flakes import process_flakes_task_name
 
@@ -93,7 +93,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         except LockError:
             log.info(
                 "Unable to acquire PullSync lock. Not retrying because pull is being synced already",
-                extra=dict(pullid=pullid, repoid=repoid),
+                extra={"pullid": pullid, "repoid": repoid},
             )
             return {
                 "notifier_called": False,
@@ -115,7 +115,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         commit_updates_done = {"merged_count": 0, "soft_deleted_count": 0}
         repository = db_session.query(Repository).filter_by(repoid=repoid).first()
         assert repository
-        extra_info = dict(pullid=pullid, repoid=repoid)
+        extra_info = {"pullid": pullid, "repoid": repoid}
         try:
             installation_name_to_use = get_installation_name_for_owner_for_task(
                 self.name, repository.owner
@@ -198,7 +198,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         if head_commit is None:
             log.info(
                 "Not syncing pull since there is no head in our database",
-                extra=dict(pullid=pullid, repoid=repoid),
+                extra={"pullid": pullid, "repoid": repoid},
             )
             return {
                 "notifier_called": False,
@@ -233,7 +233,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         except TorngitClientError:
             log.warning(
                 "Unable to fetch information about pull commits",
-                extra=dict(pullid=pullid, repoid=repoid),
+                extra={"pullid": pullid, "repoid": repoid},
             )
         self.update_pull_from_reports(
             pull, repository_service, base_report, head_report, current_yaml
@@ -243,7 +243,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         if should_send_notifications:
             notifier_was_called = True
             self.app.tasks[notify_task_name].apply_async(
-                kwargs=dict(repoid=repoid, commitid=pull.head)
+                kwargs={"repoid": repoid, "commitid": pull.head}
             )
         self.clear_pull_related_caches(redis_connection, enriched_pull)
         return {
@@ -266,7 +266,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         if pull.repository.owner.ownerid in owners_with_cached_changes:
             log.info(
                 "Caching files with changes",
-                extra=dict(pullid=pull.pullid, repoid=pull.repoid),
+                extra={"pullid": pull.pullid, "repoid": pull.repoid},
             )
             redis = get_redis_connection()
             key = "/".join(
@@ -285,7 +285,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             )
             log.info(
                 "Finished caching files with changes",
-                extra=dict(pullid=pull.pullid, repoid=pull.repoid),
+                extra={"pullid": pull.pullid, "repoid": pull.repoid},
             )
 
     def update_pull_from_reports(
@@ -314,7 +314,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         except TorngitClientError:
             log.warning(
                 "Unable to fetch information about diff",
-                extra=dict(pullid=pull.pullid, repoid=pull.repoid),
+                extra={"pullid": pull.pullid, "repoid": pull.repoid},
             )
             return False
 
@@ -377,12 +377,12 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                 if not is_squash_merge:
                     log.info(
                         "Moving commits to base branch",
-                        extra=dict(
-                            commits_on_pr=commits_on_pr,
-                            repoid=repoid,
-                            pullid=pullid,
-                            new_branch=pull_dict["base"]["branch"],
-                        ),
+                        extra={
+                            "commits_on_pr": commits_on_pr,
+                            "repoid": repoid,
+                            "pullid": pullid,
+                            "new_branch": pull_dict["base"]["branch"],
+                        },
                     )
                     merged_count = (
                         db_session.query(Commit)
@@ -432,7 +432,11 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         merge_commit_sha = pull_dict.get("merge_commit_sha")
         log.info(
             "Sync Pull using merge commit sha experiment running",
-            extra=dict(repoid=repoid, pullid=pullid, merge_commit_sha=merge_commit_sha),
+            extra={
+                "repoid": repoid,
+                "pullid": pullid,
+                "merge_commit_sha": merge_commit_sha,
+            },
         )
 
         if merge_commit_sha is None:
@@ -471,20 +475,21 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             if el["commitid"] in commits_on_pr_set:
                 log.info(
                     "Commit currently on base tree was also on PR. Calling it a normal merge",
-                    extra=dict(
-                        commits_on_pr=commits_on_pr,
-                        commit_on_base=el["commitid"],
-                        base_head=base_ancestors_tree["commitid"],
-                    ),
+                    extra={
+                        "commits_on_pr": commits_on_pr,
+                        "commit_on_base": el["commitid"],
+                        "base_head": base_ancestors_tree["commitid"],
+                    },
                 )
                 return False
             for p in el.get("parents", []):
                 current_level.append(p)
         log.info(
             "Commits from PR not found on base tree. Calling it a squash merge",
-            extra=dict(
-                commits_on_pr=commits_on_pr, base_head=base_ancestors_tree["commitid"]
-            ),
+            extra={
+                "commits_on_pr": commits_on_pr,
+                "base_head": base_ancestors_tree["commitid"],
+            },
         )
         return True
 
@@ -510,20 +515,20 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         if regular_was_squash == experiment_was_squash:
             inc_counter(
                 SYNC_PULL_MERGE_COMMIT_SHA_COUNTER,
-                labels=dict(success="true"),
+                labels={"success": "true"},
             )
             log.info(
                 "Sync Pull merge commit sha experiment succeeded",
-                extra=dict(repoid=repoid, pullid=pullid),
+                extra={"repoid": repoid, "pullid": pullid},
             )
         else:
             inc_counter(
                 SYNC_PULL_MERGE_COMMIT_SHA_COUNTER,
-                labels=dict(success="false"),
+                labels={"success": "false"},
             )
             log.info(
                 "Sync Pull merge commit sha experiment failed",
-                extra=dict(repoid=repoid, pullid=pullid),
+                extra={"repoid": repoid, "pullid": pullid},
             )
 
         return regular_was_squash
@@ -539,7 +544,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             redis_client = get_redis_connection()
             redis_client.set(f"flake_uploads:{repository.repoid}", 0)
             self.app.tasks[process_flakes_task_name].apply_async(
-                kwargs=dict(repo_id=repository.repoid, commit_id=pull_head)
+                kwargs={"repo_id": repository.repoid, "commit_id": pull_head}
             )
 
     def trigger_ai_pr_review(self, enriched_pull: EnrichedPull, current_yaml: UserYaml):
@@ -559,16 +564,16 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             ):
                 log.info(
                     "Triggering AI PR review task",
-                    extra=dict(
-                        repoid=pull.repoid,
-                        pullid=pull.pullid,
-                        review_method=review_method,
-                        lbale_name=label_name,
-                        pull_labels=pull_labels,
-                    ),
+                    extra={
+                        "repoid": pull.repoid,
+                        "pullid": pull.pullid,
+                        "review_method": review_method,
+                        "lbale_name": label_name,
+                        "pull_labels": pull_labels,
+                    },
                 )
                 self.app.tasks["app.tasks.ai_pr_review.AiPrReview"].apply_async(
-                    kwargs=dict(repoid=pull.repoid, pullid=pull.pullid)
+                    kwargs={"repoid": pull.repoid, "pullid": pull.pullid}
                 )
 
 

@@ -1,15 +1,15 @@
 import logging
 
 from asgiref.sync import async_to_sync
-from shared.celery_config import status_set_error_task_name
-from shared.helpers.yaml import default_if_true
-from shared.utils.urls import make_url
 
 from app import celery_app
 from database.models import Commit
 from services.repository import get_repo_provider_service
 from services.yaml import get_current_yaml
 from services.yaml.reader import read_yaml_field
+from shared.celery_config import status_set_error_task_name
+from shared.helpers.yaml import default_if_true
+from shared.utils.urls import make_url
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class StatusSetErrorTask(BaseCodecovTask, name=status_set_error_task_name):
     def run_impl(self, db_session, repoid, commitid, *, message=None, **kwargs):
         log.info(
             "Set error",
-            extra=dict(repoid=repoid, commitid=commitid, description=message),
+            extra={"repoid": repoid, "commitid": commitid, "description": message},
         )
 
         # TODO: need to check for enterprise license once licences are implemented
@@ -65,9 +65,11 @@ class StatusSetErrorTask(BaseCodecovTask, name=status_set_error_task_name):
                             status_set = True
                             log.info(
                                 "Status set",
-                                extra=dict(
-                                    context=context, description=message, state=state
-                                ),
+                                extra={
+                                    "context": context,
+                                    "description": message,
+                                    "state": state,
+                                },
                             )
 
         return {"status_set": status_set}

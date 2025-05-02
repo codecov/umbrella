@@ -2,16 +2,16 @@ from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 from django_better_admin_arrayfield.admin.mixins import DynamicArrayMixin
-from shared.django_apps.rollouts.models import FeatureFlag, FeatureFlagVariant
 
 from codecov.forms import AutocompleteSearchForm
+from shared.django_apps.rollouts.models import FeatureFlag, FeatureFlagVariant
 
 
 class AdminMixin(object):
     def save_model(self, request, new_obj, form, change) -> None:
         if change:
             old_obj = self.model.objects.get(pk=new_obj.pk)
-            new_obj.changed_fields = dict()
+            new_obj.changed_fields = {}
 
             for changed_field in form.changed_data:
                 prev_value = getattr(old_obj, changed_field)

@@ -5,9 +5,9 @@ from unittest.mock import patch
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
-from shared.django_apps.core.tests.factories import OwnerFactory
 
 from codecov_auth.models import GithubAppInstallation
+from shared.django_apps.core.tests.factories import OwnerFactory
 
 PAYLOAD_SECRET = b"testixik8qdauiab1yiffydimvi72ekq"
 VIEW_URL = reverse("auth")

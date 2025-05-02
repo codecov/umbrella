@@ -1,13 +1,13 @@
 import pytest
 from asgiref.sync import sync_to_async
 from django.test import TestCase
+
+from codecov.commands.exceptions import Unauthenticated
+from codecov_auth.models import UserToken
 from shared.django_apps.codecov_auth.tests.factories import (
     OwnerFactory,
     UserTokenFactory,
 )
-
-from codecov.commands.exceptions import Unauthenticated
-from codecov_auth.models import UserToken
 
 from ..revoke_user_token import RevokeUserTokenInteractor
 

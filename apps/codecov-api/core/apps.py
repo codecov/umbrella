@@ -1,9 +1,9 @@
 import logging
 
 from django.apps import AppConfig
+
 from shared.helpers.cache import RedisBackend, cache
 from shared.helpers.redis import get_redis_connection
-
 from utils.config import RUN_ENV
 
 logger = logging.getLogger(__name__)

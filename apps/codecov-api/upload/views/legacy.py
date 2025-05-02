@@ -17,13 +17,13 @@ from rest_framework import renderers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
-from shared.api_archive.archive import ArchiveService
-from shared.helpers.redis import get_redis_connection
-from shared.metrics import inc_counter
 
 from codecov_auth.commands.owner import OwnerCommands
 from core.commands.repository import RepositoryCommands
 from services.analytics import AnalyticsService
+from shared.api_archive.archive import ArchiveService
+from shared.helpers.redis import get_redis_connection
+from shared.metrics import inc_counter
 from upload.helpers import (
     check_commit_upload_constraints,
     determine_repo_for_upload,
@@ -88,11 +88,11 @@ class UploadHandler(APIView, ShelterMixin):
 
         log.info(
             f"Received upload request {version}",
-            extra=dict(
-                version=version,
-                query_params=self.request.query_params,
-                commit=self.request.query_params.get("commit"),
-            ),
+            extra={
+                "version": version,
+                "query_params": self.request.query_params,
+                "commit": self.request.query_params.get("commit"),
+            },
         )
 
         # Set response headers
@@ -118,7 +118,7 @@ class UploadHandler(APIView, ShelterMixin):
             if not match:
                 log.warning(
                     "Package query parameter failed to match CLI or uploader format",
-                    extra=dict(package=package),
+                    extra={"package": package},
                 )
         try:
             # note: try to avoid mutating upload_params past this point, to make it easier to reason about the state of this variable
@@ -126,7 +126,7 @@ class UploadHandler(APIView, ShelterMixin):
         except ValidationError as e:
             log.warning(
                 "Failed to parse upload request params",
-                extra=dict(request_params=request_params, errors=str(e)),
+                extra={"request_params": request_params, "errors": str(e)},
             )
             response.status_code = status.HTTP_400_BAD_REQUEST
             response.content = "Invalid request parameters"
@@ -147,13 +147,13 @@ class UploadHandler(APIView, ShelterMixin):
 
         log.info(
             "Found repository for upload request",
-            extra=dict(
-                version=version,
-                upload_params=upload_params,
-                repo_name=repository.name,
-                owner_username=owner.username,
-                commit=upload_params.get("commit"),
-            ),
+            extra={
+                "version": version,
+                "upload_params": upload_params,
+                "repo_name": repository.name,
+                "owner_username": owner.username,
+                "commit": upload_params.get("commit"),
+            },
         )
 
         inc_counter(
@@ -173,7 +173,7 @@ class UploadHandler(APIView, ShelterMixin):
         redis = get_redis_connection()
         validate_upload(upload_params, repository, redis)
         log.info(
-            "Upload was determined to be valid", extra=dict(repoid=repository.repoid)
+            "Upload was determined to be valid", extra={"repoid": repository.repoid}
         )
         # Do some processing to handle special cases for branch, pr, and commit values, and determine which values to use
         # note that these values may be different from the values provided in the upload_params
@@ -184,13 +184,13 @@ class UploadHandler(APIView, ShelterMixin):
         # Save (or update, if it exists already) the commit in the database
         log.info(
             "Saving commit in database",
-            extra=dict(
-                commit=commitid,
-                pr=pr,
-                branch=branch,
-                version=version,
-                upload_params=upload_params,
-            ),
+            extra={
+                "commit": commitid,
+                "pr": pr,
+                "branch": branch,
+                "version": version,
+                "upload_params": upload_params,
+            },
         )
         commit = insert_commit(
             commitid, branch, pr, repository, owner, upload_params.get("parent")
@@ -216,13 +216,13 @@ class UploadHandler(APIView, ShelterMixin):
         if version == "v2":
             log.info(
                 "Started V2 upload",
-                extra=dict(
-                    commit=commitid,
-                    pr=pr,
-                    branch=branch,
-                    version=version,
-                    upload_params=upload_params,
-                ),
+                extra={
+                    "commit": commitid,
+                    "pr": pr,
+                    "branch": branch,
+                    "version": version,
+                    "upload_params": upload_params,
+                },
             )
 
             path = default_path
@@ -235,24 +235,24 @@ class UploadHandler(APIView, ShelterMixin):
 
             log.info(
                 "Stored coverage report",
-                extra=dict(
-                    commit=commitid,
-                    upload_params=upload_params,
-                    reportid=reportid,
-                    path=path,
-                    repoid=repository.repoid,
-                ),
+                extra={
+                    "commit": commitid,
+                    "upload_params": upload_params,
+                    "reportid": reportid,
+                    "path": path,
+                    "repoid": repository.repoid,
+                },
             )
 
             response.write(
                 dumps(
-                    dict(
-                        message="Coverage reports upload successfully",
-                        uploaded=True,
-                        queued=True,
-                        id=reportid,
-                        url=destination_url,
-                    )
+                    {
+                        "message": "Coverage reports upload successfully",
+                        "uploaded": True,
+                        "queued": True,
+                        "id": reportid,
+                        "url": destination_url,
+                    }
                 )
             )
 
@@ -261,13 +261,13 @@ class UploadHandler(APIView, ShelterMixin):
         if minio and version == "v4":
             log.info(
                 "Started V4 upload",
-                extra=dict(
-                    commit=commitid,
-                    pr=pr,
-                    branch=branch,
-                    version=version,
-                    upload_params=upload_params,
-                ),
+                extra={
+                    "commit": commitid,
+                    "pr": pr,
+                    "branch": branch,
+                    "version": version,
+                    "upload_params": upload_params,
+                },
             )
 
             parse_headers(request.META, upload_params)
@@ -286,20 +286,22 @@ class UploadHandler(APIView, ShelterMixin):
             except Exception as e:
                 log.warning(
                     f"Error generating minio presign put {e}",
-                    extra=dict(
-                        commit=commitid,
-                        pr=pr,
-                        branch=branch,
-                        version=version,
-                        upload_params=upload_params,
-                    ),
+                    extra={
+                        "commit": commitid,
+                        "pr": pr,
+                        "branch": branch,
+                        "version": version,
+                        "upload_params": upload_params,
+                    },
                 )
                 return HttpResponseServerError("Unknown error, please try again later")
             log.info(
                 "Returning presign put",
-                extra=dict(
-                    commit=commitid, repoid=repository.repoid, upload_url=upload_url
-                ),
+                extra={
+                    "commit": commitid,
+                    "repoid": repository.repoid,
+                    "upload_url": upload_url,
+                },
             )
             response["Content-Type"] = "text/plain"
             response.write(f"{destination_url}\n{upload_url}")
@@ -335,9 +337,11 @@ class UploadHandler(APIView, ShelterMixin):
 
         log.info(
             "Dispatching upload to worker (new upload)",
-            extra=dict(
-                commit=commitid, task_arguments=task_arguments, repoid=repository.repoid
-            ),
+            extra={
+                "commit": commitid,
+                "task_arguments": task_arguments,
+                "repoid": repository.repoid,
+            },
         )
 
         # Send task to worker

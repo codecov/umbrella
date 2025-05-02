@@ -8,16 +8,16 @@ from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.test import RequestFactory, TestCase, override_settings
 from freezegun import freeze_time
+
+from codecov_auth.models import DjangoSession, Owner, OwnerProfile, Session
+from codecov_auth.tests.factories import DjangoSessionFactory
+from codecov_auth.views.base import LoginMixin, StateMixin
 from shared.django_apps.codecov_auth.tests.factories import (
     OwnerFactory,
     SessionFactory,
     UserFactory,
 )
 from shared.license import LicenseInformation
-
-from codecov_auth.models import DjangoSession, Owner, OwnerProfile, Session
-from codecov_auth.tests.factories import DjangoSessionFactory
-from codecov_auth.views.base import LoginMixin, StateMixin
 
 
 def set_up_mixin(to=None):
@@ -332,10 +332,10 @@ class LoginMixinTests(TestCase):
     def test_get_and_modify_user_enterprise_raise_usernotinorganization_error(
         self, mock_get_config: Mock
     ):
-        user_dict = dict(
-            orgs=[],
-            is_student=False,
-        )
+        user_dict = {
+            "orgs": [],
+            "is_student": False,
+        }
         mock_get_config.return_value = ["awesome-team", "modest_mice"]
         with pytest.raises(PermissionDenied) as exp:
             user = self.mixin_instance.get_and_modify_owner(user_dict, self.request)
@@ -361,11 +361,11 @@ class LoginMixinTests(TestCase):
         self, mock_get_config: Mock
     ):
         mock_get_config.return_value = ["awesome-team", "modest_mice"]
-        user_dict = dict(
-            orgs=[dict(username="awesome-team", id=29)],
-            is_student=False,
-            user=dict(id=121),
-        )
+        user_dict = {
+            "orgs": [{"username": "awesome-team", "id": 29}],
+            "is_student": False,
+            "user": {"id": 121},
+        }
         # This time it should not raise an exception because the user is in one of the orgs
         user = self.mixin_instance.get_and_modify_owner(user_dict, self.request)
         self.mixin_instance.login_owner(user, self.request, HttpResponse())
@@ -386,7 +386,7 @@ class LoginMixinTests(TestCase):
     @patch("codecov_auth.views.base.get_config")
     @override_settings(IS_ENTERPRISE=False)
     def test_get_and_modify_user_passes_if_not_enterprise(self, mock_get_config: Mock):
-        user_dict = dict(orgs=[], is_student=False, user=dict(id=121))
+        user_dict = {"orgs": [], "is_student": False, "user": {"id": 121}}
         # This time it should not raise an exception because it's not in enterprise mode
         user = self.mixin_instance.get_and_modify_owner(user_dict, self.request)
         self.mixin_instance.login_owner(user, self.request, HttpResponse())
@@ -399,7 +399,7 @@ class LoginMixinTests(TestCase):
     def test_check_user_account_limitations_not_enterprise(
         self, mock_get_current_license: Mock
     ):
-        login_data = dict(id=121)
+        login_data = {"id": 121}
         license = LicenseInformation(
             is_valid=True,
             message=None,
@@ -420,7 +420,7 @@ class LoginMixinTests(TestCase):
     def test_check_user_account_limitations_enterprise_user_exists_not_pr_billing(
         self, mock_get_current_license: Mock, mock_owner_objects: Mock
     ):
-        login_data = dict(id=121)
+        login_data = {"id": 121}
         license = LicenseInformation(
             is_valid=True, message=None, number_allowed_users=2, is_pr_billing=False
         )
@@ -437,7 +437,7 @@ class LoginMixinTests(TestCase):
     def test_check_user_account_limitations_enterprise_user_new_not_pr_billing(
         self, mock_get_current_license: Mock
     ):
-        login_data = dict(id=121)
+        login_data = {"id": 121}
         license = LicenseInformation(
             is_valid=True, message=None, number_allowed_users=1, is_pr_billing=False
         )
@@ -492,13 +492,13 @@ class LoginMixinTests(TestCase):
             assert Owner.objects.exclude(plan_activated_users__len=0)[
                 0
             ].plan_activated_users == [1, 2, 3]
-            self.mixin_instance._check_user_count_limitations(dict(id=121))
+            self.mixin_instance._check_user_count_limitations({"id": 121})
             mock_get_current_license.assert_called()
         # If user exists, don't raise exception
         assert (
             Owner.objects.get(service="github", service_id="batata_frita").ownerid == 2
         )
-        self.mixin_instance._check_user_count_limitations(dict(id="batata_frita"))
+        self.mixin_instance._check_user_count_limitations({"id": "batata_frita"})
 
     @override_settings(IS_ENTERPRISE=True)
     @patch("services.refresh.RefreshService.trigger_refresh", lambda *args: None)
@@ -521,12 +521,12 @@ class LoginMixinTests(TestCase):
                 return False
 
         mock_get_config.side_effect = side_effect
-        user_dict = dict(
-            orgs=[dict(username="my-org", id=29)],
-            is_student=False,
-            user=dict(id=121, login="something"),
-            teams=[],
-        )
+        user_dict = {
+            "orgs": [{"username": "my-org", "id": 29}],
+            "is_student": False,
+            "user": {"id": 121, "login": "something"},
+            "teams": [],
+        }
         # Raise exception because user is not member of My Team
         with pytest.raises(PermissionDenied) as exp:
             user = self.mixin_instance.get_and_modify_owner(user_dict, self.request)
@@ -539,7 +539,7 @@ class LoginMixinTests(TestCase):
             )
             assert exp.status_code == 401
         # No exception if user is in My Team
-        user_dict["teams"] = [dict(name="My Team")]
+        user_dict["teams"] = [{"name": "My Team"}]
         user = self.mixin_instance.get_and_modify_owner(user_dict, self.request)
         self.mixin_instance.login_owner(user, self.request, HttpResponse())
         mock_get_config.assert_any_call("github", "organizations")
@@ -567,12 +567,12 @@ class LoginMixinTests(TestCase):
                 return False
 
         mock_get_config.side_effect = side_effect
-        user_dict = dict(
-            orgs=[dict(username="my-org", id=29)],
-            is_student=False,
-            user=dict(id=121, login="something"),
-            teams=[dict(name="My Team")],
-        )
+        user_dict = {
+            "orgs": [{"username": "my-org", "id": 29}],
+            "is_student": False,
+            "user": {"id": 121, "login": "something"},
+            "teams": [{"name": "My Team"}],
+        }
         # Don't raise exception if there's no team in the config
         user = self.mixin_instance.get_and_modify_owner(user_dict, self.request)
         self.mixin_instance.login_owner(user, self.request, HttpResponse())

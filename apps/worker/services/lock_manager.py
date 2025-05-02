@@ -6,9 +6,9 @@ from typing import Optional
 
 from redis import Redis
 from redis.exceptions import LockError
-from shared.helpers.redis import get_redis_connection
 
 from database.enums import ReportType
+from shared.helpers.redis import get_redis_connection
 
 log = logging.getLogger(__name__)
 
@@ -59,31 +59,31 @@ class LockManager:
         try:
             log.info(
                 "Acquiring lock",
-                extra=dict(
-                    repoid=self.repoid,
-                    commitid=self.commitid,
-                    lock_name=lock_name,
-                ),
+                extra={
+                    "repoid": self.repoid,
+                    "commitid": self.commitid,
+                    "lock_name": lock_name,
+                },
             )
             with self.redis_connection.lock(
                 lock_name, timeout=self.lock_timeout, blocking_timeout=5
             ):
                 log.info(
                     "Acquired lock",
-                    extra=dict(
-                        repoid=self.repoid,
-                        commitid=self.commitid,
-                        lock_name=lock_name,
-                    ),
+                    extra={
+                        "repoid": self.repoid,
+                        "commitid": self.commitid,
+                        "lock_name": lock_name,
+                    },
                 )
                 yield
                 log.info(
                     "Releasing lock",
-                    extra=dict(
-                        repoid=self.repoid,
-                        commitid=self.commitid,
-                        lock_name=lock_name,
-                    ),
+                    extra={
+                        "repoid": self.repoid,
+                        "commitid": self.commitid,
+                        "lock_name": lock_name,
+                    },
                 )
         except LockError:
             max_retry = 200 * 3**retry_num
@@ -91,12 +91,12 @@ class LockManager:
 
             log.warning(
                 "Unable to acquire lock",
-                extra=dict(
-                    repoid=self.repoid,
-                    commitid=self.commitid,
-                    lock_name=lock_name,
-                    countdown=countdown,
-                    retry_num=retry_num,
-                ),
+                extra={
+                    "repoid": self.repoid,
+                    "commitid": self.commitid,
+                    "lock_name": lock_name,
+                    "countdown": countdown,
+                    "retry_num": retry_num,
+                },
             )
             raise LockRetry(countdown)

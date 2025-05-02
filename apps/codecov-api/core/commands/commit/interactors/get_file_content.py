@@ -25,12 +25,12 @@ class GetFileContentInteractor(BaseInteractor):
         except Exception as e:
             log.warning(
                 "GetFileContentInteractor - exception raised",
-                extra=dict(
-                    commitid=commit.commitid,
-                    path=path,
-                    error_name=type(e).__name__,
-                    error_message=str(e),
-                ),
+                extra={
+                    "commitid": commit.commitid,
+                    "path": path,
+                    "error_name": type(e).__name__,
+                    "error_message": str(e),
+                },
             )
             return None
 

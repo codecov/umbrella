@@ -274,18 +274,18 @@ class Account(BaseModel):
             return
 
         organizations_in_account: list[Owner] = self.organizations.all()
-        all_owner_users_for_account: set[AutoField] = set(
+        all_owner_users_for_account: set[AutoField] = {
             ownerid
             for org in organizations_in_account
             for ownerid in org.plan_activated_users
-        )
+        }
         if owner_user.ownerid not in all_owner_users_for_account:
             self.users.remove(owner_user.user)
         else:
             log.info(
                 "User was not removed from account because they currently are "
                 "activated on another organization.",
-                extra=dict(owner_id=owner_user.ownerid, account_id=self.id),
+                extra={"owner_id": owner_user.ownerid, "account_id": self.id},
             )
         return
 
@@ -733,7 +733,7 @@ class GithubAppInstallation(
         if installation_default_app_id is None:
             log.error(
                 "Can't find default app ID in the YAML. Assuming installation is configured to prevent the app from breaking itself.",
-                extra=dict(installation_id=self.id, installation_name=self.name),
+                extra={"installation_id": self.id, "installation_name": self.name},
             )
             return True
         return str(self.app_id) == str(installation_default_app_id)

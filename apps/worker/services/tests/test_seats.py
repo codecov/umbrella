@@ -1,9 +1,9 @@
 import pytest
-from shared.plan.constants import PlanName
 
 from database.tests.factories import OwnerFactory, PullFactory
 from services.repository import EnrichedPull
 from services.seats import ShouldActivateSeat, determine_seat_activation
+from shared.plan.constants import PlanName
 from tests.helpers import mock_all_plans_and_tiers
 
 

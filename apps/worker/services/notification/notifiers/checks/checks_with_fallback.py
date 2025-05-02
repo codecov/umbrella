@@ -1,13 +1,12 @@
 import logging
 from typing import Optional
 
-from shared.torngit.exceptions import TorngitClientError
-
 from services.comparison import ComparisonProxy
 from services.notification.notifiers.base import (
     AbstractBaseNotifier,
     NotificationResult,
 )
+from shared.torngit.exceptions import TorngitClientError
 
 log = logging.getLogger(__name__)
 
@@ -71,13 +70,13 @@ class ChecksWithFallback(AbstractBaseNotifier):
             ):
                 log.info(
                     "Couldn't use checks notifier, falling back to status notifiers",
-                    extra=dict(
-                        notifier=self._checks_notifier.name,
-                        repoid=comparison.head.commit.repoid,
-                        notifier_title=self._checks_notifier.title,
-                        commit=comparison.head.commit,
-                        explanation=res.explanation,
-                    ),
+                    extra={
+                        "notifier": self._checks_notifier.name,
+                        "repoid": comparison.head.commit.repoid,
+                        "notifier_title": self._checks_notifier.title,
+                        "commit": comparison.head.commit,
+                        "explanation": res.explanation,
+                    },
                 )
                 res = self._status_notifier.notify(
                     comparison,
@@ -88,12 +87,12 @@ class ChecksWithFallback(AbstractBaseNotifier):
             if e.code == 403:
                 log.info(
                     "Checks notifier failed due to torngit error, falling back to status notifiers",
-                    extra=dict(
-                        notifier=self._checks_notifier.name,
-                        repoid=comparison.head.commit.repoid,
-                        notifier_title=self._checks_notifier.title,
-                        commit=comparison.head.commit,
-                    ),
+                    extra={
+                        "notifier": self._checks_notifier.name,
+                        "repoid": comparison.head.commit.repoid,
+                        "notifier_title": self._checks_notifier.title,
+                        "commit": comparison.head.commit,
+                    },
                 )
                 return self._status_notifier.notify(
                     comparison,

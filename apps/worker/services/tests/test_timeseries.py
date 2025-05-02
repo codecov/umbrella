@@ -2,12 +2,6 @@ from datetime import datetime, timezone
 
 import pytest
 from celery import group
-from shared.reports.readonly import ReadOnlyReport
-from shared.reports.reportfile import ReportFile
-from shared.reports.resources import Report
-from shared.reports.types import ReportLine
-from shared.utils.sessions import Session
-from shared.yaml import UserYaml
 
 from database.models.timeseries import Dataset, Measurement, MeasurementName
 from database.tests.factories import CommitFactory, RepositoryFactory
@@ -20,6 +14,12 @@ from services.timeseries import (
     repository_commits_query,
     repository_datasets_query,
 )
+from shared.reports.readonly import ReadOnlyReport
+from shared.reports.reportfile import ReportFile
+from shared.reports.resources import Report
+from shared.reports.types import ReportLine
+from shared.utils.sessions import Session
+from shared.yaml import UserYaml
 from tasks.save_commit_measurements import save_commit_measurements
 
 
@@ -1080,17 +1080,15 @@ class TestTimeseriesService(object):
         dbsession.flush()
         save_commit_measurements(other_commit, dataset_names=dataset_names)
 
-        flag_ids = set(
-            [
-                flag.measurable_id
-                for flag in (
-                    dbsession.query(Measurement).filter_by(
-                        repo_id=repository.repoid,
-                        name=MeasurementName.flag_coverage.value,
-                    )
+        flag_ids = {
+            flag.measurable_id
+            for flag in (
+                dbsession.query(Measurement).filter_by(
+                    repo_id=repository.repoid,
+                    name=MeasurementName.flag_coverage.value,
                 )
-            ]
-        )
+            )
+        }
 
         m = dbsession.query(Measurement).filter_by(repo_id=repository.repoid).all()
 

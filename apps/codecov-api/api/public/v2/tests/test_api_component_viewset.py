@@ -2,6 +2,8 @@ from unittest.mock import patch
 
 from django.test import TestCase
 from rest_framework.reverse import reverse
+
+from services.components import Component
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -10,8 +12,6 @@ from shared.django_apps.core.tests.factories import (
 from shared.reports.resources import Report, ReportFile
 from shared.reports.types import ReportLine
 from shared.utils.sessions import Session
-
-from services.components import Component
 from utils.test_utils import APIClient
 
 

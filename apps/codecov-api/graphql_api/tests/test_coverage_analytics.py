@@ -4,11 +4,6 @@ from typing import Any, Dict, Optional
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from freezegun import freeze_time
-from shared.django_apps.core.tests.factories import (
-    CommitFactory,
-    OwnerFactory,
-    RepositoryFactory,
-)
 
 from billing.helpers import mock_all_plans_and_tiers
 from core.models import Commit, Repository
@@ -18,6 +13,11 @@ from graphql_api.types.coverage_analytics.coverage_analytics import (
     resolve_coverage_analytics_result_type,
 )
 from graphql_api.types.errors.errors import NotFoundError
+from shared.django_apps.core.tests.factories import (
+    CommitFactory,
+    OwnerFactory,
+    RepositoryFactory,
+)
 
 
 class TestFetchCoverageAnalytics(GraphQLTestHelper, TestCase):

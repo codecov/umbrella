@@ -1,6 +1,5 @@
-from shared.torngit.exceptions import TorngitClientGeneralError
-
 from services.comparison import ComparisonProxy
+from shared.torngit.exceptions import TorngitClientGeneralError
 
 
 class TestGetBehindBy(object):

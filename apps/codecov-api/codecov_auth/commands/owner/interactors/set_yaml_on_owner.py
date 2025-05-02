@@ -3,10 +3,6 @@ from typing import Optional
 
 import yaml
 from asgiref.sync import sync_to_async
-from shared.django_apps.core.models import Repository
-from shared.django_apps.utils.model_utils import get_ownerid_if_member
-from shared.validation.exceptions import InvalidYamlException
-from shared.yaml.validation import validate_yaml
 
 from codecov.commands.base import BaseInteractor
 from codecov.commands.exceptions import (
@@ -18,6 +14,10 @@ from codecov.commands.exceptions import (
 from codecov_auth.constants import OWNER_YAML_TO_STRING_KEY
 from codecov_auth.helpers import current_user_part_of_org
 from codecov_auth.models import Owner
+from shared.django_apps.core.models import Repository
+from shared.django_apps.utils.model_utils import get_ownerid_if_member
+from shared.validation.exceptions import InvalidYamlException
+from shared.yaml.validation import validate_yaml
 
 
 class SetYamlOnOwnerInteractor(BaseInteractor):

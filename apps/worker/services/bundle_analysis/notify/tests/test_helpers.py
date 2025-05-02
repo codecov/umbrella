@@ -1,8 +1,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-from shared.validation.types import BundleThreshold
-from shared.yaml import UserYaml
 
 from database.models.core import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
@@ -18,6 +16,8 @@ from services.bundle_analysis.notify.helpers import (
     to_BundleThreshold,
 )
 from services.bundle_analysis.notify.types import NotificationType
+from shared.validation.types import BundleThreshold
+from shared.yaml import UserYaml
 
 
 @pytest.mark.parametrize(

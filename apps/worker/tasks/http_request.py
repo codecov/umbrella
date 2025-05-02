@@ -1,9 +1,9 @@
 import logging
 
 import httpx
-from shared.config import get_config
 
 from app import celery_app
+from shared.config import get_config
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -28,13 +28,13 @@ class HTTPRequestTask(BaseCodecovTask, name="app.tasks.http_request.HTTPRequest"
         if timeout is None:
             timeout = get_config("setup", "http", "timeouts", "external", default=10)
 
-        params = dict(
-            url=url,
-            method=method,
-            headers=headers,
-            data=data,
-            timeout=timeout,
-        )
+        params = {
+            "url": url,
+            "method": method,
+            "headers": headers,
+            "data": data,
+            "timeout": timeout,
+        }
 
         log.info("HTTP request", extra=params)
 

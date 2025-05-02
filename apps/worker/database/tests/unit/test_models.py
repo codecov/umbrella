@@ -2,8 +2,6 @@ import json
 from unittest.mock import PropertyMock
 
 from mock import MagicMock, patch
-from shared.plan.constants import DEFAULT_FREE_PLAN
-from shared.storage.exceptions import FileNotInStorageError
 from sqlalchemy.orm import Session
 
 from database.models import (
@@ -30,6 +28,8 @@ from database.tests.factories import (
     RepositoryFactory,
 )
 from database.tests.factories.core import UserFactory
+from shared.plan.constants import DEFAULT_FREE_PLAN
+from shared.storage.exceptions import FileNotInStorageError
 
 
 class TestReprModels(object):
@@ -420,9 +420,11 @@ class TestGithubAppInstallationModel(object):
         )
         assert owner.github_app_installations == [installation_obj]
         assert installation_obj.repository_queryset(dbsession).count() == 3
-        assert set(installation_obj.repository_queryset(dbsession).all()) == set(
-            [repo1, repo2, repo3]
-        )
+        assert set(installation_obj.repository_queryset(dbsession).all()) == {
+            repo1,
+            repo2,
+            repo3,
+        }
 
     def test_covers_some_repos(self, dbsession: Session):
         owner = OwnerFactory()

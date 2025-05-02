@@ -4,9 +4,6 @@ from unittest.mock import ANY
 import pytest
 from celery.exceptions import Retry
 from redis.exceptions import LockError
-from shared.celery_config import timeseries_save_commit_measurements_task_name
-from shared.torngit.exceptions import TorngitObjectNotFoundError
-from shared.yaml import UserYaml
 
 from database.models.reports import CommitReport
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
@@ -19,6 +16,9 @@ from helpers.log_context import LogContext, set_log_context
 from services.processing.merging import get_joined_flag, update_uploads
 from services.processing.types import MergeResult, ProcessingResult
 from services.timeseries import MeasurementName
+from shared.celery_config import timeseries_save_commit_measurements_task_name
+from shared.torngit.exceptions import TorngitObjectNotFoundError
+from shared.yaml import UserYaml
 from tasks.upload_finisher import (
     ReportService,
     ShouldCallNotifyResult,
@@ -123,7 +123,7 @@ def test_not_joined_flag(flag, joined):
 
 
 class TestUploadFinisherTask(object):
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_upload_finisher_task_call(
         self,
         mocker,
@@ -201,7 +201,7 @@ class TestUploadFinisherTask(object):
             },
         )
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_upload_finisher_task_call_no_author(
         self, mocker, mock_configuration, dbsession, mock_storage, mock_repo_provider
     ):
@@ -637,7 +637,7 @@ class TestUploadFinisherTask(object):
             }
         )
 
-    @pytest.mark.django_db()
+    @pytest.mark.django_db
     def test_retry_on_report_lock(self, dbsession, mock_redis):
         commit = CommitFactory.create()
         dbsession.add(commit)

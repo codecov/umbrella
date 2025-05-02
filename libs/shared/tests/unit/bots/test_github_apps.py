@@ -51,7 +51,7 @@ def _to_installation_info(
 
 
 class TestGetSpecificGithubAppDetails(object):
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_get_specific_github_app_details(self):
         owner = _get_owner_with_apps()
         assert get_specific_github_app_details(
@@ -71,7 +71,7 @@ class TestGetSpecificGithubAppDetails(object):
             pem_path="some_path",
         )
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_get_specific_github_app_not_found(self):
         owner = _get_owner_with_apps()
         with pytest.raises(RequestedGithubAppNotFound):
@@ -108,7 +108,7 @@ class TestGetSpecificGithubAppDetails(object):
             ),
         ],
     )
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_raise_NoAppsConfiguredAvailable_if_suspended_or_rate_limited(
         self, app, is_rate_limited, mocker
     ):
@@ -135,7 +135,7 @@ class TestGetSpecificGithubAppDetails(object):
 
 
 class TestGettingGitHubAppTokenSideEffect(object):
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_mark_installation_suspended_side_effect(self, mocker):
         owner = _get_owner_with_apps()
         installations: list[GithubAppInstallation] = (
@@ -147,9 +147,7 @@ class TestGettingGitHubAppTokenSideEffect(object):
             side_effect=InvalidInstallationError("installation_suspended"),
         )
 
-        assert all(
-            [installation.is_suspended == False for installation in installations]
-        )
+        assert all(installation.is_suspended == False for installation in installations)
 
         with pytest.raises(InvalidInstallationError):
             get_github_app_token(Service(owner.service), installation_info)
@@ -160,7 +158,7 @@ class TestGettingGitHubAppTokenSideEffect(object):
         assert installations[1].is_suspended is False
         assert not Owner.objects.filter(integration_id=None).exists()
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_mark_installation_not_found_side_effect(self, mocker):
         owner = _get_owner_with_apps()
         installations: list[GithubAppInstallation] = (
@@ -172,9 +170,7 @@ class TestGettingGitHubAppTokenSideEffect(object):
             side_effect=InvalidInstallationError("installation_not_found"),
         )
 
-        assert all(
-            [installation.is_suspended == False for installation in installations]
-        )
+        assert all(installation.is_suspended == False for installation in installations)
 
         with pytest.raises(InvalidInstallationError):
             get_github_app_token(Service(owner.service), installation_info)
@@ -185,7 +181,7 @@ class TestGettingGitHubAppTokenSideEffect(object):
         owner.refresh_from_db()
         assert list(owner.github_app_installations.all()) == [installations[1]]
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_mark_installation_suspended_legacy_path_side_effect(self, mocker):
         owner = _get_owner_with_apps()
         installations: list[GithubAppInstallation] = (
@@ -197,9 +193,7 @@ class TestGettingGitHubAppTokenSideEffect(object):
             side_effect=InvalidInstallationError("installation_not_found"),
         )
 
-        assert all(
-            [installation.is_suspended == False for installation in installations]
-        )
+        assert all(installation.is_suspended == False for installation in installations)
 
         with pytest.raises(InvalidInstallationError):
             get_github_app_token(Service(owner.service), installation_info)
@@ -210,7 +204,7 @@ class TestGettingGitHubAppTokenSideEffect(object):
         owner.refresh_from_db()
         assert list(Owner.objects.filter(integration_id=None).all()) == [owner]
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_mark_installation_suspended_side_effect_not_called(self, mocker):
         owner = _get_owner_with_apps()
         installations: list[GithubAppInstallation] = (
@@ -222,15 +216,11 @@ class TestGettingGitHubAppTokenSideEffect(object):
             side_effect=InvalidInstallationError("permission_error"),
         )
 
-        assert all(
-            [installation.is_suspended == False for installation in installations]
-        )
+        assert all(installation.is_suspended == False for installation in installations)
 
         with pytest.raises(InvalidInstallationError):
             get_github_app_token(Service(owner.service), installation_info)
 
         installations[0].refresh_from_db()
         installations[1].refresh_from_db()
-        assert all(
-            [installation.is_suspended == False for installation in installations]
-        )
+        assert all(installation.is_suspended == False for installation in installations)

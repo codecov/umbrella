@@ -9,26 +9,32 @@ from shared.torngit.exceptions import TorngitObjectNotFoundError
 @pytest.fixture
 def valid_handler():
     return Bitbucket(
-        repo=dict(name="example-python"),
-        owner=dict(
-            username="ThiagoCodecov", service_id="9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645"
-        ),
-        oauth_consumer_token=dict(
-            key="arubajamaicaohiwan", secret="natakeyoubermudabahamacomeonpret"
-        ),
-        token=dict(secret="testpnilpfmyehw45pa7rvtkvtm7bhcx", key="testss3hxhcfqf1h6g"),
+        repo={"name": "example-python"},
+        owner={
+            "username": "ThiagoCodecov",
+            "service_id": "9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645",
+        },
+        oauth_consumer_token={
+            "key": "arubajamaicaohiwan",
+            "secret": "natakeyoubermudabahamacomeonpret",
+        },
+        token={
+            "secret": "testpnilpfmyehw45pa7rvtkvtm7bhcx",
+            "key": "testss3hxhcfqf1h6g",
+        },
     )
 
 
 @pytest.fixture
 def valid_codecov_handler():
     return Bitbucket(
-        repo=dict(name="private"),
-        owner=dict(username="codecov"),
-        oauth_consumer_token=dict(
-            key="arubajamaicaohiwan", secret="natakeyoubermudabahamacomeonpret"
-        ),
-        token=dict(secret="KeyLargoMontegobabywhydontwego", key="waydowntokokomo"),
+        repo={"name": "private"},
+        owner={"username": "codecov"},
+        oauth_consumer_token={
+            "key": "arubajamaicaohiwan",
+            "secret": "natakeyoubermudabahamacomeonpret",
+        },
+        token={"secret": "KeyLargoMontegobabywhydontwego", "key": "waydowntokokomo"},
     )
 
 
@@ -260,25 +266,25 @@ class TestBitbucketTestCase(object):
 
     @pytest.mark.asyncio
     async def test_get_is_admin(self, valid_handler, codecov_vcr):
-        valid_handler.data = dict(
-            owner=dict(
-                username="ThiagoRRamosworkspace",
-                service_id="727d78e8-7431-4532-9519-1e5fe2b61d4b",
-            )
-        )
-        user = dict(service_id="9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645")
+        valid_handler.data = {
+            "owner": {
+                "username": "ThiagoRRamosworkspace",
+                "service_id": "727d78e8-7431-4532-9519-1e5fe2b61d4b",
+            }
+        }
+        user = {"service_id": "9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645"}
         res = await valid_handler.get_is_admin(user)
         assert res is True
 
     @pytest.mark.asyncio
     async def test_get_is_admin_not_admin(self, valid_handler, codecov_vcr):
-        valid_handler.data = dict(
-            owner=dict(
-                username="thiagorramostestnumbar3",
-                service_id="d7c73e87-90ab-450f-bb5f-39e6a5870456",
-            )
-        )
-        user = dict(service_id="9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645")
+        valid_handler.data = {
+            "owner": {
+                "username": "thiagorramostestnumbar3",
+                "service_id": "d7c73e87-90ab-450f-bb5f-39e6a5870456",
+            }
+        }
+        user = {"service_id": "9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645"}
         res = await valid_handler.get_is_admin(user)
         assert res is False
 
@@ -341,7 +347,7 @@ class TestBitbucketTestCase(object):
     @pytest.mark.asyncio
     async def test_get_branches(self, valid_handler, codecov_vcr):
         branches = sorted(await valid_handler.get_branches())
-        assert list(map(lambda a: a[0], branches)) == [
+        assert [a[0] for a in branches] == [
             "example",
             "f/new-branch",
             "future",
@@ -525,7 +531,7 @@ class TestBitbucketTestCase(object):
             "commits": [{"commitid": "b92edba"}, {"commitid": "6ae5f17"}],
         }
         res = await valid_handler.get_compare(base, head)
-        assert sorted(list(res.keys())) == sorted(list(expected_result.keys()))
+        assert sorted(res.keys()) == sorted(expected_result.keys())
         assert res == expected_result
 
     @pytest.mark.asyncio
@@ -536,7 +542,7 @@ class TestBitbucketTestCase(object):
             "commits": [{"commitid": "6ae5f17"}, {"commitid": "6ae5f17"}],
         }
         res = await valid_handler.get_compare(base, head)
-        assert sorted(list(res.keys())) == sorted(list(expected_result.keys()))
+        assert sorted(res.keys()) == sorted(expected_result.keys())
         assert res == expected_result
 
     @pytest.mark.asyncio

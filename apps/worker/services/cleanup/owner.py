@@ -2,11 +2,11 @@ import logging
 
 from django.db import transaction
 from django.db.models import Q
-from shared.django_apps.codecov_auth.models import Owner, OwnerProfile
-from shared.django_apps.core.models import Commit, Pull, Repository
 
 from services.cleanup.cleanup import run_cleanup
 from services.cleanup.utils import CleanupSummary
+from shared.django_apps.codecov_auth.models import Owner, OwnerProfile
+from shared.django_apps.core.models import Commit, Pull, Repository
 
 log = logging.getLogger(__name__)
 

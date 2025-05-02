@@ -22,12 +22,12 @@ class TokenlessAppveyorHandler(BaseTokenlessUploadHandler):
         except (ConnectionError, HTTPError) as e:
             log.warning(
                 f"HTTP error {e}",
-                extra=dict(
-                    commit=self.upload_params.get("commit"),
-                    repo_name=self.upload_params.get("repo"),
-                    job=self.upload_params.get("job"),
-                    owner=self.upload_params.get("owner"),
-                ),
+                extra={
+                    "commit": self.upload_params.get("commit"),
+                    "repo_name": self.upload_params.get("repo"),
+                    "job": self.upload_params.get("job"),
+                    "owner": self.upload_params.get("owner"),
+                },
             )
             raise NotFound(
                 "Unable to locate build via Appveyor API. Please upload with the Codecov repository upload token to resolve issue."

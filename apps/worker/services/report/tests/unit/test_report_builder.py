@@ -1,12 +1,12 @@
 import pytest
-from shared.reports.reportfile import ReportFile
-from shared.reports.types import CoverageDatapoint, LineSession, ReportLine
 
 from services.report.report_builder import (
     CoverageType,
     ReportBuilder,
     SpecialLabelsEnum,
 )
+from shared.reports.reportfile import ReportFile
+from shared.reports.types import CoverageDatapoint, LineSession, ReportLine
 
 
 def test_report_builder_generate_session(mocker):

@@ -8,12 +8,6 @@ from django.test import TestCase, override_settings
 from django.urls import ResolverMatch
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework.test import APIRequestFactory
-from shared.django_apps.codecov_auth.tests.factories import (
-    OwnerFactory,
-    UserFactory,
-    UserTokenFactory,
-)
-from shared.django_apps.core.tests.factories import RepositoryFactory
 
 from codecov_auth.authentication import (
     InternalTokenAuthentication,
@@ -26,6 +20,12 @@ from codecov_auth.authentication.types import (
     SuperToken,
     SuperUser,
 )
+from shared.django_apps.codecov_auth.tests.factories import (
+    OwnerFactory,
+    UserFactory,
+    UserTokenFactory,
+)
+from shared.django_apps.core.tests.factories import RepositoryFactory
 
 # Using the standard RequestFactory API to create a form POST request
 

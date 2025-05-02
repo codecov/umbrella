@@ -10,19 +10,9 @@ import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery import chain, chord
 from django.conf import settings
-from django.db import transaction as django_transaction
 from django.utils import timezone
 from redis import Redis
 from redis.exceptions import LockError
-from shared.celery_config import upload_task_name
-from shared.config import get_config
-from shared.django_apps.user_measurements.models import UserMeasurement
-from shared.helpers.redis import get_redis_connection
-from shared.metrics import Histogram
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
-from shared.upload.utils import UploaderType, bulk_insert_coverage_measurements
-from shared.yaml import UserYaml
-from shared.yaml.user_yaml import OwnerContext
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -47,6 +37,15 @@ from services.repository import (
     possibly_update_commit_from_provider_info,
 )
 from services.test_results import TestResultsReportService
+from shared.celery_config import upload_task_name
+from shared.config import get_config
+from shared.django_apps.user_measurements.models import UserMeasurement
+from shared.helpers.redis import get_redis_connection
+from shared.metrics import Histogram
+from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.upload.utils import UploaderType, bulk_insert_coverage_measurements
+from shared.yaml import UserYaml
+from shared.yaml.user_yaml import OwnerContext
 from tasks.base import BaseCodecovTask
 from tasks.bundle_analysis_notify import bundle_analysis_notify_task
 from tasks.bundle_analysis_processor import bundle_analysis_processor_task
@@ -320,7 +319,11 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             log.warning(
                 "Unable to acquire lock for key %s.",
                 lock_name,
-                extra=dict(commit=commitid, repoid=repoid, report_type=report_type),
+                extra={
+                    "commit": commitid,
+                    "repoid": repoid,
+                    "report_type": report_type,
+                },
             )
             if not upload_context.has_pending_jobs():
                 log.info(
@@ -371,9 +374,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             try:
                 UploadFlow.log(UploadFlow.PROCESSING_BEGIN)
             except ValueError as e:
-                log.warning(
-                    "CheckpointLogger failed to log/submit", extra=dict(error=e)
-                )
+                log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
 
         commit = (
             db_session.query(Commit)
@@ -523,7 +524,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
         # Bulk insert coverage measurements
         if measurements := create_upload_res["measurements_list"]:
-            self._bulk_insert_coverage_measurements(measurements=measurements)
+            bulk_insert_coverage_measurements(measurements=measurements)
 
         return create_upload_res["argument_list"]
 
@@ -637,10 +638,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         """
         flags = db_session.query(RepositoryFlag).filter_by(repository_id=repoid).all()
         return {flag.flag_name: flag for flag in flags} if flags else {}
-
-    def _bulk_insert_coverage_measurements(self, measurements: list[UserMeasurement]):
-        bulk_insert_coverage_measurements(measurements=measurements)
-        django_transaction.commit()
 
     def schedule_task(
         self,
@@ -855,11 +852,11 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         if should_post_webhook or needs_webhook_secret_backfill:
             log.info(
                 "Setting or editing webhook",
-                extra=dict(
-                    repoid=repository.repoid,
-                    commit=commit.commitid,
-                    action="SET" if should_post_webhook else "EDIT",
-                ),
+                extra={
+                    "repoid": repository.repoid,
+                    "commit": commit.commitid,
+                    "action": "SET" if should_post_webhook else "EDIT",
+                },
             )
             try:
                 if repository_service.service in ["gitlab", "gitlab_enterprise"]:
@@ -876,12 +873,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     hookid = hook_result["id"]
                     log.info(
                         "Registered hook",
-                        extra=dict(
-                            repoid=commit.repoid,
-                            commit=commit.commitid,
-                            hookid=hookid,
-                            action="SET",
-                        ),
+                        extra={
+                            "repoid": commit.repoid,
+                            "commit": commit.commitid,
+                            "hookid": hookid,
+                            "action": "SET",
+                        },
                     )
                     repository.hookid = hookid
                     repo_data["repo"]["hookid"] = hookid
@@ -896,23 +893,23 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     repository.webhook_secret = webhook_secret
                     log.info(
                         "Updated hook",
-                        extra=dict(
-                            repository_service=repository_service.service,
-                            repoid=repository.repoid,
-                            commit=commit.commitid,
-                            hookid=repository.hookid,
-                            action="EDIT",
-                        ),
+                        extra={
+                            "repository_service": repository_service.service,
+                            "repoid": repository.repoid,
+                            "commit": commit.commitid,
+                            "hookid": repository.hookid,
+                            "action": "EDIT",
+                        },
                     )
                     return False  # was_setup
             except TorngitClientError:
                 log.warning(
                     "Failed to create or update project webhook",
-                    extra=dict(
-                        repoid=repository.repoid,
-                        commit=commit.commitid,
-                        action="SET" if should_post_webhook else "EDIT",
-                    ),
+                    extra={
+                        "repoid": repository.repoid,
+                        "commit": commit.commitid,
+                        "action": "SET" if should_post_webhook else "EDIT",
+                    },
                     exc_info=True,
                 )
         return False

@@ -1,13 +1,13 @@
 import logging
 from typing import Optional
 
-from shared.celery_config import timeseries_delete_task_name
-from shared.timeseries.helpers import is_timeseries_enabled
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
 from database.models import Repository
 from services.timeseries import delete_repository_data, delete_repository_measurements
+from shared.celery_config import timeseries_delete_task_name
+from shared.timeseries.helpers import is_timeseries_enabled
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

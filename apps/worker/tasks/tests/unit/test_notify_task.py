@@ -7,20 +7,6 @@ import pytest
 import respx
 from celery.exceptions import MaxRetriesExceededError, Retry
 from freezegun import freeze_time
-from shared.celery_config import (
-    activate_account_user_task_name,
-    new_user_activated_task_name,
-)
-from shared.reports.resources import Report
-from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import (
-    TorngitClientGeneralError,
-    TorngitServer5xxCodeError,
-)
-from shared.torngit.gitlab import Gitlab
-from shared.typings.oauth_token_types import Token
-from shared.typings.torngit import GithubInstallationInfo, TorngitInstanceData
-from shared.yaml import UserYaml
 
 from database.enums import Decoration, Notification, NotificationState
 from database.models.core import CommitNotification, GithubAppInstallation
@@ -45,6 +31,20 @@ from services.notification.notifiers.base import (
 )
 from services.report import ReportService
 from services.repository import EnrichedPull
+from shared.celery_config import (
+    activate_account_user_task_name,
+    new_user_activated_task_name,
+)
+from shared.reports.resources import Report
+from shared.torngit.base import TorngitBaseAdapter
+from shared.torngit.exceptions import (
+    TorngitClientGeneralError,
+    TorngitServer5xxCodeError,
+)
+from shared.torngit.gitlab import Gitlab
+from shared.typings.oauth_token_types import Token
+from shared.typings.torngit import GithubInstallationInfo, TorngitInstanceData
+from shared.yaml import UserYaml
 from tasks.notify import (
     NotifyTask,
     _possibly_pin_commit_to_github_app,
@@ -214,7 +214,7 @@ class TestNotifyTaskHelpers(object):
         )
         assert not mock_schedule_new_user_activated_task.called
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_determine_decoration_type_from_pull_attempt_activation(
         self, dbsession, mocker, enriched_pull, with_sql_functions
     ):
@@ -257,10 +257,10 @@ class TestNotifyTaskHelpers(object):
         assert new_user_activation_call == call(
             new_user_activated_task_name,
             args=None,
-            kwargs=dict(
-                org_ownerid=enriched_pull.database_pull.repository.owner.ownerid,
-                user_ownerid=pr_author.ownerid,
-            ),
+            kwargs={
+                "org_ownerid": enriched_pull.database_pull.repository.owner.ownerid,
+                "user_ownerid": pr_author.ownerid,
+            },
         )
         assert account_user_activation_call[0] == (
             activate_account_user_task_name,
@@ -831,9 +831,11 @@ class TestNotifyTask(object):
         assert not res
         set_error_task_caller.apply_async.assert_called_with(
             args=None,
-            kwargs=dict(
-                repoid=commit.repoid, commitid=commit.commitid, message="CI failed."
-            ),
+            kwargs={
+                "repoid": commit.repoid,
+                "commitid": commit.commitid,
+                "message": "CI failed.",
+            },
         )
 
     def test_should_send_notifications_after_n_builds(self, dbsession, mocker):

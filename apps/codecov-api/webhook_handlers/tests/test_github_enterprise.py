@@ -9,6 +9,9 @@ from freezegun import freeze_time
 from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
+
+from billing.helpers import mock_all_plans_and_tiers
+from codecov_auth.models import GithubAppInstallation, Owner, Service
 from shared.django_apps.core.tests.factories import (
     BranchFactory,
     CommitFactory,
@@ -17,9 +20,6 @@ from shared.django_apps.core.tests.factories import (
     RepositoryFactory,
 )
 from shared.plan.constants import PlanName
-
-from billing.helpers import mock_all_plans_and_tiers
-from codecov_auth.models import GithubAppInstallation, Owner, Service
 from utils.config import get_config
 from webhook_handlers.constants import (
     GitHubHTTPHeaders,
@@ -893,14 +893,14 @@ class GithubEnterpriseWebhookHandlerTests(APITestCase):
         # Because we throw these into a set we need to order them here
         # In practive it doesn't matter, but for the test it does.
         kwargs["repos_affected"].sort()
-        assert kwargs == dict(
-            ownerid=owner.ownerid,
-            username=owner.username,
-            sync_teams=False,
-            sync_repos=True,
-            using_integration=True,
-            repos_affected=[("12321", "R_12321CAT"), ("12343", "R_12343DOG")],
-        )
+        assert kwargs == {
+            "ownerid": owner.ownerid,
+            "username": owner.username,
+            "sync_teams": False,
+            "sync_repos": True,
+            "using_integration": True,
+            "repos_affected": [("12321", "R_12321CAT"), ("12343", "R_12343DOG")],
+        }
 
     @patch("services.task.TaskService.refresh")
     def test_organization_with_removed_action_removes_user_from_org_and_activated_user_list(

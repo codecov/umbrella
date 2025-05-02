@@ -1,40 +1,40 @@
-from typing import List
-
+from services.yaml import read_yaml_field
 from shared.config import get_config
 
-from services.yaml import read_yaml_field
 
-
-def _ci_providers() -> List[str]:
+def _ci_providers() -> list[str]:
     providers = get_config("services", "ci_providers")
     if not providers:
         return []
     elif isinstance(providers, list):
         return providers
     else:
-        return map(lambda p: p.strip(), providers.split(","))
+        return [p.strip() for p in providers.split(",")]
 
 
 ENTERPRISE_DEFAULTS = set(filter(None, _ci_providers()))
 
-CI_CONTEXTS = set(
-    (
-        "ci",
-        "Codefresh",
-        "wercker",
-        "semaphoreci",
-        "pull request validator (cloudbees)",
-        "Taskcluster (pull_request)",
-        "continuous-integration",
-        "buildkite",
-    )
-)
+CI_CONTEXTS = {
+    "ci",
+    "Codefresh",
+    "wercker",
+    "semaphoreci",
+    "pull request validator (cloudbees)",
+    "Taskcluster (pull_request)",
+    "continuous-integration",
+    "buildkite",
+}
 
-CI_DOMAINS = set(
-    ("jenkins", "codefresh", "bitbucket", "teamcity", "buildkite", "taskcluster")
-)
+CI_DOMAINS = {
+    "jenkins",
+    "codefresh",
+    "bitbucket",
+    "teamcity",
+    "buildkite",
+    "taskcluster",
+}
 
-CI_EXCLUDE = set(("styleci",))
+CI_EXCLUDE = {"styleci"}
 
 
 class RepositoryCIFilter(object):
@@ -42,12 +42,9 @@ class RepositoryCIFilter(object):
         ci = read_yaml_field(commit_yaml, ("codecov", "ci")) or []
         ci = set(ci) | ENTERPRISE_DEFAULTS
         self.exclude = (
-            set(map(lambda a: a[1:], filter(lambda ci: ci[0] == "!", ci)) if ci else [])
-            | CI_EXCLUDE
+            set((c[1:] for c in ci if c[0] == "!") if ci else []) | CI_EXCLUDE
         )
-        self.include = (
-            set(filter(lambda ci: ci[0] != "!", ci) if ci else []) | CI_DOMAINS
-        )
+        self.include = set((c for c in ci if c[0] != "!") if ci else []) | CI_DOMAINS
 
     def __call__(self, status) -> bool:
         return self._filter(status)

@@ -3,15 +3,15 @@ from django.conf import settings
 from django.contrib import auth
 from django.test import override_settings
 from django.urls import reverse
+
+from codecov_auth.models import OktaUser
+from codecov_auth.views.okta import OKTA_BASIC_AUTH
+from codecov_auth.views.okta_mixin import OktaIdTokenPayload
 from shared.django_apps.codecov_auth.tests.factories import (
     OktaUserFactory,
     OwnerFactory,
     UserFactory,
 )
-
-from codecov_auth.models import OktaUser
-from codecov_auth.views.okta import OKTA_BASIC_AUTH
-from codecov_auth.views.okta_mixin import OktaIdTokenPayload
 
 
 @pytest.fixture

@@ -3,12 +3,6 @@ from typing import Literal
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from shared.celery_config import cache_test_rollups_task_name, process_flakes_task_name
-from shared.django_apps.reports.models import ReportSession, UploadError
-from shared.helpers.redis import get_redis_connection
-from shared.reports.types import UploadType
-from shared.typings.torngit import AdditionalData
-from shared.yaml import UserYaml
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -40,6 +34,12 @@ from services.test_results import (
     TestResultsNotifier,
     should_do_flaky_detection,
 )
+from shared.celery_config import cache_test_rollups_task_name, process_flakes_task_name
+from shared.django_apps.reports.models import ReportSession, UploadError
+from shared.helpers.redis import get_redis_connection
+from shared.reports.types import UploadType
+from shared.typings.torngit import AdditionalData
+from shared.yaml import UserYaml
 
 log = logging.getLogger(__name__)
 
@@ -224,7 +224,7 @@ def new_impl(
 
     notif_failures = transform_failures(upload_ids, failures)
 
-    flaky_tests = dict()
+    flaky_tests = {}
 
     # flake detection if appropriate
     if should_do_flaky_detection(repo, commit_yaml):

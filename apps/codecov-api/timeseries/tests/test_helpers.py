@@ -6,6 +6,7 @@ from django.conf import settings
 from django.test import TestCase
 from freezegun import freeze_time
 from freezegun.api import FakeDatetime
+
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -18,7 +19,6 @@ from shared.django_apps.timeseries.tests.factories import (
 from shared.reports.resources import Report, ReportFile
 from shared.reports.types import ReportLine
 from shared.utils.sessions import Session
-
 from timeseries.helpers import (
     coverage_measurements,
     fill_sparse_measurements,

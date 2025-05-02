@@ -6,9 +6,9 @@ from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.httpx import HttpxIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-from shared.config import get_config
 
 from helpers.version import get_current_version
+from shared.config import get_config
 
 
 def is_sentry_enabled() -> bool:
@@ -21,11 +21,11 @@ def initialize_sentry() -> None:
     sentry_dsn = get_config("services", "sentry", "server_dsn")
     sentry_sdk.init(
         sentry_dsn,
-        sample_rate=float(os.getenv("SENTRY_PERCENTAGE", 1.0)),
+        sample_rate=float(os.getenv("SENTRY_PERCENTAGE", "1.0")),
         environment=os.getenv("DD_ENV", "production"),
-        traces_sample_rate=float(os.environ.get("SERVICES__SENTRY__SAMPLE_RATE", 1)),
+        traces_sample_rate=float(os.environ.get("SERVICES__SENTRY__SAMPLE_RATE", "1")),
         profiles_sample_rate=float(
-            os.environ.get("SERVICES__SENTRY__PROFILES_SAMPLE_RATE", 1)
+            os.environ.get("SERVICES__SENTRY__PROFILES_SAMPLE_RATE", "1")
         ),
         integrations=[
             CeleryIntegration(monitor_beat_tasks=True),

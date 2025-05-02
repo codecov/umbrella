@@ -46,12 +46,12 @@ def route_tasks_based_on_user_plan(task_name: str, user_plan: str):
     """
     route = MapRoute(BaseCeleryConfig.task_routes)
     default_task_queue = (
-        route(task_name) or dict(queue=BaseCeleryConfig.task_default_queue)
+        route(task_name) or {"queue": BaseCeleryConfig.task_default_queue}
     )["queue"]
     plan = Plan.objects.get(name=user_plan)
     if plan.is_enterprise_plan:
         default_enterprise_queue_specific_config = get_config(
-            "setup", "tasks", "celery", "enterprise", default=dict()
+            "setup", "tasks", "celery", "enterprise", default={}
         )
         this_queue_specific_config = get_config(
             "setup",

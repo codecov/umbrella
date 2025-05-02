@@ -2,10 +2,10 @@ from typing import List, Optional
 
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
-from shared.plan.service import PlanService
 
 from codecov_auth.models import Plan
 from graphql_api.helpers.ariadne import ariadne_load_local_graphql
+from shared.plan.service import PlanService
 
 plan_representation = ariadne_load_local_graphql(
     __file__, "plan_representation.graphql"

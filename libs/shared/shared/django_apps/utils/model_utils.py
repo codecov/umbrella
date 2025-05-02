@@ -100,11 +100,11 @@ class ArchiveField:
             except FileNotInStorageError:
                 log.error(
                     "Archive enabled field not in storage",
-                    extra=dict(
-                        storage_path=archive_field,
-                        object_id=obj.id,
-                        commit=obj.get_commitid(),
-                    ),
+                    extra={
+                        "storage_path": archive_field,
+                        "object_id": obj.id,
+                        "commit": obj.get_commitid(),
+                    },
                 )
 
         # then the DB field, possibly loaded on-demand
@@ -115,7 +115,7 @@ class ArchiveField:
         if value is None:
             log.debug(
                 "Both db_field and archive_field are None",
-                extra=dict(object_id=obj.id, commit=obj.get_commitid()),
+                extra={"object_id": obj.id, "commit": obj.get_commitid()},
             )
             value = self.default_value_class()
 

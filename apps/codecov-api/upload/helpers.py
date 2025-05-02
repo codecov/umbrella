@@ -15,14 +15,6 @@ from django.utils import timezone
 from jwt import PyJWKClient, PyJWTError
 from redis import Redis
 from rest_framework.exceptions import NotFound, Throttled, ValidationError
-from shared.github import InvalidInstallationError, get_github_integration_token
-from shared.helpers.redis import get_redis_connection
-from shared.plan.service import PlanService
-from shared.reports.enums import UploadType
-from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError, TorngitObjectNotFoundError
-from shared.typings.oauth_token_types import OauthConsumerToken
-from shared.upload.utils import query_monthly_coverage_measurements
 
 from codecov_auth.models import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
@@ -37,6 +29,14 @@ from reports.models import CommitReport, ReportSession
 from services.analytics import AnalyticsService
 from services.repo_providers import RepoProviderService
 from services.task import TaskService
+from shared.github import InvalidInstallationError, get_github_integration_token
+from shared.helpers.redis import get_redis_connection
+from shared.plan.service import PlanService
+from shared.reports.enums import UploadType
+from shared.torngit.base import TorngitBaseAdapter
+from shared.torngit.exceptions import TorngitClientError, TorngitObjectNotFoundError
+from shared.typings.oauth_token_types import OauthConsumerToken
+from shared.upload.utils import query_monthly_coverage_measurements
 from upload.tokenless.tokenless import TokenlessUploadHandler
 from utils import is_uuid
 from utils.config import get_config
@@ -389,21 +389,21 @@ def try_to_get_best_possible_bot_token(
                 repository.author.service,
                 integration_id=ghapp_installation_id,
             )
-            return dict(key=github_token)
+            return {"key": github_token}
         except InvalidInstallationError:
             log.warning(
                 "Invalid installation error",
-                extra=dict(
-                    service=repository.author.service,
-                    integration_id=ghapp_installation_id,
-                ),
+                extra={
+                    "service": repository.author.service,
+                    "integration_id": ghapp_installation_id,
+                },
             )
             # now we'll fallback to trying an OAuth token
     service = repository.author.service
     if repository.bot is not None and repository.bot.oauth_token is not None:
         log.info(
             "Repo has specific bot",
-            extra=dict(repoid=repository.repoid, botid=repository.bot.ownerid),
+            extra={"repoid": repository.repoid, "botid": repository.bot.ownerid},
         )
         return encryptor.decrypt_token(repository.bot.oauth_token)
     if (
@@ -412,23 +412,23 @@ def try_to_get_best_possible_bot_token(
     ):
         log.info(
             "Repo Owner has specific bot",
-            extra=dict(
-                repoid=repository.repoid,
-                botid=repository.author.bot.ownerid,
-                ownerid=repository.author.ownerid,
-            ),
+            extra={
+                "repoid": repository.repoid,
+                "botid": repository.author.bot.ownerid,
+                "ownerid": repository.author.ownerid,
+            },
         )
         return encryptor.decrypt_token(repository.author.bot.oauth_token)
     if repository.author.oauth_token is not None:
         log.info(
             "Using repository owner as bot fallback",
-            extra=dict(repoid=repository.repoid, ownerid=repository.author.ownerid),
+            extra={"repoid": repository.repoid, "ownerid": repository.author.ownerid},
         )
         return encryptor.decrypt_token(repository.author.oauth_token)
     if not repository.private:
         log.info(
             "Using tokenless bot as bot fallback",
-            extra=dict(repoid=repository.repoid, ownerid=repository.author.ownerid),
+            extra={"repoid": repository.repoid, "ownerid": repository.author.ownerid},
         )
         return get_config(service, "bots", "tokenless")
     return None
@@ -468,11 +468,11 @@ def determine_upload_commit_to_use(
         except TorngitObjectNotFoundError:
             log.warning(
                 "Unable to fetch commit. Not found",
-                extra=dict(commit=commitid),
+                extra={"commit": commitid},
             )
             return commitid
         except TorngitClientError:
-            log.warning("Unable to fetch commit", extra=dict(commit=commitid))
+            log.warning("Unable to fetch commit", extra={"commit": commitid})
             return commitid
 
         git_commit_message = git_commit_data.get("message", "").strip()
@@ -483,11 +483,11 @@ def determine_upload_commit_to_use(
             new_commit_id = git_commit_message.split(" ")[1]
             log.info(
                 "Upload is for a merge commit, updating commit id for upload",
-                extra=dict(
-                    commit=commitid,
-                    commit_message=git_commit_message,
-                    new_commit=new_commit_id,
-                ),
+                extra={
+                    "commit": commitid,
+                    "commit_message": git_commit_message,
+                    "new_commit": new_commit_id,
+                },
             )
             return new_commit_id
 
@@ -558,7 +558,10 @@ def check_commit_upload_constraints(commit: Commit) -> None:
                 ):
                     log.warning(
                         "User exceeded its limits for usage",
-                        extra=dict(ownerid=owner.ownerid, repoid=commit.repository_id),
+                        extra={
+                            "ownerid": owner.ownerid,
+                            "repoid": commit.repository_id,
+                        },
                     )
                     message = "Request was throttled. Throttled due to limit on private repository coverage uploads to Codecov on a free plan. Please upgrade your plan if you require additional uploads this month."
                     raise Throttled(detail=message)
@@ -594,33 +597,33 @@ def validate_upload(
             if session_count <= current_upload_limit:
                 log.info(
                     "Old session count would not have blocked this upload",
-                    extra=dict(
-                        commit=upload_params.get("commit"),
-                        session_count=session_count,
-                        repoid=repository.repoid,
-                        old_session_count=session_count,
-                        new_session_count=new_session_count,
-                    ),
+                    extra={
+                        "commit": upload_params.get("commit"),
+                        "session_count": session_count,
+                        "repoid": repository.repoid,
+                        "old_session_count": session_count,
+                        "new_session_count": new_session_count,
+                    },
                 )
             log.warning(
                 "Too many uploads to this commit",
-                extra=dict(
-                    commit=upload_params.get("commit"),
-                    session_count=session_count,
-                    repoid=repository.repoid,
-                ),
+                extra={
+                    "commit": upload_params.get("commit"),
+                    "session_count": session_count,
+                    "repoid": repository.repoid,
+                },
             )
             raise ValidationError("Too many uploads to this commit.")
         elif session_count > current_upload_limit:
             log.info(
                 "Old session count would block this upload",
-                extra=dict(
-                    commit=upload_params.get("commit"),
-                    session_count=session_count,
-                    repoid=repository.repoid,
-                    old_session_count=session_count,
-                    new_session_count=new_session_count,
-                ),
+                extra={
+                    "commit": upload_params.get("commit"),
+                    "session_count": session_count,
+                    "repoid": repository.repoid,
+                    "old_session_count": session_count,
+                    "new_session_count": new_session_count,
+                },
             )
     except Commit.DoesNotExist:
         pass
@@ -767,9 +770,9 @@ def get_agent_from_headers(headers: Dict[str, Any]) -> str:
     except Exception as e:
         log.warning(
             "Error getting agent from user agent header",
-            extra=dict(
-                err=str(e),
-            ),
+            extra={
+                "err": str(e),
+            },
         )
         return "unknown-user-agent"
 
@@ -780,9 +783,9 @@ def get_version_from_headers(headers: Dict[str, Any]) -> str:
     except Exception as e:
         log.warning(
             "Error getting version from user agent header",
-            extra=dict(
-                err=str(e),
-            ),
+            extra={
+                "err": str(e),
+            },
         )
         return "unknown-user-agent"
 
@@ -797,13 +800,13 @@ def generate_upload_prometheus_metrics_labels(
     upload_version: Optional[str] = None,
     include_empty_labels: bool = True,
 ) -> Dict[str, Any]:
-    metrics_tags = dict(
-        agent=get_agent_from_headers(request.headers),
-        version=get_version_from_headers(request.headers),
-        action=action,
-        endpoint=endpoint,
-        is_using_shelter="yes" if is_shelter_request else "no",
-    )
+    metrics_tags = {
+        "agent": get_agent_from_headers(request.headers),
+        "version": get_version_from_headers(request.headers),
+        "action": action,
+        "endpoint": endpoint,
+        "is_using_shelter": "yes" if is_shelter_request else "no",
+    }
 
     repo_visibility = None
     if repository:

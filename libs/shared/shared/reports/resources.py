@@ -268,7 +268,7 @@ class Report:
         if file is None:
             log.warning(
                 "Fetching file totals for a file that isn't in the report",
-                extra=dict(path=path),
+                extra={"path": path},
             )
             return None
 
@@ -344,21 +344,14 @@ class Report:
             only pass totals if they change
             """
             # <dict path: totals if not new else None>
-            changed_coverages = dict(
-                (
-                    (
-                        individual_change.path,
-                        individual_change.totals.coverage
-                        if not individual_change.new and individual_change.totals
-                        else None,
-                    )
-                    for individual_change in changes
-                )
-            )
+            changed_coverages = {
+                individual_change.path: individual_change.totals.coverage
+                if not individual_change.new and individual_change.totals
+                else None
+                for individual_change in changes
+            }
             # <dict path: stripeed if not in_diff>
-            classes = dict(
-                ((_Change.path, "s") for _Change in changes if not _Change.in_diff)
-            )
+            classes = {_Change.path: "s" for _Change in changes if not _Change.in_diff}
 
             def _network():
                 for name, _NetworkFile in self.network:

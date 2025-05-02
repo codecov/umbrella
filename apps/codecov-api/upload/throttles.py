@@ -7,12 +7,12 @@ from django.http import HttpRequest
 from rest_framework.exceptions import ValidationError
 from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
+
+from reports.models import ReportSession
 from shared.helpers.redis import get_redis_connection
 from shared.plan.service import PlanService
 from shared.reports.enums import UploadType
 from shared.upload.utils import query_monthly_coverage_measurements
-
-from reports.models import ReportSession
 from upload.helpers import _determine_responsible_owner
 
 log = logging.getLogger(__name__)
@@ -34,10 +34,10 @@ class UploadsPerCommitThrottle(BaseThrottle):
             if new_session_count > max_upload_limit:
                 log.warning(
                     "Too many uploads to this commit",
-                    extra=dict(
-                        commit=commit.commitid,
-                        repoid=repository.repoid,
-                    ),
+                    extra={
+                        "commit": commit.commitid,
+                        "repoid": repository.repoid,
+                    },
                 )
                 return False
             return True
@@ -68,9 +68,10 @@ class UploadsPerWindowThrottle(BaseThrottle):
                         ):
                             log.warning(
                                 "User exceeded its limits for usage",
-                                extra=dict(
-                                    ownerid=owner.ownerid, repoid=commit.repository_id
-                                ),
+                                extra={
+                                    "ownerid": owner.ownerid,
+                                    "repoid": commit.repository_id,
+                                },
                             )
                             return False
             return True

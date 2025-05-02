@@ -2,10 +2,10 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
-from shared.torngit.exceptions import TorngitError
-from shared.utils.enums import TaskConfigGroup
 
 from database.tests.factories.core import OwnerFactory, RepositoryFactory
+from shared.torngit.exceptions import TorngitError
+from shared.utils.enums import TaskConfigGroup
 from tasks.sync_repo_languages import SyncRepoLanguagesTask
 
 MOCKED_NOW = datetime(2024, 7, 3, 6, 8, 12)

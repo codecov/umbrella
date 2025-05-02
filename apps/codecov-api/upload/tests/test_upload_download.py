@@ -2,9 +2,9 @@ from unittest.mock import patch
 
 import minio
 from rest_framework.test import APITestCase
+
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.django_apps.core.tests.factories import RepositoryFactory
-
 from utils.test_utils import Client
 
 

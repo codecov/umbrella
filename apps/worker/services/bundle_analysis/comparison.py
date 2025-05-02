@@ -1,10 +1,5 @@
 from functools import cached_property
 
-from shared.bundle_analysis import (
-    BundleAnalysisComparison,
-    BundleAnalysisReportLoader,
-)
-
 from database.enums import ReportType
 from database.models.core import Commit, Repository
 from database.models.reports import CommitReport
@@ -15,6 +10,10 @@ from services.bundle_analysis.exceptions import (
     MissingHeadReport,
 )
 from services.repository import EnrichedPull
+from shared.bundle_analysis import (
+    BundleAnalysisComparison,
+    BundleAnalysisReportLoader,
+)
 
 
 class ComparisonLoader:

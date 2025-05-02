@@ -4,18 +4,6 @@ from typing import List
 from unittest.mock import PropertyMock
 
 import pytest
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
-from shared.reports.readonly import ReadOnlyReport
-from shared.reports.resources import Report, ReportFile
-from shared.reports.types import Change, LineSession, ReportLine, ReportTotals
-from shared.torngit.exceptions import (
-    TorngitClientError,
-    TorngitClientGeneralError,
-    TorngitObjectNotFoundError,
-    TorngitServerUnreachableError,
-)
-from shared.utils.sessions import Session
-from shared.validation.types import CoverageCommentRequiredChanges
 
 from database.models.core import Commit, GithubAppInstallation, Pull, Repository
 from database.tests.factories import RepositoryFactory
@@ -43,6 +31,18 @@ from services.notification.notifiers.mixins.message.sections import (
 from services.notification.notifiers.tests.conftest import generate_sample_comparison
 from services.repository import EnrichedPull
 from services.yaml.reader import get_components_from_yaml
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
+from shared.reports.readonly import ReadOnlyReport
+from shared.reports.resources import Report, ReportFile
+from shared.reports.types import Change, LineSession, ReportLine, ReportTotals
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitClientGeneralError,
+    TorngitObjectNotFoundError,
+    TorngitServerUnreachableError,
+)
+from shared.utils.sessions import Session
+from shared.validation.types import CoverageCommentRequiredChanges
 from tests.helpers import mock_all_plans_and_tiers
 
 
@@ -2706,12 +2706,12 @@ class TestCommentNotifier(object):
         send_comment_default_behavior_mocker = mocker.patch.object(
             CommentNotifier,
             "send_comment_default_behavior",
-            return_value=dict(
-                notification_attempted=True,
-                notification_successful=True,
-                explanation=None,
-                data_received=None,
-            ),
+            return_value={
+                "notification_attempted": True,
+                "notification_successful": True,
+                "explanation": None,
+                "data_received": None,
+            },
         )
         notifier = CommentNotifier(
             repository=sample_comparison.head.commit.repository,

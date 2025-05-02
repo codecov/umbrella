@@ -1,14 +1,13 @@
 import logging
 from dataclasses import dataclass
 
-from shared.config import get_config
-from shared.plan.service import PlanService
-from shared.upload.utils import query_monthly_coverage_measurements
-
 from database.enums import Decoration
 from database.models import Owner
 from services.license import requires_license
 from services.repository import EnrichedPull
+from shared.config import get_config
+from shared.plan.service import PlanService
+from shared.upload.utils import query_monthly_coverage_measurements
 
 log = logging.getLogger(__name__)
 
@@ -115,11 +114,11 @@ def determine_decoration_details(
         if not pr_author:
             log.info(
                 "PR author not found in database",
-                extra=dict(
-                    author_service=org.service,
-                    author_service_id=provider_pull["author"]["id"],
-                    author_username=provider_pull["author"]["username"],
-                ),
+                extra={
+                    "author_service": org.service,
+                    "author_service_id": provider_pull["author"]["id"],
+                    "author_username": provider_pull["author"]["username"],
+                },
             )
             return DecorationDetails(
                 decoration_type=Decoration.upgrade,

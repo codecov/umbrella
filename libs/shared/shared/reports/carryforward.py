@@ -60,7 +60,7 @@ def generate_carryforward_report(
             session.session_type = SessionType.carriedforward
     log.info(
         "Removing sessions that are not supposed to carryforward",
-        extra=dict(deleted_sessions=sessions_to_delete),
+        extra={"deleted_sessions": sessions_to_delete},
     )
     report.delete_multiple_sessions(sessions_to_delete)
     return report

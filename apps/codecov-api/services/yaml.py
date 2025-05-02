@@ -4,14 +4,14 @@ from functools import lru_cache
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from shared.helpers.cache import cache
-from shared.yaml import UserYaml, fetch_current_yaml_from_provider_via_reference
-from shared.yaml.validation import validate_yaml
 from yaml import safe_load
 
 from codecov_auth.models import Owner, get_config
 from core.models import Commit
 from services.repo_providers import RepoProviderService
+from shared.helpers.cache import cache
+from shared.yaml import UserYaml, fetch_current_yaml_from_provider_via_reference
+from shared.yaml.validation import validate_yaml
 
 
 class YamlStates(enum.Enum):

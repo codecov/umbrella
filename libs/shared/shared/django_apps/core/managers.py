@@ -215,10 +215,10 @@ class RepositoryQuerySet(QuerySet):
 
             log.info(
                 "[GetOrCreateFromGitRepo] - Repo successfully updated or created",
-                extra=dict(
-                    defaults=defaults,
-                    author=owner.ownerid,
-                ),
+                extra={
+                    "defaults": defaults,
+                    "author": owner.ownerid,
+                },
             )
 
         except IntegrityError:
@@ -229,10 +229,10 @@ class RepositoryQuerySet(QuerySet):
 
             log.warning(
                 "[GetOrCreateFromGitRepo] - Integrity error, service id changed",
-                extra=dict(
-                    defaults=defaults,
-                    author=owner.ownerid,
-                ),
+                extra={
+                    "defaults": defaults,
+                    "author": owner.ownerid,
+                },
             )
 
         # If this is a fork, create the forked repo and save it to the new repo.

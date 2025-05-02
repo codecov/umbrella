@@ -3,10 +3,10 @@ from uuid import UUID
 import pytest
 from django.test import override_settings
 from django.urls import reverse
-from shared.torngit import GitlabEnterprise
-from shared.torngit.exceptions import TorngitClientGeneralError
 
 from codecov_auth.models import Owner
+from shared.torngit import GitlabEnterprise
+from shared.torngit.exceptions import TorngitClientGeneralError
 
 
 def _get_state_from_redis(mock_redis):

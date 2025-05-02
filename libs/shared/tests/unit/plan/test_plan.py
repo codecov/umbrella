@@ -424,10 +424,9 @@ class AvailablePlansBeforeTrial(TestCase):
             PlanName.TEAM_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     def test_available_plans_for_free_plan_non_trial(
         self,
@@ -446,10 +445,9 @@ class AvailablePlansBeforeTrial(TestCase):
             PlanName.TEAM_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     def test_available_plans_for_team_plan_non_trial(
         self,
@@ -467,10 +465,9 @@ class AvailablePlansBeforeTrial(TestCase):
             PlanName.TEAM_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     def test_available_plans_for_pro_plan_non_trial(self):
         self.current_org.plan = PlanName.CODECOV_PRO_MONTHLY.value
@@ -486,10 +483,9 @@ class AvailablePlansBeforeTrial(TestCase):
             PlanName.TEAM_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     @patch("shared.plan.service.is_sentry_user")
     def test_available_plans_for_sentry_customer_developer_plan_non_trial(
@@ -511,10 +507,9 @@ class AvailablePlansBeforeTrial(TestCase):
             PlanName.TEAM_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     @patch("shared.plan.service.is_sentry_user")
     def test_available_plans_for_sentry_customer_team_plan_non_trial(
@@ -535,10 +530,9 @@ class AvailablePlansBeforeTrial(TestCase):
             PlanName.TEAM_MONTHLY.value,
             PlanName.TEAM_YEARLY.value,
         }
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     @patch("shared.plan.service.is_sentry_user")
     def test_available_plans_for_sentry_plan_non_trial(self, is_sentry_user):
@@ -558,10 +552,9 @@ class AvailablePlansBeforeTrial(TestCase):
             PlanName.TEAM_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     @patch("shared.plan.service.is_sentry_user")
     def test_available_plans_for_sentry_plan_not_sentry_user(self, is_sentry_user):
@@ -581,10 +574,9 @@ class AvailablePlansBeforeTrial(TestCase):
             PlanName.TEAM_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
 
 @freeze_time("2023-06-19")
@@ -627,10 +619,9 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
             PlanName.TEAM_MONTHLY.value,
             PlanName.TEAM_YEARLY.value,
         }
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     def test_available_plans_for_team_plan_expired_trial_less_than_10_users(
         self,
@@ -647,10 +638,9 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
             PlanName.TEAM_MONTHLY.value,
             PlanName.TEAM_YEARLY.value,
         }
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     def test_available_plans_for_pro_plan_expired_trial_less_than_10_users(self):
         self.current_org.plan = PlanName.CODECOV_PRO_MONTHLY.value
@@ -666,10 +656,9 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
             PlanName.TEAM_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     @patch("shared.plan.service.is_sentry_user")
     def test_available_plans_for_sentry_customer_developer_plan_expired_trial_less_than_10_users(
@@ -691,10 +680,9 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
             PlanName.TEAM_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     @patch("shared.plan.service.is_sentry_user")
     def test_available_plans_for_sentry_customer_team_plan_expired_trial_less_than_10_users(
@@ -715,10 +703,9 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
             PlanName.TEAM_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     @patch("shared.plan.service.is_sentry_user")
     def test_available_plans_for_sentry_plan_expired_trial_less_than_10_users(
@@ -740,10 +727,9 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
             PlanName.TEAM_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
 
 @freeze_time("2023-06-19")
@@ -765,7 +751,7 @@ class AvailablePlansExpiredTrialMoreThanTenActivatedUsers(TestCase):
             trial_end_date=datetime.utcnow() + timedelta(days=-3),
             trial_status=TrialStatus.EXPIRED.value,
             plan_user_count=1,
-            plan_activated_users=[i for i in range(13)],
+            plan_activated_users=list(range(13)),
         )
         self.owner = OwnerFactory()
 
@@ -781,10 +767,9 @@ class AvailablePlansExpiredTrialMoreThanTenActivatedUsers(TestCase):
             PlanName.CODECOV_PRO_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     @patch("shared.plan.service.is_sentry_user")
     def test_available_plans_for_sentry_customer_developer_plan_expired_trial_more_than_10_users(
@@ -803,10 +788,9 @@ class AvailablePlansExpiredTrialMoreThanTenActivatedUsers(TestCase):
             PlanName.SENTRY_MONTHLY.value,
             PlanName.SENTRY_YEARLY.value,
         }
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     @patch("shared.plan.service.is_sentry_user")
     def test_available_plans_for_sentry_plan_expired_trial_more_than_10_users(
@@ -826,10 +810,9 @@ class AvailablePlansExpiredTrialMoreThanTenActivatedUsers(TestCase):
             PlanName.SENTRY_YEARLY.value,
         }
 
-        assert (
-            set(plan.name for plan in plan_service.available_plans(owner=self.owner))
-            == expected_result
-        )
+        assert {
+            plan.name for plan in plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
 
 @freeze_time("2023-06-19")
@@ -855,24 +838,20 @@ class AvailablePlansExpiredTrialMoreThanTenSeatsLessThanTenActivatedUsers(TestCa
     def test_currently_team_plan(self):
         self.current_org = OwnerFactory(
             plan_user_count=100,
-            plan_activated_users=[i for i in range(10)],
+            plan_activated_users=list(range(10)),
             plan=PlanName.TEAM_MONTHLY.value,
         )
         self.owner = OwnerFactory()
         self.plan_service = PlanService(current_org=self.current_org)
 
-        assert (
-            set(
-                plan.name
-                for plan in self.plan_service.available_plans(owner=self.owner)
-            )
-            == self.expected_result
-        )
+        assert {
+            plan.name for plan in self.plan_service.available_plans(owner=self.owner)
+        } == self.expected_result
 
     def test_trial_expired(self):
         self.current_org = OwnerFactory(
             plan_user_count=100,
-            plan_activated_users=[i for i in range(10)],
+            plan_activated_users=list(range(10)),
             trial_status=TrialStatus.EXPIRED.value,
             trial_start_date=datetime.utcnow() + timedelta(days=-10),
             trial_end_date=datetime.utcnow() + timedelta(days=-3),
@@ -880,18 +859,14 @@ class AvailablePlansExpiredTrialMoreThanTenSeatsLessThanTenActivatedUsers(TestCa
         self.owner = OwnerFactory()
         self.plan_service = PlanService(current_org=self.current_org)
 
-        assert (
-            set(
-                plan.name
-                for plan in self.plan_service.available_plans(owner=self.owner)
-            )
-            == self.expected_result
-        )
+        assert {
+            plan.name for plan in self.plan_service.available_plans(owner=self.owner)
+        } == self.expected_result
 
     def test_trial_ongoing(self):
         self.current_org = OwnerFactory(
             plan_user_count=100,
-            plan_activated_users=[i for i in range(10)],
+            plan_activated_users=list(range(10)),
             trial_status=TrialStatus.ONGOING.value,
             trial_start_date=datetime.utcnow() + timedelta(days=-10),
             trial_end_date=datetime.utcnow() + timedelta(days=3),
@@ -899,18 +874,14 @@ class AvailablePlansExpiredTrialMoreThanTenSeatsLessThanTenActivatedUsers(TestCa
         self.owner = OwnerFactory()
         self.plan_service = PlanService(current_org=self.current_org)
 
-        assert (
-            set(
-                plan.name
-                for plan in self.plan_service.available_plans(owner=self.owner)
-            )
-            == self.expected_result
-        )
+        assert {
+            plan.name for plan in self.plan_service.available_plans(owner=self.owner)
+        } == self.expected_result
 
     def test_trial_not_started(self):
         self.current_org = OwnerFactory(
             plan_user_count=100,
-            plan_activated_users=[i for i in range(10)],
+            plan_activated_users=list(range(10)),
             trial_status=TrialStatus.NOT_STARTED.value,
         )
         self.owner = OwnerFactory()
@@ -924,13 +895,9 @@ class AvailablePlansExpiredTrialMoreThanTenSeatsLessThanTenActivatedUsers(TestCa
             PlanName.TEAM_YEARLY.value,
         }
 
-        assert (
-            set(
-                plan.name
-                for plan in self.plan_service.available_plans(owner=self.owner)
-            )
-            == self.expected_result
-        )
+        assert {
+            plan.name for plan in self.plan_service.available_plans(owner=self.owner)
+        } == self.expected_result
 
 
 @freeze_time("2023-06-19")
@@ -972,27 +939,19 @@ class AvailablePlansOngoingTrial(TestCase):
         }
 
         # Can do Team plan when plan_activated_users is null
-        assert (
-            set(
-                plan.name
-                for plan in self.plan_service.available_plans(owner=self.owner)
-            )
-            == expected_result
-        )
+        assert {
+            plan.name for plan in self.plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
-        self.current_org.plan_activated_users = [i for i in range(10)]
+        self.current_org.plan_activated_users = list(range(10))
         self.current_org.save()
 
         # Can do Team plan when at 10 activated users
-        assert (
-            set(
-                plan.name
-                for plan in self.plan_service.available_plans(owner=self.owner)
-            )
-            == expected_result
-        )
+        assert {
+            plan.name for plan in self.plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
-        self.current_org.plan_activated_users = [i for i in range(11)]
+        self.current_org.plan_activated_users = list(range(11))
         self.current_org.save()
 
         # [Developer, Pro Monthly, Pro Yearly]
@@ -1003,13 +962,9 @@ class AvailablePlansOngoingTrial(TestCase):
         }
 
         # Can not do Team plan when at 11 activated users
-        assert (
-            set(
-                plan.name
-                for plan in self.plan_service.available_plans(owner=self.owner)
-            )
-            == expected_result
-        )
+        assert {
+            plan.name for plan in self.plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
     @patch("shared.plan.service.is_sentry_user")
     def test_sentry_user(self, is_sentry_user):
@@ -1029,27 +984,19 @@ class AvailablePlansOngoingTrial(TestCase):
             PlanName.TEAM_YEARLY.value,
         }
         # Can do Team plan when plan_activated_users is null
-        assert (
-            set(
-                plan.name
-                for plan in self.plan_service.available_plans(owner=self.owner)
-            )
-            == expected_result
-        )
+        assert {
+            plan.name for plan in self.plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
-        self.current_org.plan_activated_users = [i for i in range(10)]
+        self.current_org.plan_activated_users = list(range(10))
         self.current_org.save()
 
         # Can do Team plan when at 10 activated users
-        assert (
-            set(
-                plan.name
-                for plan in self.plan_service.available_plans(owner=self.owner)
-            )
-            == expected_result
-        )
+        assert {
+            plan.name for plan in self.plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
-        self.current_org.plan_activated_users = [i for i in range(11)]
+        self.current_org.plan_activated_users = list(range(11))
         self.current_org.save()
 
         # [Developer, Pro Monthly, Pro Yearly, Sentry Monthly, Sentry Yearly]
@@ -1062,13 +1009,9 @@ class AvailablePlansOngoingTrial(TestCase):
         }
 
         # Can not do Team plan when at 11 activated users
-        assert (
-            set(
-                plan.name
-                for plan in self.plan_service.available_plans(owner=self.owner)
-            )
-            == expected_result
-        )
+        assert {
+            plan.name for plan in self.plan_service.available_plans(owner=self.owner)
+        } == expected_result
 
 
 @override_settings(IS_ENTERPRISE=False)

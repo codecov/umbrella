@@ -1,8 +1,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-from shared.config import PATCH_CENTRIC_DEFAULT_CONFIG
-from shared.yaml import UserYaml
 
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import CommitFactory
@@ -29,6 +27,8 @@ from services.bundle_analysis.notify.messages.comment import (
 )
 from services.bundle_analysis.notify.types import NotificationType
 from services.notification.notifiers.base import NotificationResult
+from shared.config import PATCH_CENTRIC_DEFAULT_CONFIG
+from shared.yaml import UserYaml
 from tests.helpers import mock_all_plans_and_tiers
 
 
@@ -224,8 +224,8 @@ class TestBundleAnalysisNotifyService:
                 NotificationType.PR_COMMENT,
                 NotificationType.COMMIT_STATUS,
             ),
-            notifications_attempted=tuple(),
-            notifications_successful=tuple(),
+            notifications_attempted=(),
+            notifications_successful=(),
         )
 
     @pytest.mark.parametrize(

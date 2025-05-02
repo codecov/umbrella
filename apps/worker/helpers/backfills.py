@@ -1,9 +1,9 @@
 import logging
 
-import shared.torngit as torngit
 from asgiref.sync import async_to_sync
 from sqlalchemy.orm.session import Session
 
+import shared.torngit as torngit
 from database.models.core import GithubAppInstallation, Repository
 
 log = logging.getLogger(__name__)
@@ -38,11 +38,11 @@ def add_repos_service_ids_from_provider(
                 new_repo_service_ids.append(service_id)
         log.info(
             "Added the following repo service ids to this gh app installation",
-            extra=dict(
-                ownerid=ownerid,
-                installation_id=gh_app_installation.installation_id,
-                new_repo_service_ids=new_repo_service_ids,
-            ),
+            extra={
+                "ownerid": ownerid,
+                "installation_id": gh_app_installation.installation_id,
+                "new_repo_service_ids": new_repo_service_ids,
+            },
         )
         gh_app_installation.repository_service_ids = new_repo_service_ids
         db_session.commit()
@@ -63,7 +63,7 @@ def maybe_set_installation_to_all_repos(
         db_session.commit()
         log.info(
             "Selection is set to all, no installation is needed",
-            extra=dict(ownerid=gh_app_installation.ownerid),
+            extra={"ownerid": gh_app_installation.ownerid},
         )
         return True
     return False

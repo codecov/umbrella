@@ -2,6 +2,12 @@ import logging
 
 from celery.exceptions import MaxRetriesExceededError
 from redis.exceptions import LockError
+
+from app import celery_app
+from database.enums import ReportType
+from database.models import Commit, Pull
+from database.models.reports import CommitReport, Upload
+from services.comparison import get_or_create_comparison
 from shared.celery_config import (
     compute_comparison_task_name,
     manual_upload_completion_trigger_task_name,
@@ -10,12 +16,6 @@ from shared.celery_config import (
 )
 from shared.helpers.redis import get_redis_connection
 from shared.reports.enums import UploadState
-
-from app import celery_app
-from database.enums import ReportType
-from database.models import Commit, Pull
-from database.models.reports import CommitReport, Upload
-from services.comparison import get_or_create_comparison
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class ManualTriggerTask(
     ):
         log.info(
             "Received manual trigger task",
-            extra=dict(repoid=repoid, commit=commitid),
+            extra={"repoid": repoid, "commit": commitid},
         )
         repoid = int(repoid)
         lock_name = f"manual_trigger_lock_{repoid}_{commitid}"
@@ -56,12 +56,12 @@ class ManualTriggerTask(
         except LockError:
             log.warning(
                 "Unable to acquire lock",
-                extra=dict(
-                    commit=commitid,
-                    repoid=repoid,
-                    number_retries=self.request.retries,
-                    lock_name=lock_name,
-                ),
+                extra={
+                    "commit": commitid,
+                    "repoid": repoid,
+                    "number_retries": self.request.retries,
+                    "lock_name": lock_name,
+                },
             )
             return {"notifications_called": False, "message": "Unable to acquire lock"}
 
@@ -115,12 +115,12 @@ class ManualTriggerTask(
             except MaxRetriesExceededError:
                 log.warning(
                     "Not attempting to wait for all uploads to get processed since we already retried too many times",
-                    extra=dict(
-                        repoid=commit.repoid,
-                        commit=commit.commitid,
-                        max_retries=5,
-                        next_countdown_would_be=retry_in,
-                    ),
+                    extra={
+                        "repoid": commit.repoid,
+                        "commit": commit.commitid,
+                        "max_retries": 5,
+                        "next_countdown_would_be": retry_in,
+                    },
                 )
                 return {
                     "notifications_called": False,
@@ -130,18 +130,18 @@ class ManualTriggerTask(
     def trigger_notifications(self, repoid, commitid, commit_yaml):
         log.info(
             "Scheduling notify task",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                commit_yaml=commit_yaml.to_dict() if commit_yaml else None,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "commit_yaml": commit_yaml.to_dict() if commit_yaml else None,
+            },
         )
         self.app.tasks[notify_task_name].apply_async(
-            kwargs=dict(
-                repoid=repoid,
-                commitid=commitid,
-                current_yaml=commit_yaml.to_dict() if commit_yaml else None,
-            )
+            kwargs={
+                "repoid": repoid,
+                "commitid": commitid,
+                "current_yaml": commit_yaml.to_dict() if commit_yaml else None,
+            }
         )
 
     def trigger_pull_sync(self, db_session, repoid, commit):
@@ -159,17 +159,17 @@ class ManualTriggerTask(
                 db_session.commit()
                 log.info(
                     "Scheduling pulls syc task",
-                    extra=dict(
-                        repoid=repoid,
-                        pullid=pull.pullid,
-                    ),
+                    extra={
+                        "repoid": repoid,
+                        "pullid": pull.pullid,
+                    },
                 )
                 self.app.tasks[pulls_task_name].apply_async(
-                    kwargs=dict(
-                        repoid=repoid,
-                        pullid=pull.pullid,
-                        should_send_notifications=False,
-                    )
+                    kwargs={
+                        "repoid": repoid,
+                        "pullid": pull.pullid,
+                        "should_send_notifications": False,
+                    }
                 )
                 compared_to = pull.get_comparedto_commit()
                 if compared_to:
@@ -178,7 +178,7 @@ class ManualTriggerTask(
                     )
                     db_session.commit()
                     self.app.tasks[compute_comparison_task_name].apply_async(
-                        kwargs=dict(comparison_id=comparison.id)
+                        kwargs={"comparison_id": comparison.id}
                     )
 
 

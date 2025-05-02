@@ -79,9 +79,9 @@ class TestGitlabEnterprise(object):
             "api_url": "https://api.gitlab.dev",
         }
         gl = GitlabEnterprise(
-            repo=dict(service_id="187725", name="codecov-test"),
-            owner=dict(username="stevepeak", service_id="109479"),
-            token=dict(key="fake_token"),
+            repo={"service_id": "187725", "name": "codecov-test"},
+            owner={"username": "stevepeak", "service_id": "109479"},
+            token={"key": "fake_token"},
         )
         res = await gl.post_comment("pullid", "body")
         assert res == {}

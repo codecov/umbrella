@@ -1,4 +1,5 @@
 import stripe
+
 from shared.config import get_config
 
 stripe.api_key = get_config("services", "stripe", "api_key")

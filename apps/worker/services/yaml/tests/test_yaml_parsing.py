@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import pytest
-from shared.validation.exceptions import InvalidYamlException
-from shared.validation.types import CoverageCommentRequiredChanges
 
 from services.yaml.parser import parse_yaml_file
+from shared.validation.exceptions import InvalidYamlException
+from shared.validation.types import CoverageCommentRequiredChanges
 from test_utils.base import BaseTestCase
 
 here = Path(__file__)

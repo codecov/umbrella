@@ -7,10 +7,6 @@ from rest_framework.exceptions import NotAuthenticated, NotFound
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from shared.api_archive.archive import ArchiveService, MinioEndpoints
-from shared.events.amplitude import UNKNOWN_USER_OWNERID, AmplitudeEventPublisher
-from shared.helpers.redis import get_redis_connection
-from shared.metrics import inc_counter
 
 from codecov_auth.authentication.repo_auth import (
     GitHubOIDCTokenAuthentication,
@@ -24,6 +20,10 @@ from codecov_auth.authentication.types import RepositoryAsUser
 from codecov_auth.models import Owner, Service
 from core.models import Commit
 from reports.models import CommitReport
+from shared.api_archive.archive import ArchiveService, MinioEndpoints
+from shared.events.amplitude import UNKNOWN_USER_OWNERID, AmplitudeEventPublisher
+from shared.helpers.redis import get_redis_connection
+from shared.metrics import inc_counter
 from upload.helpers import (
     dispatch_upload_task,
     generate_upload_prometheus_metrics_labels,
@@ -187,11 +187,11 @@ class TestResultsView(
 
         log.info(
             "Dispatching test results upload to worker",
-            extra=dict(
-                commit=commit.commitid,
-                repoid=repo.repoid,
-                task_arguments=task_arguments,
-            ),
+            extra={
+                "commit": commit.commitid,
+                "repoid": repo.repoid,
+                "task_arguments": task_arguments,
+            },
         )
 
         dispatch_upload_task(

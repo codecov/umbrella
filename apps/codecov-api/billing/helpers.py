@@ -1,10 +1,10 @@
 from django.conf import settings
 from django.db.models import QuerySet
+
+from codecov_auth.models import Owner, Plan
 from shared.django_apps.codecov_auth.models import BillingRate
 from shared.django_apps.codecov_auth.tests.factories import PlanFactory, TierFactory
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, PlanPrice, TierName
-
-from codecov_auth.models import Owner, Plan
 
 
 def on_enterprise_plan(owner: Owner) -> bool:

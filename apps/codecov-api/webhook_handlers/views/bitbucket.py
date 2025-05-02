@@ -4,10 +4,10 @@ from django.shortcuts import get_object_or_404
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from shared.helpers.yaml import walk
 
 from core.models import Branch, Commit, Pull, PullStates, Repository
 from services.task import TaskService
+from shared.helpers.yaml import walk
 from webhook_handlers.constants import (
     BitbucketHTTPHeaders,
     BitbucketWebhookEvents,
@@ -59,7 +59,7 @@ class BitbucketWebhookHandler(APIView):
 
         log.info(
             "Bitbucket webhook message received",
-            extra=dict(event=self.event, hookid=event_hook_id, repoid=repo.repoid),
+            extra={"event": self.event, "hookid": event_hook_id, "repoid": repo.repoid},
         )
 
         if self.event == BitbucketWebhookEvents.PULL_REQUEST_CREATED:

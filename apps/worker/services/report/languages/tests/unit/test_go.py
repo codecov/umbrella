@@ -1,8 +1,8 @@
 import pytest
-from shared.reports.types import ReportTotals
 
 from helpers.exceptions import CorruptRawReportError
 from services.report.languages import go
+from shared.reports.types import ReportTotals
 from test_utils.base import BaseTestCase
 
 from . import create_report_builder_session

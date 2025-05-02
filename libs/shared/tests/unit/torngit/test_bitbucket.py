@@ -22,14 +22,16 @@ def respx_vcr():
 @pytest.fixture
 def valid_handler():
     return Bitbucket(
-        repo=dict(name="example-python"),
-        owner=dict(
-            username="ThiagoCodecov", service_id="6ef29b63-aaaa-aaaa-aaaa-aaaa03f5cd49"
-        ),
-        oauth_consumer_token=dict(
-            key="oauth_consumer_key_value", secret="oauth_consumer_token_secret_value"
-        ),
-        token=dict(secret="somesecret", key="somekey"),
+        repo={"name": "example-python"},
+        owner={
+            "username": "ThiagoCodecov",
+            "service_id": "6ef29b63-aaaa-aaaa-aaaa-aaaa03f5cd49",
+        },
+        oauth_consumer_token={
+            "key": "oauth_consumer_key_value",
+            "secret": "oauth_consumer_token_secret_value",
+        },
+        token={"secret": "somesecret", "key": "somekey"},
     )
 
 
@@ -198,16 +200,16 @@ class TestUnitBitbucket(object):
             },
         )
         handler = Bitbucket(
-            repo=dict(name="example-python", private=True),
-            owner=dict(
-                username="ThiagoCodecov",
-                service_id="6ef29b63-aaaa-aaaa-aaaa-aaaa03f5cd49",
-            ),
-            oauth_consumer_token=dict(
-                key="oauth_consumer_key_value",
-                secret="oauth_consumer_token_secret_value",
-            ),
-            token=dict(secret="somesecret", key="somekey"),
+            repo={"name": "example-python", "private": True},
+            owner={
+                "username": "ThiagoCodecov",
+                "service_id": "6ef29b63-aaaa-aaaa-aaaa-aaaa03f5cd49",
+            },
+            oauth_consumer_token={
+                "key": "oauth_consumer_key_value",
+                "secret": "oauth_consumer_token_secret_value",
+            },
+            token={"secret": "somesecret", "key": "somekey"},
         )
         res = await handler.get_authenticated()
         assert res == expected_result
@@ -223,16 +225,16 @@ class TestUnitBitbucket(object):
             "https://bitbucket.org/api/2.0/user/permissions/repositories"
         ).respond(status_code=200, json={"pagelen": 10, "values": [], "page": 1})
         handler = Bitbucket(
-            repo=dict(name="example-python", private=True),
-            owner=dict(
-                username="ThiagoCodecov",
-                service_id="6ef29b63-aaaa-aaaa-aaaa-aaaa03f5cd49",
-            ),
-            oauth_consumer_token=dict(
-                key="oauth_consumer_key_value",
-                secret="oauth_consumer_token_secret_value",
-            ),
-            token=dict(secret="somesecret", key="somekey"),
+            repo={"name": "example-python", "private": True},
+            owner={
+                "username": "ThiagoCodecov",
+                "service_id": "6ef29b63-aaaa-aaaa-aaaa-aaaa03f5cd49",
+            },
+            oauth_consumer_token={
+                "key": "oauth_consumer_key_value",
+                "secret": "oauth_consumer_token_secret_value",
+            },
+            token={"secret": "somesecret", "key": "somekey"},
         )
         res = await handler.get_authenticated()
         assert res == (True, False)
@@ -249,16 +251,16 @@ class TestUnitBitbucket(object):
             "https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python"
         ).respond(status_code=404, json={})
         handler = Bitbucket(
-            repo=dict(name="example-python", private=True),
-            owner=dict(
-                username="ThiagoCodecov",
-                service_id="6ef29b63-aaaa-aaaa-aaaa-aaaa03f5cd49",
-            ),
-            oauth_consumer_token=dict(
-                key="oauth_consumer_key_value",
-                secret="oauth_consumer_token_secret_value",
-            ),
-            token=dict(secret="secret", key="key"),
+            repo={"name": "example-python", "private": True},
+            owner={
+                "username": "ThiagoCodecov",
+                "service_id": "6ef29b63-aaaa-aaaa-aaaa-aaaa03f5cd49",
+            },
+            oauth_consumer_token={
+                "key": "oauth_consumer_key_value",
+                "secret": "oauth_consumer_token_secret_value",
+            },
+            token={"secret": "secret", "key": "key"},
         )
         with pytest.raises(TorngitClientError):
             await handler.get_authenticated()
@@ -399,7 +401,7 @@ class TestUnitBitbucket(object):
             "commits": [{"commitid": "b92edba"}, {"commitid": "6ae5f17"}],
         }
         res = await valid_handler.get_compare(base, head)
-        assert sorted(list(res.keys())) == sorted(list(expected_result.keys()))
+        assert sorted(res.keys()) == sorted(expected_result.keys())
         assert res == expected_result
 
     @pytest.mark.asyncio
@@ -411,7 +413,7 @@ class TestUnitBitbucket(object):
             "ahead_by": None,
         }
         handler = Bitbucket(
-            repo=dict(name="example-python", private=True),
+            repo={"name": "example-python", "private": True},
         )
         res = await handler.get_distance_in_commits("branch", "commit")
         assert res == expected_result
@@ -420,7 +422,7 @@ class TestUnitBitbucket(object):
     async def test_get_repo_languages(self):
         expected_result = ["javascript"]
         handler = Bitbucket(
-            repo=dict(name="example-python", private=True),
+            repo={"name": "example-python", "private": True},
         )
         res = await handler.get_repo_languages(None, "JavaScript")
         assert res == expected_result
@@ -429,7 +431,7 @@ class TestUnitBitbucket(object):
     async def test_get_repo_no_languages(self):
         expected_result = []
         handler = Bitbucket(
-            repo=dict(name="example-python", private=True),
+            repo={"name": "example-python", "private": True},
         )
         res = await handler.get_repo_languages(None, None)
         assert res == expected_result
@@ -437,13 +439,13 @@ class TestUnitBitbucket(object):
     @pytest.mark.asyncio
     async def test_get_pull_rquest_files(self, valid_handler):
         handler = Bitbucket(
-            repo=dict(name="test-repo"),
-            owner=dict(username="e2e-org"),
-            token=dict(secret="somesecret", key="somekey"),
-            oauth_consumer_token=dict(
-                key="oauth_consumer_key_value",
-                secret="oauth_consumer_token_secret_value",
-            ),
+            repo={"name": "test-repo"},
+            owner={"username": "e2e-org"},
+            token={"secret": "somesecret", "key": "somekey"},
+            oauth_consumer_token={
+                "key": "oauth_consumer_key_value",
+                "secret": "oauth_consumer_token_secret_value",
+            },
         )
         with respx.mock:
             respx.get(
@@ -494,13 +496,13 @@ class TestUnitBitbucket(object):
     @pytest.mark.asyncio
     async def test_get_pull_request_files_404(self):
         handler = Bitbucket(
-            repo=dict(name="test-repo"),
-            owner=dict(username="e2e-org"),
-            token=dict(secret="somesecret", key="somekey"),
-            oauth_consumer_token=dict(
-                key="oauth_consumer_key_value",
-                secret="oauth_consumer_token_secret_value",
-            ),
+            repo={"name": "test-repo"},
+            owner={"username": "e2e-org"},
+            token={"secret": "somesecret", "key": "somekey"},
+            oauth_consumer_token={
+                "key": "oauth_consumer_key_value",
+                "secret": "oauth_consumer_token_secret_value",
+            },
         )
         with respx.mock:
             respx.get(
@@ -522,13 +524,13 @@ class TestUnitBitbucket(object):
     @pytest.mark.asyncio
     async def test_get_pull_request_files_403(self):
         handler = Bitbucket(
-            repo=dict(name="test-repo"),
-            owner=dict(username="e2e-org"),
-            token=dict(secret="somesecret", key="somekey"),
-            oauth_consumer_token=dict(
-                key="oauth_consumer_key_value",
-                secret="oauth_consumer_token_secret_value",
-            ),
+            repo={"name": "test-repo"},
+            owner={"username": "e2e-org"},
+            token={"secret": "somesecret", "key": "somekey"},
+            oauth_consumer_token={
+                "key": "oauth_consumer_key_value",
+                "secret": "oauth_consumer_token_secret_value",
+            },
         )
         with respx.mock:
             respx.get(

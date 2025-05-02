@@ -87,21 +87,21 @@ class ImpersonationMiddleware(MiddlewareMixin):
 
             log.info(
                 "Impersonation attempted",
-                extra=dict(
-                    current_user_id=current_user.pk,
-                    current_user_email=current_user.email,
-                    impersonating_ownerid=impersonating_ownerid,
-                ),
+                extra={
+                    "current_user_id": current_user.pk,
+                    "current_user_email": current_user.email,
+                    "impersonating_ownerid": impersonating_ownerid,
+                },
             )
             if not current_user.is_staff:
                 log.warning(
                     "Impersonation unsuccessful",
-                    extra=dict(
-                        reason="must be a staff user",
-                        current_user_id=current_user.pk,
-                        current_user_email=current_user.email,
-                        impersonating_ownerid=impersonating_ownerid,
-                    ),
+                    extra={
+                        "reason": "must be a staff user",
+                        "current_user_id": current_user.pk,
+                        "current_user_email": current_user.email,
+                        "impersonating_ownerid": impersonating_ownerid,
+                    },
                 )
                 raise exceptions.PermissionDenied()
 
@@ -113,22 +113,22 @@ class ImpersonationMiddleware(MiddlewareMixin):
             if request.current_owner is None:
                 log.warning(
                     "Impersonation unsuccessful",
-                    extra=dict(
-                        reason="no such owner",
-                        current_user_id=current_user.pk,
-                        current_user_email=current_user.email,
-                        impersonating_ownerid=impersonating_ownerid,
-                    ),
+                    extra={
+                        "reason": "no such owner",
+                        "current_user_id": current_user.pk,
+                        "current_user_email": current_user.email,
+                        "impersonating_ownerid": impersonating_ownerid,
+                    },
                 )
                 raise exceptions.AuthenticationFailed()
 
             log.info(
                 "Impersonation successful",
-                extra=dict(
-                    current_user_id=current_user.pk,
-                    current_user_email=current_user.email,
-                    impersonating_ownerid=impersonating_ownerid,
-                ),
+                extra={
+                    "current_user_id": current_user.pk,
+                    "current_user_email": current_user.email,
+                    "impersonating_ownerid": impersonating_ownerid,
+                },
             )
             request.impersonation = True
         else:

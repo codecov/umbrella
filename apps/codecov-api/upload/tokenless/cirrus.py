@@ -40,13 +40,13 @@ class TokenlessCirrusHandler(BaseTokenlessUploadHandler):
         except (ConnectionError, HTTPError) as e:
             log.warning(
                 f"Request error {e}",
-                extra=dict(
-                    build=self.upload_params["build"],
-                    commit=self.upload_params["commit"],
-                    job=self.upload_params["job"],
-                    owner=self.upload_params["owner"],
-                    repo_name=self.upload_params["repo"],
-                ),
+                extra={
+                    "build": self.upload_params["build"],
+                    "commit": self.upload_params["commit"],
+                    "job": self.upload_params["job"],
+                    "owner": self.upload_params["owner"],
+                    "repo_name": self.upload_params["repo"],
+                },
             )
             raise NotFound(
                 "Unable to locate build via Cirrus CI API. Please upload with the Codecov repository upload token to resolve this issue."
@@ -55,19 +55,19 @@ class TokenlessCirrusHandler(BaseTokenlessUploadHandler):
         build = response.json()
         log.info(
             "Cirrus CI build response found.",
-            extra=dict(build=build, upload_params=self.upload_params),
+            extra={"build": build, "upload_params": self.upload_params},
         )
         if "errors" in build or build.get("data") is None:
             log.warning(
                 "Build Error",
-                extra=dict(
-                    build=self.upload_params["build"],
-                    commit=self.upload_params["commit"],
-                    error=build["errors"],
-                    job=self.upload_params["job"],
-                    owner=self.upload_params["owner"],
-                    repo_name=self.upload_params["repo"],
-                ),
+                extra={
+                    "build": self.upload_params["build"],
+                    "commit": self.upload_params["commit"],
+                    "error": build["errors"],
+                    "job": self.upload_params["job"],
+                    "owner": self.upload_params["owner"],
+                    "repo_name": self.upload_params["repo"],
+                },
             )
             raise NotFound(
                 "Could not retrieve build via Cirrus CI API. Please upload with the Codecov repository upload token to resolve this issue."
@@ -101,13 +101,13 @@ class TokenlessCirrusHandler(BaseTokenlessUploadHandler):
         if build["repository"]["owner"] != owner or build["repository"]["name"] != repo:
             log.warning(
                 "Repository slug does not match Cirrus arguments",
-                extra=dict(
-                    build_info=build,
-                    commit=commit,
-                    job=self.upload_params.get("job"),
-                    owner=owner,
-                    repo_name=repo,
-                ),
+                extra={
+                    "build_info": build,
+                    "commit": commit,
+                    "job": self.upload_params.get("job"),
+                    "owner": owner,
+                    "repo_name": repo,
+                },
             )
             raise NotFound(
                 "Repository slug does not match Cirrus CI build. Please upload with the Codecov repository upload token to resolve this issue."
@@ -117,13 +117,13 @@ class TokenlessCirrusHandler(BaseTokenlessUploadHandler):
         if build["changeIdInRepo"] != commit:
             log.warning(
                 "Commit sha does not match Github actions arguments",
-                extra=dict(
-                    build_info=build,
-                    commit=commit,
-                    job=self.upload_params.get("job"),
-                    owner=owner,
-                    repo_name=repo,
-                ),
+                extra={
+                    "build_info": build,
+                    "commit": commit,
+                    "job": self.upload_params.get("job"),
+                    "owner": owner,
+                    "repo_name": repo,
+                },
             )
             raise NotFound(
                 "Commit sha does not match Cirrus CI build. Please upload with the Codecov repository upload token to resolve issue."
@@ -140,23 +140,23 @@ class TokenlessCirrusHandler(BaseTokenlessUploadHandler):
             if now > finishTimestamp:
                 log.warning(
                     "Cirrus run is stale",
-                    extra=dict(
-                        build_info=build,
-                        commit=commit,
-                        job=self.upload_params.get("job"),
-                        owner=owner,
-                        repo_name=repo,
-                    ),
+                    extra={
+                        "build_info": build,
+                        "commit": commit,
+                        "job": self.upload_params.get("job"),
+                        "owner": owner,
+                        "repo_name": repo,
+                    },
                 )
                 log.warning(
                     "Cirrus run is stale",
-                    extra=dict(
-                        build_info=build,
-                        commit=commit,
-                        job=self.upload_params.get("job"),
-                        owner=owner,
-                        repo_name=repo,
-                    ),
+                    extra={
+                        "build_info": build,
+                        "commit": commit,
+                        "job": self.upload_params.get("job"),
+                        "owner": owner,
+                        "repo_name": repo,
+                    },
                 )
                 raise NotFound("Cirrus run is stale")
 

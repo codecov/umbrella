@@ -22,12 +22,12 @@ from django.http import (
 )
 from graphql import DocumentNode
 from sentry_sdk import capture_exception
-from shared.helpers.redis import get_redis_connection
-from shared.metrics import Counter, Histogram, inc_counter
 
 from codecov.commands.exceptions import BaseException
 from codecov.commands.executor import get_executor_from_request
 from services import ServiceException
+from shared.helpers.redis import get_redis_connection
+from shared.metrics import Counter, Histogram, inc_counter
 
 from .schema import schema
 from .validation import (
@@ -100,7 +100,7 @@ class QueryMetricsExtension(Extension):
         except TimeoutError:
             # does not block the rest of the gql request, logs and falls back to default values
             query_slice = query[:30] if len(query) > 30 else query
-            log.error("Regex Timeout Error", extra=dict(query_slice=query_slice))
+            log.error("Regex Timeout Error", extra={"query_slice": query_slice})
             match_obj = None
 
         if match_obj:
@@ -118,7 +118,7 @@ class QueryMetricsExtension(Extension):
             query_slice = query[:30] if len(query) > 30 else query
             log.info(
                 "Could not match gql query format for logging",
-                extra=dict(query_slice=query_slice),
+                extra={"query_slice": query_slice},
             )
 
     def request_started(self, context: dict[str, Any]) -> None:
@@ -129,10 +129,10 @@ class QueryMetricsExtension(Extension):
         self.start_timestamp = time.perf_counter()
         inc_counter(
             GQL_HIT_COUNTER,
-            labels=dict(
-                operation_type=self.operation_type,
-                operation_name=self.operation_name,
-            ),
+            labels={
+                "operation_type": self.operation_type,
+                "operation_name": self.operation_name,
+            },
         )
 
     def request_finished(self, context: dict[str, Any]) -> None:
@@ -254,11 +254,11 @@ class AsyncGraphqlView(GraphQLAsyncView):
             "user": request.user,
         }
         log.info("GraphQL Request", extra=log_data)
-        inc_counter(GQL_REQUEST_MADE_COUNTER, labels=dict(path=req_path))
+        inc_counter(GQL_REQUEST_MADE_COUNTER, labels={"path": req_path})
         if self._check_ratelimit(request=request):
             inc_counter(
                 GQL_ERROR_TYPE_COUNTER,
-                labels=dict(error_type="rate_limit", path=req_path),
+                labels={"error_type": "rate_limit", "path": req_path},
             )
             return JsonResponse(
                 data={
@@ -299,25 +299,25 @@ class AsyncGraphqlView(GraphQLAsyncView):
             if "errors" in data:
                 inc_counter(
                     GQL_ERROR_TYPE_COUNTER,
-                    labels=dict(error_type="all", path=req_path),
+                    labels={"error_type": "all", "path": req_path},
                 )
                 try:
                     if data["errors"][0]["extensions"]["cost"]:
                         costs = data["errors"][0]["extensions"]["cost"]
                         log.error(
                             "Query Cost Exceeded",
-                            extra=dict(
-                                requested_cost=costs.get("requestedQueryCost"),
-                                maximum_cost=costs.get("maximumAvailable"),
-                                request_body=req_body,
-                            ),
+                            extra={
+                                "requested_cost": costs.get("requestedQueryCost"),
+                                "maximum_cost": costs.get("maximumAvailable"),
+                                "request_body": req_body,
+                            },
                         )
                         inc_counter(
                             GQL_ERROR_TYPE_COUNTER,
-                            labels=dict(
-                                error_type="query_cost_exceeded",
-                                path=req_path,
-                            ),
+                            labels={
+                                "error_type": "query_cost_exceeded",
+                                "path": req_path,
+                            },
                         )
                         return HttpResponseBadRequest(
                             JsonResponse("Your query is too costly.")
@@ -392,19 +392,29 @@ class AsyncGraphqlView(GraphQLAsyncView):
         if current_count is None:
             log.info(
                 "[GQL Rate Limit] - Setting new key",
-                extra=dict(key=key, user_id=user_id),
+                extra={"key": key, "user_id": user_id},
             )
             redis.set(name=key, ex=window, value=1)
         elif int(current_count) >= limit:
             log.warning(
                 "[GQL Rate Limit] - Rate limit reached for key",
-                extra=dict(key=key, limit=limit, count=current_count, user_id=user_id),
+                extra={
+                    "key": key,
+                    "limit": limit,
+                    "count": current_count,
+                    "user_id": user_id,
+                },
             )
             return True
         else:
             log.warning(
                 "[GQL Rate Limit] - Incrementing rate limit for key",
-                extra=dict(key=key, limit=limit, count=current_count, user_id=user_id),
+                extra={
+                    "key": key,
+                    "limit": limit,
+                    "count": current_count,
+                    "user_id": user_id,
+                },
             )
             redis.incr(key)
         return False

@@ -3,6 +3,7 @@ import time
 from typing import Any, Callable, Optional
 
 import orjson
+
 from shared.api_archive.archive import ArchiveService
 from shared.storage.exceptions import FileNotInStorageError
 from shared.utils.ReportEncoder import ReportEncoder
@@ -106,22 +107,22 @@ class ArchiveField:
                         # we previously errored and now it succeeded
                         log.info(
                             "Archive enabled field found in storage after delay",
-                            extra=dict(
-                                storage_path=archive_field,
-                                object_id=obj.id,
-                                commit=obj.get_commitid(),
-                                delay_seconds=time.time() - start_time,
-                            ),
+                            extra={
+                                "storage_path": archive_field,
+                                "object_id": obj.id,
+                                "commit": obj.get_commitid(),
+                                "delay_seconds": time.time() - start_time,
+                            },
                         )
                     return result
                 except FileNotInStorageError:
                     log.warning(
                         "Archive enabled not found, retrying soon",
-                        extra=dict(
-                            storage_path=archive_field,
-                            object_id=obj.id,
-                            commit=obj.get_commitid(),
-                        ),
+                        extra={
+                            "storage_path": archive_field,
+                            "object_id": obj.id,
+                            "commit": obj.get_commitid(),
+                        },
                     )
                     error = True
                     # sleep a little but so we're not hammering the archive service
@@ -130,19 +131,19 @@ class ArchiveField:
 
             log.error(
                 "Archive enabled field not in storage",
-                extra=dict(
-                    storage_path=archive_field,
-                    object_id=obj.id,
-                    commit=obj.get_commitid(),
-                ),
+                extra={
+                    "storage_path": archive_field,
+                    "object_id": obj.id,
+                    "commit": obj.get_commitid(),
+                },
             )
         else:
             log.debug(
                 "Both db_field and archive_field are None",
-                extra=dict(
-                    object_id=obj.id,
-                    commit=obj.get_commitid(),
-                ),
+                extra={
+                    "object_id": obj.id,
+                    "commit": obj.get_commitid(),
+                },
             )
         return self.default_value_class()
 

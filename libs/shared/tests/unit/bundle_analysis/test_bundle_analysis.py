@@ -273,13 +273,13 @@ def test_bundle_report_asset_ordering():
         assert len(all_asset_reports) == 5
 
         # Sort by size in descending
-        ordered_asset_reports = list(
+        ordered_asset_reports = [
             (ar.name, ar.size)
             for ar in bundle_report.asset_reports(
                 ordering_column="size",
                 ordering_desc=True,
             )
-        )
+        ]
         assert ordered_asset_reports == [
             ("assets/index-*.js", 144577),
             ("assets/react-*.svg", 4126),
@@ -288,13 +288,13 @@ def test_bundle_report_asset_ordering():
             ("assets/index-*.js", 154),
         ]
         # Sort by size in ascending
-        ordered_asset_reports = list(
+        ordered_asset_reports = [
             (ar.name, ar.size)
             for ar in bundle_report.asset_reports(
                 ordering_column="size",
                 ordering_desc=False,
             )
-        )
+        ]
         assert ordered_asset_reports == [
             ("assets/index-*.js", 154),
             ("assets/LazyComponent-*.js", 294),
@@ -303,13 +303,13 @@ def test_bundle_report_asset_ordering():
             ("assets/index-*.js", 144577),
         ]
         # Sort by name in descending
-        ordered_asset_reports = list(
+        ordered_asset_reports = [
             (ar.name, ar.size)
             for ar in bundle_report.asset_reports(
                 ordering_column="name",
                 ordering_desc=True,
             )
-        )
+        ]
         assert ordered_asset_reports == [
             ("assets/react-*.svg", 4126),
             ("assets/index-*.css", 1421),
@@ -318,13 +318,13 @@ def test_bundle_report_asset_ordering():
             ("assets/LazyComponent-*.js", 294),
         ]
         # Sort by name in ascending
-        ordered_asset_reports = list(
+        ordered_asset_reports = [
             (ar.name, ar.size)
             for ar in bundle_report.asset_reports(
                 ordering_column="name",
                 ordering_desc=False,
             )
-        )
+        ]
         assert ordered_asset_reports == [
             ("assets/LazyComponent-*.js", 294),
             ("assets/index-*.js", 144577),
@@ -993,7 +993,7 @@ def test_bundle_report_dynamic_imports_fetching():
 
         # 1 of them should be from the asset called: LazyComponent-BBSC53Nv.js
         asset = bundle_report.asset_report_by_name("LazyComponent-BBSC53Nv.js")
-        imports = [item for item in asset.dynamically_imported_assets()]
+        imports = list(asset.dynamically_imported_assets())
         assert len(imports) == 1
         assert imports[0].hashed_name == "index-C-Z8zsvD.js"
 
@@ -1022,7 +1022,7 @@ def test_bundle_report_dynamic_imports_with_missing_assets():
 
             # 1 of them should be from the asset called: LazyComponent-BBSC53Nv.js
             asset = bundle_report.asset_report_by_name("LazyComponent-BBSC53Nv.js")
-            imports = [item for item in asset.dynamically_imported_assets()]
+            imports = list(asset.dynamically_imported_assets())
             assert len(imports) == 1
             assert imports[0].hashed_name == "index-C-Z8zsvD.js"
 

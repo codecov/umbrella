@@ -10,36 +10,36 @@ from shared.torngit.gitlab import Gitlab
 @pytest.fixture
 def valid_handler():
     return Gitlab(
-        repo=dict(service_id="187725", name="ci-repo"),
-        owner=dict(username="codecov", service_id="109479"),
-        token=dict(key=16 * "f882"),
+        repo={"service_id": "187725", "name": "ci-repo"},
+        owner={"username": "codecov", "service_id": "109479"},
+        token={"key": 16 * "f882"},
     )
 
 
 @pytest.fixture
 def subgroup_handler():
     return Gitlab(
-        repo=dict(service_id="187725", name="codecov-test"),
-        owner=dict(username="group:subgroup1:subgroup2", service_id="7983213"),
-        token=dict(key=16 * "f882"),
+        repo={"service_id": "187725", "name": "codecov-test"},
+        owner={"username": "group:subgroup1:subgroup2", "service_id": "7983213"},
+        token={"key": 16 * "f882"},
     )
 
 
 @pytest.fixture
 def admin_handler():
     return Gitlab(
-        repo=dict(service_id="12060694"),
-        owner=dict(username="codecov-organization", service_id="4037482"),
-        token=dict(key=16 * "f882"),
+        repo={"service_id": "12060694"},
+        owner={"username": "codecov-organization", "service_id": "4037482"},
+        token={"key": 16 * "f882"},
     )
 
 
 class TestGitlabTestCase(object):
     @pytest.mark.asyncio
     async def test_get_is_admin(self, admin_handler, codecov_vcr):
-        user = dict(service_id="3108129")
+        user = {"service_id": "3108129"}
         is_admin = await admin_handler.get_is_admin(
-            user=user, token=dict(key=16 * "f882", username="hootener")
+            user=user, token={"key": 16 * "f882", "username": "hootener"}
         )
         assert is_admin
 
@@ -168,9 +168,9 @@ class TestGitlabTestCase(object):
     @pytest.mark.asyncio
     async def test_get_pull_request_with_diff_refs(self, codecov_vcr):
         recent_handler = Gitlab(
-            repo=dict(service_id="18347774", name="codecov-example"),
-            owner=dict(username="ThiagoCodecov", service_id="_meaningless_"),
-            token=dict(key=16 * "f882"),
+            repo={"service_id": "18347774", "name": "codecov-example"},
+            owner={"username": "ThiagoCodecov", "service_id": "_meaningless_"},
+            token={"key": 16 * "f882"},
         )
         res = await recent_handler.get_pull_request("1")
         assert res == {
@@ -203,9 +203,9 @@ class TestGitlabTestCase(object):
     @pytest.mark.asyncio
     async def test_get_pull_request_files(self, codecov_vcr):
         recent_handler = Gitlab(
-            repo=dict(service_id="30951850", name="learn-gitlab"),
-            owner=dict(username="codecove2e", service_id="10119799"),
-            token=dict(key=16 * "f882"),
+            repo={"service_id": "30951850", "name": "learn-gitlab"},
+            owner={"username": "codecove2e", "service_id": "10119799"},
+            token={"key": 16 * "f882"},
         )
         res = await recent_handler.get_pull_request_files("1")
 
@@ -363,7 +363,7 @@ class TestGitlabTestCase(object):
     @pytest.mark.asyncio
     async def test_get_branches(self, valid_handler, codecov_vcr):
         branches = sorted(await valid_handler.get_branches())
-        assert list(map(lambda a: a[0], branches)) == ["main", "other-branch"]
+        assert [a[0] for a in branches] == ["main", "other-branch"]
 
     @pytest.mark.asyncio
     async def test_get_branch(self, valid_handler, codecov_vcr):
@@ -504,7 +504,7 @@ class TestGitlabTestCase(object):
             ],
         }
         res = await valid_handler.get_compare(base, head)
-        assert sorted(list(res.keys())) == sorted(list(expected_result.keys()))
+        assert sorted(res.keys()) == sorted(expected_result.keys())
         for key in res:
             assert res[key] == expected_result[key]
         assert res == expected_result
@@ -545,9 +545,9 @@ class TestGitlabTestCase(object):
             },
         }
         res = await Gitlab(
-            repo=dict(service_id="9715852"),
-            owner=dict(username="1nf1n1t3l00p"),
-            token=dict(key=16 * "f882"),
+            repo={"service_id": "9715852"},
+            owner={"username": "1nf1n1t3l00p"},
+            token={"key": 16 * "f882"},
         ).get_repository()
         assert res == expected_result
 
@@ -566,9 +566,9 @@ class TestGitlabTestCase(object):
             },
         }
         res = await Gitlab(
-            repo=dict(name="proj-a"),
-            owner=dict(username="l00p_group_1:subgroup1"),
-            token=dict(key=16 * "f882"),
+            repo={"name": "proj-a"},
+            owner={"username": "l00p_group_1:subgroup1"},
+            token={"key": 16 * "f882"},
         ).get_repository()
         assert res == expected_result
 
@@ -752,9 +752,9 @@ class TestGitlabTestCase(object):
             },
         ]
         res = await Gitlab(
-            repo=dict(service_id="9715852"),
-            owner=dict(username="1nf1n1t3l00p"),
-            token=dict(key=16 * "f882"),
+            repo={"service_id": "9715852"},
+            owner={"username": "1nf1n1t3l00p"},
+            token={"key": 16 * "f882"},
         ).list_repos()
         assert res == expected_result
 
@@ -821,9 +821,9 @@ class TestGitlabTestCase(object):
             },
         ]
         res = await Gitlab(
-            repo=dict(service_id="5938764"),
-            owner=dict(username="thiagocodecovtestgroup:test-subgroup"),
-            token=dict(key=16 * "f882"),
+            repo={"service_id": "5938764"},
+            owner={"username": "thiagocodecovtestgroup:test-subgroup"},
+            token={"key": 16 * "f882"},
         ).list_repos()
         assert res == expected_result
 
@@ -867,9 +867,9 @@ class TestGitlabTestCase(object):
             },
         ]
         res = await Gitlab(
-            repo=dict(service_id="9715852"),
-            owner=dict(username="1nf1n1t3l00p"),
-            token=dict(key=16 * "f882"),
+            repo={"service_id": "9715852"},
+            owner={"username": "1nf1n1t3l00p"},
+            token={"key": 16 * "f882"},
         ).list_teams()
         assert res == expected_result
 
@@ -989,9 +989,9 @@ class TestGitlabTestCase(object):
             labels={"endpoint": "list_teams"},
         )
         handler = Gitlab(
-            repo=dict(service_id="9715852"),
-            owner=dict(username="1nf1n1t3l00p"),
-            token=dict(key=16 * "f882"),
+            repo={"service_id": "9715852"},
+            owner={"username": "1nf1n1t3l00p"},
+            token={"key": 16 * "f882"},
         )
         url = handler.count_and_get_url_template("list_teams").substitute()
         res = handler.make_paginated_call(
@@ -999,7 +999,7 @@ class TestGitlabTestCase(object):
         )
         res = [i async for i in res]
         assert len(res) == 1
-        assert list(len(p) for p in res) == [8]
+        assert [len(p) for p in res] == [8]
         after = REGISTRY.get_sample_value(
             "git_provider_api_calls_gitlab_total",
             labels={"endpoint": "list_teams"},
@@ -1013,9 +1013,9 @@ class TestGitlabTestCase(object):
             labels={"endpoint": "list_teams"},
         )
         handler = Gitlab(
-            repo=dict(service_id="9715852"),
-            owner=dict(username="1nf1n1t3l00p"),
-            token=dict(key=16 * "f882"),
+            repo={"service_id": "9715852"},
+            owner={"username": "1nf1n1t3l00p"},
+            token={"key": 16 * "f882"},
         )
         url = handler.count_and_get_url_template("list_teams").substitute()
         res = handler.make_paginated_call(
@@ -1023,7 +1023,7 @@ class TestGitlabTestCase(object):
         )
         res = [i async for i in res]
         assert len(res) == 3
-        assert list(len(p) for p in res) == [4, 4, 1]
+        assert [len(p) for p in res] == [4, 4, 1]
         assert codecov_vcr.play_count == 3
         after = REGISTRY.get_sample_value(
             "git_provider_api_calls_gitlab_total",
@@ -1038,9 +1038,9 @@ class TestGitlabTestCase(object):
             labels={"endpoint": "list_teams"},
         )
         handler = Gitlab(
-            repo=dict(service_id="9715852"),
-            owner=dict(username="1nf1n1t3l00p"),
-            token=dict(key=16 * "f882"),
+            repo={"service_id": "9715852"},
+            owner={"username": "1nf1n1t3l00p"},
+            token={"key": 16 * "f882"},
         )
         url = handler.count_and_get_url_template("list_teams").substitute()
         res = handler.make_paginated_call(
@@ -1052,7 +1052,7 @@ class TestGitlabTestCase(object):
         )
         res = [i async for i in res]
         assert len(res) == 2
-        assert list(len(p) for p in res) == [3, 3]
+        assert [len(p) for p in res] == [3, 3]
         after = REGISTRY.get_sample_value(
             "git_provider_api_calls_gitlab_total",
             labels={"endpoint": "list_teams"},
@@ -1062,7 +1062,9 @@ class TestGitlabTestCase(object):
     @pytest.mark.asyncio
     async def test_get_authenticated_user(self, codecov_vcr):
         code = "7c005cbb342626fffe4f24e5eedac28d9e8fa1c8592808dd294bfe0d39ea084d"
-        handler = Gitlab(oauth_consumer_token=dict(key=16 * "f882", secret=16 * "f882"))
+        handler = Gitlab(
+            oauth_consumer_token={"key": 16 * "f882", "secret": 16 * "f882"}
+        )
         res = await handler.get_authenticated_user(
             code, "http://localhost:8000/login/gl"
         )

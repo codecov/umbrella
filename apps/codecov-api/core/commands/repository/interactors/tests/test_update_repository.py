@@ -1,8 +1,8 @@
 import pytest
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import OwnerFactory
 
 from codecov.commands.exceptions import Unauthorized
+from shared.django_apps.core.tests.factories import OwnerFactory
 
 from ..update_repository import UpdateRepositoryInteractor
 

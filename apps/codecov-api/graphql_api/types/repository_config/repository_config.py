@@ -2,10 +2,10 @@ from typing import TypedDict
 
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
-from shared.yaml.user_yaml import UserYaml
 
 from core.models import Repository
 from graphql_api.dataloader.owner import OwnerLoader
+from shared.yaml.user_yaml import UserYaml
 
 repository_config_bindable = ObjectType("RepositoryConfig")
 indication_range_bindable = ObjectType("IndicationRange")

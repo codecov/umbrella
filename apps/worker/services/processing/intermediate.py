@@ -1,6 +1,7 @@
 import orjson
 import sentry_sdk
 import zstandard
+
 from shared.helpers.redis import get_redis_connection
 from shared.reports.resources import Report
 

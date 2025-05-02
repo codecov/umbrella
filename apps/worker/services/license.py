@@ -4,13 +4,13 @@ from enum import Enum, auto
 from functools import lru_cache
 from typing import Optional
 
-from shared.config import get_config
-from shared.license import get_current_license
 from sqlalchemy import func
 from sqlalchemy.sql import text
 
 from database.models import Owner, Repository
 from helpers.environment import is_enterprise
+from shared.config import get_config
+from shared.license import get_current_license
 
 log = logging.getLogger(__name__)
 

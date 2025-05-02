@@ -4,13 +4,6 @@ from typing import Any, Mapping, Optional
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from shared.metrics import Counter, inc_counter
-from shared.plan.constants import PlanName
-from shared.torngit.exceptions import (
-    TorngitClientError,
-    TorngitObjectNotFoundError,
-    TorngitServerFailureError,
-)
 
 from database.enums import Notification
 from services.comparison import ComparisonProxy
@@ -31,6 +24,13 @@ from services.notification.notifiers.comment.conditions import (
 )
 from services.notification.notifiers.mixins.message import MessageMixin
 from services.urls import append_tracking_params_to_urls, get_members_url, get_plan_url
+from shared.metrics import Counter, inc_counter
+from shared.plan.constants import PlanName
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitObjectNotFoundError,
+    TorngitServerFailureError,
+)
 
 log = logging.getLogger(__name__)
 
@@ -84,11 +84,11 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
         if comparison.pull is not None and comparison.pull.state != "open":
             inc_counter(
                 COMMENT_NOTIFIER_COUNTER,
-                labels=dict(
-                    repo_using_integration="true"
+                labels={
+                    "repo_using_integration": "true"
                     if self.repository_service.data["repo"]["using_integration"]
                     else "false",
-                ),
+                },
             )
 
         for condition in self.notify_conditions:
@@ -112,10 +112,10 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
         except TorngitClientError:
             log.warning(
                 "Unable to fetch enough information to build message for comment",
-                extra=dict(
-                    commit=comparison.head.commit.commitid,
-                    pullid=comparison.pull.pullid,
-                ),
+                extra={
+                    "commit": comparison.head.commit.commitid,
+                    "pullid": comparison.pull.pullid,
+                },
                 exc_info=True,
             )
             return NotificationResult(
@@ -130,7 +130,7 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
         except TorngitServerFailureError:
             log.warning(
                 "Unable to send comments because the provider server was not reachable or errored",
-                extra=dict(git_service=self.repository.service),
+                extra={"git_service": self.repository.service},
                 exc_info=True,
             )
             return NotificationResult(
@@ -195,7 +195,7 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
                 log.warning(
                     "Comment could not be edited due to client permissions",
                     exc_info=True,
-                    extra=dict(pullid=pullid, commentid=commentid),
+                    extra={"pullid": pullid, "commentid": commentid},
                 )
         try:
             res = async_to_sync(self.repository_service.post_comment)(pullid, message)
@@ -209,7 +209,7 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
             log.warning(
                 "Comment could not be posted due to client permissions",
                 exc_info=True,
-                extra=dict(pullid=pullid, commentid=commentid),
+                extra={"pullid": pullid, "commentid": commentid},
             )
             return {
                 "notification_attempted": True,
@@ -267,11 +267,11 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
                 log.warning(
                     "Comment could not be deleted due to client permissions",
                     exc_info=True,
-                    extra=dict(
-                        repoid=self.repository.repoid,
-                        pullid=pullid,
-                        commentid=commentid,
-                    ),
+                    extra={
+                        "repoid": self.repository.repoid,
+                        "pullid": pullid,
+                        "commentid": commentid,
+                    },
                 )
                 return {
                     "notification_attempted": True,
@@ -291,9 +291,11 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
             log.warning(
                 "Comment could not be posted due to client permissions",
                 exc_info=True,
-                extra=dict(
-                    repoid=self.repository.repoid, pullid=pullid, commentid=commentid
-                ),
+                extra={
+                    "repoid": self.repository.repoid,
+                    "pullid": pullid,
+                    "commentid": commentid,
+                },
             )
             return {
                 "notification_attempted": True,

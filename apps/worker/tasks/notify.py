@@ -4,24 +4,6 @@ from typing import Optional
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
-from shared.bots.github_apps import (
-    get_github_app_token,
-    get_specific_github_app_details,
-)
-from shared.celery_config import (
-    activate_account_user_task_name,
-    new_user_activated_task_name,
-    notify_task_name,
-    status_set_error_task_name,
-)
-from shared.config import get_config
-from shared.django_apps.codecov_auth.models import Service
-from shared.helpers.redis import Redis, get_redis_connection
-from shared.reports.readonly import ReadOnlyReport
-from shared.torngit.base import TokenType, TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError, TorngitServerFailureError
-from shared.typings.torngit import OwnerInfo, RepoInfo, TorngitInstanceData
-from shared.yaml import UserYaml
 from sqlalchemy import and_
 from sqlalchemy.orm.session import Session
 
@@ -62,6 +44,24 @@ from services.repository import (
     get_repo_provider_service,
 )
 from services.yaml import get_current_yaml, read_yaml_field
+from shared.bots.github_apps import (
+    get_github_app_token,
+    get_specific_github_app_details,
+)
+from shared.celery_config import (
+    activate_account_user_task_name,
+    new_user_activated_task_name,
+    notify_task_name,
+    status_set_error_task_name,
+)
+from shared.config import get_config
+from shared.django_apps.codecov_auth.models import Service
+from shared.helpers.redis import Redis, get_redis_connection
+from shared.reports.readonly import ReadOnlyReport
+from shared.torngit.base import TokenType, TorngitBaseAdapter
+from shared.torngit.exceptions import TorngitClientError, TorngitServerFailureError
+from shared.typings.torngit import OwnerInfo, RepoInfo, TorngitInstanceData
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.upload_processor import UPLOAD_PROCESSING_LOCK_NAME
 
@@ -89,7 +89,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         ):
             log.info(
                 "Not notifying because there are seemingly other jobs being processed yet",
-                extra=dict(repoid=repoid, commitid=commitid),
+                extra={"repoid": repoid, "commitid": commitid},
             )
             self.log_checkpoint(UploadFlow.SKIPPING_NOTIFICATION)
             return {
@@ -123,12 +123,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             (
                 log.info(
                     "Not notifying because there is another notification already happening",
-                    extra=dict(
-                        repoid=repoid,
-                        commitid=commitid,
-                        error_type=type(err),
-                        lock_acquired=lock_acquired,
-                    ),
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "error_type": type(err),
+                        "lock_acquired": lock_acquired,
+                    },
                 ),
             )
             self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
@@ -165,13 +165,13 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         except MaxRetriesExceededError:
             log.warning(
                 "Not attempting to retry notifications since we already retried too many times",
-                extra=dict(
-                    repoid=commit.repoid,
-                    commit=commit.commitid,
-                    max_retries=max_retries,
-                    next_countdown_would_be=countdown,
-                    current_yaml=current_yaml.to_dict(),
-                ),
+                extra={
+                    "repoid": commit.repoid,
+                    "commit": commit.commitid,
+                    "max_retries": max_retries,
+                    "next_countdown_would_be": countdown,
+                    "current_yaml": current_yaml.to_dict(),
+                },
             )
             self.log_checkpoint(UploadFlow.NOTIF_TOO_MANY_RETRIES)
             return {
@@ -190,7 +190,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         empty_upload=None,
         **kwargs,
     ):
-        log.info("Starting notifications", extra=dict(commit=commitid, repoid=repoid))
+        log.info("Starting notifications", extra={"commit": commitid, "repoid": repoid})
         commits_query = db_session.query(Commit).filter(
             Commit.repoid == repoid, Commit.commitid == commitid
         )
@@ -224,7 +224,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
 
             log.warning(
                 "Unable to start notifications because repo doesn't have a valid bot",
-                extra=dict(repoid=repoid, commit=commitid),
+                extra={"repoid": repoid, "commit": commitid},
             )
             self.log_checkpoint(UploadFlow.NOTIF_NO_VALID_INTEGRATION)
             return {"notified": False, "notifications": None, "reason": "no_valid_bot"}
@@ -236,14 +236,14 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 retry_delay_seconds = max(60, get_seconds_to_next_hour())
                 log.warning(
                     "Unable to start notifications. Retrying again later.",
-                    extra=dict(
-                        repoid=repoid,
-                        commit=commitid,
-                        apps_available=exp.apps_count,
-                        apps_rate_limited=exp.rate_limited_count,
-                        apps_suspended=exp.suspended_count,
-                        countdown_seconds=retry_delay_seconds,
-                    ),
+                    extra={
+                        "repoid": repoid,
+                        "commit": commitid,
+                        "apps_available": exp.apps_count,
+                        "apps_rate_limited": exp.rate_limited_count,
+                        "apps_suspended": exp.suspended_count,
+                        "countdown_seconds": retry_delay_seconds,
+                    },
                 )
                 return self._attempt_retry(
                     max_retries=10,
@@ -255,12 +255,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             # Maybe we have apps that are suspended. We can't communicate with github.
             log.warning(
                 "We can't find an app to communicate with GitHub. Not notifying.",
-                extra=dict(
-                    repoid=repoid,
-                    commit=commitid,
-                    apps_available=exp.apps_count,
-                    apps_suspended=exp.suspended_count,
-                ),
+                extra={
+                    "repoid": repoid,
+                    "commit": commitid,
+                    "apps_available": exp.apps_count,
+                    "apps_suspended": exp.suspended_count,
+                },
             )
             self.log_checkpoint(UploadFlow.NOTIF_NO_APP_INSTALLATION)
             return {
@@ -281,7 +281,11 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         except TorngitClientError as ex:
             log.info(
                 "Unable to fetch CI results due to a client problem. Not notifying user",
-                extra=dict(repoid=commit.repoid, commit=commit.commitid, code=ex.code),
+                extra={
+                    "repoid": commit.repoid,
+                    "commit": commit.commitid,
+                    "code": ex.code,
+                },
             )
             self.log_checkpoint(UploadFlow.NOTIF_GIT_CLIENT_ERROR)
             return {
@@ -292,7 +296,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         except TorngitServerFailureError:
             log.info(
                 "Unable to fetch CI results due to server issues. Not notifying user",
-                extra=dict(repoid=commit.repoid, commit=commit.commitid),
+                extra={"repoid": commit.repoid, "commit": commit.commitid},
             )
             self.log_checkpoint(UploadFlow.NOTIF_GIT_SERVICE_ERROR)
             return {
@@ -303,7 +307,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         if self.should_wait_longer(current_yaml, commit, ci_results):
             log.info(
                 "Not sending notifications yet because we are waiting for CI to finish",
-                extra=dict(repoid=commit.repoid, commit=commit.commitid),
+                extra={"repoid": commit.repoid, "commit": commit.commitid},
             )
             ghapp_default_installations = list(
                 filter(
@@ -364,12 +368,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             ):
                 log.info(
                     "Not sending notifications for commit when it differs from pull's most recent head",
-                    extra=dict(
-                        commit=commit.commitid,
-                        repoid=commit.repoid,
-                        current_yaml=current_yaml.to_dict(),
-                        pull_head=enriched_pull.provider_pull["head"]["commitid"],
-                    ),
+                    extra={
+                        "commit": commit.commitid,
+                        "repoid": commit.repoid,
+                        "current_yaml": current_yaml.to_dict(),
+                        "pull_head": enriched_pull.provider_pull["head"]["commitid"],
+                    },
                 )
                 self.log_checkpoint(UploadFlow.NOTIF_STALE_HEAD)
                 return {
@@ -401,11 +405,11 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
 
             log.info(
                 "We are going to be sending notifications",
-                extra=dict(
-                    commit=commit.commitid,
-                    repoid=commit.repoid,
-                    current_yaml=current_yaml.to_dict(),
-                ),
+                extra={
+                    "commit": commit.commitid,
+                    "repoid": commit.repoid,
+                    "current_yaml": current_yaml.to_dict(),
+                },
             )
 
             all_tests_passed, ta_error_msg = get_ta_relevant_context(
@@ -432,20 +436,20 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             self.log_checkpoint(UploadFlow.NOTIFIED)
             log.info(
                 "Notifications done",
-                extra=dict(
-                    notifications=notifications,
-                    notification_count=len(notifications),
-                    commit=commit.commitid,
-                    repoid=commit.repoid,
-                    pullid=pull.pullid if pull is not None else None,
-                ),
+                extra={
+                    "notifications": notifications,
+                    "notification_count": len(notifications),
+                    "commit": commit.commitid,
+                    "repoid": commit.repoid,
+                    "pullid": pull.pullid if pull is not None else None,
+                },
             )
             db_session.commit()
             return {"notified": True, "notifications": notifications}
         else:
             log.info(
                 "Not sending notifications at all",
-                extra=dict(commit=commit.commitid, repoid=commit.repoid),
+                extra={"commit": commit.commitid, "repoid": commit.repoid},
             )
             self.log_checkpoint(UploadFlow.SKIPPING_NOTIFICATION)
             return {"notified": False, "notifications": None}
@@ -559,13 +563,13 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         """
         log.info(
             "Checking if we need to send notification to more commits",
-            extra=dict(commit=commit.commitid),
+            extra={"commit": commit.commitid},
         )
         report = commit.commit_report(ReportType.COVERAGE)
         if report is None:
             log.info(
                 "No coverage report found. Skipping extra shas for GitLab",
-                extra=dict(commit=commit.commitid),
+                extra={"commit": commit.commitid},
             )
             return set()
         project_id = commit.repository.service_id
@@ -608,7 +612,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         else:
             log.warning(
                 "Neither the original nor updated base commit are known",
-                extra=dict(repoid=commit.repository.repoid, commit=commit.commitid),
+                extra={"repoid": commit.repository.repoid, "commit": commit.commitid},
             )
             patch_coverage_base_commitid = None
 
@@ -693,13 +697,15 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             # we can exit, ci failed.
             self.app.tasks[status_set_error_task_name].apply_async(
                 args=None,
-                kwargs=dict(
-                    repoid=commit.repoid, commitid=commit.commitid, message="CI failed."
-                ),
+                kwargs={
+                    "repoid": commit.repoid,
+                    "commitid": commit.commitid,
+                    "message": "CI failed.",
+                },
             )
             log.info(
                 "Not sending notifications because CI failed",
-                extra=dict(repoid=commit.repoid, commit=commit.commitid),
+                extra={"repoid": commit.repoid, "commit": commit.commitid},
             )
             return False
 
@@ -712,12 +718,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             if after_n_builds > number_sessions:
                 log.info(
                     "Not sending notifications because there arent enough builds",
-                    extra=dict(
-                        repoid=commit.repoid,
-                        commit=commit.commitid,
-                        after_n_builds=after_n_builds,
-                        number_sessions=number_sessions,
-                    ),
+                    extra={
+                        "repoid": commit.repoid,
+                        "commit": commit.commitid,
+                        "after_n_builds": after_n_builds,
+                        "number_sessions": number_sessions,
+                    },
                 )
                 return False
         return True
@@ -757,14 +763,14 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         celery_app.send_task(
             new_user_activated_task_name,
             args=None,
-            kwargs=dict(org_ownerid=org_ownerid, user_ownerid=user_ownerid),
+            kwargs={"org_ownerid": org_ownerid, "user_ownerid": user_ownerid},
         )
         # Activate the account user if it exists.
         self.app.tasks[activate_account_user_task_name].apply_async(
-            kwargs=dict(
-                user_ownerid=user_ownerid,
-                org_ownerid=org_ownerid,
-            ),
+            kwargs={
+                "user_ownerid": user_ownerid,
+                "org_ownerid": org_ownerid,
+            },
         )
 
     @sentry_sdk.trace

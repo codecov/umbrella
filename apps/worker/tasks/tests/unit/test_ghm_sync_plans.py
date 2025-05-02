@@ -1,8 +1,8 @@
 from freezegun import freeze_time
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
 from database.models import Owner, Repository
 from database.tests.factories import OwnerFactory, RepositoryFactory
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from tasks.github_marketplace import SyncPlansTask
 
 
@@ -50,7 +50,7 @@ class TestGHMarketplaceSyncPlansTaskUnit(object):
         email = "tom@cat.com"
         ghm_service = mocker.MagicMock(
             get_user=mocker.MagicMock(
-                return_value=dict(login=username, name=name, email=email)
+                return_value={"login": username, "name": name, "email": email}
             )
         )
         SyncPlansTask().create_or_update_to_free_plan(
@@ -90,7 +90,7 @@ class TestGHMarketplaceSyncPlansTaskUnit(object):
         )
         ghm_service = mocker.MagicMock(get_user=mocker.MagicMock())
         SyncPlansTask().create_or_update_plan(
-            dbsession, ghm_service, owner.service_id, dict(unit_count=5)
+            dbsession, ghm_service, owner.service_id, {"unit_count": 5}
         )
 
         assert not ghm_service.get_user.called
@@ -126,7 +126,7 @@ class TestGHMarketplaceSyncPlansTaskUnit(object):
         )
         ghm_service = mocker.MagicMock(get_user=mocker.MagicMock())
         SyncPlansTask().create_or_update_plan(
-            dbsession, ghm_service, owner.service_id, dict(unit_count=5)
+            dbsession, ghm_service, owner.service_id, {"unit_count": 5}
         )
 
         assert not ghm_service.get_user.called
@@ -147,11 +147,11 @@ class TestGHMarketplaceSyncPlansTaskUnit(object):
         email = "tom@cat.com"
         ghm_service = mocker.MagicMock(
             get_user=mocker.MagicMock(
-                return_value=dict(login=username, name=name, email=email)
+                return_value={"login": username, "name": name, "email": email}
             )
         )
         SyncPlansTask().create_or_update_plan(
-            dbsession, ghm_service, service_id, dict(unit_count=5)
+            dbsession, ghm_service, service_id, {"unit_count": 5}
         )
 
         assert ghm_service.get_user.called

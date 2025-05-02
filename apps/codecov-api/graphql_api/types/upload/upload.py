@@ -4,7 +4,6 @@ from ariadne import ObjectType
 from asgiref.sync import sync_to_async
 from django.urls import reverse
 from graphql import GraphQLResolveInfo
-from shared.django_apps.utils.services import get_short_service_name
 
 from graphql_api.helpers.connection import queryset_to_connection_sync
 from graphql_api.types.enums import (
@@ -13,6 +12,7 @@ from graphql_api.types.enums import (
     UploadType,
 )
 from reports.models import ReportSession
+from shared.django_apps.utils.services import get_short_service_name
 
 upload_bindable = ObjectType("Upload")
 upload_bindable.set_alias("flags", "flag_names")

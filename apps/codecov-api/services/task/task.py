@@ -4,10 +4,10 @@ from typing import Iterable, List, Optional, Tuple
 
 from celery import Celery, chain, group, signature
 from sentry_sdk import set_tag
-from shared import celery_config
 
 from core.models import Repository
 from services.task.task_router import route_task
+from shared import celery_config
 from timeseries.models import Dataset, MeasurementName
 
 celery_app = Celery("tasks")
@@ -28,7 +28,7 @@ class TaskService(object):
             "time_limit": extra_config.get("hard_timelimit", None),
             "soft_time_limit": extra_config.get("soft_timelimit", None),
         }
-        headers = dict(created_timestamp=datetime.now().isoformat())
+        headers = {"created_timestamp": datetime.now().isoformat()}
         set_tag("celery.queue", queue_name)
         return signature(
             name,
@@ -50,7 +50,7 @@ class TaskService(object):
     def compute_comparison(self, comparison_id):
         self._create_signature(
             celery_config.compute_comparison_task_name,
-            kwargs=dict(comparison_id=comparison_id),
+            kwargs={"comparison_id": comparison_id},
         ).apply_async()
 
     def compute_comparisons(self, comparison_ids: List[int]):
@@ -61,7 +61,7 @@ class TaskService(object):
             queue_and_config = route_task(
                 celery_config.compute_comparison_task_name,
                 args=None,
-                kwargs=dict(comparison_id=comparison_ids[0]),
+                kwargs={"comparison_id": comparison_ids[0]},
             )
             celery_compatible_config = {
                 "queue": queue_and_config["queue"],
@@ -76,7 +76,7 @@ class TaskService(object):
                 signature(
                     celery_config.compute_comparison_task_name,
                     args=None,
-                    kwargs=dict(comparison_id=comparison_id),
+                    kwargs={"comparison_id": comparison_id},
                     app=celery_app,
                     **celery_compatible_config,
                 )
@@ -86,19 +86,19 @@ class TaskService(object):
                 # log each separately so it can be filtered easily in the logs
                 log.info(
                     "Triggering compute comparison task",
-                    extra=dict(comparison_id=comparison_id),
+                    extra={"comparison_id": comparison_id},
                 )
             group(signatures).apply_async()
 
     def status_set_pending(self, repoid, commitid, branch, on_a_pull_request):
         self._create_signature(
             "app.tasks.status.SetPending",
-            kwargs=dict(
-                repoid=repoid,
-                commitid=commitid,
-                branch=branch,
-                on_a_pull_request=on_a_pull_request,
-            ),
+            kwargs={
+                "repoid": repoid,
+                "commitid": commitid,
+                "branch": branch,
+                "on_a_pull_request": on_a_pull_request,
+            },
         ).apply_async()
 
     def upload_signature(
@@ -113,14 +113,14 @@ class TaskService(object):
     ):
         return self._create_signature(
             "app.tasks.upload.Upload",
-            kwargs=dict(
-                repoid=repoid,
-                commitid=commitid,
-                report_type=report_type,
-                arguments=arguments,
-                debug=debug,
-                rebuild=rebuild,
-            ),
+            kwargs={
+                "repoid": repoid,
+                "commitid": commitid,
+                "report_type": report_type,
+                "arguments": arguments,
+                "debug": debug,
+                "rebuild": rebuild,
+            },
             immutable=immutable,
         )
 
@@ -146,12 +146,12 @@ class TaskService(object):
     def notify_signature(self, repoid, commitid, current_yaml=None, empty_upload=None):
         return self._create_signature(
             "app.tasks.notify.Notify",
-            kwargs=dict(
-                repoid=repoid,
-                commitid=commitid,
-                current_yaml=current_yaml,
-                empty_upload=empty_upload,
-            ),
+            kwargs={
+                "repoid": repoid,
+                "commitid": commitid,
+                "current_yaml": current_yaml,
+                "empty_upload": empty_upload,
+            },
         )
 
     def notify(self, repoid, commitid, current_yaml=None, empty_upload=None):
@@ -161,7 +161,7 @@ class TaskService(object):
 
     def pulls_sync(self, repoid, pullid):
         self._create_signature(
-            "app.tasks.pulls.Sync", kwargs=dict(repoid=repoid, pullid=pullid)
+            "app.tasks.pulls.Sync", kwargs={"repoid": repoid, "pullid": pullid}
         ).apply_async()
 
     def refresh(
@@ -185,11 +185,11 @@ class TaskService(object):
             chain_to_call.append(
                 self._create_signature(
                     "app.tasks.sync_teams.SyncTeams",
-                    kwargs=dict(
-                        ownerid=ownerid,
-                        username=username,
-                        using_integration=using_integration,
-                    ),
+                    kwargs={
+                        "ownerid": ownerid,
+                        "username": username,
+                        "using_integration": using_integration,
+                    },
                 )
             )
 
@@ -197,13 +197,13 @@ class TaskService(object):
             chain_to_call.append(
                 self._create_signature(
                     "app.tasks.sync_repos.SyncRepos",
-                    kwargs=dict(
-                        ownerid=ownerid,
-                        username=username,
-                        using_integration=using_integration,
-                        manual_trigger=manual_trigger,
-                        repository_service_ids=repos_affected,
-                    ),
+                    kwargs={
+                        "ownerid": ownerid,
+                        "username": username,
+                        "using_integration": using_integration,
+                        "manual_trigger": manual_trigger,
+                        "repository_service_ids": repos_affected,
+                    },
                 )
             )
 
@@ -212,13 +212,13 @@ class TaskService(object):
     def sync_plans(self, sender=None, account=None, action=None):
         self._create_signature(
             celery_config.ghm_sync_plans_task_name,
-            kwargs=dict(sender=sender, account=account, action=action),
+            kwargs={"sender": sender, "account": account, "action": action},
         ).apply_async()
 
     def delete_owner(self, ownerid):
         log.info(f"Triggering delete_owner task for owner: {ownerid}")
         self._create_signature(
-            "app.tasks.delete_owner.DeleteOwner", kwargs=dict(ownerid=ownerid)
+            "app.tasks.delete_owner.DeleteOwner", kwargs={"ownerid": ownerid}
         ).apply_async()
 
     def backfill_repo(
@@ -230,12 +230,12 @@ class TaskService(object):
     ):
         log.info(
             "Triggering timeseries backfill tasks for repo",
-            extra=dict(
-                repoid=repository.pk,
-                start_date=start_date.isoformat(),
-                end_date=end_date.isoformat(),
-                dataset_names=dataset_names,
-            ),
+            extra={
+                "repoid": repository.pk,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "dataset_names": dataset_names,
+            },
         )
 
         # This controls the batch size for the task - we'll backfill
@@ -252,11 +252,11 @@ class TaskService(object):
             if task_start_date < start_date:
                 task_start_date = start_date
 
-            kwargs = dict(
-                repoid=repository.pk,
-                start_date=task_start_date.isoformat(),
-                end_date=task_end_date.isoformat(),
-            )
+            kwargs = {
+                "repoid": repository.pk,
+                "start_date": task_start_date.isoformat(),
+                "end_date": task_end_date.isoformat(),
+            }
             if dataset_names is not None:
                 kwargs["dataset_names"] = dataset_names
 
@@ -279,20 +279,20 @@ class TaskService(object):
     ):
         log.info(
             "Triggering dataset backfill",
-            extra=dict(
-                dataset_id=dataset.pk,
-                start_date=start_date.isoformat(),
-                end_date=end_date.isoformat(),
-            ),
+            extra={
+                "dataset_id": dataset.pk,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            },
         )
 
         self._create_signature(
             "app.tasks.timeseries.backfill_dataset",
-            kwargs=dict(
-                dataset_id=dataset.pk,
-                start_date=start_date.isoformat(),
-                end_date=end_date.isoformat(),
-            ),
+            kwargs={
+                "dataset_id": dataset.pk,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            },
         ).apply_async()
 
     def transplant_report(self, repo_id: int, from_sha: str, to_sha: str) -> None:
@@ -304,37 +304,41 @@ class TaskService(object):
     def update_commit(self, commitid, repoid):
         self._create_signature(
             "app.tasks.commit_update.CommitUpdate",
-            kwargs=dict(commitid=commitid, repoid=repoid),
+            kwargs={"commitid": commitid, "repoid": repoid},
         ).apply_async()
 
     def http_request(self, url, method="POST", headers=None, data=None, timeout=None):
         self._create_signature(
             "app.tasks.http_request.HTTPRequest",
-            kwargs=dict(
-                url=url,
-                method=method,
-                headers=headers,
-                data=data,
-                timeout=timeout,
-            ),
+            kwargs={
+                "url": url,
+                "method": method,
+                "headers": headers,
+                "data": data,
+                "timeout": timeout,
+            },
         ).apply_async()
 
     def flush_repo(self, repository_id: int):
         self._create_signature(
             "app.tasks.flush_repo.FlushRepo",
-            kwargs=dict(repoid=repository_id),
+            kwargs={"repoid": repository_id},
         ).apply_async()
 
     def manual_upload_completion_trigger(self, repoid, commitid, current_yaml=None):
         self._create_signature(
             "app.tasks.upload.ManualUploadCompletionTrigger",
-            kwargs=dict(commitid=commitid, repoid=repoid, current_yaml=current_yaml),
+            kwargs={
+                "commitid": commitid,
+                "repoid": repoid,
+                "current_yaml": current_yaml,
+            },
         ).apply_async()
 
     def preprocess_upload(self, repoid, commitid):
         self._create_signature(
             "app.tasks.upload.PreProcessUpload",
-            kwargs=dict(repoid=repoid, commitid=commitid),
+            kwargs={"repoid": repoid, "commitid": commitid},
         ).apply_async()
 
     def send_email(
@@ -360,20 +364,20 @@ class TaskService(object):
     def delete_component_measurements(self, repoid: int, component_id: str) -> None:
         log.info(
             "Delete component measurements data",
-            extra=dict(repository_id=repoid, component_id=component_id),
+            extra={"repository_id": repoid, "component_id": component_id},
         )
         self._create_signature(
             celery_config.timeseries_delete_task_name,
-            kwargs=dict(
-                repository_id=repoid,
-                measurement_only=True,
-                measurement_type=MeasurementName.COMPONENT_COVERAGE.value,
-                measurement_id=component_id,
-            ),
+            kwargs={
+                "repository_id": repoid,
+                "measurement_only": True,
+                "measurement_type": MeasurementName.COMPONENT_COVERAGE.value,
+                "measurement_id": component_id,
+            },
         ).apply_async()
 
     def cache_test_results_redis(self, repoid: int, branch: str) -> None:
         self._create_signature(
             celery_config.cache_test_rollups_redis_task_name,
-            kwargs=dict(repoid=repoid, branch=branch),
+            kwargs={"repoid": repoid, "branch": branch},
         ).apply_async()

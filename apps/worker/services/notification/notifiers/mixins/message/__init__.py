@@ -1,11 +1,6 @@
 import logging
 from typing import Any, Callable, Mapping, Optional
 
-from shared.django_apps.core.models import Repository
-from shared.plan.constants import TierName
-from shared.plan.service import PlanService
-from shared.reports.resources import ReportTotals
-
 from database.models.core import Owner
 from helpers.environment import is_enterprise
 from rollouts import DISABLE_CROSS_POLLINATION_MESSAGE
@@ -17,6 +12,10 @@ from services.notification.notifiers.mixins.message.sections import get_message_
 from services.notification.notifiers.mixins.message.writers import TeamPlanWriter
 from services.urls import get_commit_url, get_pull_url
 from services.yaml.reader import read_yaml_field
+from shared.django_apps.core.models import Repository
+from shared.plan.constants import TierName
+from shared.plan.service import PlanService
+from shared.reports.resources import ReportTotals
 
 log = logging.getLogger(__name__)
 

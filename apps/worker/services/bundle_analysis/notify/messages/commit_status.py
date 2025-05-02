@@ -4,8 +4,6 @@ from typing import TypedDict
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from django.template import loader
-from shared.helpers.cache import cache, make_hash_sha256
-from shared.torngit.exceptions import TorngitClientError
 
 from services.bundle_analysis.notify.contexts.commit_status import (
     CommitStatusLevel,
@@ -14,6 +12,8 @@ from services.bundle_analysis.notify.contexts.commit_status import (
 from services.bundle_analysis.notify.helpers import bytes_readable, get_github_app_used
 from services.bundle_analysis.notify.messages import MessageStrategyInterface
 from services.notification.notifiers.base import NotificationResult
+from shared.helpers.cache import cache, make_hash_sha256
+from shared.torngit.exceptions import TorngitClientError
 
 log = logging.getLogger(__name__)
 
@@ -72,14 +72,14 @@ class CommitStatusMessageStrategy(MessageStrategyInterface):
 
     def _cache_key(self, context: CommitStatusNotificationContext) -> str:
         return "cache:" + make_hash_sha256(
-            dict(
-                type="status_check_notification",
-                repoid=context.repository.repoid,
-                base_commitid=context.base_commit.commitid,
-                head_commitid=context.commit.commitid,
-                notifier_name="bundle_analysis_commit_status",
-                notifier_title="codecov/bundles",
-            )
+            {
+                "type": "status_check_notification",
+                "repoid": context.repository.repoid,
+                "base_commitid": context.base_commit.commitid,
+                "head_commitid": context.commit.commitid,
+                "notifier_name": "bundle_analysis_commit_status",
+                "notifier_title": "codecov/bundles",
+            }
         )
 
     @sentry_sdk.trace
@@ -117,10 +117,10 @@ class CommitStatusMessageStrategy(MessageStrategyInterface):
         except TorngitClientError:
             log.error(
                 "Failed to set commit status",
-                extra=dict(
-                    commit=context.commit.commitid,
-                    report_key=context.commit_report.external_id,
-                ),
+                extra={
+                    "commit": context.commit.commitid,
+                    "report_key": context.commit_report.external_id,
+                },
             )
             return NotificationResult(
                 notification_attempted=True,

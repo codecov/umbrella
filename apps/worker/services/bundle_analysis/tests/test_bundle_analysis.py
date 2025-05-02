@@ -3,17 +3,6 @@ from typing import Dict, List
 from unittest.mock import PropertyMock
 
 import pytest
-from shared.api_archive.archive import ArchiveService
-from shared.bundle_analysis.comparison import (
-    AssetChange,
-    AssetComparison,
-    BundleChange,
-    RouteChange,
-)
-from shared.bundle_analysis.models import AssetType
-from shared.bundle_analysis.storage import get_bucket_name
-from shared.config import PATCH_CENTRIC_DEFAULT_CONFIG
-from shared.yaml import UserYaml
 
 from database.enums import ReportType
 from database.models import CommitReport, MeasurementName
@@ -30,6 +19,17 @@ from services.bundle_analysis.report import (
 )
 from services.repository import EnrichedPull
 from services.urls import get_bundle_analysis_pull_url
+from shared.api_archive.archive import ArchiveService
+from shared.bundle_analysis.comparison import (
+    AssetChange,
+    AssetComparison,
+    BundleChange,
+    RouteChange,
+)
+from shared.bundle_analysis.models import AssetType
+from shared.bundle_analysis.storage import get_bucket_name
+from shared.config import PATCH_CENTRIC_DEFAULT_CONFIG
+from shared.yaml import UserYaml
 from tests.helpers import mock_all_plans_and_tiers
 
 

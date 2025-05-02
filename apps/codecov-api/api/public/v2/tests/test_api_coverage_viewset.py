@@ -3,9 +3,9 @@ from unittest.mock import patch
 import pytest
 from django.conf import settings
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 
 from reports.tests.factories import RepositoryFlagFactory
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from timeseries.models import MeasurementName
 from timeseries.tests.factories import DatasetFactory, MeasurementFactory
 from utils.test_utils import APIClient

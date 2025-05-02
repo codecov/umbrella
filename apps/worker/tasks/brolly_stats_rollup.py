@@ -3,11 +3,11 @@ import json
 import logging
 
 import httpx
-from shared.celery_config import brolly_stats_rollup_task_name
-from shared.config import get_config
 
 from app import celery_app
 from database.models import Commit, Constants, Repository, Upload, User
+from shared.celery_config import brolly_stats_rollup_task_name
+from shared.config import get_config
 from tasks.crontasks import CodecovCronTask
 
 log = logging.getLogger(__name__)
@@ -81,17 +81,17 @@ class BrollyStatsRollupTask(CodecovCronTask, name=brolly_stats_rollup_task_name)
         # We shouldn't even schedule this task if it's not enabled, but
         # let's double-check that we're supposed to collect stats.
         if not get_config("setup", "telemetry", "enabled", default=True):
-            return dict(uploaded=False, reason="telemetry disabled in codecov.yml")
+            return {"uploaded": False, "reason": "telemetry disabled in codecov.yml"}
 
-        payload = dict(
-            install_id=self._get_install_id(db_session),
-            users=self._get_users_count(db_session),
-            repos=self._get_repos_count(db_session),
-            commits=self._get_commits_count(db_session),
-            uploads_24h=self._get_uploads_count_last_24h(db_session),
-            version=self._get_version(db_session),
-            anonymous=self._get_anonymous(),
-        )
+        payload = {
+            "install_id": self._get_install_id(db_session),
+            "users": self._get_users_count(db_session),
+            "repos": self._get_repos_count(db_session),
+            "commits": self._get_commits_count(db_session),
+            "uploads_24h": self._get_uploads_count_last_24h(db_session),
+            "version": self._get_version(db_session),
+            "anonymous": self._get_anonymous(),
+        }
 
         admin_email = self._get_admin_email()
         if admin_email:
@@ -112,13 +112,13 @@ class BrollyStatsRollupTask(CodecovCronTask, name=brolly_stats_rollup_task_name)
         match res.status_code:
             case httpx.codes.OK:
                 log.info(
-                    "Successfully uploaded stats to brolly", extra=dict(response=res)
+                    "Successfully uploaded stats to brolly", extra={"response": res}
                 )
             case _:
-                log.error("Failed to upload stats to brolly", extra=dict(response=res))
-                return dict(uploaded=False, payload=payload)
+                log.error("Failed to upload stats to brolly", extra={"response": res})
+                return {"uploaded": False, "payload": payload}
 
-        return dict(uploaded=True, payload=payload)
+        return {"uploaded": True, "payload": payload}
 
 
 RegisteredBrollyStatsRollupTask = celery_app.register_task(BrollyStatsRollupTask())

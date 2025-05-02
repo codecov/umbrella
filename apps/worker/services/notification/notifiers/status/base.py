@@ -3,9 +3,6 @@ from typing import Optional
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from shared.config import get_config
-from shared.helpers.cache import NO_VALUE, cache, make_hash_sha256
-from shared.torngit.exceptions import TorngitClientError, TorngitError
 
 from helpers.match import match
 from services.comparison import ComparisonProxy, FilteredComparison
@@ -16,6 +13,9 @@ from services.notification.notifiers.base import (
 from services.urls import get_commit_url, get_pull_url
 from services.yaml import read_yaml_field
 from services.yaml.reader import get_paths_from_flags
+from shared.config import get_config
+from shared.helpers.cache import NO_VALUE, cache, make_hash_sha256
+from shared.torngit.exceptions import TorngitClientError, TorngitError
 
 log = logging.getLogger(__name__)
 
@@ -99,13 +99,13 @@ class StatusNotifier(AbstractBaseNotifier):
 
     def get_notifier_filters(self) -> dict:
         flag_list = self.notifier_yaml_settings.get("flags") or []
-        return dict(
-            path_patterns=set(
+        return {
+            "path_patterns": set(
                 get_paths_from_flags(self.current_yaml, flag_list)
                 + (self.notifier_yaml_settings.get("paths") or [])
             ),
-            flags=flag_list,
-        )
+            "flags": flag_list,
+        }
 
     def required_builds(self, comparison: ComparisonProxy) -> bool:
         flags = self.notifier_yaml_settings.get("flags") or []
@@ -122,13 +122,13 @@ class StatusNotifier(AbstractBaseNotifier):
                 if number_of_occ < needed_builds:
                     log.info(
                         "Flag needs more builds to send status check",
-                        extra=dict(
-                            flag=flag,
-                            needed_builds=needed_builds,
-                            number_of_occ=number_of_occ,
-                            repoid=comparison.head.commit.repoid,
-                            commit=comparison.head.commit.commitid,
-                        ),
+                        extra={
+                            "flag": flag,
+                            "needed_builds": needed_builds,
+                            "number_of_occ": number_of_occ,
+                            "repoid": comparison.head.commit.repoid,
+                            "commit": comparison.head.commit.commitid,
+                        },
                     )
                     return False
         return True
@@ -214,11 +214,11 @@ class StatusNotifier(AbstractBaseNotifier):
             log.warning(
                 "Unable to send status notification to user due to a client-side error",
                 exc_info=True,
-                extra=dict(
-                    repoid=comparison.head.commit.repoid,
-                    commit=comparison.head.commit.commitid,
-                    notifier_name=self.name,
-                ),
+                extra={
+                    "repoid": comparison.head.commit.repoid,
+                    "commit": comparison.head.commit.commitid,
+                    "notifier_name": self.name,
+                },
             )
             return NotificationResult(
                 notification_attempted=True,
@@ -230,11 +230,11 @@ class StatusNotifier(AbstractBaseNotifier):
             log.warning(
                 "Unable to send status notification to user due to an unexpected error",
                 exc_info=True,
-                extra=dict(
-                    repoid=comparison.head.commit.repoid,
-                    commit=comparison.head.commit.commitid,
-                    notifier_name=self.name,
-                ),
+                extra={
+                    "repoid": comparison.head.commit.repoid,
+                    "commit": comparison.head.commit.commitid,
+                    "notifier_name": self.name,
+                },
             )
             return NotificationResult(
                 notification_attempted=True,
@@ -271,14 +271,14 @@ class StatusNotifier(AbstractBaseNotifier):
         head_commit = comparison.head.commit if comparison.head else None
 
         cache_key = "cache:" + make_hash_sha256(
-            dict(
-                type="status_check_notification",
-                repoid=head_commit.repoid,
-                base_commitid=base_commit.commitid if base_commit else None,
-                head_commitid=head_commit.commitid if head_commit else None,
-                notifier_name=self.name,
-                notifier_title=self.title,
-            )
+            {
+                "type": "status_check_notification",
+                "repoid": head_commit.repoid,
+                "base_commitid": base_commit.commitid if base_commit else None,
+                "head_commitid": head_commit.commitid if head_commit else None,
+                "notifier_name": self.name,
+                "notifier_title": self.title,
+            }
         )
 
         last_payload = cache.get_backend().get(cache_key)
@@ -291,13 +291,13 @@ class StatusNotifier(AbstractBaseNotifier):
         else:
             log.info(
                 "Notification payload unchanged.  Skipping notification.",
-                extra=dict(
-                    repoid=head_commit.repoid,
-                    base_commitid=base_commit.commitid if base_commit else None,
-                    head_commitid=head_commit.commitid if head_commit else None,
-                    notifier_name=self.name,
-                    notifier_title=self.title,
-                ),
+                extra={
+                    "repoid": head_commit.repoid,
+                    "base_commitid": base_commit.commitid if base_commit else None,
+                    "head_commitid": head_commit.commitid if head_commit else None,
+                    "notifier_name": self.name,
+                    "notifier_title": self.title,
+                },
             )
             return NotificationResult(
                 notification_attempted=False,
@@ -317,7 +317,7 @@ class StatusNotifier(AbstractBaseNotifier):
         if self.status_already_exists(comparison, title, state, message):
             log.info(
                 "Status already set",
-                extra=dict(context=title, description=message, state=state),
+                extra={"context": title, "description": message, "state": state},
             )
             return NotificationResult(
                 notification_attempted=False,
@@ -345,7 +345,7 @@ class StatusNotifier(AbstractBaseNotifier):
         if len(all_shas_to_notify) > 1:
             log.info(
                 "Notifying multiple SHAs",
-                extra=dict(all_shas=all_shas_to_notify, commit=head_commit_sha),
+                extra={"all_shas": all_shas_to_notify, "commit": head_commit_sha},
             )
 
         try:
@@ -367,11 +367,11 @@ class StatusNotifier(AbstractBaseNotifier):
         except TorngitClientError:
             log.warning(
                 "Status not posted because this user can see but not set statuses on this repo",
-                extra=dict(
-                    data_sent=notification_result_data_sent,
-                    commit=head_commit_sha,
-                    repoid=comparison.head.commit.repoid,
-                ),
+                extra={
+                    "data_sent": notification_result_data_sent,
+                    "commit": head_commit_sha,
+                    "repoid": comparison.head.commit.repoid,
+                },
             )
             return NotificationResult(
                 notification_attempted=True,

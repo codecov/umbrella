@@ -4,6 +4,10 @@ import pytest
 from asgiref.sync import async_to_sync
 from django.test import TestCase
 from freezegun import freeze_time
+
+from codecov.commands.exceptions import Unauthorized
+from codecov.commands.exceptions import ValidationError as CodecovValidationError
+from codecov_auth.models import Owner
 from shared.django_apps.codecov.commands.exceptions import ValidationError
 from shared.django_apps.codecov_auth.tests.factories import PlanFactory, TierFactory
 from shared.django_apps.core.tests.factories import OwnerFactory
@@ -15,10 +19,6 @@ from shared.plan.constants import (
     TrialStatus,
 )
 
-from codecov.commands.exceptions import Unauthorized
-from codecov.commands.exceptions import ValidationError as CodecovValidationError
-from codecov_auth.models import Owner
-
 from ..start_trial import StartTrialInteractor
 
 
@@ -29,7 +29,6 @@ class StartTrialInteractorTest(TestCase):
 
     @async_to_sync
     def execute(self, current_user, org_username=None):
-        current_user = current_user
         return StartTrialInteractor(current_user, "github").execute(
             org_username=org_username,
         )

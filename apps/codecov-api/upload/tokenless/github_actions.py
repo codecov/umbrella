@@ -6,9 +6,9 @@ from asgiref.sync import async_to_sync
 from django.conf import settings
 from rest_framework import exceptions
 from rest_framework.exceptions import NotFound
+
 from shared.torngit import get
 from shared.torngit.exceptions import TorngitClientError, TorngitRateLimitError
-
 from upload.tokenless.base import BaseTokenlessUploadHandler
 
 log = logging.getLogger(__name__)
@@ -22,21 +22,21 @@ class TokenlessGithubActionsHandler(BaseTokenlessUploadHandler):
     def log_warning(self, message: str) -> None:
         log.warning(
             message,
-            extra=dict(
-                commit=self.upload_params.get("commit"),
-                repo_name=self.upload_params.get("repo"),
-                job=self.upload_params.get("job"),
-                owner=self.upload_params.get("owner"),
-            ),
+            extra={
+                "commit": self.upload_params.get("commit"),
+                "repo_name": self.upload_params.get("repo"),
+                "job": self.upload_params.get("job"),
+                "owner": self.upload_params.get("owner"),
+            },
         )
 
     def get_build(self) -> Dict[str, Any]:
         git = get(
             "github",
-            token=dict(key=self.actions_token),
-            repo=dict(name=self.upload_params.get("repo")),
-            owner=dict(username=self.upload_params.get("owner")),
-            oauth_consumer_token=dict(key=self.client_id, secret=self.client_secret),
+            token={"key": self.actions_token},
+            repo={"name": self.upload_params.get("repo")},
+            owner={"username": self.upload_params.get("owner")},
+            oauth_consumer_token={"key": self.client_id, "secret": self.client_secret},
         )
 
         try:
@@ -121,16 +121,16 @@ class TokenlessGithubActionsHandler(BaseTokenlessUploadHandler):
             if not now <= finish_time_with_buffer:
                 log.warning(
                     "Actions workflow run is stale",
-                    extra=dict(
-                        build=build,
-                        commit=self.upload_params.get("commit"),
-                        finish_time_with_buffer=finish_time_with_buffer,
-                        job=self.upload_params.get("job"),
-                        now=now,
-                        owner=self.upload_params.get("owner"),
-                        repo_name=self.upload_params.get("repo"),
-                        time_diff=now - finish_time_with_buffer,
-                    ),
+                    extra={
+                        "build": build,
+                        "commit": self.upload_params.get("commit"),
+                        "finish_time_with_buffer": finish_time_with_buffer,
+                        "job": self.upload_params.get("job"),
+                        "now": now,
+                        "owner": self.upload_params.get("owner"),
+                        "repo_name": self.upload_params.get("repo"),
+                        "time_diff": now - finish_time_with_buffer,
+                    },
                 )
                 raise NotFound("Actions workflow run is stale")
 

@@ -56,11 +56,11 @@ class RepositoryViewSetMixin(
         ):
             log.info(
                 "An inactive user attempted to access a repo page",
-                extra=dict(
-                    user=self.request.current_owner.username,
-                    owner=self.owner.username,
-                    repo=repo.name,
-                ),
+                extra={
+                    "user": self.request.current_owner.username,
+                    "owner": self.owner.username,
+                    "repo": repo.name,
+                },
             )
             raise PermissionDenied("User not activated")
         if self.request.method not in SAFE_METHODS and not self.can_edit:

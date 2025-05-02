@@ -13,6 +13,13 @@ from django.http import HttpRequest
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.html import format_html
+
+from codecov.admin import AdminMixin
+from codecov.commands.exceptions import ValidationError
+from codecov_auth.helpers import History
+from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
+from codecov_auth.services.org_level_token_service import OrgLevelTokenService
+from services.task import TaskService
 from shared.django_apps.codecov_auth.models import (
     Account,
     AccountsUsers,
@@ -22,13 +29,6 @@ from shared.django_apps.codecov_auth.models import (
     Tier,
 )
 from shared.plan.service import PlanService
-
-from codecov.admin import AdminMixin
-from codecov.commands.exceptions import ValidationError
-from codecov_auth.helpers import History
-from codecov_auth.models import OrganizationLevelToken, Owner, SentryUser, Session, User
-from codecov_auth.services.org_level_token_service import OrgLevelTokenService
-from services.task import TaskService
 from utils.services import get_short_service_name
 
 log = logging.getLogger(__name__)
@@ -531,12 +531,12 @@ class AccountAdmin(AdminMixin, admin.ModelAdmin):
             if total > 0:
                 log.info(
                     f"Admin operation for {account} - Created a User for {total} Owners",
-                    extra=dict(
-                        owners_with_new_user_objects=[
+                    extra={
+                        "owners_with_new_user_objects": [
                             str(owner) for owner in owners_with_new_user_objects
                         ],
-                        account_id=account.id,
-                    ),
+                        "account_id": account.id,
+                    },
                 )
 
             # redo this query to get all Owners and Users
@@ -579,11 +579,11 @@ class AccountAdmin(AdminMixin, admin.ModelAdmin):
             if len(total) > 0 or deleted_count > 0:
                 log.info(
                     f"Admin operation for {account} - Created {len(total)} AccountsUsers, removed {deleted_count} AccountsUsers",
-                    extra=dict(
-                        new_accounts_users=total,
-                        removed_accounts_users_ids=deleted_ids_for_log,
-                        account_id=account.id,
-                    ),
+                    extra={
+                        "new_accounts_users": total,
+                        "removed_accounts_users_ids": deleted_ids_for_log,
+                        "account_id": account.id,
+                    },
                 )
 
 

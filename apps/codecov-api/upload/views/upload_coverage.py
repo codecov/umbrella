@@ -5,8 +5,6 @@ from django.http import HttpRequest
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from shared.api_archive.archive import ArchiveService
-from shared.metrics import inc_counter
 
 from codecov_auth.authentication.repo_auth import (
     GitHubOIDCTokenAuthentication,
@@ -17,6 +15,8 @@ from codecov_auth.authentication.repo_auth import (
     UploadTokenRequiredAuthenticationCheck,
     repo_auth_custom_exception_handler,
 )
+from shared.api_archive.archive import ArchiveService
+from shared.metrics import inc_counter
 from upload.helpers import generate_upload_prometheus_metrics_labels
 from upload.metrics import API_UPLOAD_COUNTER
 from upload.serializers import (
@@ -68,12 +68,12 @@ class UploadCoverageView(APIView, GetterMixin):
         self.emit_metrics(position="start")
 
         # Create commit
-        create_commit_data = dict(
-            branch=request.data.get("branch"),
-            commitid=request.data.get("commitid"),
-            parent_commit_id=request.data.get("parent_commit_id"),
-            pullid=request.data.get("pullid"),
-        )
+        create_commit_data = {
+            "branch": request.data.get("branch"),
+            "commitid": request.data.get("commitid"),
+            "parent_commit_id": request.data.get("parent_commit_id"),
+            "pullid": request.data.get("pullid"),
+        }
         commit_serializer = CommitSerializer(data=create_commit_data)
         if not commit_serializer.is_valid():
             return Response(
@@ -86,16 +86,16 @@ class UploadCoverageView(APIView, GetterMixin):
 
         log.info(
             "Request to create new coverage upload",
-            extra=dict(
-                repo=repository.name,
-                commit=commit.commitid,
-            ),
+            extra={
+                "repo": repository.name,
+                "commit": commit.commitid,
+            },
         )
 
         # Create report
-        commit_report_data = dict(
-            code=request.data.get("code"),
-        )
+        commit_report_data = {
+            "code": request.data.get("code"),
+        }
         commit_report_serializer = CommitReportSerializer(data=commit_report_data)
         if not commit_report_serializer.is_valid():
             return Response(
@@ -106,15 +106,15 @@ class UploadCoverageView(APIView, GetterMixin):
         report = create_report(commit_report_serializer, repository, commit)
 
         # Do upload
-        upload_data = dict(
-            ci_service=request.data.get("ci_service"),
-            ci_url=request.data.get("ci_url"),
-            env=request.data.get("env"),
-            flags=request.data.get("flags"),
-            job_code=request.data.get("job_code"),
-            name=request.data.get("name"),
-            version=request.data.get("version"),
-        )
+        upload_data = {
+            "ci_service": request.data.get("ci_service"),
+            "ci_url": request.data.get("ci_url"),
+            "env": request.data.get("env"),
+            "flags": request.data.get("flags"),
+            "job_code": request.data.get("job_code"),
+            "name": request.data.get("name"),
+            "version": request.data.get("version"),
+        }
 
         if self.is_shelter_request():
             upload_data["storage_path"] = request.data.get("storage_path")

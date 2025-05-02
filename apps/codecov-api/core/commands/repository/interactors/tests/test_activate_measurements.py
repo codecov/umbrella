@@ -5,13 +5,13 @@ import pytest
 from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.test import TestCase, override_settings
+
+from codecov.commands.exceptions import ValidationError
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
     RepositoryFactory,
 )
-
-from codecov.commands.exceptions import ValidationError
 from timeseries.models import Dataset, MeasurementName
 
 from ..activate_measurements import ActivateMeasurementsInteractor

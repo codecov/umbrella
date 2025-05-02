@@ -9,7 +9,6 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.forms.utils import from_current_timezone
 from graphql.type.definition import GraphQLResolveInfo
-from shared.yaml import UserYaml
 
 import timeseries.helpers as timeseries_helpers
 from core.models import Repository
@@ -25,6 +24,7 @@ from graphql_api.helpers.lookahead import lookahead
 from graphql_api.types.enums import OrderingDirection
 from graphql_api.types.errors.errors import NotFoundError
 from services.components import ComponentMeasurements
+from shared.yaml import UserYaml
 from timeseries.helpers import fill_sparse_measurements
 from timeseries.models import Dataset, Interval, MeasurementName, MeasurementSummary
 

@@ -2,13 +2,13 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 
-from shared.plan.service import PlanService
 from sqlalchemy.orm import Session
 
 from database.models import Owner
 from services.activation import activate_user, schedule_new_user_activated_task
 from services.decoration import _is_bot_account
 from services.repository import EnrichedPull
+from shared.plan.service import PlanService
 
 log = logging.getLogger(__name__)
 
@@ -43,12 +43,12 @@ def determine_seat_activation(pull: EnrichedPull) -> SeatActivationInfo:
     if provider_pull is None:
         log.warning(
             "Provider pull was None when determining whether to activate seat for user",
-            extra=dict(
-                pullid=db_pull.pullid,
-                repoid=db_pull.repoid,
-                head_commit=db_pull.head,
-                base_commit=db_pull.base,
-            ),
+            extra={
+                "pullid": db_pull.pullid,
+                "repoid": db_pull.repoid,
+                "head_commit": db_pull.head,
+                "base_commit": db_pull.base,
+            },
         )
         return SeatActivationInfo(reason="no_provider_pull")
 
@@ -79,11 +79,11 @@ def determine_seat_activation(pull: EnrichedPull) -> SeatActivationInfo:
     if not pr_author:
         log.info(
             "PR author not found in database",
-            extra=dict(
-                author_service=org.service,
-                author_service_id=provider_pull.get("author", {}).get("id"),
-                author_username=provider_pull.get("author", {}).get("username"),
-            ),
+            extra={
+                "author_service": org.service,
+                "author_service_id": provider_pull.get("author", {}).get("id"),
+                "author_username": provider_pull.get("author", {}).get("username"),
+            },
         )
         return SeatActivationInfo(reason="no_pr_author")
 

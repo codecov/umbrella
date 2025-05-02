@@ -9,11 +9,6 @@ from rest_framework.generics import ListCreateAPIView
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from shared.api_archive.archive import ArchiveService, MinioEndpoints
-from shared.events.amplitude import UNKNOWN_USER_OWNERID, AmplitudeEventPublisher
-from shared.helpers.redis import get_redis_connection
-from shared.metrics import inc_counter
-from shared.upload.utils import UploaderType, insert_coverage_measurement
 
 from codecov_auth.authentication.repo_auth import (
     GitHubOIDCTokenAuthentication,
@@ -31,6 +26,11 @@ from codecov_auth.models import OrganizationLevelToken
 from core.models import Commit, Repository
 from reports.models import CommitReport, ReportSession
 from services.analytics import AnalyticsService
+from shared.api_archive.archive import ArchiveService, MinioEndpoints
+from shared.events.amplitude import UNKNOWN_USER_OWNERID, AmplitudeEventPublisher
+from shared.helpers.redis import get_redis_connection
+from shared.metrics import inc_counter
+from shared.upload.utils import UploaderType, insert_coverage_measurement
 from upload.helpers import (
     dispatch_upload_task,
     generate_upload_prometheus_metrics_labels,
@@ -115,7 +115,7 @@ def trigger_upload_task(
 ) -> None:
     log.info(
         "Triggering upload task",
-        extra=dict(repo=repository.name, commit=commit_sha, upload_id=upload.id),
+        extra={"repo": repository.name, "commit": commit_sha, "upload_id": upload.id},
     )
     redis = get_redis_connection()
     task_arguments = {
@@ -240,13 +240,13 @@ class UploadViews(ListCreateAPIView, GetterMixin):
 
         log.info(
             "Request to create new upload",
-            extra=dict(
-                repo=repository.name,
-                commit=commit.commitid,
-                cli_version=serializer.validated_data["version"]
+            extra={
+                "repo": repository.name,
+                "commit": commit.commitid,
+                "cli_version": serializer.validated_data["version"]
                 if "version" in serializer.validated_data
                 else None,
-            ),
+            },
         )
 
         instance = create_upload(

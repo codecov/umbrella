@@ -1,10 +1,9 @@
 import logging
 from typing import Callable, Dict
 
-from shared.encryption.token import encode_token
-
 from database.models.core import Owner
 from services.encryption import encryptor
+from shared.encryption.token import encode_token
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ def get_token_refresh_callback(owner: Owner) -> Callable[[Dict], None]:
     async def callback(new_token: Dict) -> None:
         log.info(
             "Saving new token after refresh",
-            extra=dict(owner=owner.username, ownerid=owner.ownerid),
+            extra={"owner": owner.username, "ownerid": owner.ownerid},
         )
         string_to_save = encode_token(new_token)
         oauth_token = encryptor.encode(string_to_save).decode()

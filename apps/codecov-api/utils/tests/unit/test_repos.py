@@ -1,6 +1,6 @@
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from utils.repos import get_bot_user
 
 

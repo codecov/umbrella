@@ -4,18 +4,18 @@ from typing import Any
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from shared.api_archive.archive import ArchiveService
-from shared.reports.changes import run_comparison_using_rust
-from shared.reports.types import Change, ReportTotals
-from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientGeneralError
-from shared.utils.sessions import SessionType
 
 from database.enums import CompareCommitState
 from database.models import CompareCommit
 from services.comparison.changes import get_changes
 from services.comparison.types import Comparison, FullCommit, ReportUploadedCount
 from services.repository import get_repo_provider_service
+from shared.api_archive.archive import ArchiveService
+from shared.reports.changes import run_comparison_using_rust
+from shared.reports.types import Change, ReportTotals
+from shared.torngit.base import TorngitBaseAdapter
+from shared.torngit.exceptions import TorngitClientGeneralError
+from shared.utils.sessions import SessionType
 
 log = logging.getLogger(__name__)
 
@@ -209,17 +209,17 @@ class ComparisonProxy(object):
                 except TorngitClientGeneralError:
                     log.warning(
                         "Unable to fetch base branch from Git provider",
-                        extra=dict(
-                            branch=branch_to_get,
-                        ),
+                        extra={
+                            "branch": branch_to_get,
+                        },
                     )
                     return None
                 except KeyError:
                     log.warning(
                         "Error fetching base branch from Git provider",
-                        extra=dict(
-                            branch=branch_to_get,
-                        ),
+                        extra={
+                            "branch": branch_to_get,
+                        },
                     )
                     return None
                 self._branch = branch_response
@@ -272,13 +272,13 @@ class ComparisonProxy(object):
         if not self.has_head_report() or not self.has_project_coverage_base_report():
             log.warning(
                 "Can't calculate diff in uploads. Missing some report",
-                extra=dict(
-                    has_head_report=self.has_head_report(),
-                    has_project_base_report=self.has_project_coverage_base_report(),
-                ),
+                extra={
+                    "has_head_report": self.has_head_report(),
+                    "has_project_base_report": self.has_project_coverage_base_report(),
+                },
             )
             return []
-        per_flag_dict: dict[str, ReportUploadedCount] = dict()
+        per_flag_dict: dict[str, ReportUploadedCount] = {}
         base_report = self.comparison.project_coverage_base.report
         head_report = self.comparison.head.report
         ops = [(base_report, "base_count"), (head_report, "head_count")]

@@ -4,11 +4,11 @@ from django.core import signing
 from django.http.cookie import SimpleCookie
 from django.test import TestCase
 from django.urls import reverse
-from shared.torngit.bitbucket import Bitbucket
-from shared.torngit.exceptions import TorngitServer5xxCodeError
 
 from codecov_auth.models import Owner
 from codecov_auth.views.bitbucket import BitbucketLoginView
+from shared.torngit.bitbucket import Bitbucket
+from shared.torngit.exceptions import TorngitServer5xxCodeError
 from utils.encryption import encryptor
 
 

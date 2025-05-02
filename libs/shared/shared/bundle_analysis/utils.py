@@ -60,9 +60,7 @@ class AssetRoute:
             bool: True if the string represents a valid file, False otherwise.
         """
         # If a list of extensions is provided, check if the string ends with it
-        if extensions is not None and not any(
-            [s.endswith(f".{e}") for e in extensions]
-        ):
+        if extensions is not None and not any(s.endswith(f".{e}") for e in extensions):
             return False
 
         # Matches strings with at least one non-dot character before the first dot
@@ -243,7 +241,7 @@ class AssetRoute:
             return None
 
         # Excludes pages if anywhere in the path it starts with _
-        if any([path.startswith("_") for path in path_items]):
+        if any(path.startswith("_") for path in path_items):
             return None
 
         # Get the file name without extension

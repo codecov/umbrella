@@ -2,17 +2,17 @@ from unittest.mock import patch
 
 from django.utils import timezone
 from rest_framework.reverse import reverse
+
+from api.internal.commit.serializers import CommitTotalsSerializer
+from api.internal.tests.test_utils import GetAdminProviderAdapter
+from codecov.tests.base_test import InternalAPITest
+from core.models import Repository
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
     RepositoryFactory,
 )
 from shared.torngit.exceptions import TorngitClientGeneralError
-
-from api.internal.commit.serializers import CommitTotalsSerializer
-from api.internal.tests.test_utils import GetAdminProviderAdapter
-from codecov.tests.base_test import InternalAPITest
-from core.models import Repository
 from utils.test_utils import Client
 
 

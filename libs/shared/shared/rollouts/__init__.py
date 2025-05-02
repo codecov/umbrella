@@ -223,9 +223,9 @@ class Feature:
         variants should equal to 1, and proportions should never be greater than
         1 or less than 0.
         """
-        variant_proportion_sum = sum(map(lambda x: x.proportion, self.ff_variants))
-        variant_proportions_in_range = True not in map(
-            lambda x: x.proportion < 0 or x.proportion > 1, self.ff_variants
+        variant_proportion_sum = sum((x.proportion for x in self.ff_variants))
+        variant_proportions_in_range = True not in (
+            x.proportion < 0 or x.proportion > 1 for x in self.ff_variants
         )
         feature_proportion_in_range = (
             self.feature_flag.proportion <= 1 and self.feature_flag.proportion >= 0
@@ -244,7 +244,7 @@ class Feature:
         """
         new_feature_flag = FeatureFlag.objects.filter(pk=self.name).first()
         new_ff_variants = sorted(
-            list(FeatureFlagVariant.objects.filter(feature_flag=self.name)),
+            FeatureFlagVariant.objects.filter(feature_flag=self.name),
             key=lambda x: x.variant_id,
         )
 
@@ -279,7 +279,7 @@ class Feature:
         if not self._is_valid_rollout():
             log.warning(
                 "Feature flag is using invalid values for rollout",
-                extra=dict(feature_flag_name=self.name),
+                extra={"feature_flag_name": self.name},
             )
 
     # NOTE: `@lru_cache` on instance methods is ordinarily a bad idea:

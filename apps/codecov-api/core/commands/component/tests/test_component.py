@@ -1,9 +1,9 @@
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
-from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 
 from codecov.commands.exceptions import Unauthenticated, Unauthorized, ValidationError
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 
 from ..component import ComponentCommands
 

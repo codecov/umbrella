@@ -4,8 +4,6 @@ from typing import Callable, Dict, Optional
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from shared.encryption.token import encode_token
-from shared.torngit import get
 
 from codecov_auth.models import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
@@ -14,6 +12,8 @@ from codecov_auth.models import (
     Service,
 )
 from core.models import Repository
+from shared.encryption.token import encode_token
+from shared.torngit import get
 from utils.config import get_config
 from utils.encryption import encryptor
 
@@ -44,7 +44,7 @@ def get_token_refresh_callback(
     def callback(new_token: Dict) -> None:
         log.info(
             "Saving new token after refresh",
-            extra=dict(owner=owner.username, ownerid=owner.ownerid),
+            extra={"owner": owner.username, "ownerid": owner.ownerid},
         )
         string_to_save = encode_token(new_token)
         owner.oauth_token = encryptor.encode(string_to_save).decode()
@@ -71,20 +71,20 @@ def get_generic_adapter_params(
             token["username"] = owner.username
         else:
             token = {"key": getattr(settings, f"{service.upper()}_BOT_KEY")}
-    return dict(
-        verify_ssl=verify_ssl,
-        token=token,
-        timeouts=(5, 15),
-        oauth_consumer_token=dict(
-            key=getattr(settings, f"{service.upper()}_CLIENT_ID", "unknown"),
-            secret=getattr(settings, f"{service.upper()}_CLIENT_SECRET", "unknown"),
-        ),
+    return {
+        "verify_ssl": verify_ssl,
+        "token": token,
+        "timeouts": (5, 15),
+        "oauth_consumer_token": {
+            "key": getattr(settings, f"{service.upper()}_CLIENT_ID", "unknown"),
+            "secret": getattr(settings, f"{service.upper()}_CLIENT_SECRET", "unknown"),
+        },
         # By checking the "username" in token we can know if the token belongs to an Owner
         # We only try to refresh user-to-server tokens (e.g. belongs to owner)
-        on_token_refresh=(
+        "on_token_refresh": (
             get_token_refresh_callback(owner, service) if "username" in token else None
         ),
-    )
+    }
 
 
 def get_provider(service, adapter_params):

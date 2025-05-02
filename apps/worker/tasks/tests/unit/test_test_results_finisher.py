@@ -3,8 +3,6 @@ from pathlib import Path
 
 import pytest
 from mock import AsyncMock
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
-from shared.torngit.exceptions import TorngitClientError
 
 from database.enums import ReportType
 from database.models import (
@@ -25,6 +23,8 @@ from database.tests.factories import (
 from services.repository import EnrichedPull
 from services.test_results import generate_test_id
 from services.urls import get_members_url
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
+from shared.torngit.exceptions import TorngitClientError
 from tasks.test_results_finisher import TestResultsFinisherTask
 from tests.helpers import mock_all_plans_and_tiers
 

@@ -1,13 +1,13 @@
 import json
 
 from asgiref.sync import sync_to_async
-from shared.django_apps.codecov_metrics.service.codecov_metrics import (
-    UserOnboardingMetricsService,
-)
 
 from codecov.commands.base import BaseInteractor
 from codecov.commands.exceptions import ValidationError
 from codecov_auth.models import Owner
+from shared.django_apps.codecov_metrics.service.codecov_metrics import (
+    UserOnboardingMetricsService,
+)
 
 
 class StoreCodecovMetricInteractor(BaseInteractor):

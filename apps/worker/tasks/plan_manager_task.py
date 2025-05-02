@@ -1,11 +1,11 @@
 import logging
 
-from shared.plan.constants import PlanName
 from sqlalchemy.orm import Session
 
 from app import celery_app
 from celery_config import daily_plan_manager_task_name
 from database.models.core import OrganizationLevelToken, Owner
+from shared.plan.constants import PlanName
 from tasks.crontasks import CodecovCronTask
 
 log = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class DailyPlanManagerTask(CodecovCronTask, name=daily_plan_manager_task_name):
         )
         log.info(
             "Deleting OrganizationLevelTokens that belong to invalid plans",
-            extra=dict(deleted_tokens_ids=tokens_to_delete.all()),
+            extra={"deleted_tokens_ids": tokens_to_delete.all()},
         )
         deleted_count = (
             db_session.query(OrganizationLevelToken)
@@ -40,7 +40,7 @@ class DailyPlanManagerTask(CodecovCronTask, name=daily_plan_manager_task_name):
             .delete(synchronize_session=False)
         )
         db_session.commit()
-        return dict(checked=True, deleted=deleted_count)
+        return {"checked": True, "deleted": deleted_count}
 
 
 RegistedDailyPlanManagerTask = celery_app.register_task(DailyPlanManagerTask())

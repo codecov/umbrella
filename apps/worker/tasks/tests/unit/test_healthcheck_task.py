@@ -7,7 +7,7 @@ class TestHealthCheckTask(object):
     def test_get_queue_names_default(self, mock_configuration):
         health_check_task = HealthCheckTask()
         queue_names = health_check_task._get_all_queue_names_from_config()
-        assert queue_names == set(["celery", "enterprise_celery"])
+        assert queue_names == {"celery", "enterprise_celery"}
 
     def test_get_queue_names_some_config(self, mock_configuration):
         mock_configuration.set_params(
@@ -27,20 +27,18 @@ class TestHealthCheckTask(object):
         )
         health_check_task = HealthCheckTask()
         queue_names = health_check_task._get_all_queue_names_from_config()
-        assert queue_names == set(
-            [
-                "custom_celery",
-                "enterprise_custom_celery",
-                "notify_queue",
-                "enterprise_notify_queue",
-                "pulls_queue",
-                "enterprise_pulls_queue",
-                "synchronize_queue",
-                "enterprise_synchronize_queue",
-                "flush_repo_queue",
-                "enterprise_flush_repo_queue",
-            ]
-        )
+        assert queue_names == {
+            "custom_celery",
+            "enterprise_custom_celery",
+            "notify_queue",
+            "enterprise_notify_queue",
+            "pulls_queue",
+            "enterprise_pulls_queue",
+            "synchronize_queue",
+            "enterprise_synchronize_queue",
+            "flush_repo_queue",
+            "enterprise_flush_repo_queue",
+        }
 
     def test_get_redis_config_celery_broker(self, mocker, mock_configuration):
         mock_redis_instance_from_url = mocker.patch(

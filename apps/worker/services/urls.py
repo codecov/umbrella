@@ -5,20 +5,19 @@ from enum import Enum
 from typing import List
 from urllib.parse import parse_qs, quote_plus, urlencode, urlparse, urlunparse
 
+from database.models import Commit, Pull, Repository
+from services.license import requires_license
 from shared.config import get_config
 from shared.django_apps.codecov_auth.models import Service
 
-from database.models import Commit, Pull, Repository
-from services.license import requires_license
-
-services_short_dict = dict(
-    github="gh",
-    github_enterprise="ghe",
-    bitbucket="bb",
-    bitbucket_server="bbs",
-    gitlab="gl",
-    gitlab_enterprise="gle",
-)
+services_short_dict = {
+    "github": "gh",
+    "github_enterprise": "ghe",
+    "bitbucket": "bb",
+    "bitbucket_server": "bbs",
+    "gitlab": "gl",
+    "gitlab_enterprise": "gle",
+}
 
 log = logging.getLogger(__name__)
 
@@ -103,7 +102,7 @@ def get_graph_url(commit: Commit, graph_filename: str, **kwargs) -> str:
 
 def get_compare_url(base_commit: Commit, head_commit: Commit) -> str:
     log.warning(
-        "Compare links are deprecated.", extra=dict(head_commit=head_commit.commitid)
+        "Compare links are deprecated.", extra={"head_commit": head_commit.commitid}
     )
     return SiteUrls.compare_url.get_url(
         base_url=get_base_url(),

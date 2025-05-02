@@ -188,7 +188,7 @@ def merge_datapoints(
         return None
     # Remove duplicates
     # str(dp) -> dp
-    index_of_dps = dict()
+    index_of_dps = {}
     both_lists = filter(None, (d1 or []) + (d2 or []))
     for dp in both_lists:
         key = str(dp)

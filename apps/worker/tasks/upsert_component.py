@@ -1,7 +1,5 @@
 import logging
 
-from shared.reports.readonly import ReadOnlyReport
-from shared.utils.enums import TaskConfigGroup
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -9,6 +7,8 @@ from database.models import Commit
 from services.report import ReportService
 from services.timeseries import ComponentForMeasurement, upsert_components_measurements
 from services.yaml import get_repo_yaml
+from shared.reports.readonly import ReadOnlyReport
+from shared.utils.enums import TaskConfigGroup
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class UpsertComponentTask(BaseCodecovTask, name=task_name):
         *args,
         **kwargs,
     ):
-        log.info("Upserting component", extra=dict(commitid=commitid, repoid=repoid))
+        log.info("Upserting component", extra={"commitid": commitid, "repoid": repoid})
 
         commit = (
             db_session.query(Commit)

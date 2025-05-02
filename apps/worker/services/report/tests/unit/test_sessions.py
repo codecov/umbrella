@@ -1,16 +1,16 @@
 import pytest
 from mock import MagicMock
-from shared.reports.reportfile import ReportFile
-from shared.reports.resources import Report
-from shared.reports.types import CoverageDatapoint, LineSession, ReportLine
-from shared.utils.sessions import Session, SessionType
-from shared.yaml import UserYaml
 
 from helpers.labels import SpecialLabelsEnum
 from services.report.raw_upload_processor import (
     SessionAdjustmentResult,
     clear_carryforward_sessions,
 )
+from shared.reports.reportfile import ReportFile
+from shared.reports.resources import Report
+from shared.reports.types import CoverageDatapoint, LineSession, ReportLine
+from shared.utils.sessions import Session, SessionType
+from shared.yaml import UserYaml
 from test_utils.base import BaseTestCase
 
 # Not calling add_sessions here on purpose, so it doesnt

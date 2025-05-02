@@ -7,8 +7,6 @@ from rest_framework.authentication import BasicAuthentication, SessionAuthentica
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
-from shared.reports.resources import Report
-from shared.utils.match import match
 
 from api.public.v2.report.serializers import (
     CoverageReportSerializer,
@@ -25,6 +23,8 @@ from codecov_auth.authentication import (
 from core.models import Commit
 from services.components import commit_components
 from services.path import ReportPaths, dashboard_commit_file_url
+from shared.reports.resources import Report
+from shared.utils.match import match
 
 
 class ReportMixin:

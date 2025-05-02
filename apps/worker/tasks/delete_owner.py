@@ -1,11 +1,11 @@
 import logging
 
 from celery.exceptions import SoftTimeLimitExceeded
-from shared.celery_config import delete_owner_task_name
 
 from app import celery_app
 from services.cleanup.owner import cleanup_owner
 from services.cleanup.utils import CleanupSummary
+from shared.celery_config import delete_owner_task_name
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)

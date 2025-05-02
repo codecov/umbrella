@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 import stripe
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
-from shared.plan.constants import PlanBillingRate, TierName
-from shared.plan.service import PlanService
 
 from billing.constants import REMOVED_INVOICE_STATUSES
 from codecov_auth.models import Owner, Plan
+from shared.plan.constants import PlanBillingRate, TierName
+from shared.plan.service import PlanService
 
 log = logging.getLogger(__name__)
 
@@ -207,24 +207,24 @@ class StripeService(AbstractPaymentService):
             )
             log.info(
                 "Grace period cancelled a subscription and autorefunded associated invoices",
-                extra=dict(
-                    owner_id=owner.ownerid,
-                    user_id=self.requesting_user.ownerid,
-                    subscription_id=owner.stripe_subscription_id,
-                    customer_id=owner.stripe_customer_id,
-                    autorefunds_remaining=autorefunds_remaining - 1,
-                ),
+                extra={
+                    "owner_id": owner.ownerid,
+                    "user_id": self.requesting_user.ownerid,
+                    "subscription_id": owner.stripe_subscription_id,
+                    "customer_id": owner.stripe_customer_id,
+                    "autorefunds_remaining": autorefunds_remaining - 1,
+                },
             )
         else:
             log.info(
                 "Grace period cancelled a subscription but did not find any appropriate invoices to autorefund",
-                extra=dict(
-                    owner_id=owner.ownerid,
-                    user_id=self.requesting_user.ownerid,
-                    subscription_id=owner.stripe_subscription_id,
-                    customer_id=owner.stripe_customer_id,
-                    autorefunds_remaining=autorefunds_remaining,
-                ),
+                extra={
+                    "owner_id": owner.ownerid,
+                    "user_id": self.requesting_user.ownerid,
+                    "subscription_id": owner.stripe_subscription_id,
+                    "customer_id": owner.stripe_customer_id,
+                    "autorefunds_remaining": autorefunds_remaining,
+                },
             )
 
     @_log_stripe_error
@@ -234,13 +234,13 @@ class StripeService(AbstractPaymentService):
 
         log.info(
             f"Downgrade to basic plan from user plan for owner {owner.ownerid} by user #{self.requesting_user.ownerid}",
-            extra=dict(ownerid=owner.ownerid),
+            extra={"ownerid": owner.ownerid},
         )
 
         if subscription_schedule_id:
             log.info(
                 f"Releasing subscription from schedule for owner {owner.ownerid} by user #{self.requesting_user.ownerid}",
-                extra=dict(ownerid=owner.ownerid),
+                extra={"ownerid": owner.ownerid},
             )
             stripe.SubscriptionSchedule.release(subscription_schedule_id)
 
@@ -265,13 +265,13 @@ class StripeService(AbstractPaymentService):
             )
             log.info(
                 "Deleting subscription with attempted immediate cancellation with autorefund within grace period",
-                extra=dict(
-                    owner_id=owner.ownerid,
-                    user_id=self.requesting_user.ownerid,
-                    subscription_id=owner.stripe_subscription_id,
-                    customer_id=owner.stripe_customer_id,
-                    autorefunds_remaining=autorefunds_remaining,
-                ),
+                extra={
+                    "owner_id": owner.ownerid,
+                    "user_id": self.requesting_user.ownerid,
+                    "subscription_id": owner.stripe_subscription_id,
+                    "customer_id": owner.stripe_customer_id,
+                    "autorefunds_remaining": autorefunds_remaining,
+                },
             )
             if autorefunds_remaining > 0:
                 return self.cancel_and_refund(
@@ -321,7 +321,7 @@ class StripeService(AbstractPaymentService):
         if not desired_plan_info:
             log.error(
                 f"Plan {desired_plan['value']} not found",
-                extra=dict(owner_id=owner.ownerid),
+                extra={"owner_id": owner.ownerid},
             )
             return
 
@@ -389,7 +389,7 @@ class StripeService(AbstractPaymentService):
                 owner.save()
                 log.info(
                     f"Stripe subscription upgrade failed for owner {owner.ownerid} by user #{self.requesting_user.ownerid}",
-                    extra=dict(pending_update=indication_of_payment_failure),
+                    extra={"pending_update": indication_of_payment_failure},
                 )
             else:
                 # payment successful
@@ -428,7 +428,7 @@ class StripeService(AbstractPaymentService):
         if not plan or not plan.stripe_id:
             log.error(
                 f"Plan {desired_plan['value']} not found",
-                extra=dict(owner_id=owner.ownerid),
+                extra={"owner_id": owner.ownerid},
             )
             return
 
@@ -550,14 +550,14 @@ class StripeService(AbstractPaymentService):
         success_url, cancel_url = self._get_success_and_cancel_url(owner)
         log.info(
             "Creating Stripe Checkout Session for owner",
-            extra=dict(owner_id=owner.ownerid),
+            extra={"owner_id": owner.ownerid},
         )
 
         plan = Plan.objects.filter(name=desired_plan["value"]).first()
         if not plan or not plan.stripe_id:
             log.error(
                 f"Plan {desired_plan['value']} not found",
-                extra=dict(owner_id=owner.ownerid),
+                extra={"owner_id": owner.ownerid},
             )
             return
 
@@ -614,7 +614,7 @@ class StripeService(AbstractPaymentService):
                 log.error(
                     "Error retrieving latest setup intent",
                     payment_method_id=payment_method_id,
-                    extra=dict(error=e),
+                    extra={"error": e},
                 )
                 return False
 
@@ -624,21 +624,21 @@ class StripeService(AbstractPaymentService):
     def update_payment_method(self, owner: Owner, payment_method: str) -> None:
         log.info(
             "Stripe update payment method for owner",
-            extra=dict(
-                owner_id=owner.ownerid,
-                user_id=self.requesting_user.ownerid,
-                subscription_id=owner.stripe_subscription_id,
-                customer_id=owner.stripe_customer_id,
-            ),
+            extra={
+                "owner_id": owner.ownerid,
+                "user_id": self.requesting_user.ownerid,
+                "subscription_id": owner.stripe_subscription_id,
+                "customer_id": owner.stripe_customer_id,
+            },
         )
         if owner.stripe_subscription_id is None or owner.stripe_customer_id is None:
             log.warn(
                 "Missing subscription or customer id, returning early",
-                extra=dict(
-                    owner_id=owner.ownerid,
-                    subscription_id=owner.stripe_subscription_id,
-                    customer_id=owner.stripe_customer_id,
-                ),
+                extra={
+                    "owner_id": owner.ownerid,
+                    "subscription_id": owner.stripe_subscription_id,
+                    "customer_id": owner.stripe_customer_id,
+                },
             )
             return None
 
@@ -658,12 +658,12 @@ class StripeService(AbstractPaymentService):
             )
         log.info(
             f"Successfully updated payment method for owner {owner.ownerid} by user #{self.requesting_user.ownerid}",
-            extra=dict(
-                owner_id=owner.ownerid,
-                user_id=self.requesting_user.ownerid,
-                subscription_id=owner.stripe_subscription_id,
-                customer_id=owner.stripe_customer_id,
-            ),
+            extra={
+                "owner_id": owner.ownerid,
+                "user_id": self.requesting_user.ownerid,
+                "subscription_id": owner.stripe_subscription_id,
+                "customer_id": owner.stripe_customer_id,
+            },
         )
 
     @_log_stripe_error
@@ -699,21 +699,21 @@ class StripeService(AbstractPaymentService):
                 )
                 log.info(
                     "Stripe successfully updated billing email for payment method",
-                    extra=dict(
-                        payment_method=default_payment_method,
-                        stripe_customer_id=owner.stripe_customer_id,
-                        ownerid=owner.ownerid,
-                    ),
+                    extra={
+                        "payment_method": default_payment_method,
+                        "stripe_customer_id": owner.stripe_customer_id,
+                        "ownerid": owner.ownerid,
+                    },
                 )
             except Exception as e:
                 log.error(
                     "Unable to update billing email for payment method",
-                    extra=dict(
-                        payment_method=default_payment_method,
-                        stripe_customer_id=owner.stripe_customer_id,
-                        error=str(e),
-                        ownerid=owner.ownerid,
-                    ),
+                    extra={
+                        "payment_method": default_payment_method,
+                        "stripe_customer_id": owner.stripe_customer_id,
+                        "error": str(e),
+                        "ownerid": owner.ownerid,
+                    },
                 )
 
     @_log_stripe_error
@@ -727,21 +727,21 @@ class StripeService(AbstractPaymentService):
 
         try:
             customer = stripe.Customer.retrieve(owner.stripe_customer_id)
-            log.info("Retrieved customer", extra=dict(customer=customer))
+            log.info("Retrieved customer", extra={"customer": customer})
 
             default_payment_method = customer.invoice_settings.default_payment_method
             log.info(
                 "Retrieved default payment method",
-                extra=dict(payment_method=default_payment_method),
+                extra={"payment_method": default_payment_method},
             )
 
             if default_payment_method is None:
                 log.warning(
                     "Customer has no default payment method, skipping payment method update",
-                    extra=dict(
-                        stripe_customer_id=owner.stripe_customer_id,
-                        ownerid=owner.ownerid,
-                    ),
+                    extra={
+                        "stripe_customer_id": owner.stripe_customer_id,
+                        "ownerid": owner.ownerid,
+                    },
                 )
                 # Still update the customer address even if there's no payment method
                 stripe.Customer.modify(
@@ -749,16 +749,16 @@ class StripeService(AbstractPaymentService):
                 )
                 log.info(
                     "Stripe successfully updated customer address",
-                    extra=dict(
-                        ownerid=owner.ownerid,
-                        requesting_user_id=self.requesting_user.ownerid,
-                    ),
+                    extra={
+                        "ownerid": owner.ownerid,
+                        "requesting_user_id": self.requesting_user.ownerid,
+                    },
                 )
                 return
 
             log.info(
                 "Modifying payment method billing details",
-                extra=dict(stripe_customer_id=owner.stripe_customer_id),
+                extra={"stripe_customer_id": owner.stripe_customer_id},
             )
             stripe.PaymentMethod.modify(
                 default_payment_method,
@@ -767,25 +767,25 @@ class StripeService(AbstractPaymentService):
 
             log.info(
                 "Modifying customer address",
-                extra=dict(stripe_customer_id=owner.stripe_customer_id),
+                extra={"stripe_customer_id": owner.stripe_customer_id},
             )
             stripe.Customer.modify(owner.stripe_customer_id, address=billing_address)
             log.info(
                 "Stripe successfully updated billing address",
-                extra=dict(
-                    ownerid=owner.ownerid,
-                    requesting_user_id=self.requesting_user.ownerid,
-                ),
+                extra={
+                    "ownerid": owner.ownerid,
+                    "requesting_user_id": self.requesting_user.ownerid,
+                },
             )
         except Exception as e:
             log.error(
                 "Unable to update billing address for customer",
-                extra=dict(
-                    customer_id=owner.stripe_customer_id,
-                    subscription_id=owner.stripe_subscription_id,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                ),
+                extra={
+                    "customer_id": owner.stripe_customer_id,
+                    "subscription_id": owner.stripe_subscription_id,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
             )
 
     @_log_stripe_error
@@ -829,12 +829,12 @@ class StripeService(AbstractPaymentService):
     def create_setup_intent(self, owner: Owner) -> stripe.SetupIntent:
         log.info(
             "Stripe create setup intent for owner",
-            extra=dict(
-                owner_id=owner.ownerid,
-                requesting_user_id=self.requesting_user.ownerid,
-                subscription_id=owner.stripe_subscription_id,
-                customer_id=owner.stripe_customer_id,
-            ),
+            extra={
+                "owner_id": owner.ownerid,
+                "requesting_user_id": self.requesting_user.ownerid,
+                "subscription_id": owner.stripe_subscription_id,
+                "customer_id": owner.stripe_customer_id,
+            },
         )
         return stripe.SetupIntent.create(
             payment_method_configuration=settings.STRIPE_PAYMENT_METHOD_CONFIGURATION_ID,
@@ -845,9 +845,10 @@ class StripeService(AbstractPaymentService):
     def get_unverified_payment_methods(self, owner: Owner):
         log.info(
             "Getting unverified payment methods",
-            extra=dict(
-                owner_id=owner.ownerid, stripe_customer_id=owner.stripe_customer_id
-            ),
+            extra={
+                "owner_id": owner.ownerid,
+                "stripe_customer_id": owner.stripe_customer_id,
+            },
         )
         if not owner.stripe_customer_id:
             return []
@@ -1080,7 +1081,7 @@ class BillingService:
         except Exception as e:
             log.error(
                 "Latest invoice is missing payment intent id",
-                extra=dict(error=e),
+                extra={"error": e},
             )
             return None
 
@@ -1088,11 +1089,11 @@ class BillingService:
         if payment_intent.status == "requires_action":
             log.info(
                 "Subscription has pending payment verification",
-                extra=dict(
-                    subscription_id=subscription.get("id"),
-                    payment_intent_id=payment_intent.get("id"),
-                    payment_intent_status=payment_intent.get("status"),
-                ),
+                extra={
+                    "subscription_id": subscription.get("id"),
+                    "payment_intent_id": payment_intent.get("id"),
+                    "payment_intent_status": payment_intent.get("status"),
+                },
             )
             try:
                 # Delete the subscription, which also removes the
@@ -1100,17 +1101,17 @@ class BillingService:
                 stripe.Subscription.delete(subscription)
                 log.info(
                     "Deleted incomplete subscription",
-                    extra=dict(
-                        subscription_id=subscription.get("id"),
-                        payment_intent_id=payment_intent.get("id"),
-                    ),
+                    extra={
+                        "subscription_id": subscription.get("id"),
+                        "payment_intent_id": payment_intent.get("id"),
+                    },
                 )
             except Exception as e:
                 log.error(
                     "Failed to delete subscription",
-                    extra=dict(
-                        subscription_id=subscription.get("id"),
-                        payment_intent_id=payment_intent.get("id"),
-                        error=str(e),
-                    ),
+                    extra={
+                        "subscription_id": subscription.get("id"),
+                        "payment_intent_id": payment_intent.get("id"),
+                        "error": str(e),
+                    },
                 )

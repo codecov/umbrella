@@ -2,15 +2,15 @@ from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.utils.functional import cached_property
-from shared.components import Component
-from shared.reports.filtered import FilteredReport
-from shared.reports.resources import Report
-from shared.reports.types import ReportTotals
 
 from codecov_auth.models import Owner
 from core.models import Commit
 from services.comparison import Comparison
 from services.yaml import final_commit_yaml
+from shared.components import Component
+from shared.reports.filtered import FilteredReport
+from shared.reports.resources import Report
+from shared.reports.types import ReportTotals
 from timeseries.helpers import fill_sparse_measurements
 from timeseries.models import Interval
 

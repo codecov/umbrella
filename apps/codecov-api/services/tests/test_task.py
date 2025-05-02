@@ -4,10 +4,10 @@ from unittest.mock import MagicMock
 import pytest
 from django.conf import settings
 from freezegun import freeze_time
-from shared import celery_config
-from shared.django_apps.core.tests.factories import RepositoryFactory
 
 from services.task import TaskService, celery_app
+from shared import celery_config
+from shared.django_apps.core.tests.factories import RepositoryFactory
 from timeseries.tests.factories import DatasetFactory
 
 
@@ -31,17 +31,17 @@ def test_compute_comparison_task(mocker):
     mock_route_task.assert_called_with(
         celery_config.compute_comparison_task_name,
         args=None,
-        kwargs=dict(comparison_id=5),
+        kwargs={"comparison_id": 5},
     )
     signature_mock.assert_called_with(
         celery_config.compute_comparison_task_name,
         args=None,
-        kwargs=dict(comparison_id=5),
+        kwargs={"comparison_id": 5},
         app=celery_app,
         queue="my_queue",
         soft_time_limit=None,
         time_limit=None,
-        headers=dict(created_timestamp="2023-06-13T10:01:01.000123"),
+        headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
         immutable=False,
     )
 
@@ -57,13 +57,13 @@ def test_compute_comparisons_task(mocker):
     mock_route_task.assert_called_with(
         celery_config.compute_comparison_task_name,
         args=None,
-        kwargs=dict(comparison_id=5),
+        kwargs={"comparison_id": 5},
     )
     assert signature_mock.call_count == 2
     signature_mock.assert_any_call(
         celery_config.compute_comparison_task_name,
         args=None,
-        kwargs=dict(comparison_id=10),
+        kwargs={"comparison_id": 10},
         app=celery_app,
         queue="my_queue",
         soft_time_limit=None,
@@ -72,7 +72,7 @@ def test_compute_comparisons_task(mocker):
     signature_mock.assert_any_call(
         celery_config.compute_comparison_task_name,
         args=None,
-        kwargs=dict(comparison_id=5),
+        kwargs={"comparison_id": 5},
         app=celery_app,
         queue="my_queue",
         soft_time_limit=None,
@@ -106,60 +106,60 @@ def test_backfill_repo(mocker):
     mock_route_task.assert_any_call(
         celery_config.timeseries_backfill_task_name,
         args=None,
-        kwargs=dict(
-            repoid=repo.pk,
-            start_date="2022-01-15T00:00:00",
-            end_date="2022-01-25T00:00:00",
-            dataset_names=["testing"],
-        ),
+        kwargs={
+            "repoid": repo.pk,
+            "start_date": "2022-01-15T00:00:00",
+            "end_date": "2022-01-25T00:00:00",
+            "dataset_names": ["testing"],
+        },
     )
 
     signature_mock.assert_any_call(
         celery_config.timeseries_backfill_task_name,
         args=None,
-        kwargs=dict(
-            repoid=repo.pk,
-            start_date="2022-01-15T00:00:00",
-            end_date="2022-01-25T00:00:00",
-            dataset_names=["testing"],
-        ),
+        kwargs={
+            "repoid": repo.pk,
+            "start_date": "2022-01-15T00:00:00",
+            "end_date": "2022-01-25T00:00:00",
+            "dataset_names": ["testing"],
+        },
         app=celery_app,
         queue="celery",
         soft_time_limit=None,
         time_limit=None,
-        headers=dict(created_timestamp="2023-06-13T10:01:01.000123"),
+        headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
         immutable=False,
     )
     signature_mock.assert_any_call(
         celery_config.timeseries_backfill_task_name,
         args=None,
-        kwargs=dict(
-            repoid=repo.pk,
-            start_date="2022-01-05T00:00:00",
-            end_date="2022-01-15T00:00:00",
-            dataset_names=["testing"],
-        ),
+        kwargs={
+            "repoid": repo.pk,
+            "start_date": "2022-01-05T00:00:00",
+            "end_date": "2022-01-15T00:00:00",
+            "dataset_names": ["testing"],
+        },
         app=celery_app,
         queue="celery",
         soft_time_limit=None,
         time_limit=None,
-        headers=dict(created_timestamp="2023-06-13T10:01:01.000123"),
+        headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
         immutable=False,
     )
     signature_mock.assert_any_call(
         celery_config.timeseries_backfill_task_name,
         args=None,
-        kwargs=dict(
-            repoid=repo.pk,
-            start_date="2022-01-01T00:00:00",
-            end_date="2022-01-05T00:00:00",
-            dataset_names=["testing"],
-        ),
+        kwargs={
+            "repoid": repo.pk,
+            "start_date": "2022-01-01T00:00:00",
+            "end_date": "2022-01-05T00:00:00",
+            "dataset_names": ["testing"],
+        },
         app=celery_app,
         queue="celery",
         soft_time_limit=None,
         time_limit=None,
-        headers=dict(created_timestamp="2023-06-13T10:01:01.000123"),
+        headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
         immutable=False,
     )
 
@@ -187,16 +187,16 @@ def test_backfill_dataset(mocker):
     signature_mock.assert_called_with(
         "app.tasks.timeseries.backfill_dataset",
         args=None,
-        kwargs=dict(
-            dataset_id=dataset.pk,
-            start_date="2022-01-01T00:00:00",
-            end_date="2022-08-09T00:00:00",
-        ),
+        kwargs={
+            "dataset_id": dataset.pk,
+            "start_date": "2022-01-01T00:00:00",
+            "end_date": "2022-08-09T00:00:00",
+        },
         app=celery_app,
         queue="celery",
         soft_time_limit=None,
         time_limit=None,
-        headers=dict(created_timestamp="2023-06-13T10:01:01.000123"),
+        headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
         immutable=False,
     )
     signature.apply_async.assert_called_once_with()
@@ -212,17 +212,17 @@ def test_flush_repo(mocker):
     mock_route_task.assert_called_with(
         "app.tasks.flush_repo.FlushRepo",
         args=None,
-        kwargs=dict(repoid=12345),
+        kwargs={"repoid": 12345},
     )
     signature_mock.assert_called_with(
         "app.tasks.flush_repo.FlushRepo",
         args=None,
-        kwargs=dict(repoid=12345),
+        kwargs={"repoid": 12345},
         app=celery_app,
         queue="celery",
         soft_time_limit=None,
         time_limit=None,
-        headers=dict(created_timestamp="2023-06-13T10:01:01.000123"),
+        headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
         immutable=False,
     )
 
@@ -241,17 +241,17 @@ def test_update_commit_task(mocker):
     mock_route_task.assert_called_with(
         celery_config.commit_update_task_name,
         args=None,
-        kwargs=dict(commitid=1, repoid=2),
+        kwargs={"commitid": 1, "repoid": 2},
     )
     signature_mock.assert_called_with(
         celery_config.commit_update_task_name,
         args=None,
-        kwargs=dict(commitid=1, repoid=2),
+        kwargs={"commitid": 1, "repoid": 2},
         app=celery_app,
         queue="celery",
         soft_time_limit=300,
         time_limit=400,
-        headers=dict(created_timestamp="2023-06-13T10:01:01.000123"),
+        headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
         immutable=False,
     )
 
@@ -272,28 +272,28 @@ def test_make_http_request_task(mocker):
     mock_route_task.assert_called_with(
         "app.tasks.http_request.HTTPRequest",
         args=None,
-        kwargs=dict(
-            url="http://example.com",
-            method="POST",
-            headers={"Content-Type": "text/plain"},
-            data="test body",
-            timeout=10,
-        ),
+        kwargs={
+            "url": "http://example.com",
+            "method": "POST",
+            "headers": {"Content-Type": "text/plain"},
+            "data": "test body",
+            "timeout": 10,
+        },
     )
     signature_mock.assert_called_with(
         "app.tasks.http_request.HTTPRequest",
         args=None,
-        kwargs=dict(
-            url="http://example.com",
-            method="POST",
-            headers={"Content-Type": "text/plain"},
-            data="test body",
-            timeout=10,
-        ),
+        kwargs={
+            "url": "http://example.com",
+            "method": "POST",
+            "headers": {"Content-Type": "text/plain"},
+            "data": "test body",
+            "timeout": 10,
+        },
         app=celery_app,
         queue="celery",
         soft_time_limit=None,
         time_limit=None,
-        headers=dict(created_timestamp="2023-06-13T10:01:01.000123"),
+        headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
         immutable=False,
     )

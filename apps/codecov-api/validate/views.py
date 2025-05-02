@@ -8,10 +8,11 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from yaml import YAMLError, safe_load
+
 from shared.metrics import Counter, inc_counter
 from shared.validation.exceptions import InvalidYamlException
 from shared.yaml.validation import validate_yaml
-from yaml import YAMLError, safe_load
 
 log = logging.getLogger(__name__)
 
@@ -46,9 +47,10 @@ class V1ValidateYamlHandler(APIView):
             if not isinstance(yaml_dict, dict):
                 log.warning(
                     "yaml_dict result from loading validate request body is not a dict",
-                    extra=dict(
-                        yaml_dict=yaml_dict, request_body=str(self.request.body)
-                    ),
+                    extra={
+                        "yaml_dict": yaml_dict,
+                        "request_body": str(self.request.body),
+                    },
                 )
                 return HttpResponse(
                     "No file posted.",
@@ -87,7 +89,7 @@ class V2ValidateYamlHandler(V1ValidateYamlHandler):
         source = self.request.query_params.get("source", "unknown")
         inc_counter(
             API_VALIDATE_V2_COUNTER,
-            labels=dict(source=source),
+            labels={"source": source},
         )
 
         if not self.request.body:
@@ -105,9 +107,10 @@ class V2ValidateYamlHandler(V1ValidateYamlHandler):
             if not isinstance(yaml_dict, dict):
                 log.warning(
                     "yaml_dict result from loading validate request body is not a dict",
-                    extra=dict(
-                        yaml_dict=yaml_dict, request_body=str(self.request.body)
-                    ),
+                    extra={
+                        "yaml_dict": yaml_dict,
+                        "request_body": str(self.request.body),
+                    },
                 )
                 return Response(
                     {

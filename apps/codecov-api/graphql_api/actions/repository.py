@@ -2,9 +2,9 @@ import logging
 from typing import Any
 
 from django.db.models import QuerySet
+
 from shared.django_apps.codecov_auth.models import GithubAppInstallation, Owner
 from shared.django_apps.core.models import Repository
-
 from utils.config import get_config
 
 log = logging.getLogger(__name__)

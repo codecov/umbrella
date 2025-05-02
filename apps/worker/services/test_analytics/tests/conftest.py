@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 import yaml
+
 from shared.config import _get_config_instance, get_config
 from shared.storage import get_appropriate_storage_service
 from shared.storage.exceptions import BucketAlreadyExistsError

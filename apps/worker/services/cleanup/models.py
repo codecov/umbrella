@@ -5,6 +5,9 @@ from functools import partial
 
 import sentry_sdk
 from django.db.models import Model, Q, QuerySet
+
+from services.cleanup.relations import reverse_filter
+from services.cleanup.utils import CleanupContext, CleanupResult
 from shared.api_archive.archive import ArchiveService, MinioEndpoints
 from shared.bundle_analysis import StoragePaths
 from shared.django_apps.compare.models import CommitComparison
@@ -20,9 +23,6 @@ from shared.django_apps.timeseries.models import Dataset, Measurement
 from shared.storage.exceptions import FileNotInStorageError
 from shared.timeseries.helpers import is_timeseries_enabled
 from shared.utils.sessions import SessionType
-
-from services.cleanup.relations import reverse_filter
-from services.cleanup.utils import CleanupContext, CleanupResult
 
 MANUAL_QUERY_CHUNKSIZE = 1_000
 DELETE_FILES_BATCHSIZE = 50

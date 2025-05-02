@@ -224,5 +224,5 @@ class TestNewUserActivatedTaskUnit(object):
             "reason": None,
         }
         mocked_app.tasks["app.tasks.notify.Notify"].apply_async.assert_called_with(
-            kwargs=dict(commitid=pull.head, repoid=pull.repoid)
+            kwargs={"commitid": pull.head, "repoid": pull.repoid}
         )

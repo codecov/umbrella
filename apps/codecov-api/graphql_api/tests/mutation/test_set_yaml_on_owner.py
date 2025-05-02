@@ -2,9 +2,9 @@ import asyncio
 from unittest.mock import patch
 
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import OwnerFactory
 
 from graphql_api.tests.helper import GraphQLTestHelper
+from shared.django_apps.core.tests.factories import OwnerFactory
 
 query = """
 mutation($input: SetYamlOnOwnerInput!) {

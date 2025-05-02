@@ -1,7 +1,4 @@
 import pytest
-from shared.reports.reportfile import ReportFile
-from shared.reports.resources import Report
-from shared.reports.types import ReportLine, ReportTotals
 
 from services.comparison.changes import (
     Change,
@@ -9,6 +6,9 @@ from services.comparison.changes import (
     get_changes,
     get_segment_offsets,
 )
+from shared.reports.reportfile import ReportFile
+from shared.reports.resources import Report
+from shared.reports.types import ReportLine, ReportTotals
 
 
 class TestDiffTotals(object):
@@ -85,7 +85,7 @@ class TestDiffTotals(object):
 def test_get_segment_offsets(segments, result):
     assert (
         get_segment_offsets(
-            [dict(header=seg[0], lines=list(seg[1])) for seg in segments]
+            [{"header": seg[0], "lines": list(seg[1])} for seg in segments]
         )
         == result
     )
@@ -422,7 +422,7 @@ class TestChanges(object):
                 totals=None,
             ),
         ]
-        assert set([x.path for x in res]) == set([x.path for x in expected_result])
+        assert {x.path for x in res} == {x.path for x in expected_result}
         for individual_result, individual_expected_result in zip(
             sorted(res, key=lambda x: x.path),
             sorted(expected_result, key=lambda x: x.path),

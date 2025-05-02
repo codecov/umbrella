@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 from freezegun import freeze_time
-from shared.storage.exceptions import FileNotInStorageError
 
 from database.models import CommitReport, RepositoryFlag
 from database.models.reports import DailyTestRollup, Test, TestFlagBridge, TestInstance
 from database.tests.factories import CommitFactory, UploadFactory
 from database.tests.factories.reports import FlakeFactory
 from services.test_results import generate_flags_hash, generate_test_id
+from shared.storage.exceptions import FileNotInStorageError
 from tasks.test_results_processor import (
     TestResultsProcessorTask,
 )
@@ -212,12 +212,12 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
         assert len(test_instances) == 4
         assert len(failures) == 1
 
-        assert set([test.flags_hash for test in tests]) == {
+        assert {test.flags_hash for test in tests} == {
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         }
-        assert set([test_instance.test.id for test_instance in test_instances]) == set(
-            [test.id_ for test in tests]
-        )
+        assert {test_instance.test.id for test_instance in test_instances} == {
+            test.id_ for test in tests
+        }
         assert "Deleting uploaded file as requested" in caplog.text
         with pytest.raises(FileNotInStorageError):
             mock_storage.read_file("archive", url)
@@ -435,9 +435,9 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
 
         test_flag_bridges = dbsession.query(TestFlagBridge).all()
 
-        assert set(bridge.test_id for bridge in test_flag_bridges) == set(
+        assert {bridge.test_id for bridge in test_flag_bridges} == {
             instance.test_id for instance in test_instances
-        )
+        }
         for bridge in test_flag_bridges:
             assert bridge.flag == repo_flag
 
@@ -573,26 +573,26 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
                 dbsession.query(DailyTestRollup).filter_by(branch="first_branch").all()
             )
 
-            assert set(r.date for r in rollups_first_branch) == {
+            assert {r.date for r in rollups_first_branch} == {
                 date.today() - timedelta(days=1)
             }
-            assert set(r.fail_count for r in rollups_first_branch) == {0, 1}
-            assert set(r.pass_count for r in rollups_first_branch) == {1}
-            assert set(r.skip_count for r in rollups_first_branch) == {0}
-            assert set(r.flaky_fail_count for r in rollups_first_branch) == {0}
+            assert {r.fail_count for r in rollups_first_branch} == {0, 1}
+            assert {r.pass_count for r in rollups_first_branch} == {1}
+            assert {r.skip_count for r in rollups_first_branch} == {0}
+            assert {r.flaky_fail_count for r in rollups_first_branch} == {0}
             assert set(
                 chain.from_iterable(r.commits_where_fail for r in rollups_first_branch)
             ) == {
                 "cd76b0821854a780b60012aed85af0a8263004ad",
             }
-            assert set(r.latest_run for r in rollups_first_branch) == {
+            assert {r.latest_run for r in rollups_first_branch} == {
                 datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc)
             }
-            assert set(r.avg_duration_seconds for r in rollups_first_branch) == {
+            assert {r.avg_duration_seconds for r in rollups_first_branch} == {
                 7.2,
                 0.001,
             }
-            assert set(r.last_duration_seconds for r in rollups_first_branch) == {
+            assert {r.last_duration_seconds for r in rollups_first_branch} == {
                 7.2,
                 0.001,
             }
@@ -601,24 +601,24 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
                 dbsession.query(DailyTestRollup).filter_by(branch="second_branch").all()
             )
 
-            assert set(r.date for r in rollups_second_branch) == {date.today()}
-            assert set(r.fail_count for r in rollups_second_branch) == {0, 1}
-            assert set(r.pass_count for r in rollups_second_branch) == {0, 2}
-            assert set(r.skip_count for r in rollups_second_branch) == {0}
-            assert set(r.flaky_fail_count for r in rollups_second_branch) == {0, 1}
+            assert {r.date for r in rollups_second_branch} == {date.today()}
+            assert {r.fail_count for r in rollups_second_branch} == {0, 1}
+            assert {r.pass_count for r in rollups_second_branch} == {0, 2}
+            assert {r.skip_count for r in rollups_second_branch} == {0}
+            assert {r.flaky_fail_count for r in rollups_second_branch} == {0, 1}
             assert set(
                 chain.from_iterable(r.commits_where_fail for r in rollups_second_branch)
             ) == {
                 "bd76b0821854a780b60012aed85af0a8263004ad",
             }
-            assert set(r.latest_run for r in rollups_second_branch) == {
+            assert {r.latest_run for r in rollups_second_branch} == {
                 datetime(1970, 1, 2, 0, 0, tzinfo=timezone.utc)
             }
-            assert set(r.avg_duration_seconds for r in rollups_second_branch) == {
+            assert {r.avg_duration_seconds for r in rollups_second_branch} == {
                 3.6,
                 0.002,
             }
-            assert set(r.last_duration_seconds for r in rollups_second_branch) == {
+            assert {r.last_duration_seconds for r in rollups_second_branch} == {
                 3.6,
                 0.002,
             }

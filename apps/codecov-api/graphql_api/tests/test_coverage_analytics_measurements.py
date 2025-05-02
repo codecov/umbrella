@@ -3,11 +3,11 @@ from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
+
 from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
-
 from timeseries.models import Interval
 
 from .helper import GraphQLTestHelper

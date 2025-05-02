@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Any, Iterator, Tuple, Union
 
 import sentry_sdk
+
 from shared.helpers.numeric import ratio
 from shared.reports.resources import Report
 from shared.reports.types import Change, ReportTotals
@@ -78,7 +79,7 @@ def get_segment_offsets(segments) -> tuple[dict[int, Any], list[int], list[int]]
                 additions.append(ln + offset_r)
                 offsets[ln + offset_r] -= 1
                 offset_l -= 1
-    return dict([(k, v) for k, v in offsets.items() if v != 0]), additions, removals
+    return {k: v for k, v in offsets.items() if v != 0}, additions, removals
 
 
 @sentry_sdk.trace
@@ -125,7 +126,7 @@ def get_changes(
 
     # moved files
     moved_files = (
-        set([d["before"] for k, d in diff_json["files"].items() if d.get("before")])
+        {d["before"] for k, d in diff_json["files"].items() if d.get("before")}
         if diff_json
         else set()
     )
@@ -150,12 +151,12 @@ def get_changes(
                 # Seems to only happen when there is a 'moved file' in a weird situation
                 log.info(
                     "File not in the diff, not in base, but still not a 'new_file'",
-                    extra=dict(
-                        diff_keys=sorted(diff_keys),
-                        missing_filename=filename,
-                        base_is_none=base_report_file is None,
-                        moved_files=sorted(moved_files),
-                    ),
+                    extra={
+                        "diff_keys": sorted(diff_keys),
+                        "missing_filename": filename,
+                        "base_is_none": base_report_file is None,
+                        "moved_files": sorted(moved_files),
+                    },
                 )
                 new_files.add(filename)
                 continue
@@ -210,7 +211,7 @@ def get_changes(
             # by the diff
             if diff.get("type") != "deleted":
                 base_report_file = base_report.get(possibly_deleted_filename)
-                present_lines_on_base = set(x[0] for x in base_report_file.lines)
+                present_lines_on_base = {x[0] for x in base_report_file.lines}
                 _, _, line_removals = get_segment_offsets(diff["segments"])
                 lines_unnaccounted_for = present_lines_on_base - set(line_removals)
                 if lines_unnaccounted_for:

@@ -46,5 +46,5 @@ class ShelterPubsub:
         except Exception as e:
             log.warning(
                 "Failed to publish a message",
-                extra=dict(data_to_publish=data, error=e),
+                extra={"data_to_publish": data, "error": e},
             )

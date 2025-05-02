@@ -1,0 +1,28 @@
+src = ["apps/*", "libs/*"]
+
+[lint]
+# https://docs.astral.sh/ruff/rules/
+select = [
+    "ASYNC", # flake8-async - async checks
+    "C4",    # flake8-comprehensions - list/set/dict/generator comprehensions
+    "E",     # pycodestyle - error rules
+    "F",     # pyflakes - general Python errors, undefined names
+    "I",     # isort - import sorting
+    "PERF",  # perflint - performance anti-pattern rules
+    "PLC",   # pylint - convention rules
+    "PLE",   # pylint - error rules
+    "PLW",   # pylint - warning rules
+    "T20",   # flake8-print - print statements
+    "W",     # pycodestyle - warning rules
+]
+ignore = [
+    "E501",    # Line too long ({width} > {limit})
+    "E712",    # Avoid equality comparisons to `True`; use `if {cond}:` for truth checks
+    "F403",    # `from {name} import *` used; unable to detect undefined names
+    "F405",    # `{name}` may be undefined, or defined from star imports
+    "F841",    # Local variable `{name}` is assigned to but never used
+    "PLW2901", # Outer {outer_kind} variable {name} overwritten by inner {inner_kind} target
+    # Trailing whitespace, and blank lines which we use in test assertions:
+    "W291",
+    "W293",
+]

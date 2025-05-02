@@ -1,9 +1,5 @@
 import logging
 
-from shared.celery_config import (
-    activate_account_user_task_name,
-    new_user_activated_task_name,
-)
 from sqlalchemy import func
 from sqlalchemy.sql import text
 
@@ -13,6 +9,10 @@ from services.license import (
     get_current_license,
     get_installation_plan_activated_users,
     requires_license,
+)
+from shared.celery_config import (
+    activate_account_user_task_name,
+    new_user_activated_task_name,
 )
 
 log = logging.getLogger(__name__)
@@ -55,35 +55,35 @@ def activate_user(db_session, org_ownerid: int, user_ownerid: int) -> bool:
 
                 log.info(
                     "PR Auto activation attempted",
-                    extra=dict(
-                        org_ownerid=org_ownerid,
-                        author_ownerid=user_ownerid,
-                        activation_success=activation_success,
-                    ),
+                    extra={
+                        "org_ownerid": org_ownerid,
+                        "author_ownerid": user_ownerid,
+                        "activation_success": activation_success,
+                    },
                 )
 
                 return True
             else:
                 log.info(
                     "Auto activation failed due to no seats remaining",
-                    extra=dict(
-                        org_ownerid=org_ownerid,
-                        author_ownerid=user_ownerid,
-                        activation_success=False,
-                        license_status=license_status,
-                    ),
+                    extra={
+                        "org_ownerid": org_ownerid,
+                        "author_ownerid": user_ownerid,
+                        "activation_success": False,
+                        "license_status": license_status,
+                    },
                 )
                 return False
 
         else:
             log.info(
                 "Auto activation failed due to invalid license",
-                extra=dict(
-                    org_ownerid=org_ownerid,
-                    author_ownerid=user_ownerid,
-                    activation_success=False,
-                    license_status=license_status,
-                ),
+                extra={
+                    "org_ownerid": org_ownerid,
+                    "author_ownerid": user_ownerid,
+                    "activation_success": False,
+                    "license_status": license_status,
+                },
             )
             return False
 
@@ -95,11 +95,11 @@ def activate_user(db_session, org_ownerid: int, user_ownerid: int) -> bool:
 
     log.info(
         "Auto activation attempted",
-        extra=dict(
-            org_ownerid=org_ownerid,
-            author_ownerid=user_ownerid,
-            activation_success=activation_success,
-        ),
+        extra={
+            "org_ownerid": org_ownerid,
+            "author_ownerid": user_ownerid,
+            "activation_success": activation_success,
+        },
     )
     return activation_success
 
@@ -108,14 +108,14 @@ def schedule_new_user_activated_task(org_ownerid, user_ownerid):
     celery_app.send_task(
         new_user_activated_task_name,
         args=None,
-        kwargs=dict(org_ownerid=org_ownerid, user_ownerid=user_ownerid),
+        kwargs={"org_ownerid": org_ownerid, "user_ownerid": user_ownerid},
     )
     # Activate the account user if it exists.
     celery_app.send_task(
         activate_account_user_task_name,
         args=None,
-        kwargs=dict(
-            user_ownerid=user_ownerid,
-            org_ownerid=org_ownerid,
-        ),
+        kwargs={
+            "user_ownerid": user_ownerid,
+            "org_ownerid": org_ownerid,
+        },
     )

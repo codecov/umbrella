@@ -1,8 +1,8 @@
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
-from shared.encryption.yaml_secret import yaml_secret_encryptor
 
 from graphql_api.tests.helper import GraphQLTestHelper
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
+from shared.encryption.yaml_secret import yaml_secret_encryptor
 
 query = """
 mutation($input: EncodeSecretStringInput!) {

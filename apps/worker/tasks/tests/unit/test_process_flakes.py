@@ -3,6 +3,13 @@ from collections import defaultdict
 
 import pytest
 from freezegun import freeze_time
+
+from services.processing.flake_processing import (
+    create_flake,
+    fetch_curr_flakes,
+    get_test_instances,
+    update_flake,
+)
 from shared.django_apps.core.models import Commit
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports.models import (
@@ -19,13 +26,6 @@ from shared.django_apps.reports.tests.factories import (
     UploadFactory,
 )
 from shared.helpers.redis import get_redis_connection
-
-from services.processing.flake_processing import (
-    create_flake,
-    fetch_curr_flakes,
-    get_test_instances,
-    update_flake,
-)
 from tasks.process_flakes import (
     NEW_KEY,
     OLD_KEY,
@@ -132,7 +132,7 @@ class RepoSimulator:
         self.test_count = 0
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_generate_flake_dict():
     repo = RepositoryFactory()
 
@@ -149,7 +149,7 @@ def test_generate_flake_dict():
     assert "id" in flake_dict
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_get_test_instances_when_test_is_flaky():
     repo = RepositoryFactory()
     commit = CommitFactory()
@@ -169,7 +169,7 @@ def test_get_test_instances_when_test_is_flaky():
     assert tis[0].commitid
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_get_test_instances_when_instance_is_failure():
     repo = RepositoryFactory()
     commit = CommitFactory()
@@ -189,7 +189,7 @@ def test_get_test_instances_when_instance_is_failure():
     assert tis[0].commitid
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_get_test_instances_when_test_is_flaky_and_instance_is_skip():
     repo = RepositoryFactory()
     commit = CommitFactory()
@@ -208,7 +208,7 @@ def test_get_test_instances_when_test_is_flaky_and_instance_is_skip():
     assert len(tis) == 0
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_get_test_instances_when_instance_is_pass():
     repo = RepositoryFactory()
     commit = CommitFactory()
@@ -227,7 +227,7 @@ def test_get_test_instances_when_instance_is_pass():
     assert len(tis) == 0
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_update_flake_pass():
     rs = RepoSimulator()
     c = rs.create_commit()
@@ -244,7 +244,7 @@ def test_update_flake_pass():
     assert f.recent_passes_count == 1
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_update_flake_fail():
     rs = RepoSimulator()
     c = rs.create_commit()
@@ -262,7 +262,7 @@ def test_update_flake_fail():
     assert f.fail_count == 1
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_upsert_failed_flakes():
     repo = RepositoryFactory()
     repo.save()
@@ -292,7 +292,7 @@ def test_upsert_failed_flakes():
     assert r.flaky_fail_count == 1
 
 
-@pytest.mark.django_db(transaction=False)
+@pytest.mark.django_db
 def test_upsert_failed_flakes_rollup_is_none():
     repo = RepositoryFactory()
     repo.save()
@@ -312,7 +312,7 @@ def test_upsert_failed_flakes_rollup_is_none():
     assert r is None
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_it_handles_only_passes():
     rs = RepoSimulator()
     c1 = rs.create_commit()
@@ -324,7 +324,7 @@ def test_it_handles_only_passes():
     assert len(Flake.objects.all()) == 0
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 @freeze_time()
 def test_it_creates_flakes_from_processed_uploads():
     rs = RepoSimulator()
@@ -345,7 +345,7 @@ def test_it_creates_flakes_from_processed_uploads():
     assert flake.start_date == dt.datetime.now(tz=dt.UTC)
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 @freeze_time()
 def test_it_does_not_create_flakes_from_flake_processed_uploads():
     rs = RepoSimulator()
@@ -360,7 +360,7 @@ def test_it_does_not_create_flakes_from_flake_processed_uploads():
     assert len(Flake.objects.all()) == 0
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 @freeze_time()
 def test_it_processes_two_commits_separately():
     rs = RepoSimulator()
@@ -384,7 +384,7 @@ def test_it_processes_two_commits_separately():
     assert flake.start_date == dt.datetime.now(dt.UTC)
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_it_creates_flakes_expires():
     with freeze_time() as traveller:
         rs = RepoSimulator()
@@ -431,7 +431,7 @@ def test_it_creates_flakes_expires():
         assert flake.end_date == new_time
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 def test_it_creates_rollups():
     with freeze_time("1970-01-01"):
         rs = RepoSimulator()
@@ -469,7 +469,7 @@ def test_it_creates_rollups():
         assert rollups[3].date == dt.date.today()
 
 
-@pytest.mark.django_db(transaction=False)
+@pytest.mark.django_db
 def test_it_locks(mocker):
     mock_all_plans_and_tiers()
     result2 = None

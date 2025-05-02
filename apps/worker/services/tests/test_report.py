@@ -3,11 +3,6 @@ from decimal import Decimal
 import mock
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
-from shared.api_archive.archive import ArchiveService
-from shared.reports.resources import Report, ReportFile, Session, SessionType
-from shared.reports.types import ReportLine, ReportTotals
-from shared.torngit.exceptions import TorngitRateLimitError
-from shared.yaml import UserYaml
 
 from database.models import CommitReport, RepositoryFlag, Upload
 from database.tests.factories import CommitFactory
@@ -18,6 +13,11 @@ from services.report.raw_upload_processor import (
     SessionAdjustmentResult,
     clear_carryforward_sessions,
 )
+from shared.api_archive.archive import ArchiveService
+from shared.reports.resources import Report, ReportFile, Session, SessionType
+from shared.reports.types import ReportLine, ReportTotals
+from shared.torngit.exceptions import TorngitRateLimitError
+from shared.yaml import UserYaml
 from test_utils.base import BaseTestCase
 
 
@@ -3362,9 +3362,9 @@ class TestReportService(BaseTestCase):
         assert r is not None
         assert len(mock_storage.storage["archive"]) == 0
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_initialize_and_save_report_carryforward_needed(
-        self, dbsession, sample_commit_with_report_big, mocker, mock_storage
+        self, dbsession, sample_commit_with_report_big, mock_storage
     ):
         parent_commit = sample_commit_with_report_big
         commit = CommitFactory.create(
@@ -3423,7 +3423,7 @@ class TestReportService(BaseTestCase):
         }
         assert second_upload.upload_type == "carriedforward"
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_initialize_and_save_report_report_but_no_details_carryforward_needed(
         self, dbsession, sample_commit_with_report_big, mock_storage
     ):
@@ -3513,7 +3513,7 @@ class TestReportService(BaseTestCase):
             == 2
         )
         storage_keys = mock_storage.storage["archive"].keys()
-        assert any(map(lambda key: key.endswith("chunks.txt"), storage_keys))
+        assert any((key.endswith("chunks.txt") for key in storage_keys))
 
     def test_initialize_and_save_report_existing_report(
         self, mock_storage, sample_report, dbsession, mocker
@@ -3796,16 +3796,16 @@ class TestReportService(BaseTestCase):
         mock_provider_service.assert_called()
         mock_log_error.assert_called_with(
             "Failed to shift carryforward report lines.",
-            extra=dict(
-                reason="Can't get diff",
-                commit=commit.commitid,
-                error=str(
+            extra={
+                "reason": "Can't get diff",
+                "commit": commit.commitid,
+                "error": str(
                     TorngitRateLimitError(response_data="", message="error", reset=None)
                 ),
-                error_type=type(
+                "error_type": type(
                     TorngitRateLimitError(response_data="", message="error", reset=None)
                 ),
-            ),
+            },
         )
 
     def test_possibly_shift_carryforward_report_bot_error(
@@ -3831,11 +3831,11 @@ class TestReportService(BaseTestCase):
         mock_provider_service.assert_called()
         mock_log_error.assert_called_with(
             "Failed to shift carryforward report lines",
-            extra=dict(
-                reason="Can't get provider_service",
-                commit=commit.commitid,
-                error=str(RepositoryWithoutValidBotError()),
-            ),
+            extra={
+                "reason": "Can't get provider_service",
+                "commit": commit.commitid,
+                "error": str(RepositoryWithoutValidBotError()),
+            },
         )
 
     def test_possibly_shift_carryforward_report_random_processing_error(
@@ -3852,7 +3852,7 @@ class TestReportService(BaseTestCase):
             raise Exception("Very random and hard to get exception")
 
         mock_repo_provider.get_compare = mock.AsyncMock(
-            side_effect=lambda *args, **kwargs: dict(diff={})
+            side_effect=lambda *args, **kwargs: {"diff": {}}
         )
         mock_report = mocker.Mock()
         mock_report.shift_lines_by_diff = raise_error
@@ -3863,10 +3863,10 @@ class TestReportService(BaseTestCase):
         mock_log_error.assert_called_with(
             "Failed to shift carryforward report lines.",
             exc_info=True,
-            extra=dict(
-                reason="Unknown",
-                commit=commit.commitid,
-            ),
+            extra={
+                "reason": "Unknown",
+                "commit": commit.commitid,
+            },
         )
 
     def test_possibly_shift_carryforward_report_softtimelimit_reraised(

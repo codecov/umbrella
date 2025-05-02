@@ -1,10 +1,10 @@
 import orjson
 import pytest
-from shared.reports.resources import Report
-from shared.utils.sessions import Session
 
 from services.report import raw_upload_processor as process
 from services.report.parser.legacy import LegacyReportParser
+from shared.reports.resources import Report
+from shared.utils.sessions import Session
 
 # The intention of these tests is to easily reproduce production problems with real reports.
 #

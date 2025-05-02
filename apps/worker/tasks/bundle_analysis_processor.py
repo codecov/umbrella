@@ -2,8 +2,6 @@ import logging
 from typing import Any
 
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
-from shared.reports.enums import UploadState
-from shared.yaml import UserYaml
 
 from app import celery_app
 from database.enums import ReportType
@@ -14,6 +12,8 @@ from services.bundle_analysis.report import (
 )
 from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.types import UploadArguments
+from shared.reports.enums import UploadState
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.bundle_analysis_save_measurements import (
     bundle_analysis_save_measurements_task_name,
@@ -48,12 +48,12 @@ class BundleAnalysisProcessorTask(
 
         log.info(
             "Starting bundle analysis processor",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                commit_yaml=commit_yaml,
-                params=params,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "commit_yaml": commit_yaml,
+                "params": params,
+            },
         )
 
         lock_manager = LockManager(
@@ -89,11 +89,11 @@ class BundleAnalysisProcessorTask(
     ):
         log.info(
             "Running bundle analysis processor",
-            extra=dict(
-                commit_yaml=commit_yaml,
-                params=params,
-                parent_task=self.request.parent_id,
-            ),
+            extra={
+                "commit_yaml": commit_yaml,
+                "params": params,
+                "parent_task": self.request.parent_id,
+            },
         )
 
         commit = (
@@ -139,10 +139,10 @@ class BundleAnalysisProcessorTask(
                 ):
                     log.info(
                         "Bundle analysis report already exists for commit, skipping carryforward",
-                        extra=dict(
-                            repoid=commit.repoid,
-                            commit=commit.commitid,
-                        ),
+                        extra={
+                            "repoid": commit.repoid,
+                            "commit": commit.commitid,
+                        },
                     )
                     return processing_results
             else:
@@ -160,15 +160,15 @@ class BundleAnalysisProcessorTask(
         try:
             log.info(
                 "Processing bundle analysis upload",
-                extra=dict(
-                    repoid=repoid,
-                    commit=commitid,
-                    commit_yaml=commit_yaml,
-                    params=params,
-                    upload_id=upload.id_,
-                    parent_task=self.request.parent_id,
-                    compare_sha=compare_sha,
-                ),
+                extra={
+                    "repoid": repoid,
+                    "commit": commitid,
+                    "commit_yaml": commit_yaml,
+                    "params": params,
+                    "upload_id": upload.id_,
+                    "parent_task": self.request.parent_id,
+                    "compare_sha": compare_sha,
+                },
             )
             assert params.get("commit") == commit.commitid
 
@@ -182,13 +182,13 @@ class BundleAnalysisProcessorTask(
             ):
                 log.warn(
                     "Attempting to retry bundle analysis upload",
-                    extra=dict(
-                        repoid=repoid,
-                        commit=commitid,
-                        commit_yaml=commit_yaml,
-                        params=params,
-                        result=result.as_dict(),
-                    ),
+                    extra={
+                        "repoid": repoid,
+                        "commit": commitid,
+                        "commit_yaml": commit_yaml,
+                        "params": params,
+                        "result": result.as_dict(),
+                    },
                 )
                 self.retry(countdown=30 * (2**self.request.retries))
             result.update_upload(carriedforward=carriedforward)
@@ -202,14 +202,14 @@ class BundleAnalysisProcessorTask(
         except Exception:
             log.exception(
                 "Unable to process bundle analysis upload",
-                extra=dict(
-                    repoid=repoid,
-                    commit=commitid,
-                    commit_yaml=commit_yaml,
-                    params=params,
-                    upload_id=upload.id_,
-                    parent_task=self.request.parent_id,
-                ),
+                extra={
+                    "repoid": repoid,
+                    "commit": commitid,
+                    "commit_yaml": commit_yaml,
+                    "params": params,
+                    "upload_id": upload.id_,
+                    "parent_task": self.request.parent_id,
+                },
             )
             upload.state_id = UploadState.ERROR.db_id
             upload.state = "error"
@@ -222,25 +222,25 @@ class BundleAnalysisProcessorTask(
 
         # Create task to save bundle measurements
         self.app.tasks[bundle_analysis_save_measurements_task_name].apply_async(
-            kwargs=dict(
-                commitid=commit.commitid,
-                repoid=commit.repoid,
-                uploadid=upload.id_,
-                commit_yaml=commit_yaml.to_dict(),
-                previous_result=processing_results,
-            )
+            kwargs={
+                "commitid": commit.commitid,
+                "repoid": commit.repoid,
+                "uploadid": upload.id_,
+                "commit_yaml": commit_yaml.to_dict(),
+                "previous_result": processing_results,
+            }
         )
 
         log.info(
             "Finished bundle analysis processor",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                commit_yaml=commit_yaml,
-                params=params,
-                results=processing_results,
-                parent_task=self.request.parent_id,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "commit_yaml": commit_yaml,
+                "params": params,
+                "results": processing_results,
+                "parent_task": self.request.parent_id,
+            },
         )
 
         return {"results": processing_results}

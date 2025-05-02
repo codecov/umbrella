@@ -3,8 +3,6 @@ from base64 import b64encode
 from decimal import Decimal
 from typing import List
 
-from shared.reports.resources import Report
-
 from database.models import Repository
 from helpers.reports import get_totals_from_file_in_reports
 from services.comparison import ComparisonProxy
@@ -16,6 +14,7 @@ from services.notification.notifiers.mixins.message.helpers import (
 from services.notification.notifiers.mixins.message.sections import (
     ALL_TESTS_PASSED_MSG,
 )
+from shared.reports.resources import Report
 
 log = logging.getLogger(__name__)
 

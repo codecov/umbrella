@@ -5,8 +5,6 @@ import pytest
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
-from shared.torngit import Bitbucket, Github, Gitlab
 
 from codecov_auth.models import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
@@ -15,6 +13,8 @@ from codecov_auth.models import (
     Service,
 )
 from services.repo_providers import RepoProviderService, get_token_refresh_callback
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
+from shared.torngit import Bitbucket, Github, Gitlab
 from utils.encryption import encryptor
 
 
@@ -254,21 +254,21 @@ class TestRepoProviderService(TestCase):
         mock_get_provider.call_args == (
             (
                 "github",
-                dict(
-                    repo=dict(
-                        name=repo.name,
-                        using_integration=repo.using_integration,
-                        service_id=repo.service_id,
-                        private=repo.private,
-                    ),
-                    owner=dict(username=repo.author.username),
-                    token=encryptor.decrypt_token(repo.bot.oauth_token),
-                    verify_ssl="ssl_pem",
-                    oauth_consumer_token=dict(
-                        key=getattr(settings, "GITHUB_CLIENT_ID", "unknown"),
-                        secret=getattr(settings, "GITHUB_CLIENT_SECRET", "unknown"),
-                    ),
-                ),
+                {
+                    "repo": {
+                        "name": repo.name,
+                        "using_integration": repo.using_integration,
+                        "service_id": repo.service_id,
+                        "private": repo.private,
+                    },
+                    "owner": {"username": repo.author.username},
+                    "token": encryptor.decrypt_token(repo.bot.oauth_token),
+                    "verify_ssl": "ssl_pem",
+                    "oauth_consumer_token": {
+                        "key": getattr(settings, "GITHUB_CLIENT_ID", "unknown"),
+                        "secret": getattr(settings, "GITHUB_CLIENT_SECRET", "unknown"),
+                    },
+                },
             ),
         )
 
@@ -290,21 +290,21 @@ class TestRepoProviderService(TestCase):
         mock_get_provider.call_args == (
             (
                 "github",
-                dict(
-                    repo=dict(
-                        name=repo.name,
-                        using_integration=repo.using_integration,
-                        service_id=repo.service_id,
-                        private=repo.private,
-                    ),
-                    owner=dict(username=repo.author.username),
-                    token=encryptor.decrypt_token(repo.bot.oauth_token),
-                    verify_ssl="REQUESTS_CA_BUNDLE",
-                    oauth_consumer_token=dict(
-                        key=getattr(settings, "GITHUB_CLIENT_ID", "unknown"),
-                        secret=getattr(settings, "GITHUB_CLIENT_SECRET", "unknown"),
-                    ),
-                ),
+                {
+                    "repo": {
+                        "name": repo.name,
+                        "using_integration": repo.using_integration,
+                        "service_id": repo.service_id,
+                        "private": repo.private,
+                    },
+                    "owner": {"username": repo.author.username},
+                    "token": encryptor.decrypt_token(repo.bot.oauth_token),
+                    "verify_ssl": "REQUESTS_CA_BUNDLE",
+                    "oauth_consumer_token": {
+                        "key": getattr(settings, "GITHUB_CLIENT_ID", "unknown"),
+                        "secret": getattr(settings, "GITHUB_CLIENT_SECRET", "unknown"),
+                    },
+                },
             ),
         )
 

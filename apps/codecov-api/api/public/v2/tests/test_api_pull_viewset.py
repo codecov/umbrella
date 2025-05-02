@@ -3,14 +3,14 @@ from unittest.mock import MagicMock, patch
 from django.test import override_settings
 from django.urls import reverse
 from freezegun import freeze_time
+
+from codecov.tests.base_test import InternalAPITest
+from core.models import Pull
 from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     PullFactory,
     RepositoryFactory,
 )
-
-from codecov.tests.base_test import InternalAPITest
-from core.models import Pull
 from utils.test_utils import APIClient
 
 
@@ -32,7 +32,12 @@ class PullViewsetTests(InternalAPITest):
         )
         self.client = APIClient()
         self.client.force_login_owner(self.current_owner)
-        self.no_patch_response = dict(hits=0, misses=0, partials=0, coverage=0.0)
+        self.no_patch_response = {
+            "hits": 0,
+            "misses": 0,
+            "partials": 0,
+            "coverage": 0.0,
+        }
 
     @patch("api.public.v2.pull.serializers.PullSerializer.get_patch")
     def test_list(self, mock_patch):

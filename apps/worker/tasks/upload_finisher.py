@@ -8,19 +8,6 @@ import sentry_sdk
 from asgiref.sync import async_to_sync
 from redis.exceptions import LockError
 from redis.lock import Lock
-from shared.celery_config import (
-    compute_comparison_task_name,
-    notify_task_name,
-    pulls_task_name,
-    timeseries_save_commit_measurements_task_name,
-    upload_finisher_task_name,
-)
-from shared.helpers.cache import cache
-from shared.helpers.redis import get_redis_connection
-from shared.reports.resources import Report
-from shared.timeseries.helpers import is_timeseries_enabled
-from shared.torngit.exceptions import TorngitError
-from shared.yaml import UserYaml
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -43,6 +30,19 @@ from services.report import ReportService
 from services.repository import get_repo_provider_service
 from services.timeseries import repository_datasets_query
 from services.yaml import read_yaml_field
+from shared.celery_config import (
+    compute_comparison_task_name,
+    notify_task_name,
+    pulls_task_name,
+    timeseries_save_commit_measurements_task_name,
+    upload_finisher_task_name,
+)
+from shared.helpers.cache import cache
+from shared.helpers.redis import get_redis_connection
+from shared.reports.resources import Report
+from shared.timeseries.helpers import is_timeseries_enabled
+from shared.torngit.exceptions import TorngitError
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.upload_processor import MAX_RETRIES, UPLOAD_PROCESSING_LOCK_NAME
 
@@ -84,7 +84,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         try:
             UploadFlow.log(UploadFlow.BATCH_PROCESSING_COMPLETE)
         except ValueError as e:
-            log.warning("CheckpointLogger failed to log/submit", extra=dict(error=e))
+            log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
 
         log.info(
             "Received upload_finisher task",
@@ -131,7 +131,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             retry_in = min(random.randint(max_retry // 2, max_retry), 60 * 60 * 5)
             log.warning(
                 "Unable to acquire report lock. Retrying",
-                extra=dict(countdown=retry_in, number_retries=self.request.retries),
+                extra={"countdown": retry_in, "number_retries": self.request.retries},
             )
             self.retry(max_retries=MAX_RETRIES, countdown=retry_in)
 
@@ -158,11 +158,11 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         self.app.tasks[
                             timeseries_save_commit_measurements_task_name
                         ].apply_async(
-                            kwargs=dict(
-                                commitid=commitid,
-                                repoid=repoid,
-                                dataset_names=dataset_names,
-                            )
+                            kwargs={
+                                "commitid": commitid,
+                                "repoid": repoid,
+                                "dataset_names": dataset_names,
+                            }
                         )
 
                 # Mark the repository as updated so it will appear earlier in the list
@@ -177,7 +177,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 log.info("Finished upload_finisher task")
                 return result
         except LockError:
-            log.warning("Unable to acquire lock", extra=dict(lock_name=lock_name))
+            log.warning("Unable to acquire lock", extra={"lock_name": lock_name})
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
 
     def finish_reports_processing(
@@ -210,14 +210,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     )
                     log.info(
                         "Scheduling notify task",
-                        extra=dict(
-                            repoid=repoid,
-                            commit=commitid,
-                            commit_yaml=commit_yaml.to_dict(),
-                            processing_results=processing_results,
-                            notify_task_id=task.id,
-                            parent_task=self.request.parent_id,
-                        ),
+                        extra={
+                            "repoid": repoid,
+                            "commit": commitid,
+                            "commit_yaml": commit_yaml.to_dict(),
+                            "processing_results": processing_results,
+                            "notify_task_id": task.id,
+                            "parent_task": self.request.parent_id,
+                        },
                     )
                     if commit.pullid:
                         pull = (
@@ -232,11 +232,11 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                             if pull.head == commit.commitid:
                                 db_session.commit()
                                 self.app.tasks[pulls_task_name].apply_async(
-                                    kwargs=dict(
-                                        repoid=repoid,
-                                        pullid=pull.pullid,
-                                        should_send_notifications=False,
-                                    )
+                                    kwargs={
+                                        "repoid": repoid,
+                                        "pullid": pull.pullid,
+                                        "should_send_notifications": False,
+                                    }
                                 )
                                 compared_to = pull.get_comparedto_commit()
                                 if compared_to:
@@ -247,19 +247,19 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                                     self.app.tasks[
                                         compute_comparison_task_name
                                     ].apply_async(
-                                        kwargs=dict(comparison_id=comparison.id)
+                                        kwargs={"comparison_id": comparison.id}
                                     )
                 case ShouldCallNotifyResult.DO_NOT_NOTIFY:
                     notifications_called = False
                     log.info(
                         "Skipping notify task",
-                        extra=dict(
-                            repoid=repoid,
-                            commit=commitid,
-                            commit_yaml=commit_yaml.to_dict(),
-                            processing_results=processing_results,
-                            parent_task=self.request.parent_id,
-                        ),
+                        extra={
+                            "repoid": repoid,
+                            "commit": commitid,
+                            "commit_yaml": commit_yaml.to_dict(),
+                            "processing_results": processing_results,
+                            "parent_task": self.request.parent_id,
+                        },
                     )
                 case ShouldCallNotifyResult.NOTIFY_ERROR:
                     notifications_called = False

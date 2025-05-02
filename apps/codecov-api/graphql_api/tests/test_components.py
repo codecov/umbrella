@@ -4,6 +4,11 @@ import pytest
 from django.conf import settings
 from django.test import TestCase, override_settings
 from django.utils import timezone
+
+from compare.models import CommitComparison
+from compare.tests.factories import CommitComparisonFactory, ComponentComparisonFactory
+from services.comparison import MissingComparisonReport
+from services.components import Component
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -13,11 +18,6 @@ from shared.django_apps.core.tests.factories import (
 from shared.reports.resources import Report, ReportFile
 from shared.reports.types import ReportLine
 from shared.utils.sessions import Session
-
-from compare.models import CommitComparison
-from compare.tests.factories import CommitComparisonFactory, ComponentComparisonFactory
-from services.comparison import MissingComparisonReport
-from services.components import Component
 from timeseries.models import MeasurementName
 from timeseries.tests.factories import DatasetFactory, MeasurementFactory
 

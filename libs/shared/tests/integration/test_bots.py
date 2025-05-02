@@ -28,7 +28,7 @@ C/tY+lZIEO1Gg/FxSMB+hwwhwfSuE3WohZfEcSy+R48=
 
 
 class TestRepositoryServiceIntegration(object):
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_get_token_type_mapping_non_existing_integration(
         self, codecov_vcr, mock_configuration, mocker
     ):
@@ -48,7 +48,7 @@ class TestRepositoryServiceIntegration(object):
         with pytest.raises(RepositoryWithoutValidBotError):
             get_repo_appropriate_bot_token(repo)
 
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_get_token_type_mapping_bad_data(
         self, codecov_vcr, mock_configuration, mocker
     ):

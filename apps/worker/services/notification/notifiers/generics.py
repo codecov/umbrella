@@ -6,7 +6,6 @@ from urllib.parse import urlparse
 
 import httpx
 import sentry_sdk
-from shared.config import get_config
 
 from helpers.match import match
 from helpers.metrics import metrics
@@ -18,6 +17,7 @@ from services.notification.notifiers.base import (
 )
 from services.urls import get_commit_url, get_pull_url
 from services.yaml.reader import get_paths_from_flags, round_number
+from shared.config import get_config
 
 log = logging.getLogger(__name__)
 
@@ -66,12 +66,12 @@ class StandardNotifier(AbstractBaseNotifier):
         ):
             log.warning(
                 "Not notifying because branch not in expected branches",
-                extra=dict(
-                    commit=head_full_commit.commit.commitid,
-                    repoid=head_full_commit.commit.repoid,
-                    current_branch=head_full_commit.commit.branch,
-                    branch_patterns=self.notifier_yaml_settings.get("branches"),
-                ),
+                extra={
+                    "commit": head_full_commit.commit.commitid,
+                    "repoid": head_full_commit.commit.repoid,
+                    "current_branch": head_full_commit.commit.branch,
+                    "branch_patterns": self.notifier_yaml_settings.get("branches"),
+                },
             )
             return False
         if not self.is_above_threshold(comparison):
@@ -100,13 +100,13 @@ class StandardNotifier(AbstractBaseNotifier):
 
     def get_notifier_filters(self) -> dict:
         flag_list = self.notifier_yaml_settings.get("flags") or []
-        return dict(
-            path_patterns=set(
+        return {
+            "path_patterns": set(
                 get_paths_from_flags(self.current_yaml, flag_list)
                 + (self.notifier_yaml_settings.get("paths") or [])
             ),
-            flags=flag_list,
-        )
+            "flags": flag_list,
+        }
 
     def do_notify(self, comparison: Comparison) -> NotificationResult:
         data = self.build_payload(comparison)
@@ -127,12 +127,12 @@ class StandardNotifier(AbstractBaseNotifier):
         if not comparison.has_project_coverage_base_report():
             log.info(
                 "Cannot compare commits because base commit does not have a report",
-                extra=dict(
-                    commit=head_full_commit.commit.commitid,
-                    base_commit=base_full_commit.commit.commitid
+                extra={
+                    "commit": head_full_commit.commit.commitid,
+                    "base_commit": base_full_commit.commit.commitid
                     if base_full_commit.commit
                     else None,
-                ),
+                },
             )
             return False
         if (
@@ -141,12 +141,12 @@ class StandardNotifier(AbstractBaseNotifier):
         ):
             log.info(
                 "Cannot compare commits because either base or head commit has no coverage information",
-                extra=dict(
-                    commit=head_full_commit.commit.commitid,
-                    base_commit=base_full_commit.commit.commitid
+                extra={
+                    "commit": head_full_commit.commit.commitid,
+                    "base_commit": base_full_commit.commit.commitid
                     if base_full_commit.commit
                     else None,
-                ),
+                },
             )
             return False
         diff_coverage = Decimal(head_full_commit.report.totals.coverage) - Decimal(
@@ -234,7 +234,7 @@ class RequestsYamlBasedNotifier(StandardNotifier):
 
     def send_actual_notification(self, data: Mapping[str, Any]):
         _timeouts = get_config("setup", "http", "timeouts", "external", default=10)
-        kwargs = dict(timeout=_timeouts, headers=self.json_headers)
+        kwargs = {"timeout": _timeouts, "headers": self.json_headers}
         try:
             with metrics.timer(
                 f"worker.services.notifications.notifiers.{self.name}.actual_connection"

@@ -4,11 +4,11 @@ from django.conf import settings
 from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
-from shared.api_archive.archive import ArchiveService, MinioEndpoints
-from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 
 from billing.helpers import mock_all_plans_and_tiers
 from reports.models import ReportSession, RepositoryFlag, UploadFlagMembership
+from shared.api_archive.archive import ArchiveService, MinioEndpoints
+from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from upload.views.upload_coverage import CanDoCoverageUploadsPermission
 
 

@@ -63,7 +63,7 @@ class BitbucketServerWebhookHandler(APIView):
 
         log.info(
             "BitbucketServer webhook message received",
-            extra=dict(event=self.event, hookid=event_hook_id, repoid=repo.repoid),
+            extra={"event": self.event, "hookid": event_hook_id, "repoid": repo.repoid},
         )
 
         if self.event == BitbucketServerWebhookEvents.PULL_REQUEST_CREATED:

@@ -3,6 +3,7 @@ from typing import Optional
 
 from ariadne import ObjectType
 from django.conf import settings
+
 from shared.license import LicenseInformation
 
 self_hosted_license_bindable = ObjectType("SelfHostedLicense")

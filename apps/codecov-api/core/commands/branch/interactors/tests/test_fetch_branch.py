@@ -1,4 +1,5 @@
 from django.test import TestCase
+
 from shared.django_apps.core.tests.factories import BranchFactory, OwnerFactory
 
 from ..fetch_branch import FetchBranchInteractor

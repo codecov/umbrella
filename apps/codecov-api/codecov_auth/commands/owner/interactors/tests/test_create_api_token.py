@@ -1,8 +1,8 @@
 import pytest
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import OwnerFactory
 
 from codecov.commands.exceptions import Unauthenticated, ValidationError
+from shared.django_apps.core.tests.factories import OwnerFactory
 
 from ..create_api_token import CreateApiTokenInteractor
 

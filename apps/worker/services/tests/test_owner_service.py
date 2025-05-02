@@ -1,13 +1,12 @@
-from shared.rate_limits import gh_app_key_name, owner_key_name
-from shared.reports.types import UploadType
-from shared.typings.torngit import AdditionalData
-
 from database.models.core import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
     GithubAppInstallation,
 )
 from database.tests.factories import OwnerFactory
 from services.owner import get_owner_provider_service
+from shared.rate_limits import gh_app_key_name, owner_key_name
+from shared.reports.types import UploadType
+from shared.typings.torngit import AdditionalData
 
 
 class TestOwnerServiceTestCase(object):

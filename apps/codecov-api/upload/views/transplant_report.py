@@ -5,7 +5,6 @@ from django.http import HttpRequest
 from rest_framework import serializers, status
 from rest_framework.generics import CreateAPIView
 from rest_framework.response import Response
-from shared.metrics import inc_counter
 
 from codecov_auth.authentication.repo_auth import (
     GitHubOIDCTokenAuthentication,
@@ -16,6 +15,7 @@ from codecov_auth.authentication.repo_auth import (
     repo_auth_custom_exception_handler,
 )
 from services.task import TaskService
+from shared.metrics import inc_counter
 from upload.helpers import generate_upload_prometheus_metrics_labels
 from upload.metrics import API_UPLOAD_COUNTER
 from upload.views.base import GetterMixin

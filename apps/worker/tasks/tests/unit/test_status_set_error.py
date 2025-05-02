@@ -2,10 +2,10 @@ from pathlib import Path
 
 import mock
 import pytest
-from shared.torngit.status import Status
-from shared.yaml import UserYaml
 
 from database.tests.factories import CommitFactory
+from shared.torngit.status import Status
+from shared.yaml import UserYaml
 from tasks.status_set_error import StatusSetErrorTask
 
 here = Path(__file__)
@@ -16,7 +16,7 @@ class TestSetErrorTaskUnit(object):
         mocked_1 = mocker.patch("tasks.status_set_error.get_repo_provider_service")
         repo = mocker.MagicMock(
             service="github",
-            data=dict(repo=dict(repoid=123)),
+            data={"repo": {"repoid": 123}},
             set_commit_status=mock.AsyncMock(return_value=None),
         )
         mocked_1.return_value = repo
@@ -74,7 +74,7 @@ class TestSetErrorTaskUnit(object):
             service="github",
             slug="owner/repo",
             token={"username": "bot"},
-            data=dict(repo=dict(repoid=123)),
+            data={"repo": {"repoid": 123}},
             get_commit_statuses=mock.AsyncMock(return_value=get_commit_statuses),
             set_commit_status=mock.AsyncMock(return_value=set_commit_status),
         )
@@ -130,7 +130,7 @@ class TestSetErrorTaskUnit(object):
             service="github",
             slug="owner/repo",
             token={"username": "bot"},
-            data=dict(repo=dict(repoid=123)),
+            data={"repo": {"repoid": 123}},
             get_commit_statuses=mock.AsyncMock(return_value=get_commit_statuses),
             set_commit_status=mock.AsyncMock(return_value=set_commit_status),
         )

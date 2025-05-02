@@ -1,9 +1,8 @@
 import json
 
+from database.tests.factories import RepositoryFactory
 from shared.api_archive.archive import ArchiveService
 from shared.storage import MinioStorageService
-
-from database.tests.factories import RepositoryFactory
 from test_utils.base import BaseTestCase
 
 

@@ -7,13 +7,13 @@ from django.conf import settings
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.views import View
+
+from codecov_auth.views.base import LoginMixin
 from shared.django_apps.codecov_metrics.service.codecov_metrics import (
     UserOnboardingMetricsService,
 )
 from shared.torngit import Bitbucket
 from shared.torngit.exceptions import TorngitServerFailureError
-
-from codecov_auth.views.base import LoginMixin
 from utils.encryption import encryptor
 
 log = logging.getLogger(__name__)
@@ -25,10 +25,10 @@ class BitbucketLoginView(View, LoginMixin):
     @async_to_sync
     async def fetch_user_data(self, token):
         repo_service = Bitbucket(
-            oauth_consumer_token=dict(
-                key=settings.BITBUCKET_CLIENT_ID,
-                secret=settings.BITBUCKET_CLIENT_SECRET,
-            ),
+            oauth_consumer_token={
+                "key": settings.BITBUCKET_CLIENT_ID,
+                "secret": settings.BITBUCKET_CLIENT_SECRET,
+            },
             token=token,
         )
         user_data = await repo_service.get_authenticated_user()
@@ -39,19 +39,19 @@ class BitbucketLoginView(View, LoginMixin):
             "login": user_data.pop("username"),
         }
         user_orgs = await repo_service.list_teams()
-        return dict(
-            user=authenticated_user,
-            orgs=user_orgs,
-            is_student=False,
-            has_private_access=True,
-        )
+        return {
+            "user": authenticated_user,
+            "orgs": user_orgs,
+            "is_student": False,
+            "has_private_access": True,
+        }
 
     def redirect_to_bitbucket_step(self, request):
         repo_service = Bitbucket(
-            oauth_consumer_token=dict(
-                key=settings.BITBUCKET_CLIENT_ID,
-                secret=settings.BITBUCKET_CLIENT_SECRET,
-            )
+            oauth_consumer_token={
+                "key": settings.BITBUCKET_CLIENT_ID,
+                "secret": settings.BITBUCKET_CLIENT_SECRET,
+            }
         )
         oauth_token_pair = repo_service.generate_request_token(
             settings.BITBUCKET_REDIRECT_URI
@@ -76,10 +76,10 @@ class BitbucketLoginView(View, LoginMixin):
 
     def actual_login_step(self, request):
         repo_service = Bitbucket(
-            oauth_consumer_token=dict(
-                key=settings.BITBUCKET_CLIENT_ID,
-                secret=settings.BITBUCKET_CLIENT_SECRET,
-            )
+            oauth_consumer_token={
+                "key": settings.BITBUCKET_CLIENT_ID,
+                "secret": settings.BITBUCKET_CLIENT_SECRET,
+            }
         )
         oauth_verifier = request.GET.get("oauth_verifier")
         request_cookie = request.get_signed_cookie("_oauth_request_token", default=None)
@@ -104,7 +104,7 @@ class BitbucketLoginView(View, LoginMixin):
         response = redirect(redirection_url)
         response.delete_cookie("_oauth_request_token", domain=settings.COOKIES_DOMAIN)
         self.login_owner(user, request, response)
-        log.info("User successfully logged in", extra=dict(ownerid=user.ownerid))
+        log.info("User successfully logged in", extra={"ownerid": user.ownerid})
         UserOnboardingMetricsService.create_user_onboarding_metric(
             org_id=user.ownerid, event="INSTALLED_APP", payload={"login": "bitbucket"}
         )

@@ -5,6 +5,12 @@ from typing import List, Optional, Tuple
 from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
 from redis.exceptions import LockError
+from sqlalchemy import and_
+from sqlalchemy.orm.session import Session
+
+from app import celery_app
+from database.models import Owner, Repository
+from services.owner import get_owner_provider_service
 from shared.celery_config import (
     sync_repo_languages_gql_task_name,
     sync_repo_languages_task_name,
@@ -14,12 +20,6 @@ from shared.config import get_config
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitClientError, TorngitServerFailureError
-from sqlalchemy import and_
-from sqlalchemy.orm.session import Session
-
-from app import celery_app
-from database.models import Owner, Repository
-from services.owner import get_owner_provider_service
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -77,13 +77,13 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
     ):
         log.info(
             "Sync repos",
-            extra=dict(
-                ownerid=ownerid,
-                username=username,
-                using_integration=using_integration,
-                manual_trigger=manual_trigger,
-                repository_service_ids=repository_service_ids,
-            ),
+            extra={
+                "ownerid": ownerid,
+                "username": username,
+                "using_integration": using_integration,
+                "manual_trigger": manual_trigger,
+                "repository_service_ids": repository_service_ids,
+            },
         )
         owner = db_session.query(Owner).filter(Owner.ownerid == ownerid).first()
 
@@ -138,27 +138,25 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         repoids_added = []
         # Casting to str in case celery interprets the service ID as a integer for some reason
         # As that has caused issues with testing locally
-        service_ids = set(str(x[0]) for x in repository_service_ids)
+        service_ids = {str(x[0]) for x in repository_service_ids}
         # Check what repos we already have in the DB
-        existing_repos = set(
-            map(
-                lambda row_result: row_result[0],
-                db_session.query(Repository.service_id)
-                .filter(Repository.service_id.in_(service_ids))
-                .all(),
-            )
-        )
+        existing_repos = {
+            row_result[0]
+            for row_result in db_session.query(Repository.service_id)
+            .filter(Repository.service_id.in_(service_ids))
+            .all()
+        }
         missing_repo_service_ids = service_ids.difference(existing_repos)
 
         log.info(
             "Sync missing repos if any",
-            extra=dict(
-                ownerid=owner.ownerid,
-                missing_repo_service_ids=missing_repo_service_ids,
-                num_missing_repos=len(missing_repo_service_ids),
-                existing_repos=existing_repos,
-                repository_service_ids=repository_service_ids,
-            ),
+            extra={
+                "ownerid": owner.ownerid,
+                "missing_repo_service_ids": missing_repo_service_ids,
+                "num_missing_repos": len(missing_repo_service_ids),
+                "existing_repos": existing_repos,
+                "repository_service_ids": repository_service_ids,
+            },
         )
 
         # Get info from provider on the repos we don't have
@@ -228,14 +226,14 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
             service_ids_listed_set = set(service_ids_listed)
             log.info(
                 "Updating list of repos covered",
-                extra=dict(
-                    owner=owner.ownerid,
-                    installation=ghapp.installation_id,
-                    ghapp_id=ghapp.id,
-                    added_repos_service_ids=covered_repos.difference(
+                extra={
+                    "owner": owner.ownerid,
+                    "installation": ghapp.installation_id,
+                    "ghapp_id": ghapp.id,
+                    "added_repos_service_ids": covered_repos.difference(
                         service_ids_listed_set
                     ),
-                ),
+                },
             )
             ghapp.repository_service_ids = list(covered_repos | service_ids_listed_set)
 
@@ -250,7 +248,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         ownerid = owner.ownerid
         log.info(
             "Syncing repos using integration",
-            extra=dict(ownerid=ownerid, username=username),
+            extra={"ownerid": ownerid, "username": username},
         )
 
         repoids = []
@@ -331,7 +329,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
 
         log.info(
             "Repo sync using integration done",
-            extra=dict(repoids_created=repoids, repoids_created_count=len(repoids)),
+            extra={"repoids_created": repoids, "repoids_created_count": len(repoids)},
         )
 
         return {
@@ -354,7 +352,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
 
         log.info(
             "Syncing repos without integration",
-            extra=dict(ownerid=ownerid, username=username, service=service),
+            extra={"ownerid": ownerid, "username": username, "service": service},
         )
 
         repoids = []
@@ -430,33 +428,35 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
             log.error(
                 f"{error_string}. Permissions list may be incomplete",
                 exc_info=True,
-                extra=dict(
-                    ownerid=owner.ownerid,
-                    number_old_permissions=len(old_permissions),
-                    number_new_permissions=len(set(private_project_ids)),
-                ),
+                extra={
+                    "ownerid": owner.ownerid,
+                    "number_old_permissions": len(old_permissions),
+                    "number_new_permissions": len(set(private_project_ids)),
+                },
             )
 
         log.info(
             "Updating permissions",
-            extra=dict(
-                ownerid=ownerid, username=username, privaterepoids=private_project_ids
-            ),
+            extra={
+                "ownerid": ownerid,
+                "username": username,
+                "privaterepoids": private_project_ids,
+            },
         )
         old_permissions = owner.permission or []
         removed_permissions = set(old_permissions) - set(private_project_ids)
         if removed_permissions:
             log.warning(
                 "Owner had permissions that are being removed",
-                extra=dict(
-                    old_permissions=old_permissions[:100],
-                    number_old_permissions=len(old_permissions),
-                    new_permissions=private_project_ids[:100],
-                    number_new_permissions=len(private_project_ids),
-                    removed_permissions=sorted(removed_permissions),
-                    ownerid=ownerid,
-                    username=owner.username,
-                ),
+                extra={
+                    "old_permissions": old_permissions[:100],
+                    "number_old_permissions": len(old_permissions),
+                    "new_permissions": private_project_ids[:100],
+                    "number_new_permissions": len(private_project_ids),
+                    "removed_permissions": sorted(removed_permissions),
+                    "ownerid": ownerid,
+                    "username": owner.username,
+                },
             )
 
         # update user permissions
@@ -464,7 +464,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
 
         log.info(
             "Repo sync done",
-            extra=dict(ownerid=ownerid, username=username, repoids=repoids),
+            extra={"ownerid": ownerid, "username": username, "repoids": repoids},
         )
 
         return {
@@ -478,7 +478,11 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
     ):
         log.info(
             "Upserting owner",
-            extra=dict(git_service=service, service_id=service_id, username=username),
+            extra={
+                "git_service": service,
+                "service_id": service_id,
+                "username": username,
+            },
         )
         owner = (
             db_session.query(Owner)
@@ -511,7 +515,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
     ):
         log.info(
             "Upserting repo",
-            extra=dict(ownerid=ownerid, repo_data=repo_data),
+            extra={"ownerid": ownerid, "repo_data": repo_data},
         )
         repo = (
             db_session.query(Repository)
@@ -565,19 +569,19 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
             # But it cannot be both different owner and different service_id
             log.warning(
                 "There is a repo with the right service_id and a repo with the right slug, but they are not the same",
-                extra=dict(
-                    repo_data=repo_data,
-                    repo_correct_serviceid_wrong_owner=dict(
-                        repoid=repo_correct_serviceid_wrong_owner.repoid,
-                        slug=repo_correct_serviceid_wrong_owner.slug,
-                        service_id=repo_correct_serviceid_wrong_owner.service_id,
-                    ),
-                    repo_correct_owner_wrong_service_id=dict(
-                        repoid=repo_correct_owner_wrong_service_id.repoid,
-                        slug=repo_correct_owner_wrong_service_id.slug,
-                        service_id=repo_correct_owner_wrong_service_id.service_id,
-                    ),
-                ),
+                extra={
+                    "repo_data": repo_data,
+                    "repo_correct_serviceid_wrong_owner": {
+                        "repoid": repo_correct_serviceid_wrong_owner.repoid,
+                        "slug": repo_correct_serviceid_wrong_owner.slug,
+                        "service_id": repo_correct_serviceid_wrong_owner.service_id,
+                    },
+                    "repo_correct_owner_wrong_service_id": {
+                        "repoid": repo_correct_owner_wrong_service_id.repoid,
+                        "slug": repo_correct_owner_wrong_service_id.slug,
+                        "service_id": repo_correct_owner_wrong_service_id.service_id,
+                    },
+                },
             )
             # We will have to assume the user has access to the service_id one, since
             # the service_id is the Github identity value
@@ -589,11 +593,11 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
             repo_wrong_owner = repo_correct_serviceid_wrong_owner
             log.info(
                 "Updating repo - wrong owner",
-                extra=dict(
-                    ownerid=ownerid,
-                    repo_id=repo_wrong_owner.repoid,
-                    repo_name=repo_data["name"],
-                ),
+                extra={
+                    "ownerid": ownerid,
+                    "repo_id": repo_wrong_owner.repoid,
+                    "repo_name": repo_data["name"],
+                },
             )
             repo_wrong_owner.ownerid = ownerid
             repo_wrong_owner.private = repo_data["private"]
@@ -607,11 +611,11 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         if repo_correct_owner_wrong_service_id:
             log.info(
                 "Updating repo - correct owner, wrong service_id",
-                extra=dict(
-                    ownerid=ownerid,
-                    repo_id=repo_correct_owner_wrong_service_id.service_id,
-                    repo_name=repo_data["name"],
-                ),
+                extra={
+                    "ownerid": ownerid,
+                    "repo_id": repo_correct_owner_wrong_service_id.service_id,
+                    "repo_name": repo_data["name"],
+                },
             )
             repo_correct_owner_wrong_service_id.service_id = repo_data["service_id"]
             repo_correct_owner_wrong_service_id.name = repo_data["name"]
@@ -633,9 +637,11 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         )
         log.info(
             "Inserting repo",
-            extra=dict(
-                ownerid=ownerid, repo_id=new_repo.repoid, repo_name=new_repo.name
-            ),
+            extra={
+                "ownerid": ownerid,
+                "repo_id": new_repo.repoid,
+                "repo_name": new_repo.name,
+            },
         )
         db_session.add(new_repo)
         db_session.flush()
@@ -646,25 +652,25 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
     ):
         log.info(
             "Syncing repos languages",
-            extra=dict(
-                ownerid=current_owner.ownerid,
-                sync_repos_output=sync_repos_output,
-                manual_trigger=manual_trigger,
-            ),
+            extra={
+                "ownerid": current_owner.ownerid,
+                "sync_repos_output": sync_repos_output,
+                "manual_trigger": manual_trigger,
+            },
         )
         if sync_repos_output:
             if sync_repos_output["service"] == "github":
                 for owner_username in sync_repos_output["org_usernames"]:
                     self.app.tasks[sync_repo_languages_gql_task_name].apply_async(
-                        kwargs=dict(
-                            org_username=owner_username,
-                            current_owner_id=current_owner.ownerid,
-                        )
+                        kwargs={
+                            "org_username": owner_username,
+                            "current_owner_id": current_owner.ownerid,
+                        }
                     )
             else:
                 for repoid in sync_repos_output["repoids"]:
                     self.app.tasks[sync_repo_languages_task_name].apply_async(
-                        kwargs=dict(repoid=repoid, manual_trigger=manual_trigger)
+                        kwargs={"repoid": repoid, "manual_trigger": manual_trigger}
                     )
 
 

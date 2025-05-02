@@ -5,7 +5,6 @@ from django.http import HttpRequest
 from rest_framework import status
 from rest_framework.generics import CreateAPIView
 from rest_framework.response import Response
-from shared.metrics import inc_counter
 
 from codecov_auth.authentication.repo_auth import (
     GitHubOIDCTokenAuthentication,
@@ -17,6 +16,7 @@ from codecov_auth.authentication.repo_auth import (
 )
 from reports.models import ReportSession
 from services.task import TaskService
+from shared.metrics import inc_counter
 from upload.helpers import generate_upload_prometheus_metrics_labels
 from upload.metrics import API_UPLOAD_COUNTER
 from upload.views.base import GetterMixin
@@ -59,9 +59,11 @@ class UploadCompletionView(CreateAPIView, GetterMixin):
         if not uploads_queryset or uploads_count == 0:
             log.info(
                 "Cannot trigger notifications as we didn't find any uploads for the provided commit",
-                extra=dict(
-                    repo=repo.name, commit=commit.commitid, pullid=commit.pullid
-                ),
+                extra={
+                    "repo": repo.name,
+                    "commit": commit.commitid,
+                    "pullid": commit.pullid,
+                },
             )
             return Response(
                 data={

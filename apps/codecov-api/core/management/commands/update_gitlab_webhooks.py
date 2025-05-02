@@ -3,12 +3,12 @@ import uuid
 from asgiref.sync import async_to_sync
 from django.core.management.base import BaseCommand, CommandParser
 from django.db.models import Q
-from shared.config import get_config
-from shared.torngit.exceptions import TorngitClientError, TorngitRefreshTokenFailedError
-from shared.torngit.gitlab import Gitlab
 
 from core.models import Repository
 from services.repo_providers import RepoProviderService
+from shared.config import get_config
+from shared.torngit.exceptions import TorngitClientError, TorngitRefreshTokenFailedError
+from shared.torngit.gitlab import Gitlab
 from utils.repos import get_bot_user
 
 

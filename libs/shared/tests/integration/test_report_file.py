@@ -281,7 +281,7 @@ def test_iter():
         name="folder/file.py",
         lines=[ReportLine.create(1), ReportLine.create(0), None],
     )
-    lines = [ln for ln in r]
+    lines = list(r)
     assert lines == [ReportLine.create(1), ReportLine.create(0), None]
 
 

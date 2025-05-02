@@ -2,13 +2,13 @@ from datetime import datetime
 
 from django.test import TestCase
 from django.utils import timezone
+
+from core.models import Repository
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
     RepositoryFactory,
 )
-
-from core.models import Repository
 
 
 class RepositoryQuerySetTests(TestCase):

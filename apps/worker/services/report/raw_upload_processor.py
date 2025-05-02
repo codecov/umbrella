@@ -2,9 +2,6 @@ import logging
 from dataclasses import dataclass
 
 import sentry_sdk
-from shared.reports.resources import Report
-from shared.utils.sessions import Session, SessionType
-from shared.yaml import UserYaml
 
 from database.models.reports import Upload
 from helpers.exceptions import ReportEmptyError, ReportExpiredException
@@ -14,6 +11,9 @@ from services.processing.metrics import LABELS_USAGE
 from services.report.parser.types import ParsedRawReport
 from services.report.report_builder import ReportBuilder
 from services.report.report_processor import process_report
+from shared.reports.resources import Report
+from shared.utils.sessions import Session, SessionType
+from shared.yaml import UserYaml
 
 log = logging.getLogger(__name__)
 

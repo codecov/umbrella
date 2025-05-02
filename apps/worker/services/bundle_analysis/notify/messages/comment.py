@@ -4,14 +4,6 @@ from typing import List, Literal, TypedDict
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from django.template import loader
-from shared.bundle_analysis import (
-    BundleAnalysisComparison,
-    BundleChange,
-    MissingBundleError,
-)
-from shared.bundle_analysis.comparison import AssetChange, RouteChange
-from shared.torngit.exceptions import TorngitClientError
-from shared.validation.types import BundleThreshold
 
 from services.bundle_analysis.notify.contexts.comment import (
     BundleAnalysisPRCommentNotificationContext,
@@ -25,6 +17,14 @@ from services.bundle_analysis.notify.messages import MessageStrategyInterface
 from services.license import requires_license
 from services.notification.notifiers.base import NotificationResult
 from services.urls import get_bundle_analysis_pull_url, get_members_url
+from shared.bundle_analysis import (
+    BundleAnalysisComparison,
+    BundleChange,
+    MissingBundleError,
+)
+from shared.bundle_analysis.comparison import AssetChange, RouteChange
+from shared.torngit.exceptions import TorngitClientError
+from shared.validation.types import BundleThreshold
 
 log = logging.getLogger(__name__)
 
@@ -109,11 +109,11 @@ class BundleAnalysisCommentMarkdownStrategy(MessageStrategyInterface):
             changed_files = None
             log.error(
                 "Unable to retrieve PR files",
-                extra=dict(
-                    commit=context.commit.commitid,
-                    report_key=context.commit_report.external_id,
-                    pullid=pull.pullid,
-                ),
+                extra={
+                    "commit": context.commit.commitid,
+                    "report_key": context.commit_report.external_id,
+                    "pullid": pull.pullid,
+                },
                 exc_info=True,
             )
 
@@ -187,11 +187,11 @@ class BundleAnalysisCommentMarkdownStrategy(MessageStrategyInterface):
         except TorngitClientError:
             log.error(
                 "Error creating/updating PR comment",
-                extra=dict(
-                    commit=context.commit.commitid,
-                    report_key=context.commit_report.external_id,
-                    pullid=pull.pullid,
-                ),
+                extra={
+                    "commit": context.commit.commitid,
+                    "report_key": context.commit_report.external_id,
+                    "pullid": pull.pullid,
+                },
             )
             return NotificationResult(
                 notification_attempted=True,
@@ -317,9 +317,7 @@ class BundleAnalysisCommentMarkdownStrategy(MessageStrategyInterface):
 
                 # Determine what asset name styling and change icon to use
                 asset_display_name_1 = f"```{asset_change.asset_name}```"
-                asset_display_name_2 = asset_display_name_2 = (
-                    f"**```{asset_change.asset_name}```**"
-                )
+                asset_display_name_2 = f"**```{asset_change.asset_name}```**"
                 exceeds_threshold = (
                     warning_threshold.type == "percentage"
                     and asset_change.percentage_delta > warning_threshold.threshold

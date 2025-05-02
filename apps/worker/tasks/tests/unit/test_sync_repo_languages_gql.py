@@ -1,11 +1,10 @@
 from datetime import datetime
 from unittest.mock import Mock
 
-from shared.torngit.exceptions import TorngitError, TorngitRateLimitError
-from shared.utils.enums import TaskConfigGroup
-
 from database.models.core import Repository
 from database.tests.factories.core import OwnerFactory, RepositoryFactory
+from shared.torngit.exceptions import TorngitError, TorngitRateLimitError
+from shared.utils.enums import TaskConfigGroup
 from tasks.sync_repo_languages_gql import SyncRepoLanguagesGQLTask
 
 

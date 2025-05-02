@@ -175,7 +175,7 @@ class Tree:
             path_hit = results[0]
         else:
             if path.replace(".", "").startswith("/") and ancestors:
-                path_lengths = list(map(lambda x: len(x), results))
+                path_lengths = [len(x) for x in results]
                 closest_length = min(path_lengths, key=lambda x: abs(x - ancestors))
                 path_hit = next(x for x in results if len(x) == closest_length)
             else:

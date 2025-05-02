@@ -1,7 +1,6 @@
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
-
 from database.models.core import OrganizationLevelToken
 from database.tests.factories.core import OrgLevelTokenFactory, OwnerFactory
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from tasks.plan_manager_task import DailyPlanManagerTask
 
 

@@ -13,47 +13,47 @@ class RepositoryOrderingFilter(filters.OrderingFilter):
 
     def _order_by_totals_field(self, ordering_field, queryset):
         if ordering_field in ["coverage", "-coverage"]:
-            annotation_args = dict(
-                coverage=Cast(
+            annotation_args = {
+                "coverage": Cast(
                     KeyTextTransform("c", "latest_commit_totals"),
                     output_field=FloatField(),
                 )
-            )
+            }
         elif ordering_field in ["lines", "-lines"]:
-            annotation_args = dict(
-                lines=Cast(
+            annotation_args = {
+                "lines": Cast(
                     KeyTextTransform("n", "latest_commit_totals"),
                     output_field=FloatField(),
                 )
-            )
+            }
         elif ordering_field in ["hits", "-hits"]:
-            annotation_args = dict(
-                hits=Cast(
+            annotation_args = {
+                "hits": Cast(
                     KeyTextTransform("h", "latest_commit_totals"),
                     output_field=FloatField(),
                 )
-            )
+            }
         elif ordering_field in ["partials", "-partials"]:
-            annotation_args = dict(
-                partials=Cast(
+            annotation_args = {
+                "partials": Cast(
                     KeyTextTransform("p", "latest_commit_totals"),
                     output_field=FloatField(),
                 )
-            )
+            }
         elif ordering_field in ["misses", "-misses"]:
-            annotation_args = dict(
-                misses=Cast(
+            annotation_args = {
+                "misses": Cast(
                     KeyTextTransform("m", "latest_commit_totals"),
                     output_field=FloatField(),
                 )
-            )
+            }
         elif ordering_field in ["complexity", "-complexity"]:
-            annotation_args = dict(
-                complexity=Cast(
+            annotation_args = {
+                "complexity": Cast(
                     KeyTextTransform("C", "latest_commit_totals"),
                     output_field=FloatField(),
                 )
-            )
+            }
         else:
             return queryset.order_by(ordering_field)
 

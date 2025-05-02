@@ -97,7 +97,7 @@ def get_github_jwt_token(
         # Integration's GitHub identifier
         "iss": app_id or get_config(service, "integration", "id"),
     }
-    pem_kwargs = dict(pem_path=pem_path) if pem_path else dict(pem_name=service)
+    pem_kwargs = {"pem_path": pem_path} if pem_path else {"pem_name": service}
     return jwt.encode(payload, get_pem(**pem_kwargs), algorithm="RS256")
 
 
@@ -139,13 +139,13 @@ def get_github_integration_token(
             error_cause = decide_installation_error_cause(res)
             log.warning(
                 "Integration could not be found to fetch token from or unauthorized",
-                extra=dict(
-                    git_service=service,
-                    integration_id=integration_id,
-                    api_endpoint=api_endpoint,
-                    error_cause=error_cause,
-                    github_error=res.json().get("message"),
-                ),
+                extra={
+                    "git_service": service,
+                    "integration_id": integration_id,
+                    "api_endpoint": api_endpoint,
+                    "error_cause": error_cause,
+                    "github_error": res.json().get("message"),
+                },
             )
             raise InvalidInstallationError(error_cause)
         try:
@@ -154,18 +154,18 @@ def get_github_integration_token(
             log.exception(
                 "Github Integration Error on service %s",
                 service,
-                extra=dict(code=res.status_code, text=res.text),
+                extra={"code": res.status_code, "text": res.text},
             )
             raise
         res_json = res.json()
         log.info(
             "Requested and received a Github Integration token",
-            extra=dict(
-                expires_at=res_json.get("expires_at"),
-                permissions=res_json.get("permissions"),
-                repository_selection=res_json.get("repository_selection"),
-                integration_id=integration_id,
-            ),
+            extra={
+                "expires_at": res_json.get("expires_at"),
+                "permissions": res_json.get("permissions"),
+                "repository_selection": res_json.get("repository_selection"),
+                "integration_id": integration_id,
+            },
         )
         return res_json["token"]
     else:

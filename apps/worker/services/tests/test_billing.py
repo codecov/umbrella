@@ -1,9 +1,9 @@
 import pytest
 from django.test import override_settings
-from shared.plan.constants import PlanName
-from shared.plan.service import PlanService
 
 from database.tests.factories import OwnerFactory
+from shared.plan.constants import PlanName
+from shared.plan.service import PlanService
 from tests.helpers import mock_all_plans_and_tiers
 
 

@@ -31,9 +31,7 @@ class Component:
 
     def get_matching_flags(self, current_flags: List[str]) -> List[str]:
         ans = set()
-        compiled_regexes = map(
-            lambda flag_regex: re.compile(flag_regex), self.flag_regexes
-        )
+        compiled_regexes = (re.compile(flag_regex) for flag_regex in self.flag_regexes)
         for regex_to_match in compiled_regexes:
             matches_to_this_regex = filter(
                 lambda flag: regex_to_match.match(flag), current_flags

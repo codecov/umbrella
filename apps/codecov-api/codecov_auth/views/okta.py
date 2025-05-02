@@ -76,9 +76,10 @@ class OktaLoginView(LoginMixin, OktaLoginMixin, View):
             if okta_user and okta_user.user != request.user:
                 log.warning(
                     "Okta account already linked to another user",
-                    extra=dict(
-                        current_user_id=request.user.pk, okta_user_id=okta_user.pk
-                    ),
+                    extra={
+                        "current_user_id": request.user.pk,
+                        "okta_user_id": okta_user.pk,
+                    },
                 )
                 # Logout the current user and login the user who already
                 # claimed this Okta account (below)
@@ -89,7 +90,7 @@ class OktaLoginView(LoginMixin, OktaLoginMixin, View):
             if okta_user:
                 log.info(
                     "Existing Okta user logging in",
-                    extra=dict(okta_user_id=okta_user.pk),
+                    extra={"okta_user_id": okta_user.pk},
                 )
                 current_user = okta_user.user
             else:
@@ -108,7 +109,7 @@ class OktaLoginView(LoginMixin, OktaLoginMixin, View):
             )
             log.info(
                 "Created Okta user",
-                extra=dict(okta_user_id=okta_user.pk),
+                extra={"okta_user_id": okta_user.pk},
             )
 
         login(request, current_user)

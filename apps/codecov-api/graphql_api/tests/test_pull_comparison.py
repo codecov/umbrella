@@ -2,6 +2,10 @@ from collections import namedtuple
 from unittest.mock import PropertyMock, patch
 
 from django.test import TestCase
+
+from compare.models import CommitComparison
+from compare.tests.factories import CommitComparisonFactory, FlagComparisonFactory
+from reports.tests.factories import RepositoryFlagFactory
 from shared.django_apps.core.tests.factories import (
     CommitWithReportFactory,
     OwnerFactory,
@@ -10,10 +14,6 @@ from shared.django_apps.core.tests.factories import (
 )
 from shared.reports.types import ReportTotals
 from shared.utils.merge import LineType
-
-from compare.models import CommitComparison
-from compare.tests.factories import CommitComparisonFactory, FlagComparisonFactory
-from reports.tests.factories import RepositoryFlagFactory
 
 from .helper import GraphQLTestHelper
 

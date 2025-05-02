@@ -1,12 +1,6 @@
 from datetime import datetime, timezone
 
 import pytest
-from shared.api_archive.archive import ArchiveService
-from shared.reports.readonly import ReadOnlyReport
-from shared.reports.reportfile import ReportFile
-from shared.reports.resources import Report
-from shared.reports.types import ReportLine
-from shared.utils.sessions import Session
 
 from database.tests.factories import (
     CommitFactory,
@@ -18,6 +12,12 @@ from services.comparison import ComparisonProxy
 from services.comparison.types import Comparison, FullCommit
 from services.report import ReportService
 from services.repository import EnrichedPull
+from shared.api_archive.archive import ArchiveService
+from shared.reports.readonly import ReadOnlyReport
+from shared.reports.reportfile import ReportFile
+from shared.reports.resources import Report
+from shared.reports.types import ReportLine
+from shared.utils.sessions import Session
 
 
 def get_small_report(flags=None):

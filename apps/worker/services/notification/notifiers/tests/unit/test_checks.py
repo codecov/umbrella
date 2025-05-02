@@ -3,13 +3,6 @@ from unittest.mock import Mock
 from urllib.parse import quote_plus
 
 import pytest
-from shared.reports.readonly import ReadOnlyReport
-from shared.reports.reportfile import ReportFile
-from shared.reports.resources import Report
-from shared.reports.types import ReportLine
-from shared.torngit.exceptions import TorngitClientGeneralError, TorngitError
-from shared.torngit.status import Status
-from shared.yaml.user_yaml import UserYaml
 
 from services.decoration import Decoration
 from services.notification.notifiers.base import NotificationResult
@@ -27,6 +20,13 @@ from services.notification.notifiers.mixins.status import (
     HelperTextTemplate,
 )
 from services.notification.notifiers.status import PatchStatusNotifier
+from shared.reports.readonly import ReadOnlyReport
+from shared.reports.reportfile import ReportFile
+from shared.reports.resources import Report
+from shared.reports.types import ReportLine
+from shared.torngit.exceptions import TorngitClientGeneralError, TorngitError
+from shared.torngit.status import Status
+from shared.yaml.user_yaml import UserYaml
 from tests.helpers import mock_all_plans_and_tiers
 
 

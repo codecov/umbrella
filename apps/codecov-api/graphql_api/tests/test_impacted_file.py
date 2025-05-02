@@ -4,6 +4,10 @@ from typing import Callable
 from unittest.mock import PropertyMock, patch
 
 from django.test import TestCase
+
+from compare.models import CommitComparison
+from compare.tests.factories import CommitComparisonFactory
+from services.comparison import ComparisonReport, ImpactedFile, MissingComparisonReport
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -17,10 +21,6 @@ from shared.torngit.exceptions import (
     TorngitObjectNotFoundError,
 )
 from shared.utils.sessions import Session
-
-from compare.models import CommitComparison
-from compare.tests.factories import CommitComparisonFactory
-from services.comparison import ComparisonReport, ImpactedFile, MissingComparisonReport
 
 from .helper import GraphQLTestHelper
 

@@ -1,9 +1,9 @@
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
-from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 
 from graphql_api.tests.helper import GraphQLTestHelper
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 
 query = """
 mutation($input: EraseRepositoryInput!) {

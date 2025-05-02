@@ -414,6 +414,8 @@ class DailyTestRollup(PostgresPartitionedModel, BaseModel):
 
 
 class TestFlagBridge(models.Model):
+    id = models.BigAutoField(primary_key=True)
+
     flag = models.ForeignKey(
         "RepositoryFlag",
         db_column="flag_id",

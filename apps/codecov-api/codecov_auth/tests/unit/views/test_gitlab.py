@@ -3,10 +3,10 @@ from uuid import UUID
 
 import pytest
 from django.urls import reverse
-from shared.torngit import Gitlab
-from shared.torngit.exceptions import TorngitClientGeneralError
 
 from codecov_auth.models import Owner
+from shared.torngit import Gitlab
+from shared.torngit.exceptions import TorngitClientGeneralError
 from utils.encryption import encryptor
 
 

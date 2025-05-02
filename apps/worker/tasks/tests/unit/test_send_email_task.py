@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 from jinja2 import TemplateNotFound, UndefinedError
-from shared.config import ConfigHelper
 
 from database.tests.factories import OwnerFactory
 from services.smtp import SMTPService, SMTPServiceError
+from shared.config import ConfigHelper
 from tasks.send_email import SendEmailTask
 
 here = Path(__file__)

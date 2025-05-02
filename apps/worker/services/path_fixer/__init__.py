@@ -4,13 +4,13 @@ from pathlib import PurePosixPath, PureWindowsPath
 from typing import Sequence
 
 import sentry_sdk
-from shared.yaml import UserYaml
 
 from helpers.pathmap import Tree
 from services.path_fixer.fixpaths import remove_known_bad_paths
 from services.path_fixer.user_path_fixes import UserPathFixes
 from services.path_fixer.user_path_includes import UserPathIncludes
 from services.yaml import read_yaml_field
+from shared.yaml import UserYaml
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class PathFixer(object):
         self.toc = toc or []
 
         self.yaml_fixes = yaml_fixes or []
-        self.path_patterns = set(path_patterns) or set([])
+        self.path_patterns = set(path_patterns) or set()
         self.should_disable_default_pathfixes = should_disable_default_pathfixes
 
         self.custom_fixes = UserPathFixes(self.yaml_fixes)
@@ -167,7 +167,7 @@ class BasePathAwarePathFixer(PathFixer):
     ) -> str | None:
         if not path:
             return None
-        bases_to_try = bases_to_try or tuple()
+        bases_to_try = bases_to_try or ()
         key = (path, bases_to_try)
 
         if key not in self._resolved_paths:

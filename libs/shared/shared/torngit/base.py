@@ -38,7 +38,7 @@ class TorngitBaseAdapter(object):
     _token: Token | None = None
     verify_ssl = None
 
-    valid_languages = set(language.value for language in Repository.Languages)
+    valid_languages = {language.value for language in Repository.Languages}
 
     def __init__(
         self,
@@ -167,11 +167,11 @@ class TorngitBaseAdapter(object):
 
             # Is the file empty, skipped, etc
             # -------------------------------
-            _file = dict(
-                type="new" if before == "/dev/null" else "modified",
-                before=None if before == after or before == "/dev/null" else before,
-                segments=[],
-            )
+            _file = {
+                "type": "new" if before == "/dev/null" else "modified",
+                "before": None if before == after or before == "/dev/null" else before,
+                "segments": [],
+            }
 
             results[after] = _file
 
@@ -211,7 +211,7 @@ class TorngitBaseAdapter(object):
                     # ex: "@@ -31,8 +31,8 @@ blah blah blah"
                     # ex: "@@ -0,0 +1 @@"
                     ln = get_start_of_line(source).groups()
-                    segment = dict(header=[ln[0], ln[1], ln[2], ln[3]], lines=[])
+                    segment = {"header": [ln[0], ln[1], ln[2], ln[3]], "lines": []}
                     _file["segments"].append(segment)
 
                 elif source == "":
@@ -226,7 +226,7 @@ class TorngitBaseAdapter(object):
                 #     break
 
         if results:
-            return dict(files=self._add_diff_totals(results))
+            return {"files": self._add_diff_totals(results)}
 
     def _add_diff_totals(self, diff):
         for data in diff.values():
@@ -236,7 +236,7 @@ class TorngitBaseAdapter(object):
                 for segment in data["segments"]:
                     rm += sum([1 for line in segment["lines"] if line[0] == "-"])
                     add += sum([1 for line in segment["lines"] if line[0] == "+"])
-            data["stats"] = dict(added=add, removed=rm)
+            data["stats"] = {"added": add, "removed": rm}
         return diff
 
     # COMMENT LOGIC

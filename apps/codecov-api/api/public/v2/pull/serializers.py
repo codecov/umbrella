@@ -57,10 +57,10 @@ class PullSerializer(serializers.ModelSerializer):
         coverage = 0.0
         if total_branches != 0:
             coverage = round(100 * hits / total_branches, 2)
-        data = dict(
-            hits=hits,
-            misses=misses,
-            partials=partials,
-            coverage=coverage,
-        )
+        data = {
+            "hits": hits,
+            "misses": misses,
+            "partials": partials,
+            "coverage": coverage,
+        }
         return PatchCoverageSerializer(data).data

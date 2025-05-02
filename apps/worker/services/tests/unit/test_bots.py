@@ -3,6 +3,12 @@ from typing import List, Optional
 from unittest.mock import patch
 
 import pytest
+
+from database.models.core import (
+    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+    GithubAppInstallation,
+)
+from database.tests.factories.core import OwnerFactory, RepositoryFactory
 from shared.bots import get_adapter_auth_information
 from shared.bots.types import AdapterAuthInformation
 from shared.rate_limits import gh_app_key_name, owner_key_name
@@ -10,12 +16,6 @@ from shared.torngit.base import TokenType
 from shared.typings.oauth_token_types import Token
 from shared.typings.torngit import GithubInstallationInfo
 from shared.utils.test_utils import mock_config_helper
-
-from database.models.core import (
-    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-    GithubAppInstallation,
-)
-from database.tests.factories.core import OwnerFactory, RepositoryFactory
 
 
 def get_github_integration_token_side_effect(

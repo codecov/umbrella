@@ -265,15 +265,15 @@ class ParserV3(ParserTrait):
             self.asset.gzip_size = int(value)
         elif (prefix, event) == ("assets.item", "end_map"):
             self.asset_list.append(
-                dict(
-                    session_id=self.asset.session_id,
-                    name=self.asset.name,
-                    normalized_name=self.asset.normalized_name,
-                    size=self.asset.size,
-                    gzip_size=self.asset.gzip_size,
-                    uuid=str(uuid.uuid4()),
-                    asset_type=self._asset_type(self.asset.name),
-                )
+                {
+                    "session_id": self.asset.session_id,
+                    "name": self.asset.name,
+                    "normalized_name": self.asset.normalized_name,
+                    "size": self.asset.size,
+                    "gzip_size": self.asset.gzip_size,
+                    "uuid": str(uuid.uuid4()),
+                    "asset_type": self._asset_type(self.asset.name),
+                }
             )
 
             # reset parser state
@@ -319,11 +319,11 @@ class ParserV3(ParserTrait):
             self.module_chunk_unique_external_ids.append(value)
         elif (prefix, event) == ("modules.item", "end_map"):
             self.module_list.append(
-                dict(
-                    session_id=self.module.session_id,
-                    name=self.module.name,
-                    size=self.module.size,
-                )
+                {
+                    "session_id": self.module.session_id,
+                    "name": self.module.name,
+                    "size": self.module.size,
+                }
             )
 
             self.module_chunk_unique_external_ids_index[self.module.name] = (
@@ -373,7 +373,7 @@ class ParserV3(ParserTrait):
 
             dynamic_imports_list.extend(
                 [
-                    dict(chunk_id=chunk.id, asset_id=asset.id)
+                    {"chunk_id": chunk.id, "asset_id": asset.id}
                     for asset in imported_assets.values()
                 ]
             )
@@ -417,7 +417,7 @@ class ParserV3(ParserTrait):
 
             inserts.extend(
                 [
-                    dict(asset_id=asset_name_to_id.get(asset_name), chunk_id=chunk_id)
+                    {"asset_id": asset_name_to_id.get(asset_name), "chunk_id": chunk_id}
                     for asset_name in asset_names
                     if asset_name_to_id.get(asset_name) is not None
                 ]
@@ -440,10 +440,10 @@ class ParserV3(ParserTrait):
 
             inserts.extend(
                 [
-                    dict(
-                        chunk_id=chunk_unique_id_to_id[unique_external_id],
-                        module_id=module_id,
-                    )
+                    {
+                        "chunk_id": chunk_unique_id_to_id[unique_external_id],
+                        "module_id": module_id,
+                    }
                     for unique_external_id in chunk_unique_external_ids
                 ]
             )

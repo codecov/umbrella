@@ -29,7 +29,7 @@ def get_public_bot_token(service: Service, repoid: int) -> TokenWithOwner:
     if tokenless_bot_dict and tokenless_bot_dict.get("key"):
         log.info(
             "Using tokenless bot as bot fallback",
-            extra=dict(repoid=repoid, botname=tokenless_bot_dict.get("username")),
+            extra={"repoid": repoid, "botname": tokenless_bot_dict.get("username")},
         )
         tokenless_bot_dict["entity_name"] = "tokenless_bot"
         # Once again token not owned by an Owner.
@@ -37,7 +37,7 @@ def get_public_bot_token(service: Service, repoid: int) -> TokenWithOwner:
 
     log.error(
         "No tokenless bot dict in get_public_bot_token",
-        extra=dict(repoid=repoid),
+        extra={"repoid": repoid},
     )
     raise RepositoryWithoutValidBotError()
 
@@ -57,7 +57,7 @@ def get_token_type_mapping(
     if admin_bot_token is None:
         log.warning(
             "No admin_bot_token provided, but still continuing operations in case it is not doing an admin call anyway",
-            extra=dict(repoid=repo.repoid),
+            extra={"repoid": repo.repoid},
         )
 
     mapping = {

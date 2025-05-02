@@ -6,11 +6,6 @@ from typing import Any
 import polars as pl
 import pytest
 from django.conf import settings
-from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
-from shared.django_apps.core.tests.factories import RepositoryFactory
-from shared.helpers.redis import get_redis_connection
-from shared.storage import get_appropriate_storage_service
-from shared.storage.exceptions import BucketAlreadyExistsError
 
 from graphql_api.types.enums import (
     OrderingDirection,
@@ -23,6 +18,11 @@ from graphql_api.types.test_analytics.test_analytics import (
     generate_test_results,
     get_results,
 )
+from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
+from shared.django_apps.core.tests.factories import RepositoryFactory
+from shared.helpers.redis import get_redis_connection
+from shared.storage import get_appropriate_storage_service
+from shared.storage.exceptions import BucketAlreadyExistsError
 from utils.test_results import dedup_table
 
 from .helper import GraphQLTestHelper
@@ -179,7 +179,7 @@ def cursor(row: dict) -> str:
 
 
 @pytest.fixture(autouse=True)
-def repository(mocker, transactional_db):
+def repository(db):
     owner = OwnerFactory(username="codecov-user")
     repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
 
@@ -239,12 +239,10 @@ def store_in_redis_with_duplicate_names(repository):
     )
 
 
-class TestAnalyticsTestCase(
-    GraphQLTestHelper,
-):
+class TestAnalyticsTestCase(GraphQLTestHelper):
     def test_get_test_results(
         self,
-        transactional_db,
+        db,
         repository,
         store_in_redis,
         store_in_storage,
@@ -254,12 +252,10 @@ class TestAnalyticsTestCase(
 
         assert results.equals(dedup_table(test_results_table))
 
-    def test_get_test_results_no_storage(self, transactional_db, repository):
+    def test_get_test_results_no_storage(self, db, repository):
         assert get_results(repository.repoid, repository.branch, 30) is None
 
-    def test_get_test_results_no_redis(
-        self, mocker, transactional_db, repository, store_in_storage
-    ):
+    def test_get_test_results_no_redis(self, mocker, db, repository, store_in_storage):
         m = mocker.patch("services.task.TaskService.cache_test_results_redis")
         results = get_results(repository.repoid, repository.branch, 30)
         assert results is not None
@@ -267,7 +263,7 @@ class TestAnalyticsTestCase(
 
         m.assert_called_once_with(repository.repoid, repository.branch)
 
-    def test_test_results(self, transactional_db, repository, store_in_redis, snapshot):
+    def test_test_results(self, db, repository, store_in_redis, snapshot):
         test_results = generate_test_results(
             repoid=repository.repoid,
             ordering=TestResultsOrderingParameter.UPDATED_AT,
@@ -288,9 +284,7 @@ class TestAnalyticsTestCase(
             if isinstance(row["node"], TestResultsRow)
         ]
 
-    def test_test_results_asc(
-        self, transactional_db, repository, store_in_redis, snapshot
-    ):
+    def test_test_results_asc(self, db, repository, store_in_redis, snapshot):
         test_results = generate_test_results(
             repoid=repository.repoid,
             ordering=TestResultsOrderingParameter.UPDATED_AT,

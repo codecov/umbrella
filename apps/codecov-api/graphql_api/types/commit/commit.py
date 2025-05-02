@@ -2,18 +2,14 @@ import logging
 from typing import Any, List, Optional, Union
 
 import sentry_sdk
-import shared.reports.api_report_service as report_service
 import yaml
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
 from graphql import GraphQLResolveInfo
-from shared.reports.api_report_service import ReadOnlyReport
-from shared.reports.filtered import FilteredReportFile
-from shared.reports.resources import ReportFile
-from shared.reports.types import ReportTotals
 
 import services.components as components_service
 import services.path as path_service
+import shared.reports.api_report_service as report_service
 from codecov_auth.models import Owner
 from core.models import Commit
 from graphql_api.actions.commits import commit_status
@@ -50,6 +46,10 @@ from services.yaml import (
     YamlStates,
     get_yaml_state,
 )
+from shared.reports.api_report_service import ReadOnlyReport
+from shared.reports.filtered import FilteredReportFile
+from shared.reports.resources import ReportFile
+from shared.reports.types import ReportTotals
 
 commit_bindable = ObjectType("Commit")
 commit_coverage_analytics_bindable = ObjectType("CommitCoverageAnalytics")

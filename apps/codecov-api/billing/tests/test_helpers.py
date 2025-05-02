@@ -1,8 +1,8 @@
 from django.test import TestCase, override_settings
-from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
-from shared.plan.constants import PlanName
 
 from billing.helpers import mock_all_plans_and_tiers, on_enterprise_plan
+from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
+from shared.plan.constants import PlanName
 
 
 class HelpersTestCase(TestCase):

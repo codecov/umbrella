@@ -7,10 +7,10 @@ from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.httpx import HttpxIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
+
 from shared.django_apps.db_settings import *
 from shared.helpers.redis import get_redis_url
 from shared.license import startup_license_logging
-
 from utils.config import SettingsModule, get_config, get_settings_module
 
 SECRET_KEY = get_config("django", "secret_key", default="*")
@@ -418,12 +418,12 @@ DISABLE_GIT_BASED_LOGIN = IS_ENTERPRISE and get_config(
 SHELTER_SHARED_SECRET = get_config("setup", "shelter_shared_secret", default=None)
 SHELTER_ENABLED = get_config("setup", "shelter_enabled", default=True)
 
-SENTRY_ENV = os.environ.get("CODECOV_ENV", False)
+SENTRY_ENV = os.environ.get("CODECOV_ENV", None)
 SENTRY_DSN = os.environ.get("SERVICES__SENTRY__SERVER_DSN", None)
 SENTRY_DENY_LIST = DEFAULT_DENYLIST + ["_headers", "token_to_use"]
 
 if SENTRY_DSN is not None:
-    SENTRY_SAMPLE_RATE = float(os.environ.get("SERVICES__SENTRY__SAMPLE_RATE", 0.1))
+    SENTRY_SAMPLE_RATE = float(os.environ.get("SERVICES__SENTRY__SAMPLE_RATE", "0.1"))
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
@@ -436,7 +436,7 @@ if SENTRY_DSN is not None:
         environment=SENTRY_ENV,
         traces_sample_rate=SENTRY_SAMPLE_RATE,
         profiles_sample_rate=float(
-            os.environ.get("SERVICES__SENTRY__PROFILE_SAMPLE_RATE", 0.01)
+            os.environ.get("SERVICES__SENTRY__PROFILE_SAMPLE_RATE", "0.01")
         ),
     )
     if os.getenv("CLUSTER_ENV"):

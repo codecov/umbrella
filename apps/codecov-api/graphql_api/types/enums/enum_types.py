@@ -1,5 +1,4 @@
 from ariadne import EnumType
-from shared.plan.constants import TierName, TrialStatus
 
 from codecov_auth.models import RepositoryToken
 from compare.commands.compare.interactors.fetch_impacted_files import (
@@ -7,6 +6,7 @@ from compare.commands.compare.interactors.fetch_impacted_files import (
 )
 from core.models import Commit
 from services.yaml import YamlStates
+from shared.plan.constants import TierName, TrialStatus
 from timeseries.models import Interval as MeasurementInterval
 from timeseries.models import MeasurementName
 

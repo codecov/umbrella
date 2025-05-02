@@ -107,7 +107,7 @@ class CompareViewSetMixin(CompareSlugMixin, viewsets.GenericViewSet):
     @torngit_safe
     def file(self, request, *args, **kwargs):
         comparison = self.get_object()
-        file_path = file_path = kwargs.get("file_path")
+        file_path = kwargs.get("file_path")
         if file_path not in comparison.head_report:
             raise NotFound("File not found in head report.")
         return Response(
@@ -146,7 +146,7 @@ class CompareViewSetMixin(CompareSlugMixin, viewsets.GenericViewSet):
     @action(detail=False, methods=["get"])
     @torngit_safe
     def segments(self, request, *args, **kwargs):
-        file_path = file_path = kwargs.get("file_path")
+        file_path = kwargs.get("file_path")
         comparison = self.get_object()
 
         return Response(

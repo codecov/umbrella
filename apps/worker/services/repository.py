@@ -5,8 +5,18 @@ from datetime import datetime
 from typing import Any, Mapping, Optional, Tuple
 
 import sentry_sdk
-import shared.torngit as torngit
 from asgiref.sync import async_to_sync
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Query, Session, lazyload
+
+import shared.torngit as torngit
+from database.enums import CommitErrorTypes
+from database.models import Commit, Owner, Pull, Repository
+from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
+from helpers.save_commit_error import save_commit_error
+from helpers.token_refresh import get_token_refresh_callback
+from services.yaml import read_yaml_field, save_repo_yaml_to_database_if_needed
+from services.yaml.fetcher import fetch_commit_yaml_from_provider
 from shared.bots import get_adapter_auth_information
 from shared.config import get_config, get_verify_ssl
 from shared.torngit.base import TorngitBaseAdapter
@@ -24,16 +34,6 @@ from shared.typings.torngit import (
 from shared.validation.exceptions import InvalidYamlException
 from shared.yaml import UserYaml
 from shared.yaml.user_yaml import OwnerContext
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Query, Session, lazyload
-
-from database.enums import CommitErrorTypes
-from database.models import Commit, Owner, Pull, Repository
-from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
-from helpers.save_commit_error import save_commit_error
-from helpers.token_refresh import get_token_refresh_callback
-from services.yaml import read_yaml_field, save_repo_yaml_to_database_if_needed
-from services.yaml.fetcher import fetch_commit_yaml_from_provider
 
 log = logging.getLogger(__name__)
 
@@ -91,10 +91,10 @@ def _get_repo_provider_service_instance(service: str, adapter_params: dict):
         # Args for the Torngit instance
         timeouts=_timeouts,
         verify_ssl=get_verify_ssl(service),
-        oauth_consumer_token=dict(
-            key=get_config(service, "client_id"),
-            secret=get_config(service, "client_secret"),
-        ),
+        oauth_consumer_token={
+            "key": get_config(service, "client_id"),
+            "secret": get_config(service, "client_secret"),
+        },
         **adapter_params,
     )
 
@@ -146,7 +146,7 @@ async def fetch_appropriate_parent_for_commit(
 
     log.warning(
         "Unable to find a parent commit that was properly found on Github",
-        extra=dict(commit=commit.commitid, repoid=commit.repoid),
+        extra={"commit": commit.commitid, "repoid": commit.repoid},
     )
     return closest_parent_without_message
 
@@ -198,22 +198,22 @@ async def update_commit_from_provider_info(
     if git_commit is None:
         log.error(
             "Could not find commit on git provider",
-            extra=dict(repoid=commit.repoid, commit=commit.commitid),
+            extra={"repoid": commit.repoid, "commit": commit.commitid},
         )
         return
 
-    log.debug("Found git commit", extra=dict(commit=git_commit))
+    log.debug("Found git commit", extra={"commit": git_commit})
 
     author_info = git_commit["author"]
     if not author_info.get("id"):
         commit_author = None
         log.info(
             "Not trying to set an author because it does not have an id",
-            extra=dict(
-                author_info=author_info,
-                git_commit=git_commit,
-                commit=commit.commitid,
-            ),
+            extra={
+                "author_info": author_info,
+                "git_commit": git_commit,
+                "commit": commit.commitid,
+            },
         )
     else:
         commit_author = upsert_author(
@@ -271,12 +271,12 @@ async def update_commit_from_provider_info(
     db_session.flush()
     log.info(
         "Updated commit with info from git provider",
-        extra=dict(
-            repoid=commit.repoid,
-            commit=commit.commitid,
-            branch_value=commit.branch,
-            author_value=commit.author_id,
-        ),
+        extra={
+            "repoid": commit.repoid,
+            "commit": commit.commitid,
+            "branch_value": commit.branch,
+            "author_value": commit.author_id,
+        },
     )
     db_session.commit()
 
@@ -322,7 +322,11 @@ def upsert_author(
         except IntegrityError:
             log.warning(
                 "IntegrityError in upsert_author",
-                extra=dict(service=service, service_id=service_id, username=username),
+                extra={
+                    "service": service,
+                    "service_id": service_id,
+                    "username": username,
+                },
             )
             db_session.rollback()
             author = query.one()
@@ -453,7 +457,7 @@ async def fetch_and_update_pull_request_information_from_commit(
             log.warning(
                 "Unable to fetch what pull request the commit belongs to",
                 exc_info=True,
-                extra=dict(repoid=commit.repoid, commit=commit.commitid),
+                extra={"repoid": commit.repoid, "commit": commit.commitid},
             )
     if not pullid:
         return None
@@ -503,7 +507,7 @@ async def _pick_best_base_comparedto_pair(
         except TorngitObjectNotFoundError:
             log.warning(
                 "Cannot find (in the provider) commit that is supposed to be the PR base",
-                extra=dict(repoid=repoid, supposed_base=pull_base_sha),
+                extra={"repoid": repoid, "supposed_base": pull_base_sha},
             )
     return (candidates_to_base[0], None)
 
@@ -527,13 +531,13 @@ async def fetch_and_update_pull_request_information(
     except TorngitClientError:
         log.warning(
             "Unable to find pull request information on provider to update it due to client error",
-            extra=dict(repoid=repoid, pullid=pullid),
+            extra={"repoid": repoid, "pullid": pullid},
         )
         return EnrichedPull(database_pull=pull, provider_pull=None)
     except TorngitError:
         log.warning(
             "Unable to find pull request information on provider to update it due to unknown provider error",
-            extra=dict(repoid=repoid, pullid=pullid),
+            extra={"repoid": repoid, "pullid": pullid},
         )
         return EnrichedPull(database_pull=pull, provider_pull=None)
     if not pull:
@@ -579,7 +583,7 @@ def fetch_commit_yaml_and_possibly_store(
     try:
         log.info(
             "Fetching commit yaml from provider for commit",
-            extra=dict(repoid=commit.repoid, commit=commit.commitid),
+            extra={"repoid": commit.repoid, "commit": commit.commitid},
         )
         commit_yaml = async_to_sync(fetch_commit_yaml_from_provider)(
             commit, repository_service
@@ -589,26 +593,26 @@ def fetch_commit_yaml_and_possibly_store(
         save_commit_error(
             commit,
             error_code=CommitErrorTypes.INVALID_YAML.value,
-            error_params=dict(
-                repoid=repository.repoid,
-                commit=commit.commitid,
-                error_location=ex.error_location,
-            ),
+            error_params={
+                "repoid": repository.repoid,
+                "commit": commit.commitid,
+                "error_location": ex.error_location,
+            },
         )
         log.warning(
             "Unable to use yaml from commit because it is invalid",
-            extra=dict(
-                repoid=repository.repoid,
-                commit=commit.commitid,
-                error_location=ex.error_location,
-            ),
+            extra={
+                "repoid": repository.repoid,
+                "commit": commit.commitid,
+                "error_location": ex.error_location,
+            },
             exc_info=True,
         )
         commit_yaml = None
     except TorngitClientError:
         log.warning(
             "Unable to use yaml from commit because it cannot be fetched",
-            extra=dict(repoid=repository.repoid, commit=commit.commitid),
+            extra={"repoid": repository.repoid, "commit": commit.commitid},
             exc_info=True,
         )
         commit_yaml = None

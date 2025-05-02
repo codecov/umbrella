@@ -5,12 +5,6 @@ from asyncio import TimeoutError as AsyncioTimeoutError
 import mock
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
-from shared.plan.constants import PlanName
-from shared.reports.reportfile import ReportFile
-from shared.reports.resources import Report
-from shared.reports.types import Change, ReportLine, ReportTotals
-from shared.torngit.status import Status
-from shared.yaml import UserYaml
 
 from database.enums import Decoration, Notification, NotificationState
 from database.models.core import (
@@ -35,6 +29,12 @@ from services.notification.notifiers.mixins.status import (
     HelperTextKey,
     HelperTextTemplate,
 )
+from shared.plan.constants import PlanName
+from shared.reports.reportfile import ReportFile
+from shared.reports.resources import Report
+from shared.reports.types import Change, ReportLine, ReportTotals
+from shared.torngit.status import Status
+from shared.yaml import UserYaml
 from tests.helpers import mock_all_plans_and_tiers
 
 
@@ -97,35 +97,35 @@ class TestNotificationService(object):
         "repo_data,outcome",
         [
             (
-                dict(
-                    using_integration=True,
-                    owner__integration_id=12341234,
-                    owner__service="github",
-                ),
+                {
+                    "using_integration": True,
+                    "owner__integration_id": 12341234,
+                    "owner__service": "github",
+                },
                 True,
             ),
             (
-                dict(
-                    using_integration=True,
-                    owner__integration_id=12341234,
-                    owner__service="gitlab",
-                ),
+                {
+                    "using_integration": True,
+                    "owner__integration_id": 12341234,
+                    "owner__service": "gitlab",
+                },
                 False,
             ),
             (
-                dict(
-                    using_integration=True,
-                    owner__integration_id=12341234,
-                    owner__service="github_enterprise",
-                ),
+                {
+                    "using_integration": True,
+                    "owner__integration_id": 12341234,
+                    "owner__service": "github_enterprise",
+                },
                 True,
             ),
             (
-                dict(
-                    using_integration=False,
-                    owner__integration_id=None,
-                    owner__service="github",
-                ),
+                {
+                    "using_integration": False,
+                    "owner__integration_id": None,
+                    "owner__service": "github",
+                },
                 False,
             ),
         ],

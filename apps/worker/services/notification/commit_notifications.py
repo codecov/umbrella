@@ -38,7 +38,7 @@ def create_or_update_commit_notification_from_notification_result(
 
     commit = pull.get_head_commit() if pull else comparison.head.commit
     if not commit:
-        log.warning("Head commit not found for pull", extra=dict(pull=pull))
+        log.warning("Head commit not found for pull", extra={"pull": pull})
         return None
 
     db_session: Session = commit.get_db_session()

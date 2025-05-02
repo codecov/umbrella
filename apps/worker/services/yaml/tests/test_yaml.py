@@ -3,12 +3,12 @@ from datetime import datetime, timezone
 
 import mock
 import pytest
-from shared.torngit.exceptions import TorngitClientError, TorngitServerUnreachableError
-from shared.validation.types import CoverageCommentRequiredChanges
-from shared.yaml import UserYaml
 
 from database.tests.factories import CommitFactory
 from services.yaml import get_current_yaml
+from shared.torngit.exceptions import TorngitClientError, TorngitServerUnreachableError
+from shared.validation.types import CoverageCommentRequiredChanges
+from shared.yaml import UserYaml
 from test_utils.base import BaseTestCase
 
 

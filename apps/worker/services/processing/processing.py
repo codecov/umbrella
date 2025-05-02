@@ -3,8 +3,6 @@ from collections.abc import Callable
 
 import sentry_sdk
 from celery.exceptions import CeleryError
-from shared.api_archive.archive import ArchiveService
-from shared.yaml import UserYaml
 from sqlalchemy.orm import Session as DbSession
 
 from database.models.core import Commit
@@ -12,6 +10,8 @@ from database.models.reports import Upload
 from helpers.reports import delete_archive_setting
 from services.report import ProcessingError, RawReportInfo, ReportService
 from services.report.parser.types import VersionOneParsedRawReport
+from shared.api_archive.archive import ArchiveService
+from shared.yaml import UserYaml
 
 from .intermediate import save_intermediate_report
 from .state import ProcessingState

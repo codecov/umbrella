@@ -1,8 +1,8 @@
 from django.test import TestCase
-from shared.django_apps.codecov_auth.tests.factories import AccountFactory, OwnerFactory
 
 from codecov_auth.models import OktaSettings
 from graphql_api.tests.helper import GraphQLTestHelper
+from shared.django_apps.codecov_auth.tests.factories import AccountFactory, OwnerFactory
 
 query = """
 mutation($input: SaveOktaConfigInput!) {

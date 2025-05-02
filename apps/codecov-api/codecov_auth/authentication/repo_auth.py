@@ -12,7 +12,6 @@ from rest_framework import authentication, exceptions, serializers
 from rest_framework.exceptions import NotAuthenticated, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
-from shared.django_apps.codecov_auth.models import Owner
 
 from codecov_auth.authentication.helpers import get_upload_info_from_request_path
 from codecov_auth.authentication.types import RepositoryAsUser, RepositoryAuthInterface
@@ -23,6 +22,7 @@ from codecov_auth.models import (
     TokenTypeChoices,
 )
 from core.models import Commit, Repository
+from shared.django_apps.codecov_auth.models import Owner
 from upload.helpers import get_global_tokens, get_repo_with_github_actions_oidc_token
 from upload.views.helpers import (
     get_repository_and_owner_from_string,
@@ -262,7 +262,7 @@ class GitHubOIDCTokenAuthentication(authentication.TokenAuthentication):
 
         log.info(
             "GitHubOIDCTokenAuthentication Success",
-            extra=dict(repository=str(repository)),  # Repo<author/name>
+            extra={"repository": str(repository)},  # Repo<author/name>
         )
 
         return (

@@ -9,12 +9,6 @@ import logging
 from typing import Iterator, List, Optional, TypedDict
 
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
-from shared.config import get_config
-from shared.django_apps.codecov_auth.models import Plan
-from shared.helpers.yaml import default_if_true
-from shared.plan.constants import TierName
-from shared.torngit.base import TorngitBaseAdapter
-from shared.yaml import UserYaml
 
 from database.enums import notification_type_status_or_checks
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME, Owner, Repository
@@ -41,6 +35,12 @@ from services.notification.notifiers.codecov_slack_app import CodecovSlackAppNot
 from services.notification.notifiers.mixins.status import StatusState
 from services.yaml import read_yaml_field
 from services.yaml.reader import get_components_from_yaml
+from shared.config import get_config
+from shared.django_apps.codecov_auth.models import Plan
+from shared.helpers.yaml import default_if_true
+from shared.plan.constants import TierName
+from shared.torngit.base import TorngitBaseAdapter
+from shared.yaml import UserYaml
 
 log = logging.getLogger(__name__)
 
@@ -260,15 +260,15 @@ class NotificationService(object):
             return []
         log.debug(
             f"Notifying with decoration type {self.decoration_type}",
-            extra=dict(
-                head_commit=comparison.head.commit.commitid,
-                base_commit=(
+            extra={
+                "head_commit": comparison.head.commit.commitid,
+                "base_commit": (
                     comparison.project_coverage_base.commit.commitid
                     if comparison.project_coverage_base.commit is not None
                     else "NO_BASE"
                 ),
-                repoid=comparison.head.commit.repoid,
-            ),
+                "repoid": comparison.head.commit.repoid,
+            },
         )
 
         status_or_checks_notifiers, all_other_notifiers = split_notifiers(

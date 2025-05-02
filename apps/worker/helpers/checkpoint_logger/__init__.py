@@ -388,9 +388,9 @@ def subflows(*args: tuple[str, str, str]) -> TClassDecorator:
                 # grouped_by_end is not a simple dict so we create our own.
                 # `begin` and `end` are still strings at this point so we also want to convert
                 # them to enum values.
-                subflows[enum_vals[end]] = list(
-                    ((metric, enum_vals[begin]) for metric, begin, _ in group)
-                )
+                subflows[enum_vals[end]] = [
+                    (metric, enum_vals[begin]) for metric, begin, _ in group
+                ]
 
             # The first enum value is the beginning of the flow, no matter what
             # branches it takes. We want to automatically define a subflow from

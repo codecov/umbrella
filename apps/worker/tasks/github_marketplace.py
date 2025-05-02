@@ -2,13 +2,13 @@ import logging
 from datetime import datetime
 
 import requests
-from shared.celery_config import ghm_sync_plans_task_name
-from shared.plan.constants import DEFAULT_FREE_PLAN
 
 from app import celery_app
 from database.models import Owner, Repository
 from services.github_marketplace import GitHubMarketplaceService
 from services.stripe import stripe
+from shared.celery_config import ghm_sync_plans_task_name
+from shared.plan.constants import DEFAULT_FREE_PLAN
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
         """
         log.info(
             "GitHub marketplace sync plans",
-            extra=dict(sender=sender, account=account, action=action),
+            extra={"sender": sender, "account": account, "action": action},
         )
 
         # make sure sender and account owner entries exist
@@ -64,7 +64,7 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
         else:
             log.warning(
                 "No account provided for GitHub Marketplace sync",
-                extra=dict(sender=sender, account=account, action=action),
+                extra={"sender": sender, "account": account, "action": action},
             )
 
     def sync_plan(
@@ -72,9 +72,11 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
     ):
         log.info(
             "Sync plan",
-            extra=dict(
-                service_id=service_id, purchase_object=purchase_object, action=action
-            ),
+            extra={
+                "service_id": service_id,
+                "purchase_object": purchase_object,
+                "action": action,
+            },
         )
 
         if (
@@ -90,13 +92,13 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
             self.create_or_update_to_free_plan(db_session, ghm_service, service_id)
             plan_type_synced = "free"
 
-        return dict(plan_type_synced=plan_type_synced)
+        return {"plan_type_synced": plan_type_synced}
 
     def sync_all(self, db_session, ghm_service, action):
         """
         This is carried over from legacy to sync all plan accounts - it is not currently used
         """
-        log.info("Sync all", extra=dict(action=action))
+        log.info("Sync all", extra={"action": action})
 
         has_a_plan = []
 
@@ -129,7 +131,7 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
         self.disable_all_inactive(db_session, has_a_plan)
 
     def upsert_owner(self, db_session, service_id, username):
-        log.info("Upsert owner", extra=dict(service_id=service_id, username=username))
+        log.info("Upsert owner", extra={"service_id": service_id, "username": username})
 
         owner = (
             db_session.query(Owner)
@@ -189,7 +191,7 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
         """
         log.info(
             "Github Marketplace - Create or update plan",
-            extra=dict(service_id=service_id),
+            extra={"service_id": service_id},
         )
 
         owner = (
@@ -233,7 +235,7 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
         """
         Create or update user to free plan for when plan isn't known or the action is "cancelled"
         """
-        log.info("Create or update to free plan", extra=dict(service_id=service_id))
+        log.info("Create or update to free plan", extra={"service_id": service_id})
 
         owner = (
             db_session.query(Owner)

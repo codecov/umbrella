@@ -1,17 +1,17 @@
 import logging
 
 from asgiref.sync import async_to_sync
-from shared.celery_config import status_set_pending_task_name
-from shared.helpers.redis import get_redis_connection
-from shared.helpers.yaml import default_if_true
-from shared.utils.match import match
-from shared.utils.urls import make_url
 
 from app import celery_app
 from database.models import Commit
 from services.repository import get_repo_provider_service
 from services.yaml import get_current_yaml
 from services.yaml.reader import read_yaml_field
+from shared.celery_config import status_set_pending_task_name
+from shared.helpers.redis import get_redis_connection
+from shared.helpers.yaml import default_if_true
+from shared.utils.match import match
+from shared.utils.urls import make_url
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -29,12 +29,12 @@ class StatusSetPendingTask(BaseCodecovTask, name=status_set_pending_task_name):
     ):
         log.info(
             "Set pending",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                branch=branch,
-                on_a_pull_request=on_a_pull_request,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "branch": branch,
+                "on_a_pull_request": on_a_pull_request,
+            },
         )
 
         # TODO: need to check for enterprise license once licences are implemented
@@ -91,10 +91,11 @@ class StatusSetPendingTask(BaseCodecovTask, name=status_set_pending_task_name):
                             )
                             status_set = True
                             log.info(
-                                "Status set", extra=dict(context=title, state="pending")
+                                "Status set",
+                                extra={"context": title, "state": "pending"},
                             )
                         except AssertionError as e:
-                            log.warning(str(e), extra=dict(context=context))
+                            log.warning(str(e), extra={"context": context})
 
         return {"status_set": status_set}
 

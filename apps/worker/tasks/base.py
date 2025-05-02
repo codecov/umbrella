@@ -5,10 +5,6 @@ import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from shared.celery_router import route_tasks_based_on_user_plan
-from shared.metrics import Counter, Histogram
-from shared.torngit.base import TorngitBaseAdapter
-from shared.typings.torngit import AdditionalData
 from sqlalchemy.exc import (
     DataError,
     IntegrityError,
@@ -32,6 +28,10 @@ from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValid
 from helpers.log_context import LogContext, set_log_context
 from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
+from shared.celery_router import route_tasks_based_on_user_plan
+from shared.metrics import Counter, Histogram
+from shared.torngit.base import TorngitBaseAdapter
+from shared.typings.torngit import AdditionalData
 
 log = logging.getLogger("worker")
 
@@ -200,7 +200,7 @@ class BaseCodecovTask(celery_app.Task):
             ):
                 log.exception(
                     "Deadlock while talking to database",
-                    extra=dict(task_args=args, task_kwargs=kwargs),
+                    extra={"task_args": args, "task_kwargs": kwargs},
                     exc_info=True,
                 )
                 return
@@ -209,7 +209,7 @@ class BaseCodecovTask(celery_app.Task):
             ):
                 log.warning(
                     "Database seems to be unavailable",
-                    extra=dict(task_args=args, task_kwargs=kwargs),
+                    extra={"task_args": args, "task_kwargs": kwargs},
                     exc_info=True,
                 )
                 return
@@ -217,7 +217,7 @@ class BaseCodecovTask(celery_app.Task):
             pass
         log.exception(
             "An error talking to the database occurred",
-            extra=dict(task_args=args, task_kwargs=kwargs),
+            extra={"task_args": args, "task_kwargs": kwargs},
             exc_info=True,
         )
 
@@ -262,7 +262,7 @@ class BaseCodecovTask(celery_app.Task):
             except (DataError, IntegrityError):
                 log.exception(
                     "Errors related to the constraints of database happened",
-                    extra=dict(task_args=args, task_kwargs=kwargs),
+                    extra={"task_args": args, "task_kwargs": kwargs},
                 )
                 db_session.rollback()
                 self._retry()
@@ -356,7 +356,7 @@ class BaseCodecovTask(celery_app.Task):
             save_commit_error(
                 commit,
                 error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
-                error_params=dict(repoid=repository.repoid),
+                error_params={"repoid": repository.repoid},
             )
             log.warning(
                 "Unable to reach git provider because repo doesn't have a valid bot"
@@ -369,22 +369,22 @@ class BaseCodecovTask(celery_app.Task):
                 retry_delay_seconds = max(60, get_seconds_to_next_hour())
                 log.warning(
                     "Unable to get repo provider service due to rate limits. Retrying again later.",
-                    extra=dict(
-                        apps_available=exp.apps_count,
-                        apps_rate_limited=exp.rate_limited_count,
-                        apps_suspended=exp.suspended_count,
-                        countdown_seconds=retry_delay_seconds,
-                    ),
+                    extra={
+                        "apps_available": exp.apps_count,
+                        "apps_rate_limited": exp.rate_limited_count,
+                        "apps_suspended": exp.suspended_count,
+                        "countdown_seconds": retry_delay_seconds,
+                    },
                 )
                 self._retry(countdown=retry_delay_seconds)
             else:
                 log.warning(
                     "Unable to get repo provider service. Apps appear to be suspended.",
-                    extra=dict(
-                        apps_available=exp.apps_count,
-                        apps_rate_limited=exp.rate_limited_count,
-                        apps_suspended=exp.suspended_count,
-                    ),
+                    extra={
+                        "apps_available": exp.apps_count,
+                        "apps_rate_limited": exp.rate_limited_count,
+                        "apps_suspended": exp.suspended_count,
+                    },
                 )
         except Exception as e:
             log.exception("Uncaught exception when trying to get repository service")

@@ -1,22 +1,6 @@
 from datetime import datetime, timedelta
 
 import pytest
-from shared.django_apps.codecov_auth.tests.factories import (
-    OwnerFactory as DjangoOwnerFactory,
-)
-from shared.django_apps.core.tests.factories import CommitFactory as DjangoCommitFactory
-from shared.django_apps.core.tests.factories import (
-    RepositoryFactory as DjangoRepositoryFactory,
-)
-from shared.django_apps.reports.models import ReportSession, ReportType
-from shared.django_apps.reports.tests.factories import CommitReportFactory
-from shared.django_apps.reports.tests.factories import (
-    UploadFactory as DjangoUploadFactory,
-)
-from shared.plan.constants import DEFAULT_FREE_PLAN
-from shared.plan.service import PlanService
-from shared.upload.utils import UploaderType, insert_coverage_measurement
-from shared.utils.test_utils import mock_config_helper
 
 from database.enums import TrialStatus
 from database.tests.factories import (
@@ -35,6 +19,22 @@ from services.decoration import (
     determine_uploads_used,
 )
 from services.repository import EnrichedPull
+from shared.django_apps.codecov_auth.tests.factories import (
+    OwnerFactory as DjangoOwnerFactory,
+)
+from shared.django_apps.core.tests.factories import CommitFactory as DjangoCommitFactory
+from shared.django_apps.core.tests.factories import (
+    RepositoryFactory as DjangoRepositoryFactory,
+)
+from shared.django_apps.reports.models import ReportSession, ReportType
+from shared.django_apps.reports.tests.factories import CommitReportFactory
+from shared.django_apps.reports.tests.factories import (
+    UploadFactory as DjangoUploadFactory,
+)
+from shared.plan.constants import DEFAULT_FREE_PLAN
+from shared.plan.service import PlanService
+from shared.upload.utils import UploaderType, insert_coverage_measurement
+from shared.utils.test_utils import mock_config_helper
 from tests.helpers import mock_all_plans_and_tiers
 
 

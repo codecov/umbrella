@@ -4,18 +4,18 @@ from typing import Iterable, Optional
 
 from celery import group
 from celery.canvas import Signature
-from shared.celery_config import (
-    timeseries_backfill_commits_task_name,
-    timeseries_backfill_dataset_task_name,
-    timeseries_save_commit_measurements_task_name,
-)
-from shared.timeseries.helpers import is_timeseries_enabled
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
 from database.models import Commit, Repository
 from database.models.timeseries import Dataset
 from services.timeseries import backfill_batch_size, repository_commits_query
+from shared.celery_config import (
+    timeseries_backfill_commits_task_name,
+    timeseries_backfill_dataset_task_name,
+    timeseries_save_commit_measurements_task_name,
+)
+from shared.timeseries.helpers import is_timeseries_enabled
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -39,11 +39,11 @@ class TimeseriesBackfillCommitsTask(
         commits = db_session.query(Commit).filter(Commit.id_.in_(commit_ids))
         for commit in commits:
             self.app.tasks[timeseries_save_commit_measurements_task_name].apply_async(
-                kwargs=dict(
-                    commitid=commit.commitid,
-                    repoid=commit.repoid,
-                    dataset_names=dataset_names,
-                )
+                kwargs={
+                    "commitid": commit.commitid,
+                    "repoid": commit.repoid,
+                    "dataset_names": dataset_names,
+                }
             )
         return {"successful": True}
 
@@ -77,7 +77,7 @@ class TimeseriesBackfillDatasetTask(
         if not dataset:
             log.error(
                 "Dataset not found",
-                extra=dict(dataset_id=dataset_id),
+                extra={"dataset_id": dataset_id},
             )
             return {"successful": False}
 
@@ -87,7 +87,7 @@ class TimeseriesBackfillDatasetTask(
         if not repository:
             log.error(
                 "Repository not found",
-                extra=dict(repoid=dataset.repository_id),
+                extra={"repoid": dataset.repository_id},
             )
             return {"successful": False}
 
@@ -100,7 +100,7 @@ class TimeseriesBackfillDatasetTask(
         except ValueError:
             log.error(
                 "Invalid date range",
-                extra=dict(start_date=start_date, end_date=end_date),
+                extra={"start_date": start_date, "end_date": end_date},
             )
             return {"successful": False}
 
@@ -133,10 +133,10 @@ class TimeseriesBackfillDatasetTask(
         self, dataset: Dataset, commit_ids: Iterable[int]
     ) -> Signature:
         return timeseries_backfill_commits_task.signature(
-            kwargs=dict(
-                commit_ids=commit_ids,
-                dataset_names=[dataset.name],
-            ),
+            kwargs={
+                "commit_ids": commit_ids,
+                "dataset_names": [dataset.name],
+            },
         )
 
 

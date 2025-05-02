@@ -2,6 +2,9 @@ from unittest.mock import MagicMock, Mock
 
 from django.test import override_settings
 from rest_framework.test import APITestCase
+
+from billing.helpers import mock_all_plans_and_tiers
+from reports.tests.factories import CommitReportFactory, UploadFactory
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -11,9 +14,6 @@ from shared.django_apps.reports.models import ReportType
 from shared.helpers.redis import get_redis_connection
 from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.upload.utils import UploaderType, insert_coverage_measurement
-
-from billing.helpers import mock_all_plans_and_tiers
-from reports.tests.factories import CommitReportFactory, UploadFactory
 from upload.throttles import UploadsPerCommitThrottle, UploadsPerWindowThrottle
 
 

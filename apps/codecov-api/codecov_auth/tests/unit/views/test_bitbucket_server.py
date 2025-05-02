@@ -2,12 +2,12 @@ import pytest
 from django.core import signing
 from django.http.cookie import SimpleCookie
 from django.urls import reverse
-from shared.torngit.exceptions import TorngitClientGeneralError
 
 from codecov_auth.models import Owner
 from codecov_auth.views.bitbucket_server import (
     BitbucketServer,
 )
+from shared.torngit.exceptions import TorngitClientGeneralError
 from utils.encryption import encryptor
 
 
@@ -15,9 +15,10 @@ def test_get_bbs_redirect(client, settings, mocker):
     client_request_mock = mocker.patch.object(
         BitbucketServer,
         "api",
-        side_effect=lambda *args, **kwargs: dict(
-            oauth_token="SomeToken", oauth_token_secret="SomeTokenSecret"
-        ),
+        side_effect=lambda *args, **kwargs: {
+            "oauth_token": "SomeToken",
+            "oauth_token_secret": "SomeTokenSecret",
+        },
     )
     settings.BITBUCKET_SERVER_CLIENT_ID = "this-is-the-important-bit"
     settings.BITBUCKET_SERVER_URL = "https://my.bitbucketserver.com"
@@ -69,13 +70,16 @@ def test_get_bbs_already_token(client, settings, mocker, db, mock_redis):
             url.endswith("/plugins/servlet/oauth/access-token")
             or url.endswith("/plugins/servlet/oauth/request-token")
         ):
-            return dict(oauth_token="SomeToken", oauth_token_secret="SomeTokenSecret")
+            return {"oauth_token": "SomeToken", "oauth_token_secret": "SomeTokenSecret"}
         elif method == "GET" and url.endswith("/plugins/servlet/applinks/whoami"):
             return "ThiagoCodecov"
         elif method == "GET" and ("/users/ThiagoCodecov" in url):
-            return dict(
-                name="ThiagoCodecov", id=101, displayName="Thiago Codecov", active=True
-            )
+            return {
+                "name": "ThiagoCodecov",
+                "id": 101,
+                "displayName": "Thiago Codecov",
+                "active": True,
+            }
 
     mocker.patch.object(BitbucketServer, "list_teams", side_effect=fake_list_teams)
     client_request_mock = mocker.patch.object(

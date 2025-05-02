@@ -1,11 +1,6 @@
 from unittest.mock import patch
 
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import (
-    CommitFactory,
-    OwnerFactory,
-    RepositoryFactory,
-)
 
 from core.commands.commit.interactors.get_latest_upload_error import (
     GetLatestUploadErrorInteractor,
@@ -16,6 +11,11 @@ from reports.tests.factories import (
     CommitReportFactory,
     UploadErrorFactory,
     UploadFactory,
+)
+from shared.django_apps.core.tests.factories import (
+    CommitFactory,
+    OwnerFactory,
+    RepositoryFactory,
 )
 
 

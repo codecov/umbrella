@@ -31,20 +31,20 @@ class Bitbucket(TorngitBaseAdapter):
     service = "bitbucket"
     api_url = "https://bitbucket.org"
     service_url = "https://bitbucket.org"
-    urls = dict(
-        repo="{username}/{name}",
-        owner="{username}",
-        user="{username}",
-        issues="{username}/{name}/issues/{issueid}",
-        commit="{username}/{name}/commits/{commitid}",
-        commits="{username}/{name}/commits",
-        src="{username}/{name}/src/{commitid}/{path}",
-        create_file="{username}/{name}/create-file/{commitid}?at={branch}&filename={path}&content={content}",
-        tree="{username}/{name}/src/{commitid}",
-        branch="{username}/{name}/branch/{branch}",
-        pull="{username}/{name}/pull-requests/{pullid}",
-        compare="{username}/{name}",
-    )
+    urls = {
+        "repo": "{username}/{name}",
+        "owner": "{username}",
+        "user": "{username}",
+        "issues": "{username}/{name}/issues/{issueid}",
+        "commit": "{username}/{name}/commits/{commitid}",
+        "commits": "{username}/{name}/commits",
+        "src": "{username}/{name}/src/{commitid}/{path}",
+        "create_file": "{username}/{name}/create-file/{commitid}?at={branch}&filename={path}&content={content}",
+        "tree": "{username}/{name}/src/{commitid}",
+        "branch": "{username}/{name}/branch/{branch}",
+        "pull": "{username}/{name}/pull-requests/{pullid}",
+        "compare": "{username}/{name}",
+    }
 
     async def api(
         self, client, version, method, path, json=False, body=None, token=None, **kwargs
@@ -76,18 +76,18 @@ class Bitbucket(TorngitBaseAdapter):
             url, http_method=method, body=oauth_body, headers=headers
         )
 
-        kwargs = dict(
-            json=body if body is not None and json else None,
-            data=oauth_body if not json else None,
-            headers=headers,
-        )
-        log_dict = dict(
-            event="api",
-            endpoint=path,
-            method=method,
-            bot=token_to_use.get("username"),
-            repo_slug=self.slug,
-        )
+        kwargs = {
+            "json": body if body is not None and json else None,
+            "data": oauth_body if not json else None,
+            "headers": headers,
+        }
+        log_dict = {
+            "event": "api",
+            "endpoint": path,
+            "method": method,
+            "bot": token_to_use.get("username"),
+            "repo_slug": self.slug,
+        }
         try:
             res = await client.request(method.upper(), url, **kwargs)
             logged_body = None
@@ -129,7 +129,7 @@ class Bitbucket(TorngitBaseAdapter):
         r = httpx.get(uri, headers=headers)
         oauth_token = urllib_parse.parse_qs(r.text)["oauth_token"][0]
         oauth_token_secret = urllib_parse.parse_qs(r.text)["oauth_token_secret"][0]
-        return dict(oauth_token=oauth_token, oauth_token_secret=oauth_token_secret)
+        return {"oauth_token": oauth_token, "oauth_token_secret": oauth_token_secret}
 
     def generate_access_token(
         self, resource_owner_key, resource_owner_secret, verifier
@@ -162,7 +162,12 @@ class Bitbucket(TorngitBaseAdapter):
                 "2",
                 "post",
                 "/repositories/%s/hooks" % self.slug,
-                body=dict(description=name, active=True, events=events, url=url),
+                body={
+                    "description": name,
+                    "active": True,
+                    "events": events,
+                    "url": url,
+                },
                 json=True,
                 token=token,
             )
@@ -177,7 +182,12 @@ class Bitbucket(TorngitBaseAdapter):
                 "2",
                 "put",
                 "/repositories/%s/hooks/%s" % (self.slug, hookid),
-                body=dict(description=name, active=True, events=events, url=url),
+                body={
+                    "description": name,
+                    "active": True,
+                    "events": events,
+                    "url": url,
+                },
                 json=True,
                 token=token,
             )
@@ -226,21 +236,21 @@ class Bitbucket(TorngitBaseAdapter):
         async with self.get_client() as client:
             while True:
                 if page is not None:
-                    kwargs = dict(page=page, token=token)
+                    kwargs = {"page": page, "token": token}
                 else:
-                    kwargs = dict(token=token)
+                    kwargs = {"token": token}
                 res = await self.api(
                     client, "2", "get", "/user/permissions/workspaces", **kwargs
                 )
                 for groups in res["values"]:
                     team = groups["workspace"]
                     teams.append(
-                        dict(
-                            name=team["name"],
-                            id=team["uuid"][1:-1],
-                            email=None,
-                            username=team["slug"],
-                        )
+                        {
+                            "name": team["name"],
+                            "id": team["uuid"][1:-1],
+                            "email": None,
+                            "username": team["slug"],
+                        }
                     )
 
                 if not res.get("next"):
@@ -257,9 +267,9 @@ class Bitbucket(TorngitBaseAdapter):
             while True:
                 # https://confluence.atlassian.com/bitbucket/pullrequests-resource-423626332.html#pullrequestsResource-GETthecommitsforapullrequest
                 if page is not None:
-                    kwargs = dict(page=page, token=token)
+                    kwargs = {"page": page, "token": token}
                 else:
-                    kwargs = dict(token=token)
+                    kwargs = {"token": token}
                 res = await self.api(
                     client,
                     "2",
@@ -281,7 +291,7 @@ class Bitbucket(TorngitBaseAdapter):
         if username is None:
             # get all teams a user is member of
             teams = await self.list_teams(token)
-            usernames = set([team["username"] for team in teams])
+            usernames = {team["username"] for team in teams}
             # get permission of all repositories a user is member of
             permissions = await self.list_permissions(token=token)
             # get repo owners
@@ -292,7 +302,7 @@ class Bitbucket(TorngitBaseAdapter):
                 if repo.get("owner") and repo.get("owner").get("username") != name:
                     log.warning(
                         "Owner username different from what we think it is",
-                        extra=dict(repo_dict=repo, found_name=name),
+                        extra={"repo_dict": repo, "found_name": name},
                     )
                 usernames.add(name[0])
             # add user's own username
@@ -318,19 +328,19 @@ class Bitbucket(TorngitBaseAdapter):
             repo_name_arr = repo["full_name"].split("/", 1)
 
             repos.append(
-                dict(
-                    owner=dict(
-                        service_id=repo["owner"]["uuid"][1:-1],
-                        username=repo_name_arr[0],
-                    ),
-                    repo=dict(
-                        service_id=repo["uuid"][1:-1],
-                        name=repo_name_arr[1],
-                        language=self._validate_language(repo["language"]),
-                        private=repo["is_private"],
-                        branch="main",
-                    ),
-                )
+                {
+                    "owner": {
+                        "service_id": repo["owner"]["uuid"][1:-1],
+                        "username": repo_name_arr[0],
+                    },
+                    "repo": {
+                        "service_id": repo["uuid"][1:-1],
+                        "name": repo_name_arr[1],
+                        "language": self._validate_language(repo["language"]),
+                        "private": repo["is_private"],
+                        "branch": "main",
+                    },
+                }
             )
         return (repos, res.get("next"))
 
@@ -358,7 +368,7 @@ class Bitbucket(TorngitBaseAdapter):
         # fetch repo information
         log.info(
             "Bitbucket: fetching repos from teams",
-            extra=dict(usernames=usernames, repos=repos_to_log),
+            extra={"usernames": usernames, "repos": repos_to_log},
         )
         async with self.get_client() as client:
             for team in usernames:
@@ -377,11 +387,11 @@ class Bitbucket(TorngitBaseAdapter):
                 except TorngitClientError:
                     log.warning(
                         "Unable to fetch repos from team on Bitbucket",
-                        extra=dict(team_name=team, repository_names=repos_to_log),
+                        extra={"team_name": team, "repository_names": repos_to_log},
                     )
         log.info(
             "Bitbucket: finished fetching repos",
-            extra=dict(usernames=usernames, repos=data),
+            extra={"usernames": usernames, "repos": data},
         )
         return data
 
@@ -397,7 +407,7 @@ class Bitbucket(TorngitBaseAdapter):
         # fetch repo information
         log.info(
             "Bitbucket: fetching repos from teams",
-            extra=dict(usernames=usernames, repos=repos_to_log),
+            extra={"usernames": usernames, "repos": repos_to_log},
         )
         async with self.get_client() as client:
             for team in usernames:
@@ -416,11 +426,11 @@ class Bitbucket(TorngitBaseAdapter):
                 except TorngitClientError:
                     log.warning(
                         "Unable to fetch repos from team on Bitbucket",
-                        extra=dict(team_name=team, repository_names=repos_to_log),
+                        extra={"team_name": team, "repository_names": repos_to_log},
                     )
         log.info(
             "Bitbucket: finished fetching repos",
-            extra=dict(usernames=usernames),
+            extra={"usernames": usernames},
         )
 
     async def list_permissions(self, token=None):
@@ -483,18 +493,19 @@ class Bitbucket(TorngitBaseAdapter):
                 token=token,
             )
         return ProviderPull(
-            author=dict(
-                id=str(res["author"]["uuid"][1:-1]) if res["author"] else None,
-                username=(
+            author={
+                "id": str(res["author"]["uuid"][1:-1]) if res["author"] else None,
+                "username": (
                     (res["author"].get("nickname") or res["author"].get("username"))
                     if res["author"]
                     else None
                 ),
-            ),
-            base=dict(
-                branch=res["destination"]["branch"]["name"], commitid=base["hash"]
-            ),
-            head=dict(branch=res["source"]["branch"]["name"], commitid=head["hash"]),
+            },
+            base={
+                "branch": res["destination"]["branch"]["name"],
+                "commitid": base["hash"],
+            },
+            head={"branch": res["source"]["branch"]["name"], "commitid": head["hash"]},
             state={"OPEN": "open", "MERGED": "merged", "DECLINED": "closed"}.get(
                 res["state"]
             ),
@@ -502,7 +513,7 @@ class Bitbucket(TorngitBaseAdapter):
             id=str(pullid),
             number=str(pullid),
             merge_commit_sha=(
-                res.get("merge_commit", dict()).get("hash")
+                res.get("merge_commit", {}).get("hash")
                 if res["state"] == "MERGED"
                 else None
             ),
@@ -516,7 +527,7 @@ class Bitbucket(TorngitBaseAdapter):
                 "2",
                 "post",
                 "/repositories/%s/pullrequests/%s/comments" % (self.slug, issueid),
-                body=dict(content=dict(raw=body)),
+                body={"content": {"raw": body}},
                 json=True,
                 token=token,
             )
@@ -533,7 +544,7 @@ class Bitbucket(TorngitBaseAdapter):
                     "2",
                     "put",
                     f"/repositories/{self.slug}/pullrequests/{issueid}/comments/{commentid}",
-                    body=dict(content=dict(raw=body)),
+                    body={"content": {"raw": body}},
                     json=True,
                     token=token,
                 )
@@ -574,7 +585,11 @@ class Bitbucket(TorngitBaseAdapter):
 
     async def get_commit_statuses(self, commit, token=None, _in_loop=None):
         statuses, page = [], 0
-        status_keys = dict(INPROGRESS="pending", SUCCESSFUL="success", FAILED="failure")
+        status_keys = {
+            "INPROGRESS": "pending",
+            "SUCCESSFUL": "success",
+            "FAILED": "failure",
+        }
         async with self.get_client() as client:
             while True:
                 page += 1
@@ -619,9 +634,12 @@ class Bitbucket(TorngitBaseAdapter):
     ):
         token = self.get_token_by_type_if_none(token, TokenType.status)
         # https://confluence.atlassian.com/bitbucket/buildstatus-resource-779295267.html
-        status = dict(
-            pending="INPROGRESS", success="SUCCESSFUL", error="FAILED", failure="FAILED"
-        ).get(status)
+        status = {
+            "pending": "INPROGRESS",
+            "success": "SUCCESSFUL",
+            "error": "FAILED",
+            "failure": "FAILED",
+        }.get(status)
         assert status, "status not valid"
         async with self.get_client() as client:
             try:
@@ -630,13 +648,13 @@ class Bitbucket(TorngitBaseAdapter):
                     "2",
                     "post",
                     "/repositories/%s/commit/%s/statuses/build" % (self.slug, commit),
-                    body=dict(
-                        state=status,
-                        key="codecov-" + context,
-                        name=context.replace("/", " ").capitalize() + " Coverage",
-                        url=url,
-                        description=description,
-                    ),
+                    body={
+                        "state": status,
+                        "key": "codecov-" + context,
+                        "name": context.replace("/", " ").capitalize() + " Coverage",
+                        "url": url,
+                        "description": description,
+                    },
                     token=token,
                 )
             except Exception:
@@ -646,12 +664,12 @@ class Bitbucket(TorngitBaseAdapter):
                     "put",
                     "/repositories/%s/commit/%s/statuses/build/codecov-%s"
                     % (self.slug, commit, context),
-                    body=dict(
-                        state=status,
-                        name=context.replace("/", " ").capitalize() + " Coverage",
-                        url=url,
-                        description=description,
-                    ),
+                    body={
+                        "state": status,
+                        "name": context.replace("/", " ").capitalize() + " Coverage",
+                        "url": url,
+                        "description": description,
+                    },
                     token=token,
                 )
 
@@ -663,14 +681,14 @@ class Bitbucket(TorngitBaseAdapter):
                         "post",
                         "/repositories/%s/commit/%s/statuses/build"
                         % (self.slug, merge_commit[0]),
-                        body=dict(
-                            state=status,
-                            key="codecov-" + merge_commit[1],
-                            name=merge_commit[1].replace("/", " ").capitalize()
+                        body={
+                            "state": status,
+                            "key": "codecov-" + merge_commit[1],
+                            "name": merge_commit[1].replace("/", " ").capitalize()
                             + " Coverage",
-                            url=url,
-                            description=description,
-                        ),
+                            "url": url,
+                            "description": description,
+                        },
                         token=token,
                     )
                 except Exception:
@@ -680,13 +698,13 @@ class Bitbucket(TorngitBaseAdapter):
                         "put",
                         "/repositories/%s/commit/%s/statuses/build/codecov-%s"
                         % (self.slug, merge_commit[0], context),
-                        body=dict(
-                            state=status,
-                            name=merge_commit[1].replace("/", " ").capitalize()
+                        body={
+                            "state": status,
+                            "name": merge_commit[1].replace("/", " ").capitalize()
                             + " Coverage",
-                            url=url,
-                            description=description,
-                        ),
+                            "url": url,
+                            "description": description,
+                        },
                         token=token,
                     )
             # check if the commit is a Merge
@@ -730,18 +748,18 @@ class Bitbucket(TorngitBaseAdapter):
                 )
                 userid = res["uuid"][1:-1]
 
-            return dict(
-                author=dict(
-                    id=userid,
-                    username=username,
-                    name=author_raw[0] if author_raw else None,
-                    email=author_raw[1] if author_raw else None,
-                ),
-                commitid=commit,
-                parents=[p["hash"] for p in data["parents"]],
-                message=data["message"],
-                timestamp=data["date"],
-            )
+            return {
+                "author": {
+                    "id": userid,
+                    "username": username,
+                    "name": author_raw[0] if author_raw else None,
+                    "email": author_raw[1] if author_raw else None,
+                },
+                "commitid": commit,
+                "parents": [p["hash"] for p in data["parents"]],
+                "message": data["message"],
+                "timestamp": data["date"],
+            }
 
     async def get_branches(self, token=None):
         # https://confluence.atlassian.com/display/BITBUCKET/repository+Resource+1.0#repositoryResource1.0-GETlistofbranches
@@ -871,16 +889,19 @@ class Bitbucket(TorngitBaseAdapter):
                     token=token,
                 )
             username, repo = tuple(res["full_name"].split("/", 1))
-            return dict(
-                owner=dict(service_id=res["owner"]["uuid"][1:-1], username=username),
-                repo=dict(
-                    service_id=res["uuid"][1:-1],
-                    private=res["is_private"],
-                    branch="main",
-                    language=self._validate_language(res["language"]),
-                    name=repo,
-                ),
-            )
+            return {
+                "owner": {
+                    "service_id": res["owner"]["uuid"][1:-1],
+                    "username": username,
+                },
+                "repo": {
+                    "service_id": res["uuid"][1:-1],
+                    "private": res["is_private"],
+                    "branch": "main",
+                    "language": self._validate_language(res["language"]),
+                    "name": repo,
+                },
+            }
 
     async def get_repo_languages(
         self, token=None, language: str | None = None
@@ -961,7 +982,7 @@ class Bitbucket(TorngitBaseAdapter):
                         message=f"Path {path} not found at {ref}",
                     )
                 raise
-            return dict(commitid=None, content=src.encode())
+            return {"commitid": None, "content": src.encode()}
 
     async def get_compare(
         self, base, head, context=None, with_commits=True, token=None
@@ -984,7 +1005,7 @@ class Bitbucket(TorngitBaseAdapter):
             commits = [{"commitid": head}, {"commitid": base}]
             # No endpoint to get commits yet... ugh
 
-        return dict(diff=self.diff_to_json(diff), commits=commits)
+        return {"diff": self.diff_to_json(diff), "commits": commits}
 
     async def get_commit_diff(self, commit, context=None, token=None):
         # https://confluence.atlassian.com/bitbucket/diff-resource-425462484.html
@@ -1014,9 +1035,9 @@ class Bitbucket(TorngitBaseAdapter):
             while has_more:
                 # https://developer.atlassian.com/bitbucket/api/2/reference/resource/repositories/%7Busername%7D/%7Brepo_slug%7D/src#get
                 if page is not None:
-                    kwargs = dict(page=page, token=token)
+                    kwargs = {"page": page, "token": token}
                 else:
-                    kwargs = dict(token=token)
+                    kwargs = {"token": token}
                 results = await self.api(
                     client,
                     "2",

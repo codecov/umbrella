@@ -6,13 +6,13 @@ from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.shortcuts import redirect
 from django.views import View
+
+from codecov_auth.views.base import LoginMixin, StateMixin
 from shared.django_apps.codecov_metrics.service.codecov_metrics import (
     UserOnboardingMetricsService,
 )
 from shared.torngit import Github
 from shared.torngit.exceptions import TorngitError
-
-from codecov_auth.views.base import LoginMixin, StateMixin
 from utils.config import get_config
 
 log = logging.getLogger(__name__)
@@ -25,14 +25,15 @@ class GithubLoginView(LoginMixin, StateMixin, View):
     @property
     def repo_service_instance(self):
         return Github(
-            oauth_consumer_token=dict(
-                key=settings.GITHUB_CLIENT_ID, secret=settings.GITHUB_CLIENT_SECRET
-            )
+            oauth_consumer_token={
+                "key": settings.GITHUB_CLIENT_ID,
+                "secret": settings.GITHUB_CLIENT_SECRET,
+            }
         )
 
     @property
     def redirect_info(self):
-        return dict(repo_service=Github(), client_id=settings.GITHUB_CLIENT_ID)
+        return {"repo_service": Github(), "client_id": settings.GITHUB_CLIENT_ID}
 
     def get_url_to_redirect_to(self, scope):
         redirect_info = self.redirect_info
@@ -43,12 +44,12 @@ class GithubLoginView(LoginMixin, StateMixin, View):
         )
         base_url = urljoin(redirect_host, "login/oauth/authorize")
         state = self.generate_state()
-        query = dict(
-            response_type="code",
-            scope=",".join(scope),
-            client_id=redirect_info["client_id"],
-            state=state,
-        )
+        query = {
+            "response_type": "code",
+            "scope": ",".join(scope),
+            "client_id": redirect_info["client_id"],
+            "state": state,
+        }
         query_str = urlencode(query)
         return f"{base_url}?{query_str}"
 
@@ -81,9 +82,9 @@ class GithubLoginView(LoginMixin, StateMixin, View):
         if "access_token" not in authenticated_user:
             log.warning(
                 "Missing access_token during GitHub OAuth",
-                extra=dict(
-                    user_info=authenticated_user,
-                ),
+                extra={
+                    "user_info": authenticated_user,
+                },
             )
             return None
         # Comply to torngit's token encoding
@@ -98,13 +99,13 @@ class GithubLoginView(LoginMixin, StateMixin, View):
 
         teams = await self._get_teams_data(repo_service)
 
-        return dict(
-            user=authenticated_user,
-            orgs=user_orgs,
-            teams=teams,
-            is_student=is_student,
-            has_private_access=has_private_access,
-        )
+        return {
+            "user": authenticated_user,
+            "orgs": user_orgs,
+            "teams": teams,
+            "is_student": is_student,
+            "has_private_access": has_private_access,
+        }
 
     def actual_login_step(self, request):
         code = request.GET.get("code")

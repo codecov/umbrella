@@ -1,6 +1,9 @@
 from pathlib import Path
 
 import pytest
+
+from services.processing.types import UploadArguments
+from services.test_analytics.ta_processor import ta_processor_impl
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports.models import UploadError
 from shared.django_apps.reports.tests.factories import (
@@ -10,9 +13,6 @@ from shared.django_apps.reports.tests.factories import (
 )
 from shared.django_apps.ta_timeseries.models import Testrun
 from shared.storage.exceptions import FileNotInStorageError
-
-from services.processing.types import UploadArguments
-from services.test_analytics.ta_processor import ta_processor_impl
 
 
 @pytest.fixture
@@ -61,7 +61,7 @@ def test_ta_processor_impl_already_processed(update_state):
     assert result is False
 
 
-@pytest.mark.django_db(databases=["default", "timeseries"])
+@pytest.mark.django_db(databases=["default", "ta_timeseries"])
 def test_ta_processor_impl_no_storage_path(storage):
     repository = RepositoryFactory.create()
     commit = CommitFactory.create(repository=repository, branch="main")

@@ -2,6 +2,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
+
 from shared.license import LicenseInformation
 
 from .helper import GraphQLTestHelper

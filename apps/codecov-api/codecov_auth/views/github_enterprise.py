@@ -1,6 +1,7 @@
 import logging
 
 from django.conf import settings
+
 from shared.torngit import GithubEnterprise
 
 from .github import GithubLoginView
@@ -15,15 +16,15 @@ class GithubEnterpriseLoginView(GithubLoginView):
     @property
     def repo_service_instance(self):
         return GithubEnterprise(
-            oauth_consumer_token=dict(
-                key=settings.GITHUB_ENTERPRISE_CLIENT_ID,
-                secret=settings.GITHUB_ENTERPRISE_CLIENT_SECRET,
-            )
+            oauth_consumer_token={
+                "key": settings.GITHUB_ENTERPRISE_CLIENT_ID,
+                "secret": settings.GITHUB_ENTERPRISE_CLIENT_SECRET,
+            }
         )
 
     @property
     def redirect_info(self):
-        return dict(
-            repo_service=GithubEnterprise(),
-            client_id=settings.GITHUB_ENTERPRISE_CLIENT_ID,
-        )
+        return {
+            "repo_service": GithubEnterprise(),
+            "client_id": settings.GITHUB_ENTERPRISE_CLIENT_ID,
+        }

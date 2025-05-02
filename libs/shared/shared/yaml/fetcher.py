@@ -15,19 +15,19 @@ async def fetch_current_yaml_from_provider_via_reference(
     if not location:
         log.info(
             "We were not able to find the yaml on the provider API",
-            extra=dict(commit=ref, repoid=repoid),
+            extra={"commit": ref, "repoid": repoid},
         )
         return None
     log.info(
         "Yaml was found on provider API",
-        extra=dict(commit=ref, repoid=repoid, location=location),
+        extra={"commit": ref, "repoid": repoid, "location": location},
     )
     try:
         content = await repository_service.get_source(location, ref)
         return content["content"]
     except TorngitObjectNotFoundError:
         log.exception(
-            "File not in %s for commit", extra=dict(commit=ref, location=location)
+            "File not in %s for commit", extra={"commit": ref, "location": location}
         )
 
 
@@ -54,12 +54,12 @@ async def determine_commit_yaml_location(
         "codecov.yaml",
         ".codecov.yaml",
     ]
-    acceptable_folders = set(["dev", ".github"])
+    acceptable_folders = {"dev", ".github"}
     top_level_files = await repository_service.list_top_level_files(ref)
     top_level_yaml = _search_among_files(possible_locations, top_level_files)
     if top_level_yaml is not None:
         return top_level_yaml
-    all_folders = set(f["path"] for f in top_level_files if f["type"] == "folder")
+    all_folders = {f["path"] for f in top_level_files if f["type"] == "folder"}
     possible_folders = all_folders & acceptable_folders
     for folder in possible_folders:
         files_inside_folder = await repository_service.list_files(ref, folder)

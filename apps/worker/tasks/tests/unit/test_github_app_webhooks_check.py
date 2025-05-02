@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
-from shared.torngit.exceptions import TorngitUnauthorizedError
 
+from shared.torngit.exceptions import TorngitUnauthorizedError
 from tasks.github_app_webhooks_check import Github, GitHubAppWebhooksCheckTask
 
 
@@ -197,7 +197,7 @@ class TestGHAppWebhooksTask(object):
         )
         task = GitHubAppWebhooksCheckTask()
         ans = task.run_cron_task(dbsession)
-        assert ans == dict(checked=False, reason="Enterprise env")
+        assert ans == {"checked": False, "reason": "Enterprise env"}
         mock_is_enterprise.assert_called()
 
     def test_return_on_exception(self, dbsession, mocker):
@@ -223,19 +223,19 @@ class TestGHAppWebhooksTask(object):
         )
         task = GitHubAppWebhooksCheckTask()
         ans = task.run_cron_task(dbsession)
-        assert ans == dict(
-            checked=False,
-            reason="Failed with exception. Ending task immediately",
-            exception=str(
+        assert ans == {
+            "checked": False,
+            "reason": "Failed with exception. Ending task immediately",
+            "exception": str(
                 TorngitUnauthorizedError(
                     response_data="error error", message="error error"
                 )
             ),
-            redeliveries_requested=0,
-            deliveries_processed=0,
-            successful_redeliveries=0,
-            pages_processed=0,
-        )
+            "redeliveries_requested": 0,
+            "deliveries_processed": 0,
+            "successful_redeliveries": 0,
+            "pages_processed": 0,
+        }
         fake_list_deliveries.assert_called()
         fake_get_token.assert_called()
         fake_redelivery.assert_not_called()
@@ -258,13 +258,13 @@ class TestGHAppWebhooksTask(object):
         )
         task = GitHubAppWebhooksCheckTask()
         ans = task.run_cron_task(dbsession)
-        assert ans == dict(
-            checked=True,
-            redeliveries_requested=1,
-            deliveries_processed=6,
-            successful_redeliveries=1,
-            pages_processed=1,
-        )
+        assert ans == {
+            "checked": True,
+            "redeliveries_requested": 1,
+            "deliveries_processed": 6,
+            "successful_redeliveries": 1,
+            "pages_processed": 1,
+        }
         fake_list_deliveries.assert_called()
         fake_get_token.assert_called()
         fake_redelivery.assert_called()

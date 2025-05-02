@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 
 import jwt
 from django.test import TestCase, TransactionTestCase, override_settings
-from shared.django_apps.core.tests.factories import OwnerFactory
 
 from services.sentry import (
     SentryInvalidStateError,
@@ -14,6 +13,7 @@ from services.sentry import (
     save_sentry_state,
     send_user_webhook,
 )
+from shared.django_apps.core.tests.factories import OwnerFactory
 
 
 @override_settings(SENTRY_JWT_SHARED_SECRET="secret")

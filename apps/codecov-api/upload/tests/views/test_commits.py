@@ -5,10 +5,10 @@ from django.conf import settings
 from django.urls import reverse
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
-from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 
 from core.models import Commit
 from services.task import TaskService
+from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from upload.views.commits import CommitViews
 
 
@@ -18,14 +18,14 @@ def test_get_repo(db):
     )
     repository.save()
     upload_views = CommitViews()
-    upload_views.kwargs = dict(repo="codecov::::the_repo", service="github")
+    upload_views.kwargs = {"repo": "codecov::::the_repo", "service": "github"}
     recovered_repo = upload_views.get_repo()
     assert recovered_repo == repository
 
 
 def test_get_repo_with_invalid_service():
     upload_views = CommitViews()
-    upload_views.kwargs = dict(repo="repo", service="wrong service")
+    upload_views.kwargs = {"repo": "repo", "service": "wrong service"}
     with pytest.raises(ValidationError) as exp:
         upload_views.get_repo()
     assert exp.match("Service not found: wrong service")
@@ -37,7 +37,7 @@ def test_get_repo_not_found(db):
         name="the_repo", author__username="codecov", author__service="github"
     )
     upload_views = CommitViews()
-    upload_views.kwargs = dict(repo="codecov::::wrong-repo-name", service="github")
+    upload_views.kwargs = {"repo": "codecov::::wrong-repo-name", "service": "github"}
     with pytest.raises(ValidationError) as exp:
         upload_views.get_repo()
     assert exp.match("Repository not found")
@@ -81,7 +81,7 @@ def test_get_queryset(db):
     target_commit_2 = CommitFactory(repository=target_repo)
     random_commit = CommitFactory(repository=random_repo)
     upload_views = CommitViews()
-    upload_views.kwargs = dict(repo="codecov::::the_repo", service="github")
+    upload_views.kwargs = {"repo": "codecov::::the_repo", "service": "github"}
     recovered_commits = upload_views.get_queryset()
     assert target_commit_1 in recovered_commits
     assert target_commit_2 in recovered_commits

@@ -13,7 +13,7 @@ from tasks.preprocess_upload import PreProcessUpload
 
 
 class TestPreProcessUpload(object):
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_preprocess_task(
         self,
         mocker,

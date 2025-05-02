@@ -2,10 +2,6 @@ import logging
 from typing import Any, Literal
 
 from asgiref.sync import async_to_sync
-from shared.helpers.redis import get_redis_connection
-from shared.reports.types import UploadType
-from shared.typings.torngit import AdditionalData
-from shared.yaml import UserYaml
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -38,6 +34,10 @@ from services.test_results import (
     latest_failures_for_commit,
     should_do_flaky_detection,
 )
+from shared.helpers.redis import get_redis_connection
+from shared.reports.types import UploadType
+from shared.typings.torngit import AdditionalData
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.cache_test_rollups import cache_test_rollups_task_name
 from tasks.notify import notify_task_name
@@ -98,11 +98,11 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
             if finisher_result["queue_notify"]:
                 self.app.tasks[notify_task_name].apply_async(
                     args=None,
-                    kwargs=dict(
-                        repoid=repoid,
-                        commitid=commitid,
-                        current_yaml=commit_yaml,
-                    ),
+                    kwargs={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "current_yaml": commit_yaml,
+                    },
                 )
 
             return finisher_result
@@ -156,19 +156,19 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                 if impl_type == "both":
                     redis_client.lpush(KEY_NAME.format(repo.repoid), commit.commitid)
                 self.app.tasks[process_flakes_task_name].apply_async(
-                    kwargs=dict(
-                        repo_id=repoid,
-                        impl_type=impl_type,
-                    )
+                    kwargs={
+                        "repo_id": repoid,
+                        "impl_type": impl_type,
+                    }
                 )
 
         if commit.branch is not None:
             self.app.tasks[cache_test_rollups_task_name].apply_async(
-                kwargs=dict(
-                    repo_id=repoid,
-                    branch=commit.branch,
-                    impl_type=impl_type,
-                ),
+                kwargs={
+                    "repo_id": repoid,
+                    "branch": commit.branch,
+                    "impl_type": impl_type,
+                },
             )
 
         commit_report = commit.commit_report(ReportType.TEST_RESULTS)
@@ -209,7 +209,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
             totals.error = None
             db_session.flush()
 
-        cached_uploads: dict[int, dict] = dict()
+        cached_uploads: dict[int, dict] = {}
         escaper = StringEscaper(ESCAPE_FAILURE_MESSAGE_DEFN)
         shorten_paths = commit_yaml.read_yaml_field(
             "test_analytics", "shorten_paths", _else=True
@@ -323,7 +323,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                     "queue_notify": False,
                 }
 
-            flaky_tests = dict()
+            flaky_tests = {}
             if should_do_flaky_detection(repo, commit_yaml):
                 flaky_tests = self.get_flaky_tests(db_session, repoid, failures)
 
@@ -343,11 +343,11 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
             if repo.private == False:
                 log.info(
                     "making TA comment",
-                    extra=dict(
-                        pullid=pull.database_pull.pullid,
-                        service=repo.service,
-                        slug=f"{repo.owner.username}/{repo.name}",
-                    ),
+                    extra={
+                        "pullid": pull.database_pull.pullid,
+                        "service": repo.service,
+                        "slug": f"{repo.owner.username}/{repo.name}",
+                    },
                 )
             notifier_result = notifier.notify()
             success = (
@@ -357,11 +357,11 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
             if len(flaky_tests):
                 log.info(
                     "Detected failure on test that has been identified as flaky",
-                    extra=dict(
-                        success=success,
-                        notifier_result=notifier_result.value,
-                        test_ids=list(flaky_tests.keys()),
-                    ),
+                    extra={
+                        "success": success,
+                        "notifier_result": notifier_result.value,
+                        "test_ids": list(flaky_tests.keys()),
+                    },
                 )
             attempted = True
 

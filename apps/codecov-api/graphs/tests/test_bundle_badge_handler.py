@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from rest_framework import status
 from rest_framework.test import APITestCase
+
 from shared.bundle_analysis import BundleAnalysisReport, BundleReport
 from shared.django_apps.core.tests.factories import (
     BranchFactory,

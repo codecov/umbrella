@@ -9,9 +9,6 @@ from rest_framework import serializers, status
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import CreateAPIView
 from rest_framework.response import Response
-from shared.metrics import inc_counter
-from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError, TorngitClientGeneralError
 
 from codecov_auth.authentication.repo_auth import (
     GitHubOIDCTokenAuthentication,
@@ -26,6 +23,9 @@ from core.models import Commit
 from services.repo_providers import RepoProviderService
 from services.task import TaskService
 from services.yaml import final_commit_yaml
+from shared.metrics import inc_counter
+from shared.torngit.base import TorngitBaseAdapter
+from shared.torngit.exceptions import TorngitClientError, TorngitClientGeneralError
 from upload.helpers import (
     generate_upload_prometheus_metrics_labels,
     try_to_get_best_possible_bot_token,
@@ -199,10 +199,10 @@ class EmptyUploadView(CreateAPIView, GetterMixin):
         except TorngitClientError:
             log.warning(
                 "Request client error",
-                extra=dict(
-                    commit=commit.commitid,
-                    repoid=commit.repository.repoid,
-                ),
+                extra={
+                    "commit": commit.commitid,
+                    "repoid": commit.repository.repoid,
+                },
                 exc_info=True,
             )
             raise NotFound("Unable to get pull request's files.")
@@ -219,10 +219,10 @@ class EmptyUploadView(CreateAPIView, GetterMixin):
         except TorngitClientGeneralError:
             log.warning(
                 "Request client error",
-                extra=dict(
-                    commit=commit.commitid,
-                    repoid=commit.repository.repoid,
-                ),
+                extra={
+                    "commit": commit.commitid,
+                    "repoid": commit.repository.repoid,
+                },
                 exc_info=True,
             )
             raise NotFound(f"Unable to get pull request for commit: {commit.commitid}")

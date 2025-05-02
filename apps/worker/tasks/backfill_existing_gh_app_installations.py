@@ -59,7 +59,7 @@ class BackfillExistingGHAppInstallationsTask(
         for gh_app_installation in gh_app_installations:
             self.app.tasks[
                 backfill_existing_individual_gh_app_installation_name
-            ].apply_async(kwargs=dict(gh_app_installation_id=gh_app_installation.id))
+            ].apply_async(kwargs={"gh_app_installation_id": gh_app_installation.id})
 
         return {"successful": True, "reason": "backfill tasks queued"}
 
@@ -92,7 +92,7 @@ class BackfillExistingIndividualGHAppInstallationTask(
 
         log.info(
             "Attempt to backfill gh_app_installation",
-            extra=dict(owner_id=ownerid, parent_id=self.request.parent_id),
+            extra={"owner_id": ownerid, "parent_id": self.request.parent_id},
         )
 
         try:
@@ -113,13 +113,13 @@ class BackfillExistingIndividualGHAppInstallationTask(
                 )
             log.info(
                 "Successful backfill",
-                extra=dict(ownerid=ownerid, parent_id=self.request.parent_id),
+                extra={"ownerid": ownerid, "parent_id": self.request.parent_id},
             )
             return {"successful": True, "reason": "backfill task finished"}
         except Exception:
             log.info(
                 "Backfill unsuccessful for this owner",
-                extra=dict(ownerid=ownerid, parent_id=self.request.parent_id),
+                extra={"ownerid": ownerid, "parent_id": self.request.parent_id},
             )
             return {"successful": False, "reason": "backfill unsuccessful"}
 

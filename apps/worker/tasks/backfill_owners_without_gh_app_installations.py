@@ -1,7 +1,6 @@
 import logging
 from typing import List, Optional
 
-from shared.config import get_config
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
@@ -19,6 +18,7 @@ from helpers.backfills import (
     maybe_set_installation_to_all_repos,
 )
 from services.owner import get_owner_provider_service
+from shared.config import get_config
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ class BackfillOwnersWithoutGHAppInstallations(
                 # Create new GH app installation and add all repos the gh app has access to
                 log.info(
                     "This owner has no Github App Installation",
-                    extra=dict(ownerid=ownerid),
+                    extra={"ownerid": ownerid},
                 )
                 gh_app_installation = GithubAppInstallation(
                     owner=owner,
@@ -89,10 +89,10 @@ class BackfillOwnersWithoutGHAppInstallations(
                         owner_service=owner_service,
                         gh_app_installation=gh_app_installation,
                     )
-                log.info("Successful backfill", extra=dict(ownerid=ownerid))
+                log.info("Successful backfill", extra={"ownerid": ownerid})
             except Exception:
                 log.info(
-                    "Backfill unsuccessful for this owner", extra=dict(ownerid=ownerid)
+                    "Backfill unsuccessful for this owner", extra={"ownerid": ownerid}
                 )
 
     def run_impl(
@@ -135,7 +135,7 @@ class BackfillOwnersWithoutGHAppInstallations(
         for owner in owners:
             self.app.tasks[
                 backfill_owners_without_gh_app_installation_individual_name
-            ].apply_async(kwargs=dict(ownerid=owner.ownerid))
+            ].apply_async(kwargs={"ownerid": owner.ownerid})
 
         return {"successful": True, "reason": "backfill tasks queued"}
 
@@ -162,7 +162,7 @@ class BackfillOwnersWithoutGHAppInstallationIndividual(
 
         log.info(
             "Attempt to create GH App",
-            extra=dict(owner_id=ownerid, parent_id=self.request.parent_id),
+            extra={"owner_id": ownerid, "parent_id": self.request.parent_id},
         )
 
         try:
@@ -171,7 +171,7 @@ class BackfillOwnersWithoutGHAppInstallationIndividual(
             # Create new GH app installation and add all repos the gh app has access to
             log.info(
                 "This owner has no Github App Installation",
-                extra=dict(ownerid=ownerid, parent_id=self.request.parent_id),
+                extra={"ownerid": ownerid, "parent_id": self.request.parent_id},
             )
             gh_app_installation = GithubAppInstallation(
                 owner=owner,
@@ -197,13 +197,13 @@ class BackfillOwnersWithoutGHAppInstallationIndividual(
                 )
             log.info(
                 "Successful backfill",
-                extra=dict(ownerid=ownerid, parent_id=self.request.parent_id),
+                extra={"ownerid": ownerid, "parent_id": self.request.parent_id},
             )
             return {"successful": True, "reason": "backfill task finished"}
         except Exception:
             log.info(
                 "Backfill unsuccessful for this owner",
-                extra=dict(ownerid=ownerid, parent_id=self.request.parent_id),
+                extra={"ownerid": ownerid, "parent_id": self.request.parent_id},
             )
             return {"successful": False, "reason": "backfill unsuccessful"}
 

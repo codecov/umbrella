@@ -4,6 +4,14 @@ from unittest.mock import call
 
 import pytest
 from django.db import transaction as django_transaction
+
+from database.enums import ReportType
+from database.tests.factories import (
+    PullFactory,
+    UploadFactory,
+)
+from services.test_analytics.ta_finish_upload import FinisherResult, new_impl
+from services.yaml import UserYaml
 from shared.django_apps.core.models import Commit as DjangoCommit
 from shared.django_apps.core.models import Repository as DjangoRepo
 from shared.django_apps.reports.tests.factories import (
@@ -14,14 +22,6 @@ from shared.django_apps.reports.tests.factories import (
 )
 from shared.django_apps.ta_timeseries.tests.factories import TestrunFactory
 from shared.django_apps.test_analytics.models import Flake
-
-from database.enums import ReportType
-from database.tests.factories import (
-    PullFactory,
-    UploadFactory,
-)
-from services.test_analytics.ta_finish_upload import FinisherResult, new_impl
-from services.yaml import UserYaml
 from tests.helpers import mock_all_plans_and_tiers
 
 

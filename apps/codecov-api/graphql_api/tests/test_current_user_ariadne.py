@@ -3,6 +3,8 @@ from http.cookies import SimpleCookie
 from unittest.mock import patch
 
 from django.test import TestCase
+
+from codecov_auth.models import OwnerProfile
 from shared.django_apps.codecov_auth.tests.factories import (
     AccountFactory,
     OktaSettingsFactory,
@@ -13,8 +15,6 @@ from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
-
-from codecov_auth.models import OwnerProfile
 
 from .helper import GraphQLTestHelper, paginate_connection
 

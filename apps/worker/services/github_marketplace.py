@@ -1,10 +1,10 @@
 import logging
 
 import requests
-import shared.torngit as torngit
-from shared.config import get_config
 
+import shared.torngit as torngit
 from services.github import get_github_integration_token
+from shared.config import get_config
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class GitHubMarketplaceService(object):
         except requests.exceptions.HTTPError:
             log.exception(
                 "Github Marketplace Service Error",
-                extra=dict(code=res.status_code, text=res.text),
+                extra={"code": res.status_code, "text": res.text},
             )
             raise
         return res.json()
@@ -97,7 +97,7 @@ class GitHubMarketplaceService(object):
         """
         List all GitHub accounts (user or organization) on a specific plan.
         """
-        params = dict(page=page)
+        params = {"page": page}
         return self.api(
             "get",
             "/marketplace_listing/plans/{}/accounts".format(plan_id),
@@ -108,10 +108,10 @@ class GitHubMarketplaceService(object):
         """
         Get GitHub user details
         """
-        params = dict(
-            client_id=get_config("github", "client_id"),
-            client_secret=get_config("github", "client_secret"),
-        )
+        params = {
+            "client_id": get_config("github", "client_id"),
+            "client_secret": get_config("github", "client_secret"),
+        }
         return self.api(
             "get",
             "/user/{}".format(service_id),

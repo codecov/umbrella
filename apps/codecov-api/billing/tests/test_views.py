@@ -8,12 +8,12 @@ from freezegun import freeze_time
 from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APIRequestFactory, APITestCase
-from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
 from billing.helpers import mock_all_plans_and_tiers
 from billing.views import StripeWebhookHandler
 from codecov_auth.models import Plan
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
 from ..constants import StripeHTTPHeaders
 
@@ -1680,7 +1680,7 @@ class StripeWebhookHandlerTests(APITestCase):
 
         log_error_mock.assert_called_once_with(
             "No owners found with that customer_id, something went wrong",
-            extra=dict(customer_id="cus_123"),
+            extra={"customer_id": "cus_123"},
         )
 
     @patch("logging.Logger.error")
@@ -1715,7 +1715,7 @@ class StripeWebhookHandlerTests(APITestCase):
 
         log_error_mock.assert_called_once_with(
             "No owners found with that customer_id, something went wrong",
-            extra=dict(customer_id="cus_1"),
+            extra={"customer_id": "cus_1"},
         )
 
     @patch("services.billing.stripe.PaymentMethod.attach")
@@ -1790,11 +1790,11 @@ class StripeWebhookHandlerTests(APITestCase):
         )
         log_info_mock.assert_called_once_with(
             "Payment intent succeeded",
-            extra=dict(
-                stripe_customer_id="cus_123",
-                payment_intent_id="pi_123",
-                payment_method_type="pm_123",
-            ),
+            extra={
+                "stripe_customer_id": "cus_123",
+                "payment_intent_id": "pi_123",
+                "payment_method_type": "pm_123",
+            },
         )
 
     @patch(
@@ -1817,9 +1817,9 @@ class StripeWebhookHandlerTests(APITestCase):
         )
         log_info_mock.assert_called_once_with(
             "Setup intent succeeded",
-            extra=dict(
-                stripe_customer_id="cus_123",
-                setup_intent_id="seti_123",
-                payment_method_type="pm_123",
-            ),
+            extra={
+                "stripe_customer_id": "cus_123",
+                "setup_intent_id": "seti_123",
+                "payment_method_type": "pm_123",
+            },
         )

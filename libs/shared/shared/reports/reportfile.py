@@ -308,7 +308,7 @@ class ReportFile:
             self._raw_lines = None
             log.warning(
                 "Doing something weird because of weird .rb logic",
-                extra=dict(report_filename=self.name),
+                extra={"report_filename": self.name},
             )
 
         elif (
@@ -397,9 +397,9 @@ class ReportFile:
             if line.datapoints is not None
             else None
         )
-        remaining_session_ids = set(dp.sessionid for dp in new_datapoints)
+        remaining_session_ids = {dp.sessionid for dp in new_datapoints}
         removed_session_ids = session_ids_to_delete - remaining_session_ids
-        if set(s.id for s in line.sessions) & removed_session_ids:
+        if {s.id for s in line.sessions} & removed_session_ids:
             new_sessions = [s for s in line.sessions if s.id not in removed_session_ids]
         else:
             new_sessions = line.sessions

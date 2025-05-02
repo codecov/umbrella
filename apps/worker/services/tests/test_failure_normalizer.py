@@ -121,7 +121,7 @@ def test_from_random_cases(input, expected):
     ]
 
     normalizer_class = FailureNormalizer(
-        dict(), override_predefined=True, key_analysis_order=order_to_process
+        {}, override_predefined=True, key_analysis_order=order_to_process
     )
     s = normalizer_class.normalize_failure_message(test_message)
     assert s == expected

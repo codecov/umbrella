@@ -1,8 +1,7 @@
 from http.cookies import SimpleCookie
 
-from shared.django_apps.codecov_auth.tests.factories import OwnerFactory, UserFactory
-
 from codecov_auth.views.okta_cloud import OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY
+from shared.django_apps.codecov_auth.tests.factories import OwnerFactory, UserFactory
 from utils.test_utils import Client
 
 

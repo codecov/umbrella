@@ -114,11 +114,11 @@ class FilteredReport(object):
     def _calculate_sessionids_to_include(self):
         if not self.flags:
             return set(self.report.sessions.keys())
-        return set(
+        return {
             sid
             for (sid, session) in self.report.sessions.items()
             if _contain_any_of_the_flags(self.flags, session.flags)
-        )
+        }
 
     @property
     def session_ids_to_include(self):

@@ -86,28 +86,26 @@ def test_bundle_analysis_comparison(mock_storage):
         head_report.cleanup()
 
     bundle_changes = comparison.bundle_changes()
-    assert set(bundle_changes) == set(
-        [
-            BundleChange(
-                bundle_name="sample",
-                change_type=BundleChange.ChangeType.CHANGED,
-                size_delta=1100,
-                percentage_delta=0.73,
-            ),
-            BundleChange(
-                bundle_name="new",
-                change_type=BundleChange.ChangeType.ADDED,
-                size_delta=0,
-                percentage_delta=100,
-            ),
-            BundleChange(
-                bundle_name="old",
-                change_type=BundleChange.ChangeType.REMOVED,
-                size_delta=0,
-                percentage_delta=-100,
-            ),
-        ]
-    )
+    assert set(bundle_changes) == {
+        BundleChange(
+            bundle_name="sample",
+            change_type=BundleChange.ChangeType.CHANGED,
+            size_delta=1100,
+            percentage_delta=0.73,
+        ),
+        BundleChange(
+            bundle_name="new",
+            change_type=BundleChange.ChangeType.ADDED,
+            size_delta=0,
+            percentage_delta=100,
+        ),
+        BundleChange(
+            bundle_name="old",
+            change_type=BundleChange.ChangeType.REMOVED,
+            size_delta=0,
+            percentage_delta=-100,
+        ),
+    }
 
     bundle_comparison = comparison.bundle_comparison("sample")
     total_size_delta = bundle_comparison.total_size_delta()
@@ -157,28 +155,26 @@ def test_bundle_asset_comparison_using_closest_size_delta(mock_storage):
         head_report.cleanup()
 
     bundle_changes = comparison.bundle_changes()
-    assert set(bundle_changes) == set(
-        [
-            BundleChange(
-                bundle_name="sample",
-                change_type=BundleChange.ChangeType.CHANGED,
-                size_delta=1100,
-                percentage_delta=0.73,
-            ),
-            BundleChange(
-                bundle_name="new",
-                change_type=BundleChange.ChangeType.ADDED,
-                size_delta=0,
-                percentage_delta=100,
-            ),
-            BundleChange(
-                bundle_name="old",
-                change_type=BundleChange.ChangeType.REMOVED,
-                size_delta=0,
-                percentage_delta=-100,
-            ),
-        ]
-    )
+    assert set(bundle_changes) == {
+        BundleChange(
+            bundle_name="sample",
+            change_type=BundleChange.ChangeType.CHANGED,
+            size_delta=1100,
+            percentage_delta=0.73,
+        ),
+        BundleChange(
+            bundle_name="new",
+            change_type=BundleChange.ChangeType.ADDED,
+            size_delta=0,
+            percentage_delta=100,
+        ),
+        BundleChange(
+            bundle_name="old",
+            change_type=BundleChange.ChangeType.REMOVED,
+            size_delta=0,
+            percentage_delta=-100,
+        ),
+    }
 
     bundle_comparison = comparison.bundle_comparison("sample")
     asset_comparisons = bundle_comparison.asset_comparisons()
@@ -344,9 +340,11 @@ def test_bundle_asset_comparison_using_closest_size_delta(mock_storage):
             "abc/def/ghi.ts",  # <- don't match
         ]
     )
-    assert set([module.name for module in module_reports]) == set(
-        ["./index.html", "./src/App.css", "./src/main.tsx"]
-    )
+    assert {module.name for module in module_reports} == {
+        "./index.html",
+        "./src/App.css",
+        "./src/main.tsx",
+    }
 
 
 def test_bundle_asset_comparison_using_uuid(mock_storage):
@@ -424,28 +422,26 @@ def test_bundle_asset_comparison_using_uuid(mock_storage):
         db_session.commit()
 
     bundle_changes = comparison.bundle_changes()
-    assert set(bundle_changes) == set(
-        [
-            BundleChange(
-                bundle_name="sample",
-                change_type=BundleChange.ChangeType.CHANGED,
-                size_delta=1100,
-                percentage_delta=0.73,
-            ),
-            BundleChange(
-                bundle_name="new",
-                change_type=BundleChange.ChangeType.ADDED,
-                size_delta=0,
-                percentage_delta=100,
-            ),
-            BundleChange(
-                bundle_name="old",
-                change_type=BundleChange.ChangeType.REMOVED,
-                size_delta=0,
-                percentage_delta=-100,
-            ),
-        ]
-    )
+    assert set(bundle_changes) == {
+        BundleChange(
+            bundle_name="sample",
+            change_type=BundleChange.ChangeType.CHANGED,
+            size_delta=1100,
+            percentage_delta=0.73,
+        ),
+        BundleChange(
+            bundle_name="new",
+            change_type=BundleChange.ChangeType.ADDED,
+            size_delta=0,
+            percentage_delta=100,
+        ),
+        BundleChange(
+            bundle_name="old",
+            change_type=BundleChange.ChangeType.REMOVED,
+            size_delta=0,
+            percentage_delta=-100,
+        ),
+    }
 
     bundle_comparison = comparison.bundle_comparison("sample")
     asset_comparisons = bundle_comparison.asset_comparisons()

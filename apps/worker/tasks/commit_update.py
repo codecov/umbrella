@@ -1,9 +1,6 @@
 import datetime as dt
 import logging
 
-from shared.celery_config import commit_update_task_name
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
-
 from app import celery_app
 from database.models import Branch, Commit, Pull
 from helpers.exceptions import RepositoryWithoutValidBotError
@@ -12,6 +9,8 @@ from services.repository import (
     get_repo_provider_service,
     possibly_update_commit_from_provider_info,
 )
+from shared.celery_config import commit_update_task_name
+from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -122,23 +121,23 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
         except RepositoryWithoutValidBotError:
             log.warning(
                 "Unable to reach git provider because repo doesn't have a valid bot",
-                extra=dict(repoid=repoid, commit=commitid),
+                extra={"repoid": repoid, "commit": commitid},
             )
         except TorngitRepoNotFoundError:
             log.warning(
                 "Unable to reach git provider because this specific bot/integration can't see that repository",
-                extra=dict(repoid=repoid, commit=commitid),
+                extra={"repoid": repoid, "commit": commitid},
             )
         except TorngitClientError:
             log.warning(
                 "Unable to reach git provider because there was a 4xx error",
-                extra=dict(repoid=repoid, commit=commitid),
+                extra={"repoid": repoid, "commit": commitid},
                 exc_info=True,
             )
         if was_updated:
             log.info(
                 "Commit updated successfully",
-                extra=dict(commitid=commitid, repoid=repoid),
+                extra={"commitid": commitid, "repoid": repoid},
             )
         return {"was_updated": was_updated}
 

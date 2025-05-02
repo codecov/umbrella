@@ -2,13 +2,12 @@ import logging
 from datetime import datetime, timedelta
 from typing import Iterator
 
-from shared.celery_config import new_user_activated_task_name, notify_task_name
-from shared.plan.service import PlanService
-
 from app import celery_app
 from database.enums import Decoration
 from database.models import Owner, Pull, Repository
 from helpers.metrics import metrics
+from shared.celery_config import new_user_activated_task_name, notify_task_name
+from shared.plan.service import PlanService
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -34,7 +33,7 @@ class NewUserActivatedTask(BaseCodecovTask, name=new_user_activated_task_name):
     def run_impl(self, db_session, org_ownerid, user_ownerid, *args, **kwargs):
         log.info(
             "New user activated",
-            extra=dict(org_ownerid=org_ownerid, user_ownerid=user_ownerid),
+            extra={"org_ownerid": org_ownerid, "user_ownerid": user_ownerid},
         )
         pulls_notified = []
 
@@ -55,18 +54,22 @@ class NewUserActivatedTask(BaseCodecovTask, name=new_user_activated_task_name):
                 # don't know decoration type used so skip
                 log.info(
                     "Skipping pull",
-                    extra=dict(
-                        org_ownerid=org_ownerid,
-                        user_ownerid=user_ownerid,
-                        repoid=pull.repoid,
-                        pullid=pull.pullid,
-                    ),
+                    extra={
+                        "org_ownerid": org_ownerid,
+                        "user_ownerid": user_ownerid,
+                        "repoid": pull.repoid,
+                        "pullid": pull.pullid,
+                    },
                 )
                 continue
 
             if self.possibly_resend_notifications(pull_commit_notifications, pull):
                 pulls_notified.append(
-                    dict(repoid=pull.repoid, pullid=pull.pullid, commitid=pull.head)
+                    {
+                        "repoid": pull.repoid,
+                        "pullid": pull.pullid,
+                        "commitid": pull.head,
+                    }
                 )
 
         return {
@@ -81,7 +84,7 @@ class NewUserActivatedTask(BaseCodecovTask, name=new_user_activated_task_name):
         owner = db_session.query(Owner).filter(Owner.ownerid == ownerid).first()
 
         if not owner:
-            log.info("Org not found", extra=dict(org_ownerid=ownerid))
+            log.info("Org not found", extra={"org_ownerid": ownerid})
             return False
 
         # do not access plan directly - only through PlanService
@@ -125,10 +128,10 @@ class NewUserActivatedTask(BaseCodecovTask, name=new_user_activated_task_name):
             commitid = pull.head
             log.info(
                 "Scheduling notify task",
-                extra=dict(repoid=repoid, pullid=pullid, commitid=pull.head),
+                extra={"repoid": repoid, "pullid": pullid, "commitid": pull.head},
             )
             self.app.tasks[notify_task_name].apply_async(
-                kwargs=dict(repoid=repoid, commitid=pull.head)
+                kwargs={"repoid": repoid, "commitid": pull.head}
             )
             was_notification_scheduled = True
 

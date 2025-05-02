@@ -1,6 +1,7 @@
 from unittest.mock import call
 
 import pytest
+
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 

@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 import pytest
 from django.db import connections
 from freezegun import freeze_time
-from shared.django_apps.ta_timeseries.models import Testrun
 
 from services.test_analytics.ta_timeseries import (
     calc_test_id,
@@ -16,6 +15,7 @@ from services.test_analytics.ta_timeseries import (
     insert_testrun,
     update_testrun_to_flaky,
 )
+from shared.django_apps.ta_timeseries.models import Testrun
 
 
 @pytest.mark.django_db(databases=["ta_timeseries"])

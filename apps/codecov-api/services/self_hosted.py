@@ -5,10 +5,10 @@ from typing import Optional
 from django.conf import settings
 from django.db import transaction
 from django.db.models import F, Func, Q, QuerySet
-from shared.license import get_current_license
 
 from codecov_auth.models import Owner
 from services import ServiceException
+from shared.license import get_current_license
 from utils.config import get_config
 
 

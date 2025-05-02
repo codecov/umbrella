@@ -6,8 +6,6 @@ import pytest
 from celery.exceptions import Retry
 from mock.mock import MagicMock
 from redis.exceptions import LockError
-from shared.reports.types import Change
-from shared.torngit.exceptions import TorngitClientError
 
 from database.models import Commit, Pull, Repository
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
@@ -15,6 +13,8 @@ from database.tests.factories.reports import TestFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from services.repository import EnrichedPull
 from services.yaml import UserYaml
+from shared.reports.types import Change
+from shared.torngit.exceptions import TorngitClientError
 from tasks.sync_pull import PullSyncTask
 from tests.helpers import mock_all_plans_and_tiers
 
@@ -100,7 +100,7 @@ def test_update_pull_commits_merged(
     task = PullSyncTask()
     enriched_pull = EnrichedPull(
         database_pull=pull,
-        provider_pull=dict(base=dict(branch="lookatthis"), head=dict(branch="thing")),
+        provider_pull={"base": {"branch": "lookatthis"}, "head": {"branch": "thing"}},
     )
     commits = [first_commit.commitid, third_commit.commitid]
     commits_at_base = {
@@ -120,7 +120,7 @@ def test_update_pull_commits_merged(
         }
     )
     mock_repo_provider = MagicMock(
-        get_commit=MagicMock(return_value=dict(parents=["1", "2"]))
+        get_commit=MagicMock(return_value={"parents": ["1", "2"]})
     )
     res = task.update_pull_commits(
         mock_repo_provider,
@@ -132,10 +132,10 @@ def test_update_pull_commits_merged(
     )
 
     apply_async.assert_called_once_with(
-        kwargs=dict(
-            repo_id=repository.repoid,
-            commit_id=head_commit.commitid,
-        )
+        kwargs={
+            "repo_id": repository.repoid,
+            "commit_id": head_commit.commitid,
+        }
     )
 
     assert res == {"merged_count": 2, "soft_deleted_count": 2}
@@ -184,16 +184,16 @@ def test_update_pull_commits_not_merged(
     dbsession.flush()
     task = PullSyncTask()
     enriched_pull = EnrichedPull(
-        database_pull=pull, provider_pull=dict(base=dict(branch="lookatthis"))
+        database_pull=pull, provider_pull={"base": {"branch": "lookatthis"}}
     )
     commits = [first_commit.commitid, third_commit.commitid]
     commits_at_base = {
         "commitid": first_commit.commitid,
         "parents": [{"commitid": third_commit.commitid, "parents": []}],
     }
-    current_yaml = UserYaml.from_dict(dict())
+    current_yaml = UserYaml.from_dict({})
     mock_repo_provider = MagicMock(
-        get_commit=MagicMock(return_value=dict(parents=["1", "2"]))
+        get_commit=MagicMock(return_value={"parents": ["1", "2"]})
     )
     res = task.update_pull_commits(
         mock_repo_provider,
@@ -455,7 +455,7 @@ def test_trigger_ai_pr_review(
     )
     enriched_pull = EnrichedPull(
         database_pull=pull,
-        provider_pull=dict(base=dict(branch="lookatthis"), labels=["ai-pr-review"]),
+        provider_pull={"base": {"branch": "lookatthis"}, "labels": ["ai-pr-review"]},
     )
     current_yaml = UserYaml.from_dict(
         {
@@ -468,7 +468,7 @@ def test_trigger_ai_pr_review(
     )
     task.trigger_ai_pr_review(enriched_pull, current_yaml)
     apply_async.assert_called_once_with(
-        kwargs=dict(repoid=pull.repoid, pullid=pull.pullid)
+        kwargs={"repoid": pull.repoid, "pullid": pull.pullid}
     )
 
     apply_async.reset_mock()
@@ -481,7 +481,7 @@ def test_trigger_ai_pr_review(
     )
     task.trigger_ai_pr_review(enriched_pull, current_yaml)
     apply_async.assert_called_once_with(
-        kwargs=dict(repoid=pull.repoid, pullid=pull.pullid)
+        kwargs={"repoid": pull.repoid, "pullid": pull.pullid}
     )
 
     apply_async.reset_mock()
@@ -495,7 +495,7 @@ def test_trigger_ai_pr_review(
     )
     task.trigger_ai_pr_review(enriched_pull, current_yaml)
     apply_async.assert_called_once_with(
-        kwargs=dict(repoid=pull.repoid, pullid=pull.pullid)
+        kwargs={"repoid": pull.repoid, "pullid": pull.pullid}
     )
 
     apply_async.reset_mock()
@@ -546,10 +546,10 @@ def test_trigger_process_flakes(dbsession, mocker, flake_detection, repository):
     )
     if flake_detection:
         apply_async.assert_called_once_with(
-            kwargs=dict(
-                repo_id=repository.repoid,
-                commit_id=commit.commitid,
-            )
+            kwargs={
+                "repo_id": repository.repoid,
+                "commit_id": commit.commitid,
+            }
         )
     else:
         apply_async.assert_not_called()

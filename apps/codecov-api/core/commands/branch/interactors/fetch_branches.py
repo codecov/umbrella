@@ -2,10 +2,10 @@ from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.db.models import OuterRef, Q, QuerySet, Subquery
-from shared.django_apps.core.models import Repository
 
 from codecov.commands.base import BaseInteractor
 from core.models import Commit
+from shared.django_apps.core.models import Repository
 
 
 class FetchRepoBranchesInteractor(BaseInteractor):

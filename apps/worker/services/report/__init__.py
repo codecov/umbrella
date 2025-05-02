@@ -10,17 +10,6 @@ import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
-from shared.api_archive.archive import ArchiveService
-from shared.django_apps.reports.models import ReportType
-from shared.reports.carryforward import generate_carryforward_report
-from shared.reports.enums import UploadState, UploadType
-from shared.reports.resources import Report
-from shared.reports.types import TOTALS_MAP
-from shared.storage.exceptions import FileNotInStorageError
-from shared.torngit.exceptions import TorngitError
-from shared.upload.constants import UploadErrorCode
-from shared.utils.sessions import Session, SessionType
-from shared.yaml import UserYaml
 from sqlalchemy.orm import Session as DbSession
 
 from database.models import Commit, Repository, Upload, UploadError
@@ -53,6 +42,17 @@ from services.report.prometheus_metrics import (
 from services.report.raw_upload_processor import process_raw_upload
 from services.repository import get_repo_provider_service
 from services.yaml.reader import get_paths_from_flags, read_yaml_field
+from shared.api_archive.archive import ArchiveService
+from shared.django_apps.reports.models import ReportType
+from shared.reports.carryforward import generate_carryforward_report
+from shared.reports.enums import UploadState, UploadType
+from shared.reports.resources import Report
+from shared.reports.types import TOTALS_MAP
+from shared.storage.exceptions import FileNotInStorageError
+from shared.torngit.exceptions import TorngitError
+from shared.upload.constants import UploadErrorCode
+from shared.utils.sessions import Session, SessionType
+from shared.yaml import UserYaml
 
 
 @dataclass
@@ -199,7 +199,7 @@ class ReportService(BaseReportService):
             if actual_report is not None:
                 log.info(
                     "Backfilling reports tables from commits.report",
-                    extra=dict(commitid=commit.commitid),
+                    extra={"commitid": commit.commitid},
                 )
                 # This case means the report exists in our system, it was just not saved
                 #   yet into the new models therefore it needs backfilling
@@ -264,7 +264,7 @@ class ReportService(BaseReportService):
         except FileNotInStorageError:
             log.warning(
                 "File for chunks not found in storage",
-                extra=dict(commit=commitid, repo=commit.repoid),
+                extra={"commit": commitid, "repo": commit.repoid},
             )
             return None
 
@@ -305,46 +305,46 @@ class ReportService(BaseReportService):
             ):
                 log.warning(
                     "One of the ancestors commit doesn't seem to have determined its parent yet",
-                    extra=dict(
-                        commit=commit.commitid,
-                        repoid=commit.repoid,
-                        current_parent_commit=parent_commit.commitid,
-                    ),
+                    extra={
+                        "commit": commit.commitid,
+                        "repoid": commit.repoid,
+                        "current_parent_commit": parent_commit.commitid,
+                    },
                 )
                 raise NotReadyToBuildReportYetError()
             log.info(
                 "Going from parent to their parent since they dont match the requisites for CFF",
-                extra=dict(
-                    commit=commit.commitid,
-                    repoid=commit.repoid,
-                    current_parent_commit=parent_commit.commitid,
-                    parent_tracking=parent_commit_tracking,
-                    current_state=parent_commit.state,
-                    new_parent_commit=parent_commit.parent_commit_id,
-                ),
+                extra={
+                    "commit": commit.commitid,
+                    "repoid": commit.repoid,
+                    "current_parent_commit": parent_commit.commitid,
+                    "parent_tracking": parent_commit_tracking,
+                    "current_state": parent_commit.state,
+                    "new_parent_commit": parent_commit.parent_commit_id,
+                },
             )
             parent_commit = parent_commit.get_parent_commit()
             count += 1
         if parent_commit is None:
             log.warning(
                 "No parent commit was found to be carriedforward from",
-                extra=dict(
-                    commit=commit.commitid,
-                    repoid=commit.repoid,
-                    parent_tracing=parent_commit_tracking,
-                ),
+                extra={
+                    "commit": commit.commitid,
+                    "repoid": commit.repoid,
+                    "parent_tracing": parent_commit_tracking,
+                },
             )
             return None
         if parent_commit.state not in ("complete", "skipped"):
             log.warning(
                 "None of the parent commits were in a complete state to be used as CFing base",
-                extra=dict(
-                    commit=commit.commitid,
-                    repoid=commit.repoid,
-                    parent_tracking=parent_commit_tracking,
-                    would_be_state=parent_commit.state,
-                    would_be_parent=parent_commit.commitid,
-                ),
+                extra={
+                    "commit": commit.commitid,
+                    "repoid": commit.repoid,
+                    "parent_tracking": parent_commit_tracking,
+                    "would_be_state": parent_commit.state,
+                    "would_be_parent": parent_commit.commitid,
+                },
             )
             return None
         return parent_commit
@@ -365,38 +365,38 @@ class ReportService(BaseReportService):
         except (RepositoryWithoutValidBotError, OwnerWithoutValidBotError) as exp:
             log.error(
                 "Failed to shift carryforward report lines",
-                extra=dict(
-                    reason="Can't get provider_service",
-                    commit=head_commit.commitid,
-                    error=str(exp),
-                ),
+                extra={
+                    "reason": "Can't get provider_service",
+                    "commit": head_commit.commitid,
+                    "error": str(exp),
+                },
             )
         except TorngitError as exp:
             log.error(
                 "Failed to shift carryforward report lines.",
-                extra=dict(
-                    reason="Can't get diff",
-                    commit=head_commit.commitid,
-                    error=str(exp),
-                    error_type=type(exp),
-                ),
+                extra={
+                    "reason": "Can't get diff",
+                    "commit": head_commit.commitid,
+                    "error": str(exp),
+                    "error_type": type(exp),
+                },
             )
         except SoftTimeLimitExceeded:
             raise
         except Exception:
             log.exception(
                 "Failed to shift carryforward report lines.",
-                extra=dict(
-                    reason="Unknown",
-                    commit=head_commit.commitid,
-                ),
+                extra={
+                    "reason": "Unknown",
+                    "commit": head_commit.commitid,
+                },
             )
         return carryforward_report
 
     def create_new_report_for_commit(self, commit: Commit) -> Report:
         log.info(
             "Creating new report for commit",
-            extra=dict(commit=commit.commitid, repoid=commit.repoid),
+            extra={"commit": commit.commitid, "repoid": commit.repoid},
         )
         if not self.current_yaml or not self.current_yaml.has_any_carryforward():
             return Report()
@@ -416,7 +416,7 @@ class ReportService(BaseReportService):
         if parent_commit is None:
             log.warning(
                 "Could not find parent for possible carryforward",
-                extra=dict(commit=commit.commitid, repoid=commit.repoid),
+                extra={"commit": commit.commitid, "repoid": commit.repoid},
             )
             return Report()
 
@@ -424,11 +424,11 @@ class ReportService(BaseReportService):
         if parent_report is None:
             log.warning(
                 "Could not carryforward report from another commit because parent has no report",
-                extra=dict(
-                    commit=commit.commitid,
-                    repoid=commit.repoid,
-                    parent_commit=parent_commit.commitid,
-                ),
+                extra={
+                    "commit": commit.commitid,
+                    "repoid": commit.repoid,
+                    "parent_commit": parent_commit.commitid,
+                },
             )
             return Report()
 
@@ -445,20 +445,20 @@ class ReportService(BaseReportService):
         )
         log.info(
             "Generating carriedforward report",
-            extra=dict(
-                commit=commit.commitid,
-                repoid=commit.repoid,
-                parent_commit=parent_commit.commitid,
-                flags_to_carryforward=flags_to_carryforward,
-                paths_to_carryforward=paths_to_carryforward,
-                parent_sessions=parent_report.sessions,
-            ),
+            extra={
+                "commit": commit.commitid,
+                "repoid": commit.repoid,
+                "parent_commit": parent_commit.commitid,
+                "flags_to_carryforward": flags_to_carryforward,
+                "paths_to_carryforward": paths_to_carryforward,
+                "parent_sessions": parent_report.sessions,
+            },
         )
         carryforward_report = generate_carryforward_report(
             parent_report,
             flags_to_carryforward,
             paths_to_carryforward,
-            session_extras=dict(carriedforward_from=parent_commit.commitid),
+            session_extras={"carriedforward_from": parent_commit.commitid},
         )
         # If the parent report has labels we also need to carryforward the label index
         # Considerations:
@@ -491,11 +491,11 @@ class ReportService(BaseReportService):
 
         log.info(
             "Parsing the raw report from storage",
-            extra=dict(
-                commit=upload.report.commit_id,
-                repoid=repo.repoid,
-                archive_url=archive_url,
-            ),
+            extra={
+                "commit": upload.report.commit_id,
+                "repoid": repo.repoid,
+                "archive_url": archive_url,
+            },
         )
 
         archive_file = archive_service.read_file(archive_url)
@@ -512,13 +512,13 @@ class ReportService(BaseReportService):
         if raw_report_count < 1:
             log.warning(
                 "Raw upload contains no uploaded files",
-                extra=dict(
-                    commit=upload.report.commit_id,
-                    repoid=repo.repoid,
-                    raw_report_count=raw_report_count,
-                    upload_version=upload_version,
-                    archive_url=archive_url,
-                ),
+                extra={
+                    "commit": upload.report.commit_id,
+                    "repoid": repo.repoid,
+                    "raw_report_count": raw_report_count,
+                    "upload_version": upload_version,
+                    "archive_url": archive_url,
+                },
             )
         RAW_UPLOAD_RAW_REPORT_COUNT.labels(version=upload_version).observe(
             raw_report_count
@@ -566,11 +566,11 @@ class ReportService(BaseReportService):
             sentry_sdk.capture_exception(e)
             log.info(
                 "Raw report file was not found",
-                extra=dict(
-                    reportid=reportid,
-                    commit_yaml=self.current_yaml.to_dict(),
-                    archive_url=archive_url,
-                ),
+                extra={
+                    "reportid": reportid,
+                    "commit_yaml": self.current_yaml.to_dict(),
+                    "archive_url": archive_url,
+                },
             )
             result.error = ProcessingError(
                 code=UploadErrorCode.FILE_NOT_IN_STORAGE,
@@ -583,7 +583,7 @@ class ReportService(BaseReportService):
             sentry_sdk.capture_exception(e)
             log.exception(
                 "Unknown error when fetching raw report from storage",
-                extra=dict(archive_path=archive_url),
+                extra={"archive_path": archive_url},
             )
             result.error = ProcessingError(
                 code=UploadErrorCode.UNKNOWN_STORAGE,
@@ -599,22 +599,24 @@ class ReportService(BaseReportService):
 
             log.info(
                 "Successfully processed report",
-                extra=dict(
-                    session=session.id,
-                    ci=f"{session.provider}:{session.build}:{session.job}",
-                    reportid=reportid,
-                    commit_yaml=self.current_yaml.to_dict(),
-                    content_len=raw_report.size,
-                ),
+                extra={
+                    "session": session.id,
+                    "ci": f"{session.provider}:{session.build}:{session.job}",
+                    "reportid": reportid,
+                    "commit_yaml": self.current_yaml.to_dict(),
+                    "content_len": raw_report.size,
+                },
             )
             return result
         except ReportExpiredException as r:
             sentry_sdk.capture_exception(r)
             log.info(
                 "Report is expired",
-                extra=dict(
-                    reportid=reportid, archive_path=archive_url, file_name=r.filename
-                ),
+                extra={
+                    "reportid": reportid,
+                    "archive_path": archive_url,
+                    "file_name": r.filename,
+                },
             )
             result.error = ProcessingError(
                 code=UploadErrorCode.REPORT_EXPIRED, params={}
@@ -623,14 +625,14 @@ class ReportService(BaseReportService):
             return result
         except ReportEmptyError as e:
             sentry_sdk.capture_exception(e)
-            log.warning("Report is empty", extra=dict(reportid=reportid))
+            log.warning("Report is empty", extra={"reportid": reportid})
             result.error = ProcessingError(code=UploadErrorCode.REPORT_EMPTY, params={})
             raw_report_info.error = result.error
             return result
         except SoftTimeLimitExceeded as e:
             sentry_sdk.capture_exception(e)
             log.warning(
-                "Timed out while processing report", extra=dict(reportid=reportid)
+                "Timed out while processing report", extra={"reportid": reportid}
             )
             result.error = ProcessingError(
                 code=UploadErrorCode.PROCESSING_TIMEOUT, params={}
@@ -642,7 +644,7 @@ class ReportService(BaseReportService):
             sentry_sdk.capture_exception(e)
             log.exception(
                 "Unknown error when processing raw upload",
-                extra=dict(archive_path=archive_url),
+                extra={"archive_path": archive_url},
             )
             result.error = ProcessingError(
                 code=UploadErrorCode.UNKNOWN_PROCESSING,
@@ -675,12 +677,12 @@ class ReportService(BaseReportService):
 
         log.info(
             "Calling update to Commit.Report",
-            extra=dict(
-                size=len(report_json),
-                ownerid=commit.repository.ownerid,
-                repoid=commit.repoid,
-                commitid=commit.commitid,
-            ),
+            extra={
+                "size": len(report_json),
+                "ownerid": commit.repository.ownerid,
+                "repoid": commit.repoid,
+                "commitid": commit.commitid,
+            },
         )
         # `report_json` is an `ArchiveField`, so this will trigger an upload
         # FIXME: we do an unnecessary `loads` roundtrip because of this abstraction,
@@ -708,13 +710,15 @@ class ReportService(BaseReportService):
             db_session.flush()
         log.info(
             "Archived report",
-            extra=dict(
-                repoid=commit.repoid,
-                commit=commit.commitid,
-                url=chunks_url,
-                number_sessions=len(report.sessions),
-                new_report_sessions=dict(itertools.islice(report.sessions.items(), 20)),
-            ),
+            extra={
+                "repoid": commit.repoid,
+                "commit": commit.commitid,
+                "url": chunks_url,
+                "number_sessions": len(report.sessions),
+                "new_report_sessions": dict(
+                    itertools.islice(report.sessions.items(), 20)
+                ),
+            },
         )
         return {"url": chunks_url}
 

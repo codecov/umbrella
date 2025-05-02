@@ -1,13 +1,12 @@
 from decimal import Decimal
 
-from shared.yaml.user_yaml import UserYaml
-
 from helpers.components import Component
 from services.yaml.reader import (
     get_components_from_yaml,
     get_paths_from_flags,
     round_number,
 )
+from shared.yaml.user_yaml import UserYaml
 
 
 class TestYamlReader(object):

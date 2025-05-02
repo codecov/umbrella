@@ -4,7 +4,6 @@ from typing import Any, Optional, TypedDict
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from shared.torngit.exceptions import TorngitClientError, TorngitError
 
 from services.comparison import ComparisonProxy, FilteredComparison
 from services.notification.notifiers.base import NotificationResult
@@ -17,6 +16,7 @@ from services.urls import (
     get_pull_url,
 )
 from services.yaml.reader import get_paths_from_flags
+from shared.torngit.exceptions import TorngitClientError, TorngitError
 
 log = logging.getLogger(__name__)
 
@@ -53,13 +53,13 @@ class ChecksNotifier(StatusNotifier):
 
     def get_notifier_filters(self) -> dict:
         flag_list = self.notifier_yaml_settings.get("flags") or []
-        return dict(
-            path_patterns=set(
+        return {
+            "path_patterns": set(
                 get_paths_from_flags(self.current_yaml, flag_list)
                 + (self.notifier_yaml_settings.get("paths") or [])
             ),
-            flags=flag_list,
-        )
+            "flags": flag_list,
+        }
 
     def get_upgrade_message(
         self, comparison: ComparisonProxy | FilteredComparison
@@ -98,12 +98,12 @@ class ChecksNotifier(StatusNotifier):
         if comparison.pull is None or ():
             log.debug(
                 "Falling back to commit_status: Not a pull request",
-                extra=dict(
-                    notifier=self.name,
-                    repoid=comparison.head.commit.repoid,
-                    notifier_title=self.title,
-                    commit=comparison.head.commit,
-                ),
+                extra={
+                    "notifier": self.name,
+                    "repoid": comparison.head.commit.repoid,
+                    "notifier_title": self.title,
+                    "commit": comparison.head.commit,
+                },
             )
             return NotificationResult(
                 notification_attempted=False,
@@ -118,12 +118,12 @@ class ChecksNotifier(StatusNotifier):
         ):
             log.debug(
                 "Falling back to commit_status: Pull request not in provider",
-                extra=dict(
-                    notifier=self.name,
-                    repoid=comparison.head.commit.repoid,
-                    notifier_title=self.title,
-                    commit=comparison.head.commit,
-                ),
+                extra={
+                    "notifier": self.name,
+                    "repoid": comparison.head.commit.repoid,
+                    "notifier_title": self.title,
+                    "commit": comparison.head.commit,
+                },
             )
             return NotificationResult(
                 notification_attempted=False,
@@ -135,12 +135,12 @@ class ChecksNotifier(StatusNotifier):
         if comparison.pull.state != "open":
             log.debug(
                 "Falling back to commit_status: Pull request closed",
-                extra=dict(
-                    notifier=self.name,
-                    repoid=comparison.head.commit.repoid,
-                    notifier_title=self.title,
-                    commit=comparison.head.commit,
-                ),
+                extra={
+                    "notifier": self.name,
+                    "repoid": comparison.head.commit.repoid,
+                    "notifier_title": self.title,
+                    "commit": comparison.head.commit,
+                },
             )
             return NotificationResult(
                 notification_attempted=False,
@@ -172,13 +172,13 @@ class ChecksNotifier(StatusNotifier):
         if statuses and statuses.get(status_title):
             log.debug(
                 "Falling back to commit_status: Status already exists for this commit",
-                extra=dict(
-                    notifier=self.name,
-                    repoid=comparison.head.commit.repoid,
-                    notifier_title=self.title,
-                    status_title=status_title,
-                    commit=comparison.head.commit,
-                ),
+                extra={
+                    "notifier": self.name,
+                    "repoid": comparison.head.commit.repoid,
+                    "notifier_title": self.title,
+                    "status_title": status_title,
+                    "commit": comparison.head.commit,
+                },
             )
             return NotificationResult(
                 notification_attempted=False,
@@ -238,11 +238,11 @@ class ChecksNotifier(StatusNotifier):
             log.warning(
                 "Unable to send checks notification to user due to a client-side error",
                 exc_info=True,
-                extra=dict(
-                    repoid=comparison.head.commit.repoid,
-                    commit=comparison.head.commit.commitid,
-                    notifier_name=self.name,
-                ),
+                extra={
+                    "repoid": comparison.head.commit.repoid,
+                    "commit": comparison.head.commit.commitid,
+                    "notifier_name": self.name,
+                },
             )
             return NotificationResult(
                 notification_attempted=True,
@@ -254,11 +254,11 @@ class ChecksNotifier(StatusNotifier):
             log.warning(
                 "Unable to send checks notification to user due to an unexpected error",
                 exc_info=True,
-                extra=dict(
-                    repoid=comparison.head.commit.repoid,
-                    commit=comparison.head.commit.commitid,
-                    notifier_name=self.name,
-                ),
+                extra={
+                    "repoid": comparison.head.commit.repoid,
+                    "commit": comparison.head.commit.commitid,
+                    "notifier_name": self.name,
+                },
             )
             return NotificationResult(
                 notification_attempted=True,
@@ -438,10 +438,10 @@ class ChecksNotifier(StatusNotifier):
             )
             log.info(
                 "Paginating annotations",
-                extra=dict(
-                    number_pages=len(annotation_pages),
-                    number_annotations=len(output.get("annotations")),
-                ),
+                extra={
+                    "number_pages": len(annotation_pages),
+                    "number_annotations": len(output.get("annotations")),
+                },
             )
             for annotation_page in annotation_pages:
                 async_to_sync(repository_service.update_check_run)(

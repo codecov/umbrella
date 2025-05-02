@@ -1,9 +1,9 @@
 import pytest
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
 from database.models import Owner, Repository
 from database.tests.factories import OwnerFactory, RepositoryFactory
 from services.github_marketplace import GitHubMarketplaceService
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from tasks.github_marketplace import SyncPlansTask
 
 # DONT WORRY, this is generated for the purposes of validation
@@ -40,9 +40,9 @@ class TestGHMarketplaceSyncPlansTask(object):
                 "id": 51984,  # Fake integration id, tested with a real one
             }
         }
-        mock_configuration.params["services"]["github_marketplace"] = dict(
-            use_stubbed=True
-        )
+        mock_configuration.params["services"]["github_marketplace"] = {
+            "use_stubbed": True
+        }
 
         owner = OwnerFactory.create(
             username="cc-test",
@@ -82,9 +82,9 @@ class TestGHMarketplaceSyncPlansTask(object):
                 "id": 51984,  # Fake integration id, tested with a real one
             }
         }
-        mock_configuration.params["services"]["github_marketplace"] = dict(
-            use_stubbed=True
-        )
+        mock_configuration.params["services"]["github_marketplace"] = {
+            "use_stubbed": True
+        }
 
         sender = {"login": "cc-test", "id": 3877742}
         account = {"type": "User", "id": 3877742, "login": "cc-test"}
@@ -120,9 +120,9 @@ class TestGHMarketplaceSyncPlansTask(object):
                 "id": 51984,  # Fake integration id, tested with a real one
             }
         }
-        mock_configuration.params["services"]["github_marketplace"] = dict(
-            use_stubbed=True
-        )
+        mock_configuration.params["services"]["github_marketplace"] = {
+            "use_stubbed": True
+        }
 
         sender = {"login": "cc-test", "id": 3877742}
         account = {"type": "Organization", "id": 123456, "login": "some-org"}
@@ -156,9 +156,9 @@ class TestGHMarketplaceSyncPlansTask(object):
                 "id": 51984,  # Fake integration id, tested with a real one
             }
         }
-        mock_configuration.params["services"]["github_marketplace"] = dict(
-            use_stubbed=True
-        )
+        mock_configuration.params["services"]["github_marketplace"] = {
+            "use_stubbed": True
+        }
 
         owner = OwnerFactory.create(
             username="cc-test",
@@ -241,9 +241,9 @@ class TestGHMarketplaceSyncPlansTask(object):
             "client_id": "testiouu71gdynyqxzk4",
             "client_secret": "3b4ab5b18be7155fdbb739e7f1ae277222fb12db",
         }
-        mock_configuration.params["services"]["github_marketplace"] = dict(
-            use_stubbed=True
-        )
+        mock_configuration.params["services"]["github_marketplace"] = {
+            "use_stubbed": True
+        }
 
         # create owner whose plan is actually inactive
         owner = OwnerFactory.create(

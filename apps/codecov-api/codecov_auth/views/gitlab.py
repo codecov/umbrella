@@ -6,13 +6,13 @@ from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.shortcuts import redirect
 from django.views import View
+
+from codecov_auth.views.base import LoginMixin, StateMixin
 from shared.django_apps.codecov_metrics.service.codecov_metrics import (
     UserOnboardingMetricsService,
 )
 from shared.torngit import Gitlab
 from shared.torngit.exceptions import TorngitError
-
-from codecov_auth.views.base import LoginMixin, StateMixin
 
 log = logging.getLogger(__name__)
 
@@ -24,18 +24,19 @@ class GitlabLoginView(LoginMixin, StateMixin, View):
     @property
     def repo_service_instance(self):
         return Gitlab(
-            oauth_consumer_token=dict(
-                key=settings.GITLAB_CLIENT_ID, secret=settings.GITLAB_CLIENT_SECRET
-            )
+            oauth_consumer_token={
+                "key": settings.GITLAB_CLIENT_ID,
+                "secret": settings.GITLAB_CLIENT_SECRET,
+            }
         )
 
     @property
     def redirect_info(self):
-        return dict(
-            redirect_uri=settings.GITLAB_REDIRECT_URI,
-            repo_service=Gitlab(),
-            client_id=settings.GITLAB_CLIENT_ID,
-        )
+        return {
+            "redirect_uri": settings.GITLAB_REDIRECT_URI,
+            "repo_service": Gitlab(),
+            "client_id": settings.GITLAB_CLIENT_ID,
+        }
 
     def get_url_to_redirect_to(self):
         redirect_info = self.redirect_info
@@ -45,13 +46,13 @@ class GitlabLoginView(LoginMixin, StateMixin, View):
         scope = settings.GITLAB_SCOPE
         log.info(f"Gitlab oauth with scope: '{scope}'")
 
-        query = dict(
-            response_type="code",
-            client_id=redirect_info["client_id"],
-            redirect_uri=redirect_info["redirect_uri"],
-            state=state,
-            scope=scope,
-        )
+        query = {
+            "response_type": "code",
+            "client_id": redirect_info["client_id"],
+            "redirect_uri": redirect_info["redirect_uri"],
+            "state": state,
+            "scope": scope,
+        }
         query_str = urlencode(query)
         return f"{base_url}?{query_str}"
 
@@ -63,9 +64,12 @@ class GitlabLoginView(LoginMixin, StateMixin, View):
         # Comply to torngit's token encoding
         user_dict["key"] = user_dict["access_token"]
         user_orgs = await repo_service.list_teams()
-        return dict(
-            user=user_dict, orgs=user_orgs, is_student=False, has_private_access=True
-        )
+        return {
+            "user": user_dict,
+            "orgs": user_orgs,
+            "is_student": False,
+            "has_private_access": True,
+        }
 
     def actual_login_step(self, request):
         state = request.GET.get("state")

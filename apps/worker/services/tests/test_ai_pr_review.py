@@ -1,10 +1,10 @@
 import json
 
 import pytest
-from shared.api_archive.archive import ArchiveService
 
 from database.tests.factories import OwnerFactory, RepositoryFactory
 from services.ai_pr_review import Diff, LineInfo, perform_review
+from shared.api_archive.archive import ArchiveService
 
 TEST_DIFF = """diff --git a/codecov_auth/signals.py b/codecov_auth/signals.py
 index d728f92f..37f333fb 100644

@@ -2,6 +2,13 @@ import enum
 from unittest.mock import PropertyMock, patch
 
 from django.test import TestCase
+
+from compare.commands.compare.interactors.fetch_impacted_files import (
+    ImpactedFileParameter,
+)
+from compare.tests.factories import CommitComparisonFactory
+from services.comparison import Comparison, ComparisonReport, PullRequestComparison
+from services.components import Component
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -11,13 +18,6 @@ from shared.django_apps.core.tests.factories import (
 from shared.reports.resources import Report, ReportFile
 from shared.reports.types import ReportLine
 from shared.utils.sessions import Session
-
-from compare.commands.compare.interactors.fetch_impacted_files import (
-    ImpactedFileParameter,
-)
-from compare.tests.factories import CommitComparisonFactory
-from services.comparison import Comparison, ComparisonReport, PullRequestComparison
-from services.components import Component
 
 from ..fetch_impacted_files import FetchImpactedFiles
 

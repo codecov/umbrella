@@ -41,7 +41,7 @@ class TestFeature(TestCase):
             # halved: [0, 33], [66, 99], [133, 166]
 
             buckets = complex_feature._buckets
-            assert list(map(lambda x: (x[0], x[1]), buckets)) == [
+            assert [(x[0], x[1]) for x in buckets] == [
                 (0, 33),
                 (66, 99),
                 (133, 166),

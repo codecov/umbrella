@@ -3,9 +3,6 @@ import logging
 from decimal import Decimal
 
 import sentry_sdk
-from shared.reports.enums import UploadState
-from shared.reports.resources import Report, ReportTotals
-from shared.yaml import UserYaml
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session as DbSession
 
@@ -14,6 +11,9 @@ from helpers.number import precise_round
 from services.report import delete_uploads_by_sessionid
 from services.report.raw_upload_processor import clear_carryforward_sessions
 from services.yaml.reader import read_yaml_field
+from shared.reports.enums import UploadState
+from shared.reports.resources import Report, ReportTotals
+from shared.yaml import UserYaml
 
 from .types import IntermediateReport, MergeResult, ProcessingResult
 
@@ -26,7 +26,7 @@ def merge_reports(
     master_report: Report,
     intermediate_reports: list[IntermediateReport],
 ) -> tuple[Report, MergeResult]:
-    session_mapping: dict[int, int] = dict()
+    session_mapping: dict[int, int] = {}
     deleted_sessions: set[int] = set()
 
     for intermediate_report in intermediate_reports:
@@ -154,17 +154,17 @@ def make_upload_totals(
     else:
         coverage = Decimal(0)
 
-    return dict(
-        upload_id=upload_id,
-        branches=totals.branches,
-        coverage=coverage,
-        hits=totals.hits,
-        lines=totals.lines,
-        methods=totals.methods,
-        misses=totals.misses,
-        partials=totals.partials,
-        files=totals.files,
-    )
+    return {
+        "upload_id": upload_id,
+        "branches": totals.branches,
+        "coverage": coverage,
+        "hits": totals.hits,
+        "lines": totals.lines,
+        "methods": totals.methods,
+        "misses": totals.misses,
+        "partials": totals.partials,
+        "files": totals.files,
+    }
 
 
 def get_joined_flag(commit_yaml: UserYaml, flags: list[str]) -> bool:

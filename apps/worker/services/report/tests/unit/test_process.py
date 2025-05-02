@@ -3,11 +3,6 @@ from unittest.mock import patch
 
 import pytest
 from lxml import etree
-from shared.reports.reportfile import ReportFile
-from shared.reports.resources import Report
-from shared.reports.types import LineSession, ReportLine, ReportTotals
-from shared.utils.sessions import Session
-from shared.yaml import UserYaml
 
 from helpers.exceptions import (
     CorruptRawReportError,
@@ -18,6 +13,11 @@ from services.report import raw_upload_processor as process
 from services.report.parser import LegacyReportParser
 from services.report.parser.types import LegacyParsedRawReport, ParsedUploadedReportFile
 from services.report.report_builder import ReportBuilder
+from shared.reports.reportfile import ReportFile
+from shared.reports.resources import Report
+from shared.reports.types import LineSession, ReportLine, ReportTotals
+from shared.utils.sessions import Session
+from shared.yaml import UserYaml
 from test_utils.base import BaseTestCase
 
 

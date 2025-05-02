@@ -1,15 +1,15 @@
 import datetime as dt
 
 import pytest
+
+from database.models import Branch
+from database.tests.factories import BranchFactory, CommitFactory, PullFactory
+from helpers.exceptions import RepositoryWithoutValidBotError
 from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitObjectNotFoundError,
     TorngitRepoNotFoundError,
 )
-
-from database.models import Branch
-from database.tests.factories import BranchFactory, CommitFactory, PullFactory
-from helpers.exceptions import RepositoryWithoutValidBotError
 from tasks.commit_update import CommitUpdateTask
 
 
@@ -66,9 +66,9 @@ class TestCommitUpdate(object):
             repository__owner__username="test-acc9",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
         )
-        mock_repo_provider.data = dict(
-            repo=dict(repoid=commit.repoid, commit=commit.commitid)
-        )
+        mock_repo_provider.data = {
+            "repo": {"repoid": commit.repoid, "commit": commit.commitid}
+        }
         dbsession.add(commit)
         dbsession.flush()
 

@@ -2,7 +2,6 @@ import logging
 from typing import Any, Dict
 
 import sentry_sdk
-from shared.yaml import UserYaml
 
 from app import celery_app
 from database.enums import ReportType
@@ -11,6 +10,7 @@ from helpers.github_installation import get_installation_name_for_owner_for_task
 from services.bundle_analysis.notify import BundleAnalysisNotifyService
 from services.bundle_analysis.notify.types import NotificationSuccess
 from services.lock_manager import LockManager, LockRetry, LockType
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -36,11 +36,11 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
 
         log.info(
             "Starting bundle analysis notify",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                commit_yaml=commit_yaml,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "commit_yaml": commit_yaml,
+            },
         )
 
         lock_manager = LockManager(
@@ -78,12 +78,12 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
     ):
         log.info(
             "Running bundle analysis notify",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                commit_yaml=commit_yaml,
-                parent_task=self.request.parent_id,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "commit_yaml": commit_yaml,
+                "parent_task": self.request.parent_id,
+            },
         )
 
         commit = (
@@ -112,13 +112,13 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
 
         log.info(
             "Finished bundle analysis notify",
-            extra=dict(
-                repoid=repoid,
-                commit=commitid,
-                commit_yaml=commit_yaml,
-                parent_task=self.request.parent_id,
-                result=result,
-            ),
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "commit_yaml": commit_yaml,
+                "parent_task": self.request.parent_id,
+                "result": result,
+            },
         )
 
         return {

@@ -248,7 +248,7 @@ class StatusProjectMixin(object):
         """
         log.info(
             "Applying removals_only behavior to project status",
-            extra=dict(commit=comparison.head.commit.commitid),
+            extra={"commit": comparison.head.commit.commitid},
         )
         impacted_files = comparison.get_impacted_files().get("files", [])
 
@@ -279,7 +279,7 @@ class StatusProjectMixin(object):
         helper_text = {}
         log.info(
             "Applying adjust_base behavior to project status",
-            extra=dict(commit=comparison.head.commit.commitid),
+            extra={"commit": comparison.head.commit.commitid},
         )
         # If the user defined a target value for project coverage
         # Adjusting the base won't make HEAD change in relation to the target value
@@ -287,7 +287,7 @@ class StatusProjectMixin(object):
         if self.notifier_yaml_settings.get("target") not in ("auto", None):
             log.info(
                 "Notifier settings specify target value. Skipping adjust_base.",
-                extra=dict(commit=comparison.head.commit.commitid),
+                extra={"commit": comparison.head.commit.commitid},
             )
             return None, helper_text
 
@@ -330,15 +330,15 @@ class StatusProjectMixin(object):
         head_coverage = Decimal(comparison.head.report.totals.coverage)
         log.info(
             "Adjust base applied to project status",
-            extra=dict(
-                commit=comparison.head.commit.commitid,
-                base_adjusted_coverage=base_adjusted_coverage,
-                threshold=threshold,
-                head_coverage=head_coverage,
-                hits_removed=hits_removed,
-                misses_removed=misses_removed,
-                partials_removed=partials_removed,
-            ),
+            extra={
+                "commit": comparison.head.commit.commitid,
+                "base_adjusted_coverage": base_adjusted_coverage,
+                "threshold": threshold,
+                "head_coverage": head_coverage,
+                "hits_removed": hits_removed,
+                "misses_removed": misses_removed,
+                "partials_removed": partials_removed,
+            },
         )
         base_adjusted_coverage = base_adjusted_coverage - threshold
 
@@ -391,7 +391,7 @@ class StatusProjectMixin(object):
         helper_text = {}
         log.info(
             "Applying fully_covered_patch behavior to project status",
-            extra=dict(commit=comparison.head.commit.commitid),
+            extra={"commit": comparison.head.commit.commitid},
         )
         impacted_files = comparison.get_impacted_files().get("files", [])
 
@@ -402,7 +402,7 @@ class StatusProjectMixin(object):
         if not no_unexpected_changes:
             log.info(
                 "Unexpected changes when applying patch_100 behavior",
-                extra=dict(commit=comparison.head.commit.commitid),
+                extra={"commit": comparison.head.commit.commitid},
             )
 
             # their comparison failed because of unexpected/indirect changes, give them helper text about it
@@ -482,10 +482,10 @@ class StatusProjectMixin(object):
                 if removed_code_behavior not in [False, "off"]:
                     log.warning(
                         "Unknown removed_code_behavior",
-                        extra=dict(
-                            removed_code_behavior=removed_code_behavior,
-                            commit_id=comparison.head.commit.commitid,
-                        ),
+                        extra={
+                            "removed_code_behavior": removed_code_behavior,
+                            "commit_id": comparison.head.commit.commitid,
+                        },
                     )
             # Possibly change status
             if removed_code_result:

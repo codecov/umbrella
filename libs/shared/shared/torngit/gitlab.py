@@ -412,12 +412,12 @@ class Gitlab(TorngitBaseAdapter):
         **args,
     ):
         if url_path.startswith("/"):
-            _log = dict(
-                event="api",
-                endpoint=url_path,
-                method=method,
-                bot=(token or self.token).get("username"),
-            )
+            _log = {
+                "event": "api",
+                "endpoint": url_path,
+                "method": method,
+                "bot": (token or self.token).get("username"),
+            }
             url_path = self.api_url.format(version) + url_path
         else:
             _log = {}
@@ -491,9 +491,10 @@ class Gitlab(TorngitBaseAdapter):
         ! raises TorngitRefreshTokenFailedError
         """
         creds_from_token = self._oauth_consumer_token()
-        creds_to_send = dict(
-            client_id=creds_from_token["key"], client_secret=creds_from_token["secret"]
-        )
+        creds_to_send = {
+            "client_id": creds_from_token["key"],
+            "client_secret": creds_from_token["secret"],
+        }
 
         if self.token.get("refresh_token") is None:
             raise TorngitCantRefreshTokenError(
@@ -583,9 +584,10 @@ class Gitlab(TorngitBaseAdapter):
             redirect_uri: !deprecated. The uri to redirect to. Needs to match redirect_uri used to get the code.
         """
         creds_from_token = self._oauth_consumer_token()
-        creds_to_send = dict(
-            client_id=creds_from_token["key"], client_secret=creds_from_token["secret"]
-        )
+        creds_to_send = {
+            "client_id": creds_from_token["key"],
+            "client_secret": creds_from_token["secret"],
+        }
         redirect_uri = redirect_uri or self.redirect_uri
         url = self.count_and_get_url_template("get_authenticated_user").substitute()
         # http://doc.gitlab.com/ce/api/oauth2.html
@@ -685,7 +687,7 @@ class Gitlab(TorngitBaseAdapter):
                     + mode
                     + d["diff"]
                 )
-            return super().diff_to_json("\n".join(map(lambda a: a["diff"], diff)))
+            return super().diff_to_json("\n".join((a["diff"] for a in diff)))
         else:
             return super().diff_to_json(self, diff)
 
@@ -771,23 +773,23 @@ class Gitlab(TorngitBaseAdapter):
                     else:
                         log.warning(
                             "Repo doesn't have default_branch, using main instead",
-                            extra=dict(repo=repo),
+                            extra={"repo": repo},
                         )
 
                     data.append(
-                        dict(
-                            owner=dict(
-                                service_id=str(owner_service_id),
-                                username=owner_username,
-                            ),
-                            repo=dict(
-                                service_id=str(repo["id"]),
-                                name=repo["path"],
-                                private=(repo["visibility"] != "public"),
-                                language=None,
-                                branch=branch,
-                            ),
-                        )
+                        {
+                            "owner": {
+                                "service_id": str(owner_service_id),
+                                "username": owner_username,
+                            },
+                            "repo": {
+                                "service_id": str(repo["id"]),
+                                "name": repo["path"],
+                                "private": (repo["visibility"] != "public"),
+                                "language": None,
+                                "branch": branch,
+                            },
+                        }
                     )
                 if len(repos) < 50:
                     break
@@ -820,7 +822,7 @@ class Gitlab(TorngitBaseAdapter):
             result = await self.api("get", url, token=token_to_use)
             return result.get("pipeline", {}).get("sha")
         except TorngitClientError as err:
-            log.warning("Failed to get pipeline details", extra=dict(error=err))
+            log.warning("Failed to get pipeline details", extra={"error": err})
             return None
 
     async def list_teams(self, token=None):
@@ -838,13 +840,13 @@ class Gitlab(TorngitBaseAdapter):
             groups = page
             all_groups.extend(
                 [
-                    dict(
-                        name=g["name"],
-                        id=g["id"],
-                        username=(g["full_path"].replace("/", ":")),
-                        avatar_url=g["avatar_url"],
-                        parent_id=g["parent_id"],
-                    )
+                    {
+                        "name": g["name"],
+                        "id": g["id"],
+                        "username": (g["full_path"].replace("/", ":")),
+                        "avatar_url": g["avatar_url"],
+                        "parent_id": g["parent_id"],
+                    }
                     for g in groups
                 ]
             )
@@ -871,7 +873,7 @@ class Gitlab(TorngitBaseAdapter):
             else:
                 log.info(
                     "Could not fetch pull base from diff_refs",
-                    extra=dict(pullid=pullid, pull_information=pull),
+                    extra={"pullid": pullid, "pull_information": pull},
                 )
                 # get list of commits and first one out
                 url = self.count_and_get_url_template(
@@ -880,12 +882,12 @@ class Gitlab(TorngitBaseAdapter):
                 all_commits = await self.api("get", url, token=token)
                 log.info(
                     "List of commits is fetched for PR calculation",
-                    extra=dict(
-                        commit_list=[
+                    extra={
+                        "commit_list": [
                             {"id": c.get("id"), "parents": c.get("parent_ids")}
                             for c in all_commits
                         ]
-                    ),
+                    },
                 )
                 first_commit = all_commits[-1]
                 if len(first_commit["parent_ids"]) > 0:
@@ -904,12 +906,12 @@ class Gitlab(TorngitBaseAdapter):
                 pull["state"] = "closed"
 
             return ProviderPull(
-                author=dict(
-                    id=str(pull["author"]["id"]) if pull["author"] else None,
-                    username=pull["author"]["username"] if pull["author"] else None,
-                ),
-                base=dict(branch=pull["target_branch"] or "", commitid=parent),
-                head=dict(branch=pull["source_branch"] or "", commitid=pull["sha"]),
+                author={
+                    "id": str(pull["author"]["id"]) if pull["author"] else None,
+                    "username": pull["author"]["username"] if pull["author"] else None,
+                },
+                base={"branch": pull["target_branch"] or "", "commitid": parent},
+                head={"branch": pull["source_branch"] or "", "commitid": pull["sha"]},
                 state=(
                     "open" if pull["state"] in ("opened", "reopened") else pull["state"]
                 ),
@@ -952,7 +954,7 @@ class Gitlab(TorngitBaseAdapter):
     ):
         token = self.get_token_by_type_if_none(token, TokenType.status)
         # https://docs.gitlab.com/ce/api/commits.html#post-the-build-status-to-a-commit
-        status = dict(error="failed", failure="failed").get(status, status)
+        status = {"error": "failed", "failure": "failed"}.get(status, status)
         api_path = self.count_and_get_url_template("set_commit_status").substitute(
             service_id=self.data["repo"]["service_id"], commit=commit
         )
@@ -960,13 +962,13 @@ class Gitlab(TorngitBaseAdapter):
             res = await self.api(
                 "post",
                 api_path,
-                body=dict(
-                    state=status,
-                    target_url=url,
-                    coverage=coverage,
-                    name=context,
-                    description=description,
-                ),
+                body={
+                    "state": status,
+                    "target_url": url,
+                    "coverage": coverage,
+                    "name": context,
+                    "description": description,
+                },
                 token=token,
             )
         except TorngitClientError:
@@ -981,13 +983,13 @@ class Gitlab(TorngitBaseAdapter):
             await self.api(
                 "post",
                 api_path,
-                body=dict(
-                    state=status,
-                    target_url=url,
-                    coverage=coverage,
-                    name=merge_commit[1],
-                    description=description,
-                ),
+                body={
+                    "state": status,
+                    "target_url": url,
+                    "coverage": coverage,
+                    "name": merge_commit[1],
+                    "description": description,
+                },
                 token=token,
             )
         return res
@@ -999,22 +1001,22 @@ class Gitlab(TorngitBaseAdapter):
         )
         statuses_response = await self.api("get", url, token=token)
 
-        _states = dict(
-            pending="pending",
-            running="pending",
-            success="success",
-            error="failure",
-            failed="failure",
-            canceled="failure",
-            created="pending",
-            manual="pending",
-            skipped="success",
-            waiting_for_resource="pending",
+        _states = {
+            "pending": "pending",
+            "running": "pending",
+            "success": "success",
+            "error": "failure",
+            "failed": "failure",
+            "canceled": "failure",
+            "created": "pending",
+            "manual": "pending",
+            "skipped": "success",
+            "waiting_for_resource": "pending",
             # These aren't on Github documentation but keeping here in case they're used somewhere
             # see https://github.com/codecov/shared/pull/30/ for context
-            cancelled="failure",
-            failure="failure",
-        )
+            "cancelled": "failure",
+            "failure": "failure",
+        }
         statuses = [
             {
                 "time": s.get("finished_at", s.get("created_at")),
@@ -1030,16 +1032,20 @@ class Gitlab(TorngitBaseAdapter):
             if status["time"] is None:
                 log.warning(
                     "Set a None time on Gitlab commit status",
-                    extra=dict(
-                        commit=commit, status=status, gitlab_data=statuses_response[idx]
-                    ),
+                    extra={
+                        "commit": commit,
+                        "status": status,
+                        "gitlab_data": statuses_response[idx],
+                    },
                 )
             if status["state"] is None:
                 log.warning(
                     "Set a None state on Gitlab commit status",
-                    extra=dict(
-                        commit=commit, status=status, gitlab_data=statuses_response[idx]
-                    ),
+                    extra={
+                        "commit": commit,
+                        "status": status,
+                        "gitlab_data": statuses_response[idx],
+                    },
                 )
 
         return Status(statuses)
@@ -1050,7 +1056,7 @@ class Gitlab(TorngitBaseAdapter):
         url = self.count_and_get_url_template("post_comment").substitute(
             service_id=self.data["repo"]["service_id"], pullid=pullid
         )
-        return await self.api("post", url, body=dict(body=body), token=token)
+        return await self.api("post", url, body={"body": body}, token=token)
 
     async def edit_comment(self, pullid, commentid, body, token=None):
         token = self.get_token_by_type_if_none(token, TokenType.comment)
@@ -1061,7 +1067,7 @@ class Gitlab(TorngitBaseAdapter):
             commentid=commentid,
         )
         try:
-            return await self.api("put", url, body=dict(body=body), token=token)
+            return await self.api("put", url, body={"body": body}, token=token)
         except TorngitClientError as ce:
             if ce.code == 404:
                 raise TorngitObjectNotFoundError(
@@ -1119,13 +1125,13 @@ class Gitlab(TorngitBaseAdapter):
                     name = authors[0]["name"]
                     break
 
-        return dict(
-            author=dict(id=_id, username=username, email=email, name=name),
-            message=res["message"],
-            parents=res["parent_ids"],
-            commitid=commit,
-            timestamp=res["committed_date"],
-        )
+        return {
+            "author": {"id": _id, "username": username, "email": email, "name": name},
+            "message": res["message"],
+            "parents": res["parent_ids"],
+            "commitid": commit,
+            "timestamp": res["committed_date"],
+        }
 
     async def get_pull_request_commits(self, pullid, token=None):
         # http://doc.gitlab.com/ce/api/merge_requests.html#get-single-mr-commits
@@ -1210,7 +1216,7 @@ class Gitlab(TorngitBaseAdapter):
                 if pull["sha"] == commit:
                     log.info(
                         "Unable to find PR from new endpoint, found from old one",
-                        extra=dict(commit=commit),
+                        extra={"commit": commit},
                     )
                     return pull["iid"]
 
@@ -1286,16 +1292,16 @@ class Gitlab(TorngitBaseAdapter):
 
         owner_service_id, owner_username = await self.get_owner_info_from_repo(res)
         repo_name = res["path"]
-        return dict(
-            owner=dict(service_id=str(owner_service_id), username=owner_username),
-            repo=dict(
-                service_id=str(res["id"]),
-                private=res["visibility"] != "public",
-                language=None,
-                branch=(res["default_branch"] or "main"),
-                name=repo_name,
-            ),
-        )
+        return {
+            "owner": {"service_id": str(owner_service_id), "username": owner_username},
+            "repo": {
+                "service_id": str(res["id"]),
+                "private": res["visibility"] != "public",
+                "language": None,
+                "branch": (res["default_branch"] or "main"),
+                "name": repo_name,
+            },
+        }
 
     async def get_repo_languages(self, token=None) -> List[str]:
         """
@@ -1310,14 +1316,14 @@ class Gitlab(TorngitBaseAdapter):
             service_id=self.data["repo"]["service_id"]
         )
         res = await self.api("get", url, token=token)
-        return list(k.lower() for k in res.keys())
+        return [k.lower() for k in res.keys()]
 
     async def get_source(self, path, ref, token=None):
         token = self.get_token_by_type_if_none(token, TokenType.read)
         # https://docs.gitlab.com/ce/api/repository_files.html#get-file-from-repository
         url = self.count_and_get_url_template("get_source").substitute(
             service_id=self.data["repo"]["service_id"],
-            path=urlencode(dict(a=path), quote_via=quote)[2:],
+            path=urlencode({"a": path}, quote_via=quote)[2:],
         )
         try:
             res = await self.api(
@@ -1334,7 +1340,7 @@ class Gitlab(TorngitBaseAdapter):
                 )
             raise
 
-        return dict(commitid=None, content=b64decode(res["content"]))
+        return {"commitid": None, "content": b64decode(res["content"])}
 
     async def get_compare(
         self, base, head, context=None, with_commits=True, token=None
@@ -1346,18 +1352,18 @@ class Gitlab(TorngitBaseAdapter):
         )
         compare = await self.api("get", url, token=token)
 
-        return dict(
-            diff=self.diff_to_json(compare["diffs"]),
-            commits=[
-                dict(
-                    commitid=c["id"],
-                    message=c["title"],
-                    timestamp=c["created_at"],
-                    author=dict(email=c["author_email"], name=c["author_name"]),
-                )
+        return {
+            "diff": self.diff_to_json(compare["diffs"]),
+            "commits": [
+                {
+                    "commitid": c["id"],
+                    "message": c["title"],
+                    "timestamp": c["created_at"],
+                    "author": {"email": c["author_email"], "name": c["author_name"]},
+                }
                 for c in compare["commits"]
             ][::-1],
-        )
+        }
 
     async def list_top_level_files(self, ref, token=None):
         return await self.list_files(ref, dir_path="", token=None)
@@ -1370,7 +1376,7 @@ class Gitlab(TorngitBaseAdapter):
         )
         async_generator = self.make_paginated_call(
             base_url=url,
-            default_kwargs=dict(ref=ref, path=dir_path),
+            default_kwargs={"ref": ref, "path": dir_path},
             max_per_page=100,
             token=token,
             counter_name="list_files",
@@ -1425,7 +1431,7 @@ class Gitlab(TorngitBaseAdapter):
         )
         async_generator = self.make_paginated_call(
             base_url=url,
-            default_kwargs=dict(),
+            default_kwargs={},
             max_per_page=100,
             token=token,
             counter_name="get_best_effort_branches",

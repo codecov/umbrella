@@ -9,6 +9,14 @@ from freezegun import freeze_time
 from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
+
+from billing.helpers import mock_all_plans_and_tiers
+from codecov_auth.models import (
+    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+    GithubAppInstallation,
+    Owner,
+    Service,
+)
 from shared.django_apps.core.tests.factories import (
     BranchFactory,
     CommitFactory,
@@ -18,14 +26,6 @@ from shared.django_apps.core.tests.factories import (
 )
 from shared.plan.constants import PlanName
 from shared.utils.test_utils import mock_config_helper
-
-from billing.helpers import mock_all_plans_and_tiers
-from codecov_auth.models import (
-    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-    GithubAppInstallation,
-    Owner,
-    Service,
-)
 from webhook_handlers.constants import (
     GitHubHTTPHeaders,
     GitHubWebhookEvents,
@@ -581,14 +581,14 @@ class GithubWebhookHandlerTests(APITestCase):
         # Because we throw these into a set we need to order them here
         # In practive it doesn't matter, but for the test it does.
         kwargs["repos_affected"].sort()
-        assert kwargs == dict(
-            ownerid=owner.ownerid,
-            username=username,
-            sync_teams=False,
-            sync_repos=True,
-            using_integration=True,
-            repos_affected=[("12321", "R_kgDOG2tZYQ"), ("12343", "R_kgDOG2tABC")],
-        )
+        assert kwargs == {
+            "ownerid": owner.ownerid,
+            "username": username,
+            "sync_teams": False,
+            "sync_repos": True,
+            "using_integration": True,
+            "repos_affected": [("12321", "R_kgDOG2tZYQ"), ("12343", "R_kgDOG2tABC")],
+        }
 
     @patch("shared.events.amplitude.AmplitudeEventPublisher.publish")
     @patch("services.task.TaskService.refresh")
@@ -1097,14 +1097,14 @@ class GithubWebhookHandlerTests(APITestCase):
         # Because we throw these into a set we need to order them here
         # In practive it doesn't matter, but for the test it does.
         kwargs["repos_affected"].sort()
-        assert kwargs == dict(
-            ownerid=owner.ownerid,
-            username=owner.username,
-            sync_teams=False,
-            sync_repos=True,
-            using_integration=True,
-            repos_affected=[("12321", "R_kgDOG2tZYQ"), ("12343", "R_kgDOG2tABC")],
-        )
+        assert kwargs == {
+            "ownerid": owner.ownerid,
+            "username": owner.username,
+            "sync_teams": False,
+            "sync_repos": True,
+            "using_integration": True,
+            "repos_affected": [("12321", "R_kgDOG2tZYQ"), ("12343", "R_kgDOG2tABC")],
+        }
 
     @patch("services.task.TaskService.refresh")
     def test_organization_with_removed_action_removes_user_from_org_and_activated_user_list(

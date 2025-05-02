@@ -1,9 +1,9 @@
 from dal import autocomplete
 from django import forms
-from shared.django_apps.rollouts.models import FeatureFlagVariant
 
 from codecov_auth.models import Owner
 from core.models import Repository
+from shared.django_apps.rollouts.models import FeatureFlagVariant
 
 
 class AutocompleteSearchForm(forms.ModelForm):

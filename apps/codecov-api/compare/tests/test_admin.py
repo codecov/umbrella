@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.urls import reverse
+
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
 
 from .factories import CommitComparisonFactory

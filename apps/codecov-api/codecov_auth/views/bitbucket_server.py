@@ -8,11 +8,11 @@ from django.conf import settings
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.views import View
-from shared.torngit import BitbucketServer
-from shared.torngit.exceptions import TorngitServerFailureError
 
 from codecov_auth.models import SERVICE_BITBUCKET_SERVER
 from codecov_auth.views.base import LoginMixin
+from shared.torngit import BitbucketServer
+from shared.torngit.exceptions import TorngitServerFailureError
 from utils.encryption import encryptor
 
 log = logging.getLogger(__name__)
@@ -23,10 +23,10 @@ class BitbucketServerLoginView(View, LoginMixin):
 
     async def fetch_user_data(self, token):
         repo_service = BitbucketServer(
-            oauth_consumer_token=dict(
-                key=settings.BITBUCKET_SERVER_CLIENT_ID,
-                secret=settings.BITBUCKET_SERVER_CLIENT_SECRET,
-            ),
+            oauth_consumer_token={
+                "key": settings.BITBUCKET_SERVER_CLIENT_ID,
+                "secret": settings.BITBUCKET_SERVER_CLIENT_SECRET,
+            },
             token=token,
         )
         # Whoami? Get the user
@@ -43,21 +43,21 @@ class BitbucketServerLoginView(View, LoginMixin):
             "login": user["name"],
         }
         user_orgs = await repo_service.list_teams()
-        return dict(
-            user=authenticated_user,
-            orgs=user_orgs,
-            is_student=False,
-            has_private_access=True,
-        )
+        return {
+            "user": authenticated_user,
+            "orgs": user_orgs,
+            "is_student": False,
+            "has_private_access": True,
+        }
 
     async def redirect_to_bitbucket_server_step(self, request):
         # And the consumer needs to have the defined client id. The secret is ignored.
         # https://developer.atlassian.com/server/jira/platform/oauth/
         repo_service = BitbucketServer(
-            oauth_consumer_token=dict(
-                key=settings.BITBUCKET_SERVER_CLIENT_ID,
-                secret="",
-            )
+            oauth_consumer_token={
+                "key": settings.BITBUCKET_SERVER_CLIENT_ID,
+                "secret": "",
+            }
         )
         # In this part we make a request for the unauthorized request token.
         # Here the user will be redirected to the authorize page and allow our app to be used.
@@ -76,7 +76,7 @@ class BitbucketServerLoginView(View, LoginMixin):
             + base64.b64encode(auth_token_secret.encode())
         ).decode()
 
-        url_params = urlencode(dict(oauth_token=auth_token))
+        url_params = urlencode({"oauth_token": auth_token})
         authorize_url = f"{settings.BITBUCKET_SERVER_URL}/plugins/servlet/oauth/authorize?{url_params}"
         response = redirect(authorize_url)
         response.set_signed_cookie(
@@ -104,10 +104,10 @@ class BitbucketServerLoginView(View, LoginMixin):
         ]
         token = {"key": cookie_key, "secret": cookie_secret}
         repo_service = BitbucketServer(
-            oauth_consumer_token=dict(
-                key=settings.BITBUCKET_SERVER_CLIENT_ID,
-                secret=settings.BITBUCKET_SERVER_CLIENT_SECRET,
-            ),
+            oauth_consumer_token={
+                "key": settings.BITBUCKET_SERVER_CLIENT_ID,
+                "secret": settings.BITBUCKET_SERVER_CLIENT_SECRET,
+            },
             token=token,
         )
         # Get the access token from the request token
@@ -122,14 +122,14 @@ class BitbucketServerLoginView(View, LoginMixin):
         auth_token_secret = access_token["oauth_token_secret"]
 
         user_dict = await self.fetch_user_data(
-            dict(key=auth_token, secret=auth_token_secret)
+            {"key": auth_token, "secret": auth_token_secret}
         )
 
         def async_login():
             user = self.get_and_modify_owner(user_dict, request)
             self.login_owner(user, request, response)
             log.info(
-                "User (async) successfully logged in", extra=dict(ownerid=user.ownerid)
+                "User (async) successfully logged in", extra={"ownerid": user.ownerid}
             )
 
         force_sync = threading.Thread(target=async_login)

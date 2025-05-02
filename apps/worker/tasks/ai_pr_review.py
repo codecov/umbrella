@@ -24,7 +24,9 @@ class AiPrReviewTask(BaseCodecovTask, name="app.tasks.ai_pr_review.AiPrReview"):
         pullid: int,
         **kwargs,
     ):
-        log.info("Starting AI PR review task", extra=dict(repoid=repoid, pullid=pullid))
+        log.info(
+            "Starting AI PR review task", extra={"repoid": repoid, "pullid": pullid}
+        )
 
         repository = db_session.query(Repository).filter_by(repoid=repoid).first()
         assert repository
@@ -38,7 +40,7 @@ class AiPrReviewTask(BaseCodecovTask, name="app.tasks.ai_pr_review.AiPrReview"):
         except RepositoryWithoutValidBotError:
             log.warning(
                 "No valid bot found for repo",
-                extra=dict(pullid=pullid, repoid=repoid),
+                extra={"pullid": pullid, "repoid": repoid},
                 exc_info=True,
             )
             return {"successful": False, "error": "no_bot"}

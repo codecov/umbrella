@@ -4,8 +4,6 @@ from typing import Literal
 import orjson
 import sentry_sdk
 from lxml import etree
-from shared.metrics import Counter, Histogram
-from shared.reports.resources import Report
 
 from helpers.exceptions import CorruptRawReportError
 from helpers.metrics import KiB, MiB
@@ -13,6 +11,8 @@ from services.report.languages.base import BaseLanguageProcessor
 from services.report.languages.helpers import remove_non_ascii
 from services.report.parser.types import ParsedUploadedReportFile
 from services.report.report_builder import ReportBuilder
+from shared.metrics import Counter, Histogram
+from shared.reports.resources import Report
 
 from .languages.bullseye import BullseyeProcessor
 from .languages.clover import CloverProcessor
@@ -145,7 +145,7 @@ def process_report(
     if b"<classycle " in raw_report and b"</classycle>" in raw_report:
         log.warning(
             "Ignored <classycle> report",
-            extra=dict(report_filename=report_filename, first_line=first_line[:100]),
+            extra={"report_filename": report_filename, "first_line": first_line[:100]},
         )
         return None
 
@@ -216,11 +216,11 @@ def process_report(
             except CorruptRawReportError as e:
                 log.warning(
                     "Processor matched file but later a problem with file was discovered",
-                    extra=dict(
-                        processor_name=processor_name,
-                        expected_format=e.expected_format,
-                        corruption_error=e.corruption_error,
-                    ),
+                    extra={
+                        "processor_name": processor_name,
+                        "expected_format": e.expected_format,
+                        "corruption_error": e.corruption_error,
+                    },
                     exc_info=True,
                 )
                 RAW_REPORT_PROCESSOR_COUNTER.labels(
@@ -234,10 +234,10 @@ def process_report(
                 raise
     log.warning(
         "File format could not be recognized",
-        extra=dict(
-            report_filename=report_filename,
-            first_line=first_line[:100],
-            report_type=report_type,
-        ),
+        extra={
+            "report_filename": report_filename,
+            "first_line": first_line[:100],
+            "report_type": report_type,
+        },
     )
     return None

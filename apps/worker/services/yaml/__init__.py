@@ -1,18 +1,17 @@
 import logging
 from typing import Any, Mapping
 
-from shared.django_apps.utils.model_utils import get_ownerid_if_member
-from shared.torngit.exceptions import TorngitClientError, TorngitError
-from shared.validation.exceptions import InvalidYamlException
-from shared.yaml import UserYaml
-from shared.yaml.user_yaml import OwnerContext
-
 from database.enums import CommitErrorTypes
 from database.models import Commit
 from database.models.core import Repository
 from helpers.save_commit_error import save_commit_error
 from services.yaml.fetcher import fetch_commit_yaml_from_provider
 from services.yaml.reader import read_yaml_field
+from shared.django_apps.utils.model_utils import get_ownerid_if_member
+from shared.torngit.exceptions import TorngitClientError, TorngitError
+from shared.validation.exceptions import InvalidYamlException
+from shared.yaml import UserYaml
+from shared.yaml.user_yaml import OwnerContext
 
 log = logging.getLogger(__name__)
 
@@ -56,50 +55,50 @@ async def get_current_yaml(commit: Commit, repository_service) -> UserYaml:
         save_commit_error(
             commit,
             error_code=CommitErrorTypes.INVALID_YAML.value,
-            error_params=dict(
-                repoid=repository.repoid,
-                commit_yaml=commit_yaml,
-                error_location=ex.error_location,
-            ),
+            error_params={
+                "repoid": repository.repoid,
+                "commit_yaml": commit_yaml,
+                "error_location": ex.error_location,
+            },
         )
 
         log.warning(
             "Unable to use yaml from commit because it is invalid",
-            extra=dict(
-                repoid=repository.repoid,
-                commit=commit.commitid,
-                error_location=ex.error_location,
-            ),
+            extra={
+                "repoid": repository.repoid,
+                "commit": commit.commitid,
+                "error_location": ex.error_location,
+            },
             exc_info=True,
         )
     except TorngitClientError:
         save_commit_error(
             commit,
             error_code=CommitErrorTypes.YAML_CLIENT_ERROR.value,
-            error_params=dict(
-                repoid=repository.repoid,
-                commit_yaml=commit_yaml,
-            ),
+            error_params={
+                "repoid": repository.repoid,
+                "commit_yaml": commit_yaml,
+            },
         )
 
         log.warning(
             "Unable to use yaml from commit because it cannot be fetched due to client issues",
-            extra=dict(repoid=repository.repoid, commit=commit.commitid),
+            extra={"repoid": repository.repoid, "commit": commit.commitid},
             exc_info=True,
         )
     except TorngitError:
         save_commit_error(
             commit,
             error_code=CommitErrorTypes.YAML_UNKNOWN_ERROR.value,
-            error_params=dict(
-                repoid=repository.repoid,
-                commit_yaml=commit_yaml,
-            ),
+            error_params={
+                "repoid": repository.repoid,
+                "commit_yaml": commit_yaml,
+            },
         )
 
         log.warning(
             "Unable to use yaml from commit because it cannot be fetched due to unknown issues",
-            extra=dict(repoid=repository.repoid, commit=commit.commitid),
+            extra={"repoid": repository.repoid, "commit": commit.commitid},
             exc_info=True,
         )
     context = OwnerContext(

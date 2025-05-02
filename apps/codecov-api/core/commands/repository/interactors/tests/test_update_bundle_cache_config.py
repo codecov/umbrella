@@ -1,13 +1,13 @@
 import pytest
 from asgiref.sync import async_to_sync
 from django.test import TestCase
+
+from codecov.commands.exceptions import ValidationError
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
-
-from codecov.commands.exceptions import ValidationError
 
 from ..update_bundle_cache_config import UpdateBundleCacheConfigInteractor
 

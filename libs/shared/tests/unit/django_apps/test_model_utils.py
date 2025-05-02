@@ -5,7 +5,7 @@ from shared.django_apps.utils.model_utils import get_ownerid_if_member
 
 
 class TestMigrationUtils:
-    @pytest.mark.django_db(databases={"default"})
+    @pytest.mark.django_db
     def test_get_ownerid_if_member(self):
         test_owner_id = 123
         valid_owner_id = 456

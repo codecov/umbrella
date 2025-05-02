@@ -18,12 +18,16 @@ def get_owner_or_appropriate_bot(owner: Owner, repoid: int | None = None) -> Own
     if owner.bot is not None and owner.bot.oauth_token is not None:
         log.info(
             "Owner has specific bot",
-            extra=dict(botid=owner.bot.ownerid, ownerid=owner.ownerid, repoid=repoid),
+            extra={
+                "botid": owner.bot.ownerid,
+                "ownerid": owner.ownerid,
+                "repoid": repoid,
+            },
         )
         return owner.bot
     elif owner.oauth_token is not None:
         log.info(
-            "No bot, using owner", extra=dict(ownerid=owner.ownerid, repoid=repoid)
+            "No bot, using owner", extra={"ownerid": owner.ownerid, "repoid": repoid}
         )
         return owner
     raise OwnerWithoutValidBotError()

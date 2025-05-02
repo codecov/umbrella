@@ -298,7 +298,7 @@ class PGDriver:
     ):
         tests_to_write: dict[str, dict[str, Any]] = {}
         test_instances_to_write: list[dict[str, Any]] = []
-        daily_totals: dict[str, DailyTotals] = dict()
+        daily_totals: dict[str, DailyTotals] = {}
         test_flag_bridge_data: list[dict] = []
 
         repo_flag_ids = get_repo_flag_ids(self.db_session, repo_id, upload.flag_names)

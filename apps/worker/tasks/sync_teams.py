@@ -2,11 +2,11 @@ import logging
 from datetime import datetime
 
 from asgiref.sync import async_to_sync
-from shared.celery_config import sync_teams_task_name
 
 from app import celery_app
 from database.models import Owner
 from services.owner import get_owner_provider_service
+from shared.celery_config import sync_teams_task_name
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ class SyncTeamsTask(BaseCodecovTask, name=sync_teams_task_name):
     ignore_result = False
 
     def run_impl(self, db_session, ownerid, *, username=None, **kwargs):
-        log.info("Sync teams", extra=dict(ownerid=ownerid, username=username))
+        log.info("Sync teams", extra={"ownerid": ownerid, "username": username})
         owner = db_session.query(Owner).filter(Owner.ownerid == ownerid).first()
 
         assert owner, "Owner not found"
@@ -32,13 +32,13 @@ class SyncTeamsTask(BaseCodecovTask, name=sync_teams_task_name):
         updated_teams = []
 
         for team in teams:
-            team_data = dict(
-                username=team["username"],
-                name=team["name"],
-                email=team.get("email"),
-                avatar_url=team.get("avatar_url"),
-                parent_service_id=team.get("parent_id"),
-            )
+            team_data = {
+                "username": team["username"],
+                "name": team["name"],
+                "email": team.get("email"),
+                "avatar_url": team.get("avatar_url"),
+                "parent_service_id": team.get("parent_id"),
+            }
             team_ownerid = self.upsert_team(
                 db_session, service, str(team["id"]), team_data
             )
@@ -51,12 +51,12 @@ class SyncTeamsTask(BaseCodecovTask, name=sync_teams_task_name):
         if removed_orgs:
             log.warning(
                 "Owner had access to organization that are being removed",
-                extra=dict(
-                    old_orgs=owner.organizations,
-                    new_orgs=team_ids,
-                    removed_orgs=sorted(removed_orgs),
-                    ownerid=ownerid,
-                ),
+                extra={
+                    "old_orgs": owner.organizations,
+                    "new_orgs": team_ids,
+                    "removed_orgs": sorted(removed_orgs),
+                    "ownerid": ownerid,
+                },
             )
 
         owner.updatestamp = datetime.now()
@@ -65,7 +65,7 @@ class SyncTeamsTask(BaseCodecovTask, name=sync_teams_task_name):
     def upsert_team(self, db_session, service, service_id, data):
         log.info(
             "Upserting team",
-            extra=dict(git_service=service, service_id=service_id, data=data),
+            extra={"git_service": service, "service_id": service_id, "data": data},
         )
         team = (
             db_session.query(Owner)

@@ -5,15 +5,15 @@ from typing import Any, Dict
 from dateutil.relativedelta import relativedelta
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
+
+from codecov_auth.models import Owner, Plan
+from services.billing import BillingService
+from services.sentry import send_user_webhook as send_sentry_webhook
 from shared.plan.constants import (
     TEAM_PLAN_MAX_USERS,
     TierName,
 )
 from shared.plan.service import PlanService
-
-from codecov_auth.models import Owner, Plan
-from services.billing import BillingService
-from services.sentry import send_user_webhook as send_sentry_webhook
 
 log = logging.getLogger(__name__)
 
@@ -237,11 +237,11 @@ class ScheduleDetailSerializer(serializers.Serializer):
             # after manual intervention on a subscription.
             log.error(
                 "Expecting schedule object to have 2 phases, returning None",
-                extra=dict(
-                    ownerid=schedule.metadata.get("obo_organization"),
-                    requesting_user_id=schedule.metadata.get("obo"),
-                    phases=schedule.get("phases", "no phases"),
-                ),
+                extra={
+                    "ownerid": schedule.metadata.get("obo_organization"),
+                    "requesting_user_id": schedule.metadata.get("obo"),
+                    "phases": schedule.get("phases", "no phases"),
+                },
             )
             return None
 

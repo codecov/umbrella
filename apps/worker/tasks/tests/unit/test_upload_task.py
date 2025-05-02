@@ -8,12 +8,6 @@ import pytest
 from celery.exceptions import Retry
 from mock import AsyncMock, call
 from redis.exceptions import LockError
-from shared.helpers.redis import get_redis_connection
-from shared.reports.enums import UploadState, UploadType
-from shared.torngit import GitlabEnterprise
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
-from shared.torngit.gitlab import Gitlab
-from shared.utils.sessions import SessionType
 
 from database.enums import ReportType
 from database.models import Upload
@@ -29,6 +23,12 @@ from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.log_context import LogContext, set_log_context
 from services.report import NotReadyToBuildReportYetError, ReportService
+from shared.helpers.redis import get_redis_connection
+from shared.reports.enums import UploadState, UploadType
+from shared.torngit import GitlabEnterprise
+from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.torngit.gitlab import Gitlab
+from shared.utils.sessions import SessionType
 from tasks.bundle_analysis_notify import bundle_analysis_notify_task
 from tasks.bundle_analysis_processor import bundle_analysis_processor_task
 from tasks.test_results_finisher import test_results_finisher_task
@@ -123,7 +123,7 @@ def clear_log_context(mocker):
 
 @pytest.mark.integration
 class TestUploadTaskIntegration(object):
-    @pytest.mark.django_db(databases={"default"}, transaction=True)
+    @pytest.mark.django_db
     def test_upload_task_call(
         self,
         mocker,
@@ -191,11 +191,11 @@ class TestUploadTaskIntegration(object):
                 "upload_pk": first_session.id,
             },
         )
-        kwargs = dict(
-            repoid=commit.repoid,
-            commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            commit_yaml={"codecov": {"max_report_age": "1y ago"}},
-        )
+        kwargs = {
+            "repoid": commit.repoid,
+            "commitid": "abf6d4df662c47e32460020ab14abf9303581429",
+            "commit_yaml": {"codecov": {"max_report_age": "1y ago"}},
+        }
         kwargs[_kwargs_key(UploadFlow)] = mocker.ANY
         finisher = upload_finisher_task.signature(kwargs=kwargs)
         mocked_chord.assert_called_with([processor], finisher)
@@ -223,7 +223,7 @@ class TestUploadTaskIntegration(object):
         ]
         mock_checkpoint_submit.assert_has_calls(calls)
 
-    @pytest.mark.django_db(databases={"default"}, transaction=True)
+    @pytest.mark.django_db
     def test_upload_task_call_bundle_analysis(
         self,
         mocker,
@@ -293,7 +293,7 @@ class TestUploadTaskIntegration(object):
         )
         chain.assert_called_with([processor_sig, notify_sig])
 
-    @pytest.mark.django_db(databases={"default"}, transaction=True)
+    @pytest.mark.django_db
     def test_upload_task_call_bundle_analysis_no_upload(
         self,
         mocker,
@@ -360,7 +360,7 @@ class TestUploadTaskIntegration(object):
         )
         assert call([processor_sig]) in chain.mock_calls
 
-    @pytest.mark.django_db(databases={"default"}, transaction=True)
+    @pytest.mark.django_db
     def test_upload_task_call_test_results(
         self,
         mocker,
@@ -424,19 +424,19 @@ class TestUploadTaskIntegration(object):
             ],
             impl_type="old",
         )
-        kwargs = dict(
-            repoid=commit.repoid,
-            commitid=commit.commitid,
-            commit_yaml={"codecov": {"max_report_age": "1y ago"}},
-            checkpoints_TestResultsFlow=None,
-            impl_type="old",
-        )
+        kwargs = {
+            "repoid": commit.repoid,
+            "commitid": commit.commitid,
+            "commit_yaml": {"codecov": {"max_report_age": "1y ago"}},
+            "checkpoints_TestResultsFlow": None,
+            "impl_type": "old",
+        }
 
         kwargs[_kwargs_key(TestResultsFlow)] = mocker.ANY
         notify_sig = test_results_finisher_task.signature(kwargs=kwargs)
         chain.assert_called_with(*[processor_sig, notify_sig])
 
-    @pytest.mark.django_db(databases={"default"}, transaction=True)
+    @pytest.mark.django_db
     def test_upload_task_call_new_ta_tasks(
         self,
         mocker,
@@ -534,13 +534,13 @@ class TestUploadTaskIntegration(object):
             ],
             impl_type="both",
         )
-        kwargs = dict(
-            repoid=commit.repoid,
-            commitid=commit.commitid,
-            commit_yaml={"codecov": {"max_report_age": "1y ago"}},
-            checkpoints_TestResultsFlow=None,
-            impl_type="both",
-        )
+        kwargs = {
+            "repoid": commit.repoid,
+            "commitid": commit.commitid,
+            "commit_yaml": {"codecov": {"max_report_age": "1y ago"}},
+            "checkpoints_TestResultsFlow": None,
+            "impl_type": "both",
+        }
 
         kwargs[_kwargs_key(TestResultsFlow)] = mocker.ANY
         notify_sig = test_results_finisher_task.signature(kwargs=kwargs)
@@ -581,7 +581,7 @@ class TestUploadTaskIntegration(object):
         assert commit.message == ""
         assert commit.parent_commit_id is None
 
-    @pytest.mark.django_db(databases={"default"}, transaction=True)
+    @pytest.mark.django_db
     def test_upload_task_upload_processing_delay_not_enough_delay(
         self,
         mocker,
@@ -632,7 +632,7 @@ class TestUploadTaskIntegration(object):
         assert redis.exists(f"uploads/{commit.repoid}/{commit.commitid}")
         assert not mock_possibly_update_commit_from_provider_info.called
 
-    @pytest.mark.django_db(databases={"default"}, transaction=True)
+    @pytest.mark.django_db
     def test_upload_task_upload_processing_delay_enough_delay(
         self,
         mocker,
@@ -684,7 +684,7 @@ class TestUploadTaskIntegration(object):
         assert not redis.exists(f"uploads/{commit.repoid}/{commit.commitid}")
         mocked_chord.assert_called_with([mocker.ANY, mocker.ANY], mocker.ANY)
 
-    @pytest.mark.django_db(databases={"default"}, transaction=True)
+    @pytest.mark.django_db
     @pytest.mark.skip(reason="Bitbucket down is breaking this test")
     def test_upload_task_upload_processing_delay_upload_is_none(
         self,
@@ -732,7 +732,7 @@ class TestUploadTaskIntegration(object):
         assert not redis.exists(f"uploads/{commit.repoid}/{commit.commitid}")
         mocked_chord.assert_called_with([mocker.ANY, mocker.ANY], mocker.ANY)
 
-    @pytest.mark.django_db(databases={"default"}, transaction=True)
+    @pytest.mark.django_db
     def test_upload_task_call_multiple_processors(
         self,
         mocker,
@@ -797,11 +797,11 @@ class TestUploadTaskIntegration(object):
             for arguments in redis_queue
         ]
         processors.reverse()  # whatever the reason
-        kwargs = dict(
-            repoid=commit.repoid,
-            commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            commit_yaml={"codecov": {"max_report_age": "1y ago"}},
-        )
+        kwargs = {
+            "repoid": commit.repoid,
+            "commitid": "abf6d4df662c47e32460020ab14abf9303581429",
+            "commit_yaml": {"codecov": {"max_report_age": "1y ago"}},
+        }
         kwargs[_kwargs_key(UploadFlow)] = mocker.ANY
         t_final = upload_finisher_task.signature(kwargs=kwargs)
         mocked_chord.assert_called_with(processors, t_final)
@@ -870,7 +870,7 @@ class TestUploadTaskIntegration(object):
             timeout=300,
         )
 
-    @pytest.mark.django_db(databases={"default"}, transaction=True)
+    @pytest.mark.django_db
     def test_upload_task_no_bot(
         self,
         mocker,
@@ -937,7 +937,7 @@ class TestUploadTaskIntegration(object):
         )
         assert not mocked_fetch_yaml.called
 
-    @pytest.mark.django_db(databases={"default"}, transaction=True)
+    @pytest.mark.django_db
     def test_upload_task_bot_no_permissions(
         self,
         mocker,
@@ -1005,7 +1005,7 @@ class TestUploadTaskIntegration(object):
         )
         assert not mocked_fetch_yaml.called
 
-    @pytest.mark.django_db(databases={"default"}, transaction=True)
+    @pytest.mark.django_db
     def test_upload_task_bot_unauthorized(
         self,
         mocker,
@@ -1038,7 +1038,7 @@ class TestUploadTaskIntegration(object):
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
             repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
         )
-        mock_repo_provider.data = dict(repo=dict(repoid=commit.repoid))
+        mock_repo_provider.data = {"repo": {"repoid": commit.repoid}}
         dbsession.add(commit)
         dbsession.flush()
         mock_redis.lists[f"uploads/{commit.repoid}/{commit.commitid}"] = (
@@ -1139,7 +1139,7 @@ class TestUploadTaskIntegration(object):
             state_id=UploadState.UPLOADED.db_id,
             upload_type_id=UploadType.UPLOADED.db_id,
         )
-        mock_repo_provider.data = dict(repo=dict(repoid=commit.repoid))
+        mock_repo_provider.data = {"repo": {"repoid": commit.repoid}}
         dbsession.add(commit)
         dbsession.add(report)
         dbsession.add(upload)

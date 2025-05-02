@@ -5,6 +5,10 @@ from itertools import groupby
 from typing import Iterable, List
 
 from asgiref.sync import async_to_sync
+
+from app import celery_app
+from helpers.environment import is_enterprise
+from services.github import get_github_integration_token
 from shared.celery_config import gh_app_webhook_check_task_name
 from shared.config import get_config
 from shared.metrics import Counter
@@ -14,10 +18,6 @@ from shared.torngit.exceptions import (
     TorngitServer5xxCodeError,
     TorngitUnauthorizedError,
 )
-
-from app import celery_app
-from helpers.environment import is_enterprise
-from services.github import get_github_integration_token
 from tasks.crontasks import CodecovCronTask
 
 log = logging.getLogger(__name__)
@@ -126,26 +126,26 @@ class GitHubAppWebhooksCheckTask(CodecovCronTask, name=gh_app_webhook_check_task
         """
         if len(deliveries_to_request) == 0:
             return 0
-        redelivery_coroutines = map(
-            lambda item: gh_handler.request_webhook_redelivery(item["id"]),
-            deliveries_to_request,
+        redelivery_coroutines = (
+            gh_handler.request_webhook_redelivery(item["id"])
+            for item in deliveries_to_request
         )
         results = await asyncio.gather(*redelivery_coroutines)
         return sum(results)
 
     def run_cron_task(self, db_session, *args, **kwargs):
         if is_enterprise():
-            return dict(checked=False, reason="Enterprise env")
+            return {"checked": False, "reason": "Enterprise env"}
 
         gh_app_token = get_github_integration_token(
             service="github", installation_id=None
         )
         gh_handler = Github(
-            token=dict(key=gh_app_token),
-            oauth_consumer_token=dict(
-                key=get_config("github", "client_id"),
-                secret=get_config("github", "client_secret"),
-            ),
+            token={"key": gh_app_token},
+            oauth_consumer_token={
+                "key": get_config("github", "client_id"),
+                "secret": get_config("github", "client_secret"),
+            },
         )
         redeliveries_requested = 0
         successful_redeliveries = 0
@@ -171,12 +171,12 @@ class GitHubAppWebhooksCheckTask(CodecovCronTask, name=gh_app_webhook_check_task
                 redeliveries_requested += curr_redeliveries_requested
                 log.info(
                     "Processed page of webhook redelivery requests",
-                    extra=dict(
-                        deliveries_to_request=curr_redeliveries_requested,
-                        successful_redeliveries=curr_successful_redeliveries,
-                        acc_successful_redeliveries=successful_redeliveries,
-                        acc_redeliveries_requested=redeliveries_requested,
-                    ),
+                    extra={
+                        "deliveries_to_request": curr_redeliveries_requested,
+                        "successful_redeliveries": curr_successful_redeliveries,
+                        "acc_successful_redeliveries": successful_redeliveries,
+                        "acc_redeliveries_requested": redeliveries_requested,
+                    },
                 )
 
         try:
@@ -188,30 +188,30 @@ class GitHubAppWebhooksCheckTask(CodecovCronTask, name=gh_app_webhook_check_task
         ) as exp:
             log.error(
                 "Failed to check github app webhooks",
-                extra=dict(
-                    reason="Failed with exception. Ending task immediately",
-                    exception=str(exp),
-                    redeliveries_requested=redeliveries_requested,
-                    deliveries_processed=all_deliveries,
-                    pages_processed=pages_processed,
-                ),
+                extra={
+                    "reason": "Failed with exception. Ending task immediately",
+                    "exception": str(exp),
+                    "redeliveries_requested": redeliveries_requested,
+                    "deliveries_processed": all_deliveries,
+                    "pages_processed": pages_processed,
+                },
             )
-            return dict(
-                checked=False,
-                reason="Failed with exception. Ending task immediately",
-                exception=str(exp),
-                redeliveries_requested=redeliveries_requested,
-                successful_redeliveries=successful_redeliveries,
-                deliveries_processed=all_deliveries,
-                pages_processed=pages_processed,
-            )
-        return dict(
-            checked=True,
-            redeliveries_requested=redeliveries_requested,
-            deliveries_processed=all_deliveries,
-            pages_processed=pages_processed,
-            successful_redeliveries=successful_redeliveries,
-        )
+            return {
+                "checked": False,
+                "reason": "Failed with exception. Ending task immediately",
+                "exception": str(exp),
+                "redeliveries_requested": redeliveries_requested,
+                "successful_redeliveries": successful_redeliveries,
+                "deliveries_processed": all_deliveries,
+                "pages_processed": pages_processed,
+            }
+        return {
+            "checked": True,
+            "redeliveries_requested": redeliveries_requested,
+            "deliveries_processed": all_deliveries,
+            "pages_processed": pages_processed,
+            "successful_redeliveries": successful_redeliveries,
+        }
 
 
 RegisteredGitHubAppWebhooksCheckTask = celery_app.register_task(

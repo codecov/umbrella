@@ -58,7 +58,7 @@ def build_report_from_commit(commit: Commit, report_class=None):
     except FileNotInStorageError:
         log.warning(
             "File for chunks not found in storage",
-            extra=dict(commit=commit.commitid, repo=commit.repository_id),
+            extra={"commit": commit.commitid, "repo": commit.repository_id},
         )
         return None
 

@@ -5,12 +5,6 @@ import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery import group
-from shared.api_archive.archive import ArchiveService
-from shared.celery_config import compute_comparison_task_name
-from shared.components import Component
-from shared.helpers.flag import Flag
-from shared.torngit.exceptions import TorngitRateLimitError
-from shared.yaml import UserYaml
 
 from app import celery_app
 from database.enums import CompareCommitError, CompareCommitState
@@ -23,6 +17,12 @@ from services.comparison import ComparisonProxy, FilteredComparison
 from services.comparison_utils import get_comparison_proxy
 from services.report import ReportService
 from services.yaml import get_current_yaml, get_repo_yaml
+from shared.api_archive.archive import ArchiveService
+from shared.celery_config import compute_comparison_task_name
+from shared.components import Component
+from shared.helpers.flag import Flag
+from shared.torngit.exceptions import TorngitRateLimitError
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.compute_component_comparison import compute_component_comparison_task
 
@@ -47,11 +47,11 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
     ) -> ComputeComparisonTaskReturn:
         comparison: CompareCommit = db_session.query(CompareCommit).get(comparison_id)
         repo = comparison.compare_commit.repository
-        log_extra = dict(
-            comparison_id=comparison_id,
-            repoid=repo.repoid,
-            commit=comparison.compare_commit.commitid,
-        )
+        log_extra = {
+            "comparison_id": comparison_id,
+            "repoid": repo.repoid,
+            "commit": comparison.compare_commit.commitid,
+        }
         log.info("Computing comparison", extra=log_extra)
         current_yaml = get_repo_yaml(repo)
         installation_name_to_use = get_installation_name_for_owner_for_task(
@@ -90,9 +90,10 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         except TorngitRateLimitError:
             log.warning(
                 "Unable to compute comparison due to rate limit error",
-                extra=dict(
-                    comparison_id=comparison_id, repoid=comparison.compare_commit.repoid
-                ),
+                extra={
+                    "comparison_id": comparison_id,
+                    "repoid": comparison.compare_commit.repoid,
+                },
             )
             comparison.state = CompareCommitState.error.value
             return {"successful": False, "error": "torngit_rate_limit"}
@@ -112,7 +113,7 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         return {"successful": True}
 
     def compute_flag_comparison(self, db_session, comparison, comparison_proxy):
-        log_extra = dict(comparison_id=comparison.id)
+        log_extra = {"comparison_id": comparison.id}
         log.info("Computing flag comparisons", extra=log_extra)
         head_report_flags = comparison_proxy.comparison.head.report.flags
         if not head_report_flags:
@@ -147,7 +148,7 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             if not repositoryflag:
                 log.warning(
                     "Repository flag not found for flag. Created repository flag.",
-                    extra=dict(repoid=repository_id, flag_name=flag_name),
+                    extra={"repoid": repository_id, "flag_name": flag_name},
                 )
                 repositoryflag = RepositoryFlag(
                     repository_id=repository_id,
@@ -168,7 +169,7 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             if not flag_comparison_entry:
                 log.debug(
                     "No previous flag comparisons; adding flag comparisons",
-                    extra=dict(repoid=repository_id),
+                    extra={"repoid": repository_id},
                 )
                 self.store_flag_comparison(
                     db_session, comparison, repositoryflag, totals
@@ -176,14 +177,14 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             else:
                 log.debug(
                     "Updating totals for existing flag comparison entry",
-                    extra=dict(repoid=repository_id),
+                    extra={"repoid": repository_id},
                 )
                 flag_comparison_entry.head_totals = totals["head_totals"]
                 flag_comparison_entry.base_totals = totals["base_totals"]
                 flag_comparison_entry.patch_totals = totals["patch_totals"]
         log.info(
             "Flag comparisons stored successfully",
-            extra=dict(number_stored=len(head_report_flags)),
+            extra={"number_stored": len(head_report_flags)},
         )
 
     def get_flag_comparison_totals(
@@ -199,9 +200,11 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         )
         head_totals = None if not flag_head_report else flag_head_report.totals.asdict()
         base_totals = None if not flag_base_report else flag_base_report.totals.asdict()
-        totals = dict(
-            head_totals=head_totals, base_totals=base_totals, patch_totals=None
-        )
+        totals = {
+            "head_totals": head_totals,
+            "base_totals": base_totals,
+            "patch_totals": None,
+        }
         diff = comparison_proxy.get_diff()
         if diff:
             patch_totals = flag_head_report.apply_diff(diff)
@@ -237,10 +240,10 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         components = yaml.get_components()
         log.info(
             "Computing component comparisons",
-            extra=dict(
-                comparison_id=comparison.id,
-                component_count=len(components),
-            ),
+            extra={
+                "comparison_id": comparison.id,
+                "component_count": len(components),
+            },
         )
         if PARALLEL_COMPONENT_COMPARISON.check_value(
             comparison.compare_commit.repoid, default=False

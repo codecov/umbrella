@@ -4,11 +4,11 @@ from uuid import uuid4
 
 import factory
 from factory import Factory
-from shared.django_apps.codecov_auth.models import Plan, Tier
-from shared.plan.constants import DEFAULT_FREE_PLAN, TierName
 
 from database import enums, models
 from services.encryption import encryptor
+from shared.django_apps.codecov_auth.models import Plan, Tier
+from shared.plan.constants import DEFAULT_FREE_PLAN, TierName
 
 
 def encrypt_oauth_token(val):

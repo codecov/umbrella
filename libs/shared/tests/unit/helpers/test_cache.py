@@ -182,7 +182,7 @@ class TestCache(object):
             make_hash_sha256("somestring")
             == "l5nfZJ7iQAll9QGKjGm4wPuSgUoikOMrdpOw/36GLyw="
         )
-        this_set = set(["1", "something", "True", "another_string_of_values"])
+        this_set = {"1", "something", "True", "another_string_of_values"}
         assert (
             make_hash_sha256(this_set) == "siFp5vd4+aI5SxlURDMV3Z5Yfn5qnpSbCctIewE6m44="
         )

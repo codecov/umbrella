@@ -127,7 +127,7 @@ class ChartPermissions(BasePermission):
     def has_permission(self, request: HttpRequest, view: Any) -> bool:
         log.info(
             f"Coverage chart has repositories {view.repositories}",
-            extra=dict(user=request.current_owner),
+            extra={"user": request.current_owner},
         )
         for repo in view.repositories:
             # TODO: this can cause a provider-api request for every repo in the list,

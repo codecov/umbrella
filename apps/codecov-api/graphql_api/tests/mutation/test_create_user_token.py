@@ -1,8 +1,8 @@
 from django.test import TestCase
-from shared.django_apps.core.tests.factories import OwnerFactory
 
 from codecov_auth.models import UserToken
 from graphql_api.tests.helper import GraphQLTestHelper
+from shared.django_apps.core.tests.factories import OwnerFactory
 
 query = """
 mutation($input: CreateUserTokenInput!) {

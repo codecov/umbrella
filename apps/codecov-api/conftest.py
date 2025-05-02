@@ -5,6 +5,7 @@ import fakeredis
 import pytest
 import vcr
 from django.conf import settings
+
 from shared.reports.resources import Report, ReportFile
 from shared.reports.types import ReportLine
 from shared.storage.memory import MemoryStorageService

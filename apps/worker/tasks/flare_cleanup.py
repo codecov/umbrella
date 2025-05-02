@@ -1,11 +1,10 @@
 import logging
 
-from shared.celery_config import flare_cleanup_task_name
-from shared.django_apps.core.models import Pull, PullStates
-
 from app import celery_app
 from services.cleanup.models import cleanup_files_batched
 from services.cleanup.utils import cleanup_context
+from shared.celery_config import flare_cleanup_task_name
+from shared.django_apps.core.models import Pull, PullStates
 from tasks.crontasks import CodecovCronTask
 
 log = logging.getLogger(__name__)

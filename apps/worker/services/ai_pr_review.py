@@ -6,14 +6,14 @@ from functools import cached_property
 from typing import Dict, List, Optional
 
 from openai import AsyncOpenAI
-from shared.api_archive.archive import ArchiveService
-from shared.config import get_config
-from shared.storage.exceptions import FileNotInStorageError
-from shared.torngit.base import TokenType, TorngitBaseAdapter
 
 from database.models.core import Repository
 from helpers.metrics import metrics
 from services.repository import get_repo_provider_service
+from shared.api_archive.archive import ArchiveService
+from shared.config import get_config
+from shared.storage.exceptions import FileNotInStorageError
+from shared.torngit.base import TokenType, TorngitBaseAdapter
 
 log = logging.getLogger(__name__)
 
@@ -187,11 +187,11 @@ class PullWrapper:
                 page += 1
 
     async def create_review(self, commit_sha: str, review_comments: ReviewComments):
-        body = dict(
-            commit_id=commit_sha,
-            body=review_comments.body,
-            event="COMMENT",
-            comments=[
+        body = {
+            "commit_id": commit_sha,
+            "body": review_comments.body,
+            "event": "COMMENT",
+            "comments": [
                 {
                     "path": line_info.file_path,
                     "position": line_info.position,
@@ -199,7 +199,7 @@ class PullWrapper:
                 }
                 for line_info, comment in review_comments.comments.items()
             ],
-        )
+        }
         log.info(
             "Creating AI PR review",
             extra=body,
@@ -218,10 +218,10 @@ class PullWrapper:
     async def update_comment(self, comment: Comment):
         log.info(
             "Updating comment",
-            extra=dict(
-                comment_id=comment.comment_id,
-                body=comment.body,
-            ),
+            extra={
+                "comment_id": comment.comment_id,
+                "body": comment.body,
+            },
         )
         async with self.torngit.get_client() as client:
             await self.torngit.api(
@@ -229,7 +229,7 @@ class PullWrapper:
                 "patch",
                 f"/repos/{self.torngit.slug}/pulls/comments/{comment.comment_id}",
                 token=self.token,
-                body=dict(body=comment.body),
+                body={"body": comment.body},
             )
 
 
@@ -248,17 +248,17 @@ class Review:
         prompt = build_prompt(self.diff.preprocessed)
         log.debug(
             "OpenAI prompt",
-            extra=dict(
-                prompt=prompt,
-            ),
+            extra={
+                "prompt": prompt,
+            },
         )
 
         res = await fetch_openai_completion(prompt)
         log.debug(
             "OpenAI response",
-            extra=dict(
-                res=res,
-            ),
+            extra={
+                "res": res,
+            },
         )
 
         try:
@@ -267,7 +267,7 @@ class Review:
             metrics.incr("ai_pr_review.non_json_completion")
             log.error(
                 "OpenAI completion was expected to be JSON but wasn't",
-                extra=dict(res=res),
+                extra={"res": res},
                 exc_info=True,
             )
             return
@@ -286,7 +286,7 @@ class Review:
             metrics.incr("ai_pr_review.malformed_completion")
             log.error(
                 "OpenAI completion JSON was not formed as expected",
-                extra=dict(data=data),
+                extra={"data": data},
                 exc_info=True,
             )
             return
@@ -356,7 +356,7 @@ async def perform_review(repository: Repository, pullid: int):
     if head_sha == commit_sha:
         log.info(
             "Review already performed on SHA",
-            extra=dict(sha=head_sha),
+            extra={"sha": head_sha},
         )
         return
 

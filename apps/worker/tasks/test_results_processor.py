@@ -7,10 +7,6 @@ from typing import Literal, TypedDict
 
 import sentry_sdk
 import test_results_parser
-from shared.api_archive.archive import ArchiveService
-from shared.celery_config import test_results_processor_task_name
-from shared.config import get_config
-from shared.yaml import UserYaml
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -30,6 +26,10 @@ from services.test_analytics.ta_metrics import write_tests_summary
 from services.test_analytics.ta_processor import ta_processor_impl
 from services.test_results import generate_flags_hash, generate_test_id
 from services.yaml import read_yaml_field
+from shared.api_archive.archive import ArchiveService
+from shared.celery_config import test_results_processor_task_name
+from shared.config import get_config
+from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -213,11 +213,11 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
         flaky_test_set: set[str],
         flags: list[str],
     ):
-        log.info("Writing tests to database", extra=dict(upload_id=upload_id))
+        log.info("Writing tests to database", extra={"upload_id": upload_id})
         test_data = {}
         test_instance_data = []
         test_flag_bridge_data: list[dict] = []
-        daily_totals: dict[str, DailyTotals] = dict()
+        daily_totals: dict[str, DailyTotals] = {}
 
         flags_hash = generate_flags_hash(flags)
         repo_flag_ids = get_repo_flag_ids(db_session, repoid, flags)
@@ -238,16 +238,16 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
                 computed_name = testrun["computed_name"]
                 filename: str | None = testrun["filename"]
 
-                test_data[(repoid, name, testsuite, flags_hash)] = dict(
-                    id=test_id,
-                    repoid=repoid,
-                    name=name,
-                    testsuite=testsuite,
-                    flags_hash=flags_hash,
-                    framework=framework,
-                    filename=filename,
-                    computed_name=computed_name,
-                )
+                test_data[(repoid, name, testsuite, flags_hash)] = {
+                    "id": test_id,
+                    "repoid": repoid,
+                    "name": name,
+                    "testsuite": testsuite,
+                    "flags_hash": flags_hash,
+                    "framework": framework,
+                    "filename": filename,
+                    "computed_name": computed_name,
+                }
 
                 if repo_flag_ids:
                     test_flag_bridge_data.extend(
@@ -256,17 +256,17 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
                     )
 
                 test_instance_data.append(
-                    dict(
-                        test_id=test_id,
-                        upload_id=upload_id,
-                        duration_seconds=duration_seconds,
-                        outcome=outcome,
-                        failure_message=failure_message,
-                        commitid=commitid,
-                        branch=branch,
-                        reduced_error_id=None,
-                        repoid=repoid,
-                    )
+                    {
+                        "test_id": test_id,
+                        "upload_id": upload_id,
+                        "duration_seconds": duration_seconds,
+                        "outcome": outcome,
+                        "failure_message": failure_message,
+                        "commitid": commitid,
+                        "branch": branch,
+                        "reduced_error_id": None,
+                        "repoid": repoid,
+                    }
                 )
 
                 if outcome != "skip":
@@ -294,14 +294,14 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
             )
             self.save_tests(db_session, sorted_tests)
 
-            log.info("Upserted tests to database", extra=dict(upload_id=upload_id))
+            log.info("Upserted tests to database", extra={"upload_id": upload_id})
 
         if len(test_flag_bridge_data) > 0:
             self.save_test_flag_bridges(db_session, test_flag_bridge_data)
 
             log.info(
                 "Inserted new test flag bridges to database",
-                extra=dict(upload_id=upload_id),
+                extra={"upload_id": upload_id},
             )
 
         if len(daily_totals) > 0:
@@ -312,7 +312,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
 
             log.info(
                 "Upserted daily test rollups to database",
-                extra=dict(upload_id=upload_id),
+                extra={"upload_id": upload_id},
             )
 
         # Save TestInstances
@@ -320,7 +320,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
             self.save_test_instances(db_session, test_instance_data)
 
             log.info(
-                "Inserted test instances to database", extra=dict(upload_id=upload_id)
+                "Inserted test instances to database", extra={"upload_id": upload_id}
             )
 
     def save_tests(self, db_session: Session, test_data: list[dict]):
@@ -401,13 +401,13 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
         except RuntimeError as exc:
             log.error(
                 "Error parsing file",
-                extra=dict(
-                    repoid=upload.report.commit.repoid,
-                    commitid=upload.report.commit_id,
-                    uploadid=upload.id,
-                    parser_err_msg=str(exc),
-                    upload_state=upload.state,
-                ),
+                extra={
+                    "repoid": upload.report.commit.repoid,
+                    "commitid": upload.report.commit_id,
+                    "uploadid": upload.id,
+                    "parser_err_msg": str(exc),
+                    "upload_state": upload.state,
+                },
             )
             sentry_sdk.capture_exception(exc, tags={"upload_state": upload.state})
             return None
@@ -424,7 +424,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
     ):
         upload_id = upload.id
 
-        log.info("Processing individual upload", extra=dict(upload_id=upload_id))
+        log.info("Processing individual upload", extra={"upload_id": upload_id})
         if upload.state == "processed":
             return {"successful": True}
         elif upload.state == "has_failed":
@@ -446,7 +446,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
             successful = False
             log.error(
                 "No test result files were successfully parsed for this upload",
-                extra=dict(upload_id=upload_id),
+                extra={"upload_id": upload_id},
             )
         else:
             successful = True
@@ -467,14 +467,14 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
         db_session.commit()
 
         log.info(
-            "Finished processing individual upload", extra=dict(upload_id=upload_id)
+            "Finished processing individual upload", extra={"upload_id": upload_id}
         )
 
         if should_delete_archive:
             self.delete_archive(archive_service, upload)
         else:
             log.info(
-                "Writing readable files to archive", extra=dict(upload_id=upload_id)
+                "Writing readable files to archive", extra={"upload_id": upload_id}
             )
             archive_service.write_file(upload.storage_path, readable_files)
 
@@ -492,7 +492,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
         if archive_url and not archive_url.startswith("http"):
             log.info(
                 "Deleting uploaded file as requested",
-                extra=dict(archive_url=archive_url, upload=upload.external_id),
+                extra={"archive_url": archive_url, "upload": upload.external_id},
             )
             archive_service.delete_file(archive_url)
 

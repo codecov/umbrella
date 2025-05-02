@@ -7,10 +7,6 @@ from enum import Enum, auto
 from itertools import starmap
 from urllib.parse import urlencode
 
-from shared.helpers.yaml import walk
-from shared.reports.resources import Report
-from shared.validation.helpers import LayoutStructure
-
 from helpers.environment import is_enterprise
 from helpers.reports import get_totals_from_file_in_reports
 from services.comparison import ComparisonProxy
@@ -28,6 +24,9 @@ from services.notification.notifiers.mixins.message.helpers import (
 )
 from services.urls import get_commit_url_from_commit_sha, get_pull_graph_url
 from services.yaml.reader import get_components_from_yaml, round_number
+from shared.helpers.yaml import walk
+from shared.reports.resources import Report
+from shared.validation.helpers import LayoutStructure
 
 log = logging.getLogger(__name__)
 
@@ -216,13 +215,13 @@ class HeaderSectionWriter(BaseSectionWriter):
             # Temporary log so we understand when this happens
             log.info(
                 "Notifying user that current head and pull head differ",
-                extra=dict(
-                    repoid=comparison.head.commit.repoid,
-                    commit=comparison.head.commit.commitid,
-                    pull_head=comparison.enriched_pull.provider_pull["head"][
+                extra={
+                    "repoid": comparison.head.commit.repoid,
+                    "commit": comparison.head.commit.commitid,
+                    "pull_head": comparison.enriched_pull.provider_pull["head"][
                         "commitid"
                     ],
-                ),
+                },
             )
             yield ""
             pull_head = comparison.enriched_pull.provider_pull["head"]["commitid"][:7]
@@ -350,9 +349,9 @@ class NewFilesSectionWriter(BaseSectionWriter):
             if _diff.get("totals")
         ]
 
-        all_files = set(f[1] for f in files_in_diff or []) | set(
+        all_files = {f[1] for f in files_in_diff or []} | {
             c.path for c in changes or []
-        )
+        }
         if files_in_diff:
             table_header = "| Patch % | Lines |"
             table_layout = "|---|---|---|"
@@ -426,9 +425,9 @@ class FileSectionWriter(BaseSectionWriter):
             if _diff.get("totals")
         ]
 
-        all_files = set(f[1] for f in files_in_diff or []) | set(
+        all_files = {f[1] for f in files_in_diff or []} | {
             c.path for c in changes or []
-        )
+        }
         if files_in_diff:
             table_header = get_table_header(self.show_complexity)
             table_layout = get_table_layout(self.show_complexity)
@@ -726,18 +725,18 @@ class MessagesToUserSectionWriter(BaseSectionWriter):
                 )
 
             aggregated_upload_diff = sum(
-                map(lambda diff: diff["head_count"] - diff["base_count"], upload_diff)
+                (diff["head_count"] - diff["base_count"] for diff in upload_diff)
             )
-            context = dict(
-                aggregated_upload_diff=abs(aggregated_upload_diff),
-                more_or_less="more" if aggregated_upload_diff > 0 else "less",
-                plural="s" if abs(aggregated_upload_diff) > 1 else "",
-                base_short_sha=comparison.project_coverage_base.commit.commitid[:7],
-                head_short_sha=comparison.head.commit.commitid[:7],
-                per_flag_diff_lines="".join(
+            context = {
+                "aggregated_upload_diff": abs(aggregated_upload_diff),
+                "more_or_less": "more" if aggregated_upload_diff > 0 else "less",
+                "plural": "s" if abs(aggregated_upload_diff) > 1 else "",
+                "base_short_sha": comparison.project_coverage_base.commit.commitid[:7],
+                "head_short_sha": comparison.head.commit.commitid[:7],
+                "per_flag_diff_lines": "".join(
                     [get_line_for_flag_diff(info) for info in upload_diff]
                 ),
-            )
+            }
 
             return template.format(**context)
         return ""

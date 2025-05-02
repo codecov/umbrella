@@ -2,17 +2,16 @@ import logging
 from abc import ABC, abstractmethod
 from decimal import Decimal
 
-from shared.validation.types import (
-    CoverageCommentRequiredChanges,
-    CoverageCommentRequiredChangesORGroup,
-)
-
 from services.comparison import ComparisonProxy
 from services.notification.notifiers.base import (
     AbstractBaseNotifier,
     NotificationResult,
 )
 from services.yaml import read_yaml_field
+from shared.validation.types import (
+    CoverageCommentRequiredChanges,
+    CoverageCommentRequiredChangesORGroup,
+)
 
 log = logging.getLogger(__name__)
 
@@ -169,10 +168,7 @@ class HasEnoughRequiredChanges(NotifyCondition):
     ) -> bool:
         if condition_group == CoverageCommentRequiredChanges.no_requirements.value:
             return True
-        cache_results = {
-            individual_condition: None
-            for individual_condition in CoverageCommentRequiredChanges
-        }
+        cache_results = dict.fromkeys(CoverageCommentRequiredChanges)
         functions_lookup = {
             CoverageCommentRequiredChanges.any_change: HasEnoughRequiredChanges._check_any_change,
             CoverageCommentRequiredChanges.coverage_drop: HasEnoughRequiredChanges._check_coverage_drop,
@@ -194,7 +190,7 @@ class HasEnoughRequiredChanges(NotifyCondition):
         if comparison.pull and comparison.pull.commentid:
             log.info(
                 "Comment already exists. Skipping required_changes verification to update comment",
-                extra=dict(pull=comparison.pull.pullid, commit=comparison.pull.head),
+                extra={"pull": comparison.pull.pullid, "commit": comparison.pull.head},
             )
             return True
         required_changes = notifier.notifier_yaml_settings.get(

@@ -6,12 +6,6 @@ from uuid import uuid4
 
 import pytest
 from redis import Redis
-from shared.api_archive.archive import ArchiveService
-from shared.helpers.redis import get_redis_connection
-from shared.reports.resources import Report, ReportFile
-from shared.reports.types import ReportLine
-from shared.utils.sessions import SessionType
-from shared.yaml import UserYaml
 from sqlalchemy.orm import Session as DbSession
 
 from database.models.core import Commit, CompareCommit, Repository
@@ -19,6 +13,12 @@ from database.models.reports import Upload
 from database.tests.factories import CommitFactory, RepositoryFactory
 from database.tests.factories.core import PullFactory
 from services.report import ReportService
+from shared.api_archive.archive import ArchiveService
+from shared.helpers.redis import get_redis_connection
+from shared.reports.resources import Report, ReportFile
+from shared.reports.types import ReportLine
+from shared.utils.sessions import SessionType
+from shared.yaml import UserYaml
 from tasks.tests.utils import hook_repo_provider, hook_session, run_tasks
 from tasks.upload import upload_task
 from tests.helpers import mock_all_plans_and_tiers
@@ -47,7 +47,7 @@ def write_raw_upload(
 
 
 def lines(lines: Iterable[tuple[int, ReportLine]]) -> list[tuple[int, int]]:
-    return list(((lineno, line.coverage) for lineno, line in lines))
+    return [(lineno, line.coverage) for lineno, line in lines]
 
 
 def get_base_report():
@@ -164,7 +164,7 @@ def setup_mocks(
 
 
 @pytest.mark.integration
-@pytest.mark.django_db(databases={"default"}, transaction=True)
+@pytest.mark.django_db
 def test_full_upload(
     dbsession: DbSession,
     mocker,
@@ -371,7 +371,7 @@ end_of_record
 
 
 @pytest.mark.integration
-@pytest.mark.django_db(databases={"default"}, transaction=True)
+@pytest.mark.django_db
 def test_full_carryforward(
     dbsession: DbSession,
     mocker,

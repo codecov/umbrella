@@ -2,7 +2,6 @@ from unittest.mock import call
 
 from shared.django_apps.core.models import Pull, PullStates
 from shared.django_apps.core.tests.factories import PullFactory, RepositoryFactory
-
 from tasks.flare_cleanup import FlareCleanupTask
 
 
@@ -14,7 +13,7 @@ class TestFlareCleanupTask(object):
         )
         assert FlareCleanupTask.get_min_seconds_interval_between_executions() > 17000
 
-    def test_successful_run(self, transactional_db, mocker, mock_archive_storage):
+    def test_successful_run(self, db, mocker, mock_archive_storage):
         mock_logs = mocker.patch("logging.Logger.info")
         archive_value_for_flare = {"some": "data"}
         local_value_for_flare = {"test": "test"}
@@ -113,7 +112,7 @@ class TestFlareCleanupTask(object):
             ]
         )
 
-    def test_limits_on_manual_run(self, transactional_db, mocker, mock_archive_storage):
+    def test_limits_on_manual_run(self, db, mocker, mock_archive_storage):
         mock_logs = mocker.patch("logging.Logger.info")
         local_value_for_flare = {"test": "test"}
         archive_value_for_flare = {"some": "data"}

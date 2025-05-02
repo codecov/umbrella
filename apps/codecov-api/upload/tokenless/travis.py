@@ -28,35 +28,35 @@ class TokenlessTravisHandler(BaseTokenlessUploadHandler):
         except (ConnectionError, HTTPError) as e:
             log.warning(
                 f"Request error {e}",
-                extra=dict(
-                    commit=self.upload_params["commit"],
-                    repo_name=self.upload_params["repo"],
-                    job=self.upload_params["job"],
-                    owner=self.upload_params["owner"],
-                ),
+                extra={
+                    "commit": self.upload_params["commit"],
+                    "repo_name": self.upload_params["repo"],
+                    "job": self.upload_params["job"],
+                    "owner": self.upload_params["owner"],
+                },
             )
             pass
         except Exception as e:
             log.warning(
                 f"Error {e}",
-                extra=dict(
-                    commit=self.upload_params["commit"],
-                    repo_name=self.upload_params["repo"],
-                    job=self.upload_params["job"],
-                    owner=self.upload_params["owner"],
-                ),
+                extra={
+                    "commit": self.upload_params["commit"],
+                    "repo_name": self.upload_params["repo"],
+                    "job": self.upload_params["job"],
+                    "owner": self.upload_params["owner"],
+                },
             )
 
         # if job not found in travis.com try travis.org
         if not travis_dot_com:
             log.info(
                 "Unable to verify using travis.com, trying travis.org",
-                extra=dict(
-                    commit=self.upload_params["commit"],
-                    repo_name=self.upload_params["repo"],
-                    job=self.upload_params["job"],
-                    owner=self.upload_params["owner"],
-                ),
+                extra={
+                    "commit": self.upload_params["commit"],
+                    "repo_name": self.upload_params["repo"],
+                    "job": self.upload_params["job"],
+                    "owner": self.upload_params["owner"],
+                },
             )
             try:
                 build = requests.get(
@@ -68,12 +68,12 @@ class TokenlessTravisHandler(BaseTokenlessUploadHandler):
             except (ConnectionError, HTTPError) as e:
                 log.warning(
                     f"Request error {e}",
-                    extra=dict(
-                        commit=self.upload_params["commit"],
-                        repo_name=self.upload_params["repo"],
-                        job=self.upload_params["job"],
-                        owner=self.upload_params["owner"],
-                    ),
+                    extra={
+                        "commit": self.upload_params["commit"],
+                        "repo_name": self.upload_params["repo"],
+                        "job": self.upload_params["job"],
+                        "owner": self.upload_params["owner"],
+                    },
                 )
                 raise NotFound(
                     errors["travis"]["tokenless-general-error"].format(
@@ -106,12 +106,12 @@ class TokenlessTravisHandler(BaseTokenlessUploadHandler):
         ):
             log.warning(
                 f"Repository slug: {slug} or commit sha: {self.upload_params['commit']} do not match travis arguments",
-                extra=dict(
-                    commit=self.upload_params["commit"],
-                    repo_name=self.upload_params["repo"],
-                    job=self.upload_params["job"],
-                    owner=self.upload_params["owner"],
-                ),
+                extra={
+                    "commit": self.upload_params["commit"],
+                    "repo_name": self.upload_params["repo"],
+                    "job": self.upload_params["job"],
+                    "owner": self.upload_params["owner"],
+                },
             )
             raise NotFound(
                 errors["travis"]["tokenless-general-error"].format(codecovUrl)
@@ -126,12 +126,12 @@ class TokenlessTravisHandler(BaseTokenlessUploadHandler):
             if not now <= finishTimeWithBuffer:
                 log.warning(
                     "Cancelling upload: 4 mins since build",
-                    extra=dict(
-                        commit=self.upload_params["commit"],
-                        repo_name=self.upload_params["repo"],
-                        job=self.upload_params["job"],
-                        owner=self.upload_params["owner"],
-                    ),
+                    extra={
+                        "commit": self.upload_params["commit"],
+                        "repo_name": self.upload_params["repo"],
+                        "job": self.upload_params["job"],
+                        "owner": self.upload_params["owner"],
+                    },
                 )
                 raise NotFound(errors["travis"]["tokenless-stale-build"])
         else:
@@ -139,22 +139,22 @@ class TokenlessTravisHandler(BaseTokenlessUploadHandler):
             if job["state"] != "started":
                 log.warning(
                     "Cancelling upload: job state does not indicate that build is in progress",
-                    extra=dict(
-                        commit=self.upload_params["commit"],
-                        repo_name=self.upload_params["repo"],
-                        job=self.upload_params["job"],
-                        owner=self.upload_params["owner"],
-                    ),
+                    extra={
+                        "commit": self.upload_params["commit"],
+                        "repo_name": self.upload_params["repo"],
+                        "job": self.upload_params["job"],
+                        "owner": self.upload_params["owner"],
+                    },
                 )
                 raise NotFound(errors["travis"]["tokenless-bad-status"])
 
         log.info(
             "Finished travis tokenless upload",
-            extra=dict(
-                commit=self.upload_params["commit"],
-                repo_name=self.upload_params["repo"],
-                job=self.upload_params["job"],
-                owner=self.upload_params["owner"],
-            ),
+            extra={
+                "commit": self.upload_params["commit"],
+                "repo_name": self.upload_params["repo"],
+                "job": self.upload_params["job"],
+                "owner": self.upload_params["owner"],
+            },
         )
         return "github"
