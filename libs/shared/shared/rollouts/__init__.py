@@ -128,10 +128,6 @@ class Feature:
         self.refresh = get_config(
             "setup", "skip_feature_cache", default=False
         )  # to be used only during development
-        if self.refresh:
-            log.warning(
-                "skip_feature_cache for Feature should only be turned on in development environments, and should not be used in production"
-            )
 
     def check_value(self, identifier, default=False):
         """
