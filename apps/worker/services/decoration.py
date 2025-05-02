@@ -17,10 +17,15 @@ log = logging.getLogger(__name__)
 
 BOT_USER_EMAILS = [
     "dependabot[bot]@users.noreply.github.com",
+    "49699333+dependabot[bot]@users.noreply.github.com",
     "29139614+renovate[bot]@users.noreply.github.com",
     "157164994+sentry-autofix[bot]@users.noreply.github.com",
 ]
-BOT_USER_IDS = ["29139614", "157164994"]  # renovate[bot] github, sentry-autofix[bot]
+BOT_USER_IDS = [
+    "49699333",
+    "29139614",
+    "157164994",
+]  # dependabot[bot], renovate[bot], sentry-autofix[bot]
 USER_BASIC_LIMIT_UPLOAD = 250
 
 
