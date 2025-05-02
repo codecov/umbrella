@@ -3,6 +3,7 @@ import logging
 import time
 import uuid
 from copy import deepcopy
+from datetime import datetime
 from typing import TypedDict
 
 import orjson
@@ -36,6 +37,7 @@ from services.repository import (
     gitlab_webhook_update,
     possibly_update_commit_from_provider_info,
 )
+from services.test_analytics.ta_metrics import new_ta_tasks_repo_summary
 from services.test_results import TestResultsReportService
 from shared.celery_config import upload_task_name
 from shared.config import get_config
@@ -750,6 +752,22 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         new_ta_tasks = NEW_TA_TASKS.check_value(commit.repoid, default="old")
         if not settings.TA_TIMESERIES_ENABLED:
             new_ta_tasks = "old"
+        else:
+            db_session: Session = commit.get_db_session()  # type: ignore
+            earliest_commit = (
+                db_session.query(Commit)
+                .filter(
+                    Commit.repoid == commit.repoid,
+                    Commit.timestamp > datetime(2025, 5, 10, tzinfo=timezone.utc),
+                )
+                .order_by(Commit.timestamp)
+                .limit(1)
+                .first()
+            )
+
+            if earliest_commit:
+                new_ta_tasks = "new"
+                new_ta_tasks_repo_summary.inc()
 
         task_group = [
             test_results_processor_task.s(
