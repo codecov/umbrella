@@ -7,8 +7,10 @@ from services.cleanup.cleanup import cleanup_queryset
 from services.cleanup.pulls import cleanup_flare
 from services.cleanup.uploads import cleanup_old_uploads
 from services.cleanup.utils import CleanupContext, CleanupSummary, cleanup_context
+from shared.django_apps.core.models import Pull, PullStates
 from shared.django_apps.reports.models import CommitReport
 from shared.django_apps.staticanalysis.models import StaticAnalysisSingleFileSnapshot
+from shared.storage.exceptions import FileNotInStorageError
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +45,7 @@ def cleanup_flares(
         _flare__isnull=False
     ).exclude(_flare={})
 
-    # Process in batches
+    # Process in batches - this is being overprotective at the moment, the batch size could be much larger
     total_db_updated = 0
     start = 0
     while start < limit:
@@ -70,22 +72,18 @@ def cleanup_flares(
     start = 0
     while start < limit:
         stop = start + batch_size if start + batch_size < limit else limit
-        batch = non_open_pulls_with_flare_in_archive.values_list("id", flat=True)[
-            start:stop
-        ]
-        if not batch:
+        # Get ids and paths together
+        batch_of_id_path_pairs = non_open_pulls_with_flare_in_archive.values_list(
+            "id", "_flare_storage_path"
+        )[start:stop]
+        if not batch_of_id_path_pairs:
             break
-
-        # Get ids and paths together to track which were successfully deleted
-        id_path_pairs = list(
-            Pull.objects.filter(id__in=batch).values_list("id", "_flare_storage_path")
-        )
 
         # Track which pulls had successful deletions
         successful_deletions = []
 
         # Process all files in this batch
-        for pull_id, path in id_path_pairs:
+        for pull_id, path in batch_of_id_path_pairs:
             try:
                 if context.storage.delete_file(context.default_bucket, path):
                     successful_deletions.append(pull_id)
@@ -101,7 +99,7 @@ def cleanup_flares(
                 _flare_storage_path=None
             )
 
-        total_files_processed += len(id_path_pairs)
+        total_files_processed += len(batch_of_id_path_pairs)
         total_success += len(successful_deletions)
         start = stop
 
@@ -137,6 +135,9 @@ def run_regular_cleanup() -> CleanupSummary:
         # reduce limit for initial runs
         flare_summary = cleanup_flares(context, limit=1000)
         complete_summary.add(flare_summary)
+
+        summary = cleanup_old_uploads(context)
+        complete_summary.add(summary)
 
     # TODO:
     # - cleanup `Commit`s that are `deleted`

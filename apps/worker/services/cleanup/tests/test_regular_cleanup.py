@@ -1,12 +1,14 @@
 import pytest
-from shared.django_apps.core.models import Pull, PullStates
-from shared.django_apps.core.tests.factories import PullFactory, RepositoryFactory
-from shared.storage.exceptions import FileNotInStorageError
 
 from services.cleanup.regular import run_regular_cleanup
 from services.cleanup.utils import CleanupResult, CleanupSummary
 from shared.api_archive.archive import ArchiveService
-from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
+from shared.django_apps.core.models import Pull, PullStates
+from shared.django_apps.core.tests.factories import (
+    CommitFactory,
+    PullFactory,
+    RepositoryFactory,
+)
 from shared.django_apps.reports.models import CommitReport
 from shared.django_apps.reports.tests.factories import (
     CommitReportFactory,
@@ -15,6 +17,7 @@ from shared.django_apps.reports.tests.factories import (
 from shared.django_apps.staticanalysis.tests.factories import (
     StaticAnalysisSingleFileSnapshotFactory,
 )
+from shared.storage.exceptions import FileNotInStorageError
 
 
 @pytest.mark.django_db
