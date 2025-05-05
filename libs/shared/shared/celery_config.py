@@ -106,7 +106,6 @@ gh_app_webhook_check_task_name = (
 brolly_stats_rollup_task_name = (
     f"app.cron.{TaskConfigGroup.daily.value}.BrollyStatsRollupTask"
 )
-flare_cleanup_task_name = f"app.cron.{TaskConfigGroup.daily.value}.FlareCleanupTask"
 
 
 def get_task_group(task_name: str) -> Optional[str]:

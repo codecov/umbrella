@@ -4,6 +4,7 @@ from collections.abc import Callable
 from functools import partial
 
 from services.cleanup.cleanup import cleanup_queryset
+from services.cleanup.pulls import cleanup_flare
 from services.cleanup.uploads import cleanup_old_uploads
 from services.cleanup.utils import CleanupContext, CleanupSummary, cleanup_context
 from shared.django_apps.reports.models import CommitReport
@@ -27,7 +28,7 @@ def run_regular_cleanup() -> CleanupSummary:
             partial(cleanup_queryset, CommitReport.objects.filter(code__isnull=False)),
         ),
         ("old `Upload`s", cleanup_old_uploads),
-        # TODO: add the `flare_cleanup` here as well
+        ("Stale pull flare", cleanup_flare),
     ]
 
     # TODO:

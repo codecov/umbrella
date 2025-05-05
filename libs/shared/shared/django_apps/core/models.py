@@ -423,7 +423,7 @@ class Pull(ExportModelOperationsMixin("core.pull"), models.Model):
         """
         This only applies to the flare field.
         Flare is used to draw static graphs (see GraphHandler view in api) and can be large.
-        Flare cleanup is handled by FlareCleanupTask in worker.
+        Flare cleanup is handled by cleanup_flares in worker, part of RegularCleanupTask.
         """
         if self.repository is None or self.repository.author is None:
             return False

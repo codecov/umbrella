@@ -14,7 +14,6 @@ from helpers.health_check import get_health_check_interval_seconds
 from shared.celery_config import (
     BaseCeleryConfig,
     brolly_stats_rollup_task_name,
-    # flare_cleanup_task_name,
     gh_app_webhook_check_task_name,
     health_check_task_name,
 )
@@ -98,13 +97,6 @@ def _beat_schedule():
                 "cron_task_generation_time_iso": BeatLazyFunc(get_utc_now_as_iso_format)
             },
         },
-        # "flare_cleanup": {
-        #     "task": flare_cleanup_task_name,
-        #     "schedule": crontab(minute="0", hour="5"),  # every day, 5am UTC (10pm PDT)
-        #     "kwargs": {
-        #         "cron_task_generation_time_iso": BeatLazyFunc(get_utc_now_as_iso_format)
-        #     },
-        # },
     }
 
     if get_config("setup", "health_check", "enabled", default=False):
