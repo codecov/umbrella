@@ -378,15 +378,6 @@ class GithubWebhookHandler(APIView):
 
     def _is_ai_features_request(self, request):
         target_id = request.META.get(GitHubHTTPHeaders.HOOK_INSTALLATION_TARGET_ID, "")
-        if not target_id:
-            log.info(
-                "Hook installation target ID is missing",
-                extra={
-                    "headers": dict(request.META),
-                    "github_webhook_event": self.event,
-                },
-            )
-            return False
 
         is_match = str(target_id) == str(self.ai_features_app_id)
         if not is_match:
@@ -396,6 +387,8 @@ class GithubWebhookHandler(APIView):
                     "target_id": target_id,
                     "ai_features_app_id": self.ai_features_app_id,
                     "github_webhook_event": self.event,
+                    "headers": dict(request.META),
+                    "request": request.data,
                 },
             )
         return is_match
