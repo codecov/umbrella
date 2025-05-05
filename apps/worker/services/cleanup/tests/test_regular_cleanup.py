@@ -5,12 +5,10 @@ from services.cleanup.utils import CleanupResult, CleanupSummary
 from shared.api_archive.archive import ArchiveService
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports.models import CommitReport
-from shared.django_apps.reports.models import ReportSession as Upload
 from shared.django_apps.reports.tests.factories import (
     CommitReportFactory,
     UploadFactory,
 )
-from shared.django_apps.staticanalysis.models import StaticAnalysisSingleFileSnapshot
 from shared.django_apps.staticanalysis.tests.factories import (
     StaticAnalysisSingleFileSnapshotFactory,
 )
@@ -55,9 +53,9 @@ def test_runs_regular_cleanup(mock_storage):
     assert summary == CleanupSummary(
         CleanupResult(3, 3),
         {
-            Upload: CleanupResult(1, 1),
-            StaticAnalysisSingleFileSnapshot: CleanupResult(1, 1),
-            CommitReport: CleanupResult(1, 1),
+            "ReportSession": CleanupResult(1, 1),
+            "StaticAnalysisSingleFileSnapshot": CleanupResult(1, 1),
+            "CommitReport": CleanupResult(1, 1),
         },
     )
     assert len(archive) == 2

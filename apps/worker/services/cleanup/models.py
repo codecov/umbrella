@@ -7,7 +7,7 @@ import sentry_sdk
 from django.db.models import Model, Q, QuerySet
 
 from services.cleanup.relations import reverse_filter
-from services.cleanup.utils import CleanupContext, CleanupResult
+from services.cleanup.utils import CleanupContext
 from shared.api_archive.archive import ArchiveService, MinioEndpoints
 from shared.bundle_analysis import StoragePaths
 from shared.django_apps.compare.models import CommitComparison
@@ -48,16 +48,13 @@ def cleanup_files_batched(
 
 @sentry_sdk.trace
 def cleanup_with_storage_field(
-    path_field: str,
-    context: CleanupContext,
-    query: QuerySet,
-) -> CleanupResult:
-    cleaned_files = 0
-
+    path_field: str, context: CleanupContext, query: QuerySet
+):
     # delete `None` `path_field`s right away
     cleaned_models = query.filter(**{f"{path_field}__isnull": True})._raw_delete(
         query.db
     )
+    context.add_progress(cleaned_models)
 
     # delete all those files from storage in chunks
     storage_query = query.filter(**{f"{path_field}__isnull": False}).values_list(
@@ -68,22 +65,20 @@ def cleanup_with_storage_field(
         if len(storage_results) == 0:
             break
 
-        cleaned_files += cleanup_files_batched(
+        cleaned_files = cleanup_files_batched(
             context, {context.default_bucket: list(storage_results.values())}
         )
+        context.add_progress(cleaned_files=cleaned_files)
+
         # go through `query.object` here, to avoid some duplicated subqueries
-        cleaned_models += query.model.objects.filter(
+        cleaned_models = query.model.objects.filter(
             pk__in=storage_results.keys()
         )._raw_delete(query.db)
+        context.add_progress(cleaned_models)
 
-    return CleanupResult(cleaned_models, cleaned_files)
 
-
-def cleanup_archivefield(
-    field_name: str, context: CleanupContext, query: QuerySet
-) -> CleanupResult:
+def cleanup_archivefield(field_name: str, context: CleanupContext, query: QuerySet):
     model_field_name = f"_{field_name}_storage_path"
-
     return cleanup_with_storage_field(model_field_name, context, query)
 
 
@@ -96,7 +91,7 @@ class FakeRepository:
 
 
 @sentry_sdk.trace
-def cleanup_commitreport(context: CleanupContext, query: QuerySet) -> CleanupResult:
+def cleanup_commitreport(context: CleanupContext, query: QuerySet):
     coverage_reports = query.values_list(
         "pk",
         "report_type",
@@ -108,8 +103,6 @@ def cleanup_commitreport(context: CleanupContext, query: QuerySet) -> CleanupRes
         "commit__repository__service_id",
     )
 
-    cleaned_models = 0
-    cleaned_files = 0
     repo_hashes: dict[int, str] = {}
 
     while True:
@@ -156,23 +149,23 @@ def cleanup_commitreport(context: CleanupContext, query: QuerySet) -> CleanupRes
                 )
                 buckets_paths[context.default_bucket].append(path)
 
-        cleaned_files += cleanup_files_batched(context, buckets_paths)
-        cleaned_models += query.model.objects.filter(
+        cleaned_files = cleanup_files_batched(context, buckets_paths)
+        context.add_progress(cleaned_files=cleaned_files)
+
+        cleaned_models = query.model.objects.filter(
             pk__in=(r[0] for r in reports)
         )._raw_delete(query.db)
-
-    return CleanupResult(cleaned_models, cleaned_files)
+        context.add_progress(cleaned_models)
 
 
 @sentry_sdk.trace
-def cleanup_upload(context: CleanupContext, query: QuerySet) -> CleanupResult:
-    cleaned_files = 0
-
+def cleanup_upload(context: CleanupContext, query: QuerySet):
     # delete `None` `storage_path`s or carryforwarded right away,
     # as those duplicate their parents `storage_path`.
     cleaned_models = query.filter(
         Q(storage_path__isnull=True) | Q(upload_type=SessionType.carriedforward.value)
     )._raw_delete(query.db)
+    context.add_progress(cleaned_models)
 
     # delete all those files from storage in chunks
     upload_query = query.filter(storage_path__isnull=False).values_list(
@@ -190,15 +183,16 @@ def cleanup_upload(context: CleanupContext, query: QuerySet) -> CleanupResult:
             else:
                 buckets_paths[context.default_bucket].append(storage_path)
 
-        cleaned_files += cleanup_files_batched(context, buckets_paths)
-        cleaned_models += query.model.objects.filter(
+        cleaned_files = cleanup_files_batched(context, buckets_paths)
+        context.add_progress(cleaned_files=cleaned_files)
+
+        cleaned_models = query.model.objects.filter(
             pk__in=(u[0] for u in uploads)
         )._raw_delete(query.db)
+        context.add_progress(cleaned_models)
 
-    return CleanupResult(cleaned_models, cleaned_files)
 
-
-def cleanup_repository(context: CleanupContext, query: QuerySet) -> CleanupResult:
+def cleanup_repository(context: CleanupContext, query: QuerySet):
     # The equivalent of `SET NULL`:
     Repository.objects.filter(fork__in=query).update(fork=None)
 
@@ -212,37 +206,40 @@ def cleanup_repository(context: CleanupContext, query: QuerySet) -> CleanupResul
 
         datasets = Dataset.objects.filter(repository_id__in=all_repo_ids)
         datasets._for_write = True
-        datasets._raw_delete(datasets.db)
+        cleaned_models = datasets._raw_delete(datasets.db)
+        context.add_progress(cleaned_models, model=Dataset)
+
         for owner_id, repo_ids in by_owner.items():
             measurements = Measurement.objects.filter(
                 owner_id=owner_id,
                 repo_id__in=repo_ids,
             )
             measurements._for_write = True
-            measurements._raw_delete(measurements.db)
+            cleaned_models = measurements._raw_delete(measurements.db)
+            context.add_progress(cleaned_models, model=Measurement)
 
-    return CleanupResult(query._raw_delete(query.db))
+    cleaned_models = query._raw_delete(query.db)
+    context.add_progress(cleaned_models)
 
 
-def unroll_subquery(context: CleanupContext, query: QuerySet) -> CleanupResult:
+def unroll_subquery(context: CleanupContext, query: QuerySet):
     reversed_query = reverse_filter(query)
     if not reversed_query:
-        return CleanupResult(query._raw_delete(query.db))
+        cleaned_models = query._raw_delete(query.db)
+        context.add_progress(cleaned_models)
+        return
+
     field, subquery = reversed_query
 
-    cleaned_models = 0
     for parent in subquery:
-        cleaned_models += query.model.objects.filter(**{field: parent.pk})._raw_delete(
+        cleaned_models = query.model.objects.filter(**{field: parent.pk})._raw_delete(
             query.db
         )
-
-    return CleanupResult(cleaned_models)
+        context.add_progress(cleaned_models)
 
 
 # All the models that need custom python code for deletions so a bulk `DELETE` query does not work.
-MANUAL_CLEANUP: dict[
-    type[Model], Callable[[CleanupContext, QuerySet], CleanupResult]
-] = {
+MANUAL_CLEANUP: dict[type[Model], Callable[[CleanupContext, QuerySet], None]] = {
     Commit: partial(cleanup_archivefield, "report"),
     Pull: partial(cleanup_archivefield, "flare"),
     CommitReport: cleanup_commitreport,

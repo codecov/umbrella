@@ -8,10 +8,7 @@ from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.django_apps.compare.models import CommitComparison
 from shared.django_apps.compare.tests.factories import CommitComparisonFactory
 from shared.django_apps.core.models import Branch, Commit, Pull, Repository
-from shared.django_apps.core.tests.factories import (
-    CommitFactory,
-    RepositoryFactory,
-)
+from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports.models import (
     CommitReport,
     DailyTestRollup,
@@ -43,11 +40,11 @@ def test_delete_owner_deletes_owner_with_ownerid(mock_storage):
     assert res == CleanupSummary(
         CleanupResult(5),
         {
-            Branch: CleanupResult(1),
-            Commit: CleanupResult(1),
-            Owner: CleanupResult(1),
-            Pull: CleanupResult(1),
-            Repository: CleanupResult(1),
+            "Branch": CleanupResult(1),
+            "Commit": CleanupResult(1),
+            "Owner": CleanupResult(1),
+            "Pull": CleanupResult(1),
+            "Repository": CleanupResult(1),
         },
     )
 
@@ -85,17 +82,17 @@ def test_delete_owner_deletes_owner_with_commit_compares(mock_storage):
     assert res == CleanupSummary(
         CleanupResult(12),
         {
-            Branch: CleanupResult(1),
-            Commit: CleanupResult(2),
-            CommitComparison: CleanupResult(1),
-            Owner: CleanupResult(1),
-            Pull: CleanupResult(1),
-            Repository: CleanupResult(1),
-            CommitReport: CleanupResult(1),
-            Upload: CleanupResult(1),
-            Test: CleanupResult(1),
-            TestInstance: CleanupResult(1),
-            DailyTestRollup: CleanupResult(1),
+            "Branch": CleanupResult(1),
+            "Commit": CleanupResult(2),
+            "CommitComparison": CleanupResult(1),
+            "Owner": CleanupResult(1),
+            "Pull": CleanupResult(1),
+            "Repository": CleanupResult(1),
+            "CommitReport": CleanupResult(1),
+            "ReportSession": CleanupResult(1),
+            "Test": CleanupResult(1),
+            "TestInstance": CleanupResult(1),
+            "DailyTestRollup": CleanupResult(1),
         },
     )
 
@@ -124,7 +121,7 @@ def test_delete_owner_from_orgs_removes_ownerid_from_organizations_of_related_ow
 
     res = DeleteOwnerTask().run_impl({}, org.ownerid)
 
-    assert res.summary[Owner] == CleanupResult(1)
+    assert res.summary["Owner"] == CleanupResult(1)
 
     user_1 = Owner.objects.get(pk=user_1.ownerid)
     assert user_1.organizations == []

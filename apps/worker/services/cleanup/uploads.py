@@ -3,18 +3,16 @@ from datetime import datetime, timedelta, timezone
 
 from django.db.models.query import QuerySet
 
-from services.cleanup.cleanup import run_cleanup
-from services.cleanup.utils import CleanupContext, CleanupResult, CleanupSummary
+from services.cleanup.cleanup import cleanup_queryset
+from services.cleanup.utils import CleanupContext
 from shared.django_apps.reports.models import ReportSession as Upload
 
 UPLOAD_CHUNKSIZE = 5_000
 
 
-def cleanup_old_uploads(context: CleanupContext) -> CleanupSummary:
+def cleanup_old_uploads(context: CleanupContext):
     queries = create_upload_cleanup_queries()
     random.shuffle(queries)
-
-    complete_summary = CleanupSummary(CleanupResult(0), summary={})
 
     for query in queries:
         query = query.values_list("pk", flat=True)
@@ -24,11 +22,7 @@ def cleanup_old_uploads(context: CleanupContext) -> CleanupSummary:
                 break
 
             uploads_query = Upload.objects.filter(pk__in=upload_ids)
-            summary = run_cleanup(uploads_query, context=context)
-
-            complete_summary.add(summary)
-
-    return complete_summary
+            cleanup_queryset(uploads_query, context)
 
 
 UPLOAD_RETENTION_PERIOD = 150

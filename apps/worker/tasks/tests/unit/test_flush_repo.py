@@ -3,20 +3,16 @@ import pytest
 from services.cleanup.utils import CleanupResult, CleanupSummary
 from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis import StoragePaths
-from shared.django_apps.compare.models import CommitComparison, FlagComparison
 from shared.django_apps.compare.tests.factories import (
     CommitComparisonFactory,
     FlagComparisonFactory,
 )
-from shared.django_apps.core.models import Branch, Commit, Pull, Repository
 from shared.django_apps.core.tests.factories import (
     BranchFactory,
     CommitFactory,
     PullFactory,
     RepositoryFactory,
 )
-from shared.django_apps.reports.models import CommitReport, RepositoryFlag
-from shared.django_apps.reports.models import ReportSession as Upload
 from shared.django_apps.reports.tests.factories import (
     CommitReportFactory,
     RepositoryFlagFactory,
@@ -35,7 +31,7 @@ def test_flush_repo_nothing(mock_storage):
     assert res == CleanupSummary(
         CleanupResult(1),
         {
-            Repository: CleanupResult(1),
+            "Repository": CleanupResult(1),
         },
     )
 
@@ -73,13 +69,13 @@ def test_flush_repo_few_of_each_only_db_objects(mock_storage):
     assert res == CleanupSummary(
         CleanupResult(24 + 16 + 4 + 4 + 18 + 1 + 1),
         {
-            Branch: CleanupResult(24),
-            Commit: CleanupResult(16),
-            CommitComparison: CleanupResult(4),
-            FlagComparison: CleanupResult(4),
-            Pull: CleanupResult(18),
-            Repository: CleanupResult(1),
-            RepositoryFlag: CleanupResult(1),
+            "Branch": CleanupResult(24),
+            "Commit": CleanupResult(16),
+            "CommitComparison": CleanupResult(4),
+            "FlagComparison": CleanupResult(4),
+            "Pull": CleanupResult(18),
+            "Repository": CleanupResult(1),
+            "RepositoryFlag": CleanupResult(1),
         },
     )
 
@@ -128,12 +124,12 @@ def test_flush_repo_little_bit_of_everything(mocker, mock_storage):
     assert res == CleanupSummary(
         CleanupResult(24 + 8 + 16 + 18 + 1 + 16, 16 + 16),
         {
-            Branch: CleanupResult(24),
-            Commit: CleanupResult(8),
-            CommitReport: CleanupResult(16, 16),
-            Pull: CleanupResult(18),
-            Repository: CleanupResult(1),
-            Upload: CleanupResult(16, 16),
+            "Branch": CleanupResult(24),
+            "Commit": CleanupResult(8),
+            "CommitReport": CleanupResult(16, 16),
+            "Pull": CleanupResult(18),
+            "Repository": CleanupResult(1),
+            "ReportSession": CleanupResult(16, 16),
         },
     )
     assert len(archive) == 0

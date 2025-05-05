@@ -62,7 +62,7 @@ def test_regular_upload_cleanup(mock_storage):
     assert summary == CleanupSummary(
         CleanupResult(2, 2),
         {
-            Upload: CleanupResult(2, 2),
+            "ReportSession": CleanupResult(2, 2),
         },
     )
     assert len(archive) == 3

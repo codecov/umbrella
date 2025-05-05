@@ -3,8 +3,8 @@ import logging
 from django.db import transaction
 from django.db.models import Q
 
-from services.cleanup.cleanup import run_cleanup
-from services.cleanup.utils import CleanupSummary
+from services.cleanup.cleanup import cleanup_queryset
+from services.cleanup.utils import CleanupSummary, cleanup_context
 from shared.django_apps.codecov_auth.models import Owner, OwnerProfile
 from shared.django_apps.core.models import Commit, Pull, Repository
 
@@ -18,7 +18,9 @@ def cleanup_owner(owner_id: int) -> CleanupSummary:
 
     clear_owner_references(owner_id)
     owner_query = Owner.objects.filter(ownerid=owner_id)
-    summary = run_cleanup(owner_query)
+    with cleanup_context() as context:
+        cleanup_queryset(owner_query, context)
+        summary = context.summary
 
     log.info("Owner cleanup finished", extra={"summary": summary})
     return summary

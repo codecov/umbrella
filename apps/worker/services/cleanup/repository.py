@@ -4,8 +4,8 @@ from uuid import uuid4
 import sentry_sdk
 from django.db import DatabaseError, IntegrityError, transaction
 
-from services.cleanup.cleanup import run_cleanup
-from services.cleanup.utils import CleanupResult, CleanupSummary
+from services.cleanup.cleanup import cleanup_queryset
+from services.cleanup.utils import CleanupResult, CleanupSummary, cleanup_context
 from shared.django_apps.codecov_auth.models import Owner
 from shared.django_apps.core.models import Repository
 
@@ -31,7 +31,9 @@ def cleanup_repo(repo_id: int) -> CleanupSummary:
         log.info("Continuing Repository cleanup")
 
     repo_query = Repository.objects.filter(repoid=repo_id)
-    summary = run_cleanup(repo_query)
+    with cleanup_context() as context:
+        cleanup_queryset(repo_query, context)
+        summary = context.summary
 
     # Delete the created "Shadow Owner" using a `raw_delete`, as otherwise this
     # would run some very slow and expensive `SET NULL` / `CASCADE` queries,

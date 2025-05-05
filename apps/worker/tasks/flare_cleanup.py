@@ -65,6 +65,7 @@ class FlareCleanupTask(CodecovCronTask, name=flare_cleanup_task_name):
         total_updated = 0
         start = 0
         with cleanup_context() as context:
+            context.set_current_model(Pull)
             while start < limit:
                 stop = start + batch_size if start + batch_size < limit else limit
                 batch = non_open_pulls_with_flare_in_archive.values_list(
@@ -76,9 +77,10 @@ class FlareCleanupTask(CodecovCronTask, name=flare_cleanup_task_name):
                 flare_paths_from_batch = Pull.objects.filter(id__in=batch).values_list(
                     "_flare_storage_path", flat=True
                 )
-                cleanup_files_batched(
+                cleaned_files = cleanup_files_batched(
                     context, {context.default_bucket: flare_paths_from_batch}
                 )
+                context.add_progress(cleaned_files=cleaned_files)
 
                 # Update the _flare_storage_path field for successfully processed pulls
                 n_updated = Pull.objects.filter(id__in=batch).update(

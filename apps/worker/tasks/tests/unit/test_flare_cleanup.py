@@ -1,8 +1,16 @@
 from unittest.mock import call
 
+from services.cleanup.utils import CleanupResult, CleanupSummary
 from shared.django_apps.core.models import Pull, PullStates
 from shared.django_apps.core.tests.factories import PullFactory, RepositoryFactory
 from tasks.flare_cleanup import FlareCleanupTask
+
+
+def mk_summary(cleaned_files: int) -> CleanupSummary:
+    summary = {}
+    if cleaned_files:
+        summary = {"Pull": CleanupResult(0, cleaned_files)}
+    return {"summary": CleanupSummary(CleanupResult(0, cleaned_files), summary)}
 
 
 class TestFlareCleanupTask(object):
@@ -67,6 +75,7 @@ class TestFlareCleanupTask(object):
             [
                 call("Starting FlareCleanupTask"),
                 call("FlareCleanupTask cleared 1 database flares"),
+                call("Cleanup completed", extra=mk_summary(1)),
                 call("FlareCleanupTask cleared 1 Archive flares"),
             ]
         )
@@ -108,6 +117,7 @@ class TestFlareCleanupTask(object):
             [
                 call("Starting FlareCleanupTask"),
                 call("FlareCleanupTask cleared 0 database flares"),
+                call("Cleanup completed", extra=mk_summary(0)),
                 call("FlareCleanupTask cleared 0 Archive flares"),
             ]
         )
@@ -157,6 +167,7 @@ class TestFlareCleanupTask(object):
             [
                 call("Starting FlareCleanupTask"),
                 call("FlareCleanupTask cleared 3 database flares"),
+                call("Cleanup completed", extra=mk_summary(3)),
                 call("FlareCleanupTask cleared 3 Archive flares"),
             ]
         )
