@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   lint:
-    name: Runt Lint
+    name: Run Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
