@@ -36,7 +36,7 @@ def reuse_cassette(filepath):
     )
 
 
-class TestSyncReposTaskUnit(object):
+class TestSyncReposTaskUnit:
     def test_unknown_owner(self, dbsession):
         unknown_ownerid = 10404
         with pytest.raises(AssertionError, match="Owner not found"):
@@ -582,7 +582,7 @@ class TestSyncReposTaskUnit(object):
             dbsession.query(Repository)
             .filter(
                 Repository.service_id.in_(
-                    (repo["repo"]["service_id"] for repo in mock_repos)
+                    repo["repo"]["service_id"] for repo in mock_repos
                 )
             )
             .all()
@@ -840,7 +840,7 @@ class TestSyncReposTaskUnit(object):
             dbsession.query(Repository)
             .filter(
                 Repository.service_id.in_(
-                    (repo["repo"]["service_id"] for repo in mock_repos)
+                    repo["repo"]["service_id"] for repo in mock_repos
                 )
             )
             .all()

@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Any, List
+from typing import Any
 
 import stripe
 from django.conf import settings
@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 class StripeWebhookHandler(APIView):
     permission_classes = [AllowAny]
 
-    def _log_updated(self, updated: List[Owner]) -> None:
+    def _log_updated(self, updated: list[Owner]) -> None:
         if len(updated) >= 1:
             log.info(
                 f"Successfully updated info for {len(updated)} owner(s)",

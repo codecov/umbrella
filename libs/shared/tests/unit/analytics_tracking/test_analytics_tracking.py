@@ -1,8 +1,8 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from unittest.mock import patch
 
 import pytest
-from mock import patch
 
 from shared.analytics_tracking import get_list_of_analytic_tools, get_tools_manager
 from shared.analytics_tracking.events import Event, Events
@@ -105,7 +105,7 @@ def test_track_event_is_enterprise(mock_pubsub_publisher, mocker):
     mock_pubsub_publisher.publish.assert_not_called()
 
 
-class TestPubSub(object):
+class TestPubSub:
     def test_pubsub_enabled(self, mocker):
         yaml_content = "\n".join(
             [
@@ -165,7 +165,7 @@ class TestPubSub(object):
     def test_pubsub_track_event_with_datetime(
         self, mocker, mock_pubsub_publisher, mock_pubsub
     ):
-        other_timestamp = datetime(2023, 9, 12, tzinfo=timezone.utc)
+        other_timestamp = datetime(2023, 9, 12, tzinfo=UTC)
         event = Event(
             event_name=Events.ACCOUNT_ACTIVATED_REPOSITORY.value,
             other_timestamp=other_timestamp,
@@ -183,15 +183,15 @@ class TestPubSub(object):
         )
 
 
-class TestEvent(object):
+class TestEvent:
     def test_event(self, mocker):
-        class uuid(object):
+        class uuid:
             bytes = b"\x00\x01\x02"
 
         mocker.patch("shared.analytics_tracking.events.uuid1", return_value=uuid)
         event = Event(
             Events.ACCOUNT_ACTIVATED_REPOSITORY.value,
-            dt=datetime(2023, 9, 12, tzinfo=timezone.utc),
+            dt=datetime(2023, 9, 12, tzinfo=UTC),
             user_id="1234",
             repo_id="1234",
             branch="test_branch",
@@ -207,7 +207,7 @@ class TestEvent(object):
         with pytest.raises(ValueError, match="Invalid event name: Invalid name"):
             Event(
                 "Invalid name",
-                dt=datetime(2023, 9, 12, tzinfo=timezone.utc),
+                dt=datetime(2023, 9, 12, tzinfo=UTC),
                 user_id="1234",
                 repo_id="1234",
                 branch="test_branch",

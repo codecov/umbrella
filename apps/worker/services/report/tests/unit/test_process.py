@@ -533,7 +533,7 @@ class TestProcessReport(BaseTestCase):
         ],
     )
     def test_detect(self, lang, report):
-        with patch("services.report.languages.%s" % lang) as func:
+        with patch(f"services.report.languages.{lang}") as func:
             res = process.process_report(
                 report=report,
                 report_builder=ReportBuilder(

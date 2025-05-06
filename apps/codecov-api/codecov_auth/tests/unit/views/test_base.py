@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, call, patch
 
 import pytest
@@ -787,7 +787,7 @@ class LoginMixinTests(TestCase):
         another_user = UserFactory()
         another_owner = OwnerFactory(service="github", user=another_user)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create a session that will be deleted
         to_be_deleted_1 = SessionFactory(

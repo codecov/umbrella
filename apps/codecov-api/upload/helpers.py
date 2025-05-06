@@ -1,7 +1,7 @@
 import logging
 import re
 from json import dumps
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 import jwt
@@ -55,7 +55,7 @@ log = logging.getLogger(__name__)
 redis = get_redis_connection()
 
 
-def parse_params(data: Dict[str, Any]) -> Dict[str, Any]:
+def parse_params(data: dict[str, Any]) -> dict[str, Any]:
     """
     This function will validate the input request parameters and do some additional parsing/tranformation of the params.
     """
@@ -266,7 +266,7 @@ def get_repo_with_github_actions_oidc_token(token: str) -> Repository:
     return repository
 
 
-def determine_repo_for_upload(upload_params: Dict[str, Any]) -> Repository:
+def determine_repo_for_upload(upload_params: dict[str, Any]) -> Repository:
     token = upload_params.get("token")
     using_global_token = upload_params.get("using_global_token")
     service = upload_params.get("service")
@@ -317,7 +317,7 @@ def determine_repo_for_upload(upload_params: Dict[str, Any]) -> Repository:
 
 
 def determine_upload_branch_to_use(
-    upload_params: Dict[str, Any], repo_default_branch: str
+    upload_params: dict[str, Any], repo_default_branch: str
 ) -> str | None:
     """
     Do processing on the upload request parameters to determine which branch to use for the upload:
@@ -339,7 +339,7 @@ def determine_upload_branch_to_use(
         return None
 
 
-def determine_upload_pr_to_use(upload_params: Dict[str, Any]) -> str | None:
+def determine_upload_pr_to_use(upload_params: dict[str, Any]) -> str | None:
     """
     Do processing on the upload request parameters to determine which PR to use for the upload:
     - If a branch was provided and the branch name contains "pull" or "pr" followed by digits, extract the digits and use that as the PR number.
@@ -355,7 +355,7 @@ def determine_upload_pr_to_use(upload_params: Dict[str, Any]) -> str | None:
         return upload_params.get("pr")
 
 
-def ghapp_installation_id_to_use(repository: Repository) -> Optional[str]:
+def ghapp_installation_id_to_use(repository: Repository) -> str | None:
     if (
         repository.service != SERVICE_GITHUB
         and repository.service != SERVICE_GITHUB_ENTERPRISE
@@ -381,7 +381,7 @@ def ghapp_installation_id_to_use(repository: Repository) -> Optional[str]:
 
 def try_to_get_best_possible_bot_token(
     repository: Repository,
-) -> OauthConsumerToken | Dict:
+) -> OauthConsumerToken | dict:
     ghapp_installation_id = ghapp_installation_id_to_use(repository)
     if ghapp_installation_id is not None:
         try:
@@ -436,13 +436,13 @@ def try_to_get_best_possible_bot_token(
 
 @async_to_sync
 async def _get_git_commit_data(
-    adapter: TorngitBaseAdapter, commit: str, token: Optional[OauthConsumerToken | Dict]
-) -> Dict[str, Any]:
+    adapter: TorngitBaseAdapter, commit: str, token: OauthConsumerToken | dict | None
+) -> dict[str, Any]:
     return await adapter.get_commit(commit, token)
 
 
 def determine_upload_commit_to_use(
-    upload_params: Dict[str, Any], repository: Repository
+    upload_params: dict[str, Any], repository: Repository
 ) -> str:
     """
     Do processing on the upload request parameters to determine which commit to use for the upload:
@@ -501,7 +501,7 @@ def insert_commit(
     pr: int,
     repository: Repository,
     owner: Owner,
-    parent_commit_id: Optional[str] = None,
+    parent_commit_id: str | None = None,
 ) -> Commit:
     commit, was_created = Commit.objects.defer("_report").get_or_create(
         commitid=commitid,
@@ -528,7 +528,7 @@ def insert_commit(
     return commit
 
 
-def get_global_tokens() -> Dict[str | None, Any]:
+def get_global_tokens() -> dict[str | None, Any]:
     """
     Enterprise only: check the config to see if global tokens were set for this organization's uploads.
 
@@ -568,7 +568,7 @@ def check_commit_upload_constraints(commit: Commit) -> None:
 
 
 def validate_upload(
-    upload_params: Dict[str, Any], repository: Repository, redis: Redis
+    upload_params: dict[str, Any], repository: Repository, redis: Redis
 ) -> None:
     """
     Make sure the upload can proceed and, if so, activate the repository if needed.
@@ -685,8 +685,8 @@ def _determine_responsible_owner(repository: Repository) -> Owner:
 
 
 def parse_headers(
-    headers: Dict[str, Any], upload_params: Dict[str, Any]
-) -> Dict[str, Any]:
+    headers: dict[str, Any], upload_params: dict[str, Any]
+) -> dict[str, Any]:
     version = upload_params.get("version")
 
     # Content disposition header
@@ -764,7 +764,7 @@ def validate_activated_repo(repository: Repository) -> None:
 
 
 # headers["User-Agent"] should look something like this: codecov-cli/0.4.7 or codecov-uploader/0.7.1
-def get_agent_from_headers(headers: Dict[str, Any]) -> str:
+def get_agent_from_headers(headers: dict[str, Any]) -> str:
     try:
         return headers["User-Agent"].split("/")[0].split("-")[1]
     except Exception as e:
@@ -777,7 +777,7 @@ def get_agent_from_headers(headers: Dict[str, Any]) -> str:
         return "unknown-user-agent"
 
 
-def get_version_from_headers(headers: Dict[str, Any]) -> str:
+def get_version_from_headers(headers: dict[str, Any]) -> str:
     try:
         return headers["User-Agent"].split("/")[1]
     except Exception as e:
@@ -794,12 +794,12 @@ def generate_upload_prometheus_metrics_labels(
     action: str,
     request: HttpRequest,
     is_shelter_request: bool,
-    endpoint: Optional[str] = None,
-    repository: Optional[Repository] = None,
-    position: Optional[str] = None,
-    upload_version: Optional[str] = None,
+    endpoint: str | None = None,
+    repository: Repository | None = None,
+    position: str | None = None,
+    upload_version: str | None = None,
     include_empty_labels: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     metrics_tags = {
         "agent": get_agent_from_headers(request.headers),
         "version": get_version_from_headers(request.headers),

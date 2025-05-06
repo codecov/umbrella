@@ -1,5 +1,4 @@
 import datetime
-from typing import List, Optional
 from unittest.mock import patch
 
 import pytest
@@ -21,20 +20,20 @@ from shared.utils.test_utils import mock_config_helper
 def get_github_integration_token_side_effect(
     service: str,
     installation_id: int = None,
-    app_id: Optional[str] = None,
-    pem_path: Optional[str] = None,
+    app_id: str | None = None,
+    pem_path: str | None = None,
 ):
     return f"installation_token_{installation_id}_{app_id}"
 
 
-class TestGettingAdapterAuthInformation(object):
-    class TestGitHubOwnerNoRepoInfo(object):
+class TestGettingAdapterAuthInformation:
+    class TestGitHubOwnerNoRepoInfo:
         def _generate_test_owner(
             self,
             *,
             with_bot: bool,
             integration_id: int | None = None,
-            ghapp_installations: List[GithubAppInstallation] = None,
+            ghapp_installations: list[GithubAppInstallation] = None,
         ):
             if ghapp_installations is None:
                 ghapp_installations = []
@@ -305,7 +304,7 @@ class TestGettingAdapterAuthInformation(object):
                 == expected
             )
 
-    class TestGitHubOwnerWithRepoInfo(object):
+    class TestGitHubOwnerWithRepoInfo:
         def _generate_test_repo(
             self,
             *,
@@ -313,7 +312,7 @@ class TestGettingAdapterAuthInformation(object):
             with_owner_bot: bool,
             integration_id: int | None = None,
             private: bool = True,
-            ghapp_installations: List[GithubAppInstallation] = None,
+            ghapp_installations: list[GithubAppInstallation] = None,
         ):
             if ghapp_installations is None:
                 ghapp_installations = []

@@ -1,7 +1,7 @@
 from utils.services import get_long_service_name, get_short_service_name
 
 
-class TestServices(object):
+class TestServices:
     def test_gitlab(self):
         service = get_long_service_name("gl")
         assert service == "gitlab"

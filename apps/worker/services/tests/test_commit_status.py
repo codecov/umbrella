@@ -1,7 +1,7 @@
 from services.commit_status import RepositoryCIFilter, _ci_providers
 
 
-class TestCommitStatus(object):
+class TestCommitStatus:
     def test_ci_providers_no_config(self, mock_configuration):
         assert _ci_providers() == []
 
@@ -20,7 +20,7 @@ class TestCommitStatus(object):
         assert sorted(_ci_providers()) == sorted(["ser_1", "la_3", "something_4"])
 
 
-class TestRepositoryCIFilter(object):
+class TestRepositoryCIFilter:
     def test_filter(self):
         service = RepositoryCIFilter(
             {"codecov": {"ci": ["simple", "!excluded", "another", "!reject"]}}

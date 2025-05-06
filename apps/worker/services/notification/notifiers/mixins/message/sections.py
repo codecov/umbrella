@@ -97,7 +97,7 @@ def get_message_layout(
     return MessageLayout(upper, middle, lower)
 
 
-class BaseSectionWriter(object):
+class BaseSectionWriter:
     def __init__(
         self,
         repository,
@@ -127,17 +127,17 @@ class NewFooterSectionWriter(BaseSectionWriter):
         hide_project_coverage = self.settings.get("hide_project_coverage", False)
         if hide_project_coverage:
             yield ""
-            yield ":loudspeaker: Thoughts on this report? [Let us know!]({0})".format(
+            yield ":loudspeaker: Thoughts on this report? [Let us know!]({})".format(
                 "https://about.codecov.io/pull-request-comment-report/"
             )
 
         else:
             repo_service = comparison.repository_service.service
             yield ""
-            yield "[:umbrella: View full report in Codecov by Sentry]({0}?dropdown=coverage&src=pr&el=continue).   ".format(
+            yield "[:umbrella: View full report in Codecov by Sentry]({}?dropdown=coverage&src=pr&el=continue).   ".format(
                 links["pull"]
             )
-            yield ":loudspeaker: Have feedback on the report? [Share it here]({0}).".format(
+            yield ":loudspeaker: Have feedback on the report? [Share it here]({}).".format(
                 "https://about.codecov.io/codecov-pr-comment-feedback/"
                 if repo_service == "github"
                 else "https://gitlab.com/codecov-open-source/codecov-user-feedback/-/issues/4"
@@ -184,12 +184,7 @@ class HeaderSectionWriter(BaseSectionWriter):
 
         if base_report and head_report:
             yield (
-                "> Project coverage is {head_cov}%. Comparing base [(`{commitid_base}`)]({links[base]}?dropdown=coverage&el=desc) to head [(`{commitid_head}`)]({links[head]}?dropdown=coverage&el=desc).".format(
-                    commitid_head=comparison.head.commit.commitid[:7],
-                    commitid_base=comparison.project_coverage_base.commit.commitid[:7],
-                    links=links,
-                    head_cov=round_number(yaml, Decimal(head_report.totals.coverage)),
-                )
+                f"> Project coverage is {round_number(yaml, Decimal(head_report.totals.coverage))}%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)]({links['base']}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)]({links['head']}?dropdown=coverage&el=desc)."
             )
         else:
             # This doesn't actually emit a message if the _head_ report is missing
@@ -257,7 +252,7 @@ class FooterSectionWriter(BaseSectionWriter):
         yield "------"
         yield ""
         yield (
-            "[Continue to review full report in Codecov by Sentry]({0}?dropdown=coverage&src=pr&el=continue).".format(
+            "[Continue to review full report in Codecov by Sentry]({}?dropdown=coverage&src=pr&el=continue).".format(
                 links["pull"]
             )
         )
@@ -305,7 +300,7 @@ class DiffSectionWriter(BaseSectionWriter):
             self.current_yaml,
             pull_dict["base"]["branch"],  # important because base may be null
             base_report.totals if base_report else None,
-            "#%s" % pull.pullid,
+            f"#{pull.pullid}",
             head_report.totals,
         )
         yield from lines
@@ -381,7 +376,7 @@ class NewFilesSectionWriter(BaseSectionWriter):
             changed_files_with_missing_lines = [f for f in changed_files if f[3] > 0]
             if changed_files_with_missing_lines:
                 yield (
-                    "| [Files with missing lines]({0}?dropdown=coverage&src=pr&el=tree) {1}".format(
+                    "| [Files with missing lines]({}?dropdown=coverage&src=pr&el=tree) {}".format(
                         links["pull"], table_header
                     )
                 )
@@ -450,7 +445,7 @@ class FileSectionWriter(BaseSectionWriter):
                     )
 
             yield (
-                "| [Files with missing lines]({0}?dropdown=coverage&src=pr&el=tree) {1}".format(
+                "| [Files with missing lines]({}?dropdown=coverage&src=pr&el=tree) {}".format(
                     links["pull"], table_header
                 )
             )
@@ -725,7 +720,7 @@ class MessagesToUserSectionWriter(BaseSectionWriter):
                 )
 
             aggregated_upload_diff = sum(
-                (diff["head_count"] - diff["base_count"] for diff in upload_diff)
+                diff["head_count"] - diff["base_count"] for diff in upload_diff
             )
             context = {
                 "aggregated_upload_diff": abs(aggregated_upload_diff),

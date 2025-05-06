@@ -35,19 +35,19 @@ class TestPlanRepresentationsType(GraphQLTestHelper, TestCase):
             trial_status=TrialStatus.ONGOING.value,
             pretrial_users_count=234,
         )
-        query = """{
-            owner(username: "%s") {
-                pretrialPlan {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
+                pretrialPlan {{
                     marketingName
                     value
                     billingRate
                     baseUnitPrice
                     benefits
                     monthlyUploadLimit
-                }
-            }
-        }
-        """ % (current_org.username)
+                }}
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=current_org)
         assert data["owner"]["pretrialPlan"] == {
             "marketingName": "Developer",

@@ -1,7 +1,7 @@
 import logging
 import re
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import stripe
 from dateutil.relativedelta import relativedelta
@@ -246,9 +246,9 @@ class StripeService(AbstractPaymentService):
 
         # we give an auto-refund grace period of 24 hours for a monthly subscription or 72 hours for a yearly subscription
         current_subscription_datetime = datetime.fromtimestamp(
-            subscription["current_period_start"], tz=timezone.utc
+            subscription["current_period_start"], tz=UTC
         )
-        difference_from_now = datetime.now(timezone.utc) - current_subscription_datetime
+        difference_from_now = datetime.now(UTC) - current_subscription_datetime
 
         subscription_plan_interval = getattr(
             getattr(subscription, "plan", None), "interval", None

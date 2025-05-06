@@ -7,7 +7,7 @@ from shared.reports.enums import UploadState
 from tasks.manual_trigger import ManualTriggerTask
 
 
-class TestUploadCompletionTask(object):
+class TestUploadCompletionTask:
     def test_manual_upload_completion_trigger(
         self,
         mocker,

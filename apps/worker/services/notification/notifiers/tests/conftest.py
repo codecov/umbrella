@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -314,7 +314,7 @@ def sample_comparison(dbsession, request, sample_report, mocker):
         owner__service="github",
         owner__integration_id="10000",
         # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-        owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+        owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         using_integration=True,
     )
     dbsession.add(repository)

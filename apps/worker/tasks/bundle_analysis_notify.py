@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict
+from typing import Any
 
 import sentry_sdk
 
@@ -24,7 +24,7 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
         db_session,
         # Celery `chain` injects this argument - it's the returned result
         # from the prior task in the chain
-        previous_result: Dict[str, Any],
+        previous_result: dict[str, Any],
         *,
         repoid: int,
         commitid: str,
@@ -73,7 +73,7 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
         repoid: int,
         commitid: str,
         commit_yaml: UserYaml,
-        previous_result: Dict[str, Any],
+        previous_result: dict[str, Any],
         **kwargs,
     ):
         log.info(
@@ -95,7 +95,7 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
         # (they get accumulated as we execute each task in succession)
         processing_results = previous_result.get("results", [])
 
-        if all((result["error"] is not None for result in processing_results)):
+        if all(result["error"] is not None for result in processing_results):
             # every processor errored, nothing to notify on
             return {
                 "notify_attempted": False,

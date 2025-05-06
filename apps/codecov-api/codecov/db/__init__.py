@@ -66,4 +66,4 @@ class IsNot(Lookup):
         lhs, lhs_params = self.process_lhs(compiler, connection)
         rhs, rhs_params = self.process_rhs(compiler, connection)
         params = tuple(lhs_params) + tuple(rhs_params)
-        return "%s is not %s" % (lhs, rhs), params
+        return f"{lhs} is not {rhs}", params

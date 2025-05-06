@@ -44,7 +44,7 @@ def pull(dbsession):
     return pull
 
 
-class TestNewUserActivatedTaskUnit(object):
+class TestNewUserActivatedTaskUnit:
     @pytest.fixture(autouse=True)
     def mock_all_plans_and_tiers(self):
         mock_all_plans_and_tiers()

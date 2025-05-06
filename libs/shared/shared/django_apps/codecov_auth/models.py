@@ -547,9 +547,7 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     @property
     def avatar_url(self, size=DEFAULT_AVATAR_SIZE):
         if self.service == SERVICE_GITHUB and self.service_id:
-            return "{}/u/{}?v=3&s={}".format(
-                AVATAR_GITHUB_BASE_URL, self.service_id, size
-            )
+            return f"{AVATAR_GITHUB_BASE_URL}/u/{self.service_id}?v=3&s={size}"
 
         elif self.service == SERVICE_GITHUB_ENTERPRISE and self.service_id:
             return "{}/avatars/u/{}?v=3&s={}".format(
@@ -558,9 +556,7 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
 
         # Bitbucket
         elif self.service == SERVICE_BITBUCKET and self.username:
-            return "{}/account/{}/avatar/{}".format(
-                BITBUCKET_BASE_URL, self.username, size
-            )
+            return f"{BITBUCKET_BASE_URL}/account/{self.username}/avatar/{size}"
 
         elif (
             self.service == SERVICE_BITBUCKET_SERVER
@@ -582,14 +578,10 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
 
         # Codecov config
         elif get_config("services", "gravatar") and self.email:
-            return "{}/avatar/{}?s={}".format(
-                GRAVATAR_BASE_URL, md5(self.email.lower().encode()).hexdigest(), size
-            )
+            return f"{GRAVATAR_BASE_URL}/avatar/{md5(self.email.lower().encode()).hexdigest()}?s={size}"
 
         elif get_config("services", "avatars.io") and self.email:
-            return "{}/avatar/{}/{}".format(
-                AVATARIO_BASE_URL, md5(self.email.lower().encode()).hexdigest(), size
-            )
+            return f"{AVATARIO_BASE_URL}/avatar/{md5(self.email.lower().encode()).hexdigest()}/{size}"
 
         elif self.ownerid:
             return "{}/users/{}.png?size={}".format(

@@ -1,7 +1,6 @@
 import logging
 from base64 import b64encode
 from decimal import Decimal
-from typing import List
 
 from database.models import Repository
 from helpers.reports import get_totals_from_file_in_reports
@@ -27,7 +26,7 @@ class TeamPlanWriter:
     def name(self):
         return self.__class__.__name__
 
-    def header_lines(self, comparison: ComparisonProxy, diff, settings) -> List[str]:
+    def header_lines(self, comparison: ComparisonProxy, diff, settings) -> list[str]:
         lines = []
 
         head_report = comparison.head.report
@@ -61,7 +60,7 @@ class TeamPlanWriter:
 
     def middle_lines(
         self, comparison: ComparisonProxy, diff, links, current_yaml
-    ) -> List[str]:
+    ) -> list[str]:
         lines = []
 
         # create list of files changed in diff
@@ -116,7 +115,7 @@ class TeamPlanWriter:
             changed_files_with_missing_lines = [f for f in changed_files if f[3] > 0]
             if changed_files_with_missing_lines:
                 lines.append(
-                    "| [Files with missing lines]({0}?dropdown=coverage&src=pr&el=tree) {1}".format(
+                    "| [Files with missing lines]({}?dropdown=coverage&src=pr&el=tree) {}".format(
                         links["pull"], table_header
                     )
                 )
@@ -136,11 +135,11 @@ class TeamPlanWriter:
 
         return lines
 
-    def footer_lines(self, comparison: ComparisonProxy) -> List[str]:
+    def footer_lines(self, comparison: ComparisonProxy) -> list[str]:
         lines = []
         lines.append("")
         lines.append(
-            ":loudspeaker: Thoughts on this report? [Let us know!]({0})".format(
+            ":loudspeaker: Thoughts on this report? [Let us know!]({})".format(
                 "https://github.com/codecov/feedback/issues/255"
             )
         )

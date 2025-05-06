@@ -145,10 +145,8 @@ def test_upload_coverage_post(db, mocker):
     ).first()
     assert response.status_code == 201
     assert all(
-        (
-            x in response_json.keys()
-            for x in ["external_id", "created_at", "raw_upload_location", "url"]
-        )
+        x in response_json.keys()
+        for x in ["external_id", "created_at", "raw_upload_location", "url"]
     )
     assert (
         response_json.get("url")
@@ -260,10 +258,8 @@ def test_upload_coverage_post_shelter(db, mocker):
     ).first()
     assert response.status_code == 201
     assert all(
-        (
-            x in response_json.keys()
-            for x in ["external_id", "created_at", "raw_upload_location", "url"]
-        )
+        x in response_json.keys()
+        for x in ["external_id", "created_at", "raw_upload_location", "url"]
     )
     assert (
         response_json.get("url")

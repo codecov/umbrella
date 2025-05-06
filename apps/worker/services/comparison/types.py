@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 from database.models import Commit
 from services.repository import EnrichedPull
@@ -8,7 +8,7 @@ from shared.yaml import UserYaml
 
 
 @dataclass
-class FullCommit(object):
+class FullCommit:
     commit: Commit
     report: ReadOnlyReport
 
@@ -20,7 +20,7 @@ class ReportUploadedCount(TypedDict):
 
 
 @dataclass
-class Comparison(object):
+class Comparison:
     head: FullCommit
 
     # To see how a patch changes project coverage, we compare the branch head's
@@ -36,7 +36,7 @@ class Comparison(object):
     patch_coverage_base_commitid: str
 
     enriched_pull: EnrichedPull
-    current_yaml: Optional[UserYaml] = None
+    current_yaml: UserYaml | None = None
 
     # FIXME: The functions down below would not make sense given that we assume
     # a `FullCommit` and its `report` to always exist.

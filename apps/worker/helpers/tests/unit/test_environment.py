@@ -8,7 +8,7 @@ from helpers.environment import (
 )
 
 
-class TestEnvironment(object):
+class TestEnvironment:
     def test_get_current_env(self, mocker):
         # CURRENT_ENVIRONMENT is a fallback when RUN_ENV is not supplied
         # have to clear out RUN_ENV to test CURRENT_ENVIRONMENT

@@ -8,7 +8,7 @@ from sentry_sdk import get_current_span
 
 class BaseLogger(JsonFormatter):
     def add_fields(self, log_record, record, message_dict):
-        super(BaseLogger, self).add_fields(log_record, record, message_dict)
+        super().add_fields(log_record, record, message_dict)
 
         asctime_format = "%Y-%m-%d %H:%M:%S,%f"
         asctime = datetime.strptime(log_record.get("asctime"), asctime_format)
@@ -38,9 +38,7 @@ class CustomLocalJsonFormatter(BaseLogger):
 
 class CustomDatadogJsonFormatter(BaseLogger):
     def add_fields(self, log_record, record, message_dict):
-        super(CustomDatadogJsonFormatter, self).add_fields(
-            log_record, record, message_dict
-        )
+        super().add_fields(log_record, record, message_dict)
         if not log_record.get("logger.name") and log_record.get("name"):
             log_record["logger.name"] = log_record.get("name")
         if not log_record.get("logger.thread_name") and log_record.get("threadName"):
@@ -68,9 +66,7 @@ class CustomGunicornLogFormatter(JsonFormatter):
     }
 
     def add_fields(self, log_record, record, message_dict):
-        super(CustomGunicornLogFormatter, self).add_fields(
-            log_record, record, message_dict
-        )
+        super().add_fields(log_record, record, message_dict)
         for field in self._required_fields:
             if field in self.rename_fields:
                 log_record[self.rename_fields[field]] = record.args.get(field)

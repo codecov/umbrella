@@ -7,7 +7,7 @@ from helpers.logging_config import (
 )
 
 
-class TestLoggingConfig(object):
+class TestLoggingConfig:
     def test_local_formatter(self):
         log_record = {"levelname": "weird_level", "message": "This is a message"}
         cljf = CustomLocalJsonFormatter()

@@ -37,7 +37,7 @@ CI_DOMAINS = {
 CI_EXCLUDE = {"styleci"}
 
 
-class RepositoryCIFilter(object):
+class RepositoryCIFilter:
     def __init__(self, commit_yaml) -> None:
         ci = read_yaml_field(commit_yaml, ("codecov", "ci")) or []
         ci = set(ci) | ENTERPRISE_DEFAULTS

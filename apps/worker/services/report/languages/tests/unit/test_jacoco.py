@@ -1,6 +1,6 @@
 import datetime
 import logging
-import xml.etree.cElementTree as etree
+import xml.etree.ElementTree as etree
 from time import time
 
 import pytest
@@ -123,18 +123,15 @@ class TestJacoco(BaseTestCase):
         [("a", "module_a/package/file"), ("b", "module_b/src/main/java/package/file")],
     )
     def test_multi_module(self, module, path):
-        data = (
-            """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+        data = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
         <!DOCTYPE report PUBLIC "-//JACOCO//DTD Report 1.0//EN" "report.dtd">
-        <report name="module_%s">
+        <report name="module_{module}">
             <package name="package">
                 <sourcefile name="file">
                     <line nr="1" mi="0" ci="2" mb="0" cb="0" />
                 </sourcefile>
             </package>
         </report>"""
-            % module
-        )
 
         def fixes(path):
             if module == "a":

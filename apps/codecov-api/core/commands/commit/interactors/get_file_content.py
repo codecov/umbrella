@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Coroutine
+from collections.abc import Coroutine
+from typing import Any
 
 from codecov.commands.base import BaseInteractor
 from core.models import Commit

@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from shared.analytics_tracking.base import BaseAnalyticsTool
 from shared.analytics_tracking.events import Event
@@ -22,7 +21,7 @@ class AnalyticsToolManager:
         event_name,
         *,
         is_enterprise=False,
-        event_data: Optional[dict] = None,
+        event_data: dict | None = None,
         context=None,
     ):
         if event_data is None:

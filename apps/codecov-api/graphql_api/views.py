@@ -4,7 +4,8 @@ import os
 import socket
 import time
 from asyncio import iscoroutine
-from typing import Any, Collection, Optional
+from collections.abc import Collection
+from typing import Any
 
 import regex
 from ariadne import format_error
@@ -200,10 +201,10 @@ class AsyncGraphqlView(GraphQLAsyncView):
 
     def get_validation_rules(
         self,
-        context_value: Optional[Any],
+        context_value: Any | None,
         document: DocumentNode,
         data: dict,
-    ) -> Optional[Collection]:
+    ) -> Collection | None:
         return [
             create_required_variables_rule(variables=data.get("variables", {})),
             create_max_aliases_rule(max_aliases=settings.GRAPHQL_MAX_ALIASES),

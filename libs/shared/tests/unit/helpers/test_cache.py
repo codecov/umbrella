@@ -12,7 +12,7 @@ from shared.helpers.cache import (
 )
 
 
-class RandomCounter(object):
+class RandomCounter:
     def __init__(self):
         self.value = 0
 
@@ -48,7 +48,7 @@ class FakeBackend(BaseBackend):
         self.all_keys[key][ttl] = value
 
 
-class FakeRedis(object):
+class FakeRedis:
     def __init__(self):
         self.all_keys = {}
 
@@ -59,7 +59,7 @@ class FakeRedis(object):
         self.all_keys[key] = value
 
 
-class FakeRedisWithIssues(object):
+class FakeRedisWithIssues:
     def get(self, key):
         raise TimeoutError()
 
@@ -101,7 +101,7 @@ class TestRedisBackend(unittest.TestCase):
         assert redis_backend.get("normal_key") == NO_VALUE
 
 
-class TestCache(object):
+class TestCache:
     def test_simple_caching_no_backend_no_params(self):
         cache = OurOwnCache()
         sample_function = RandomCounter().call_function

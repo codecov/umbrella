@@ -6,7 +6,7 @@ import sentry_sdk
 from services.report.parser.types import LegacyParsedRawReport, ParsedUploadedReportFile
 
 
-class LegacyReportParser(object):
+class LegacyReportParser:
     network_separator = b"<<<<<< network"
     env_separator = b"<<<<<< ENV"
     eof_separator = b"<<<<<< EOF"

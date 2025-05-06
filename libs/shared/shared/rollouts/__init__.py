@@ -2,17 +2,13 @@ import json
 import logging
 import os
 from functools import cached_property
-from typing import Optional
 
 import mmh3
 from asgiref.sync import sync_to_async
 from cachetools.func import lru_cache, ttl_cache
 
 from shared.config import get_config
-from shared.django_apps.rollouts.models import (
-    FeatureFlag,
-    FeatureFlagVariant,
-)
+from shared.django_apps.rollouts.models import FeatureFlag, FeatureFlagVariant
 from shared.django_apps.utils.rollout_utils import rollout_universe_to_override_string
 
 log = logging.getLogger("__name__")
@@ -101,8 +97,8 @@ class Feature:
     def __init__(
         self,
         name,
-        feature_flag: Optional[FeatureFlag] = None,
-        ff_variants: Optional[list[FeatureFlagVariant]] = None,
+        feature_flag: FeatureFlag | None = None,
+        ff_variants: list[FeatureFlagVariant] | None = None,
     ):
         self.name = name
         self.feature_flag = feature_flag
@@ -219,7 +215,7 @@ class Feature:
         variants should equal to 1, and proportions should never be greater than
         1 or less than 0.
         """
-        variant_proportion_sum = sum((x.proportion for x in self.ff_variants))
+        variant_proportion_sum = sum(x.proportion for x in self.ff_variants)
         variant_proportions_in_range = True not in (
             x.proportion < 0 or x.proportion > 1 for x in self.ff_variants
         )

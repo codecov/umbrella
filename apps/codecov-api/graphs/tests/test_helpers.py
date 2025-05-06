@@ -6,7 +6,7 @@ from graphs.helpers.badge import (
 )
 
 
-class TestGraphsHelpers(object):
+class TestGraphsHelpers:
     def test_format_coverage_precision(self):
         coverage = "91.1111"
         precision = "1"

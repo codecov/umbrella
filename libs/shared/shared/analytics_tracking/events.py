@@ -1,8 +1,9 @@
 import logging
 from base64 import b64encode
-from datetime import datetime, timezone
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any
 from uuid import uuid1
 
 log = logging.getLogger("__name__")
@@ -22,7 +23,7 @@ class Events(Enum):
 class Event:
     def __init__(self, event_name: str, dt: datetime | None = None, **data) -> None:
         self.uuid = uuid1()
-        self.datetime = dt or datetime.now(timezone.utc)
+        self.datetime = dt or datetime.now(UTC)
         self.name = self._get_event_name(event_name)
         self.data = data
 

@@ -1,5 +1,3 @@
-from typing import Optional
-
 from asgiref.sync import sync_to_async
 
 from codecov.commands.base import BaseInteractor
@@ -13,7 +11,7 @@ redis = get_redis_connection()
 
 class GetUploadsNumberPerUserInteractor(BaseInteractor):
     @sync_to_async
-    def execute(self, owner: Owner) -> Optional[int]:
+    def execute(self, owner: Owner) -> int | None:
         plan_service = PlanService(current_org=owner)
         monthly_limit = plan_service.monthly_uploads_limit
         if monthly_limit is not None:

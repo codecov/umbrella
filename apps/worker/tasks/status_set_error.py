@@ -46,7 +46,7 @@ class StatusSetErrorTask(BaseCodecovTask, name=status_set_error_task_name):
             for context in ("project", "patch", "changes"):
                 if settings.get(context):
                     for key, data in default_if_true(settings[context]):
-                        context = "codecov/%s%s" % (
+                        context = "codecov/{}{}".format(
                             context,
                             ("/" + key if key != "default" else ""),
                         )

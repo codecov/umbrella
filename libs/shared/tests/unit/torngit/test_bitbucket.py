@@ -35,7 +35,7 @@ def valid_handler():
     )
 
 
-class TestUnitBitbucket(object):
+class TestUnitBitbucket:
     @pytest.mark.asyncio
     async def test_api_client_error_unreachable(self, valid_handler, mocker):
         client = mocker.MagicMock(

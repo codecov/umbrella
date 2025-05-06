@@ -2,8 +2,9 @@ import asyncio
 import base64
 import hashlib
 import logging
+from collections.abc import Callable, Hashable
 from functools import wraps
-from typing import Any, Callable, Hashable
+from typing import Any
 
 import msgpack
 from redis import Redis, RedisError
@@ -33,16 +34,16 @@ def make_hashable(o: Any) -> Hashable:
     """
     Converts any object into an object that will have a consistent hash
     """
-    if isinstance(o, (tuple, list)):
-        return tuple((make_hashable(e) for e in o))
+    if isinstance(o, tuple | list):
+        return tuple(make_hashable(e) for e in o)
     if isinstance(o, dict):
         return tuple(sorted((k, make_hashable(v)) for k, v in o.items()))
-    if isinstance(o, (set, frozenset)):
+    if isinstance(o, set | frozenset):
         return tuple(sorted(make_hashable(e) for e in o))
     return o
 
 
-class BaseBackend(object):
+class BaseBackend:
     """
     This is the interface a class needs to honor in order to work as a backend.
 
@@ -114,7 +115,7 @@ class RedisBackend(BaseBackend):
             )
 
 
-class OurOwnCache(object):
+class OurOwnCache:
     """
     This is codecov distributed cache's implementation.
 
@@ -176,7 +177,7 @@ cache = OurOwnCache()
 # cache.configure(RedisBackend(get_redis_connection()))
 
 
-class FunctionCacher(object):
+class FunctionCacher:
     def __init__(self, cache_instance: OurOwnCache, ttl: int):
         self.cache_instance = cache_instance
         self.ttl = ttl

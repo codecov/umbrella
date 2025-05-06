@@ -48,7 +48,7 @@ def format_coverage_precision(coverage: float | None, precision: int):
 
     precision = int(precision)
     coverage = float(coverage)
-    return ("%%.%sf" % precision) % coverage
+    return (f"%.{precision}f") % coverage
 
 
 def get_bundle_badge(bundle_size_bytes: int | None, precision: int):

@@ -28,7 +28,7 @@ class AutocompleteSearchForm(forms.ModelForm):
         fields = "__all__"
 
     def save(self, commit=True):
-        instance = super(AutocompleteSearchForm, self).save(commit=False)
+        instance = super().save(commit=False)
 
         if self.cleaned_data["repository"]:
             if instance.override_repo_ids is None:

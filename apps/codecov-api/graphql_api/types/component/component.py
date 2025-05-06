@@ -1,5 +1,3 @@
-from typing import Optional
-
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
 
@@ -22,7 +20,7 @@ def resolve_name(component: Component, info) -> str:
 
 @component_bindable.field("totals")
 @sync_to_async
-def resolve_totals(component: Component, info) -> Optional[ReportTotals]:
+def resolve_totals(component: Component, info) -> ReportTotals | None:
     commit: Commit = info.context["component_commit"]
     report = commit.full_report
     filtered_report = component_filtered_report(report, [component])

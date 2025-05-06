@@ -3,7 +3,7 @@ import os
 from helpers.sentry import initialize_sentry
 
 
-class TestSentry(object):
+class TestSentry:
     def test_initialize_sentry(self, mocker, mock_configuration):
         mock_configuration._params["services"] = {"sentry": {"server_dsn": "this_dsn"}}
         cluster = "test_env"

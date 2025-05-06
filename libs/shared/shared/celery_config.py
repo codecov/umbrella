@@ -1,5 +1,4 @@
 # http://docs.celeryq.org/en/latest/configuration.html#configuration
-from typing import Optional
 
 from shared.config import get_config
 from shared.utils.enums import TaskConfigGroup
@@ -108,14 +107,14 @@ brolly_stats_rollup_task_name = (
 )
 
 
-def get_task_group(task_name: str) -> Optional[str]:
+def get_task_group(task_name: str) -> str | None:
     task_parts = task_name.split(".")
     if len(task_parts) != 4:
         return None
     return task_parts[2]
 
 
-class BaseCeleryConfig(object):
+class BaseCeleryConfig:
     broker_url = get_config("services", "celery_broker") or get_config(
         "services", "redis_url"
     )

@@ -51,9 +51,7 @@ def test_sentry_redirect_to_consent(client, db):
     assert res.status_code == 302
     assert (
         res.url
-        == "https://sentry.io/oauth/authorize?response_type=code&client_id=test-client-id&scope=openid+email+profile&state={}".format(
-            state_from_session
-        )
+        == f"https://sentry.io/oauth/authorize?response_type=code&client_id=test-client-id&scope=openid+email+profile&state={state_from_session}"
     )
 
 

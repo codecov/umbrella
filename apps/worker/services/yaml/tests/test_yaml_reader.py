@@ -9,7 +9,7 @@ from services.yaml.reader import (
 from shared.yaml.user_yaml import UserYaml
 
 
-class TestYamlReader(object):
+class TestYamlReader:
     def test_round_number(self):
         round_up_yaml_dict = {"coverage": {"precision": 5, "round": "up"}}
         assert Decimal("1.23457") == round_number(

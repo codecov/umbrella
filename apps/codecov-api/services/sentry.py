@@ -1,6 +1,5 @@
 import json
 import logging
-from typing import Optional
 
 import jwt
 from django.conf import settings
@@ -37,11 +36,11 @@ class SentryState:
         self.data = data
 
     @property
-    def user_id(self) -> Optional[str]:
+    def user_id(self) -> str | None:
         return self.data.get("user_id")
 
 
-def decode_state(state: str) -> Optional[SentryState]:
+def decode_state(state: str) -> SentryState | None:
     """
     Decode the given state (a JWT) using our shared secret.
     Returns `None` if the state could not be decoded.

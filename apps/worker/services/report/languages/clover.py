@@ -43,7 +43,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                 timestamp = t[1] + "-" + t[0] + "-" + t[2]
             if timestamp and Date(timestamp) < max_age:
                 # report expired over 12 hours ago
-                raise ReportExpiredException("Clover report expired %s" % timestamp)
+                raise ReportExpiredException(f"Clover report expired {timestamp}")
         except StopIteration:
             pass
 

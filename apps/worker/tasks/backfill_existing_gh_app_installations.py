@@ -1,5 +1,4 @@
 import logging
-from typing import List, Optional
 
 from sqlalchemy.orm.session import Session
 
@@ -25,7 +24,7 @@ class BackfillExistingGHAppInstallationsTask(
     def run_impl(
         self,
         db_session: Session,
-        owner_ids: Optional[List[int]] = None,
+        owner_ids: list[int] | None = None,
         yield_amount: int = 1000,
         *args,
         **kwargs,
@@ -52,7 +51,7 @@ class BackfillExistingGHAppInstallationsTask(
                 GithubAppInstallation.ownerid.in_(owner_ids)
             )
 
-        gh_app_installations: List[GithubAppInstallation] = (
+        gh_app_installations: list[GithubAppInstallation] = (
             gh_app_installations_query.yield_per(yield_amount)
         )
 

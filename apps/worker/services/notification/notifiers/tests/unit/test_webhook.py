@@ -6,7 +6,7 @@ from services.notification.notifiers.webhook import WebhookNotifier
 from services.repository import get_repo_provider_service
 
 
-class TestWebhookNotifier(object):
+class TestWebhookNotifier:
     def test_build_commit_payload(
         self, dbsession, mock_configuration, sample_comparison
     ):

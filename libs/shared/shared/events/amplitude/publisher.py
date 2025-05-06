@@ -1,5 +1,4 @@
 import logging
-from typing import Union
 
 from django.conf import settings
 
@@ -156,7 +155,7 @@ class StubbedAmplitudeClient(Amplitude):
     def set_group(
         self,
         group_type: str,
-        group_name: Union[str, list[str]],
+        group_name: str | list[str],
         event_options: EventOptions,
     ):
         log.info(

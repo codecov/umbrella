@@ -1,4 +1,4 @@
-class Flag(object):
+class Flag:
     def __init__(
         self, report, name, totals=None, carriedforward=False, carriedforward_from=None
     ):

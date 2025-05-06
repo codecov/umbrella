@@ -1,7 +1,6 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mock import AsyncMock
 
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import PullFactory
@@ -27,7 +26,7 @@ from shared.yaml import UserYaml
 from tests.helpers import mock_all_plans_and_tiers
 
 
-class FakeRedis(object):
+class FakeRedis:
     """
     This is a fake, very rudimentary redis implementation to ease the managing
      of mocking `set`, `get`.

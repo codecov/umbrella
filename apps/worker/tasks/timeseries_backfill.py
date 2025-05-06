@@ -1,6 +1,6 @@
 import logging
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Iterable, Optional
 
 from celery import group
 from celery.canvas import Signature
@@ -66,7 +66,7 @@ class TimeseriesBackfillDatasetTask(
         dataset_id: int,
         start_date: str,
         end_date: str,
-        batch_size: Optional[int] = None,
+        batch_size: int | None = None,
         **kwargs,
     ):
         if not is_timeseries_enabled():

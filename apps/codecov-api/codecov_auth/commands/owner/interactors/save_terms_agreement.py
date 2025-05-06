@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.utils import timezone
@@ -11,11 +11,11 @@ from services.analytics import AnalyticsService
 
 @dataclass
 class TermsAgreementInput:
-    business_email: Optional[str] = None
-    name: Optional[str] = None
+    business_email: str | None = None
+    name: str | None = None
     terms_agreement: bool = False
     marketing_consent: bool = False
-    customer_intent: Optional[str] = None
+    customer_intent: str | None = None
 
 
 class SaveTermsAgreementInteractor(BaseInteractor):

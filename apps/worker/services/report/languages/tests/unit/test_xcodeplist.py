@@ -36,7 +36,7 @@ sample_small_plist = b"""<?xml version="1.0" encoding="UTF-8"?>
 
 class TestXCodePlist(BaseTestCase):
     def readfile(self, filename, if_empty_write=None):
-        with open(folder / filename, "r") as r:
+        with open(folder / filename) as r:
             contents = r.read()
 
         # codecov: assert not covered start [FUTURE new concept]

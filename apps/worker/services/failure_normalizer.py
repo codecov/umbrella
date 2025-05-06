@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 import regex
 import sentry_sdk
 
@@ -73,7 +71,7 @@ class FailureNormalizer:
         ignore_predefined=False,
         override_predefined=False,
         *,
-        key_analysis_order: Optional[List[str]] = None,
+        key_analysis_order: list[str] | None = None,
     ):
         flags = regex.MULTILINE
 

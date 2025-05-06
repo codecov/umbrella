@@ -39,7 +39,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
             continue
 
         if child_text(statement, "branch") == "true":
-            cov = "%s/2" % hits
+            cov = f"{hits}/2"
             _file.append(
                 ln,
                 report_builder_session.create_coverage_line(

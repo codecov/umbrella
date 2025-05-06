@@ -1,6 +1,7 @@
 import fnmatch
 import logging
-from typing import Any, Callable, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 import regex
 from asgiref.sync import async_to_sync
@@ -131,7 +132,7 @@ class EmptyUploadView(CreateAPIView, GetterMixin):
         if pull_id is None:
             pull_id = self.get_pull_request_id(commit, provider, pull_id)
 
-        changed_files: List[str] = self.get_changed_files_from_provider(
+        changed_files: list[str] = self.get_changed_files_from_provider(
             commit, provider, pull_id
         )
 
@@ -149,10 +150,8 @@ class EmptyUploadView(CreateAPIView, GetterMixin):
             file
             for file in changed_files
             if any(
-                (
-                    regex.match(regex_patt, file, timeout=2)
-                    for regex_patt in compiled_files_to_ignore
-                )
+                regex.match(regex_patt, file, timeout=2)
+                for regex_patt in compiled_files_to_ignore
             )
         ]
         inc_counter(
@@ -193,7 +192,7 @@ class EmptyUploadView(CreateAPIView, GetterMixin):
 
     def get_changed_files_from_provider(
         self, commit: Commit, provider: TorngitBaseAdapter, pull_id: int
-    ) -> List[str]:
+    ) -> list[str]:
         try:
             changed_files = async_to_sync(provider.get_pull_request_files)(pull_id)
         except TorngitClientError:
@@ -209,7 +208,7 @@ class EmptyUploadView(CreateAPIView, GetterMixin):
         return changed_files
 
     def get_pull_request_id(
-        self, commit: Commit, provider: TorngitBaseAdapter, pull_id: Optional[int]
+        self, commit: Commit, provider: TorngitBaseAdapter, pull_id: int | None
     ) -> int:
         try:
             if pull_id is None:

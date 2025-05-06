@@ -1,6 +1,5 @@
 import logging
 from enum import Enum
-from typing import Optional
 
 import sqlalchemy
 from sqlalchemy import Column, ForeignKey, Table, create_engine, types
@@ -138,7 +137,7 @@ def _use_modern_sqlalchemy_session_manager():
 use_modern_sqlalchemy_session_manager = _use_modern_sqlalchemy_session_manager()
 
 
-def get_db_session(path: str, auto_close: Optional[bool] = True) -> DbSession:
+def get_db_session(path: str, auto_close: bool | None = True) -> DbSession:
     engine = create_engine(f"sqlite:///{path}")
     Session = sessionmaker()
     Session.configure(bind=engine)

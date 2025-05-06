@@ -2,7 +2,7 @@ from services.comparison import ComparisonProxy
 from shared.torngit.exceptions import TorngitClientGeneralError
 
 
-class TestGetBehindBy(object):
+class TestGetBehindBy:
     def test_get_behind_by(self, mocker, mock_repo_provider):
         comparison = ComparisonProxy(mocker.MagicMock())
         comparison.comparison.enriched_pull.provider_pull = {"base": {"branch": "a"}}

@@ -95,7 +95,7 @@ class RepoSimulator:
                 "flaky_fail_count": 0,
                 "avg_duration_seconds": 0.0,
                 "last_duration_seconds": 0.0,
-                "latest_run": dt.datetime.now(tz=dt.timezone.utc),
+                "latest_run": dt.datetime.now(tz=dt.UTC),
                 "commits_where_fail": [],
             },
         )

@@ -18,12 +18,12 @@ from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from ..constants import StripeHTTPHeaders
 
 
-class MockSubscriptionPlan(object):
+class MockSubscriptionPlan:
     def __init__(self, params):
         self.id = params["new_plan"]
 
 
-class MockSubscription(object):
+class MockSubscription:
     def __init__(self, owner, params):
         self.metadata = {"obo_organization": owner.ownerid, "obo": 15}
         self.plan = MockSubscriptionPlan(params)
@@ -43,7 +43,7 @@ class MockSubscription(object):
         return getattr(self, key)
 
 
-class MockCard(object):
+class MockCard:
     def __init__(self):
         self.brand = "visa"
         self.last4 = "1234"
@@ -55,7 +55,7 @@ class MockCard(object):
         return getattr(self, key, default)
 
 
-class MockPaymentMethod(object):
+class MockPaymentMethod:
     def __init__(self, noCard=False):
         if noCard:
             self.card = None
@@ -70,7 +70,7 @@ class MockPaymentMethod(object):
         return getattr(self, key, default)
 
 
-class MockPaymentIntent(object):
+class MockPaymentIntent:
     def __init__(self, noCard=False):
         self.payment_method = MockPaymentMethod(noCard)
         self.status = "succeeded"

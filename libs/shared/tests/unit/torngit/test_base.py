@@ -5,7 +5,7 @@ import pytest
 from shared.torngit.base import TokenType, TorngitBaseAdapter
 
 
-class TestTorngitBaseAdapter(object):
+class TestTorngitBaseAdapter:
     def test_get_token_by_type(self):
         instance = TorngitBaseAdapter(
             token={"key": "token"},

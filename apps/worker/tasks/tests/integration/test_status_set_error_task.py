@@ -5,7 +5,7 @@ from tasks.status_set_error import StatusSetErrorTask
 
 
 @pytest.mark.integration
-class TestStatusSetErrorTask(object):
+class TestStatusSetErrorTask:
     def test_set_error(self, dbsession, mocker, mock_configuration, codecov_vcr):
         repository = RepositoryFactory.create(
             owner__username="ThiagoCodecov",

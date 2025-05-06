@@ -27,7 +27,7 @@ C/tY+lZIEO1Gg/FxSMB+hwwhwfSuE3WohZfEcSy+R48=
 -----END RSA PRIVATE KEY-----"""
 
 
-class TestRepositoryServiceIntegration(object):
+class TestRepositoryServiceIntegration:
     @pytest.mark.django_db
     def test_get_token_type_mapping_non_existing_integration(
         self, codecov_vcr, mock_configuration, mocker

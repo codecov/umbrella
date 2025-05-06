@@ -270,7 +270,7 @@ def multiple_diff_changes():
     }
 
 
-class TestChecksWithFallback(object):
+class TestChecksWithFallback:
     def test_checks_403_failure(self, sample_comparison, mocker, mock_repo_provider):
         mock_repo_provider.create_check_run = Mock(
             side_effect=TorngitClientGeneralError(
@@ -456,7 +456,7 @@ class TestChecksWithFallback(object):
         assert status_notifier.notify.call_count == 1
 
 
-class TestBaseChecksNotifier(object):
+class TestBaseChecksNotifier:
     def test_create_annotations_single_segment(self, sample_comparison):
         notifier = ChecksNotifier(
             repository=sample_comparison.head.commit.repository,
@@ -675,7 +675,7 @@ class TestBaseChecksNotifier(object):
         assert expected_result == result
 
 
-class TestPatchChecksNotifier(object):
+class TestPatchChecksNotifier:
     def test_paginate_annotations(
         self, sample_comparison, mock_repo_provider, mock_configuration
     ):
@@ -1333,7 +1333,7 @@ class TestPatchChecksNotifier(object):
         assert result.data_received is None
 
 
-class TestChangesChecksNotifier(object):
+class TestChangesChecksNotifier:
     def test_build_payload(
         self, sample_comparison, mock_repo_provider, mock_configuration
     ):
@@ -1475,7 +1475,7 @@ class TestChangesChecksNotifier(object):
         assert expected_result == result
 
 
-class TestProjectChecksNotifier(object):
+class TestProjectChecksNotifier:
     def test_analytics_url(
         self, sample_comparison, mock_repo_provider, mock_configuration
     ):

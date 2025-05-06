@@ -14,7 +14,7 @@ from tasks.commit_update import CommitUpdateTask
 
 
 @pytest.mark.integration
-class TestCommitUpdate(object):
+class TestCommitUpdate:
     def test_update_commit(
         self,
         mocker,

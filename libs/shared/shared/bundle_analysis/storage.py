@@ -1,7 +1,6 @@
 import logging
 import tempfile
 from enum import Enum
-from typing import Optional
 
 import sentry_sdk
 
@@ -40,7 +39,7 @@ class BundleAnalysisReportLoader:
         self.bucket_name = get_bucket_name()
 
     @sentry_sdk.trace
-    def load(self, report_key: str) -> Optional[BundleAnalysisReport]:
+    def load(self, report_key: str) -> BundleAnalysisReport | None:
         """
         Loads the `BundleAnalysisReport` for the given report key from storage
         or returns `None` if no such report exists.

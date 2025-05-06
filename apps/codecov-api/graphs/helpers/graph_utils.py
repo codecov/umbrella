@@ -73,8 +73,8 @@ def _svg_rect(x, y, width, height, fill, stroke, stroke_width, _class=None, titl
     """http://www.w3schools.com/svg/svg_rect.asp"""
     if title is None:
         return (
-            '<rect x="{0}" y="{1}" width="{2}" height="{3}" '
-            'fill="{4}" stroke="{5}" stroke-width="{6}"{7} />'.format(
+            '<rect x="{}" y="{}" width="{}" height="{}" '
+            'fill="{}" stroke="{}" stroke-width="{}"{} />'.format(
                 x,
                 y,
                 width,
@@ -82,7 +82,7 @@ def _svg_rect(x, y, width, height, fill, stroke, stroke_width, _class=None, titl
                 fill,
                 stroke,
                 stroke_width,
-                ('class="%s"' % _class if _class else ""),
+                (f'class="{_class}"' if _class else ""),
             )
         )
 
@@ -99,18 +99,18 @@ def _svg_rect(x, y, width, height, fill, stroke, stroke_width, _class=None, titl
 
 def _make_svg(width, height, elements, viewPortWidth=None, viewPortHeight=None):
     return (
-        '<svg baseProfile="full" width="{0}" height="{1}" viewBox="0 0 {4} {5}" version="1.1"\n'
+        '<svg baseProfile="full" width="{}" height="{}" viewBox="0 0 {} {}" version="1.1"\n'
         'xmlns="http://www.w3.org/2000/svg" xmlns:ev="http://www.w3.org/2001/xml-events"\n'
         'xmlns:xlink="http://www.w3.org/1999/xlink">\n'
-        "{2}\n"
-        "{3}\n"
+        "{}\n"
+        "{}\n"
         "</svg>".format(
             width,
             height,
-            style_n_defs,
-            "\n".join(elements),
             viewPortWidth or width,
             viewPortHeight or height,
+            style_n_defs,
+            "\n".join(elements),
         )
     )
 
@@ -140,9 +140,7 @@ def _svg_polar_rect(
 
     # special case: circle
     if inner_radius == 0 and end - start == 1:
-        return '<circle cx="{0}" cy="{1}" fill="{2}" r="{3}" stroke="{4}" stroke-width="{5}" />'.format(
-            cx, cy, fill, outer_radius, stroke, stroke_width
-        )
+        return f'<circle cx="{cx}" cy="{cy}" fill="{fill}" r="{outer_radius}" stroke="{stroke}" stroke-width="{stroke_width}" />'
 
     in_angle = 2.0 * pi * start
     out_angle = 2.0 * pi * end
@@ -154,17 +152,11 @@ def _svg_polar_rect(
         # from (cx - r, cy) to (cx + r, cy) and back
 
         # outer contour
-        d = "M {x1} {y} A {r} {r} 0 0 0 {x2} {y} A {r} {r} 0 0 0 {x1} {y} z ".format(
-            x1=cx - outer_radius, x2=cx + outer_radius, r=outer_radius, y=cy
-        )
+        d = f"M {cx - outer_radius} {cy} A {outer_radius} {outer_radius} 0 0 0 {cx + outer_radius} {cy} A {outer_radius} {outer_radius} 0 0 0 {cx - outer_radius} {cy} z "
         # inner contour
-        d += "M {x1} {y} A {r} {r} 0 0 0 {x2} {y} A {r} {r} 0 0 0 {x1} {y} z ".format(
-            x1=cx - inner_radius, x2=cx + inner_radius, r=inner_radius, y=cy
-        )
+        d += f"M {cx - inner_radius} {cy} A {inner_radius} {inner_radius} 0 0 0 {cx + inner_radius} {cy} A {inner_radius} {inner_radius} 0 0 0 {cx - inner_radius} {cy} z "
 
-        return '<path d="{0}" fill="{1}" stroke="{2}" stroke-width="{3}"/>'.format(
-            d, fill, stroke, stroke_width
-        )
+        return f'<path d="{d}" fill="{fill}" stroke="{stroke}" stroke-width="{stroke_width}"/>'
 
     # start points
     spx_outer = outer_radius * sin(in_angle)
@@ -180,27 +172,6 @@ def _svg_polar_rect(
 
     large_arc_flag = 1 if end - start > 0.5 else 0
 
-    path_args = (
-        "M {} {} L {} {} A {} {} 0 {} 0 {} {} L {} {} A {} {} 0 {} 1 {} {} z".format(
-            cx + tpx_inner,
-            cy + tpy_inner,
-            cx + spx_outer,
-            cy + spy_outer,
-            outer_radius,
-            outer_radius,
-            large_arc_flag,
-            cx + tpx_outer,
-            cy + tpy_outer,
-            cx + spx_inner,
-            cy + spy_inner,
-            inner_radius,
-            inner_radius,
-            large_arc_flag,
-            cx + tpx_inner,
-            cy + tpy_inner,
-        )
-    )
+    path_args = f"M {cx + tpx_inner} {cy + tpy_inner} L {cx + spx_outer} {cy + spy_outer} A {outer_radius} {outer_radius} 0 {large_arc_flag} 0 {cx + tpx_outer} {cy + tpy_outer} L {cx + spx_inner} {cy + spy_inner} A {inner_radius} {inner_radius} 0 {large_arc_flag} 1 {cx + tpx_inner} {cy + tpy_inner} z"
 
-    return '<path d="{0}" fill="{1}" stroke="{2}" stroke-width="{3}" />'.format(
-        path_args, fill, stroke, stroke_width
-    )
+    return f'<path d="{path_args}" fill="{fill}" stroke="{stroke}" stroke-width="{stroke_width}" />'

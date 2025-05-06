@@ -1,5 +1,5 @@
 import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -30,7 +30,7 @@ class TestFetchCoverageAnalytics(GraphQLTestHelper, TestCase):
     databases = {"default", "timeseries"}
 
     # HELPERS
-    def run_gql_query(self, query: str, variables: Dict[str, Any]) -> Dict[str, Any]:
+    def run_gql_query(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         owner = self.owner
         # Use the gql_request method from the parent class (GraphQLTestHelper)
         return super().gql_request(query=query, owner=owner, variables=variables)
@@ -49,8 +49,8 @@ class TestFetchCoverageAnalytics(GraphQLTestHelper, TestCase):
     @staticmethod
     def create_commit(
         repository: Repository,
-        coverage_totals: Dict[str, int],
-        timestamp: Optional[datetime.datetime] = None,
+        coverage_totals: dict[str, int],
+        timestamp: datetime.datetime | None = None,
     ) -> Commit:
         if timestamp is None:
             timestamp = timezone.now()

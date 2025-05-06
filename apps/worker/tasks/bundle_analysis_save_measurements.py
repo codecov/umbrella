@@ -62,7 +62,7 @@ class BundleAnalysisSaveMeasurementsTask(
 
         save_measurements = True
 
-        if all((result["error"] is not None for result in previous_result)):
+        if all(result["error"] is not None for result in previous_result):
             save_measurements = False
 
         bundle_name = None

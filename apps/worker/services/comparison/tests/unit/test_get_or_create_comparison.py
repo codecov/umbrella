@@ -3,7 +3,7 @@ from database.tests.factories.core import CommitFactory, CompareCommitFactory
 from services.comparison import get_or_create_comparison
 
 
-class TestGetOrCreateComparison(object):
+class TestGetOrCreateComparison:
     def test_get_or_create_existing_comparison(self, dbsession):
         existing_comparison = CompareCommitFactory.create()
         dbsession.add(existing_comparison)

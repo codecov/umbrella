@@ -22,7 +22,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv sync
         working-directory: apps/${{ matrix.app }}
-      - run: uv pip install mypy==1.15.0 ruff==0.11.7
+      - run: uv pip install mypy==1.15.0 ruff==0.11.8
         working-directory: apps/${{ matrix.app }}
       
       - name: Install Overwatch CLI

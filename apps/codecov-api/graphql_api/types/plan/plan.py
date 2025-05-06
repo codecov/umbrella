@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import List, Optional
 
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
@@ -13,18 +12,18 @@ plan_bindable = ObjectType("Plan")
 
 
 @plan_bindable.field("trialStartDate")
-def resolve_trial_start_date(plan_service: PlanService, info) -> Optional[datetime]:
+def resolve_trial_start_date(plan_service: PlanService, info) -> datetime | None:
     return plan_service.trial_start_date
 
 
 @plan_bindable.field("trialTotalDays")
 @sync_to_async
-def resolve_trial_total_days(plan_service: PlanService, info) -> Optional[int]:
+def resolve_trial_total_days(plan_service: PlanService, info) -> int | None:
     return plan_service.trial_total_days
 
 
 @plan_bindable.field("trialEndDate")
-def resolve_trial_end_date(plan_service: PlanService, info) -> Optional[datetime]:
+def resolve_trial_end_date(plan_service: PlanService, info) -> datetime | None:
     return plan_service.trial_end_date
 
 
@@ -55,7 +54,7 @@ def resolve_tier_name(plan_service: PlanService, info) -> str:
 
 @plan_bindable.field("billingRate")
 @sync_to_async
-def resolve_billing_rate(plan_service: PlanService, info) -> Optional[PlanBillingRate]:
+def resolve_billing_rate(plan_service: PlanService, info) -> PlanBillingRate | None:
     return plan_service.billing_rate
 
 
@@ -67,13 +66,13 @@ def resolve_base_unit_price(plan_service: PlanService, info) -> int:
 
 @plan_bindable.field("benefits")
 @sync_to_async
-def resolve_benefits(plan_service: PlanService, info) -> List[str]:
+def resolve_benefits(plan_service: PlanService, info) -> list[str]:
     return plan_service.benefits
 
 
 @plan_bindable.field("pretrialUsersCount")
 @sync_to_async
-def resolve_pretrial_users_count(plan_service: PlanService, info) -> Optional[int]:
+def resolve_pretrial_users_count(plan_service: PlanService, info) -> int | None:
     if plan_service.is_org_trialing:
         return plan_service.pretrial_users_count
     return None
@@ -81,7 +80,7 @@ def resolve_pretrial_users_count(plan_service: PlanService, info) -> Optional[in
 
 @plan_bindable.field("monthlyUploadLimit")
 @sync_to_async
-def resolve_monthly_uploads_limit(plan_service: PlanService, info) -> Optional[int]:
+def resolve_monthly_uploads_limit(plan_service: PlanService, info) -> int | None:
     return plan_service.monthly_uploads_limit
 
 

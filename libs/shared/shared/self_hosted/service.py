@@ -1,6 +1,5 @@
 import operator
 from functools import reduce
-from typing import Optional
 
 from django.conf import settings
 from django.db import transaction
@@ -41,7 +40,7 @@ def admin_owners() -> QuerySet:
         return Owner.objects.filter(reduce(operator.or_, filters))
 
 
-def is_admin_owner(owner: Optional[Owner]) -> bool:
+def is_admin_owner(owner: Owner | None) -> bool:
     """
     Returns true if the given owner is an admin.
     """

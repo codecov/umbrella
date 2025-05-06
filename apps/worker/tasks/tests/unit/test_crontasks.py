@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from redis.exceptions import LockError
 
@@ -19,9 +19,9 @@ class SampleCronTask(CodecovCronTask):
         return {"unusual": "return", "value": ["something"]}
 
 
-class TestCrontasks(object):
+class TestCrontasks:
     def test_simple_run(self, dbsession, mock_redis):
-        generation_time = datetime(2021, 1, 2, 0, 3, 4).replace(tzinfo=timezone.utc)
+        generation_time = datetime(2021, 1, 2, 0, 3, 4).replace(tzinfo=UTC)
         task = SampleCronTask()
         res = task.run_impl(
             dbsession, cron_task_generation_time_iso=generation_time.isoformat()
@@ -32,7 +32,7 @@ class TestCrontasks(object):
         }
 
     def test_simple_run_with_too_recent_call(self, dbsession, mock_redis):
-        generation_time = datetime(2021, 1, 2, 0, 3, 4).replace(tzinfo=timezone.utc)
+        generation_time = datetime(2021, 1, 2, 0, 3, 4).replace(tzinfo=UTC)
         mock_redis.get.return_value = (
             generation_time - timedelta(seconds=5)
         ).timestamp()
@@ -43,7 +43,7 @@ class TestCrontasks(object):
         assert res == {"executed": False}
 
     def test_simple_run_with_lock_error(self, dbsession, mock_redis):
-        generation_time = datetime(2021, 1, 2, 0, 3, 4).replace(tzinfo=timezone.utc)
+        generation_time = datetime(2021, 1, 2, 0, 3, 4).replace(tzinfo=UTC)
         mock_redis.lock.side_effect = LockError
         task = SampleCronTask()
         res = task.run_impl(

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, TypedDict
+from typing import Any, TypedDict
 
 from shared.django_apps.codecov_auth.models import Owner
 from shared.torngit.base import TokenType
@@ -7,9 +7,9 @@ from shared.typings.torngit import GithubInstallationInfo
 
 # A Token and its Owner
 # If a Token doesn't belong to Owner (i.e. it's a GitHubAppInstallation Token), second value is None
-TokenWithOwner = Tuple[Token, Optional[Owner]]
+TokenWithOwner = tuple[Token, Owner | None]
 
-TokenTypeMapping = Dict[TokenType, Token]
+TokenTypeMapping = dict[TokenType, Token]
 
 
 class AdapterAuthInformation(TypedDict):
@@ -28,7 +28,7 @@ class AdapterAuthInformation(TypedDict):
     #   If this installation becomes rate-limited the TorngitAdapter uses the info to mark it so (so we don't select it for a while)
     # fallback_installations are used if multi-apps are available and the selected one becomes rate-limited
     selected_installation_info: GithubInstallationInfo | None
-    fallback_installations: List[GithubInstallationInfo] | None
+    fallback_installations: list[GithubInstallationInfo] | None
     # TokenTypeMapping
     # exclusive for public repos not using an installation. Fallback tokens per action
     token_type_mapping: TokenTypeMapping | None

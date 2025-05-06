@@ -1,8 +1,8 @@
 import logging
 import os
 from pathlib import Path
+from unittest import mock
 
-import mock
 import pytest
 import vcr
 from sqlalchemy import event
@@ -63,7 +63,7 @@ def engine(request, sqlalchemy_db, sqlalchemy_connect_url, app_config):
     # Put a suffix like _gw0, _gw1 etc on xdist processes
     xdist_suffix = getattr(request.config, "slaveinput", {}).get("slaveid")
     if engine.url.database != ":memory:" and xdist_suffix is not None:
-        engine.url.database = "{}_{}".format(engine.url.database, xdist_suffix)
+        engine.url.database = f"{engine.url.database}_{xdist_suffix}"
         engine = create_engine(engine.url)  # override engine
 
     # Check that the DB exist and migrate the unmigrated SQLALchemy models as a stop-gap

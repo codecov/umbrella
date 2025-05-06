@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
-class ComparisonContext(object):
+class ComparisonContext:
     """Extra information not necessarily related to coverage that may affect notifications"""
 
     repository_service: TorngitBaseAdapter | None = None
@@ -39,7 +39,7 @@ class ComparisonContext(object):
 NOT_RESOLVED: Any = object()
 
 
-class ComparisonProxy(object):
+class ComparisonProxy:
     """The idea of this class is to produce a wrapper around Comparison with functionalities that
         are useful to the notifications context.
 
@@ -335,7 +335,7 @@ class ComparisonProxy(object):
         return per_flag_diff
 
 
-class FilteredComparison(object):
+class FilteredComparison:
     def __init__(self, real_comparison: ComparisonProxy, *, flags, path_patterns):
         self.flags = flags
         self.path_patterns = path_patterns

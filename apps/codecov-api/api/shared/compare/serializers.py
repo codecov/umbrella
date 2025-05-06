@@ -1,6 +1,5 @@
 import dataclasses
 import logging
-from typing import List
 
 from rest_framework import serializers
 
@@ -51,7 +50,7 @@ class ComparisonSerializer(serializers.Serializer):
     files = serializers.SerializerMethodField()
     untracked = serializers.SerializerMethodField()
 
-    def get_untracked(self, comparison) -> List[str]:
+    def get_untracked(self, comparison) -> list[str]:
         return [
             f
             for f, _ in comparison.git_comparison["diff"]["files"].items()
@@ -62,7 +61,7 @@ class ComparisonSerializer(serializers.Serializer):
     def get_diff(self, comparison) -> dict:
         return {"git_commits": comparison.git_commits}
 
-    def get_files(self, comparison: Comparison) -> List[dict]:
+    def get_files(self, comparison: Comparison) -> list[dict]:
         return [
             FileComparisonSerializer(file).data
             for file in comparison.files
@@ -206,7 +205,7 @@ class ImpactedFilesComparisonSerializer(ComparisonSerializer):
     def get_state(self, comparison: Comparison) -> str:
         return self.context["commit_comparison"].state
 
-    def get_files(self, comparison: Comparison) -> List[dict]:
+    def get_files(self, comparison: Comparison) -> list[dict]:
         commit_comparison = self.context["commit_comparison"]
 
         if not commit_comparison.is_processed:

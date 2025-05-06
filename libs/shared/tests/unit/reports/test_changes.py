@@ -11,7 +11,7 @@ current_file = Path(__file__)
 
 @pytest.fixture
 def sample_rust_report():
-    with open(current_file.parent / "samples" / "chunks_01.txt", "r") as f:
+    with open(current_file.parent / "samples" / "chunks_01.txt") as f:
         chunks = f.read()
     files_dict = {
         "tests/__init__.py": [
@@ -123,7 +123,7 @@ def test_run_comparison_using_rust(sample_rust_report):
     }
 
 
-class TestRustifyDiff(object):
+class TestRustifyDiff:
     def test_rustify_diff_empty(self):
         assert rustify_diff({}) == {}
         assert rustify_diff(None) == {}

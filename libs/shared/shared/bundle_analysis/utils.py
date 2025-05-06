@@ -3,7 +3,6 @@ import os
 import re
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
 
 log = logging.getLogger(__name__)
 
@@ -21,7 +20,7 @@ class AssetRoute:
     def __init__(
         self,
         plugin: AssetRoutePluginName,
-        configured_route_prefix: Optional[str] = None,
+        configured_route_prefix: str | None = None,
     ) -> None:
         self._from_filename_map = {
             AssetRoutePluginName.REMIX_VITE: (self._compute_remix, ["app", "routes"]),
@@ -47,7 +46,7 @@ class AssetRoute:
         else:
             self._prefix = self._from_filename_map[plugin][1]
 
-    def _is_file(self, s: str, extensions: Optional[List[str]] = None) -> bool:
+    def _is_file(self, s: str, extensions: list[str] | None = None) -> bool:
         """
         Determines if the passed string represents a file with one or more dots,
         and optionally verifies if it ends with a specific extension.
@@ -68,7 +67,7 @@ class AssetRoute:
         file_regex = re.compile(r"^[^/\\]+?\.[^/\\]+$")
         return bool(file_regex.match(s))
 
-    def _compute_remix(self, filename: str) -> Optional[str]:
+    def _compute_remix(self, filename: str) -> str | None:
         """
         Computes the route for Next.js Webpack plugin.
         Doc: https://remix.run/docs/en/main/file-conventions/routes
@@ -112,7 +111,7 @@ class AssetRoute:
         # Build path from items excluding prefix and suffix
         return "/" + "/".join(returned_path)
 
-    def _compute_nextjs_webpack(self, filename: str) -> Optional[str]:
+    def _compute_nextjs_webpack(self, filename: str) -> str | None:
         """
         Computes the route for Next.js Webpack plugin.
         Doc: https://nextjs.org/docs/app/building-your-application/routing
@@ -130,7 +129,7 @@ class AssetRoute:
         # Build path from items excluding prefix and suffix
         return "/" + "/".join(path_items[1:-1])
 
-    def _compute_nuxt(self, filename: str) -> Optional[str]:
+    def _compute_nuxt(self, filename: str) -> str | None:
         """
         Computes the route for Nuxt plugin.
         Doc: https://nuxt.com/docs/getting-started/routing
@@ -156,7 +155,7 @@ class AssetRoute:
         # Build path from items excluding prefix
         return "/" + "/".join(path_items[1:])
 
-    def _compute_solidstart(self, filename: str) -> Optional[str]:
+    def _compute_solidstart(self, filename: str) -> str | None:
         """
         Computes the route for SolidtStart plugin.
         Doc: https://docs.solidjs.com/solid-start/building-your-application/routing#file-based-routing
@@ -190,7 +189,7 @@ class AssetRoute:
         # Build path from items excluding prefix and suffix
         return "/" + "/".join([item for item in returned_items[2:] if item != ""])
 
-    def _compute_sveltekit(self, filename: str) -> Optional[str]:
+    def _compute_sveltekit(self, filename: str) -> str | None:
         """
         Computes the route for SvelteKit plugin.
         Doc: https://svelte.dev/docs/kit/routing
@@ -212,7 +211,7 @@ class AssetRoute:
         # Build path from items excluding 2 prefix and suffix
         return "/" + "/".join(path_items[2:-1])
 
-    def _compute_astro(self, filename: str) -> Optional[str]:
+    def _compute_astro(self, filename: str) -> str | None:
         """
         Computes the route for Astro plugin.
         Doc: https://docs.astro.build/en/guides/routing
@@ -256,7 +255,7 @@ class AssetRoute:
         # Build path from items excluding 2 prefix
         return "/" + "/".join(path_items[2:])
 
-    def get_from_filename(self, filename: str) -> Optional[str]:
+    def get_from_filename(self, filename: str) -> str | None:
         """
         Computes the route.
         Args:
@@ -296,9 +295,9 @@ def get_extension(filename: str) -> str:
 def split_by_delimiter(
     s: str,
     delimiter: str,
-    escape_open: Optional[str] = None,
-    escape_close: Optional[str] = None,
-) -> List[str]:
+    escape_open: str | None = None,
+    escape_close: str | None = None,
+) -> list[str]:
     """
     Splits a string based on a specified delimiter character, optionally respecting escape delimiters.
 

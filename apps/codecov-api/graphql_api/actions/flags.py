@@ -1,5 +1,5 @@
+from collections.abc import Iterable, Mapping
 from datetime import datetime
-from typing import Iterable, Mapping
 
 from django.db.models import QuerySet
 

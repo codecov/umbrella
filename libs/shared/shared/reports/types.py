@@ -1,14 +1,15 @@
 import logging
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from decimal import Decimal
 from enum import Enum
-from typing import Dict, List, Optional, Sequence, Tuple, TypedDict, Union
+from typing import TypedDict
 
 log = logging.getLogger(__name__)
 
 
 @dataclass
-class ReportTotals(object):
+class ReportTotals:
     files: int = 0
     lines: int = 0
     hits: int = 0
@@ -16,7 +17,7 @@ class ReportTotals(object):
     partials: int = 0
     # The coverage is a string of a float that's rounded to 5 decimal places (or "100", "0")
     # i.e. "98.76543", "100", "0" are all valid.
-    coverage: Optional[str] = 0
+    coverage: str | None = 0
     branches: int = 0
     methods: int = 0
     messages: int = 0
@@ -74,7 +75,7 @@ class ReportTotals(object):
 
 
 @dataclass
-class LineSession(object):
+class LineSession:
     __slots__ = ("id", "coverage", "branches", "partials", "complexity")
     id: int
     coverage: Decimal
@@ -96,12 +97,12 @@ class LineSession(object):
 
 
 @dataclass
-class CoverageDatapoint(object):
+class CoverageDatapoint:
     __slots__ = ("sessionid", "coverage", "coverage_type", "label_ids")
     sessionid: int
     coverage: Decimal
-    coverage_type: Optional[str]
-    label_ids: List[int]
+    coverage_type: str | None
+    label_ids: list[int]
 
     def astuple(self):
         return (
@@ -129,14 +130,14 @@ class CoverageDatapoint(object):
 
 
 @dataclass
-class ReportLine(object):
+class ReportLine:
     __slots__ = ("coverage", "type", "sessions", "messages", "complexity", "datapoints")
     coverage: Decimal
     type: str
     sessions: Sequence[LineSession]
-    messages: List[str]
-    complexity: Union[int, Tuple[int, int]]
-    datapoints: Optional[List[CoverageDatapoint]]
+    messages: list[str]
+    complexity: int | tuple[int, int]
+    datapoints: list[CoverageDatapoint] | None
 
     @classmethod
     def create(
@@ -182,7 +183,7 @@ class ReportLine(object):
 
 
 @dataclass
-class Change(object):
+class Change:
     path: str = None
     new: bool = False
     deleted: bool = False
@@ -205,7 +206,7 @@ SessionTotals = ReportTotals
 
 
 @dataclass
-class NetworkFile(object):
+class NetworkFile:
     totals: ReportTotals
     diff_totals: ReportTotals
 
@@ -225,7 +226,7 @@ class NetworkFile(object):
 
 
 class ReportHeader(TypedDict):
-    labels_index: Dict[int, str]
+    labels_index: dict[int, str]
 
 
 class UploadType(Enum):

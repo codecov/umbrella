@@ -3,7 +3,7 @@ from services.timeseries import MeasurementName
 from tasks.save_commit_measurements import SaveCommitMeasurementsTask
 
 
-class TestSaveCommitMeasurements(object):
+class TestSaveCommitMeasurements:
     def test_save_commit_measurements_success(self, dbsession, mocker):
         save_commit_measurements_mock = mocker.patch(
             "tasks.save_commit_measurements.save_commit_measurements"

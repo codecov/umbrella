@@ -21,7 +21,7 @@ def from_string(string: bytes, report_builder_session: ReportBuilderSession) -> 
     filename = report_builder_session.filepath
     if filename:
         # src/file.lst => src/file.d
-        filename = report_builder_session.path_fixer("%sd" % filename[:-3])
+        filename = report_builder_session.path_fixer(f"{filename[:-3]}d")
 
     if not filename:
         # file.d => src/file.d

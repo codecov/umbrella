@@ -1,7 +1,7 @@
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from unittest import mock
 
-import mock
 import pytest
 
 from database.tests.factories import CommitFactory
@@ -266,7 +266,7 @@ class TestYamlService(BaseTestCase):
         )
         commit = CommitFactory.create(
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
             repository__yaml={
                 "coverage": {
                     "precision": 2,
@@ -323,7 +323,7 @@ class TestYamlService(BaseTestCase):
         )
         commit = CommitFactory.create(
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
             repository__yaml={
                 "coverage": {
                     "precision": 2,
@@ -375,7 +375,7 @@ class TestYamlService(BaseTestCase):
         )
         commit = CommitFactory.create(
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
             repository__yaml={
                 "coverage": {
                     "precision": 2,

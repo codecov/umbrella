@@ -17,7 +17,7 @@ class CodecovBaseModel(Base):
         return Session.object_session(self)
 
 
-class MixinBaseClass(object):
+class MixinBaseClass:
     id_ = Column("id", types.BigInteger, primary_key=True)
     external_id = Column(
         UUID(as_uuid=True), default=uuid.uuid4, unique=True, nullable=False
@@ -32,7 +32,7 @@ class MixinBaseClass(object):
         return self.id_
 
 
-class MixinBaseClassNoExternalID(object):
+class MixinBaseClassNoExternalID:
     id_ = Column("id", types.BigInteger, primary_key=True)
     created_at = Column(types.DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(

@@ -1,7 +1,8 @@
 import logging
 import socket
+from collections.abc import Mapping
 from io import BytesIO
-from typing import Any, List, Mapping
+from typing import Any
 
 from database.enums import Notification
 from services.notification.notifiers.generics import Comparison, StandardNotifier
@@ -9,7 +10,7 @@ from services.notification.notifiers.generics import Comparison, StandardNotifie
 log = logging.getLogger(__name__)
 
 
-class IRCClient(object):
+class IRCClient:
     def __init__(self, server) -> None:
         self.server = server
         server = tuple(self.server.split(":")) + (6667,)
@@ -24,7 +25,7 @@ class IRCClient(object):
     def close(self) -> None:
         self.con.close()
 
-    def receive_everything(self) -> List[str]:
+    def receive_everything(self) -> list[str]:
         received_messages = BytesIO()
         try:
             while 1:
@@ -32,7 +33,7 @@ class IRCClient(object):
                 received_messages.write(data)
                 if not data:
                     break
-        except socket.timeout:
+        except TimeoutError:
             log.debug("Message sent")
         final_data = received_messages.getvalue().decode().split("\r\n")
         for line in final_data:
@@ -62,7 +63,7 @@ class IRCNotifier(StandardNotifier):
         message = data["message"]
         con = IRCClient(self.notifier_yaml_settings["server"])
         if self.notifier_yaml_settings.get("password"):
-            command_to_send = "PASS %s" % self.notifier_yaml_settings["password"]
+            command_to_send = "PASS {}".format(self.notifier_yaml_settings["password"])
             con.send(command_to_send)
         con.send("USER codecov codecov codecov :codecov")
         con.send("NICK codecov")
@@ -73,7 +74,7 @@ class IRCNotifier(StandardNotifier):
             con.send(command_to_send)
         con.receive_everything()
         if self.notifier_yaml_settings["channel"][0] == "#":
-            command = "JOIN %s \n" % self.notifier_yaml_settings["channel"]
+            command = "JOIN {} \n".format(self.notifier_yaml_settings["channel"])
             con.send(command)
         con.receive_everything()
 

@@ -1,7 +1,7 @@
 from rest_framework.exceptions import NotFound
 
 
-class BaseTokenlessUploadHandler(object):
+class BaseTokenlessUploadHandler:
     def __init__(self, upload_params):
         self.upload_params = upload_params
 

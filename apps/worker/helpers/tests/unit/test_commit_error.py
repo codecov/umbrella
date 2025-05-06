@@ -3,7 +3,7 @@ from database.tests.factories import CommitFactory
 from helpers.save_commit_error import save_commit_error
 
 
-class TestSaveCommitError(object):
+class TestSaveCommitError:
     def test_save_commit_error(self, mocker, dbsession):
         commit = CommitFactory.create()
         dbsession.add(commit)

@@ -1,5 +1,6 @@
+from unittest.mock import AsyncMock
+
 import pytest
-from mock import AsyncMock
 
 from database.tests.factories import (
     CommitFactory,

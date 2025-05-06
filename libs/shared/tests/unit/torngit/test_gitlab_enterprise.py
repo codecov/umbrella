@@ -1,11 +1,12 @@
+from unittest.mock import MagicMock
+
 import pytest
-from mock import MagicMock
 from prometheus_client import REGISTRY
 
 from shared.torngit.gitlab_enterprise import GitlabEnterprise
 
 
-class TestGitlabEnterprise(object):
+class TestGitlabEnterprise:
     def test_redirect_uri(self, mocker):
         gle = GitlabEnterprise()
         assert gle.redirect_uri == "https://codecov.io/login/gle"

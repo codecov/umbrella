@@ -1,5 +1,3 @@
-from typing import Optional
-
 from ariadne import ObjectType
 from graphql import GraphQLResolveInfo
 
@@ -18,7 +16,7 @@ def resolve_head_sha(branch: Branch, info: GraphQLResolveInfo) -> str:
 @branch_bindable.field("head")
 async def resolve_head_commit(
     branch: Branch, info: GraphQLResolveInfo
-) -> Optional[Commit]:
+) -> Commit | None:
     head = branch.head
     if head:
         loader = CommitLoader.loader(info, branch.repository_id)

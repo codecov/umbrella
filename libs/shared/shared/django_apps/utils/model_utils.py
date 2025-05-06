@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 import orjson
 
@@ -30,7 +31,7 @@ class ArchiveFieldInterface(metaclass=ArchiveFieldInterfaceMeta):
         """Returns the repository object associated with self"""
         raise NotImplementedError()
 
-    def get_commitid(self) -> Optional[str]:
+    def get_commitid(self) -> str | None:
         """Returns the commitid associated with self.
         If no commitid is associated return None.
         """
@@ -151,7 +152,7 @@ class ArchiveField:
 # Owner
 def get_ownerid_if_member(
     service: str, owner_username: str, owner_id: int
-) -> Optional[int]:
+) -> int | None:
     from shared.django_apps.codecov_auth.models import Owner
 
     """

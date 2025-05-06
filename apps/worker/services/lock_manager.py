@@ -2,7 +2,6 @@ import logging
 import random
 from contextlib import contextmanager
 from enum import Enum
-from typing import Optional
 
 from redis import Redis
 from redis.exceptions import LockError
@@ -32,7 +31,7 @@ class LockManager:
         commitid: str,
         report_type=ReportType.COVERAGE,
         lock_timeout=300,  # 5 min
-        redis_connection: Optional[Redis] = None,
+        redis_connection: Redis | None = None,
     ):
         self.repoid = repoid
         self.commitid = commitid

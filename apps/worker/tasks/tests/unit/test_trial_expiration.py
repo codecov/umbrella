@@ -11,7 +11,7 @@ from tasks.trial_expiration import TrialExpirationTask
 
 
 @pytest.mark.django_db
-class TestTrialExpiration(object):
+class TestTrialExpiration:
     @pytest.fixture(autouse=True)
     def setup(self):
         trial_tier = TierFactory(tier_name=TierName.TRIAL.value)

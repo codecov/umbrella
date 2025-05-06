@@ -1,5 +1,3 @@
-from typing import Optional
-
 from django.http import HttpRequest
 from django.urls import resolve
 from django.utils.deprecation import MiddlewareMixin
@@ -31,7 +29,7 @@ USER_AGENT_METRICS = [
 ]
 
 
-def get_service_long_name(request: HttpRequest) -> Optional[str]:
+def get_service_long_name(request: HttpRequest) -> str | None:
     resolver_match = resolve(request.path_info)
     service = resolver_match.kwargs.get("service")
     if service is not None:

@@ -24,7 +24,7 @@ def repo_obj(service_id, name, language, private, branch, using_integration):
     }
 
 
-class TestBackfillOwnersWithIntegrationWithoutGHApp(object):
+class TestBackfillOwnersWithIntegrationWithoutGHApp:
     # @patch("tasks.backfill_owners_without_gh_app_installations.yield_amount", 1)
     def test_no_previous_app_existing_repos_only(
         self, mocker, mock_repo_provider, dbsession: Session

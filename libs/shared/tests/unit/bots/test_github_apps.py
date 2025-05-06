@@ -50,7 +50,7 @@ def _to_installation_info(
     )
 
 
-class TestGetSpecificGithubAppDetails(object):
+class TestGetSpecificGithubAppDetails:
     @pytest.mark.django_db
     def test_get_specific_github_app_details(self):
         owner = _get_owner_with_apps()
@@ -134,7 +134,7 @@ class TestGetSpecificGithubAppDetails(object):
         assert exp.value.rate_limited_count == int(is_rate_limited)
 
 
-class TestGettingGitHubAppTokenSideEffect(object):
+class TestGettingGitHubAppTokenSideEffect:
     @pytest.mark.django_db
     def test_mark_installation_suspended_side_effect(self, mocker):
         owner = _get_owner_with_apps()

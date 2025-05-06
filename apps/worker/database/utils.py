@@ -1,6 +1,7 @@
 import logging
 import time
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 import orjson
 
@@ -31,7 +32,7 @@ class ArchiveFieldInterface(metaclass=ArchiveFieldInterfaceMeta):
         """Returns the repository object associated with self"""
         raise NotImplementedError()
 
-    def get_commitid(self) -> Optional[str]:
+    def get_commitid(self) -> str | None:
         """Returns the commitid associated with self.
         If no commitid is associated return None.
         """

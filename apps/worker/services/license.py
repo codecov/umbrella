@@ -2,7 +2,6 @@ import logging
 from datetime import datetime
 from enum import Enum, auto
 from functools import lru_cache
-from typing import Optional
 
 from sqlalchemy import func
 from sqlalchemy.sql import text
@@ -42,12 +41,12 @@ def has_valid_license(db_session) -> bool:
     return reason_for_not_being_valid(db_session) is None
 
 
-def reason_for_not_being_valid(db_session) -> Optional[InvalidLicenseReason]:
+def reason_for_not_being_valid(db_session) -> InvalidLicenseReason | None:
     return cached_reason_for_not_being_valid(db_session)
 
 
-@lru_cache()
-def cached_reason_for_not_being_valid(db_session) -> Optional[InvalidLicenseReason]:
+@lru_cache
+def cached_reason_for_not_being_valid(db_session) -> InvalidLicenseReason | None:
     return calculate_reason_for_not_being_valid(db_session)
 
 
@@ -64,7 +63,7 @@ def get_installation_plan_activated_users(db_session) -> list:
     return db_session.execute(query_string).fetchall()
 
 
-def calculate_reason_for_not_being_valid(db_session) -> Optional[InvalidLicenseReason]:
+def calculate_reason_for_not_being_valid(db_session) -> InvalidLicenseReason | None:
     current_license = get_current_license()
     if not current_license.is_valid:
         return InvalidLicenseReason.invalid

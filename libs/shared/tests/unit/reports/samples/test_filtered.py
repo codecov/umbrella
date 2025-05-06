@@ -14,7 +14,7 @@ def lookup_label(label_id: int) -> str:
     return lookup_table[label_id]
 
 
-class TestFilteredReportFile(object):
+class TestFilteredReportFile:
     def test_name(self):
         first_file = ReportFile("file_1.go")
         f = FilteredReportFile(first_file, [1])
@@ -149,7 +149,7 @@ class TestFilteredReportFile(object):
         assert res == ""
 
 
-class TestFilteredReport(object):
+class TestFilteredReport:
     def test_no_real_filter(self, sample_report):
         assert sample_report.filter(None, None) is sample_report
 

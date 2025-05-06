@@ -6,7 +6,8 @@ This packages uses the following services:
 """
 
 import logging
-from typing import Iterator, List, Optional, TypedDict
+from collections.abc import Iterator
+from typing import TypedDict
 
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
 
@@ -51,7 +52,7 @@ class IndividualResult(TypedDict):
     result: NotificationResult | None
 
 
-class NotificationService(object):
+class NotificationService:
     def __init__(
         self,
         repository: Repository,
@@ -214,7 +215,7 @@ class NotificationService(object):
                     decoration_type=self.decoration_type,
                 )
 
-    def _get_component_statuses(self, current_flags: List[str]):
+    def _get_component_statuses(self, current_flags: list[str]):
         all_components = get_components_from_yaml(self.current_yaml)
         for component in all_components:
             for status in component.statuses:
@@ -233,7 +234,7 @@ class NotificationService(object):
                     n_st,
                 )
 
-    def get_statuses(self, current_flags: List[str]):
+    def get_statuses(self, current_flags: list[str]):
         status_fields = read_yaml_field(self.current_yaml, ("coverage", "status"))
         # Default statuses
         if status_fields:
@@ -249,8 +250,7 @@ class NotificationService(object):
                     n_st = {"flags": [f_name], **st}
                     yield (st["type"], f"{st.get('name_prefix', '')}{f_name}", n_st)
         # Component based statuses
-        for component_status in self._get_component_statuses(current_flags):
-            yield component_status
+        yield from self._get_component_statuses(current_flags)
 
     def notify(self, comparison: ComparisonProxy) -> list[IndividualResult]:
         if not is_properly_licensed(comparison.head.commit.get_db_session()):
@@ -318,7 +318,7 @@ class NotificationService(object):
         self,
         notifier: AbstractBaseNotifier,
         comparison: ComparisonProxy,
-        status_or_checks_helper_text: Optional[dict[str, str]] = None,
+        status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> tuple[AbstractBaseNotifier, NotificationResult | None]:
         commit = comparison.head.commit
         base_commit = comparison.project_coverage_base.commit

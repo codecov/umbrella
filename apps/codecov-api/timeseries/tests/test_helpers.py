@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -137,14 +137,14 @@ class RepositoryCoverageMeasurementsTest(TestCase):
         assert list(res) == [
             {
                 # aggregates over 2 measurements on main branch (commit1, commit2)
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,
@@ -203,8 +203,8 @@ class FillSparseMeasurementsTest(TestCase):
         )
 
     def test_fill_sparse_measurements(self):
-        start_date = datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc)
-        end_date = datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc)
+        start_date = datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC)
+        end_date = datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC)
         measurements = coverage_measurements(
             Interval.INTERVAL_1_DAY,
             start_date=start_date,
@@ -217,27 +217,27 @@ class FillSparseMeasurementsTest(TestCase):
             measurements, Interval.INTERVAL_1_DAY, start_date, end_date
         ) == [
             {
-                "timestamp_bin": datetime(2021, 12, 31, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2021, 12, 31, 0, 0, tzinfo=UTC),
                 "avg": None,
                 "min": None,
                 "max": None,
             },
             {
                 # aggregates over 2 measurements on main branch (commit1, commit2)
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,
             },
             {
-                "timestamp_bin": datetime(2022, 1, 3, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 3, 0, 0, tzinfo=UTC),
                 "avg": None,
                 "min": None,
                 "max": None,
@@ -245,7 +245,7 @@ class FillSparseMeasurementsTest(TestCase):
         ]
 
     def test_fill_sparse_measurements_no_start_date(self):
-        end_date = datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc)
+        end_date = datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC)
         measurements = coverage_measurements(
             Interval.INTERVAL_1_DAY,
             end_date=end_date,
@@ -258,20 +258,20 @@ class FillSparseMeasurementsTest(TestCase):
         ) == [
             {
                 # aggregates over 2 measurements on main branch (commit1, commit2)
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,
             },
             {
-                "timestamp_bin": datetime(2022, 1, 3, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 3, 0, 0, tzinfo=UTC),
                 "avg": None,
                 "min": None,
                 "max": None,
@@ -280,7 +280,7 @@ class FillSparseMeasurementsTest(TestCase):
 
     @freeze_time("2022-01-03T00:00:00")
     def test_fill_sparse_measurements_no_end_date(self):
-        start_date = datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc)
+        start_date = datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC)
         measurements = coverage_measurements(
             Interval.INTERVAL_1_DAY,
             start_date=start_date,
@@ -294,27 +294,27 @@ class FillSparseMeasurementsTest(TestCase):
             start_date=start_date,
         ) == [
             {
-                "timestamp_bin": FakeDatetime(2021, 12, 31, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": FakeDatetime(2021, 12, 31, 0, 0, tzinfo=UTC),
                 "avg": None,
                 "min": None,
                 "max": None,
             },
             {
                 # aggregates over 2 measurements on main branch (commit1, commit2)
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,
             },
             {
-                "timestamp_bin": FakeDatetime(2022, 1, 3, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": FakeDatetime(2022, 1, 3, 0, 0, tzinfo=UTC),
                 "avg": None,
                 "min": None,
                 "max": None,
@@ -341,8 +341,8 @@ class FillSparseMeasurementsTest(TestCase):
             branch="main",
         )
 
-        start_date = datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc)
-        end_date = datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc)
+        start_date = datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC)
+        end_date = datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC)
         measurements = coverage_measurements(
             Interval.INTERVAL_1_DAY,
             start_date=start_date,
@@ -356,27 +356,27 @@ class FillSparseMeasurementsTest(TestCase):
         ) == [
             {
                 # this bin is carried forward from the last datapoint before `start_date`
-                "timestamp_bin": datetime(2021, 12, 31, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2021, 12, 31, 0, 0, tzinfo=UTC),
                 "avg": 85.0,
                 "min": 80.0,
                 "max": 90.0,
             },
             {
                 # aggregates over 2 measurements on main branch (commit1, commit2)
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,
             },
             {
-                "timestamp_bin": datetime(2022, 1, 3, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 3, 0, 0, tzinfo=UTC),
                 "avg": None,
                 "min": None,
                 "max": None,
@@ -449,20 +449,20 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
         res = repository_coverage_measurements_with_fallback(
             self.repo,
             Interval.INTERVAL_1_DAY,
-            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC),
         )
         assert list(res) == [
             {
                 # aggregates over 2 measurements on main branch (commit1, commit2)
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,
@@ -526,14 +526,14 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
         assert list(res) == [
             {
                 # aggregates over 2 measurements on main branch (commit1, commit2)
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,
@@ -548,7 +548,7 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit1",
             repository_id=self.repo.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "80.00",
             },
@@ -557,21 +557,21 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit2",
             repository_id=self.repo.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=UTC),
             totals={"c": "85.00"},
         )
         CommitFactory(
             commitid="commit3",
             repository_id=self.repo.pk,
             branch="other",
-            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=UTC),
             totals={"c": "90.00"},
         )
         CommitFactory(
             commitid="commit4",
             repository_id=self.repo.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "80.00",
             },
@@ -585,20 +585,20 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
         res = repository_coverage_measurements_with_fallback(
             self.repo,
             Interval.INTERVAL_1_DAY,
-            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC),
         )
         assert list(res) == [
             {
                 # aggregates over 2 measurements on main branch (commit1, commit2)
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,
@@ -613,7 +613,7 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit1",
             repository_id=self.repo.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "80.00",
             },
@@ -622,21 +622,21 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit2",
             repository_id=self.repo.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=UTC),
             totals={"c": "85.00"},
         )
         CommitFactory(
             commitid="commit3",
             repository_id=self.repo.pk,
             branch="other",
-            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=UTC),
             totals={"c": "90.00"},
         )
         CommitFactory(
             commitid="commit4",
             repository_id=self.repo.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "80.00",
             },
@@ -654,14 +654,14 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
         assert list(res) == [
             {
                 # aggregates over 2 measurements on main branch (commit1, commit2)
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,
@@ -674,7 +674,7 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit1",
             repository_id=self.repo.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "80.00",
             },
@@ -683,21 +683,21 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit2",
             repository_id=self.repo.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=UTC),
             totals={"c": "85.00"},
         )
         CommitFactory(
             commitid="commit3",
             repository_id=self.repo.pk,
             branch="other",
-            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=UTC),
             totals={"c": "90.00"},
         )
         CommitFactory(
             commitid="commit4",
             repository_id=self.repo.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "80.00",
             },
@@ -706,20 +706,20 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
         res = repository_coverage_measurements_with_fallback(
             self.repo,
             Interval.INTERVAL_1_DAY,
-            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC),
         )
         assert list(res) == [
             {
                 # aggregates over 2 measurements on main branch (commit1, commit2)
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,
@@ -746,7 +746,7 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit1",
             repository_id=self.repo.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=UTC),
             totals={"c": "80.00"},
         )
 
@@ -754,8 +754,8 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
         repository_coverage_measurements_with_fallback(
             self.repo,
             Interval.INTERVAL_1_DAY,
-            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC),
         )
 
         # Ensure get_or_create was called with the expected arguments
@@ -782,15 +782,15 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit1",
             repository_id=self.repo.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=UTC),
             totals={"c": "80.00"},
         )
 
         repository_coverage_measurements_with_fallback(
             self.repo,
             Interval.INTERVAL_1_DAY,
-            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC),
         )
 
         mock_get_or_create.assert_called_once_with(
@@ -911,20 +911,20 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             owner=self.owner,
             repo_ids=[self.repo1.pk, self.repo2.pk],
             interval=Interval.INTERVAL_1_DAY,
-            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC),
         )
         assert list(res) == [
             {
                 # aggregates over 2 measurements on main branch
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=UTC),
                 "avg": 85.0,
                 "min": 80.0,
                 "max": 90.0,
@@ -934,20 +934,20 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             owner=self.owner,
             repo_ids=[self.repo1.pk],
             interval=Interval.INTERVAL_1_DAY,
-            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC),
         )
         assert list(res) == [
             {
                 # aggregates over 2 measurements on main branch
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,
@@ -962,7 +962,7 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit1",
             repository_id=self.repo1.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "80.00",
             },
@@ -971,21 +971,21 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit2",
             repository_id=self.repo1.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=UTC),
             totals={"c": "85.00"},
         )
         CommitFactory(
             commitid="commit3",
             repository_id=self.repo1.pk,
             branch="other",
-            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=UTC),
             totals={"c": "90.00"},
         )
         CommitFactory(
             commitid="commit4",
             repository_id=self.repo1.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "80.00",
             },
@@ -995,7 +995,7 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit1",
             repository_id=self.repo2.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "80.00",
             },
@@ -1004,21 +1004,21 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit2",
             repository_id=self.repo2.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=UTC),
             totals={"c": "85.00"},
         )
         CommitFactory(
             commitid="commit3",
             repository_id=self.repo2.pk,
             branch="other",
-            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=UTC),
             totals={"c": "90.00"},
         )
         CommitFactory(
             commitid="commit4",
             repository_id=self.repo2.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "90.00",
             },
@@ -1037,20 +1037,20 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             owner=self.owner,
             repo_ids=[self.repo1.pk, self.repo2.pk],
             interval=Interval.INTERVAL_1_DAY,
-            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC),
         )
         assert list(res) == [
             {
                 # aggregates over 2 commits on main branch
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 commit (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=UTC),
                 "avg": 85.0,
                 "min": 80.0,
                 "max": 90.0,
@@ -1060,20 +1060,20 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             owner=self.owner,
             repo_ids=[self.repo1.pk],
             interval=Interval.INTERVAL_1_DAY,
-            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC),
         )
         assert list(res) == [
             {
                 # aggregates over 2 commits on main branch
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 commit (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,
@@ -1086,7 +1086,7 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit1",
             repository_id=self.repo1.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "80.00",
             },
@@ -1095,21 +1095,21 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit2",
             repository_id=self.repo1.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=UTC),
             totals={"c": "85.00"},
         )
         CommitFactory(
             commitid="commit3",
             repository_id=self.repo1.pk,
             branch="other",
-            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=UTC),
             totals={"c": "90.00"},
         )
         CommitFactory(
             commitid="commit4",
             repository_id=self.repo1.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "80.00",
             },
@@ -1119,7 +1119,7 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit1",
             repository_id=self.repo2.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "80.00",
             },
@@ -1128,21 +1128,21 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             commitid="commit2",
             repository_id=self.repo2.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 2, 0, 0, 0, tzinfo=UTC),
             totals={"c": "85.00"},
         )
         CommitFactory(
             commitid="commit3",
             repository_id=self.repo2.pk,
             branch="other",
-            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 1, 3, 0, 0, 0, tzinfo=UTC),
             totals={"c": "90.00"},
         )
         CommitFactory(
             commitid="commit4",
             repository_id=self.repo2.pk,
             branch="main",
-            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2022, 1, 2, 1, 0, 0, 0, tzinfo=UTC),
             totals={
                 "c": "90.00",
             },
@@ -1152,20 +1152,20 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             owner=self.owner,
             repo_ids=[self.repo1.pk, self.repo2.pk],
             interval=Interval.INTERVAL_1_DAY,
-            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC),
         )
         assert list(res) == [
             {
                 # aggregates over 2 commits on main branch
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=UTC),
                 "avg": 85.0,
                 "min": 80.0,
                 "max": 90.0,
@@ -1209,20 +1209,20 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             owner=self.owner,
             repo_ids=[self.repo1.pk],
             interval=Interval.INTERVAL_1_DAY,
-            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=timezone.utc),
-            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=timezone.utc),
+            start_date=datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC),
         )
         assert list(res) == [
             {
                 # aggregates over 2 commits on main branch
-                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC),
                 "avg": 82.5,
                 "min": 80.0,
                 "max": 85.0,
             },
             {
                 # aggregates over 1 measurement (commit4)
-                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=timezone.utc),
+                "timestamp_bin": datetime(2022, 1, 2, 0, 0, 0, tzinfo=UTC),
                 "avg": 80.0,
                 "min": 80.0,
                 "max": 80.0,

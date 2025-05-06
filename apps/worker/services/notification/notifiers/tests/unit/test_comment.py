@@ -1,6 +1,5 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import List
 from unittest.mock import PropertyMock
 
 import pytest
@@ -224,7 +223,7 @@ def mock_repo_provider(mock_repo_provider):
     return mock_repo_provider
 
 
-class TestCommentNotifierHelpers(object):
+class TestCommentNotifierHelpers:
     @pytest.mark.django_db
     def test_sort_by_importance(self):
         modified_change = Change(
@@ -435,7 +434,7 @@ class TestCommentNotifierHelpers(object):
 
 
 @pytest.mark.usefixtures("is_not_first_pull")
-class TestCommentNotifier(object):
+class TestCommentNotifier:
     @pytest.fixture(autouse=True)
     def setup(self):
         mock_all_plans_and_tiers()
@@ -2969,7 +2968,7 @@ class TestCommentNotifier(object):
         assert result == expected_result
 
 
-class TestFileSectionWriter(object):
+class TestFileSectionWriter:
     def test_filesection_no_extra_settings(self, sample_comparison, mocker):
         section_writer = FileSectionWriter(
             sample_comparison.head.commit.repository,
@@ -3337,7 +3336,7 @@ class TestFileSectionWriter(object):
         assert lines == []
 
 
-class TestNewHeaderSectionWriter(object):
+class TestNewHeaderSectionWriter:
     def test_new_header_section_writer(self, mocker, sample_comparison):
         writer = HeaderSectionWriter(
             mocker.MagicMock(),
@@ -3541,7 +3540,7 @@ class TestNewHeaderSectionWriter(object):
         ]
 
 
-class TestAnnouncementsSectionWriter(object):
+class TestAnnouncementsSectionWriter:
     def test_announcement_section_writer(self, mocker):
         writer = AnnouncementSectionWriter(
             mocker.MagicMock(),
@@ -3558,7 +3557,7 @@ class TestAnnouncementsSectionWriter(object):
         assert message in AnnouncementSectionWriter.current_active_messages
 
 
-class TestNewFooterSectionWriter(object):
+class TestNewFooterSectionWriter:
     def test_footer_section_writer_in_github(self, mocker):
         writer = NewFooterSectionWriter(
             mocker.MagicMock(),
@@ -3639,7 +3638,7 @@ class TestNewFooterSectionWriter(object):
 
 
 @pytest.mark.usefixtures("is_not_first_pull")
-class TestCommentNotifierInNewLayout(object):
+class TestCommentNotifierInNewLayout:
     @pytest.fixture(autouse=True)
     def mock_all_plans_and_tiers(self):
         mock_all_plans_and_tiers()
@@ -4319,7 +4318,7 @@ class TestCommentNotifierInNewLayout(object):
         assert result == expected_result
 
 
-class TestComponentWriterSection(object):
+class TestComponentWriterSection:
     def test_write_message_component_section_empty(
         self,
         dbsession,
@@ -4647,7 +4646,7 @@ class TestCommentNotifierWelcome:
         owner = OwnerFactory.create(
             service="github",
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         repository = RepositoryFactory.create(owner=owner)
         branch = "new_branch"
@@ -4755,9 +4754,7 @@ class TestCommentNotifierWelcome:
 
         sample_comparison.head.commit.repository.private = False
 
-        before_introduction_date = datetime(2024, 4, 1, 0, 0, 0).replace(
-            tzinfo=timezone.utc
-        )
+        before_introduction_date = datetime(2024, 4, 1, 0, 0, 0).replace(tzinfo=UTC)
         sample_comparison.head.commit.repository.owner.createstamp = (
             before_introduction_date
         )
@@ -4781,9 +4778,7 @@ class TestCommentNotifierWelcome:
         result = notifier.build_message(sample_comparison)
         assert PROJECT_COVERAGE_CTA not in result
 
-        after_introduction_date = datetime(2024, 6, 1, 0, 0, 0).replace(
-            tzinfo=timezone.utc
-        )
+        after_introduction_date = datetime(2024, 6, 1, 0, 0, 0).replace(tzinfo=UTC)
         sample_comparison.head.commit.repository.owner.createstamp = (
             after_introduction_date
         )
@@ -4809,9 +4804,7 @@ class TestCommentNotifierWelcome:
 
         sample_comparison.head.commit.repository.private = True
 
-        before_introduction_date = datetime(2024, 4, 1, 0, 0, 0).replace(
-            tzinfo=timezone.utc
-        )
+        before_introduction_date = datetime(2024, 4, 1, 0, 0, 0).replace(tzinfo=UTC)
         sample_comparison.head.commit.repository.owner.createstamp = (
             before_introduction_date
         )
@@ -4835,9 +4828,7 @@ class TestCommentNotifierWelcome:
         result = notifier.build_message(sample_comparison)
         assert PROJECT_COVERAGE_CTA not in result
 
-        after_introduction_date = datetime(2024, 6, 1, 0, 0, 0).replace(
-            tzinfo=timezone.utc
-        )
+        after_introduction_date = datetime(2024, 6, 1, 0, 0, 0).replace(tzinfo=UTC)
         sample_comparison.head.commit.repository.owner.createstamp = (
             after_introduction_date
         )
@@ -4863,9 +4854,7 @@ class TestCommentNotifierWelcome:
 
         sample_comparison.head.commit.repository.private = True
 
-        after_introduction_date = datetime(2024, 6, 1, 0, 0, 0).replace(
-            tzinfo=timezone.utc
-        )
+        after_introduction_date = datetime(2024, 6, 1, 0, 0, 0).replace(tzinfo=UTC)
         sample_comparison.head.commit.repository.owner.createstamp = (
             after_introduction_date
         )
@@ -4908,7 +4897,7 @@ class TestCommentNotifierWelcome:
         assert PROJECT_COVERAGE_CTA in result
 
 
-class TestMessagesToUserSection(object):
+class TestMessagesToUserSection:
     @pytest.mark.parametrize(
         "repo, is_enterprise, owner_has_apps, expected",
         [
@@ -5057,7 +5046,7 @@ class TestMessagesToUserSection(object):
         self,
         mocker,
         commit: Commit,
-        upload_diff: List[ReportUploadedCount],
+        upload_diff: list[ReportUploadedCount],
         has_project_status: bool,
         is_coverage_drop_significant: bool,
         expected: str,

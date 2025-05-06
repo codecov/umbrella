@@ -1,5 +1,5 @@
 import uuid
-from typing import Awaitable, Dict, List, Optional
+from collections.abc import Awaitable
 
 from codecov.commands.base import BaseCommand
 from codecov_auth.models import Owner, RepositoryToken
@@ -37,8 +37,8 @@ class RepositoryCommands(BaseCommand):
         self,
         repo_name: str,
         owner: Owner,
-        default_branch: Optional[str],
-        activated: Optional[bool],
+        default_branch: str | None,
+        activated: bool | None,
     ) -> None:
         return self.get_interactor(UpdateRepositoryInteractor).execute(
             repo_name, owner, default_branch, activated
@@ -82,8 +82,8 @@ class RepositoryCommands(BaseCommand):
         self,
         owner_username: str,
         repo_name: str,
-        cache_config: List[Dict[str, str | bool]],
-    ) -> Awaitable[List[Dict[str, str | bool]]]:
+        cache_config: list[dict[str, str | bool]],
+    ) -> Awaitable[list[dict[str, str | bool]]]:
         return self.get_interactor(UpdateBundleCacheConfigInteractor).execute(
             owner_username, repo_name, cache_config
         )

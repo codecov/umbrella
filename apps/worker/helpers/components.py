@@ -1,6 +1,5 @@
 import re
 from dataclasses import dataclass
-from typing import List
 
 
 @dataclass
@@ -12,9 +11,9 @@ class Component:
 
     component_id: str
     name: str
-    flag_regexes: List[str]
-    paths: List[str]
-    statuses: List[dict]
+    flag_regexes: list[str]
+    paths: list[str]
+    statuses: list[dict]
 
     @classmethod
     def from_dict(cls, component_dict):
@@ -29,7 +28,7 @@ class Component:
     def get_display_name(self) -> str:
         return self.name or self.component_id or "default_component"
 
-    def get_matching_flags(self, current_flags: List[str]) -> List[str]:
+    def get_matching_flags(self, current_flags: list[str]) -> list[str]:
         ans = set()
         compiled_regexes = (re.compile(flag_regex) for flag_regex in self.flag_regexes)
         for regex_to_match in compiled_regexes:

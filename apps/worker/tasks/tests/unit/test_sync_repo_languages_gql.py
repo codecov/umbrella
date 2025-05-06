@@ -8,7 +8,7 @@ from shared.utils.enums import TaskConfigGroup
 from tasks.sync_repo_languages_gql import SyncRepoLanguagesGQLTask
 
 
-class TestSyncRepoLanguagesGQL(object):
+class TestSyncRepoLanguagesGQL:
     def test_get_repo_languages_without_org_or_current_owner(self, dbsession):
         task = SyncRepoLanguagesGQLTask()
 

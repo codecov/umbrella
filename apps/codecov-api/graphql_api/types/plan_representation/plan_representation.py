@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
 
@@ -24,7 +22,7 @@ def resolve_plan_value(plan_data: Plan, info) -> str:
 
 
 @plan_representation_bindable.field("billingRate")
-def resolve_billing_rate(plan_data: Plan, info) -> Optional[str]:
+def resolve_billing_rate(plan_data: Plan, info) -> str | None:
     return plan_data.billing_rate
 
 
@@ -35,7 +33,7 @@ def resolve_base_unit_price(plan_data: Plan, info) -> int:
 
 @plan_representation_bindable.field("benefits")
 @sync_to_async
-def resolve_benefits(plan_data: Plan, info) -> List[str]:
+def resolve_benefits(plan_data: Plan, info) -> list[str]:
     plan_service: PlanService = info.context["plan_service"]
     if plan_service.is_org_trialing:
         benefits_with_pretrial_users = [
@@ -49,7 +47,7 @@ def resolve_benefits(plan_data: Plan, info) -> List[str]:
 
 
 @plan_representation_bindable.field("monthlyUploadLimit")
-def resolve_monthly_uploads_limit(plan_data: Plan, info) -> Optional[int]:
+def resolve_monthly_uploads_limit(plan_data: Plan, info) -> int | None:
     return plan_data.monthly_uploads_limit
 
 

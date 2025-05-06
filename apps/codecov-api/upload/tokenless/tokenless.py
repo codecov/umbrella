@@ -12,7 +12,7 @@ from upload.tokenless.travis import TokenlessTravisHandler
 log = logging.getLogger(__name__)
 
 
-class TokenlessUploadHandler(object):
+class TokenlessUploadHandler:
     ci_verifiers = {
         "appveyor": TokenlessAppveyorHandler,
         "azure_pipelines": TokenlessAzureHandler,

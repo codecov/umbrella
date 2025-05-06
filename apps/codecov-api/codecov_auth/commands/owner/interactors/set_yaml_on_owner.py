@@ -1,5 +1,4 @@
 import html
-from typing import Optional
 
 import yaml
 from asgiref.sync import sync_to_async
@@ -35,7 +34,7 @@ class SetYamlOnOwnerInteractor(BaseInteractor):
         except Owner.DoesNotExist:
             raise NotFound()
 
-    def convert_yaml_to_dict(self, yaml_input: str) -> Optional[dict]:
+    def convert_yaml_to_dict(self, yaml_input: str) -> dict | None:
         yaml_safe = html.escape(yaml_input, quote=False)
         try:
             yaml_dict = yaml.safe_load(yaml_safe)

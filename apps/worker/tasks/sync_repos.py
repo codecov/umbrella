@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime
-from typing import List, Optional, Tuple
 
 from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
@@ -65,14 +64,14 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         previous_results=None,
         *,
         ownerid: int,
-        username: Optional[str] = None,
+        username: str | None = None,
         using_integration=False,
         manual_trigger=False,
         # `repository_service_ids` is optionally passed to the task
         # when using_integration=True so we know what are the repos affected.
         # Speeds up getting info from the git provider, but not required
         # objects are (service_id, node_id)
-        repository_service_ids: Optional[List[Tuple[str, str]]] = None,
+        repository_service_ids: list[tuple[str, str]] | None = None,
         **kwargs,
     ):
         log.info(
@@ -133,7 +132,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         db_session: Session,
         git: TorngitBaseAdapter,
         owner: Owner,
-        repository_service_ids: List[Tuple[int, str]] | None,
+        repository_service_ids: list[tuple[int, str]] | None,
     ):
         repoids_added = []
         # Casting to str in case celery interprets the service ID as a integer for some reason
@@ -196,7 +195,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         self,
         git: TorngitBaseAdapter,
         owner: Owner,
-        service_ids_listed: List[str],
+        service_ids_listed: list[str],
     ):
         installation_used = git.data.get("installation")
         if installation_used is None:
@@ -243,7 +242,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         git: TorngitBaseAdapter,
         owner: Owner,
         username: str,
-        repository_service_ids: Optional[List[Tuple[int, str]]] = None,
+        repository_service_ids: list[tuple[int, str]] | None = None,
     ):
         ownerid = owner.ownerid
         log.info(
@@ -343,7 +342,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         db_session: Session,
         git,
         owner: Owner,
-        username: Optional[str],
+        username: str | None,
         using_integration: bool,
     ):
         service = owner.service
@@ -511,7 +510,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         service: str,
         ownerid: int,
         repo_data,
-        using_integration: Optional[bool] = None,
+        using_integration: bool | None = None,
     ):
         log.info(
             "Upserting repo",

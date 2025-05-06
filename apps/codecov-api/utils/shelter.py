@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from django.conf import settings
 from google.cloud import pubsub_v1
@@ -34,7 +34,7 @@ class ShelterPubsub:
         topic_id: str = settings.SHELTER_PUBSUB_SYNC_REPO_TOPIC_ID
         self.topic_path = self.pubsub_publisher.topic_path(pubsub_project_id, topic_id)
 
-    def publish(self, data: Dict[str, Any]) -> None:
+    def publish(self, data: dict[str, Any]) -> None:
         if not settings.SHELTER_ENABLED:
             return
 

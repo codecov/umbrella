@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from ..models import UserOnboardingLifeCycleMetrics
 
@@ -16,7 +16,7 @@ class UserOnboardingMetricsService:
     }
 
     @staticmethod
-    def create_user_onboarding_metric(org_id: int, event: str, payload: Dict[str, Any]):
+    def create_user_onboarding_metric(org_id: int, event: str, payload: dict[str, Any]):
         if event not in UserOnboardingMetricsService.ALLOWED_EVENTS:
             log.warning("Incompatible event type", extra={"event_name": event})
             return

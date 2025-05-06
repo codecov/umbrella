@@ -13,7 +13,10 @@ select = [
     "PLE",   # pylint - error rules
     "PLW",   # pylint - warning rules
     "T20",   # flake8-print - print statements
+    "UP",    # pyupgrade - force modern idioms
     "W",     # pycodestyle - warning rules
+    # TODO:
+    #"FA",    # flake8-future-annotations - forced `from __future__ import annotations`
 ]
 ignore = [
     "E501",    # Line too long ({width} > {limit})

@@ -28,10 +28,10 @@ def _build_branches(branch_gen):
             if "sl" in attribs:
                 if attribs.get("offsetend") is not None:
                     branches[int(attribs["sl"])].append(
-                        ("%(offset)s:%(offsetend)s" % attribs)
+                        "{offset}:{offsetend}".format(**attribs)
                     )
                 else:
-                    branches[int(attribs["sl"])].append(("%(offset)s" % attribs))
+                    branches[int(attribs["sl"])].append("{offset}".format(**attribs))
     return branches
 
 
@@ -79,7 +79,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                 if bec is not None:
                     bev = attrib("bev")
                     if bec != "0":
-                        coverage = "%s/%s" % (bev, bec)
+                        coverage = f"{bev}/{bec}"
                         _type = _type or CoverageType.branch
                     elif vc > 0:
                         coverage = vc

@@ -114,13 +114,9 @@ class ReportFile:
 
     def __repr__(self):
         try:
-            return "<%s name=%s lines=%s>" % (
-                self.__class__.__name__,
-                self.name,
-                len(self),
-            )
+            return f"<{self.__class__.__name__} name={self.name} lines={len(self)}>"
         except Exception:
-            return "<%s name=%s lines=n/a>" % (self.__class__.__name__, self.name)
+            return f"<{self.__class__.__name__} name={self.name} lines=n/a>"
 
     def _line(self, line: ReportLine | list | str):
         if isinstance(line, ReportLine):
@@ -161,22 +157,22 @@ class ReportFile:
         if isinstance(ln, slice):
             return self._getslice(ln.start, ln.stop)
         if not isinstance(ln, int):
-            raise TypeError("expecting type int got %s" % type(ln))
+            raise TypeError(f"expecting type int got {type(ln)}")
         elif ln < 1:
-            raise ValueError("Line number must be greater then 0. Got %s" % ln)
+            raise ValueError(f"Line number must be greater then 0. Got {ln}")
         _line = self.get(ln)
         if not _line:
-            raise IndexError("Line #%s not found in report" % ln)
+            raise IndexError(f"Line #{ln} not found in report")
         return _line
 
     def __setitem__(self, ln, line):
         """Append line to file, without merging if previously set"""
         if not isinstance(ln, int):
-            raise TypeError("expecting type int got %s" % type(ln))
+            raise TypeError(f"expecting type int got {type(ln)}")
         elif not isinstance(line, ReportLine):
-            raise TypeError("expecting type ReportLine got %s" % type(line))
+            raise TypeError(f"expecting type ReportLine got {type(line)}")
         elif ln < 1:
-            raise ValueError("Line number must be greater then 0. Got %s" % ln)
+            raise ValueError(f"Line number must be greater then 0. Got {ln}")
         elif self._ignore and self._ignore(ln):
             return
 
@@ -191,9 +187,9 @@ class ReportFile:
     def __delitem__(self, ln: int):
         """Delete line from file"""
         if not isinstance(ln, int):
-            raise TypeError("expecting type int got %s" % type(ln))
+            raise TypeError(f"expecting type int got {type(ln)}")
         elif ln < 1:
-            raise ValueError("Line number must be greater then 0. Got %s" % ln)
+            raise ValueError(f"Line number must be greater then 0. Got {ln}")
 
         length = len(self._lines)
         if length <= ln:
@@ -233,7 +229,7 @@ class ReportFile:
 
     def __contains__(self, ln):
         if not isinstance(ln, int):
-            raise TypeError("expecting type int got %s" % type(ln))
+            raise TypeError(f"expecting type int got {type(ln)}")
         try:
             return self.get(ln) is not None
         except IndexError:
@@ -244,9 +240,9 @@ class ReportFile:
 
     def get(self, ln):
         if not isinstance(ln, int):
-            raise TypeError("expecting type int got %s" % type(ln))
+            raise TypeError(f"expecting type int got {type(ln)}")
         elif ln < 1:
-            raise ValueError("Line number must be greater then 0. Got %s" % ln)
+            raise ValueError(f"Line number must be greater then 0. Got {ln}")
 
         try:
             line = self._lines[ln - 1]
@@ -263,11 +259,11 @@ class ReportFile:
         if the line exists it will merge it
         """
         if not isinstance(ln, int):
-            raise TypeError("expecting type int got %s" % type(ln))
+            raise TypeError(f"expecting type int got {type(ln)}")
         elif not isinstance(line, ReportLine):
-            raise TypeError("expecting type ReportLine got %s" % type(line))
+            raise TypeError(f"expecting type ReportLine got {type(line)}")
         elif ln < 1:
-            raise ValueError("Line number must be greater then 0. Got %s" % ln)
+            raise ValueError(f"Line number must be greater then 0. Got {ln}")
         elif self._ignore and self._ignore(ln):
             return False
 
@@ -292,7 +288,7 @@ class ReportFile:
             return
 
         elif not isinstance(other_file, ReportFile):
-            raise TypeError("expecting type ReportFile got %s" % type(other_file))
+            raise TypeError(f"expecting type ReportFile got {type(other_file)}")
 
         if (
             self.name.endswith(".rb")

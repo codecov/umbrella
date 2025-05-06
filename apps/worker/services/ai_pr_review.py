@@ -3,7 +3,6 @@ import logging
 import re
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Dict, List, Optional
 
 from openai import AsyncOpenAI
 
@@ -123,7 +122,7 @@ class Diff:
 @dataclass
 class Comment:
     body: str
-    comment_id: Optional[int] = None
+    comment_id: int | None = None
 
 
 @dataclass
@@ -132,7 +131,7 @@ class ReviewComments:
     body: str
 
     # line-based code comments
-    comments: Dict[LineInfo, Comment]
+    comments: dict[LineInfo, Comment]
 
 
 class PullWrapper:
@@ -234,14 +233,12 @@ class PullWrapper:
 
 
 class Review:
-    def __init__(
-        self, pull_wrapper: PullWrapper, review_ids: Optional[List[int]] = None
-    ):
+    def __init__(self, pull_wrapper: PullWrapper, review_ids: list[int] | None = None):
         self.pull_wrapper = pull_wrapper
         self.review_ids = review_ids or []
         self.diff = None
 
-    async def perform(self) -> Optional[int]:
+    async def perform(self) -> int | None:
         raw_diff = await self.pull_wrapper.fetch_diff()
         self.diff = Diff(raw_diff)
 

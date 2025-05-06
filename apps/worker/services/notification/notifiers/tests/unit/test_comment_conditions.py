@@ -1,5 +1,3 @@
-from typing import Dict, List
-
 import pytest
 
 from database.enums import Decoration
@@ -32,7 +30,7 @@ def _get_notifier(
     )
 
 
-def _get_mock_compare_result(file_affected: str, lines_affected: List[str]) -> Dict:
+def _get_mock_compare_result(file_affected: str, lines_affected: list[str]) -> dict:
     return {
         "diff": {
             "files": {

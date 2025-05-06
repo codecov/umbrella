@@ -1,13 +1,12 @@
 import asyncio
 import datetime
 import pickle
-from typing import Dict
+from unittest.mock import MagicMock
 from urllib.parse import parse_qs, parse_qsl, urlparse
 
 import httpx
 import pytest
 import respx
-from mock import MagicMock
 from prometheus_client import REGISTRY
 
 from shared.torngit.base import TokenType
@@ -68,11 +67,11 @@ def ghapp_handler():
 # so we can add valid_handler._on_token_refresh = token_refresh_fake_callback
 # to the tests that we want to see if Github refreshes the tokens
 # other tests won't retry to refresh (cause the handlers dont have callbacks by default)
-async def token_refresh_fake_callback(new_token: Dict) -> None:
+async def token_refresh_fake_callback(new_token: dict) -> None:
     pass
 
 
-class TestUnitGithub(object):
+class TestUnitGithub:
     @pytest.mark.asyncio
     async def test_api_client_error_unreachable(self, valid_handler, mocker):
         client = mocker.MagicMock(
@@ -1166,14 +1165,11 @@ class TestUnitGithub(object):
         )
 
         url = "https://app.codecov.io/gh/codecov/example-python/compare/1?src=pr"
-        five_min_from_now = datetime.datetime.now(
-            datetime.timezone.utc
-        ) + datetime.timedelta(minutes=5)
-        timestamp = int(five_min_from_now.timestamp())
-        assert (
-            timestamp - int(datetime.datetime.now(datetime.timezone.utc).timestamp())
-            == 300
+        five_min_from_now = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
+            minutes=5
         )
+        timestamp = int(five_min_from_now.timestamp())
+        assert timestamp - int(datetime.datetime.now(datetime.UTC).timestamp()) == 300
         with respx.mock:
             mocked_response = respx.patch(
                 "https://api.github.com/repos/ThiagoCodecov/example-python/check-runs/1256232357",

@@ -27,7 +27,7 @@ def repo_obj(service_id, name, language, private, branch, using_integration):
     }
 
 
-class TestBackfillWithPreviousGHAppInstallation(object):
+class TestBackfillWithPreviousGHAppInstallation:
     def test_gh_app_with_selection_all(
         self, mocker, mock_repo_provider, dbsession: Session
     ):

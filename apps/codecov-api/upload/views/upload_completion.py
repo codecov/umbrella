@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any
 
 from django.http import HttpRequest
 from rest_framework import status
@@ -35,7 +36,7 @@ class UploadCompletionView(CreateAPIView, GetterMixin):
         RepositoryLegacyTokenAuthentication,
     ]
 
-    def get_exception_handler(self) -> Callable[[Exception, Dict[str, Any]], Response]:
+    def get_exception_handler(self) -> Callable[[Exception, dict[str, Any]], Response]:
         return repo_auth_custom_exception_handler
 
     def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Response:

@@ -49,7 +49,7 @@ def comparison(dbsession):
     )
 
 
-class TestCommitNotificationsServiceTestCase(object):
+class TestCommitNotificationsServiceTestCase:
     def test_create_or_update_commit_notification_not_yet_exists(
         self, dbsession, comparison
     ):

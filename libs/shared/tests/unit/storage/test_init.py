@@ -12,7 +12,7 @@ minio_config = {
 }
 
 
-class TestStorageInitialization(object):
+class TestStorageInitialization:
     def test_get_appropriate_storage_service_minio(self, mock_configuration):
         mock_configuration.params["services"] = {
             "minio": minio_config,

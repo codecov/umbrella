@@ -1,6 +1,7 @@
+from collections.abc import Coroutine, Iterable
 from datetime import datetime
 from hashlib import sha1
-from typing import Any, Coroutine, Iterable, List, Optional
+from typing import Any
 
 import sentry_sdk
 import stripe
@@ -60,9 +61,9 @@ AI_FEATURES_GH_APP_ID = get_config("github", "ai_features_app_id")
 def resolve_repositories(
     owner: Owner,
     info: GraphQLResolveInfo,
-    filters: Optional[dict] = None,
-    ordering: Optional[RepositoryOrdering] = RepositoryOrdering.ID,
-    ordering_direction: Optional[OrderingDirection] = OrderingDirection.ASC,
+    filters: dict | None = None,
+    ordering: RepositoryOrdering | None = RepositoryOrdering.ID,
+    ordering_direction: OrderingDirection | None = OrderingDirection.ASC,
     **kwargs: Any,
 ) -> Coroutine[Any, Any, Connection]:
     current_owner = info.context["request"].current_owner
@@ -95,7 +96,7 @@ def resolve_is_current_user_part_of_org(owner: Owner, info: GraphQLResolveInfo) 
 
 
 @owner_bindable.field("yaml")
-def resolve_yaml(owner: Owner, info: GraphQLResolveInfo) -> Optional[str]:
+def resolve_yaml(owner: Owner, info: GraphQLResolveInfo) -> str | None:
     if owner.yaml is None:
         return None
     current_owner = info.context["request"].current_owner
@@ -123,7 +124,7 @@ def resolve_plan_representation(owner: Owner, info: GraphQLResolveInfo) -> Plan:
 @owner_bindable.field("availablePlans")
 @require_part_of_org
 @sync_to_async
-def resolve_available_plans(owner: Owner, info: GraphQLResolveInfo) -> List[Plan]:
+def resolve_available_plans(owner: Owner, info: GraphQLResolveInfo) -> list[Plan]:
     plan_service = PlanService(current_org=owner)
     info.context["plan_service"] = plan_service
     owner = info.context["request"].current_owner
@@ -265,7 +266,7 @@ def resolve_org_upload_token(
 @require_part_of_org
 def resolve_org_default_org_username(
     owner: Owner, info: GraphQLResolveInfo, **kwargs: Any
-) -> Optional[str]:
+) -> str | None:
     return None if owner.default_org is None else owner.default_org.username
 
 
@@ -275,10 +276,10 @@ def resolve_measurements(
     owner: Owner,
     info: GraphQLResolveInfo,
     interval: Interval,
-    after: Optional[datetime] = None,
-    before: Optional[datetime] = None,
-    repos: Optional[List[str]] = None,
-    is_public: Optional[bool] = None,
+    after: datetime | None = None,
+    before: datetime | None = None,
+    repos: list[str] | None = None,
+    is_public: bool | None = None,
 ) -> Iterable[dict]:
     current_owner = info.context["request"].current_owner
 
@@ -409,7 +410,7 @@ def resolve_ai_features_enabled(owner: Owner, info: GraphQLResolveInfo) -> bool:
 @require_part_of_org
 def resolve_ai_enabled_repos(
     owner: Owner, info: GraphQLResolveInfo
-) -> List[str] | None:
+) -> list[str] | None:
     ai_features_app_install = GithubAppInstallation.objects.filter(
         app_id=AI_FEATURES_GH_APP_ID, owner=owner
     ).first()

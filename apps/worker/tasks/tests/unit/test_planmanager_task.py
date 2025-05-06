@@ -4,7 +4,7 @@ from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from tasks.plan_manager_task import DailyPlanManagerTask
 
 
-class TestDailyPlanManagerTask(object):
+class TestDailyPlanManagerTask:
     def test_simple_case(self, dbsession):
         task = DailyPlanManagerTask()
         # Populate DB

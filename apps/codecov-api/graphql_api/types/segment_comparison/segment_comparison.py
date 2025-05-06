@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List
 
 from ariadne import ObjectType, UnionType
 
@@ -9,7 +8,7 @@ from services.comparison import LineComparison, Segment
 
 @dataclass
 class SegmentComparisons:
-    results: List[Segment]
+    results: list[Segment]
 
 
 segment_comparison_bindable = ObjectType("SegmentComparison")
@@ -33,7 +32,7 @@ def resolve_header(segment: Segment, info) -> str:
 
 
 @segment_comparison_bindable.field("lines")
-def resolve_lines(segment: Segment, info) -> List[LineComparison]:
+def resolve_lines(segment: Segment, info) -> list[LineComparison]:
     return segment.lines
 
 

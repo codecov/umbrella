@@ -26,7 +26,7 @@ C/tY+lZIEO1Gg/FxSMB+hwwhwfSuE3WohZfEcSy+R48=
 
 
 @pytest.mark.integration
-class TestGHMarketplaceSyncPlansTask(object):
+class TestGHMarketplaceSyncPlansTask:
     def test_purchase_by_existing_owner(
         self, dbsession, mocker, mock_configuration, codecov_vcr
     ):

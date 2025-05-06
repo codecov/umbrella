@@ -42,7 +42,7 @@ class HipchatNotifier(RequestsYamlBasedNotifier):
                             "style": {"+": "lozenge-success", "-": "lozenge-error"}.get(
                                 comparison_dict["notation"], "lozenge-current"
                             ),
-                            "label": "{0}{1}%".format(
+                            "label": "{}{}%".format(
                                 comparison_dict["notation"],
                                 round_number(
                                     self.current_yaml, comparison_dict["coverage"]
@@ -77,7 +77,7 @@ class HipchatNotifier(RequestsYamlBasedNotifier):
                 ]
                 + compare,
                 "description": {
-                    "value": "Coverage for {0} on {1} is now {2}%".format(
+                    "value": "Coverage for {} on {} is now {}%".format(
                         repository.slug,
                         head_commit.branch,
                         round_number(

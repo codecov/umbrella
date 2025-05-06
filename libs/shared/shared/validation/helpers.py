@@ -2,7 +2,7 @@ import functools
 import logging
 import numbers
 import re
-from typing import Any, List
+from typing import Any
 
 import pyparsing as pp
 
@@ -23,7 +23,7 @@ class Invalid(Exception):
         self.error_message = error_message
 
 
-class CoverageRangeSchemaField(object):
+class CoverageRangeSchemaField:
     """
     Pattern for the user to input a range like 60..90 (which means from 60 to 90)
 
@@ -73,7 +73,7 @@ class CoverageRangeSchemaField(object):
             raise Invalid(f"{data} should have numbers as the range limits")
 
 
-class CoverageCommentRequirementSchemaField(object):
+class CoverageCommentRequirementSchemaField:
     """Converts `comment.require_changes` into CoverageCommentRequiredChanges
 
     Conversion table:
@@ -135,7 +135,7 @@ class CoverageCommentRequirementSchemaField(object):
         and_groups_parser = pp.delimitedList(or_groups_parser, "and")
 
         try:
-            raw_or_groups: List[pp.ParseResults] = and_groups_parser.parseString(
+            raw_or_groups: list[pp.ParseResults] = and_groups_parser.parseString(
                 data, parseAll=True
             )["or_groups"]
             parsed_or_groups = [
@@ -148,7 +148,7 @@ class CoverageCommentRequirementSchemaField(object):
             raise Invalid("Failed to parse required_changes")
 
 
-class ByteSizeSchemaField(object):
+class ByteSizeSchemaField:
     """Converts a possible string with byte extension size into integer with number of bytes.
     Acceptable extensions are 'mb', 'kb', 'gb', 'b' and 'bytes' (case insensitive).
     Also accepts positive integers, returning the value itself as the number of bytes.
@@ -182,7 +182,7 @@ class ByteSizeSchemaField(object):
         raise Invalid(f"Value should be int or str. Received {type(data).__name__}")
 
 
-class PercentSchemaField(object):
+class PercentSchemaField:
     """
     A field for percentages. Accepts both with and without % symbol.
     The end result is the percentage number
@@ -209,7 +209,7 @@ class PercentSchemaField(object):
             raise Invalid(f"{value} should be a number")
 
 
-class BundleSizeThresholdSchemaField(object):
+class BundleSizeThresholdSchemaField:
     """
     A field for bundle analysis threshold.
     It can be either a ByteSizeSchemaField or PercentSchemaField.
@@ -333,15 +333,15 @@ def translate_glob_to_regex(pat, end_of_string=True):
                     stuff = "^" + stuff[1:]
                 elif stuff[0] in ("^", "["):
                     stuff = "\\" + stuff
-                res = "%s[%s]" % (res, stuff)
+                res = f"{res}[{stuff}]"
         else:
             res = res + re.escape(c)
     if end_of_string:
-        return r"(?s:%s)\Z" % res
-    return r"(?s:%s)" % res
+        return rf"(?s:{res})\Z"
+    return rf"(?s:{res})"
 
 
-class PathPatternSchemaField(object):
+class PathPatternSchemaField:
     """This class holds the logic for validating and processing a user given path pattern
 
     This is how it works. The intention is to allow the user to give a string as an input,
@@ -421,7 +421,7 @@ class PathPatternSchemaField(object):
             raise Invalid(f"We did not detect what {value} is")
 
 
-class CustomFixPathSchemaField(object):
+class CustomFixPathSchemaField:
     def input_type(self, value):
         return determine_path_pattern_type(value)
 
@@ -450,7 +450,7 @@ class CustomFixPathSchemaField(object):
             raise Invalid(f"We did not detect what {value} is")
 
 
-class UserGivenBranchRegex(object):
+class UserGivenBranchRegex:
     asterisk_to_regexp = re.compile(r"(?<!\.)\*")
 
     def validate(self, value):
@@ -462,14 +462,14 @@ class UserGivenBranchRegex(object):
             # apple* => apple.*
             nv = self.asterisk_to_regexp.sub(".*", value.strip())
             if not nv.startswith((".*", "^")):
-                nv = "^%s" % nv
+                nv = f"^{nv}"
             if not nv.endswith((".*", "$")):
-                nv = "%s$" % nv
+                nv = f"{nv}$"
             re.compile(nv)
             return nv
 
 
-class LayoutStructure(object):
+class LayoutStructure:
     acceptable_objects = {
         "changes",
         "diff",
@@ -513,7 +513,7 @@ class LayoutStructure(object):
         return value
 
 
-class BranchSchemaField(object):
+class BranchSchemaField:
     def validate(self, value):
         if not isinstance(value, str):
             raise Invalid(f"Branch must be {str}, was {type(value)} ({value})")

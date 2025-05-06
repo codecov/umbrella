@@ -5,7 +5,6 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional, Tuple
 
 import minio
 import pytz
@@ -342,7 +341,7 @@ class LineComparison:
         }
 
     @cached_property
-    def head_line_sessions(self) -> Optional[List[tuple]]:
+    def head_line_sessions(self) -> list[tuple] | None:
         if self.head_line is None:
             return None
 
@@ -358,7 +357,7 @@ class LineComparison:
         return sessions
 
     @cached_property
-    def hit_count(self) -> Optional[int]:
+    def hit_count(self) -> int | None:
         if self.head_line_sessions is None:
             return None
 
@@ -370,7 +369,7 @@ class LineComparison:
             return hit_count
 
     @cached_property
-    def hit_session_ids(self) -> Optional[List[int]]:
+    def hit_session_ids(self) -> list[int] | None:
         if self.head_line_sessions is None:
             return None
 
@@ -642,7 +641,7 @@ class FileComparison:
         return Segment.segments(self)
 
 
-class Comparison(object):
+class Comparison:
     def __init__(self, user, base_commit, head_commit):
         # TODO: rename to owner
         self.user = user
@@ -823,7 +822,7 @@ class Comparison(object):
         return [flag for flag, vals in flags_dict.items() if not vals.carriedforward]
 
 
-class FlagComparison(object):
+class FlagComparison:
     def __init__(self, comparison, flag_name):
         self.comparison = comparison
         self.flag_name = flag_name
@@ -852,22 +851,20 @@ class ImpactedFile:
             nb_branches = self.hits + self.misses + self.partials
             self.coverage = (100 * self.hits / nb_branches) if nb_branches > 0 else None
 
-    base_name: Optional[str] = None  # will be `None` for created files
-    head_name: Optional[str] = None  # will be `None` for deleted files
+    base_name: str | None = None  # will be `None` for created files
+    head_name: str | None = None  # will be `None` for deleted files
     file_was_added_by_diff: bool = False
     file_was_removed_by_diff: bool = False
-    base_coverage: Optional[Totals] = None  # will be `None` for created files
-    head_coverage: Optional[Totals] = None  # will be `None` for deleted files
+    base_coverage: Totals | None = None  # will be `None` for created files
+    head_coverage: Totals | None = None  # will be `None` for deleted files
 
     # lists of (line number, coverage) tuples
-    added_diff_coverage: Optional[List[tuple[int, str]]] = None
-    removed_diff_coverage: Optional[List[tuple[int, str]]] = field(default_factory=list)
-    unexpected_line_changes: Optional[List[tuple[int, str]]] = field(
-        default_factory=list
-    )
+    added_diff_coverage: list[tuple[int, str]] | None = None
+    removed_diff_coverage: list[tuple[int, str]] | None = field(default_factory=list)
+    unexpected_line_changes: list[tuple[int, str]] | None = field(default_factory=list)
 
-    lines_only_on_base: List[int] = field(default_factory=list)
-    lines_only_on_head: List[int] = field(default_factory=list)
+    lines_only_on_base: list[int] = field(default_factory=list)
+    lines_only_on_head: list[int] = field(default_factory=list)
 
     @classmethod
     def create(cls, **kwargs):
@@ -947,7 +944,7 @@ class ImpactedFile:
         return misses
 
     @cached_property
-    def patch_coverage(self) -> Optional[Totals]:
+    def patch_coverage(self) -> Totals | None:
         """
         Sums of hits, misses and partials in the diff
         """
@@ -965,7 +962,7 @@ class ImpactedFile:
             return ImpactedFile.Totals(hits=hits, misses=misses, partials=partials)
 
     @cached_property
-    def change_coverage(self) -> Optional[float]:
+    def change_coverage(self) -> float | None:
         if (
             self.base_coverage
             and self.base_coverage.coverage
@@ -978,14 +975,14 @@ class ImpactedFile:
             )
 
     @cached_property
-    def file_name(self) -> Optional[str]:
+    def file_name(self) -> str | None:
         if self.head_name:
             parts = self.head_name.split("/")
             return parts[-1]
 
 
 @dataclass
-class ComparisonReport(object):
+class ComparisonReport:
     """
     This is a wrapper around the data computed by the worker's commit comparison task.
     The raw data is stored in blob storage and accessible via the `report_storage_path`
@@ -1259,7 +1256,7 @@ class CommitComparisonService:
 
         return timezone.normalize(self.commit_comparison.updated_at) < timestamp
 
-    def _load_commit(self, commit_id: int) -> Optional[Commit]:
+    def _load_commit(self, commit_id: int) -> Commit | None:
         prefetch = Prefetch(
             "reports",
             queryset=CommitReport.objects.coverage_reports().filter(code=None),
@@ -1272,7 +1269,7 @@ class CommitComparisonService:
         )
 
     @staticmethod
-    def get_commit_comparison_for_pull(obj: Pull) -> Optional[CommitComparison]:
+    def get_commit_comparison_for_pull(obj: Pull) -> CommitComparison | None:
         comparison_qs = CommitComparison.objects.filter(
             base_commit__commitid=obj.compared_to,
             compare_commit__commitid=obj.head,
@@ -1282,7 +1279,7 @@ class CommitComparisonService:
         return comparison_qs.first()
 
     @classmethod
-    def fetch_precomputed(self, repo_id: int, keys: List[Tuple]) -> QuerySet:
+    def fetch_precomputed(self, repo_id: int, keys: list[tuple]) -> QuerySet:
         comparison_table = CommitComparison._meta.db_table
         commit_table = Commit._meta.db_table
         queryset = CommitComparison.objects.raw(

@@ -1,8 +1,8 @@
 import asyncio
 import logging
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from itertools import groupby
-from typing import Iterable, List
 
 from asgiref.sync import async_to_sync
 
@@ -46,7 +46,7 @@ class GitHubAppWebhooksCheckTask(CodecovCronTask, name=gh_app_webhook_check_task
     def get_min_seconds_interval_between_executions(cls):
         return 18000  # 5h
 
-    def _apply_time_filter(self, deliveries: List[object]) -> Iterable[object]:
+    def _apply_time_filter(self, deliveries: list[object]) -> Iterable[object]:
         """
         Apply a time filter to the deliveries, so that we only consider webhook deliveries from the past 25h.
         So that we skip deliveries that we probably already analysed in the past.
@@ -62,7 +62,7 @@ class GitHubAppWebhooksCheckTask(CodecovCronTask, name=gh_app_webhook_check_task
 
         return filter(time_filter, deliveries)
 
-    def _apply_status_filter(self, deliveries: List[object]) -> Iterable[object]:
+    def _apply_status_filter(self, deliveries: list[object]) -> Iterable[object]:
         """
         Apply a filter to the status code of the delivery so that we ignore successful deliveries.
         """
@@ -72,7 +72,7 @@ class GitHubAppWebhooksCheckTask(CodecovCronTask, name=gh_app_webhook_check_task
 
         return filter(status_filter, deliveries)
 
-    def _apply_event_filter(self, deliveries: List[object]) -> Iterable[object]:
+    def _apply_event_filter(self, deliveries: list[object]) -> Iterable[object]:
         """
         Apply a status filter. We really only care about installation webhooks for now.
         events: installation, installation_repositories
@@ -84,8 +84,8 @@ class GitHubAppWebhooksCheckTask(CodecovCronTask, name=gh_app_webhook_check_task
         return filter(event_filter, deliveries)
 
     async def process_delivery_page(
-        self, gh_handler: Github, deliveries: List[object]
-    ) -> List[object]:
+        self, gh_handler: Github, deliveries: list[object]
+    ) -> list[object]:
         # Beware - filter objects are single-use iterables. If you iterate or
         # take their length, they're consumed and can't be used again.
         deliveries = self._apply_time_filter(deliveries)
@@ -118,7 +118,7 @@ class GitHubAppWebhooksCheckTask(CodecovCronTask, name=gh_app_webhook_check_task
         return successful_request_count, redeliveries_requested
 
     async def request_redeliveries(
-        self, gh_handler: Github, deliveries_to_request: List[object]
+        self, gh_handler: Github, deliveries_to_request: list[object]
     ) -> int:
         """
         Requests re-delivery of failed webhooks to GitHub.

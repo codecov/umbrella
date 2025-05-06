@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 from urllib.parse import urlencode, urljoin
 
 from asgiref.sync import async_to_sync
@@ -74,7 +73,7 @@ class GithubLoginView(LoginMixin, StateMixin, View):
         return teams
 
     @async_to_sync
-    async def fetch_user_data(self, code) -> Optional[dict]:
+    async def fetch_user_data(self, code) -> dict | None:
         # https://docs.github.com/en/rest/reference/teams#list-teams-for-the-authenticated-user
         # This is specific to GitHub
         repo_service = self.repo_service_instance

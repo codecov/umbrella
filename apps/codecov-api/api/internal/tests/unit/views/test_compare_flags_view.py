@@ -48,12 +48,10 @@ class TestCompareFlagsView(InternalAPITest):
         head_chunks = open(
             current_file.parent.parent.parent
             / f"samples/{self.commit.commitid}_chunks.txt",
-            "r",
         ).read()
         base_chunks = open(
             current_file.parent.parent.parent
             / f"samples/{self.parent_commit.commitid}_chunks.txt",
-            "r",
         ).read()
         read_chunks_mock.side_effect = (
             lambda x: head_chunks if x == self.commit.commitid else base_chunks
@@ -222,12 +220,10 @@ class TestCompareFlagsView(InternalAPITest):
         head_chunks = open(
             current_file.parent.parent.parent
             / f"samples/{commit_with_custom_reports.commitid}_chunks.txt",
-            "r",
         ).read()
         base_chunks = open(
             current_file.parent.parent.parent
             / f"samples/{self.parent_commit.commitid}_chunks.txt",
-            "r",
         ).read()
         read_chunks_mock.side_effect = (
             lambda x: head_chunks

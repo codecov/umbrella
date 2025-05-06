@@ -4,7 +4,8 @@ import os
 import sqlite3
 import tempfile
 from collections import defaultdict, deque
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
+from collections.abc import Iterator
+from typing import Any
 
 import sentry_sdk
 from sqlalchemy import asc, desc, text
@@ -92,9 +93,7 @@ class AssetReport:
     def asset_type(self) -> AssetType:
         return self.asset.asset_type
 
-    def modules(
-        self, pr_changed_files: Optional[List[str]] = None
-    ) -> List[ModuleReport]:
+    def modules(self, pr_changed_files: list[str] | None = None) -> list[ModuleReport]:
         with get_db_session(self.db_path) as session:
             query = (
                 session.query(Module)
@@ -131,7 +130,7 @@ class AssetReport:
 
             return [ModuleReport(self.db_path, module) for module in filtered_modules]
 
-    def routes(self) -> Optional[List[str]]:
+    def routes(self) -> list[str] | None:
         plugin_name = self.bundle_info.get("plugin_name")
         if plugin_name not in [item.value for item in AssetRoutePluginName]:
             return None
@@ -145,7 +144,7 @@ class AssetReport:
 
         return list(routes)
 
-    def dynamically_imported_assets(self) -> List["AssetReport"]:
+    def dynamically_imported_assets(self) -> list["AssetReport"]:
         """
         Returns all dynamically imported assets of the current Asset.
         This is retrieving by querying all unique Assets in the DynamicImport
@@ -181,17 +180,17 @@ class BundleRouteReport:
         values: a list of distinct Assets (as AssetReports) that is associated with the route
     """
 
-    def __init__(self, db_path: str, data: Dict[str, List[AssetReport]]):
+    def __init__(self, db_path: str, data: dict[str, list[AssetReport]]):
         self.db_path = db_path
         self.data = data
 
-    def get_sizes(self) -> Dict[str, int]:
+    def get_sizes(self) -> dict[str, int]:
         results = {}
         for route, asset_reports in self.data.items():
             results[route] = sum([asset.size for asset in asset_reports])
         return results
 
-    def get_size(self, route: str) -> Optional[int]:
+    def get_size(self, route: str) -> int | None:
         if route not in self.data:
             return None
         return sum([asset.size for asset in self.data[route]])
@@ -213,9 +212,9 @@ class BundleReport:
     def _asset_filter(
         self,
         query: Query,
-        asset_types: Optional[List[AssetType]] = None,
-        chunk_entry: Optional[bool] = None,
-        chunk_initial: Optional[bool] = None,
+        asset_types: list[AssetType] | None = None,
+        chunk_entry: bool | None = None,
+        chunk_initial: bool | None = None,
     ) -> Query:
         # Filter in assets having chunks with requested initial value
         if chunk_initial is not None:
@@ -229,7 +228,7 @@ class BundleReport:
         return query
 
     @sentry_sdk.trace
-    def asset_report_by_name(self, name: str) -> Optional[AssetReport]:
+    def asset_report_by_name(self, name: str) -> AssetReport | None:
         with get_db_session(self.db_path) as session:
             asset = session.query(Asset).filter(Asset.name == name).one_or_none()
             return AssetReport(self.db_path, asset, self.info()) if asset else None
@@ -237,11 +236,11 @@ class BundleReport:
     @sentry_sdk.trace
     def asset_reports(
         self,
-        asset_types: Optional[List[AssetType]] = None,
-        chunk_entry: Optional[bool] = None,
-        chunk_initial: Optional[bool] = None,
+        asset_types: list[AssetType] | None = None,
+        chunk_entry: bool | None = None,
+        chunk_initial: bool | None = None,
         ordering_column: str = "size",
-        ordering_desc: Optional[bool] = True,
+        ordering_desc: bool | None = True,
     ) -> Iterator[AssetReport]:
         with get_db_session(self.db_path) as session:
             ordering = desc if ordering_desc else asc
@@ -263,9 +262,9 @@ class BundleReport:
 
     def total_size(
         self,
-        asset_types: Optional[List[AssetType]] = None,
-        chunk_entry: Optional[bool] = None,
-        chunk_initial: Optional[bool] = None,
+        asset_types: list[AssetType] | None = None,
+        chunk_entry: bool | None = None,
+        chunk_initial: bool | None = None,
     ) -> int:
         with get_db_session(self.db_path) as session:
             assets = (
@@ -284,9 +283,9 @@ class BundleReport:
 
     def total_gzip_size(
         self,
-        asset_types: Optional[List[AssetType]] = None,
-        chunk_entry: Optional[bool] = None,
-        chunk_initial: Optional[bool] = None,
+        asset_types: list[AssetType] | None = None,
+        chunk_entry: bool | None = None,
+        chunk_initial: bool | None = None,
     ) -> int:
         """
         Returns the sum of all assets' gzip_size if present plus
@@ -325,7 +324,7 @@ class BundleReport:
             result = session.query(Bundle).filter(Bundle.id == self.bundle.id).first()
             return result.is_cached
 
-    def routes(self) -> Dict[str, List[AssetReport]]:
+    def routes(self) -> dict[str, list[AssetReport]]:
         """
         Returns a mapping of routes and all Assets (as AssetReports) that belongs to it
         Note that this ignores dynamically imported Assets (ie only the direct asset)
@@ -419,7 +418,7 @@ class BundleAnalysisReport:
         os.unlink(self.db_path)
 
     @sentry_sdk.trace
-    def ingest(self, path: str, compare_sha: Optional[str] = None) -> Tuple[int, str]:
+    def ingest(self, path: str, compare_sha: str | None = None) -> tuple[int, str]:
         """
         Ingest the bundle stats JSON at the given file path.
         Returns session ID of ingested data.
@@ -471,7 +470,7 @@ class BundleAnalysisReport:
 
     def _associate_bundle_report_assets_by_name(
         self, curr_bundle_report: BundleReport, prev_bundle_report: BundleReport
-    ) -> Set[Tuple[str, str]]:
+    ) -> set[tuple[str, str]]:
         """
         Rule 1
         Returns a set of pairs of UUIDs (the current asset UUID and prev asset UUID)
@@ -495,7 +494,7 @@ class BundleAnalysisReport:
 
     def _associate_bundle_report_assets_by_module_names(
         self, curr_bundle_report: BundleReport, prev_bundle_report: BundleReport
-    ) -> Set[Tuple[str, str]]:
+    ) -> set[tuple[str, str]]:
         """
         Rule 2
         Returns a set of pairs of UUIDs (the current asset UUID and prev asset UUID)
@@ -569,7 +568,7 @@ class BundleAnalysisReport:
                 )
             session.commit()
 
-    def metadata(self) -> Dict[MetadataKey, Any]:
+    def metadata(self) -> dict[MetadataKey, Any]:
         with get_db_session(self.db_path) as session:
             metadata = session.query(Metadata).all()
             return {MetadataKey(item.key): item.value for item in metadata}
@@ -579,7 +578,7 @@ class BundleAnalysisReport:
             bundles = session.query(Bundle).all()
             return (BundleReport(self.db_path, bundle) for bundle in bundles)
 
-    def bundle_report(self, bundle_name: str) -> Optional[BundleReport]:
+    def bundle_report(self, bundle_name: str) -> BundleReport | None:
         with get_db_session(self.db_path) as session:
             bundle = session.query(Bundle).filter_by(name=bundle_name).first()
             if bundle is None:
@@ -590,7 +589,7 @@ class BundleAnalysisReport:
         with get_db_session(self.db_path) as session:
             return session.query(Session).count()
 
-    def update_is_cached(self, data: Dict[str, bool]) -> None:
+    def update_is_cached(self, data: dict[str, bool]) -> None:
         with get_db_session(self.db_path) as session:
             for bundle_name, value in data.items():
                 session.query(Bundle).filter(Bundle.name == bundle_name).update(

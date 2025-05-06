@@ -1,4 +1,4 @@
-from mock import call, patch
+from unittest.mock import call, patch
 
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
 from services.comparison import NOT_RESOLVED, ComparisonProxy
@@ -40,7 +40,7 @@ def make_sample_comparison(adjusted_base=False):
     )
 
 
-class TestComparisonProxy(object):
+class TestComparisonProxy:
     compare_url = "https://api.github.com/repos/{}/compare/{}...{}"
 
     @patch("shared.torngit.github.Github.get_compare")

@@ -1,6 +1,6 @@
 import math
+from collections.abc import Iterable
 from datetime import datetime, timedelta
-from typing import Iterable, List, Optional
 
 import sentry_sdk
 from django.conf import settings
@@ -89,7 +89,7 @@ def aggregate_measurements(
 
 
 def _filter_repos(
-    queryset: QuerySet, repos: Optional[List[Repository]], column_name: str = "repo_id"
+    queryset: QuerySet, repos: list[Repository] | None, column_name: str = "repo_id"
 ) -> QuerySet:
     """
     Filter the given generic queryset by a set of (repoid, branch) tuples.
@@ -105,9 +105,9 @@ def _filter_repos(
 @sentry_sdk.trace
 def coverage_measurements(
     interval: Interval,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-    repos: Optional[List[Repository]] = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    repos: list[Repository] | None = None,
     **filters,
 ):
     timestamp_filters = {}
@@ -192,8 +192,8 @@ def aligned_start_date(interval: Interval, date: datetime) -> datetime:
 def fill_sparse_measurements(
     measurements: Iterable[dict],
     interval: Interval,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
 ) -> Iterable[dict]:
     """
     Fill in sparse array of measurements with values such that we
@@ -256,9 +256,9 @@ def fill_sparse_measurements(
 @sentry_sdk.trace
 def coverage_fallback_query(
     interval: Interval,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-    repos: Optional[List[Repository]] = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    repos: list[Repository] | None = None,
     **filters,
 ):
     """
@@ -325,8 +325,8 @@ def _commits_coverage(
 def repository_coverage_measurements_with_fallback(
     repository: Repository,
     interval: Interval,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
     branch: str = None,
 ):
     """
@@ -376,8 +376,8 @@ def owner_coverage_measurements_with_fallback(
     owner: Owner,
     repo_ids: Iterable[str],
     interval: Interval,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
 ):
     """
     Tries to return owner coverage measurements from Timescale.

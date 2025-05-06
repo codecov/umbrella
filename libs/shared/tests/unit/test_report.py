@@ -96,7 +96,7 @@ def test_files():
 
 
 @pytest.mark.unit
-class TestReportHeader(object):
+class TestReportHeader:
     def test_default(self):
         r = Report()
         assert r.header == ReportHeader()

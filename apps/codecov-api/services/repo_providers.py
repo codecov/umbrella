@@ -1,6 +1,6 @@
 import logging
+from collections.abc import Callable
 from os import getenv
-from typing import Callable, Dict, Optional
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
@@ -29,8 +29,8 @@ class TorngitInitializationFailed(Exception):
 
 
 def get_token_refresh_callback(
-    owner: Optional[Owner], service: Service
-) -> Callable[[Dict], None]:
+    owner: Owner | None, service: Service
+) -> Callable[[dict], None]:
     """
     Produces a callback function that will encode and update the oauth token of an owner.
     This callback is passed to the TorngitAdapter for the service.
@@ -41,7 +41,7 @@ def get_token_refresh_callback(
         return None
 
     @sync_to_async
-    def callback(new_token: Dict) -> None:
+    def callback(new_token: dict) -> None:
         log.info(
             "Saving new token after refresh",
             extra={"owner": owner.username, "ownerid": owner.ownerid},
@@ -53,9 +53,7 @@ def get_token_refresh_callback(
     return callback
 
 
-def get_generic_adapter_params(
-    owner: Optional[Owner], service, use_ssl=False, token=None
-):
+def get_generic_adapter_params(owner: Owner | None, service, use_ssl=False, token=None):
     if use_ssl:
         verify_ssl = (
             get_config(service, "ssl_pem")
@@ -96,8 +94,8 @@ def get_provider(service, adapter_params):
 
 
 def get_ghapp_default_installation(
-    owner: Optional[Owner],
-) -> Optional[GithubAppInstallation]:
+    owner: Owner | None,
+) -> GithubAppInstallation | None:
     if owner is None or owner.service not in [
         Service.GITHUB.value,
         Service.GITHUB_ENTERPRISE.value,
@@ -109,8 +107,8 @@ def get_ghapp_default_installation(
 
 
 async def async_get_ghapp_default_installation(
-    owner: Optional[Owner],
-) -> Optional[GithubAppInstallation]:
+    owner: Owner | None,
+) -> GithubAppInstallation | None:
     if owner is None or owner.service not in [
         Service.GITHUB.value,
         Service.GITHUB_ENTERPRISE.value,
@@ -121,7 +119,7 @@ async def async_get_ghapp_default_installation(
     ).afirst()
 
 
-class RepoProviderService(object):
+class RepoProviderService:
     def _is_using_integration(
         self, ghapp_installation: GithubAppInstallation, repo: Repository
     ) -> bool:
@@ -130,20 +128,20 @@ class RepoProviderService(object):
         return repo.using_integration
 
     async def async_get_adapter(
-        self, owner: Optional[Owner], repo: Repository, use_ssl=False, token=None
+        self, owner: Owner | None, repo: Repository, use_ssl=False, token=None
     ):
         ghapp = await async_get_ghapp_default_installation(owner)
         return self._get_adapter(owner, repo, ghapp=ghapp)
 
     def get_adapter(
-        self, owner: Optional[Owner], repo: Repository, use_ssl=False, token=None
+        self, owner: Owner | None, repo: Repository, use_ssl=False, token=None
     ):
         ghapp = get_ghapp_default_installation(owner)
         return self._get_adapter(owner, repo, ghapp=ghapp, token=token)
 
     def _get_adapter(
         self,
-        owner: Optional[Owner],
+        owner: Owner | None,
         repo: Repository,
         use_ssl=False,
         token=None,

@@ -4,7 +4,7 @@ from json import loads
 from services.report import legacy_totals
 
 
-class BaseTestCase(object):
+class BaseTestCase:
     def convert_report_to_better_readable(self, report):
         report_json, _chunks, _totals = report.serialize()
 

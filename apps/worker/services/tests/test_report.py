@@ -1,6 +1,6 @@
 from decimal import Decimal
+from unittest import mock
 
-import mock
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -3513,7 +3513,7 @@ class TestReportService(BaseTestCase):
             == 2
         )
         storage_keys = mock_storage.storage["archive"].keys()
-        assert any((key.endswith("chunks.txt") for key in storage_keys))
+        assert any(key.endswith("chunks.txt") for key in storage_keys)
 
     def test_initialize_and_save_report_existing_report(
         self, mock_storage, sample_report, dbsession, mocker

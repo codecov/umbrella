@@ -12,7 +12,7 @@ from services.report import ReportService
 from tasks.preprocess_upload import PreProcessUpload
 
 
-class TestPreProcessUpload(object):
+class TestPreProcessUpload:
     @pytest.mark.django_db
     def test_preprocess_task(
         self,

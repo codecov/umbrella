@@ -7,7 +7,7 @@ from shared.analytics_tracking.marketo import Marketo, MarketoError
 from shared.config import ConfigHelper
 
 
-class TestMarketo(object):
+class TestMarketo:
     @pytest.fixture
     def mock_setup(self, mocker):
         yaml_content = "\n".join(
@@ -83,7 +83,7 @@ class TestMarketo(object):
 
     @pytest.mark.asyncio
     def test_track_event(self, mocker, mock_setup):
-        class uuid(object):
+        class uuid:
             bytes = b"\x00\x01\x02"
 
         with respx.mock:

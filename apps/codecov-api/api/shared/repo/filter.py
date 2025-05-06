@@ -6,7 +6,7 @@ from core.models import Repository
 
 class StringListFilter(django_filters.Filter):
     def __init__(self, query_param, *args, **kwargs):
-        super(StringListFilter, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.query_param = query_param
 
     def filter(self, qs, value):
@@ -17,7 +17,7 @@ class StringListFilter(django_filters.Filter):
 
         values = request.GET.getlist(self.query_param)
         if len(values) > 0:
-            return qs.filter(**{"%s__%s" % (self.field_name, self.lookup_expr): values})
+            return qs.filter(**{f"{self.field_name}__{self.lookup_expr}": values})
 
         return qs
 

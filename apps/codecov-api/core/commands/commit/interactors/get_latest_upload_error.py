@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from asgiref.sync import sync_to_async
 
@@ -12,14 +11,14 @@ log = logging.getLogger(__name__)
 
 class GetLatestUploadErrorInteractor(BaseInteractor):
     @sync_to_async
-    def execute(self, commit: Commit) -> Optional[dict]:
+    def execute(self, commit: Commit) -> dict | None:
         try:
             return self._get_latest_error(commit)
         except Exception as e:
             log.error(f"Error fetching upload error: {e}")
             return None
 
-    def _get_latest_error(self, commit: Commit) -> Optional[dict]:
+    def _get_latest_error(self, commit: Commit) -> dict | None:
         latest_error = self._fetch_latest_error(commit)
         if not latest_error:
             return None
@@ -29,7 +28,7 @@ class GetLatestUploadErrorInteractor(BaseInteractor):
             "error_message": latest_error.error_params.get("error_message"),
         }
 
-    def _fetch_latest_error(self, commit: Commit) -> Optional[UploadError]:
+    def _fetch_latest_error(self, commit: Commit) -> UploadError | None:
         return (
             UploadError.objects.filter(
                 report_session__report__commit=commit,

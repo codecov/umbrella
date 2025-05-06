@@ -216,14 +216,14 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         assert repos == [{"name": "b"}]
 
     def test_fetch_account(self) -> None:
-        query = """{
-            owner(username: "%s") {
-                account {
+        query = f"""{{
+            owner(username: "{self.owner.username}") {{
+                account {{
                     name
-                }
-            }
-        }
-        """ % (self.owner.username)
+                }}
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=self.owner)
         assert data["owner"]["account"]["name"] == self.account.name
 
@@ -429,12 +429,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
     @override_settings(HIDE_ALL_CODECOV_TOKENS=True)
     def test_get_org_upload_token_hide_tokens_setting_owner_not_admin(self):
         random_owner = OwnerFactory()
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{self.owner.username}") {{
                orgUploadToken
-            }
-        }
-        """ % (self.owner.username)
+            }}
+        }}
+        """
         random_owner.organizations = [self.owner.ownerid]
         random_owner.save()
         data = self.gql_request(query, owner=random_owner)
@@ -452,13 +452,13 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
     def test_when_owner_profile_doesnt_exist(self):
         owner = OwnerFactory(username="no-profile-user")
         owner.profile.delete()
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 defaultOrgUsername
                 username
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=owner)
         assert data["owner"]["defaultOrgUsername"] is None
 
@@ -472,37 +472,37 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         OwnerProfile.objects.filter(owner_id=owner.ownerid).update(
             default_org=organization
         )
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 defaultOrgUsername
                 username
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=owner)
         assert data["owner"]["defaultOrgUsername"] == organization.username
 
     def test_owner_without_default_org_returns_null(self):
         owner = OwnerFactory(username="sample-owner", service="github")
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 defaultOrgUsername
                 username
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=owner)
         assert data["owner"]["defaultOrgUsername"] is None
 
     def test_owner_without_owner_profile_returns_no_default_org(self):
         owner = OwnerFactory(username="sample-owner", service="github")
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 defaultOrgUsername
                 username
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=owner)
         assert data["owner"]["defaultOrgUsername"] is None
 
@@ -510,23 +510,23 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         owner = OwnerFactory(username="sample-owner", service="github")
         self.owner.organizations = [owner.ownerid]
         self.owner.save()
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 isCurrentUserActivated
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=self.owner)
         assert data["owner"]["isCurrentUserActivated"] == False
 
     def test_is_current_user_not_activated_no_current_owner(self):
         owner = OwnerFactory(username="sample-owner", service="github")
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 isCurrentUserActivated
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         self.client.force_login(user=UserFactory())
         data = self.gql_request(query, owner=None)
         assert data["owner"]["isCurrentUserActivated"] == False
@@ -538,12 +538,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         )
         user.organizations = [owner.ownerid]
         user.save()
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 isCurrentUserActivated
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=user)
         assert data["owner"]["isCurrentUserActivated"] == True
 
@@ -552,23 +552,23 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         owner = OwnerFactory(username="sample-owner", plan_activated_users=None)
         user.organizations = [owner.ownerid]
         user.save()
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 isCurrentUserActivated
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=user)
         assert data["owner"]["isCurrentUserActivated"] == False
 
     def test_is_current_user_activated_anonymous(self):
         owner = OwnerFactory(username="sample-owner")
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 isCurrentUserActivated
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query)
         assert data["owner"]["isCurrentUserActivated"] == False
 
@@ -580,12 +580,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         )
         self.owner.organizations = [owner.ownerid]
         self.owner.save()
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 isCurrentUserActivated
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=self.owner)
         assert data["owner"]["isCurrentUserActivated"] == True
 
@@ -597,22 +597,22 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         )
         self.owner.organizations = [owner.ownerid]
         self.owner.save()
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 isCurrentUserActivated
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=self.owner)
         assert data["owner"]["isCurrentUserActivated"] == False
 
     def test_owner_is_current_user_activated(self):
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{self.owner.username}") {{
                 isCurrentUserActivated
-            }
-        }
-        """ % (self.owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=self.owner)
         assert data["owner"]["isCurrentUserActivated"] == True
 
@@ -625,14 +625,14 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             trial_end_date=timezone.now() + timedelta(days=14),
             trial_status=TrialStatus.ONGOING.value,
         )
-        query = """{
-            owner(username: "%s") {
-                plan {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
+                plan {{
                     trialStatus
-                }
-            }
-        }
-        """ % (current_org.username)
+                }}
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=current_org)
         assert data["owner"]["plan"] == {
             "trialStatus": "ONGOING",
@@ -649,14 +649,14 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             plan=PlanName.TRIAL_PLAN_NAME.value,
             pretrial_users_count=123,
         )
-        query = """{
-            owner(username: "%s") {
-                pretrialPlan {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
+                pretrialPlan {{
                     benefits
-                }
-            }
-        }
-        """ % (current_org.username)
+                }}
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=current_org)
         assert data["owner"]["pretrialPlan"] == {
             "benefits": [
@@ -674,14 +674,14 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             plan=PlanName.CODECOV_PRO_MONTHLY.value,
             pretrial_users_count=123,
         )
-        query = """{
-            owner(username: "%s") {
-                availablePlans {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
+                availablePlans {{
                     value
-                }
-            }
-        }
-        """ % (current_org.username)
+                }}
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=current_org)
         expected_plans = [
             {"value": "users-pr-inappm"},
@@ -698,12 +698,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             username="random-plan-user",
             service="github",
         )
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
                 username
-            }
-        }
-        """ % (current_org.username)
+            }}
+        }}
+        """
 
         res = self.gql_request(query, provider="", with_errors=True)
 
@@ -715,14 +715,14 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             service="github",
         )
         RepositoryFactory(author=current_org, active=True, activated=True, private=True)
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
                 hasPrivateRepos
                 hasPublicRepos
                 hasActiveRepos
-            }
-        }
-        """ % (current_org.username)
+            }}
+        }}
+        """
 
         data = self.gql_request(query, owner=current_org)
         assert data["owner"]["hasPrivateRepos"] == True
@@ -737,14 +737,14 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         RepositoryFactory(
             author=current_org, active=False, activated=False, private=True
         )
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
                 hasPrivateRepos
                 hasPublicRepos
                 hasActiveRepos
-            }
-        }
-        """ % (current_org.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=current_org)
         assert data["owner"]["hasPrivateRepos"] == True
         assert data["owner"]["hasPublicRepos"] == False
@@ -769,14 +769,14 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             private=False,
             name="test-two",
         )
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
                 hasPrivateRepos
                 hasPublicRepos
                 hasActiveRepos
-            }
-        }
-        """ % (current_org.username)
+            }}
+        }}
+        """
 
         data = self.gql_request(query, owner=current_org)
         assert data["owner"]["hasPrivateRepos"] == False
@@ -788,24 +788,24 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         owner = OwnerFactory(username="sample-owner", plan_activated_users=None)
         user.organizations = [owner.ownerid]
         user.save()
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 hashOwnerid
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=user)
         assert data["owner"]["hashOwnerid"] is not None
 
     @override_settings(IS_ENTERPRISE=True, GUEST_ACCESS=False)
     def test_fetch_owner_on_unauthenticated_enteprise_guest_access(self):
         owner = OwnerFactory(username="sample-owner", service="github")
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 username
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
 
         try:
             self.gql_request(query)
@@ -821,12 +821,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         user.organizations = [owner.ownerid]
         user.save()
         owner.save()
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 isCurrentUserActivated
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
 
         try:
             self.gql_request(query, owner=user)
@@ -845,12 +845,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         owner = OwnerFactory(username="sample-owner", plan_activated_users=None)
         user.save()
         owner.save()
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 username
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
 
         data = self.gql_request(query, owner=user)
         assert data["owner"]["username"] == "sample-owner"
@@ -864,12 +864,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         user.organizations = [owner.ownerid]
         user.save()
 
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 isUserOktaAuthenticated
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
 
         data = self.gql_request(query, owner=user, okta_signed_in_accounts=[account.pk])
         assert data["owner"]["isUserOktaAuthenticated"] == True
@@ -883,12 +883,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         user.organizations = [owner.ownerid]
         user.save()
 
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 isUserOktaAuthenticated
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
 
         data = self.gql_request(query, owner=user, okta_signed_in_accounts=[])
         assert data["owner"]["isUserOktaAuthenticated"] == False
@@ -901,12 +901,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         user.organizations = [owner.ownerid]
         user.save()
 
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 isUserOktaAuthenticated
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
 
         data = self.gql_request(query, owner=user, okta_signed_in_accounts=[])
         assert data["owner"]["isUserOktaAuthenticated"] == False
@@ -921,13 +921,13 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             username="random-plan-user",
             service="github",
         )
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
                 isGithubRateLimited
-            }
-        }
+            }}
+        }}
 
-        """ % (current_org.username)
+        """
         mock_determine_redis_key.return_value = "test"
         mock_determine_rate_limit.return_value = True
 
@@ -939,13 +939,13 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             username="random-plan-user",
             service="bitbucket",
         )
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
                 isGithubRateLimited
-            }
-        }
+            }}
+        }}
 
-        """ % (current_org.username)
+        """
         data = self.gql_request(query, owner=current_org, provider="bb")
         assert data["owner"]["isGithubRateLimited"] == False
 
@@ -969,13 +969,13 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
 
         ai_app_installation.save()
 
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
                 aiFeaturesEnabled
-            }
-        }
+            }}
+        }}
 
-        """ % (current_org.username)
+        """
 
         data = self.gql_request(query, owner=current_org)
         assert data["owner"]["aiFeaturesEnabled"] == True
@@ -995,13 +995,13 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
 
         ai_app_installation.save()
 
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{self.owner.username}") {{
                 aiEnabledRepos
-            }
-        }
+            }}
+        }}
 
-        """ % (self.owner.username)
+        """
         data = self.gql_request(query, owner=self.owner)
         assert data["owner"]["aiEnabledRepos"] == ["a"]
 
@@ -1016,13 +1016,13 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             {"service": "github", "ai_features_app_id": 12345},
         ]
 
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
                 aiEnabledRepos
-            }
-        }
+            }}
+        }}
 
-        """ % (current_org.username)
+        """
         data = self.gql_request(query, owner=current_org)
         assert data["owner"]["aiEnabledRepos"] is None
 
@@ -1041,13 +1041,13 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
 
         ai_app_installation.save()
 
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{self.owner.username}") {{
                 aiEnabledRepos
-            }
-        }
+            }}
+        }}
 
-        """ % (self.owner.username)
+        """
         data = self.gql_request(query, owner=self.owner)
         assert data["owner"]["aiEnabledRepos"] == ["b", "a"]
 
@@ -1057,12 +1057,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             service="github",
             upload_token_required_for_public_repos=True,
         )
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 uploadTokenRequired
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=owner)
         assert data["owner"]["uploadTokenRequired"] == True
 
@@ -1070,24 +1070,24 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         owner = OwnerFactory(username="sample-owner", service="github")
         owner.upload_token_required_for_public_repos = False
         owner.save()
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 uploadTokenRequired
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=owner)
         assert data["owner"]["uploadTokenRequired"] == False
 
     def test_fetch_upload_token_user_not_part_of_org(self):
         owner = OwnerFactory(username="sample", service="github")
         user = OwnerFactory(username="sample-user", service="github")
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 uploadTokenRequired
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
 
         data = self.gql_request(query, owner=user)
         assert data["owner"]["uploadTokenRequired"] is None
@@ -1103,12 +1103,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         user.organizations = [owner.ownerid]
         user.save()
 
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 activatedUserCount
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=user)
         assert data["owner"]["activatedUserCount"] == 3
 
@@ -1120,12 +1120,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             username="sample-org", plan_activated_users=[user2.ownerid, user3.ownerid]
         )
 
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{owner.username}") {{
                 activatedUserCount
-            }
-        }
-        """ % (owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=user)
         assert data["owner"]["activatedUserCount"] is None
 
@@ -1140,12 +1140,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             account=self.account,
         )
 
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{other_owner.username}") {{
                 activatedUserCount
-            }
-        }
-        """ % (other_owner.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=owner)
         assert data["owner"]["activatedUserCount"] == 2
 
@@ -1155,9 +1155,9 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             service="github",
             plan=DEFAULT_FREE_PLAN,
         )
-        query = """{
-            owner(username: "%s") {
-                availablePlans {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
+                availablePlans {{
                     value
                     isEnterprisePlan
                     isProPlan
@@ -1165,10 +1165,10 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
                     isSentryPlan
                     isFreePlan
                     isTrialPlan
-                }
-            }
-        }
-        """ % (current_org.username)
+                }}
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=current_org)
         expected_plans = [
             {
@@ -1227,12 +1227,12 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
             plan=DEFAULT_FREE_PLAN,
         )
 
-        query = """{
-            owner(username: "%s") {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
                 username
-            }
-        }
-        """ % (current_org.username)
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=current_org, provider="", with_errors=True)
         assert data == {"data": {"owner": None}}
 

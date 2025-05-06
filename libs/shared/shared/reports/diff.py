@@ -1,5 +1,6 @@
 import dataclasses
-from typing import Generator, Literal, Protocol, TypedDict
+from collections.abc import Generator
+from typing import Literal, Protocol, TypedDict
 
 from shared.reports.totals import get_line_totals
 from shared.reports.types import ReportLine, ReportTotals
@@ -49,7 +50,7 @@ class AbstractReport(Protocol):
         ...
 
 
-def relevant_lines(segment: DiffSegment) -> Generator[int, None, None]:
+def relevant_lines(segment: DiffSegment) -> Generator[int]:
     "Iterates over the relevant line numbers in a diff segment."
     return (
         i

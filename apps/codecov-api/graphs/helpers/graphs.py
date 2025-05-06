@@ -103,7 +103,7 @@ def icicle(parsed_data, **kwargs):
     svg_elements = []
 
     def recursively_draw(items, x, y, max_width, prefix_name):
-        total = sum((item["lines"] for item in items))
+        total = sum(item["lines"] for item in items)
         if total > 0:
             for item in items:
                 item_width = item["lines"] / total * max_width
@@ -149,7 +149,7 @@ def sunburst(parsed_data, **kwargs):
     svg_elements = []
 
     def recursively_draw(items, inner_radius, start, end):
-        total = sum((item["lines"] for item in items))
+        total = sum(item["lines"] for item in items)
         if total > 0:
             s = start
             for item in items:

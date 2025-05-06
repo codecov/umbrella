@@ -1,4 +1,5 @@
-from typing import Awaitable, Callable, Optional, TypedDict
+from collections.abc import Awaitable, Callable
+from typing import TypedDict
 
 
 class Token(TypedDict):
@@ -14,8 +15,8 @@ class Token(TypedDict):
 
 
 class OauthConsumerToken(Token):
-    secret: Optional[str]
-    refresh_token: Optional[str]
+    secret: str | None
+    refresh_token: str | None
 
 
-OnRefreshCallback = Optional[Callable[[OauthConsumerToken], Awaitable[None]]]
+OnRefreshCallback = Callable[[OauthConsumerToken], Awaitable[None]] | None

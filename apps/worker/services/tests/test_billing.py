@@ -7,7 +7,7 @@ from shared.plan.service import PlanService
 from tests.helpers import mock_all_plans_and_tiers
 
 
-class TestBillingServiceTestCase(object):
+class TestBillingServiceTestCase:
     """
     BillingService is deprecated - use PlanService instead.
     """

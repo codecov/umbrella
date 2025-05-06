@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from datetime import timedelta
-from functools import lru_cache
+from functools import cache
 from io import BytesIO
 from typing import IO, BinaryIO, Literal, cast, overload
 
@@ -70,7 +70,7 @@ def init_minio_client(
         region (str, optional): The region of the host where minio lives
     """
     if port is not None:
-        host = "{}:{}".format(host, port)
+        host = f"{host}:{port}"
 
     http_client = urllib3.PoolManager(
         timeout=Timeout(connect=CONNECT_TIMEOUT, read=READ_TIMEOUT),
@@ -115,7 +115,7 @@ def init_minio_client(
     )
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_cached_minio_client(
     host: str = "",
     port: str | None = None,
@@ -205,7 +205,7 @@ class MinioStorageService(BaseStorageService, PresignedURLService):
     ) -> ObjectWriteResult | Literal[True]:
         if isinstance(data, str):
             data = BytesIO(data.encode())
-        elif isinstance(data, (bytes, bytearray, memoryview)):
+        elif isinstance(data, bytes | bytearray | memoryview):
             data = BytesIO(data)
 
         if is_already_gzipped:

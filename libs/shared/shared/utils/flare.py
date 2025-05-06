@@ -6,7 +6,7 @@ from shared.helpers.color import coverage_to_color
 class Dict(dict):
     def __getitem__(self, index):
         if index in ("__l", "__h"):
-            return super(Dict, self).__getitem__(index)
+            return super().__getitem__(index)
         found = self.get(index)
         if not found:
             found = self[index] = Dict(__l=0, __h=0)
@@ -48,7 +48,7 @@ def _dict_to_children(n, d, color, classes):
 
     if len(children) == 1 and children[0].get("children"):
         # only one level, join it
-        children[0]["name"] = "%s/%s" % (n, children[0]["name"])
+        children[0]["name"] = "{}/{}".format(n, children[0]["name"])
         return children[0]
 
     return {

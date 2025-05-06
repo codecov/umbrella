@@ -116,7 +116,7 @@ def integration_installed_handler():
     )
 
 
-class TestGithubTestCase(object):
+class TestGithubTestCase:
     @pytest.mark.asyncio
     async def test_get_authenticated_user(self, codecov_vcr):
         # To regenerate this test, go to
@@ -689,7 +689,7 @@ class TestGithubTestCase(object):
             "thiago/test-1",
         ]
         branches = sorted(await valid_handler.get_branches())
-        assert sorted((a[0] for a in branches)) == expected_result
+        assert sorted(a[0] for a in branches) == expected_result
 
     @pytest.mark.asyncio
     async def test_get_branch(self, valid_handler, codecov_vcr):

@@ -67,7 +67,7 @@ class TestUserGivenSecret(BaseTestCase):
         assert ugs.validate(value) == value
 
     def test_b64encoded_pseudosecret_user_given_secret(self):
-        encoded_value = b64encode("arriba".encode())
+        encoded_value = b64encode(b"arriba")
         value = b"secret:" + encoded_value
         value = value.decode()
         ugs = UserGivenSecret(show_secrets_for=("github", "12", 98))

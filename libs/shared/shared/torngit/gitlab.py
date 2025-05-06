@@ -3,7 +3,6 @@ import logging
 import os
 from base64 import b64decode
 from string import Template
-from typing import List
 from urllib.parse import quote, urlencode
 
 import httpx
@@ -434,7 +433,9 @@ class Gitlab(TorngitBaseAdapter):
         max_retries = 2
         for current_retry in range(1, max_retries + 1):
             if token or self.token:
-                headers["Authorization"] = "Bearer %s" % (token or self.token)["key"]
+                headers["Authorization"] = "Bearer {}".format(
+                    (token or self.token)["key"]
+                )
 
             try:
                 res = await client.request(
@@ -683,11 +684,11 @@ class Gitlab(TorngitBaseAdapter):
                 if d["deleted_file"]:
                     mode = "deleted file mode\n"
                 d["diff"] = (
-                    ("diff --git a/%(old_path)s b/%(new_path)s\n" % d)
+                    ("diff --git a/{old_path} b/{new_path}\n".format(**d))
                     + mode
                     + d["diff"]
                 )
-            return super().diff_to_json("\n".join((a["diff"] for a in diff)))
+            return super().diff_to_json("\n".join(a["diff"] for a in diff))
         else:
             return super().diff_to_json(self, diff)
 
@@ -1303,7 +1304,7 @@ class Gitlab(TorngitBaseAdapter):
             },
         }
 
-    async def get_repo_languages(self, token=None) -> List[str]:
+    async def get_repo_languages(self, token=None) -> list[str]:
         """
         Gets the languages belonging to this repository.
         Reference:
@@ -1415,7 +1416,7 @@ class Gitlab(TorngitBaseAdapter):
             )
         raise NotImplementedError()
 
-    async def get_best_effort_branches(self, commit_sha: str, token=None) -> List[str]:
+    async def get_best_effort_branches(self, commit_sha: str, token=None) -> list[str]:
         """
         Gets a 'best effort' list of branches this commit is in.
         If a branch is returned, this means this commit is in that branch. If not, it could still be

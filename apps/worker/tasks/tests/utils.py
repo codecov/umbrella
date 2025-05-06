@@ -1,5 +1,5 @@
 import contextlib
-from typing import Generator
+from collections.abc import Generator
 
 from sqlalchemy.orm import Session
 
@@ -7,7 +7,7 @@ from app import celery_app
 
 
 @contextlib.contextmanager
-def run_tasks() -> Generator[None, None, None]:
+def run_tasks() -> Generator[None]:
     prev = celery_app.conf.task_always_eager
     celery_app.conf.update(task_always_eager=True)
     try:

@@ -6,7 +6,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 
-class GraphBadgeAPIMixin(object):
+class GraphBadgeAPIMixin:
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         ext = self.kwargs.get("ext")
         if ext not in self.extensions:
@@ -24,9 +24,7 @@ class GraphBadgeAPIMixin(object):
 
         response = HttpResponse(graph)
         if self.kwargs.get("ext") == "svg":
-            response["Content-Disposition"] = ' inline; filename="{}.svg"'.format(
-                self.filename
-            )
+            response["Content-Disposition"] = f' inline; filename="{self.filename}.svg"'
             response["Content-Type"] = "image/svg+xml"
             response["Pragma"] = "no-cache"
             response["Expires"] = "0"

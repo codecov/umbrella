@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock, call
 
@@ -108,7 +108,7 @@ def enriched_pull(dbsession):
     return EnrichedPull(database_pull=pull, provider_pull=provider_pull)
 
 
-class TestNotifyTaskHelpers(object):
+class TestNotifyTaskHelpers:
     def test_fetch_parent(self, dbsession):
         task = NotifyTask()
         owner = OwnerFactory.create(
@@ -406,7 +406,7 @@ class TestNotifyTaskHelpers(object):
             }
 
 
-class TestNotifyTask(object):
+class TestNotifyTask:
     def test_simple_call_no_notifications(
         self, dbsession, mocker, mock_storage, mock_configuration
     ):
@@ -462,7 +462,7 @@ class TestNotifyTask(object):
             branch="test-branch-1",
             commitid="649eaaf2924e92dc7fd8d370ddb857033231e67a",
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         mocked_fetch_yaml = mocker.patch(
             "services.yaml.fetch_commit_yaml_from_provider"

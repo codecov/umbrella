@@ -100,7 +100,7 @@ def test_coverage_datapoint_as_tuple():
     assert cd.astuple() == (3, 1, "b", [1, 2, 3])
 
 
-class TestNetworkFile(object):
+class TestNetworkFile:
     def test_networkfile_as_tuple(self):
         network_file = NetworkFile(
             totals=ReportTotals(
@@ -127,7 +127,7 @@ class TestNetworkFile(object):
         )
 
 
-class TestReportTotals(object):
+class TestReportTotals:
     def test_encoded_report_total(self):
         obj = ReportTotals(*[0, 35, 35, 0, 0, "100", 5, 0, 0, 0, 0, 0, 0])
         obj_1 = ReportTotals(*[0, 35, 35, 0, 0, "100", 5])

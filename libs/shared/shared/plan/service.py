@@ -1,7 +1,6 @@
 import logging
 from datetime import datetime, timedelta
 from functools import cached_property
-from typing import List, Optional
 
 from django.conf import settings
 
@@ -55,7 +54,7 @@ class PlanService:
             raise ValueError("Unsupported plan")
         self._plan_data = None
 
-    def update_plan(self, name: str, user_count: Optional[int]) -> None:
+    def update_plan(self, name: str, user_count: int | None) -> None:
         """Updates the organization's plan and user count."""
         if not Plan.objects.filter(name=name).exists():
             raise ValueError("Unsupported plan")
@@ -112,7 +111,7 @@ class PlanService:
         return self.current_org.plan_user_count
 
     @property
-    def plan_activated_users(self) -> Optional[List[int]]:
+    def plan_activated_users(self) -> list[int] | None:
         """Returns the list of activated users for the plan."""
         return self.current_org.plan_activated_users
 
@@ -127,7 +126,7 @@ class PlanService:
         return self.plan_data.marketing_name
 
     @property
-    def billing_rate(self) -> Optional[PlanBillingRate]:
+    def billing_rate(self) -> PlanBillingRate | None:
         """Returns the billing rate for the plan."""
         return self.plan_data.billing_rate
 
@@ -137,12 +136,12 @@ class PlanService:
         return self.plan_data.base_unit_price
 
     @property
-    def benefits(self) -> List[str]:
+    def benefits(self) -> list[str]:
         """Returns the benefits associated with the plan."""
         return self.plan_data.benefits
 
     @property
-    def monthly_uploads_limit(self) -> Optional[int]:
+    def monthly_uploads_limit(self) -> int | None:
         """
         Property that returns monthly uploads limit based on your trial status
 
@@ -156,7 +155,7 @@ class PlanService:
         """Returns the tier name of the plan."""
         return self.plan_data.tier.tier_name
 
-    def available_plans(self, owner: Owner) -> List[Plan]:
+    def available_plans(self, owner: Owner) -> list[Plan]:
         """Returns the available plans for the owner and organization."""
         available_plans = {
             Plan.objects.select_related("tier").get(name=DEFAULT_FREE_PLAN)
@@ -188,7 +187,7 @@ class PlanService:
     def _start_trial_helper(
         self,
         current_owner: Owner,
-        end_date: Optional[datetime] = None,
+        end_date: datetime | None = None,
         is_extension: bool = False,
     ) -> None:
         """Helper method to start or extend a trial for the organization."""
@@ -284,17 +283,17 @@ class PlanService:
         return self.current_org.trial_status
 
     @property
-    def trial_start_date(self) -> Optional[datetime]:
+    def trial_start_date(self) -> datetime | None:
         """Returns the trial start date."""
         return self.current_org.trial_start_date
 
     @property
-    def trial_end_date(self) -> Optional[datetime]:
+    def trial_end_date(self) -> datetime | None:
         """Returns the trial end date."""
         return self.current_org.trial_end_date
 
     @property
-    def trial_total_days(self) -> Optional[TrialDaysAmount]:
+    def trial_total_days(self) -> TrialDaysAmount | None:
         """Returns the total number of trial days."""
         return TrialDaysAmount.CODECOV_SENTRY.value
 

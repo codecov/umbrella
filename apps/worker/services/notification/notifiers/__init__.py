@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Dict, List, Type
 
 from services.notification.notifiers.base import AbstractBaseNotifier
 from services.notification.notifiers.checks import (
@@ -20,7 +19,7 @@ from services.notification.notifiers.status import (
 from services.notification.notifiers.webhook import WebhookNotifier
 
 
-def get_all_notifier_classes_mapping() -> Dict[str, Type[AbstractBaseNotifier]]:
+def get_all_notifier_classes_mapping() -> dict[str, type[AbstractBaseNotifier]]:
     return {
         "gitter": GitterNotifier,
         "hipchat": HipchatNotifier,
@@ -38,7 +37,7 @@ class StatusType(Enum):
 
 def get_status_notifier_class(
     status_type: str, class_type: str = "status"
-) -> Type[AbstractBaseNotifier]:
+) -> type[AbstractBaseNotifier]:
     if status_type == StatusType.PATCH.value and class_type == "checks":
         return PatchChecksNotifier
     if status_type == StatusType.PROJECT.value and class_type == "checks":
@@ -53,5 +52,5 @@ def get_status_notifier_class(
         return ChangesStatusNotifier
 
 
-def get_pull_request_notifiers() -> List[Type[AbstractBaseNotifier]]:
+def get_pull_request_notifiers() -> list[type[AbstractBaseNotifier]]:
     return [CommentNotifier]

@@ -3,7 +3,6 @@ import logging
 import re
 import uuid
 from collections import defaultdict
-from typing import Dict, List, Tuple
 
 import ijson
 import sentry_sdk
@@ -105,7 +104,7 @@ class ParserV3(ParserTrait):
         )  # typing: Dict[Chunk, List[str]]
 
     @sentry_sdk.trace
-    def parse(self, path: str) -> Tuple[int, str]:
+    def parse(self, path: str) -> tuple[int, str]:
         try:
             self.reset()
 
@@ -207,7 +206,7 @@ class ParserV3(ParserTrait):
 
         return AssetType.UNKNOWN
 
-    def _parse_info(self, event: Tuple[str, str, str]):
+    def _parse_info(self, event: tuple[str, str, str]):
         prefix, _, value = event
 
         # session info
@@ -226,7 +225,7 @@ class ParserV3(ParserTrait):
         elif prefix == "duration":
             self.info["duration"] = value
 
-    def _parse_event(self, event: Tuple[str, str, str]):
+    def _parse_event(self, event: tuple[str, str, str]):
         prefix, _, value = event
         prefix_path = prefix.split(".")
 
@@ -333,7 +332,7 @@ class ParserV3(ParserTrait):
             self.module = None
             self.module_chunk_unique_external_ids = []
 
-    def _parse_dynamic_imports(self) -> List[Dict[str, int]]:
+    def _parse_dynamic_imports(self) -> list[dict[str, int]]:
         """
         Computes all the dynamic imports that needs to be inserted to the DB
         Returns a list of dictionary objects representing the insert params

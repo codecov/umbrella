@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import sentry_sdk
 import yaml
@@ -53,7 +53,7 @@ def resolve_name(repository: Repository, info: GraphQLResolveInfo) -> str:
 @repository_bindable.field("oldestCommitAt")
 def resolve_oldest_commit_at(
     repository: Repository, info: GraphQLResolveInfo
-) -> Optional[datetime]:
+) -> datetime | None:
     if hasattr(repository, "oldest_commit_at"):
         return repository.oldest_commit_at
     else:
@@ -110,10 +110,10 @@ def resolve_pull(repository: Repository, info: GraphQLResolveInfo, id: int) -> P
 async def resolve_pulls(
     repository: Repository,
     info: GraphQLResolveInfo,
-    filters: Optional[Dict[str, List[PullRequestState]]] = None,
-    ordering_direction: Optional[OrderingDirection] = OrderingDirection.DESC,
+    filters: dict[str, list[PullRequestState]] | None = None,
+    ordering_direction: OrderingDirection | None = OrderingDirection.DESC,
     **kwargs: Any,
-) -> List[Pull]:
+) -> list[Pull]:
     command = info.context["executor"].get_command("pull")
     queryset = await command.fetch_pull_requests(repository, filters)
     return await queryset_to_connection(
@@ -133,9 +133,9 @@ STATUS_FIELDS = {"edges.node.coverageStatus", "edges.node.bundleStatus"}
 async def resolve_commits(
     repository: Repository,
     info: GraphQLResolveInfo,
-    filters: Optional[Dict[str, Any]] = None,
+    filters: dict[str, Any] | None = None,
     **kwargs: Any,
-) -> List[Commit]:
+) -> list[Commit]:
     queryset = await sync_to_async(repo_commits)(repository, filters)
     connection = await queryset_to_connection(
         queryset,
@@ -166,9 +166,9 @@ async def resolve_commits(
 async def resolve_branches(
     repository: Repository,
     info: GraphQLResolveInfo,
-    filters: Optional[Dict[str, str | bool]] = None,
+    filters: dict[str, str | bool] | None = None,
     **kwargs: Any,
-) -> List[Branch]:
+) -> list[Branch]:
     command = info.context["executor"].get_command("branch")
     queryset = await command.fetch_branches(repository, filters)
     return await queryset_to_connection(
@@ -198,9 +198,7 @@ def resolve_graph_token(repository: Repository, info: GraphQLResolveInfo) -> str
 
 
 @repository_bindable.field("yaml")
-def resolve_repo_yaml(
-    repository: Repository, info: GraphQLResolveInfo
-) -> Optional[str]:
+def resolve_repo_yaml(repository: Repository, info: GraphQLResolveInfo) -> str | None:
     if repository.yaml is None:
         return None
     return yaml.dump(repository.yaml)
@@ -208,9 +206,7 @@ def resolve_repo_yaml(
 
 @repository_bindable.field("bot")
 @sync_to_async
-def resolve_repo_bot(
-    repository: Repository, info: GraphQLResolveInfo
-) -> Optional[Owner]:
+def resolve_repo_bot(repository: Repository, info: GraphQLResolveInfo) -> Owner | None:
     return repository.bot
 
 
@@ -243,28 +239,28 @@ def resolve_language(repository: Repository, info: GraphQLResolveInfo) -> str:
 
 
 @repository_bindable.field("languages")
-def resolve_languages(repository: Repository, info: GraphQLResolveInfo) -> List[str]:
+def resolve_languages(repository: Repository, info: GraphQLResolveInfo) -> list[str]:
     return repository.languages
 
 
 @repository_bindable.field("bundleAnalysisEnabled")
 def resolve_bundle_analysis_enabled(
     repository: Repository, info: GraphQLResolveInfo
-) -> Optional[bool]:
+) -> bool | None:
     return repository.bundle_analysis_enabled
 
 
 @repository_bindable.field("testAnalyticsEnabled")
 def resolve_test_analytics_enabled(
     repository: Repository, info: GraphQLResolveInfo
-) -> Optional[bool]:
+) -> bool | None:
     return repository.test_analytics_enabled
 
 
 @repository_bindable.field("coverageEnabled")
 def resolve_coverage_enabled(
     repository: Repository, info: GraphQLResolveInfo
-) -> Optional[bool]:
+) -> bool | None:
     return repository.coverage_enabled
 
 
@@ -272,7 +268,7 @@ repository_result_bindable = UnionType("RepositoryResult")
 
 
 @repository_result_bindable.type_resolver
-def resolve_repository_result_type(obj: Any, *_: Any) -> Optional[str]:
+def resolve_repository_result_type(obj: Any, *_: Any) -> str | None:
     if isinstance(obj, Repository):
         return "Repository"
     elif isinstance(obj, OwnerNotActivatedError):

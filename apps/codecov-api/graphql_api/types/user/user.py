@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from ariadne import ObjectType
 from graphql import GraphQLResolveInfo
@@ -18,7 +17,7 @@ def resolve_username(user: Owner, info: GraphQLResolveInfo) -> str:
 
 
 @user_bindable.field("name")
-def resolve_name(user: Owner, info: GraphQLResolveInfo) -> Optional[str]:
+def resolve_name(user: Owner, info: GraphQLResolveInfo) -> str | None:
     return user.name
 
 
@@ -35,20 +34,20 @@ def resolve_student(user: Owner, info: GraphQLResolveInfo) -> bool:
 @user_bindable.field("studentCreatedAt")
 def resolve_student_created_at(
     user: Owner, info: GraphQLResolveInfo
-) -> Optional[datetime]:
+) -> datetime | None:
     return user.student_created_at
 
 
 @user_bindable.field("studentUpdatedAt")
 def resolve_student_updated_at(
     user: Owner, info: GraphQLResolveInfo
-) -> Optional[datetime]:
+) -> datetime | None:
     return user.student_updated_at
 
 
 # this will no longer be updated from the UI
 @user_bindable.field("customerIntent")
-def resolve_customer_intent(user: Owner, info: GraphQLResolveInfo) -> Optional[str]:
+def resolve_customer_intent(user: Owner, info: GraphQLResolveInfo) -> str | None:
     owner = user
     if not owner.user:
         return None

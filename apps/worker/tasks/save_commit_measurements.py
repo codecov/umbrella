@@ -1,5 +1,5 @@
 import logging
-from typing import Sequence
+from collections.abc import Sequence
 
 from celery import group
 from sqlalchemy.orm import Session

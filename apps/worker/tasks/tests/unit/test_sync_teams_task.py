@@ -10,7 +10,7 @@ from tasks.sync_teams import SyncTeamsTask
 here = Path(__file__)
 
 
-class TestSyncTeamsTaskUnit(object):
+class TestSyncTeamsTaskUnit:
     def test_unknown_owner(self, mocker, mock_configuration, dbsession):
         unknown_ownerid = 10404
         with pytest.raises(AssertionError, match="Owner not found"):

@@ -1,6 +1,6 @@
 import re
+from collections.abc import Sequence
 from decimal import Decimal
-from typing import List, Sequence
 
 from services.comparison import ComparisonProxy
 from services.comparison.changes import Change
@@ -178,10 +178,7 @@ def make_patch_only_metrics(before, after, relative, show_complexity, yaml, pull
         missing_lines = relative.misses if relative else 0
         partials = relative.partials if relative else 0
         s = "s" if partials > 1 else ""
-        partials_str = "{n} partial{s}".format(
-            n=partials,
-            s=s,
-        )
+        partials_str = f"{partials} partial{s}"
         missing_line_str = (
             " [{m} Missing {partials}:warning: ]({pull_url}?src=pr&el=tree) |".format(
                 m=missing_lines,
@@ -219,8 +216,9 @@ def format_number_to_str(
     if res == 0 and value != 0:
         # <.01
         return style.format(
-            "%s<%s"
-            % ("+" if plus and value > 0 else "" if value > 0 else "-", precision)
+            "{}<{}".format(
+                "+" if plus and value > 0 else "" if value > 0 else "-", precision
+            )
         )
 
     if plus and res > Decimal("0"):
@@ -232,12 +230,12 @@ def add_plus_sign(value: str) -> str:
     if value in ("", "0", "0%") or zero_change_regex.fullmatch(value):
         return ""
     elif value[0] != "-":
-        return "+%s" % value
+        return f"+{value}"
     else:
         return value
 
 
-def list_to_text_table(rows, padding=0) -> List[str]:
+def list_to_text_table(rows, padding=0) -> list[str]:
     """
     Assumes align left.
 
@@ -271,7 +269,7 @@ def list_to_text_table(rows, padding=0) -> List[str]:
     return [spacing(map(_fill, zip(column_w, row))) for row in rows]
 
 
-def diff_to_string(current_yaml, base_title, base, head_title, head) -> List[str]:
+def diff_to_string(current_yaml, base_title, base, head_title, head) -> list[str]:
     """
     ('master', {},
      'stable', {},
@@ -282,7 +280,7 @@ def diff_to_string(current_yaml, base_title, base, head_title, head) -> List[str
         if value is None:
             return "?"
         elif isinstance(value, str):
-            return "%s%%" % round_number(current_yaml, Decimal(value))
+            return f"{round_number(current_yaml, Decimal(value))}%"
         else:
             return value
 
@@ -302,10 +300,10 @@ def diff_to_string(current_yaml, base_title, base, head_title, head) -> List[str
             )
             sign = neutral if change_is_zero else plus if change[0] != "-" else minus
             return (
-                "%s %s" % (sign, title),
-                "%s|" % F(c1),
-                "%s|" % F(c2),
-                "%s|" % add_plus_sign(change),
+                f"{sign} {title}",
+                f"{F(c1)}|",
+                f"{F(c2)}|",
+                f"{add_plus_sign(change)}|",
                 "",
             )
 
@@ -313,7 +311,7 @@ def diff_to_string(current_yaml, base_title, base, head_title, head) -> List[str
     # create a spaced table with data
     table = list_to_text_table(
         [
-            ("|##", "%s|" % base_title, "%s|" % head_title, "+/-|", "##|"),
+            ("|##", f"{base_title}|", f"{head_title}|", "+/-|", "##|"),
             _row("Coverage", base.coverage if base else None, head.coverage, "+", "-"),
             _row(
                 "Complexity",
@@ -335,11 +333,13 @@ def diff_to_string(current_yaml, base_title, base, head_title, head) -> List[str
 
     spacer = ["=" * row_w]
 
-    title = "@@%s@@" % "{text:{fill}{align}{width}}".format(
-        text="Coverage Diff",
-        fill=" ",
-        align="^",
-        width=row_w - 4,
+    title = "@@{}@@".format(
+        "{text:{fill}{align}{width}}".format(
+            text="Coverage Diff",
+            fill=" ",
+            align="^",
+            width=row_w - 4,
+        )
     )
 
     table = (
@@ -359,7 +359,7 @@ def diff_to_string(current_yaml, base_title, base, head_title, head) -> List[str
     return "\n".join(filter(lambda row: row.strip(" "), table)).strip("=").split("\n")
 
 
-def sort_by_importance(changes: Sequence[Change]) -> List[Change]:
+def sort_by_importance(changes: Sequence[Change]) -> list[Change]:
     return sorted(
         changes or [],
         key=lambda c: (float((c.totals or ReportTotals()).coverage), c.new, c.deleted),

@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Union
+from typing import Any
 
 from ariadne import ObjectType, UnionType
 from graphql import GraphQLResolveInfo
@@ -13,7 +13,7 @@ bundle_analysis_report_bindable = ObjectType("BundleAnalysisReport")
 
 @bundle_analysis_report_result_bindable.type_resolver
 def resolve_bundle_analysis_report_result_type(
-    obj: Union[BundleAnalysisReport, MissingHeadReport], *_: Any
+    obj: BundleAnalysisReport | MissingHeadReport, *_: Any
 ) -> str:
     if isinstance(obj, BundleAnalysisReport):
         return "BundleAnalysisReport"
@@ -24,7 +24,7 @@ def resolve_bundle_analysis_report_result_type(
 @bundle_analysis_report_bindable.field("bundles")
 def resolve_bundles(
     bundles_analysis_report: BundleAnalysisReport, info: GraphQLResolveInfo
-) -> List[BundleReport]:
+) -> list[BundleReport]:
     return bundles_analysis_report.bundles
 
 
@@ -34,7 +34,7 @@ def resolve_bundle(
     info: GraphQLResolveInfo,
     name: str,
     filters: dict[str, list[str]] = {},
-) -> Optional[BundleReport]:
+) -> BundleReport | None:
     asset_types = None
     if filters.get("report_groups"):
         asset_types = filters.get("report_groups")

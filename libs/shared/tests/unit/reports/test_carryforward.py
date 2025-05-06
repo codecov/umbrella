@@ -47,7 +47,7 @@ def sample_report():
     return report
 
 
-class TestCarryfowardFlag(object):
+class TestCarryfowardFlag:
     def test_carriedforward_session_name(self):
         assert carriedforward_session_name(None) == "Carriedforward"
         assert carriedforward_session_name("") == "Carriedforward"

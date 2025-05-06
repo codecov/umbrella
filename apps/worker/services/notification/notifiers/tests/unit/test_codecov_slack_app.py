@@ -4,7 +4,7 @@ from database.enums import Notification
 from services.notification.notifiers.codecov_slack_app import CodecovSlackAppNotifier
 
 
-class TestCodecovSlackAppNotifier(object):
+class TestCodecovSlackAppNotifier:
     def test_is_enabled(self, dbsession, mock_configuration, sample_comparison):
         notifier = CodecovSlackAppNotifier(
             repository=sample_comparison.head.commit.repository,

@@ -3,7 +3,6 @@ import logging
 import re
 from contextlib import suppress
 from hashlib import sha1, sha256
-from typing import Optional
 
 from django.db.models import Q
 from django.utils import timezone
@@ -528,7 +527,7 @@ class GithubWebhookHandler(APIView):
         # https://docs.github.com/en/webhooks/webhook-events-and-payloads#installation
         if action == "deleted":
             if event == GitHubWebhookEvents.INSTALLATION:
-                ghapp_installation: Optional[GithubAppInstallation] = (
+                ghapp_installation: GithubAppInstallation | None = (
                     owner.github_app_installations.filter(
                         installation_id=installation_id
                     ).first()

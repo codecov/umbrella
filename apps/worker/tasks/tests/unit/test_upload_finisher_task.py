@@ -122,7 +122,7 @@ def test_not_joined_flag(flag, joined):
     assert get_joined_flag(yaml, [flag]) == joined
 
 
-class TestUploadFinisherTask(object):
+class TestUploadFinisherTask:
     @pytest.mark.django_db
     def test_upload_finisher_task_call(
         self,

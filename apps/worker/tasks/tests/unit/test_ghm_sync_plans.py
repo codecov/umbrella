@@ -6,7 +6,7 @@ from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from tasks.github_marketplace import SyncPlansTask
 
 
-class TestGHMarketplaceSyncPlansTaskUnit(object):
+class TestGHMarketplaceSyncPlansTaskUnit:
     def test_create_or_update_to_free_plan_known_user(self, dbsession, mocker):
         owner = OwnerFactory.create(
             service="github",

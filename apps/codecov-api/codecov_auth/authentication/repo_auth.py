@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from django.core.exceptions import ObjectDoesNotExist
@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 
 
 def repo_auth_custom_exception_handler(
-    exc: Exception, context: Dict[str, Any]
+    exc: Exception, context: dict[str, Any]
 ) -> Response:
     """
     User arrives here if they have correctly supplied a Token or the Tokenless Headers,
@@ -63,14 +63,14 @@ def repo_auth_custom_exception_handler(
 
 
 class LegacyTokenRepositoryAuth(RepositoryAuthInterface):
-    def __init__(self, repository: Repository, auth_data: Dict[str, Any]) -> None:
+    def __init__(self, repository: Repository, auth_data: dict[str, Any]) -> None:
         self._auth_data = auth_data
         self._repository = repository
 
-    def get_scopes(self) -> List[TokenTypeChoices]:
+    def get_scopes(self) -> list[TokenTypeChoices]:
         return [TokenTypeChoices.UPLOAD]
 
-    def get_repositories(self) -> List[Repository]:
+    def get_repositories(self) -> list[Repository]:
         return [self._repository]
 
     def allows_repo(self, repository: Repository) -> bool:
@@ -86,10 +86,10 @@ class TableTokenRepositoryAuth(RepositoryAuthInterface):
         self._token = token
         self._repository = repository
 
-    def get_scopes(self) -> List[str]:
+    def get_scopes(self) -> list[str]:
         return [self._token.token_type]
 
-    def get_repositories(self) -> List[Repository]:
+    def get_repositories(self) -> list[Repository]:
         return [self._repository]
 
     def allows_repo(self, repository: Repository) -> bool:
@@ -101,7 +101,7 @@ class OrgLevelTokenRepositoryAuth(RepositoryAuthInterface):
         self._token = token
         self._org = token.owner
 
-    def get_scopes(self) -> List[str]:
+    def get_scopes(self) -> list[str]:
         return [self._token.token_type]
 
     def allows_repo(self, repository: Repository) -> bool:
@@ -113,7 +113,7 @@ class OrgLevelTokenRepositoryAuth(RepositoryAuthInterface):
         """
         return Repository.objects.filter(author=self._org)
 
-    def get_repositories(self) -> List[Repository]:
+    def get_repositories(self) -> list[Repository]:
         # This might be an expensive function depending on the owner in question (thousands of repos)
         # Consider using get_repositories_queryset if possible and adding more filters to it
         return list(Repository.objects.filter(author=self._org).all())
@@ -123,20 +123,20 @@ class TokenlessAuth(RepositoryAuthInterface):
     def __init__(self, repository: Repository) -> None:
         self._repository = repository
 
-    def get_scopes(self) -> List[TokenTypeChoices]:
+    def get_scopes(self) -> list[TokenTypeChoices]:
         return [TokenTypeChoices.UPLOAD]
 
     def allows_repo(self, repository: Repository) -> bool:
         return repository in self.get_repositories()
 
-    def get_repositories(self) -> List[Repository]:
+    def get_repositories(self) -> list[Repository]:
         return [self._repository]
 
 
 class RepositoryLegacyQueryTokenAuthentication(authentication.BaseAuthentication):
     def authenticate(
         self, request: HttpRequest
-    ) -> Optional[Tuple[RepositoryAsUser, LegacyTokenRepositoryAuth]]:
+    ) -> tuple[RepositoryAsUser, LegacyTokenRepositoryAuth] | None:
         token = request.GET.get("token")
         if not token:
             return None
@@ -157,7 +157,7 @@ class RepositoryLegacyQueryTokenAuthentication(authentication.BaseAuthentication
 class RepositoryLegacyTokenAuthentication(authentication.TokenAuthentication):
     def authenticate_credentials(
         self, token: str
-    ) -> Optional[Tuple[RepositoryAsUser, LegacyTokenRepositoryAuth]]:
+    ) -> tuple[RepositoryAsUser, LegacyTokenRepositoryAuth] | None:
         try:
             token_uuid = UUID(token)
             repository = Repository.objects.get(upload_token=token_uuid)
@@ -174,7 +174,7 @@ class RepositoryTokenAuthentication(authentication.TokenAuthentication):
 
     def authenticate_credentials(
         self, key: str
-    ) -> Optional[Tuple[RepositoryAsUser, TableTokenRepositoryAuth]]:
+    ) -> tuple[RepositoryAsUser, TableTokenRepositoryAuth] | None:
         try:
             token = RepositoryToken.objects.select_related("repository").get(key=key)
         except RepositoryToken.DoesNotExist:
@@ -193,7 +193,7 @@ class RepositoryTokenAuthentication(authentication.TokenAuthentication):
 class GlobalTokenAuthentication(authentication.TokenAuthentication):
     def authenticate(
         self, request: HttpRequest
-    ) -> Optional[Tuple[RepositoryAsUser, LegacyTokenRepositoryAuth]]:
+    ) -> tuple[RepositoryAsUser, LegacyTokenRepositoryAuth] | None:
         global_tokens = get_global_tokens()
         token = self.get_token(request)
         using_global_token = token in global_tokens
@@ -232,7 +232,7 @@ class GlobalTokenAuthentication(authentication.TokenAuthentication):
 class OrgLevelTokenAuthentication(authentication.TokenAuthentication):
     def authenticate_credentials(
         self, key: str
-    ) -> Optional[Tuple[Owner, OrgLevelTokenRepositoryAuth]]:
+    ) -> tuple[Owner, OrgLevelTokenRepositoryAuth] | None:
         if is_uuid(key):  # else, continue to next auth class
             # Actual verification for org level tokens
             token = OrganizationLevelToken.objects.filter(token=key).first()
@@ -251,7 +251,7 @@ class OrgLevelTokenAuthentication(authentication.TokenAuthentication):
 class GitHubOIDCTokenAuthentication(authentication.TokenAuthentication):
     def authenticate_credentials(
         self, token: str
-    ) -> Optional[Tuple[RepositoryAsUser, OIDCTokenRepositoryAuth]]:
+    ) -> tuple[RepositoryAsUser, OIDCTokenRepositoryAuth] | None:
         if not token or is_uuid(token):
             return None  # continue to next auth class
 
@@ -301,9 +301,9 @@ class TokenlessAuthentication(authentication.TokenAuthentication):
     def get_branch(
         self,
         request: HttpRequest,
-        repoid: Optional[int] = None,
-        commitid: Optional[str] = None,
-    ) -> Optional[str]:
+        repoid: int | None = None,
+        commitid: str | None = None,
+    ) -> str | None:
         if repoid and commitid:
             commit = Commit.objects.filter(
                 repository_id=repoid, commitid=commitid
@@ -321,7 +321,7 @@ class TokenlessAuthentication(authentication.TokenAuthentication):
 
     def authenticate(
         self, request: HttpRequest
-    ) -> Tuple[RepositoryAsUser, TokenlessAuth]:
+    ) -> tuple[RepositoryAsUser, TokenlessAuth]:
         repository, commitid = self._get_info_from_request_path(request)
 
         if repository is None or repository.private:
@@ -366,8 +366,8 @@ class TestAnalyticsTokenlessAuthentication(TokenlessAuthentication):
     def get_branch(
         self,
         request: HttpRequest,
-        repoid: Optional[int] = None,
-        commitid: Optional[str] = None,
+        repoid: int | None = None,
+        commitid: str | None = None,
     ) -> str:
         body = json.loads(str(request.body, "utf8"))
 
@@ -409,8 +409,8 @@ class BundleAnalysisTokenlessAuthentication(TokenlessAuthentication):
     def get_branch(
         self,
         request: HttpRequest,
-        repoid: Optional[int] = None,
-        commitid: Optional[str] = None,
+        repoid: int | None = None,
+        commitid: str | None = None,
     ) -> str:
         body = json.loads(str(request.body, "utf8"))
 
@@ -489,7 +489,7 @@ class UploadTokenRequiredGetFromBodyAuthenticationCheck(
     then use the same authenticate() as parent class.
     """
 
-    def _get_git(self, validated_data: Dict[str, str]) -> Optional[str]:
+    def _get_git(self, validated_data: dict[str, str]) -> str | None:
         """
         BA sends this in as git_service, TA sends this in as service.
         Use this function so this Check class can be used by both views.

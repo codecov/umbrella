@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Any, Dict
+from typing import Any
 
 import requests
 from requests.exceptions import ConnectionError, HTTPError
@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 
 
 class TokenlessCirrusHandler(BaseTokenlessUploadHandler):
-    def get_build(self) -> Dict[str, Any]:
+    def get_build(self) -> dict[str, Any]:
         query = f"""{{
             "query": "query ($buildId: ID!) {{
                 build(id: $buildId) {{

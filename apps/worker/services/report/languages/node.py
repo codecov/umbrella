@@ -126,10 +126,7 @@ def next_from_json(
                             for i, partial in enumerate(partials)
                             if partial and partial[2] == 0
                         ]
-                        cov = "%d/%d" % (
-                            len(partials) - len(branches),
-                            len(partials),
-                        )
+                        cov = f"{len(partials) - len(branches)}/{len(partials)}"
                         partials = sorted(partials, key=lambda p: p[0])
                     else:
                         branches = None
@@ -192,7 +189,7 @@ def next_from_json(
             if sl:
                 branches = data["b"][bid]
                 tb = len(branches)
-                cov = "%s/%s" % (tb - branches.count(0), tb)
+                cov = f"{tb - branches.count(0)}/{tb}"
                 mb = [str(i) for i, b in enumerate(branches) if b == 0]
 
                 line = _file.get(sl)
@@ -291,7 +288,7 @@ def _jscoverage_eval_partial(partial):
         partial["position"],
         partial["position"] + partial["nodeLength"],
         Fraction(
-            "{0}/2".format(
+            "{}/2".format(
                 (1 if partial["evalTrue"] else 0) + (1 if partial["evalFalse"] else 0)
             )
         ),

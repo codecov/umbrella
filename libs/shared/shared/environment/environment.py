@@ -32,7 +32,7 @@ def is_enterprise() -> bool:
     return get_current_env() == Environment.enterprise
 
 
-@lru_cache()
+@lru_cache
 def _get_cached_current_env() -> Environment:
     return _calculate_current_env()
 

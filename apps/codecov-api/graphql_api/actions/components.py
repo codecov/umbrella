@@ -1,5 +1,5 @@
+from collections.abc import Iterable, Mapping
 from datetime import datetime
-from typing import Iterable, Mapping, Optional
 
 from django.db.models import QuerySet
 
@@ -17,7 +17,7 @@ def component_measurements(
     interval: Interval,
     after: datetime,
     before: datetime,
-    branch: Optional[str] = None,
+    branch: str | None = None,
 ) -> Mapping[int, Iterable[dict]]:
     return measurements_by_ids(
         repository=repository,
@@ -34,7 +34,7 @@ def component_measurements_last_uploaded(
     owner_id: int,
     repo_id: int,
     measurable_ids: str,
-    branch: Optional[str] = None,
+    branch: str | None = None,
 ) -> QuerySet:
     return measurements_last_uploaded_by_ids(
         owner_id=owner_id,

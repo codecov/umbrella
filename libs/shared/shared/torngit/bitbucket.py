@@ -1,7 +1,6 @@
 import logging
 import os
 import urllib.parse as urllib_parse
-from typing import List
 
 import httpx
 from oauthlib import oauth1
@@ -49,7 +48,7 @@ class Bitbucket(TorngitBaseAdapter):
     async def api(
         self, client, version, method, path, json=False, body=None, token=None, **kwargs
     ):
-        url = "https://bitbucket.org/api/%s.0%s" % (version, path)
+        url = f"https://bitbucket.org/api/{version}.0{path}"
         headers = {
             "Accept": "application/json",
             "User-Agent": os.getenv("USER_AGENT", "Default"),
@@ -161,7 +160,7 @@ class Bitbucket(TorngitBaseAdapter):
                 client,
                 "2",
                 "post",
-                "/repositories/%s/hooks" % self.slug,
+                f"/repositories/{self.slug}/hooks",
                 body={
                     "description": name,
                     "active": True,
@@ -181,7 +180,7 @@ class Bitbucket(TorngitBaseAdapter):
                 client,
                 "2",
                 "put",
-                "/repositories/%s/hooks/%s" % (self.slug, hookid),
+                f"/repositories/{self.slug}/hooks/{hookid}",
                 body={
                     "description": name,
                     "active": True,
@@ -202,7 +201,7 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "delete",
-                    "/repositories/%s/hooks/%s" % (self.slug, hookid),
+                    f"/repositories/{self.slug}/hooks/{hookid}",
                     token=token,
                 )
             except TorngitClientError as ce:
@@ -274,7 +273,7 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "get",
-                    "/repositories/%s/pullrequests/%s/commits" % (self.slug, pullid),
+                    f"/repositories/{self.slug}/pullrequests/{pullid}/commits",
                     **kwargs,
                 )
                 commits.extend([c["hash"] for c in res["values"]])
@@ -463,7 +462,7 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "get",
-                    "/repositories/{}/pullrequests/{}".format(self.slug, pullid),
+                    f"/repositories/{self.slug}/pullrequests/{pullid}",
                     token=token,
                 )
             except TorngitClientError as ce:
@@ -526,7 +525,7 @@ class Bitbucket(TorngitBaseAdapter):
                 client,
                 "2",
                 "post",
-                "/repositories/%s/pullrequests/%s/comments" % (self.slug, issueid),
+                f"/repositories/{self.slug}/pullrequests/{issueid}/comments",
                 body={"content": {"raw": body}},
                 json=True,
                 token=token,
@@ -565,8 +564,7 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "delete",
-                    "/repositories/%s/pullrequests/%s/comments/%s"
-                    % (self.slug, issueid, commentid),
+                    f"/repositories/{self.slug}/pullrequests/{issueid}/comments/{commentid}",
                     token=token,
                 )
             except TorngitClientError as ce:
@@ -598,7 +596,7 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "get",
-                    "/repositories/%s/commit/%s/statuses" % (self.slug, commit),
+                    f"/repositories/{self.slug}/commit/{commit}/statuses",
                     page=page,
                     token=token,
                 )
@@ -647,7 +645,7 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "post",
-                    "/repositories/%s/commit/%s/statuses/build" % (self.slug, commit),
+                    f"/repositories/{self.slug}/commit/{commit}/statuses/build",
                     body={
                         "state": status,
                         "key": "codecov-" + context,
@@ -662,8 +660,7 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "put",
-                    "/repositories/%s/commit/%s/statuses/build/codecov-%s"
-                    % (self.slug, commit, context),
+                    f"/repositories/{self.slug}/commit/{commit}/statuses/build/codecov-{context}",
                     body={
                         "state": status,
                         "name": context.replace("/", " ").capitalize() + " Coverage",
@@ -679,8 +676,7 @@ class Bitbucket(TorngitBaseAdapter):
                         client,
                         "2",
                         "post",
-                        "/repositories/%s/commit/%s/statuses/build"
-                        % (self.slug, merge_commit[0]),
+                        f"/repositories/{self.slug}/commit/{merge_commit[0]}/statuses/build",
                         body={
                             "state": status,
                             "key": "codecov-" + merge_commit[1],
@@ -696,8 +692,7 @@ class Bitbucket(TorngitBaseAdapter):
                         client,
                         "2",
                         "put",
-                        "/repositories/%s/commit/%s/statuses/build/codecov-%s"
-                        % (self.slug, merge_commit[0], context),
+                        f"/repositories/{self.slug}/commit/{merge_commit[0]}/statuses/build/codecov-{context}",
                         body={
                             "state": status,
                             "name": merge_commit[1].replace("/", " ").capitalize()
@@ -718,7 +713,7 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "get",
-                    "/repositories/%s/commit/%s" % (self.slug, commit),
+                    f"/repositories/{self.slug}/commit/{commit}",
                     token=token,
                 )
             except TorngitClientError as ce:
@@ -744,7 +739,7 @@ class Bitbucket(TorngitBaseAdapter):
             account_id = data["author"].get("user", {}).get("account_id")
             if not userid and account_id:
                 res = await self.api(
-                    client, "2", "get", "/users/%s" % account_id, token=token
+                    client, "2", "get", f"/users/{account_id}", token=token
                 )
                 userid = res["uuid"][1:-1]
 
@@ -768,7 +763,7 @@ class Bitbucket(TorngitBaseAdapter):
                 client,
                 "2",
                 "get",
-                "/repositories/%s/refs/branches" % self.slug,
+                f"/repositories/{self.slug}/refs/branches",
                 token=token,
                 pagelen="100",
             )
@@ -780,7 +775,7 @@ class Bitbucket(TorngitBaseAdapter):
                 client,
                 "2",
                 "get",
-                "/repositories/%s/refs/branches/%s" % (self.slug, name),
+                f"/repositories/{self.slug}/refs/branches/{name}",
                 token=token,
             )
             return {
@@ -799,7 +794,7 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "get",
-                    "/repositories/%s/pullrequests" % self.slug,
+                    f"/repositories/{self.slug}/pullrequests",
                     state=state,
                     page=page,
                     token=token,
@@ -825,7 +820,7 @@ class Bitbucket(TorngitBaseAdapter):
                         client,
                         "2",
                         "get",
-                        "/repositories/%s/pullrequests" % self.slug,
+                        f"/repositories/{self.slug}/pullrequests",
                         state=state,
                         page=page,
                         token=token,
@@ -854,9 +849,7 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "get",
-                    "/repositories/{}/pullrequests/{}/diffstat".format(
-                        self.slug, pullid
-                    ),
+                    f"/repositories/{self.slug}/pullrequests/{pullid}/diffstat",
                     token=token,
                 )
                 filenames = [data["new"]["path"] for data in res.get("values")]
@@ -881,8 +874,7 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "get",
-                    "/repositories/%%7B%s%%7D/%%7B%s%%7D"
-                    % (
+                    "/repositories/%7B{}%7D/%7B{}%7D".format(
                         self.data["owner"]["service_id"],
                         self.data["repo"]["service_id"],
                     ),
@@ -970,7 +962,7 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "get",
-                    "/repositories/{0}/src/{1}/{2}".format(
+                    "/repositories/{}/src/{}/{}".format(
                         self.slug, ref, path.replace(" ", "%20")
                     ),
                     token=token,
@@ -995,7 +987,7 @@ class Bitbucket(TorngitBaseAdapter):
                 client,
                 "2",
                 "get",
-                "/repositories/%s/diff/%s..%s" % (self.slug, head, base),
+                f"/repositories/{self.slug}/diff/{head}..{base}",
                 context=context or 1,
                 token=token,
             )
@@ -1070,7 +1062,7 @@ class Bitbucket(TorngitBaseAdapter):
                 client,
                 "2",
                 "get",
-                "/repositories/%s/commits" % self.slug,
+                f"/repositories/{self.slug}/commits",
                 token=token,
                 include=commitid,
             )
@@ -1089,7 +1081,7 @@ class Bitbucket(TorngitBaseAdapter):
             )
         raise NotImplementedError()
 
-    async def get_best_effort_branches(self, commit_sha: str, token=None) -> List[str]:
+    async def get_best_effort_branches(self, commit_sha: str, token=None) -> list[str]:
         """
         Gets a 'best effort' list of branches this commit is in.
         If a branch is returned, this means this commit is in that branch. If not, it could still be

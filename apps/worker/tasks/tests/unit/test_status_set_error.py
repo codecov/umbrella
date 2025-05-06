@@ -1,6 +1,6 @@
 from pathlib import Path
+from unittest import mock
 
-import mock
 import pytest
 
 from database.tests.factories import CommitFactory
@@ -11,7 +11,7 @@ from tasks.status_set_error import StatusSetErrorTask
 here = Path(__file__)
 
 
-class TestSetErrorTaskUnit(object):
+class TestSetErrorTaskUnit:
     def test_no_status(self, mocker, mock_configuration, dbsession):
         mocked_1 = mocker.patch("tasks.status_set_error.get_repo_provider_service")
         repo = mocker.MagicMock(

@@ -1,7 +1,8 @@
 import dataclasses
 import logging
 from collections import defaultdict
-from typing import Any, Iterator, Tuple, Union
+from collections.abc import Iterator
+from typing import Any
 
 import sentry_sdk
 
@@ -13,7 +14,7 @@ from shared.utils.merge import line_type
 log = logging.getLogger(__name__)
 
 
-def diff_totals(base, head, absolute=None) -> Union[bool, None, ReportTotals]:
+def diff_totals(base, head, absolute=None) -> bool | None | ReportTotals:
     if head is None:
         return False  # file deleted
 
@@ -242,7 +243,7 @@ def get_totals_from_list(lst) -> ReportTotals:
 
 def iter_changed_lines(
     base_report_file, head_report_file, diff=None, yield_line_numbers=True
-) -> Iterator[Union[int, Tuple[Any, Any]]]:
+) -> Iterator[int | tuple[Any, Any]]:
     """
     streams line numbers that changed as integers > 0
     """

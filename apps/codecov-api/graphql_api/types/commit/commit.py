@@ -1,5 +1,5 @@
 import logging
-from typing import Any, List, Optional, Union
+from typing import Any
 
 import sentry_sdk
 import yaml
@@ -330,7 +330,7 @@ def resolve_commit_bundle_analysis(commit, info):
 @sentry_sdk.trace
 def resolve_coverage_totals(
     commit: Commit, info: GraphQLResolveInfo
-) -> Optional[ReportTotals]:
+) -> ReportTotals | None:
     command = info.context["executor"].get_command("commit")
     return command.fetch_totals(commit)
 
@@ -374,7 +374,7 @@ def resolve_coverage_file(commit, info, path, flags=None, components=None):
 @commit_coverage_analytics_bindable.field("components")
 @sync_to_async
 @sentry_sdk.trace
-def resolve_coverage_components(commit: Commit, info, filters=None) -> List[Component]:
+def resolve_coverage_components(commit: Commit, info, filters=None) -> list[Component]:
     info.context["component_commit"] = commit
     current_owner = info.context["request"].current_owner
     all_components = components_service.commit_components(commit, current_owner)
@@ -394,7 +394,7 @@ def resolve_coverage_components(commit: Commit, info, filters=None) -> List[Comp
 @sentry_sdk.trace
 async def resolve_commit_bundle_analysis_compare_with_parent(
     commit: Commit, info: GraphQLResolveInfo
-) -> Union[BundleAnalysisComparison, Any]:
+) -> BundleAnalysisComparison | Any:
     if not commit.parent_commit_id:
         return MissingBaseCommit()
     base_commit = await CommitLoader.loader(info, commit.repository_id).load(

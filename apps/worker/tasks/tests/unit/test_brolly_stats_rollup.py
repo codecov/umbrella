@@ -1,11 +1,11 @@
 import asyncio
 import datetime
 import uuid
+from unittest.mock import Mock, patch
 
 import httpx
 import pytest
 import respx
-from mock import Mock, patch
 
 from database.models import Constants
 from database.tests.factories import (
@@ -49,7 +49,7 @@ def _mock_response():
     return f
 
 
-class TestBrollyStatsRollupTask(object):
+class TestBrollyStatsRollupTask:
     def test_get_min_seconds_interval_between_executions(self, dbsession):
         assert isinstance(
             BrollyStatsRollupTask.get_min_seconds_interval_between_executions(),

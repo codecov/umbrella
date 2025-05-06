@@ -50,9 +50,9 @@ class BitbucketServer(TorngitBaseAdapter):
     @property
     def project(self):
         if self.data["owner"].get("service_id", "?")[0] == "U":
-            return "/projects/~%s" % self.data["owner"]["username"].upper()
+            return "/projects/~{}".format(self.data["owner"]["username"].upper())
         else:
-            return "/projects/%s" % self.data["owner"]["username"].upper()
+            return "/projects/{}".format(self.data["owner"]["username"].upper())
 
     def diff_to_json(self, diff_json):
         results = {}
@@ -98,7 +98,7 @@ class BitbucketServer(TorngitBaseAdapter):
     async def api(self, method, url, body=None, token=None, **kwargs):
         # process desired api path
         if not url.startswith("http"):
-            url = "%s/rest/api/1.0%s" % (self.service_url, url)
+            url = f"{self.service_url}/rest/api/1.0{url}"
 
         # process inline arguments
         if kwargs:
@@ -169,7 +169,7 @@ class BitbucketServer(TorngitBaseAdapter):
         if self.data["repo"]["private"]:
             await self.api(
                 "get",
-                "%s/repos/%s" % (self.project, self.data["repo"]["name"]),
+                "{}/repos/{}".format(self.project, self.data["repo"]["name"]),
                 token=token,
             )
         return (True, True)
@@ -178,7 +178,7 @@ class BitbucketServer(TorngitBaseAdapter):
         # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp3389568
         res = await self.api(
             "get",
-            "%s/permissions/users" % self.project,
+            f"{self.project}/permissions/users",
             filter=user["username"],
             token=token,
         )
@@ -196,18 +196,18 @@ class BitbucketServer(TorngitBaseAdapter):
         # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp1889424
         res = await self.api(
             "get",
-            "%s/repos/%s" % (self.project, self.data["repo"]["name"]),
+            "{}/repos/{}".format(self.project, self.data["repo"]["name"]),
             token=token,
         )
         owner_service_id = res["project"]["id"]
         if res["project"]["type"] == "PERSONAL":
-            owner_service_id = "U%d" % res["project"]["owner"]["id"]
+            owner_service_id = f"U{res['project']['owner']['id']}"
 
         fork = None
         if res.get("origin"):
             _fork_owner_service_id = res["origin"]["project"]["id"]
             if res["origin"]["project"]["type"] == "PERSONAL":
-                _fork_owner_service_id = "U%d" % res["origin"]["project"]["owner"]["id"]
+                _fork_owner_service_id = f"U{res['origin']['project']['owner']['id']}"
 
             fork = {
                 "owner": {
@@ -263,7 +263,7 @@ class BitbucketServer(TorngitBaseAdapter):
             try:
                 res = await self.api(
                     "get",
-                    "{0}/repos/{1}/browse/{2}".format(
+                    "{}/repos/{}/browse/{}".format(
                         self.project,
                         self.data["repo"]["name"],
                         path.replace(" ", "%20"),
@@ -288,13 +288,13 @@ class BitbucketServer(TorngitBaseAdapter):
 
         return {
             "commitid": None,  # [FUTURE] unknown atm
-            "content": "\n".join((a.get("text", "") for a in content)),
+            "content": "\n".join(a.get("text", "") for a in content),
         }
 
     async def get_ancestors_tree(self, commitid, token=None):
         res = await self.api(
             "get",
-            "%s/repos/%s/commits/" % (self.project, self.data["repo"]["name"]),
+            "{}/repos/{}/commits/".format(self.project, self.data["repo"]["name"]),
             token=token,
             until=commitid,
         )
@@ -308,8 +308,9 @@ class BitbucketServer(TorngitBaseAdapter):
         # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp3530560
         res = await self.api(
             "get",
-            "%s/repos/%s/commits/%s"
-            % (self.project, self.data["repo"]["name"], commit),
+            "{}/repos/{}/commits/{}".format(
+                self.project, self.data["repo"]["name"], commit
+            ),
             token=token,
         )
 
@@ -323,7 +324,7 @@ class BitbucketServer(TorngitBaseAdapter):
 
         return {
             "author": {
-                "id": ("U%s" % author.get("id")) if author.get("id") else None,
+                "id": ("U{}".format(author.get("id"))) if author.get("id") else None,
                 "username": author.get("name"),
                 "email": res["author"]["emailAddress"],
                 "name": res["author"]["name"],
@@ -342,8 +343,9 @@ class BitbucketServer(TorngitBaseAdapter):
             # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp2519392
             res = await self.api(
                 "get",
-                "%s/repos/%s/pull-requests/%s/commits"
-                % (self.project, self.data["repo"]["name"], pullid),
+                "{}/repos/{}/pull-requests/{}/commits".format(
+                    self.project, self.data["repo"]["name"], pullid
+                ),
                 start=start,
                 token=token,
             )
@@ -362,8 +364,9 @@ class BitbucketServer(TorngitBaseAdapter):
         # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp3120016
         diff = await self.api(
             "get",
-            "%s/repos/%s/commits/%s/diff"
-            % (self.project, self.data["repo"]["name"], commit),
+            "{}/repos/{}/commits/{}/diff".format(
+                self.project, self.data["repo"]["name"], commit
+            ),
             withComments=False,
             whitespace="ignore-all",
             contextLines=context or -1,
@@ -379,8 +382,9 @@ class BitbucketServer(TorngitBaseAdapter):
         diff = (
             await self.api(
                 "get",
-                "%s/repos/%s/commits/%s/diff"
-                % (self.project, self.data["repo"]["name"], head),
+                "{}/repos/{}/commits/{}/diff".format(
+                    self.project, self.data["repo"]["name"], head
+                ),
                 withComments=False,
                 whitespace="ignore-all",
                 contextLines=context or -1,
@@ -395,7 +399,7 @@ class BitbucketServer(TorngitBaseAdapter):
             # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp3513104
             res = await self.api(
                 "get",
-                "%s/repos/%s/commits" % (self.project, self.data["repo"]["name"]),
+                "{}/repos/{}/commits".format(self.project, self.data["repo"]["name"]),
                 start=start,
                 token=token,
                 since=base,
@@ -428,7 +432,7 @@ class BitbucketServer(TorngitBaseAdapter):
         # https://confluence.atlassian.com/bitbucketserver066/event-payload-978197889.html
         res = await self.api(
             "post",
-            "%s/repos/%s/webhooks" % (self.project, self.data["repo"]["name"]),
+            "{}/repos/{}/webhooks".format(self.project, self.data["repo"]["name"]),
             body={"description": name, "active": True, "events": events, "url": url},
             json=True,
             token=token,
@@ -439,8 +443,9 @@ class BitbucketServer(TorngitBaseAdapter):
         # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp2167824
         res = await self.api(
             "get",
-            "%s/repos/%s/pull-requests/%s"
-            % (self.project, self.data["repo"]["name"], pullid),
+            "{}/repos/{}/pull-requests/{}".format(
+                self.project, self.data["repo"]["name"], pullid
+            ),
             token=token,
         )
         # need to get all commits, shit.
@@ -450,8 +455,9 @@ class BitbucketServer(TorngitBaseAdapter):
         first_commit = (
             await self.api(
                 "get",
-                "%s/repos/%s/commits/%s"
-                % (self.project, self.data["repo"]["name"], pull_commitids[-1]),
+                "{}/repos/{}/commits/{}".format(
+                    self.project, self.data["repo"]["name"], pull_commitids[-1]
+                ),
                 token=token,
             )
         )["parents"][0]["id"]
@@ -488,8 +494,9 @@ class BitbucketServer(TorngitBaseAdapter):
 
             results = await self.api(
                 "get",
-                "%s/repos/%s/files/%s"
-                % (self.project, self.data["repo"]["name"], dir_path),
+                "{}/repos/{}/files/{}".format(
+                    self.project, self.data["repo"]["name"], dir_path
+                ),
                 **kwargs,
             )
             files.extend(results["values"])
@@ -585,7 +592,7 @@ class BitbucketServer(TorngitBaseAdapter):
         while True:
             res = await self.api(
                 "get",
-                "%s/rest/build-status/1.0/commits/%s" % (self.service_url, commit),
+                f"{self.service_url}/rest/build-status/1.0/commits/{commit}",
                 start=start,
                 token=token,
             )
@@ -625,7 +632,7 @@ class BitbucketServer(TorngitBaseAdapter):
         assert status in ("pending", "success", "error", "failure"), "status not valid"
         res = await self.api(
             "post",
-            "%s/rest/build-status/1.0/commits/%s" % (self.service_url, commit),
+            f"{self.service_url}/rest/build-status/1.0/commits/{commit}",
             body={
                 "state": {
                     "pending": "INPROGRESS",
@@ -643,8 +650,7 @@ class BitbucketServer(TorngitBaseAdapter):
         if merge_commit:
             await self.api(
                 "post",
-                "%s/rest/build-status/1.0/commits/%s"
-                % (self.service_url, merge_commit[0]),
+                f"{self.service_url}/rest/build-status/1.0/commits/{merge_commit[0]}",
                 body={
                     "state": {
                         "pending": "INPROGRESS",
@@ -665,32 +671,35 @@ class BitbucketServer(TorngitBaseAdapter):
         # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp3165808
         res = await self.api(
             "post",
-            "%s/repos/%s/pull-requests/%s/comments"
-            % (self.project, self.data["repo"]["name"], pullid),
+            "{}/repos/{}/pull-requests/{}/comments".format(
+                self.project, self.data["repo"]["name"], pullid
+            ),
             body={"text": body},
             token=token,
         )
-        return {"id": "%(id)s:%(version)s" % res}
+        return {"id": "{id}:{version}".format(**res)}
 
     async def edit_comment(self, pullid, commentid, body, token=None):
         # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp3184624
         commentid, version = commentid.split(":", 1)
         res = await self.api(
             "put",
-            "%s/repos/%s/pull-requests/%s/comments/%s"
-            % (self.project, self.data["repo"]["name"], pullid, commentid),
+            "{}/repos/{}/pull-requests/{}/comments/{}".format(
+                self.project, self.data["repo"]["name"], pullid, commentid
+            ),
             body={"text": body, "version": version},
             token=token,
         )
-        return {"id": "%(id)s:%(version)s" % res}
+        return {"id": "{id}:{version}".format(**res)}
 
     async def delete_comment(self, issueid, commentid, token=None):
         # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp3189408
         commentid, version = commentid.split(":", 1)
         await self.api(
             "delete",
-            "%s/repos/%s/pull-requests/%s/comments/%s"
-            % (self.project, self.data["repo"]["name"], issueid, commentid),
+            "{}/repos/{}/pull-requests/{}/comments/{}".format(
+                self.project, self.data["repo"]["name"], issueid, commentid
+            ),
             version=version,
             token=token,
         )
@@ -702,7 +711,7 @@ class BitbucketServer(TorngitBaseAdapter):
             # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp2243696
             res = await self.api(
                 "get",
-                "%s/repos/%s/branches" % (self.project, self.data["repo"]["name"]),
+                "{}/repos/{}/branches".format(self.project, self.data["repo"]["name"]),
                 start=start,
                 token=token,
             )
@@ -732,8 +741,9 @@ class BitbucketServer(TorngitBaseAdapter):
                 # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp2048560
                 res = await self.api(
                     "get",
-                    "%s/repos/%s/pull-requests"
-                    % (self.project, self.data["repo"]["name"]),
+                    "{}/repos/{}/pull-requests".format(
+                        self.project, self.data["repo"]["name"]
+                    ),
                     state=state,
                     withAttributes=False,
                     withProperties=False,
@@ -762,7 +772,9 @@ class BitbucketServer(TorngitBaseAdapter):
             # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp2048560
             res = await self.api(
                 "get",
-                "%s/repos/%s/pull-requests" % (self.project, self.data["repo"]["name"]),
+                "{}/repos/{}/pull-requests".format(
+                    self.project, self.data["repo"]["name"]
+                ),
                 state=state,
                 withAttributes=False,
                 withProperties=False,

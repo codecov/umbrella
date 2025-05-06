@@ -11,4 +11,4 @@ def ratio(x, y):
     elif x == 0 or y == 0:
         return "0"
 
-    return "%.5f" % round((float(x) / float(y)) * 100, 5)
+    return f"{round((float(x) / float(y)) * 100, 5):.5f}"

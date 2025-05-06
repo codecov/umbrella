@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from django.conf import settings
@@ -17,21 +17,11 @@ class MeasurementTests(TransactionTestCase):
     databases = {"timeseries"}
 
     def test_measurement_agg_1day(self):
-        MeasurementFactory(
-            timestamp=datetime(2022, 1, 1, 0, 0, 0, tzinfo=timezone.utc), value=1
-        )
-        MeasurementFactory(
-            timestamp=datetime(2022, 1, 1, 1, 0, 0, tzinfo=timezone.utc), value=2
-        )
-        MeasurementFactory(
-            timestamp=datetime(2022, 1, 1, 1, 0, 1, tzinfo=timezone.utc), value=3
-        )
-        MeasurementFactory(
-            timestamp=datetime(2022, 1, 2, 0, 0, 0, tzinfo=timezone.utc), value=4
-        )
-        MeasurementFactory(
-            timestamp=datetime(2022, 1, 2, 0, 1, 0, tzinfo=timezone.utc), value=5
-        )
+        MeasurementFactory(timestamp=datetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC), value=1)
+        MeasurementFactory(timestamp=datetime(2022, 1, 1, 1, 0, 0, tzinfo=UTC), value=2)
+        MeasurementFactory(timestamp=datetime(2022, 1, 1, 1, 0, 1, tzinfo=UTC), value=3)
+        MeasurementFactory(timestamp=datetime(2022, 1, 2, 0, 0, 0, tzinfo=UTC), value=4)
+        MeasurementFactory(timestamp=datetime(2022, 1, 2, 0, 1, 0, tzinfo=UTC), value=5)
 
         results = MeasurementSummary.agg_by(Interval.INTERVAL_1_DAY).all()
 

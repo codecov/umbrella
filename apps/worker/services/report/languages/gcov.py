@@ -195,7 +195,7 @@ def from_txt(string: bytes, report_builder_session: ReportBuilderSession) -> Non
         _type = line_types[ln]
         branches = line_branches.get(ln)
         if branches:
-            coverage = "%s/%s" % tuple(branches)
+            coverage = "{}/{}".format(*tuple(branches))
             _file.append(
                 ln,
                 report_builder_session.create_coverage_line(coverage, _type),

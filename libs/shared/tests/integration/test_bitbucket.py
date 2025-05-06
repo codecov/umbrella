@@ -38,7 +38,7 @@ def valid_codecov_handler():
     )
 
 
-class TestBitbucketTestCase(object):
+class TestBitbucketTestCase:
     @pytest.mark.asyncio
     async def test_get_best_effort_branches(self, valid_handler, codecov_vcr):
         branches = await valid_handler.get_best_effort_branches("6a45b83")

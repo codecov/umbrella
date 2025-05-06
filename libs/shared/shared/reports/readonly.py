@@ -12,7 +12,7 @@ from shared.utils.match import Matcher
 log = logging.getLogger(__name__)
 
 
-class LazyRustReport(object):
+class LazyRustReport:
     def __init__(self, filename_mapping, chunks, session_mapping):
         # Because Rust can't parse the header. It doesn't need it either,
         # So it's simpler to just never sent it.
@@ -38,7 +38,7 @@ class LazyRustReport(object):
         return self._actual_report
 
 
-class ReadOnlyReport(object):
+class ReadOnlyReport:
     def __init__(self, rust_analyzer, rust_report, inner_report, totals=None):
         self.rust_analyzer = rust_analyzer
         self.rust_report = rust_report

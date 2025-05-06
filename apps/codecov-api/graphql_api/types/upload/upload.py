@@ -1,5 +1,3 @@
-from typing import Optional
-
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
 from django.urls import reverse
@@ -33,7 +31,7 @@ def resolve_state(upload: ReportSession, info: GraphQLResolveInfo) -> UploadStat
 
 
 @upload_bindable.field("id")
-def resolve_id(upload: ReportSession, info: GraphQLResolveInfo) -> Optional[int]:
+def resolve_id(upload: ReportSession, info: GraphQLResolveInfo) -> int | None:
     return upload.order_number
 
 

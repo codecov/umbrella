@@ -1,5 +1,5 @@
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from django.db.models.query import QuerySet
 
@@ -42,9 +42,7 @@ def create_upload_cleanup_queries() -> list[QuerySet]:
 
     We are targetting 180-day chunks, going back ~10 years.
     """
-    latest_timestamp = datetime.now(timezone.utc) - timedelta(
-        days=UPLOAD_RETENTION_PERIOD
-    )
+    latest_timestamp = datetime.now(UTC) - timedelta(days=UPLOAD_RETENTION_PERIOD)
     timestamps = [latest_timestamp]
     for _ in range(MONTH_SLOTS):
         timestamps.append(timestamps[-1] - timedelta(days=180))

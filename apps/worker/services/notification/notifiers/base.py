@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any
 
 from database.models import Repository
 from services.comparison import ComparisonProxy
@@ -12,7 +13,7 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
-class NotificationResult(object):
+class NotificationResult:
     notification_attempted: bool = False
     notification_successful: bool = False
     explanation: str | None = None
@@ -34,7 +35,7 @@ class NotificationResult(object):
         return ans
 
 
-class AbstractBaseNotifier(object):
+class AbstractBaseNotifier:
     """
     Base Notifier, abstract class that should not be used
 
@@ -81,7 +82,7 @@ class AbstractBaseNotifier(object):
     def notify(
         self,
         comparison: ComparisonProxy,
-        status_or_checks_helper_text: Optional[dict[str, str]] = None,
+        status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> NotificationResult:
         raise NotImplementedError()
 

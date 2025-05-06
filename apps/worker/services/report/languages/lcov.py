@@ -148,7 +148,7 @@ def _process_file(
                 continue
 
             elif line_str not in ("0", ""):
-                branches[line_str]["%s:%s" % (block, branch)] = (
+                branches[line_str][f"{block}:{branch}"] = (
                     0 if taken in ("-", "0") else 1
                 )
 

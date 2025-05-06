@@ -1,5 +1,4 @@
 from functools import cached_property
-from typing import List, Optional
 
 from ariadne import ObjectType
 
@@ -18,7 +17,7 @@ class CoverageInfo:
     def __init__(
         self,
         line_comparison: LineComparison,
-        ignored_upload_ids: Optional[List[int]] = None,
+        ignored_upload_ids: list[int] | None = None,
     ):
         self.line_comparison = line_comparison
         self.ignored_upload_ids = set(ignored_upload_ids or [])
@@ -40,24 +39,24 @@ line_comparison_bindable = ObjectType("LineComparison")
 
 
 @line_comparison_bindable.field("baseNumber")
-def resolve_base_number(line_comparison: LineComparison, info) -> Optional[str]:
+def resolve_base_number(line_comparison: LineComparison, info) -> str | None:
     return line_comparison.number["base"]
 
 
 @line_comparison_bindable.field("headNumber")
-def resolve_head_number(line_comparison: LineComparison, info) -> Optional[str]:
+def resolve_head_number(line_comparison: LineComparison, info) -> str | None:
     return line_comparison.number["head"]
 
 
 @line_comparison_bindable.field("baseCoverage")
-def resolve_base_coverage(line_comparison: LineComparison, info) -> Optional[str]:
+def resolve_base_coverage(line_comparison: LineComparison, info) -> str | None:
     line_type: LineType = line_comparison.coverage["base"]
     if line_type is not None:
         return line_coverages.get(line_type)
 
 
 @line_comparison_bindable.field("headCoverage")
-def resolve_head_coverage(line_comparison: LineComparison, info) -> Optional[str]:
+def resolve_head_coverage(line_comparison: LineComparison, info) -> str | None:
     line_type: LineType = line_comparison.coverage["head"]
     if line_type is not None:
         return line_coverages.get(line_type)
@@ -75,6 +74,6 @@ def resolve_content(line_comparison: LineComparison, info) -> str:
 def resolve_coverage_info(
     line_comparison: LineComparison,
     info,
-    ignored_upload_ids: Optional[List[int]] = None,
+    ignored_upload_ids: list[int] | None = None,
 ) -> CoverageInfo:
     return CoverageInfo(line_comparison, ignored_upload_ids=ignored_upload_ids)

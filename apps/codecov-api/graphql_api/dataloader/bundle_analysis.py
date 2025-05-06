@@ -1,5 +1,3 @@
-from typing import Union
-
 from core.models import Commit
 from graphql_api.types.comparison.comparison import MissingBaseReport, MissingHeadReport
 from reports.models import CommitReport
@@ -13,7 +11,7 @@ from shared.bundle_analysis import (
 
 def load_bundle_analysis_comparison(
     base_commit: Commit, head_commit: Commit
-) -> Union[BundleAnalysisComparison, MissingHeadReport, MissingBaseReport]:
+) -> BundleAnalysisComparison | MissingHeadReport | MissingBaseReport:
     head_report = CommitReport.objects.filter(
         report_type=CommitReport.ReportType.BUNDLE_ANALYSIS, commit=head_commit
     ).first()
@@ -43,7 +41,7 @@ def load_bundle_analysis_comparison(
 
 def load_bundle_analysis_report(
     commit: Commit,
-) -> Union[BundleAnalysisReport, MissingHeadReport, MissingBaseReport]:
+) -> BundleAnalysisReport | MissingHeadReport | MissingBaseReport:
     report = CommitReport.objects.filter(
         report_type=CommitReport.ReportType.BUNDLE_ANALYSIS, commit=commit
     ).first()

@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import List
 
 import regex
 
@@ -13,7 +12,7 @@ class EscapeEnum(Enum):
 
 @dataclass
 class Replacement:
-    strings: List[str]
+    strings: list[str]
     output: str
     method: EscapeEnum
 
@@ -44,7 +43,7 @@ class StringEscaper:
             will give: "12243466"
     """
 
-    def __init__(self, escape_def: List[Replacement]):
+    def __init__(self, escape_def: list[Replacement]):
         self.escape_def = escape_def
 
     def replace(self, replacement_target):

@@ -3,7 +3,7 @@ import logging
 import time
 import uuid
 from copy import deepcopy
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 import orjson
 import sentry_sdk
@@ -161,7 +161,7 @@ def normalize_flags(arguments: UploadArguments):
     arguments["flags"] = flags
 
 
-def _should_debounce_processing(upload_context: UploadContext) -> Optional[float]:
+def _should_debounce_processing(upload_context: UploadContext) -> float | None:
     """
     Queries the `UploadContext`s `last_upload_timestamp` and determines if
     another upload should be debounced by some time.
@@ -632,7 +632,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
     def _fetch_all_repo_flags(
         self, db_session: Session, repoid: int
-    ) -> Optional[dict[str, RepositoryFlag] | dict]:
+    ) -> dict[str, RepositoryFlag] | dict | None:
         """
         Fetches all flags on a repository
         """
@@ -717,7 +717,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         commit: Commit,
         commit_yaml: dict,
         argument_list: list[UploadArguments],
-        do_notify: Optional[bool] = True,
+        do_notify: bool | None = True,
     ):
         task_signatures = [
             bundle_analysis_processor_task.s(

@@ -2,7 +2,7 @@ import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any
 
 from shared.components import Component
 from shared.config import (
@@ -15,13 +15,13 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
-class OwnerContext(object):
-    ownerid: Optional[int] = None
-    owner_onboarding_date: Optional[datetime] = None
-    owner_plan: Optional[str] = None
+class OwnerContext:
+    ownerid: int | None = None
+    owner_onboarding_date: datetime | None = None
+    owner_plan: str | None = None
 
 
-class UserYaml(object):
+class UserYaml:
     def __init__(self, inner_dict):
         self.inner_dict = inner_dict
 
@@ -89,7 +89,7 @@ class UserYaml(object):
                 return res
         return deepcopy(general_dict)
 
-    def get_components(self) -> List[Component]:
+    def get_components(self) -> list[Component]:
         component_definitions = self.read_yaml_field("component_management")
         if not component_definitions:
             return []
@@ -115,11 +115,11 @@ class UserYaml(object):
     def get_final_yaml(
         cls,
         *,
-        owner_yaml: Optional[dict[str, Any]] = None,
-        repo_yaml: Optional[dict[str, Any]] = None,
-        commit_yaml: Optional[dict[str, Any]] = None,
+        owner_yaml: dict[str, Any] | None = None,
+        repo_yaml: dict[str, Any] | None = None,
+        commit_yaml: dict[str, Any] | None = None,
         ownerid: int = None,
-        owner_context: Optional[OwnerContext] = None,
+        owner_context: OwnerContext | None = None,
     ):
         """Given a owner yaml, repo yaml and user yaml, determines what yaml we need to use
 

@@ -1,12 +1,12 @@
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest import mock
+from unittest.mock import AsyncMock, call
 
-import mock
 import pytest
 from celery.exceptions import Retry
-from mock import AsyncMock, call
 from redis.exceptions import LockError
 
 from database.enums import ReportType
@@ -49,7 +49,7 @@ def _start_upload_flow(mocker):
     UploadFlow.log(UploadFlow.UPLOAD_TASK_BEGIN)
 
 
-class FakeRedis(object):
+class FakeRedis:
     """
     This is a fake, very rudimentary redis implementation to ease the managing
      of mocking `exists`, `lpop` and whatnot in the context of Upload jobs
@@ -78,7 +78,7 @@ class FakeRedis(object):
             res = self.lists.get(key)
         if res is None:
             return None
-        if not isinstance(res, (str, bytes)):
+        if not isinstance(res, str | bytes):
             return str(res).encode()
         if not isinstance(res, bytes):
             return res.encode()
@@ -122,7 +122,7 @@ def clear_log_context(mocker):
 
 
 @pytest.mark.integration
-class TestUploadTaskIntegration(object):
+class TestUploadTaskIntegration:
     @pytest.mark.django_db
     def test_upload_task_call(
         self,
@@ -149,7 +149,7 @@ class TestUploadTaskIntegration(object):
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -252,7 +252,7 @@ class TestUploadTaskIntegration(object):
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -320,7 +320,7 @@ class TestUploadTaskIntegration(object):
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -387,7 +387,7 @@ class TestUploadTaskIntegration(object):
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -496,7 +496,7 @@ class TestUploadTaskIntegration(object):
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
             branch="main",
         )
         dbsession.add(commit)
@@ -755,7 +755,7 @@ class TestUploadTaskIntegration(object):
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -825,7 +825,7 @@ class TestUploadTaskIntegration(object):
             username="ThiagoCodecov",
             unencrypted_oauth_token="test76zow6xgh7modd88noxr245j2z25t4ustoff",
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(owner)
 
@@ -901,7 +901,7 @@ class TestUploadTaskIntegration(object):
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
             repository__name="example-python",
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -969,7 +969,7 @@ class TestUploadTaskIntegration(object):
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
             repository__name="example-python",
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -1036,7 +1036,7 @@ class TestUploadTaskIntegration(object):
             repository__owner__username="ThiagoCodecov",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         mock_repo_provider.data = {"repo": {"repoid": commit.repoid}}
         dbsession.add(commit)
@@ -1119,7 +1119,7 @@ class TestUploadTaskIntegration(object):
             repository__owner__username="ThiagoCodecov",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         report = CommitReport(commit_id=commit.id_)
         upload = Upload(
@@ -1179,7 +1179,7 @@ class TestUploadTaskIntegration(object):
         )
 
 
-class TestUploadTaskUnit(object):
+class TestUploadTaskUnit:
     def test_list_of_arguments(self, mock_redis):
         upload_args = UploadContext(
             repoid=542,

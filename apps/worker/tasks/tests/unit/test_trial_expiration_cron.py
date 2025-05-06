@@ -8,7 +8,7 @@ from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from tasks.trial_expiration_cron import TrialExpirationCronTask
 
 
-class TestTrialExpirationCheck(object):
+class TestTrialExpirationCheck:
     @patch("tasks.trial_expiration_cron.yield_amount", 1)
     def test_enqueue_trial_expiration_task(self, dbsession, mocker):
         mocked_now = datetime(2023, 7, 3, 6, 8, 12)

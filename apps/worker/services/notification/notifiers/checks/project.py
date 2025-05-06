@@ -1,5 +1,3 @@
-from typing import Optional
-
 from database.enums import Notification
 from services.comparison import ComparisonProxy, FilteredComparison
 from services.notification.notifiers.checks.base import (
@@ -24,7 +22,7 @@ class ProjectChecksNotifier(MessageMixin, StatusProjectMixin, ChecksNotifier):
         self,
         comparison: ComparisonProxy | FilteredComparison,
         yaml_comment_settings,
-        status_or_checks_helper_text: Optional[dict[str, str]] = None,
+        status_or_checks_helper_text: dict[str, str] | None = None,
     ):
         pull_dict = comparison.enriched_pull.provider_pull
         return self.create_message(

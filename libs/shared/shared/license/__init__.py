@@ -8,7 +8,7 @@ from shared.encryption.standard import EncryptorWithAlreadyGeneratedKey
 
 
 @dataclass
-class LicenseInformation(object):
+class LicenseInformation:
     is_valid: bool = False
     is_trial: bool = False
     message: str = None

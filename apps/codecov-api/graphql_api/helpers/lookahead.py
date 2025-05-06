@@ -1,4 +1,5 @@
-from typing import Iterable, Optional
+from collections.abc import Iterable
+from typing import Optional
 
 from graphql.language.ast import (
     FragmentSpreadNode,
@@ -60,7 +61,7 @@ class LookaheadNode:
         return selections
 
 
-def lookahead(info: GraphQLResolveInfo, path: Iterable[str]) -> Optional[LookaheadNode]:
+def lookahead(info: GraphQLResolveInfo, path: Iterable[str]) -> LookaheadNode | None:
     """
     Traverse the GraphQL AST and return the lookahead node at the given `path`
     """

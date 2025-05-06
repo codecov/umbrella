@@ -34,7 +34,7 @@ class BitbucketServerLoginView(View, LoginMixin):
         whoami_url = f"{settings.BITBUCKET_SERVER_URL}/plugins/servlet/applinks/whoami"
         username = await repo_service.api("GET", whoami_url)
         # https://developer.atlassian.com/static/rest/bitbucket-server/4.0.1/bitbucket-rest.html#idp2649152
-        user = await repo_service.api("GET", "/users/%s" % username)
+        user = await repo_service.api("GET", f"/users/{username}")
 
         authenticated_user = {
             "key": token["key"],

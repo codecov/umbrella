@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 from tasks.health_check import HealthCheckTask
 
 
-class TestHealthCheckTask(object):
+class TestHealthCheckTask:
     def test_get_queue_names_default(self, mock_configuration):
         health_check_task = HealthCheckTask()
         queue_names = health_check_task._get_all_queue_names_from_config()

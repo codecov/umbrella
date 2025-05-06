@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from itertools import chain
 from pathlib import Path
 
@@ -18,7 +18,7 @@ from tasks.test_results_processor import (
 here = Path(__file__)
 
 
-class TestUploadTestProcessorTask(object):
+class TestUploadTestProcessorTask:
     @pytest.mark.integration
     def test_upload_processor_task_call(
         self,
@@ -586,7 +586,7 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
                 "cd76b0821854a780b60012aed85af0a8263004ad",
             }
             assert {r.latest_run for r in rollups_first_branch} == {
-                datetime(1970, 1, 1, 0, 0, tzinfo=timezone.utc)
+                datetime(1970, 1, 1, 0, 0, tzinfo=UTC)
             }
             assert {r.avg_duration_seconds for r in rollups_first_branch} == {
                 7.2,
@@ -612,7 +612,7 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
                 "bd76b0821854a780b60012aed85af0a8263004ad",
             }
             assert {r.latest_run for r in rollups_second_branch} == {
-                datetime(1970, 1, 2, 0, 0, tzinfo=timezone.utc)
+                datetime(1970, 1, 2, 0, 0, tzinfo=UTC)
             }
             assert {r.avg_duration_seconds for r in rollups_second_branch} == {
                 3.6,

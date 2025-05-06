@@ -1,5 +1,4 @@
 import logging
-from typing import Dict, Optional
 from urllib.parse import urlencode
 
 import jwt
@@ -26,7 +25,7 @@ OAUTH_TOKEN_URL = (
 class SentryLoginView(LoginMixin, StateMixin, View):
     service = "sentry"
 
-    def _fetch_user_data(self, code: str, state: str) -> Optional[Dict]:
+    def _fetch_user_data(self, code: str, state: str) -> dict | None:
         res = requests.post(
             OAUTH_TOKEN_URL,
             data={

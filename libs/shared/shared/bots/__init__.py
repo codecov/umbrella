@@ -1,5 +1,5 @@
 import logging
-from typing import Any, List
+from typing import Any
 
 from shared.bots.github_apps import get_github_app_info_for_owner
 from shared.bots.owner_bots import get_owner_appropriate_bot_token
@@ -34,7 +34,7 @@ def get_adapter_auth_information(
     """
     installation_info: GithubInstallationInfo | None = None
     token_type_mapping = None
-    fallback_installations: List[GithubInstallationInfo] | None = None
+    fallback_installations: list[GithubInstallationInfo] | None = None
     if (
         Service(owner.service) in [Service.GITHUB, Service.GITHUB_ENTERPRISE]
         # in sync_teams and sync_repos we might prefer to use the owner's OAuthToken instead of installation

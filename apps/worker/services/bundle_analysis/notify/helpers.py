@@ -1,5 +1,5 @@
 import numbers
-from typing import Literal, Optional
+from typing import Literal
 
 from database.models.core import Owner
 from services.bundle_analysis.notify.types import NotificationType
@@ -62,7 +62,7 @@ def get_github_app_used(torngit: TorngitBaseAdapter | None) -> int | None:
     return selected_installation_id
 
 
-def bytes_readable(bytes: int, show_negative: Optional[bool] = True) -> str:
+def bytes_readable(bytes: int, show_negative: bool | None = True) -> str:
     """Converts bytes into human-readable string (up to GB)"""
     is_negative = bytes < 0
     value: float = abs(bytes)
@@ -82,7 +82,7 @@ def bytes_readable(bytes: int, show_negative: Optional[bool] = True) -> str:
 
 
 def to_BundleThreshold(value: int | float | BundleThreshold) -> BundleThreshold:
-    if isinstance(value, (list, tuple)) and value[0] in ["absolute", "percentage"]:
+    if isinstance(value, list | tuple) and value[0] in ["absolute", "percentage"]:
         return BundleThreshold(*value)
     if isinstance(value, numbers.Integral):
         return BundleThreshold("absolute", value)

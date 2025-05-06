@@ -15,7 +15,7 @@ from shared.yaml import UserYaml
 from tasks.compute_comparison import ComputeComparisonTask
 
 
-class TestComputeComparisonTask(object):
+class TestComputeComparisonTask:
     def test_set_state_to_processed(
         self, dbsession, mocker, mock_repo_provider, mock_storage
     ):

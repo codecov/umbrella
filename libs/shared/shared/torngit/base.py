@@ -1,6 +1,5 @@
 import re
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
 
 import httpx
 
@@ -27,10 +26,10 @@ class TokenType(Enum):
     pull = "pull"
 
 
-TokenTypeMapping = Dict[TokenType, Token]
+TokenTypeMapping = dict[TokenType, Token]
 
 
-class TorngitBaseAdapter(object):
+class TorngitBaseAdapter:
     _repo_url: str | None = None
     _aws_key = None
     _oauth: OauthConsumerToken | None = None
@@ -66,14 +65,14 @@ class TorngitBaseAdapter(object):
         self.data.update(kwargs)
 
     def __repr__(self):
-        return "<%s slug=%s ownerid=%s repoid=%s>" % (
+        return "<{} slug={} ownerid={} repoid={}>".format(
             self.service,
             self.slug,
             self.data["owner"].get("ownerid"),
             self.data["repo"].get("repoid"),
         )
 
-    def get_client(self, timeouts: List[int] = []) -> httpx.AsyncClient:
+    def get_client(self, timeouts: list[int] = []) -> httpx.AsyncClient:
         if timeouts:
             timeout = httpx.Timeout(timeouts[1], connect=timeouts[0])
         else:
@@ -92,7 +91,7 @@ class TorngitBaseAdapter(object):
             return self._token_type_mapping.get(token_type)
         return self.token
 
-    def get_token_by_type_if_none(self, token: Optional[str], token_type: TokenType):
+    def get_token_by_type_if_none(self, token: str | None, token_type: TokenType):
         if token is not None:
             return token
         return self.get_token_by_type(token_type)
@@ -122,7 +121,7 @@ class TorngitBaseAdapter(object):
     def slug(self) -> str | None:
         if self.data.get("owner") and self.data.get("repo"):
             if self.data["owner"].get("username") and self.data["repo"].get("name"):
-                return "%s/%s" % (
+                return "{}/{}".format(
                     self.data["owner"]["username"],
                     self.data["repo"]["name"],
                 )
@@ -141,7 +140,7 @@ class TorngitBaseAdapter(object):
         docs/specs/diff.json
         """
         results = {}
-        diff = ("\n%s" % diff).split("\ndiff --git a/")
+        diff = (f"\n{diff}").split("\ndiff --git a/")
         segment = None
         for _diff in diff[1:]:
             _diff = _diff.replace("\r\n", "\n").split("\n")
@@ -325,7 +324,7 @@ class TorngitBaseAdapter(object):
 
     # OTHERS
 
-    async def get_authenticated(self, token=None) -> Tuple[bool, bool]:
+    async def get_authenticated(self, token=None) -> tuple[bool, bool]:
         """Finds the user permissions about about whether the user on
             `self.data["user"]` can access the repo from `self.data["repo"]`
             Returns a `can_view` and a `can_edit` permission tuple
@@ -422,7 +421,7 @@ class TorngitBaseAdapter(object):
     async def get_workflow_run(self, run_id, token=None):
         raise NotImplementedError()
 
-    async def get_best_effort_branches(self, commit_sha: str, token=None) -> List[str]:
+    async def get_best_effort_branches(self, commit_sha: str, token=None) -> list[str]:
         """
         Gets a 'best effort' list of branches this commit is in.
         If a branch is returned, this means this commit is in that branch. If not, it could still be

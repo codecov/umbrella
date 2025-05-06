@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
@@ -156,7 +155,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         max_retries: int,
         countdown: int,
         commit: Commit,
-        current_yaml: Optional[UserYaml],
+        current_yaml: UserYaml | None,
         *args,
         **kwargs,
     ) -> None:

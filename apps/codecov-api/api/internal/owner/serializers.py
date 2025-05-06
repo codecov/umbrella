@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any
 
 from dateutil.relativedelta import relativedelta
 from rest_framework import serializers
@@ -48,7 +48,7 @@ class StripeLineItemSerializer(serializers.Serializer):
     plan_name = serializers.SerializerMethodField()
     quantity = serializers.IntegerField()
 
-    def get_plan_name(self, line_item: Dict[str, str]) -> str | None:
+    def get_plan_name(self, line_item: dict[str, str]) -> str | None:
         plan = line_item.get("plan")
         if plan:
             return plan.get("name")
@@ -83,7 +83,7 @@ class StripeDiscountSerializer(serializers.Serializer):
     duration_in_months = serializers.IntegerField(source="coupon.duration_in_months")
     expires = serializers.SerializerMethodField()
 
-    def get_expires(self, customer: Dict[str, Dict]) -> int | None:
+    def get_expires(self, customer: dict[str, dict]) -> int | None:
         coupon = customer.get("coupon")
         if coupon:
             months = coupon.get("duration_in_months")
@@ -139,7 +139,7 @@ class PlanSerializer(serializers.Serializer):
             )
         return value
 
-    def validate(self, plan: Dict[str, Any]) -> Dict[str, Any]:
+    def validate(self, plan: dict[str, Any]) -> dict[str, Any]:
         current_org = self.context["view"].owner
         if current_org.account:
             raise serializers.ValidationError(
@@ -214,12 +214,12 @@ class StripeScheduledPhaseSerializer(serializers.Serializer):
     plan = serializers.SerializerMethodField()
     quantity = serializers.SerializerMethodField()
 
-    def get_plan(self, phase: Dict[str, Any]) -> str:
+    def get_plan(self, phase: dict[str, Any]) -> str:
         plan_id = phase["items"][0]["plan"]
         marketing_plan_name = Plan.objects.get(stripe_id=plan_id).marketing_name
         return marketing_plan_name
 
-    def get_quantity(self, phase: Dict[str, Any]) -> int:
+    def get_quantity(self, phase: dict[str, Any]) -> int:
         return phase["items"][0]["quantity"]
 
 
@@ -227,7 +227,7 @@ class ScheduleDetailSerializer(serializers.Serializer):
     id = serializers.CharField()
     scheduled_phase = serializers.SerializerMethodField()
 
-    def get_scheduled_phase(self, schedule: Dict[str, Any]) -> Dict[str, Any] | None:
+    def get_scheduled_phase(self, schedule: dict[str, Any]) -> dict[str, Any] | None:
         if len(schedule["phases"]) > 1:
             return StripeScheduledPhaseSerializer(schedule["phases"][-1]).data
         else:
@@ -299,12 +299,12 @@ class AccountDetailsSerializer(serializers.ModelSerializer):
         current_owner = self.context["request"].current_owner
         return BillingService(requesting_user=current_owner)
 
-    def get_subscription_detail(self, owner: Owner) -> Dict[str, Any] | None:
+    def get_subscription_detail(self, owner: Owner) -> dict[str, Any] | None:
         subscription_detail = self._get_billing().get_subscription(owner)
         if subscription_detail:
             return SubscriptionDetailSerializer(subscription_detail).data
 
-    def get_schedule_detail(self, owner: Owner) -> Dict[str, Any] | None:
+    def get_schedule_detail(self, owner: Owner) -> dict[str, Any] | None:
         schedule_detail = self._get_billing().get_schedule(owner)
         if schedule_detail:
             return ScheduleDetailSerializer(schedule_detail).data
@@ -332,7 +332,7 @@ class AccountDetailsSerializer(serializers.ModelSerializer):
             return owner.account.invoice_billing.filter(is_active=True).exists()
         return owner.uses_invoice
 
-    def update(self, instance: Owner, validated_data: Dict[str, Any]) -> object:
+    def update(self, instance: Owner, validated_data: dict[str, Any]) -> object:
         if "pretty_plan" in validated_data:
             desired_plan = validated_data.pop("pretty_plan")
             checkout_session_id_or_none = self._get_billing().update_plan(
@@ -377,7 +377,7 @@ class UserSerializer(serializers.ModelSerializer):
             "last_pull_timestamp",
         )
 
-    def update(self, instance: Owner, validated_data: Dict[str, Any]) -> object:
+    def update(self, instance: Owner, validated_data: dict[str, Any]) -> object:
         owner = self.context["view"].owner
 
         if "activated" in validated_data:

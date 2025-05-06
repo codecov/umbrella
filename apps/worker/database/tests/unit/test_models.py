@@ -1,7 +1,6 @@
 import json
-from unittest.mock import PropertyMock
+from unittest.mock import MagicMock, PropertyMock, patch
 
-from mock import MagicMock, patch
 from sqlalchemy.orm import Session
 
 from database.models import (
@@ -32,7 +31,7 @@ from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.storage.exceptions import FileNotInStorageError
 
 
-class TestReprModels(object):
+class TestReprModels:
     def test_owner_repr(self, dbsession):
         simple_owner = Owner()
         assert "Owner<None@service<None>>" == repr(simple_owner)
@@ -127,7 +126,7 @@ class TestReprModels(object):
         assert commit.notified is True
 
 
-class TestPullModel(object):
+class TestPullModel:
     def test_updatestamp_update(self, dbsession):
         factoried_pull = PullFactory.create(updatestamp=None)
         assert factoried_pull.updatestamp is None
@@ -141,7 +140,7 @@ class TestPullModel(object):
         assert factoried_pull.updatestamp > val
 
 
-class TestOwnerModel(object):
+class TestOwnerModel:
     def test_upload_token_required_for_public_repos(self, dbsession):
         # Create an owner with upload_token_required_for_public_repos specified
         tokens_required_owner = Owner(
@@ -231,7 +230,7 @@ class TestOwnerModel(object):
         assert github_org.root_parent_service_id is None
 
 
-class TestAccountModels(object):
+class TestAccountModels:
     def test_create_account(self, dbsession):
         account = Account(
             name="test_name",
@@ -289,7 +288,7 @@ class TestAccountModels(object):
         assert through_table_obj.account_id == account.id
 
 
-class TestCommitModel(object):
+class TestCommitModel:
     sample_report = {
         "files": {
             "different/test_file.py": [
@@ -394,7 +393,7 @@ class TestCommitModel(object):
         mock_read_file.assert_called_with(storage_path)
 
 
-class TestGithubAppInstallationModel(object):
+class TestGithubAppInstallationModel:
     def test_covers_all_repos(self, dbsession: Session):
         owner = OwnerFactory.create()
         other_owner = OwnerFactory.create()

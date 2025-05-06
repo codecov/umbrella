@@ -40,7 +40,7 @@ def reset_connection_at_start():
     services.smtp.SMTPService.connection = None
 
 
-class TestSMTP(object):
+class TestSMTP:
     def test_correct_init(
         self,
         mocker,

@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, Dict
+from typing import Any
 
 from ariadne import UnionType
 from graphql import GraphQLResolveInfo
@@ -15,8 +15,8 @@ from graphql_api.helpers.mutation import (
 @wrap_error_handling_mutation
 @require_authenticated
 async def resolve_regenerate_repository_upload_token(
-    _: Any, info: GraphQLResolveInfo, input: Dict[str, str]
-) -> Dict[str, uuid.UUID]:
+    _: Any, info: GraphQLResolveInfo, input: dict[str, str]
+) -> dict[str, uuid.UUID]:
     command: RepositoryCommands = info.context["executor"].get_command("repository")
     token = await command.regenerate_repository_upload_token(
         repo_name=input.get("repo_name", ""),

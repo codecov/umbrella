@@ -30,7 +30,7 @@ def selected_fields(info: GraphQLResolveInfo) -> set[str]:
 
 def _fields_from_selections(
     info: GraphQLResolveInfo, selections: Iterable[SelectionNode]
-) -> Generator[str, None, None]:
+) -> Generator[str]:
     for selection in selections:
         match selection:
             case FieldNode():

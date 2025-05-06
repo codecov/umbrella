@@ -2,7 +2,6 @@ import json
 import logging
 import re
 import uuid
-from typing import Tuple
 
 import ijson
 import sentry_sdk
@@ -94,7 +93,7 @@ class ParserV1(ParserTrait):
         self.module_list = []
 
     @sentry_sdk.trace
-    def parse(self, path: str) -> Tuple[int, str]:
+    def parse(self, path: str) -> tuple[int, str]:
         try:
             self.reset()
 
@@ -176,7 +175,7 @@ class ParserV1(ParserTrait):
 
         return AssetType.UNKNOWN
 
-    def _parse_info(self, event: Tuple[str, str, str]):
+    def _parse_info(self, event: tuple[str, str, str]):
         prefix, _, value = event
 
         # session info
@@ -195,7 +194,7 @@ class ParserV1(ParserTrait):
         elif prefix == "duration":
             self.info["duration"] = value
 
-    def _parse_event(self, event: Tuple[str, str, str]):
+    def _parse_event(self, event: tuple[str, str, str]):
         prefix, _, value = event
         prefix_path = prefix.split(".")
 

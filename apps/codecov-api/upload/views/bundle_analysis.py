@@ -1,6 +1,7 @@
 import logging
 import uuid
-from typing import Any, Callable, Tuple
+from collections.abc import Callable
+from typing import Any
 
 from django.conf import settings
 from django.http import HttpRequest
@@ -86,7 +87,7 @@ class BundleAnalysisView(APIView, ShelterMixin):
     def get_exception_handler(self) -> Callable:
         return repo_auth_custom_exception_handler
 
-    def _handle_upload(self, request: HttpRequest) -> Tuple[str, Response]:
+    def _handle_upload(self, request: HttpRequest) -> tuple[str, Response]:
         serializer = UploadSerializer(data=request.data)
         if not serializer.is_valid():
             return (

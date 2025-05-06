@@ -3,7 +3,6 @@ import random
 import string
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from django.contrib.postgres.fields import ArrayField, CITextField
 from django.contrib.postgres.indexes import GinIndex, OpClass
@@ -271,7 +270,7 @@ class Commit(ExportModelOperationsMixin("core.commit"), models.Model):
         return reports[0] if reports else None
 
     @cached_property
-    def full_report(self) -> Optional[Report]:
+    def full_report(self) -> Report | None:
         # TODO: we should probably remove use of this method since it inverts the
         # dependency tree (services should be importing models and not the other
         # way around).  The caching should be preserved somehow though.

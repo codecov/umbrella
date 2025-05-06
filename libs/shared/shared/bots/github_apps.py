@@ -1,7 +1,6 @@
 import logging
 import random
-from datetime import datetime, timezone
-from typing import Dict, List
+from datetime import UTC, datetime
 
 from shared.bots.exceptions import NoConfiguredAppsAvailable, RequestedGithubAppNotFound
 from shared.bots.types import TokenWithOwner
@@ -29,7 +28,7 @@ def _get_installation_weight(installation: GithubAppInstallation) -> int:
     """The weight for a given app installation.
     Establishes an exponential ramp-up period for installations after being updated.
     """
-    age = datetime.now(timezone.utc) - installation.created_at
+    age = datetime.now(UTC) - installation.created_at
     if age.days >= 10:
         return MAX_GITHUB_APP_SELECTION_WEIGHT
     seconds_in_hour = 3600
@@ -52,7 +51,7 @@ def _can_use_this_app(
 
 def _get_apps_from_weighted_selection(
     owner: Owner, installation_name: str, repository: Repository | None
-) -> List[GithubAppInstallation]:
+) -> list[GithubAppInstallation]:
     """This function returns an ordered list of GithubAppInstallations that can be used to communicate with GitHub
     in behalf of the owner. The list is ordered in such a way that the 1st element is the app to be used in Torngit,
     and the subsequent apps are selected as fallbacks.
@@ -67,7 +66,7 @@ def _get_apps_from_weighted_selection(
     The random selection is done so we can distribute request load more evenly among apps.
     """
     # Map GithubAppInstallation.id --> GithubAppInstallation
-    ghapp_installations_filter: Dict[int, GithubAppInstallation] = {
+    ghapp_installations_filter: dict[int, GithubAppInstallation] = {
         obj.id: obj
         for obj in filter(
             lambda obj: _can_use_this_app(obj, installation_name, repository),
@@ -220,8 +219,8 @@ def get_specific_github_app_details(
 
 
 def _filter_rate_limited_apps(
-    apps_to_consider: List[GithubAppInstallation],
-) -> List[GithubAppInstallation]:
+    apps_to_consider: list[GithubAppInstallation],
+) -> list[GithubAppInstallation]:
     redis_connection = get_redis_connection()
     return list(
         filter(
@@ -235,8 +234,8 @@ def _filter_rate_limited_apps(
 
 
 def _filter_suspended_apps(
-    apps_to_consider: List[GithubAppInstallation],
-) -> List[GithubAppInstallation]:
+    apps_to_consider: list[GithubAppInstallation],
+) -> list[GithubAppInstallation]:
     return list(filter(lambda obj: not obj.is_suspended, apps_to_consider))
 
 
@@ -245,7 +244,7 @@ def get_github_app_info_for_owner(
     *,
     repository: Repository | None = None,
     installation_name: str = GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-) -> List[GithubInstallationInfo]:
+) -> list[GithubInstallationInfo]:
     """Gets the GitHub app info needed to communicate with GitHub using an app for this owner.
     If multiple apps are available for this owner a selection is done to have 1 main app, and the others
     are listed as fallback options.

@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
-from mock import AsyncMock
 
 from database.enums import ReportType
 from database.models import (
@@ -338,7 +338,7 @@ def test_results_setup_no_instances(mocker, dbsession):
     return (repoid, commit, pull, None)
 
 
-class TestUploadTestFinisherTask(object):
+class TestUploadTestFinisherTask:
     @pytest.fixture(autouse=True)
     def setup(self):
         mock_all_plans_and_tiers()

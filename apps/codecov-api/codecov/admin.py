@@ -7,7 +7,7 @@ from codecov.forms import AutocompleteSearchForm
 from shared.django_apps.rollouts.models import FeatureFlag, FeatureFlagVariant
 
 
-class AdminMixin(object):
+class AdminMixin:
     def save_model(self, request, new_obj, form, change) -> None:
         if change:
             old_obj = self.model.objects.get(pk=new_obj.pk)

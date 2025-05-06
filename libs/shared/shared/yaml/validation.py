@@ -1,6 +1,5 @@
 import binascii
 import logging
-from typing import Dict, List
 
 from shared.encryption.yaml_secret import yaml_secret_encryptor
 from shared.validation.cli_schema import schema as cli_schema
@@ -10,7 +9,7 @@ from shared.validation.validator import CodecovYamlValidator
 
 log = logging.getLogger(__name__)
 
-YAML_TOP_LEVEL_RESERVED_KEYS: List[str] = [
+YAML_TOP_LEVEL_RESERVED_KEYS: list[str] = [
     "to_string"  # Used to store the full YAML string preserving the original comments
 ]
 
@@ -43,7 +42,7 @@ def validate_yaml(inputted_yaml_dict, show_secrets_for=None):
     return do_actual_validation(inputted_yaml_dict, show_secrets_for)
 
 
-def remove_reserved_keys(inputted_yaml_dict: Dict[str, any]) -> None:
+def remove_reserved_keys(inputted_yaml_dict: dict[str, any]) -> None:
     """
     This step removes reserved keywords in the base level of the json.
     If any YAML is trying to be processed and validated those reserved keys will be ignored
@@ -87,7 +86,7 @@ def _calculate_error_location_and_message_from_error_dict(error_dict):
         if isinstance(current_value, list) and len(current_value) > 0:
             current_value = current_value[0]
         if isinstance(current_value, dict) and len(current_value) > 0:
-            first_key, first_value = next(iter((current_value.items())))
+            first_key, first_value = next(iter(current_value.items()))
             location_so_far.append(first_key)
             current_value = first_value
         if isinstance(current_value, str):
@@ -110,7 +109,7 @@ class CodecovUserYamlValidator(CodecovYamlValidator):
         return value
 
 
-class UserGivenSecret(object):
+class UserGivenSecret:
     class InvalidSecret(Exception):
         pass
 
@@ -138,7 +137,7 @@ class UserGivenSecret(object):
 
     @classmethod
     def encode(cls, value):
-        return "secret:%s" % cls.encryptor.encode(value).decode()
+        return f"secret:{cls.encryptor.encode(value).decode()}"
 
     @classmethod
     def decode(cls, value, expected_prefix):

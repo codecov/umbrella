@@ -3,8 +3,9 @@ import logging
 import os
 import time
 from collections import deque
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Any, Dict, List, Sequence
+from typing import Any
 
 import sqlalchemy.orm
 from asgiref.sync import async_to_sync
@@ -253,7 +254,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             "reason": "success",
         }
 
-    def cache_changes(self, pull: Pull, changes: List[Change]):
+    def cache_changes(self, pull: Pull, changes: list[Change]):
         """
         Caches the list of files with changes for a given comparison.
         This information will be used API-side to speed up responses.
@@ -335,7 +336,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         repository_service,
         enriched_pull: EnrichedPull,
         commits_on_pr: Sequence,
-        ancestors_tree_on_base: Dict[str, Any],
+        ancestors_tree_on_base: dict[str, Any],
         current_yaml,
         repository: Repository,
     ) -> dict:
@@ -500,7 +501,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         repository_service,
         pull_dict: dict[str, Any],
         commits_on_pr: Sequence[str],
-        base_ancestors_tree: Dict[str, Any],
+        base_ancestors_tree: dict[str, Any],
     ) -> bool:
         experiment_was_squash = None
         if SYNC_PULL_USE_MERGE_COMMIT_SHA.check_value(repoid):

@@ -1,4 +1,5 @@
-import mock
+from unittest import mock
+
 import pytest
 
 from shared.torngit.exceptions import TorngitObjectNotFoundError
@@ -16,7 +17,7 @@ codecov:
 commitid = "e1ade"
 
 
-class TestYamlSavingService(object):
+class TestYamlSavingService:
     @pytest.mark.asyncio
     async def test_determine_commit_yaml_location(self, mocker):
         mocked_result = [

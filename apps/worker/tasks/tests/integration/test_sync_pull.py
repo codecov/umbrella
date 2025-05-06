@@ -7,7 +7,7 @@ from tasks.sync_pull import PullSyncTask
 here = Path(__file__)
 
 
-class TestPullSyncTask(object):
+class TestPullSyncTask:
     def test_call_task(self, dbsession, codecov_vcr, mock_storage, mocker, mock_redis):
         mocker.patch.object(PullSyncTask, "app")
         task = PullSyncTask()

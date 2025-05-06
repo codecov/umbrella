@@ -1,5 +1,3 @@
-from typing import List, Union
-
 from ariadne import InterfaceType, ObjectType, UnionType
 
 from graphql_api.helpers.connection import (
@@ -24,37 +22,37 @@ def resolve_path_content_type(obj, *_):
 
 
 @path_content_bindable.field("name")
-def resolve_name(item: Union[File, Dir], info) -> str:
+def resolve_name(item: File | Dir, info) -> str:
     return item.name
 
 
 @path_content_bindable.field("path")
-def resolve_file_path(item: Union[File, Dir], info) -> str:
+def resolve_file_path(item: File | Dir, info) -> str:
     return item.full_path
 
 
 @path_content_bindable.field("hits")
-def resolve_hits(item: Union[File, Dir], info) -> int:
+def resolve_hits(item: File | Dir, info) -> int:
     return item.hits
 
 
 @path_content_bindable.field("misses")
-def resolve_misses(item: Union[File, Dir], info) -> int:
+def resolve_misses(item: File | Dir, info) -> int:
     return item.misses
 
 
 @path_content_bindable.field("partials")
-def resolve_partials(item: Union[File, Dir], info) -> int:
+def resolve_partials(item: File | Dir, info) -> int:
     return item.partials
 
 
 @path_content_bindable.field("lines")
-def resolve_lines(item: Union[File, Dir], info) -> int:
+def resolve_lines(item: File | Dir, info) -> int:
     return item.lines
 
 
 @path_content_bindable.field("percentCovered")
-def resolve_percent_covered(item: Union[File, Dir], info) -> float:
+def resolve_percent_covered(item: File | Dir, info) -> float:
     return item.coverage
 
 
@@ -71,7 +69,7 @@ def resolve_path_contents_result_type(res, *_):
         return "UnknownPath"
     elif isinstance(res, UnknownFlags):
         return "UnknownFlags"
-    if isinstance(res, type({"results": List[Union[File, Dir]]})):
+    if isinstance(res, type({"results": list[File | Dir]})):
         return "PathContents"
 
 
@@ -88,5 +86,5 @@ def resolve_deprecated_path_contents_result_type(res, *_):
         return "UnknownPath"
     elif isinstance(res, UnknownFlags):
         return "UnknownFlags"
-    elif isinstance(res, (Connection, ArrayConnection)):
+    elif isinstance(res, Connection | ArrayConnection):
         return "PathContentConnection"

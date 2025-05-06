@@ -29,7 +29,7 @@ from utils.services import get_long_service_name, get_short_service_name
 log = logging.getLogger(__name__)
 
 
-class StateMixin(object):
+class StateMixin:
     """
     Implement the bevavior described here: https://auth0.com/docs/protocols/state-parameters
 
@@ -165,7 +165,7 @@ class StateMixin(object):
             self.request.session.pop(self._session_key(), None)
 
 
-class LoginMixin(object):
+class LoginMixin:
     analytics_service = AnalyticsService()
 
     def modify_redirection_url_based_on_default_user_org(

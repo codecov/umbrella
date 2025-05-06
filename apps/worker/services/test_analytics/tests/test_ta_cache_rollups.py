@@ -32,7 +32,7 @@ def read_table(
 @pytest.mark.django_db(databases=["ta_timeseries"], transaction=True)
 def test_cache_test_rollups(storage, snapshot):
     TestrunSummary.objects.create(
-        timestamp_bin=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1),
+        timestamp_bin=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
         repo_id=1,
         name="name",
         classname="classname",
@@ -45,12 +45,12 @@ def test_cache_test_rollups(storage, snapshot):
         fail_count=1,
         skip_count=0,
         flaky_fail_count=0,
-        updated_at=dt.datetime.now(dt.timezone.utc),
+        updated_at=dt.datetime.now(dt.UTC),
         flags=["test-rollups"],
     )
 
     TestrunSummary.objects.create(
-        timestamp_bin=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1),
+        timestamp_bin=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
         repo_id=1,
         name="name2",
         classname="classname2",
@@ -63,12 +63,12 @@ def test_cache_test_rollups(storage, snapshot):
         fail_count=2,
         skip_count=0,
         flaky_fail_count=0,
-        updated_at=dt.datetime.now(dt.timezone.utc),
+        updated_at=dt.datetime.now(dt.UTC),
         flags=["test-rollups2"],
     )
 
     TestrunSummary.objects.create(
-        timestamp_bin=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=61),
+        timestamp_bin=dt.datetime.now(dt.UTC) - dt.timedelta(days=61),
         repo_id=1,
         name="name3",
         classname="classname3",
@@ -81,7 +81,7 @@ def test_cache_test_rollups(storage, snapshot):
         fail_count=2,
         skip_count=0,
         flaky_fail_count=0,
-        updated_at=dt.datetime.now(dt.timezone.utc),
+        updated_at=dt.datetime.now(dt.UTC),
         flags=["test-rollups3"],
     )
 
@@ -105,7 +105,7 @@ def test_cache_test_rollups(storage, snapshot):
 @pytest.mark.django_db(databases=["ta_timeseries"], transaction=True)
 def test_cache_test_rollups_use_timeseries_main(storage, snapshot):
     TestrunBranchSummary.objects.create(
-        timestamp_bin=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1),
+        timestamp_bin=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
         repo_id=1,
         branch="main",
         name="name",
@@ -119,12 +119,12 @@ def test_cache_test_rollups_use_timeseries_main(storage, snapshot):
         fail_count=1,
         skip_count=0,
         flaky_fail_count=0,
-        updated_at=dt.datetime.now(dt.timezone.utc),
+        updated_at=dt.datetime.now(dt.UTC),
         flags=["test-rollups"],
     )
 
     TestrunBranchSummary.objects.create(
-        timestamp_bin=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1),
+        timestamp_bin=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
         repo_id=1,
         branch="main",
         name="name2",
@@ -138,12 +138,12 @@ def test_cache_test_rollups_use_timeseries_main(storage, snapshot):
         fail_count=2,
         skip_count=0,
         flaky_fail_count=0,
-        updated_at=dt.datetime.now(dt.timezone.utc),
+        updated_at=dt.datetime.now(dt.UTC),
         flags=["test-rollups2"],
     )
 
     TestrunBranchSummary.objects.create(
-        timestamp_bin=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=61),
+        timestamp_bin=dt.datetime.now(dt.UTC) - dt.timedelta(days=61),
         repo_id=1,
         branch="main",
         name="name3",
@@ -157,12 +157,12 @@ def test_cache_test_rollups_use_timeseries_main(storage, snapshot):
         fail_count=2,
         skip_count=0,
         flaky_fail_count=0,
-        updated_at=dt.datetime.now(dt.timezone.utc),
+        updated_at=dt.datetime.now(dt.UTC),
         flags=["test-rollups3"],
     )
 
     TestrunBranchSummary.objects.create(
-        timestamp_bin=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1),
+        timestamp_bin=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
         repo_id=1,
         branch="feature",
         name="name4",
@@ -176,7 +176,7 @@ def test_cache_test_rollups_use_timeseries_main(storage, snapshot):
         fail_count=2,
         skip_count=0,
         flaky_fail_count=0,
-        updated_at=dt.datetime.now(dt.timezone.utc),
+        updated_at=dt.datetime.now(dt.UTC),
         flags=["test-rollups3"],
     )
 
@@ -200,7 +200,7 @@ def test_cache_test_rollups_use_timeseries_main(storage, snapshot):
 @pytest.mark.django_db(databases=["ta_timeseries"], transaction=True)
 def test_cache_test_rollups_use_timeseries_branch(storage, snapshot):
     Testrun.objects.create(
-        timestamp=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1),
+        timestamp=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
         test_id=calc_test_id("name", "classname", "testsuite"),
         name="name",
         classname="classname",
@@ -219,7 +219,7 @@ def test_cache_test_rollups_use_timeseries_branch(storage, snapshot):
     )
 
     Testrun.objects.create(
-        timestamp=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1),
+        timestamp=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
         test_id=calc_test_id("name2", "classname2", "testsuite2"),
         name="name2",
         classname="classname2",
@@ -238,7 +238,7 @@ def test_cache_test_rollups_use_timeseries_branch(storage, snapshot):
     )
 
     Testrun.objects.create(
-        timestamp=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1),
+        timestamp=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
         test_id=calc_test_id("name2", "classname2", "testsuite2"),
         name="name2",
         classname="classname2",
@@ -257,7 +257,7 @@ def test_cache_test_rollups_use_timeseries_branch(storage, snapshot):
     )
 
     Testrun.objects.create(
-        timestamp=dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=61),
+        timestamp=dt.datetime.now(dt.UTC) - dt.timedelta(days=61),
         test_id=calc_test_id("name3", "classname3", "testsuite3"),
         name="name3",
         classname="classname3",

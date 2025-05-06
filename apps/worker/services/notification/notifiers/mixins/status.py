@@ -61,7 +61,7 @@ HELPER_TEXT_MAP = {
 }
 
 
-class StatusPatchMixin(object):
+class StatusPatchMixin:
     context = "patch"
 
     def _get_threshold(self) -> Decimal:
@@ -154,10 +154,7 @@ class StatusPatchMixin(object):
 
         # coverage not affected
         if comparison.project_coverage_base.commit:
-            description = "Coverage not affected when comparing {0}...{1}".format(
-                comparison.project_coverage_base.commit.commitid[:7],
-                comparison.head.commit.commitid[:7],
-            )
+            description = f"Coverage not affected when comparing {comparison.project_coverage_base.commit.commitid[:7]}...{comparison.head.commit.commitid[:7]}"
         else:
             description = "Coverage not affected"
         return StatusResult(
@@ -167,7 +164,7 @@ class StatusPatchMixin(object):
         )
 
 
-class StatusChangesMixin(object):
+class StatusChangesMixin:
     context = "changes"
 
     def is_a_change_worth_noting(self, change) -> bool:
@@ -204,9 +201,7 @@ class StatusChangesMixin(object):
         if changes:
             lpc = len(changes)
             eng = "files have" if lpc > 1 else "file has"
-            description = (
-                "{0} {1} indirect coverage changes not visible in diff".format(lpc, eng)
-            )
+            description = f"{lpc} {eng} indirect coverage changes not visible in diff"
             state = (
                 StatusState.success.value
                 if self.notifier_yaml_settings.get("informational")
@@ -234,7 +229,7 @@ class StatusChangesMixin(object):
         )
 
 
-class StatusProjectMixin(object):
+class StatusProjectMixin:
     DEFAULT_REMOVED_CODE_BEHAVIOR = "adjust_base"
     context = "project"
     point_of_comparison = "head"

@@ -1,8 +1,9 @@
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Mapping, Optional, Tuple
+from typing import Any
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
@@ -387,7 +388,7 @@ WEBHOOK_EVENTS = {
 
 
 async def create_webhook_on_provider(
-    repository_service, token=None, webhook_secret: Optional[str] = None
+    repository_service, token=None, webhook_secret: str | None = None
 ):
     """
     Posts to the provider a webhook so we can receive updates from this
@@ -437,15 +438,15 @@ def get_repo_provider_service_by_id(db_session, repoid, commitid=None):
 
 
 @dataclass
-class EnrichedPull(object):
+class EnrichedPull:
     database_pull: Pull
-    provider_pull: Optional[Mapping[str, Any]]
+    provider_pull: Mapping[str, Any] | None
 
 
 @sentry_sdk.trace
 async def fetch_and_update_pull_request_information_from_commit(
     repository_service: TorngitBaseAdapter, commit, current_yaml
-) -> Optional[EnrichedPull]:
+) -> EnrichedPull | None:
     db_session = commit.get_db_session()
     pullid = commit.pullid
     if not commit.pullid:
@@ -474,7 +475,7 @@ async def fetch_and_update_pull_request_information_from_commit(
 
 async def _pick_best_base_comparedto_pair(
     repository_service, pull, current_yaml, pull_information
-) -> Tuple[str, Optional[str]]:
+) -> tuple[str, str | None]:
     db_session = pull.get_db_session()
     repoid = pull.repoid
     candidates_to_base = (

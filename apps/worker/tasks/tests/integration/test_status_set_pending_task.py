@@ -5,7 +5,7 @@ from tasks.status_set_pending import StatusSetPendingTask
 
 
 @pytest.mark.integration
-class TestStatusSetPendingTask(object):
+class TestStatusSetPendingTask:
     def test_set_pending(
         self, dbsession, mocker, mock_configuration, codecov_vcr, mock_redis
     ):

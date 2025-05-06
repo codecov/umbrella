@@ -3,7 +3,7 @@ from typing import Any
 from services.report.report_builder import ReportBuilderSession
 
 
-class BaseLanguageProcessor(object):
+class BaseLanguageProcessor:
     def __init__(self, *args, **kwargs) -> None:
         pass
 

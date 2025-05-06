@@ -1,7 +1,8 @@
 import dataclasses
 import logging
+from collections.abc import Iterable, Mapping
 from datetime import datetime
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -184,7 +185,7 @@ def repository_commits_query(
 
 
 def repository_datasets_query(
-    repository: Repository, backfilled: Optional[bool] = None
+    repository: Repository, backfilled: bool | None = None
 ) -> Iterable[Dataset]:
     db_session = repository.get_db_session()
 

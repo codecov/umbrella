@@ -6,7 +6,7 @@ from services.repository import (
 )
 
 
-class TestRepositoryServiceIntegration(object):
+class TestRepositoryServiceIntegration:
     @pytest.mark.asyncio
     async def test_get_repo_provider_service_github(self, dbsession, codecov_vcr):
         repo = RepositoryFactory.create(

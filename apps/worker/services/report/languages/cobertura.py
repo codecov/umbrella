@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Sequence
+from collections.abc import Sequence
 
 import sentry_sdk
 from lxml.etree import Element
@@ -106,7 +106,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                 else:
                     # [groovy] embedded conditions
                     conditions = [
-                        "%(number)s:%(type)s" % _.attrib
+                        "{number}:{type}".format(**_.attrib)
                         for _ in line.iter("condition")
                         if _.attrib.get("coverage") != "100%"
                     ]

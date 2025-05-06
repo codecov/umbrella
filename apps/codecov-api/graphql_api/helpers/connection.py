@@ -2,7 +2,7 @@ import enum
 from base64 import b64decode
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from asgiref.sync import sync_to_async
 from cursor_pagination import CursorPage, CursorPaginator, InvalidCursor
@@ -76,11 +76,11 @@ class ArrayPaginator:
 
     def __init__(
         self,
-        data: List[Any],
-        first: Optional[int] = None,
-        last: Optional[int] = None,
-        after: Optional[str] = None,
-        before: Optional[str] = None,
+        data: list[Any],
+        first: int | None = None,
+        last: int | None = None,
+        after: str | None = None,
+        before: str | None = None,
     ):
         self.data = data
         self.start_index = 0
@@ -122,7 +122,7 @@ class ArrayPaginator:
         return str(position)
 
     @property
-    def page(self) -> List[Any]:
+    def page(self) -> list[Any]:
         """Returns the sliced page of data."""
         return self.data[self.start_index : self.end_index]
 
@@ -146,7 +146,7 @@ class ArrayConnection:
         self.page = paginator.page
 
     @property
-    def edges(self) -> List[Dict[str, Any]]:
+    def edges(self) -> list[dict[str, Any]]:
         """Generate edges with cursor and node information"""
         return [
             {"cursor": self.paginator.cursor(pos), "node": node}
@@ -159,19 +159,19 @@ class ArrayConnection:
         return len(self.data)
 
     @property
-    def start_cursor(self) -> Optional[str]:
+    def start_cursor(self) -> str | None:
         """Cursor for the first item in the page"""
         return self.paginator.cursor(self.paginator.start_index) if self.page else None
 
     @property
-    def end_cursor(self) -> Optional[str]:
+    def end_cursor(self) -> str | None:
         """Cursor for the last item in the page"""
         return (
             self.paginator.cursor(self.paginator.end_index - 1) if self.page else None
         )
 
     @property
-    def page_info(self) -> Dict[str, Any]:
+    def page_info(self) -> dict[str, Any]:
         """Pagination information"""
         return {
             "has_next_page": self.paginator.has_next,

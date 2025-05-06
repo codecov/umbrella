@@ -34,7 +34,7 @@ from shared.django_apps.core.tests.factories import (
 )
 
 
-class TestRepositoryLegacyQueryTokenAuthentication(object):
+class TestRepositoryLegacyQueryTokenAuthentication:
     def test_authenticate_unauthenticated(self):
         request = APIRequestFactory().get("/endpoint")
         authentication = RepositoryLegacyQueryTokenAuthentication()
@@ -71,7 +71,7 @@ class TestRepositoryLegacyQueryTokenAuthentication(object):
         assert not auth.allows_repo(other_repo)
 
 
-class TestRepositoryLegacyTokenAuthentication(object):
+class TestRepositoryLegacyTokenAuthentication:
     def test_authenticate_credentials_empty(self, db):
         token = None
         authentication = RepositoryLegacyTokenAuthentication()
@@ -101,7 +101,7 @@ class TestRepositoryLegacyTokenAuthentication(object):
         assert auth.get_scopes() == ["upload"]
 
 
-class TestRepositoryTableTokenAuthentication(object):
+class TestRepositoryTableTokenAuthentication:
     def test_authenticate_credentials_empty(self, db):
         key = ""
         authentication = RepositoryTokenAuthentication()
@@ -163,7 +163,7 @@ class TestRepositoryTableTokenAuthentication(object):
         assert exc.value.args == ("Invalid token.",)
 
 
-class TestGlobalTokenAuthentication(object):
+class TestGlobalTokenAuthentication:
     def get_mocked_global_tokens(self):
         return {
             "githubuploadtoken": "github",
@@ -243,7 +243,7 @@ class TestGlobalTokenAuthentication(object):
 
 
 @patch("codecov_auth.authentication.repo_auth.get_repo_with_github_actions_oidc_token")
-class TestGitHubOIDCTokenAuthentication(object):
+class TestGitHubOIDCTokenAuthentication:
     def test_authenticate_credentials_empty_returns_none(
         self, mocked_get_repo_with_token, db
     ):
@@ -332,7 +332,7 @@ valid_params_to_test = [
 ]
 
 
-class TestOrgLevelTokenAuthentication(object):
+class TestOrgLevelTokenAuthentication:
     @override_settings(IS_ENTERPRISE=True)
     def test_enterprise_no_token_return_none(self, db, mocker):
         authentication = OrgLevelTokenAuthentication()
@@ -468,7 +468,7 @@ class TestOrgLevelTokenAuthentication(object):
         assert res is None
 
 
-class TestTokenlessAuth(object):
+class TestTokenlessAuth:
     def test_tokenless_bad_path(self):
         request = APIRequestFactory().post(
             "/endpoint",
@@ -554,7 +554,7 @@ class TestTokenlessAuth(object):
                 res = authentication.authenticate(request)
 
 
-class TestUploadTokenRequiredAuthenticationCheck(object):
+class TestUploadTokenRequiredAuthenticationCheck:
     def test_token_not_required_bad_path(self):
         request = APIRequestFactory().post(
             "/endpoint",
@@ -675,7 +675,7 @@ class TestUploadTokenRequiredAuthenticationCheck(object):
             assert res is None
 
 
-class TestUploadTokenRequiredGetFromBodyAuthenticationCheck(object):
+class TestUploadTokenRequiredGetFromBodyAuthenticationCheck:
     def test_token_not_required_invalid_data(self):
         request = APIRequestFactory().post(
             "/endpoint",

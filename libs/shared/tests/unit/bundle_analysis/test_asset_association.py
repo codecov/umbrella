@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Dict
 
 from shared.bundle_analysis import BundleAnalysisReport
 from shared.bundle_analysis.models import Asset, AssetType
@@ -23,7 +22,7 @@ bundle_stats_curr_b_path = (
 
 def _get_asset_mapping(
     bundle_analysis_report: BundleAnalysisReport, bundle_name: Asset
-) -> Dict[str, str]:
+) -> dict[str, str]:
     bundle_report = bundle_analysis_report.bundle_report(bundle_name)
     asset_report = list(bundle_report.asset_reports())
     return {asset.hashed_name: asset for asset in asset_report}

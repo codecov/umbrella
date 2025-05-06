@@ -1,7 +1,8 @@
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Generic, Sequence, TypedDict, TypeVar
+from typing import Generic, TypedDict, TypeVar
 
 from sqlalchemy import desc, func
 from sqlalchemy.orm import joinedload

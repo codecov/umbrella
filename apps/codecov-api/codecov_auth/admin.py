@@ -1,6 +1,6 @@
 import logging
+from collections.abc import Sequence
 from datetime import timedelta
-from typing import Optional, Sequence
 
 import django.forms as forms
 from django.conf import settings
@@ -264,7 +264,7 @@ class OrgUploadTokenInline(admin.TabularInline):
     def has_delete_permission(self, request, obj=None):
         return request.user.is_staff
 
-    def has_add_permission(self, request: HttpRequest, obj: Optional[Owner]) -> bool:
+    def has_add_permission(self, request: HttpRequest, obj: Owner | None) -> bool:
         has_token = OrganizationLevelToken.objects.filter(owner=obj).count() > 0
         return (not has_token) and request.user.is_staff
 

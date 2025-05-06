@@ -1,8 +1,8 @@
 import inspect
 from datetime import datetime
+from unittest import mock
 from unittest.mock import MagicMock, patch
 
-import mock
 import pytest
 from freezegun import freeze_time
 
@@ -1186,7 +1186,7 @@ async def test_get_repo_gh_no_integration(dbsession, mocker):
     }
 
 
-class TestGetRepoProviderServiceForSpecificCommit(object):
+class TestGetRepoProviderServiceForSpecificCommit:
     @pytest.fixture
     def mock_get_repo_provider_service(self, mocker):
         mock_get_repo_provider_service = mocker.patch(

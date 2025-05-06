@@ -1,7 +1,8 @@
 import dataclasses
 import logging
+from collections.abc import Sequence
 from enum import Enum
-from typing import Any, List, Sequence
+from typing import Any
 
 from helpers.labels import SpecialLabelsEnum
 from services.path_fixer import PathFixer
@@ -27,7 +28,7 @@ class CoverageType(Enum):
         return self.report_value
 
 
-class ReportBuilderSession(object):
+class ReportBuilderSession:
     def __init__(
         self,
         report_builder: "ReportBuilder",
@@ -122,7 +123,7 @@ class ReportBuilderSession(object):
 
     def _possibly_convert_datapoints(
         self, datapoint: CoverageDatapoint
-    ) -> List[CoverageDatapoint]:
+    ) -> list[CoverageDatapoint]:
         """Possibly convert datapoints
             The datapoint that might need to be converted
 
@@ -212,7 +213,7 @@ class ReportBuilderSession(object):
         )
 
 
-class ReportBuilder(object):
+class ReportBuilder:
     def __init__(
         self,
         current_yaml: UserYaml,
@@ -241,10 +242,8 @@ class ReportBuilder(object):
         old_flag_with_carryforward_labels = False
         if old_flag_style:
             old_flag_with_carryforward_labels = any(
-                (
-                    flag_definition.get("carryforward_mode") == "labels"
-                    for flag_definition in old_flag_style.values()
-                )
+                flag_definition.get("carryforward_mode") == "labels"
+                for flag_definition in old_flag_style.values()
             )
         # Check if some of the flags or default rules use labels
         flag_management_default_rule_carryforward_labels = False
@@ -255,10 +254,8 @@ class ReportBuilder(object):
                 == "labels"
             )
             flag_management_flag_with_carryforward_labels = any(
-                (
-                    flag_definition.get("carryforward_mode") == "labels"
-                    for flag_definition in flag_management.get("individual_flags", [])
-                )
+                flag_definition.get("carryforward_mode") == "labels"
+                for flag_definition in flag_management.get("individual_flags", [])
             )
         return (
             old_flag_with_carryforward_labels

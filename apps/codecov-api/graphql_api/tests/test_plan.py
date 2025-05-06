@@ -44,9 +44,9 @@ class TestPlanType(GraphQLTestHelper, TestCase):
             pretrial_users_count=234,
             plan_user_count=123,
         )
-        query = """{
-            owner(username: "%s") {
-                plan {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
+                plan {{
                     trialStatus
                     trialEndDate
                     trialStartDate
@@ -66,10 +66,10 @@ class TestPlanType(GraphQLTestHelper, TestCase):
                     isSentryPlan
                     isTeamPlan
                     isTrialPlan
-                }
-            }
-        }
-        """ % (current_org.username)
+                }}
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=current_org)
         assert data["owner"]["plan"] == {
             "trialStatus": "ONGOING",
@@ -104,9 +104,9 @@ class TestPlanType(GraphQLTestHelper, TestCase):
             plan_seat_count=25,
         )
         self.current_org.save()
-        query = """{
-                owner(username: "%s") {
-                    plan {
+        query = f"""{{
+                owner(username: "{self.current_org.username}") {{
+                    plan {{
                         marketingName
                         value
                         tierName
@@ -119,10 +119,10 @@ class TestPlanType(GraphQLTestHelper, TestCase):
                         isSentryPlan
                         isTeamPlan
                         isTrialPlan
-                    }
-                }
-            }
-            """ % (self.current_org.username)
+                    }}
+                }}
+            }}
+            """
         data = self.gql_request(query, owner=self.current_org)
         assert data["owner"]["plan"] == {
             "marketingName": "Pro",
@@ -148,14 +148,14 @@ class TestPlanType(GraphQLTestHelper, TestCase):
             plan_user_count=2,
             plan_activated_users=[],
         )
-        query = """{
-            owner(username: "%s") {
-                plan {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
+                plan {{
                     hasSeatsLeft
-                }
-            }
-        }
-        """ % (current_org.username)
+                }}
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=current_org)
         assert data["owner"]["plan"] == {"hasSeatsLeft": True}
 
@@ -203,15 +203,15 @@ class TestPlanType(GraphQLTestHelper, TestCase):
             other_org_in_enterprise.plan_activated_users.append(new_owner.ownerid)
         other_org_in_enterprise.save()
 
-        query = """{
-                    owner(username: "%s") {
-                        plan {
+        query = f"""{{
+                    owner(username: "{enterprise_org.username}") {{
+                        plan {{
                             planUserCount
                             hasSeatsLeft
-                        }
-                    }
-                }
-                """ % (enterprise_org.username)
+                        }}
+                    }}
+                }}
+                """
         data = self.gql_request(query, owner=enterprise_org)
         assert data["owner"]["plan"]["planUserCount"] == 5
         assert data["owner"]["plan"]["hasSeatsLeft"] == False
@@ -233,15 +233,15 @@ class TestPlanType(GraphQLTestHelper, TestCase):
             plan_user_count=1,
             plan_activated_users=[],
         )
-        query = """{
-                        owner(username: "%s") {
-                            plan {
+        query = f"""{{
+                        owner(username: "{enterprise_org.username}") {{
+                            plan {{
                                 planUserCount
                                 hasSeatsLeft
-                            }
-                        }
-                    }
-                    """ % (enterprise_org.username)
+                            }}
+                        }}
+                    }}
+                    """
         data = self.gql_request(query, owner=enterprise_org)
         assert data["owner"]["plan"]["planUserCount"] == 0
         assert data["owner"]["plan"]["hasSeatsLeft"] == False
@@ -257,13 +257,13 @@ class TestPlanType(GraphQLTestHelper, TestCase):
             trial_end_date=later,
             trial_status=None,
         )
-        query = """{
-            owner(username: "%s") {
-                plan {
+        query = f"""{{
+            owner(username: "{current_org.username}") {{
+                plan {{
                     trialStatus
-                }
-            }
-        }
-        """ % (current_org.username)
+                }}
+            }}
+        }}
+        """
         data = self.gql_request(query, owner=current_org)
         assert data["owner"]["plan"]["trialStatus"] == "NOT_STARTED"

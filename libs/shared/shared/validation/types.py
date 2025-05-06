@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Literal, NamedTuple
+from typing import Literal, NamedTuple
 
 
 class BundleThreshold(NamedTuple):
@@ -40,4 +40,4 @@ CoverageCommentRequiredChangesORGroup = (
 # For the AND group to be satisfied ALL of the individual OR groups need to be satisfied
 # Example:
 #   [0b001, 0b100] - There has to be any change in coverage AND the patch can't be 100% covered
-CoverageCommentRequiredChangesANDGroup = List[CoverageCommentRequiredChangesORGroup]
+CoverageCommentRequiredChangesANDGroup = list[CoverageCommentRequiredChangesORGroup]

@@ -33,7 +33,7 @@ from webhook_handlers.constants import (
 )
 
 
-class MockedSubscription(object):
+class MockedSubscription:
     def __init__(self, status, plan_name, quantity):
         self.status = status
         self.plan = {

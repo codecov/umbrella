@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from database.enums import CommitErrorTypes
 from database.models import Commit

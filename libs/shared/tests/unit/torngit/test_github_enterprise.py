@@ -6,7 +6,7 @@ from prometheus_client import REGISTRY
 from shared.torngit.github_enterprise import GithubEnterprise
 
 
-class TestGithubEnterprise(object):
+class TestGithubEnterprise:
     def test_urls_no_api_url_set(self, mock_configuration):
         mock_configuration._params["github_enterprise"] = {
             "url": "https://github-enterprise.codecov.dev"

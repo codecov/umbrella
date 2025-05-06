@@ -94,7 +94,7 @@ class TestPathFixer(BaseTestCase):
         assert pf("simple/notapath/to/something.py") is None
 
 
-class TestBasePathAwarePathFixer(object):
+class TestBasePathAwarePathFixer:
     def test_basepath_uses_main_result_if_not_none_when_disagreement(self):
         commit_yaml = {
             "fixes": [r"(?s:home/thiago)::root/"],

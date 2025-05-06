@@ -27,7 +27,7 @@ def sample_report() -> Report:
     return report
 
 
-class MockContext(object):
+class MockContext:
     def __init__(self, context):
         self.context = context
 

@@ -6,7 +6,7 @@ import re
 from base64 import b64decode
 from copy import deepcopy
 from datetime import datetime
-from typing import Any, List, Tuple
+from typing import Any
 
 from yaml import safe_load as yaml_load
 
@@ -100,7 +100,7 @@ def update(d, u):
     return d
 
 
-class ConfigHelper(object):
+class ConfigHelper:
     def __init__(self):
         self._params = None
         self.loaded_files = {}
@@ -137,7 +137,7 @@ class ConfigHelper(object):
 
     def _parse_path_and_value_from_envvar(
         self, env_var_name: str
-    ) -> Tuple[List[str], Any]:
+    ) -> tuple[list[str], Any]:
         """
         Given an envvar, calculate both the data that needs to be put in the config and
             the location in the config where it needs to be set.
@@ -190,7 +190,7 @@ class ConfigHelper(object):
 
     def load_yaml_file(self):
         yaml_path = os.getenv("CODECOV_YML", "/config/codecov.yml")
-        with open(yaml_path, "r") as c:
+        with open(yaml_path) as c:
             return c.read()
 
     def yaml_content(self):
@@ -210,7 +210,7 @@ class ConfigHelper(object):
                     assert location.get("source_type") == "filepath"
                     location = location.get("value")
             try:
-                with open(location, "r") as _file:
+                with open(location) as _file:
                     self.loaded_files[args] = _file.read()
             except FileNotFoundError:
                 log.exception(

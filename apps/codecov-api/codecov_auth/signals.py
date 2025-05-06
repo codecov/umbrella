@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Type, cast
+from typing import Any, cast
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -9,8 +9,8 @@ from utils.shelter import ShelterPubsub
 
 @receiver(post_save, sender=Owner)
 def create_owner_profile_when_owner_is_created(
-    sender: Type[Owner], instance: Owner, created: bool, **kwargs: Dict[str, Any]
-) -> Optional[OwnerProfile]:
+    sender: type[Owner], instance: Owner, created: bool, **kwargs: dict[str, Any]
+) -> OwnerProfile | None:
     if created:
         return OwnerProfile.objects.create(owner_id=instance.ownerid)
 
@@ -19,9 +19,9 @@ def create_owner_profile_when_owner_is_created(
     post_save, sender=OrganizationLevelToken, dispatch_uid="shelter_sync_org_token"
 )
 def update_org_token(
-    sender: Type[OrganizationLevelToken],
+    sender: type[OrganizationLevelToken],
     instance: OrganizationLevelToken,
-    **kwargs: Dict[str, Any],
+    **kwargs: dict[str, Any],
 ) -> None:
     data = {
         "type": "org_token",
@@ -33,7 +33,7 @@ def update_org_token(
 
 @receiver(post_save, sender=Owner, dispatch_uid="shelter_sync_owner")
 def update_owner(
-    sender: Type[Owner], instance: Owner, **kwargs: Dict[str, Any]
+    sender: type[Owner], instance: Owner, **kwargs: dict[str, Any]
 ) -> None:
     """
     Shelter tracks a limited set of Owner fields - only update if those fields have changed.

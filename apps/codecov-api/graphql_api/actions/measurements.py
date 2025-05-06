@@ -1,5 +1,6 @@
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
 from django.db.models import Max, QuerySet
 
@@ -14,9 +15,9 @@ def measurements_by_ids(
     measurable_ids: Iterable[str],
     interval: Interval,
     before: datetime,
-    after: Optional[datetime] = None,
-    branch: Optional[str] = None,
-) -> Dict[Any, List[Dict[str, Any]]]:
+    after: datetime | None = None,
+    branch: str | None = None,
+) -> dict[Any, list[dict[str, Any]]]:
     queryset = MeasurementSummary.agg_by(interval).filter(
         name=measurable_name,
         owner_id=repository.author_id,
@@ -38,7 +39,7 @@ def measurements_by_ids(
     )
 
     # group by measurable_id
-    measurements: Dict[Any, List[Dict[str, Any]]] = {}
+    measurements: dict[Any, list[dict[str, Any]]] = {}
     for measurement in queryset:
         measurable_id = measurement["measurable_id"]
         if measurable_id not in measurements:
@@ -54,7 +55,7 @@ def measurements_last_uploaded_before_start_date(
     measurable_name: str,
     measurable_id: int,
     start_date: datetime,
-    branch: Optional[str] = None,
+    branch: str | None = None,
 ) -> QuerySet:
     queryset = Measurement.objects.filter(
         owner_id=owner_id,
@@ -77,7 +78,7 @@ def measurements_last_uploaded_by_ids(
     repo_id: int,
     measurable_name: str,
     measurable_ids: str,
-    branch: Optional[str] = None,
+    branch: str | None = None,
 ) -> QuerySet:
     queryset = Measurement.objects.filter(
         owner_id=owner_id,

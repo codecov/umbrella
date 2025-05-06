@@ -2,7 +2,6 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import List
 from urllib.parse import parse_qs, quote_plus, urlencode, urlparse, urlunparse
 
 from database.models import Commit, Pull, Repository
@@ -217,7 +216,7 @@ class QueryParams:
     value: str
 
 
-def append_query_params_to_url(url: str, params: List[QueryParams]) -> str:
+def append_query_params_to_url(url: str, params: list[QueryParams]) -> str:
     parsed_url = urlparse(url)
     query_dict = parse_qs(parsed_url.query)
     # Add tracking parameters

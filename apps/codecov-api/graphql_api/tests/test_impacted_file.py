@@ -1,6 +1,6 @@
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 from unittest.mock import PropertyMock, patch
 
 from django.test import TestCase
@@ -215,7 +215,7 @@ class MockSegment:
     remove_unintended_changes: Callable[[], None] = field(default=lambda: None)
 
 
-class MockFileComparison(object):
+class MockFileComparison:
     def __init__(self):
         self.segments = [
             MockSegment(has_unintended_changes=True, has_diff_changes=False),
@@ -566,7 +566,7 @@ class TestImpactedFile(GraphQLTestHelper, TestCase):
                             "impactedFile": {
                                 "headName": "fileB",
                                 "baseName": "fileB",
-                                "hashedPath": hashlib.md5("fileB".encode()).hexdigest(),
+                                "hashedPath": hashlib.md5(b"fileB").hexdigest(),
                                 "baseCoverage": {"percentCovered": 41.666666666666664},
                                 "headCoverage": {"percentCovered": 85.71428571428571},
                                 "patchCoverage": {"percentCovered": 85.71428571428571},
@@ -654,7 +654,7 @@ class TestImpactedFile(GraphQLTestHelper, TestCase):
                             "impactedFile": {
                                 "headName": "fileA",
                                 "baseName": "fileA",
-                                "hashedPath": hashlib.md5("fileA".encode()).hexdigest(),
+                                "hashedPath": hashlib.md5(b"fileA").hexdigest(),
                                 "baseCoverage": {"percentCovered": 41.666666666666664},
                                 "headCoverage": {"percentCovered": 85.71428571428571},
                                 "patchCoverage": {"percentCovered": 50.0},
@@ -694,7 +694,7 @@ class TestImpactedFile(GraphQLTestHelper, TestCase):
                             "impactedFile": {
                                 "headName": "fileA",
                                 "baseName": "fileA",
-                                "hashedPath": hashlib.md5("fileA".encode()).hexdigest(),
+                                "hashedPath": hashlib.md5(b"fileA").hexdigest(),
                                 "baseCoverage": {"percentCovered": 41.666666666666664},
                                 "headCoverage": {"percentCovered": 85.71428571428571},
                                 "patchCoverage": {"percentCovered": 50.0},

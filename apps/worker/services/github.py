@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from redis import RedisError
 
@@ -15,8 +14,8 @@ log = logging.getLogger(__name__)
 def get_github_integration_token(
     service: str,
     installation_id: int = None,
-    app_id: Optional[str] = None,
-    pem_path: Optional[str] = None,
+    app_id: str | None = None,
+    pem_path: str | None = None,
 ):
     try:
         return _get_github_integration_token(

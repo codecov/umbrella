@@ -1,5 +1,4 @@
 import enum
-from typing import List, Optional
 
 import services.components as components
 from codecov.commands.base import BaseInteractor
@@ -19,7 +18,7 @@ class ImpactedFileParameter(enum.Enum):
 class FetchImpactedFiles(BaseInteractor):
     def _apply_filters(
         self,
-        impacted_files: Optional[List[ImpactedFile]],
+        impacted_files: list[ImpactedFile] | None,
         comparison: Comparison,
         filters,
     ):

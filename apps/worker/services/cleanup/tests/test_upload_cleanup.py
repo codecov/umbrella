@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from freezegun import freeze_time
@@ -25,8 +25,8 @@ def test_regular_upload_cleanup(mock_storage):
 
     for i, timestamp in enumerate(
         [
-            datetime(2024, 8, 1, tzinfo=timezone.utc),
-            datetime(2025, 1, 1, tzinfo=timezone.utc),
+            datetime(2024, 8, 1, tzinfo=UTC),
+            datetime(2025, 1, 1, tzinfo=UTC),
         ]
     ):
         commit = CommitFactory(repository=repo)

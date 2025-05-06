@@ -26,7 +26,7 @@ def valid_handler(mock_configuration):
     )
 
 
-class TestBitbucketServer(object):
+class TestBitbucketServer:
     def test_service_url(self, mock_configuration):
         mock_configuration._params["bitbucket_server"] = {
             "url": "https://bitbucketserver.codecov.dev"

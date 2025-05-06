@@ -1,9 +1,9 @@
 import os
 
 
-class BaseTestCase(object):
+class BaseTestCase:
     def readfile(self, filename, if_empty_write=None):
-        with open(os.path.join(os.getcwd(), filename), "r") as r:
+        with open(os.path.join(os.getcwd(), filename)) as r:
             contents = r.read()
 
         # codecov: assert not covered start [FUTURE new concept]

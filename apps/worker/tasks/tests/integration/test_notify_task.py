@@ -1,8 +1,7 @@
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 
 import pytest
-from mock import AsyncMock, PropertyMock
 
 from database.models import Pull
 from database.models.core import CompareCommit
@@ -28,7 +27,7 @@ def is_not_first_pull(mocker):
 
 
 @pytest.mark.integration
-class TestNotifyTask(object):
+class TestNotifyTask:
     @pytest.fixture(autouse=True)
     def setup(self):
         mock_all_plans_and_tiers()

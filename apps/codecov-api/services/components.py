@@ -1,5 +1,6 @@
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any
 
 from django.utils.functional import cached_property
 
@@ -15,7 +16,7 @@ from timeseries.helpers import fill_sparse_measurements
 from timeseries.models import Interval
 
 
-def commit_components(commit: Commit, owner: Owner | None) -> List[Component]:
+def commit_components(commit: Commit, owner: Owner | None) -> list[Component]:
     """
     Get the list of components for a commit.
     A request is made to the provider on behalf of the given `owner`
@@ -26,7 +27,7 @@ def commit_components(commit: Commit, owner: Owner | None) -> List[Component]:
 
 
 def component_filtered_report(
-    report: Report, components: List[Component]
+    report: Report, components: list[Component]
 ) -> FilteredReport:
     """
     Filter a report such that the totals, etc. are only pertaining to the given component.
@@ -41,8 +42,8 @@ def component_filtered_report(
 
 
 def filter_components_by_name_or_id(
-    components: List[Component], terms: List[str]
-) -> List[Component]:
+    components: list[Component], terms: list[str]
+) -> list[Component]:
     """
     Given a list of Components and a list of strings (terms),
     return a new list of Components only including Components with names in terms (case insensitive)
@@ -86,13 +87,13 @@ class ComponentComparison:
 class ComponentMeasurements:
     def __init__(
         self,
-        raw_measurements: List[dict],
+        raw_measurements: list[dict],
         component_id: str,
         interval: Interval,
         after: datetime,
         before: datetime,
         last_measurement: datetime,
-        components_mapping: Dict[str, str],
+        components_mapping: dict[str, str],
     ):
         self.raw_measurements = raw_measurements
         self.component_id = component_id
@@ -113,17 +114,17 @@ class ComponentMeasurements:
         return self.component_id
 
     @cached_property
-    def percent_covered(self) -> Optional[float]:
+    def percent_covered(self) -> float | None:
         if len(self.raw_measurements) > 0:
             return self.raw_measurements[-1]["avg"]
 
     @cached_property
-    def percent_change(self) -> Optional[float]:
+    def percent_change(self) -> float | None:
         if len(self.raw_measurements) > 1:
             return self.raw_measurements[-1]["avg"] - self.raw_measurements[0]["avg"]
 
     @cached_property
-    def measurements(self) -> Iterable[Dict[str, Any]]:
+    def measurements(self) -> Iterable[dict[str, Any]]:
         if not self.raw_measurements:
             return []
         return fill_sparse_measurements(

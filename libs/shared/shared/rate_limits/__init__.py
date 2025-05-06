@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from redis import Redis, RedisError
 
@@ -27,7 +26,7 @@ def default_bot_key_name() -> str:
 
 def determine_entity_redis_key(
     owner: Owner | None, repository: Repository | None
-) -> Optional[str]:
+) -> str | None:
     """
     This function will determine the entity that uses a token to
     communicate with third party services, currently Github.

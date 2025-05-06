@@ -11,7 +11,7 @@ from shared.reports.resources import Report
 from shared.reports.types import ReportLine, ReportTotals
 
 
-class TestDiffTotals(object):
+class TestDiffTotals:
     @pytest.mark.parametrize(
         "base, head, absolute, res",
         [
@@ -91,7 +91,7 @@ def test_get_segment_offsets(segments, result):
     )
 
 
-class TestChanges(object):
+class TestChanges:
     def test_get_changes_eof_case(self):
         json_diff = {
             "files": {

@@ -119,7 +119,7 @@ def _encode_chunk(chunk) -> str:
                 + "\n"
                 + "\n".join(_dumps_not_none(line) for line in chunk._lines)
             )
-    elif isinstance(chunk, (list, dict)):
+    elif isinstance(chunk, list | dict):
         return orjson.dumps(chunk, default=chunk_default, option=orjson_option).decode()
     else:
         return chunk

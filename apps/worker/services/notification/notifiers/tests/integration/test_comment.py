@@ -335,7 +335,7 @@ def sample_comparison_for_limited_upload(
 
 
 @pytest.mark.usefixtures("is_not_first_pull")
-class TestCommentNotifierIntegration(object):
+class TestCommentNotifierIntegration:
     @pytest.fixture(autouse=True)
     def setup(self):
         mock_all_plans_and_tiers()

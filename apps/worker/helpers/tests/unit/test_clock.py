@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from freezegun import freeze_time
@@ -13,7 +13,7 @@ from helpers.clock import (
 def test_get_utc_now():
     res = get_utc_now()
     assert isinstance(res, datetime)
-    assert res.tzinfo == timezone.utc
+    assert res.tzinfo == UTC
 
 
 def test_get_utc_now_as_iso_format():

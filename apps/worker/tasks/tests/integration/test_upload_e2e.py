@@ -1,7 +1,7 @@
 import json
 import random
+from collections.abc import Iterable
 from functools import partial
-from typing import Iterable
 from uuid import uuid4
 
 import pytest

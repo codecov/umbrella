@@ -1,7 +1,7 @@
 from graphs.helpers.graph_utils import _tree_height
 
 
-class TestGraphsUtils(object):
+class TestGraphsUtils:
     def test_tree_height(self):
         tree = [{"name": "name_0"}]
 

@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 from shared.reports.resources import Report
 from shared.utils.match import Matcher

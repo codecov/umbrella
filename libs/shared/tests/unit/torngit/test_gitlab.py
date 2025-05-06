@@ -30,7 +30,7 @@ def valid_handler():
     )
 
 
-class TestUnitGitlab(object):
+class TestUnitGitlab:
     def test_redirect_uri_default(self):
         gl = Gitlab()
         assert gl.redirect_uri == "https://codecov.io/login/gitlab"

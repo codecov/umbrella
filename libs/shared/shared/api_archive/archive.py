@@ -36,7 +36,7 @@ class MinioEndpoints(Enum):
         return self.value.format(**kwaargs)
 
 
-class ArchiveService(object):
+class ArchiveService:
     """
     Service class for performing archive operations.
     Meant to work against the underlying `StorageService`.

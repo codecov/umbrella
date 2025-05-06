@@ -4,7 +4,7 @@ from database.tests.factories import OwnerFactory
 from services.activation import activate_user, get_installation_plan_activated_users
 
 
-class TestActivationServiceTestCase(object):
+class TestActivationServiceTestCase:
     def test_activate_user_no_seats(
         self, request, dbsession, mocker, with_sql_functions
     ):

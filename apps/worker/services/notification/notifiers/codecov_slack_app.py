@@ -1,7 +1,6 @@
 import json
 import os
 from decimal import Decimal
-from typing import Optional
 
 import requests
 
@@ -106,7 +105,7 @@ class CodecovSlackAppNotifier(AbstractBaseNotifier):
     def notify(
         self,
         comparison: ComparisonProxy,
-        status_or_checks_helper_text: Optional[dict[str, str]] = None,
+        status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> NotificationResult:
         request_url = f"{CODECOV_SLACK_APP_URL}/notify"
 

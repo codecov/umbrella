@@ -1,5 +1,3 @@
-from typing import Optional
-
 from asgiref.sync import sync_to_async
 
 from codecov.commands.base import BaseInteractor
@@ -11,8 +9,8 @@ from services.activation import try_auto_activate
 class UpdateDefaultOrganizationInteractor(BaseInteractor):
     def validate(
         self,
-        default_org: Optional[Owner],
-    ) -> Optional[Owner]:
+        default_org: Owner | None,
+    ) -> Owner | None:
         if not self.current_user.is_authenticated:
             raise Unauthenticated()
 
@@ -27,7 +25,7 @@ class UpdateDefaultOrganizationInteractor(BaseInteractor):
                 "Organization does not belong in current user's organization list"
             )
 
-    def update_default_organization(self, default_org: Optional[Owner]):
+    def update_default_organization(self, default_org: Owner | None):
         owner_profile, _ = OwnerProfile.objects.get_or_create(
             owner_id=self.current_owner.ownerid
         )

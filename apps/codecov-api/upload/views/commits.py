@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any
 
 from django.db.models import QuerySet
 from django.http import HttpRequest
@@ -51,7 +52,7 @@ class CommitViews(ListCreateAPIView, GetterMixin):
         TokenlessAuthentication,
     ]
 
-    def get_exception_handler(self) -> Callable[[Exception, Dict[str, Any]], Response]:
+    def get_exception_handler(self) -> Callable[[Exception, dict[str, Any]], Response]:
         return repo_auth_custom_exception_handler
 
     def get_queryset(self) -> QuerySet:

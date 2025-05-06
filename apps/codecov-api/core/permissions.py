@@ -1,7 +1,7 @@
 from rest_framework.permissions import SAFE_METHODS
 
 
-class IsRepoOwner(object):
+class IsRepoOwner:
     def is_user_owner_of_repo(self, user, repository):
         pass
 

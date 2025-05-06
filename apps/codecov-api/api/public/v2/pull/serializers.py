@@ -1,5 +1,3 @@
-from typing import Dict, Optional
-
 from rest_framework import serializers
 
 from api.public.v2.owner.serializers import OwnerSerializer
@@ -41,7 +39,7 @@ class PullSerializer(serializers.ModelSerializer):
         )
         fields = read_only_fields
 
-    def get_patch(self, obj: Pull) -> Optional[Dict[str, float]]:
+    def get_patch(self, obj: Pull) -> dict[str, float] | None:
         commit_comparison = CommitComparisonService.get_commit_comparison_for_pull(obj)
         if not commit_comparison or not commit_comparison.is_processed:
             return None

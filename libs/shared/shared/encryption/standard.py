@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from shared.encryption.token import decode_token
 
 
-class StandardEncryptor(object):
+class StandardEncryptor:
     def __init__(self, *keys, iv=None):
         self.backend = default_backend()
         self.key = self.generate_key(*keys)

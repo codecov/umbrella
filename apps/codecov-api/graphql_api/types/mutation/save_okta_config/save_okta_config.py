@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 from ariadne import UnionType
 from graphql import GraphQLResolveInfo
@@ -13,7 +13,7 @@ from graphql_api.helpers.mutation import (
 @wrap_error_handling_mutation
 @require_authenticated
 async def resolve_save_okta_config(
-    _: Any, info: GraphQLResolveInfo, input: Dict[str, Any]
+    _: Any, info: GraphQLResolveInfo, input: dict[str, Any]
 ) -> None:
     command = info.context["executor"].get_command("owner")
     return await command.save_okta_config(input)

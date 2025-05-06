@@ -1,9 +1,10 @@
 import enum
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Optional
 
 import sentry_sdk
 from asgiref.sync import sync_to_async
@@ -73,14 +74,14 @@ class BundleAnalysisMeasurementsAssetType(enum.Enum):
     ASSET_SIZE = MeasurementName.BUNDLE_ANALYSIS_ASSET_SIZE
 
 
-class BundleAnalysisMeasurementData(object):
+class BundleAnalysisMeasurementData:
     def __init__(
         self,
-        raw_measurements: List[dict],
-        asset_type: Union[BundleAnalysisMeasurementsAssetType, str],
-        asset_name: Optional[str],
+        raw_measurements: list[dict],
+        asset_type: BundleAnalysisMeasurementsAssetType | str,
+        asset_name: str | None,
         interval: Interval,
-        after: Optional[datetime],
+        after: datetime | None,
         before: datetime,
     ):
         self.raw_measurements = raw_measurements
@@ -97,7 +98,7 @@ class BundleAnalysisMeasurementData(object):
         return self.measurement_type.name
 
     @cached_property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         return self.measurement_name
 
     @cached_property
@@ -113,7 +114,7 @@ class BundleAnalysisMeasurementData(object):
             )
 
     @cached_property
-    def measurements(self) -> Iterable[Dict[str, Any]]:
+    def measurements(self) -> Iterable[dict[str, Any]]:
         if not self.raw_measurements:
             return []
         return fill_sparse_measurements(
@@ -155,7 +156,7 @@ class BundleSize:
 
 @dataclass
 class BundleData:
-    def __init__(self, size_in_bytes: int, gzip_size_in_bytes: Optional[int] = None):
+    def __init__(self, size_in_bytes: int, gzip_size_in_bytes: int | None = None):
         self.size_in_bytes = size_in_bytes
         self.size_in_bits = size_in_bytes * 8
         self.gzip_size_in_bytes = gzip_size_in_bytes
@@ -181,7 +182,7 @@ class BundleData:
 
 
 @dataclass
-class ModuleReport(object):
+class ModuleReport:
     def __init__(self, module: SharedModuleReport):
         self.module = module
 
@@ -199,7 +200,7 @@ class ModuleReport(object):
 
 
 @dataclass
-class AssetReport(object):
+class AssetReport:
     def __init__(self, asset: SharedAssetReport):
         self.asset = asset
         self.all_modules = None
@@ -229,21 +230,21 @@ class AssetReport(object):
         return self.asset.gzip_size
 
     @cached_property
-    def modules(self) -> List[ModuleReport]:
+    def modules(self) -> list[ModuleReport]:
         return [ModuleReport(module) for module in self.asset.modules()]
 
     @cached_property
-    def module_extensions(self) -> List[str]:
+    def module_extensions(self) -> list[str]:
         return list({module.extension for module in self.modules})
 
     @cached_property
-    def routes(self) -> Optional[List[str]]:
+    def routes(self) -> list[str] | None:
         return self.asset.routes()
 
 
 @dataclass
-class BundleReport(object):
-    def __init__(self, report: SharedBundleReport, filters: Dict[str, Any] = {}):
+class BundleReport:
+    def __init__(self, report: SharedBundleReport, filters: dict[str, Any] = {}):
         self.report = report
         self.filters = filters
 
@@ -252,13 +253,13 @@ class BundleReport(object):
         return self.report.name
 
     @cached_property
-    def all_assets(self) -> List[AssetReport]:
+    def all_assets(self) -> list[AssetReport]:
         return [AssetReport(asset) for asset in self.report.asset_reports()]
 
     def assets(
-        self, ordering: Optional[str] = None, ordering_desc: Optional[bool] = None
-    ) -> List[AssetReport]:
-        ordering_dict: Dict[str, Any] = {}
+        self, ordering: str | None = None, ordering_desc: bool | None = None
+    ) -> list[AssetReport]:
+        ordering_dict: dict[str, Any] = {}
         if ordering:
             ordering_dict["ordering_column"] = ordering
         if ordering_desc is not None:
@@ -268,7 +269,7 @@ class BundleReport(object):
             for asset in self.report.asset_reports(**{**ordering_dict, **self.filters})
         ]
 
-    def asset(self, name: str) -> Optional[AssetReport]:
+    def asset(self, name: str) -> AssetReport | None:
         for asset_report in self.all_assets:
             if asset_report.name == name:
                 return asset_report
@@ -282,7 +283,7 @@ class BundleReport(object):
         return self.report.total_gzip_size(**self.filters)
 
     @cached_property
-    def module_extensions(self) -> List[str]:
+    def module_extensions(self) -> list[str]:
         extensions = set()
         for asset in self.assets():
             extensions.update(asset.module_extensions)
@@ -308,7 +309,7 @@ class BundleReport(object):
 
 
 @dataclass
-class BundleReportInfo(object):
+class BundleReportInfo:
     def __init__(self, info: dict) -> None:
         self.info = info
 
@@ -342,19 +343,17 @@ class BundleReportInfo(object):
 
 
 @dataclass
-class BundleAnalysisReport(object):
+class BundleAnalysisReport:
     def __init__(self, report: SharedBundleAnalysisReport):
         self.report = report
 
-    def bundle(
-        self, name: str, filters: Dict[str, List[str]]
-    ) -> Optional[BundleReport]:
+    def bundle(self, name: str, filters: dict[str, list[str]]) -> BundleReport | None:
         bundle_report = self.report.bundle_report(name)
         if bundle_report:
             return BundleReport(bundle_report, filters)
 
     @cached_property
-    def bundles(self) -> List[BundleReport]:
+    def bundles(self) -> list[BundleReport]:
         return [BundleReport(bundle) for bundle in self.report.bundle_reports()]
 
     @cached_property
@@ -367,7 +366,7 @@ class BundleAnalysisReport(object):
 
 
 @dataclass
-class BundleAnalysisComparison(object):
+class BundleAnalysisComparison:
     def __init__(
         self,
         loader: BundleAnalysisReportLoader,
@@ -384,7 +383,7 @@ class BundleAnalysisComparison(object):
         self.head_report = self.comparison.head_report
 
     @cached_property
-    def bundles(self) -> List["BundleComparison"]:
+    def bundles(self) -> list["BundleComparison"]:
         bundle_comparisons = []
         for bundle_change in self.comparison.bundle_changes():
             head_bundle_report = self.comparison.head_report.bundle_report(
@@ -404,7 +403,7 @@ class BundleAnalysisComparison(object):
 
 
 @dataclass
-class BundleComparison(object):
+class BundleComparison:
     def __init__(self, bundle_change: SharedBundleChange, head_bundle_report_size: int):
         self.bundle_change = bundle_change
         self.head_bundle_report_size = head_bundle_report_size
@@ -426,14 +425,14 @@ class BundleComparison(object):
         return self.head_bundle_report_size
 
 
-class BundleAnalysisMeasurementsService(object):
+class BundleAnalysisMeasurementsService:
     def __init__(
         self,
         repository: Repository,
         interval: Interval,
         before: datetime,
-        after: Optional[datetime] = None,
-        branch: Optional[str] = None,
+        after: datetime | None = None,
+        branch: str | None = None,
     ) -> None:
         self.repository = repository
         self.interval = interval
@@ -443,8 +442,8 @@ class BundleAnalysisMeasurementsService(object):
 
     @sentry_sdk.trace
     def _compute_measurements(
-        self, measurable_name: str, measurable_ids: List[str]
-    ) -> Dict[str, List[Dict[str, Any]]]:
+        self, measurable_name: str, measurable_ids: list[str]
+    ) -> dict[str, list[dict[str, Any]]]:
         all_measurements = measurements_by_ids(
             repository=self.repository,
             measurable_name=measurable_name,
@@ -489,7 +488,7 @@ class BundleAnalysisMeasurementsService(object):
     @sentry_sdk.trace
     def compute_asset(
         self, asset_report: AssetReport
-    ) -> Optional[BundleAnalysisMeasurementData]:
+    ) -> BundleAnalysisMeasurementData | None:
         asset = asset_report.asset
         if asset.asset_type != AssetType.JAVASCRIPT:
             return None
@@ -513,7 +512,7 @@ class BundleAnalysisMeasurementsService(object):
         self,
         bundle_report: BundleReport,
         asset_type: BundleAnalysisMeasurementsAssetType,
-    ) -> List[BundleAnalysisMeasurementData]:
+    ) -> list[BundleAnalysisMeasurementData]:
         asset_uuid_to_name_mapping = {}
         if asset_type.value == MeasurementName.BUNDLE_ANALYSIS_ASSET_SIZE:
             measurable_ids = []

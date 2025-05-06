@@ -211,7 +211,7 @@ def gitlab_enriched_pull_root(dbsession, gitlab_root_group):
     return EnrichedPull(database_pull=pull, provider_pull=provider_pull)
 
 
-class TestDecorationServiceTestCase(object):
+class TestDecorationServiceTestCase:
     @pytest.fixture(autouse=True)
     def setup(self):
         mock_all_plans_and_tiers()
@@ -781,7 +781,7 @@ class TestDecorationServiceTestCase(object):
         assert decoration_details.should_attempt_author_auto_activation is False
 
 
-class TestDecorationServiceGitLabTestCase(object):
+class TestDecorationServiceGitLabTestCase:
     @pytest.fixture(autouse=True)
     def setup(self):
         mock_all_plans_and_tiers()

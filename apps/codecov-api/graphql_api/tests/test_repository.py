@@ -619,20 +619,17 @@ class TestFetchRepository(GraphQLTestHelper, TestCase):
         new_owner.save()
         owner.admins = []
 
-        query = """
-            query {
-                owner(username: "%s") {
-                    repository(name: "%s") {
-                                    ... on Repository {
+        query = f"""
+            query {{
+                owner(username: "{owner.username}") {{
+                    repository(name: "{repo.name}") {{
+                                    ... on Repository {{
                             uploadToken
-                            }
-                    }
-                }
-            }
-        """ % (
-            owner.username,
-            repo.name,
-        )
+                            }}
+                    }}
+                }}
+            }}
+        """
 
         data = self.gql_request(
             query,
@@ -655,20 +652,17 @@ class TestFetchRepository(GraphQLTestHelper, TestCase):
             private=False,
         )
 
-        query = """
-            query {
-                owner(username: "%s") {
-                    repository(name: "%s") {
-                        ... on Repository {
+        query = f"""
+            query {{
+                owner(username: "{owner.username}") {{
+                    repository(name: "{repo.name}") {{
+                        ... on Repository {{
                             uploadToken
-                        }
-                    }
-                }
-            }
-        """ % (
-            owner.username,
-            repo.name,
-        )
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         data = self.gql_request(
             query,

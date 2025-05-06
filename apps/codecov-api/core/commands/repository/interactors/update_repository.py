@@ -1,5 +1,3 @@
-from typing import Optional
-
 from asgiref.sync import sync_to_async
 
 from codecov.commands.base import BaseInteractor
@@ -22,8 +20,8 @@ class UpdateRepositoryInteractor(BaseInteractor):
         self,
         repo_name: str,
         owner: Owner,
-        default_branch: Optional[str],
-        activated: Optional[bool],
+        default_branch: str | None,
+        activated: bool | None,
     ):
         self.validate_owner(owner)
         repo = Repository.objects.filter(author_id=owner.pk, name=repo_name).first()

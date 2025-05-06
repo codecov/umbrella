@@ -346,7 +346,7 @@ class TestCustomFixPathSchemaField(BaseTestCase):
             cfpsf.validate("beforeafter")
 
 
-class TestCoverageCommentRequirementSchemaField(object):
+class TestCoverageCommentRequirementSchemaField:
     @pytest.mark.parametrize(
         "input, expected",
         [
@@ -486,7 +486,7 @@ class TestCoverageCommentRequirementSchemaField(object):
         assert exp.value.error_message == exception_message
 
 
-class TestByteSizeSchemaField(object):
+class TestByteSizeSchemaField:
     @pytest.mark.parametrize(
         "input, expected",
         [
@@ -559,7 +559,7 @@ class TestByteSizeSchemaField(object):
         assert exp.value.error_message == error_message
 
 
-class TestBundleSizeThresholdSchemaField(object):
+class TestBundleSizeThresholdSchemaField:
     @pytest.mark.parametrize(
         "input, expected",
         [

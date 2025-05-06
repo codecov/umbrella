@@ -1,5 +1,4 @@
 from collections import defaultdict
-from typing import Optional
 
 from django.db.models import Count, Prefetch, Q, QuerySet
 from django.db.models.functions import Lower, Substr
@@ -73,7 +72,7 @@ def commit_status(
 
 
 def repo_commits(
-    repository: Repository, filters: Optional[dict] = None
+    repository: Repository, filters: dict | None = None
 ) -> QuerySet[Commit]:
     # prefetch the CommitReport with the ReportLevelTotals
     prefetch = Prefetch(

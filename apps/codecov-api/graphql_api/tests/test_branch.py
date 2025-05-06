@@ -123,27 +123,27 @@ query_files_connection = """
 """
 
 
-class MockCoverage(object):
+class MockCoverage:
     def __init__(self, coverage, hits, lines):
         self.coverage = coverage
         self.hits = hits
         self.lines = lines
 
 
-class MockTotals(object):
+class MockTotals:
     def __init__(self):
         self.totals = ReportTotals.default_totals()
         self.totals.hits = 8
         self.totals.lines = 10
 
 
-class MockFlag(object):
+class MockFlag:
     @property
     def totals(self):
         return MockTotals()
 
 
-class MockSession(object):
+class MockSession:
     pass
 
 
@@ -152,7 +152,7 @@ class MockFile:
         self.name = name
 
 
-class MockReport(object):
+class MockReport:
     def __init__(self):
         self.sessions = {1: MockSession()}
 
@@ -194,7 +194,7 @@ class MockFilteredReport(MockReport):
     pass
 
 
-class MockNoFlagsReport(object):
+class MockNoFlagsReport:
     def __init__(self):
         self.sessions = {1: MockSession()}
 

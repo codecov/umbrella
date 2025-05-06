@@ -13,12 +13,12 @@ from shared.reports.types import ReportTotals
 from utils.test_utils import APIClient
 
 
-class MockCoverage(object):
+class MockCoverage:
     def __init__(self, cov):
         self.coverage = cov
 
 
-class MockReportFile(object):
+class MockReportFile:
     def __init__(self, name):
         self.name = name
         self.lines = [
@@ -35,7 +35,7 @@ class MockReportFile(object):
         )
 
 
-class MockReport(object):
+class MockReport:
     def __init__(self):
         self.files = ["foo/a.py", "bar/b.py"]
         self.totals = ReportTotals(

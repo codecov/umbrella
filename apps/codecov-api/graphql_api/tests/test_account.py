@@ -25,18 +25,18 @@ class AccountTestCase(GraphQLTestHelper, TestCase):
         )
 
     def test_fetch_okta_config(self) -> None:
-        query = """
-            query {
-                owner(username: "%s"){
-                    account {
-                        oktaConfig {
+        query = f"""
+            query {{
+                owner(username: "{self.owner.username}"){{
+                    account {{
+                        oktaConfig {{
                             clientId
                             clientSecret
-                        }
-                    }
-                }
-            }
-        """ % (self.owner.username)
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=self.owner)
 
@@ -46,15 +46,15 @@ class AccountTestCase(GraphQLTestHelper, TestCase):
         assert data["oktaConfig"]["clientSecret"] == "test-client-secret"
 
     def test_fetch_total_seat_count(self) -> None:
-        query = """
-            query {
-                owner(username: "%s"){
-                    account {
+        query = f"""
+            query {{
+                owner(username: "{self.owner.username}"){{
+                    account {{
                         totalSeatCount
-                    }
-                }
-            }
-        """ % (self.owner.username)
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=self.owner)
 
@@ -66,15 +66,15 @@ class AccountTestCase(GraphQLTestHelper, TestCase):
         for _ in range(7):
             AccountsUsersFactory(account=self.account)
 
-        query = """
-            query {
-                owner(username: "%s") {
-                    account {
+        query = f"""
+            query {{
+                owner(username: "{self.owner.username}") {{
+                    account {{
                         activatedUserCount
-                    }
-                }
-            }
-        """ % (self.owner.username)
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=self.owner)
 
@@ -100,22 +100,22 @@ class AccountTestCase(GraphQLTestHelper, TestCase):
             account=account,
         )
 
-        query = """
-            query {
-                owner(username: "%s") {
-                    account {
-                        organizations(first: 20) {
-                            edges {
-                                node {
+        query = f"""
+            query {{
+                owner(username: "{owner.username}") {{
+                    account {{
+                        organizations(first: 20) {{
+                            edges {{
+                                node {{
                                     username
                                     activatedUserCount
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        """ % (owner.username)
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=owner)
 
@@ -146,22 +146,22 @@ class AccountTestCase(GraphQLTestHelper, TestCase):
             account=account,
         )
 
-        query = """
-            query {
-                owner(username: "%s") {
-                    account {
-                        organizations(first: 20, orderingDirection: DESC) {
-                            edges {
-                                node {
+        query = f"""
+            query {{
+                owner(username: "{owner.username}") {{
+                    account {{
+                        organizations(first: 20, orderingDirection: DESC) {{
+                            edges {{
+                                node {{
                                     username
                                     activatedUserCount
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        """ % (owner.username)
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=owner)
 
@@ -192,26 +192,26 @@ class AccountTestCase(GraphQLTestHelper, TestCase):
             account=account,
         )
 
-        query = """
-            query {
-                owner(username: "%s") {
-                    account {
-                        organizations(first: 2) {
-                            edges {
-                                node {
+        query = f"""
+            query {{
+                owner(username: "{owner.username}") {{
+                    account {{
+                        organizations(first: 2) {{
+                            edges {{
+                                node {{
                                     username
                                     activatedUserCount
-                                }
-                            }
+                                }}
+                            }}
                             totalCount
-                            pageInfo {
+                            pageInfo {{
                                 hasNextPage
-                            }
-                        }
-                    }
-                }
-            }
-        """ % (owner.username)
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=owner)
 

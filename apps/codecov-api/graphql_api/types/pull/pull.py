@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any
 
 import sentry_sdk
 from ariadne import ObjectType
@@ -35,20 +35,20 @@ def resolve_state(pull: Pull, info: GraphQLResolveInfo) -> PullRequestState:
 
 
 @pull_bindable.field("author")
-def resolve_author(pull: Pull, info: GraphQLResolveInfo) -> Optional[Owner]:
+def resolve_author(pull: Pull, info: GraphQLResolveInfo) -> Owner | None:
     if pull.author_id:
         return OwnerLoader.loader(info).load(pull.author_id)
 
 
 @pull_bindable.field("head")
-def resolve_head(pull: Pull, info: GraphQLResolveInfo) -> Optional[Commit]:
+def resolve_head(pull: Pull, info: GraphQLResolveInfo) -> Commit | None:
     if pull.head is None:
         return None
     return CommitLoader.loader(info, pull.repository_id).load(pull.head)
 
 
 @pull_bindable.field("comparedTo")
-def resolve_base(pull: Pull, info: GraphQLResolveInfo) -> Optional[Commit]:
+def resolve_base(pull: Pull, info: GraphQLResolveInfo) -> Commit | None:
     if pull.compared_to is None:
         return None
     return CommitLoader.loader(info, pull.repository_id).load(pull.compared_to)
@@ -63,7 +63,7 @@ def is_first_pull_request(pull: Pull) -> bool:
 @sentry_sdk.trace
 async def resolve_compare_with_base(
     pull: Pull, info: GraphQLResolveInfo, **kwargs: Any
-) -> Union[CommitComparison, Any]:
+) -> CommitComparison | Any:
     if not pull.compared_to:
         if await is_first_pull_request(pull):
             return FirstPullRequest()
@@ -94,7 +94,7 @@ async def resolve_compare_with_base(
 @sentry_sdk.trace
 def resolve_bundle_analysis_compare_with_base(
     pull: Pull, info: GraphQLResolveInfo, **kwargs: Any
-) -> Union[BundleAnalysisComparison, Any]:
+) -> BundleAnalysisComparison | Any:
     if not pull.compared_to:
         if pull.repository.pull_requests.order_by("id").first() == pull:
             return FirstPullRequest()

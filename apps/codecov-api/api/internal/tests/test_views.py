@@ -145,7 +145,7 @@ class RepoPullList(InternalAPITest):
         response = self.client.get(reverse("pulls-list", kwargs=self.incorrect_kwargs))
         content = self.json_content(response)
         self.assertEqual(
-            response.status_code, 404, "got unexpected response: {}".format(content)
+            response.status_code, 404, f"got unexpected response: {content}"
         )
 
     def test_pulls_list_returns_most_recent_commiter(self, mock_provider):
@@ -586,7 +586,7 @@ class RepoCommitList(InternalAPITest):
         response = self.client.get("/internal/github/codecov/otherRepoName/commits/")
         content = self.json_content(response)
         self.assertEqual(
-            response.status_code, 404, "got unexpected response: {}".format(content)
+            response.status_code, 404, f"got unexpected response: {content}"
         )
 
     def test_filters_by_branch_name(self, mock_provider):

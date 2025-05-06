@@ -38,7 +38,7 @@ def from_txt(string: bytes, report_builder_session: ReportBuilderSession) -> Non
             continue
 
         for ln, partials in lines.items():
-            best_in_partials = max((p[2] for p in partials))
+            best_in_partials = max(p[2] for p in partials)
             partials = combine_partials(partials)
             if partials:
                 cov = partials_to_line(partials)

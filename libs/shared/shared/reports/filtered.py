@@ -24,7 +24,7 @@ def _contain_any_of_the_flags(expected_flags, actual_flags):
     return len(set(expected_flags) & set(actual_flags)) > 0
 
 
-class FilteredReportFile(object):
+class FilteredReportFile:
     __slots__ = ["report_file", "session_ids", "_totals", "_cached_lines"]
 
     def __init__(self, report_file, session_ids):
@@ -98,7 +98,7 @@ class FilteredReportFile(object):
         return get_line_totals(line for _ln, line in self.lines)
 
 
-class FilteredReport(object):
+class FilteredReport:
     def __init__(self, report, path_patterns, flags):
         self.report = report
         self.path_patterns = path_patterns

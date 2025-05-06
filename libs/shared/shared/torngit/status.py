@@ -7,11 +7,13 @@ def matches(string, pattern):
         return True
     else:
         if "*" in pattern:
-            return re.match("^%s$" % pattern.replace("*", ".*"), string) is not None
+            return (
+                re.match("^{}$".format(pattern.replace("*", ".*")), string) is not None
+            )
         return False
 
 
-class Status(object):
+class Status:
     def __init__(self, statuses):
         self._statuses = self._fetch_most_relevant_status_per_context(statuses)
         states = {s["state"] for s in self._statuses}

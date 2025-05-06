@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Tuple
+from typing import Any
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
@@ -25,7 +25,7 @@ class RepositoryPermissionsService:
     @torngit_safe
     def _fetch_provider_permissions(
         self, owner: Owner, repo: Repository
-    ) -> Tuple[bool, bool]:
+    ) -> tuple[bool, bool]:
         can_view, can_edit = RepoAccessors().get_repo_permissions(owner, repo)
 
         if can_view:

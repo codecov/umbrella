@@ -52,17 +52,11 @@ def test_merge_all(cov_list, res):
     ],
 )
 def test_merge_branch(b1, b2, res):
-    assert res == merge_branch(b1, b2), "%s <> %s expected %s got %s" % (
-        b1,
-        b2,
-        res,
-        str(merge_branch(b1, b2)),
+    assert res == merge_branch(b1, b2), (
+        f"{b1} <> {b2} expected {res} got {str(merge_branch(b1, b2))}"
     )
-    assert res == merge_branch(b2, b1), "%s <> %s expected %s got %s" % (
-        b2,
-        b1,
-        res,
-        str(merge_branch(b2, b1)),
+    assert res == merge_branch(b2, b1), (
+        f"{b2} <> {b1} expected {res} got {str(merge_branch(b2, b1))}"
     )
 
 
@@ -348,7 +342,7 @@ def test_merge_line_session(s1, s2, res):
         (False, None),
         (-1, -1),
         ("0/2", 1),
-        (str("1/2"), 2),
+        ("1/2", 2),
         ("2/2", 0),
         (Fraction(1, 1), LineType.hit),
         (Fraction(2, 2), LineType.hit),

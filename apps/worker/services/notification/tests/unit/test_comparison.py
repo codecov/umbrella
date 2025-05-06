@@ -1,7 +1,7 @@
 from services.comparison import ComparisonProxy, FilteredComparison
 
 
-class TestFilteredComparison(object):
+class TestFilteredComparison:
     def test_get_existing_statuses(self, mocker):
         mocked_get_existing_statuses = mocker.patch.object(
             ComparisonProxy, "get_existing_statuses"

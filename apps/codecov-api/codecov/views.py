@@ -20,7 +20,7 @@ def health(request):
     connection.ensure_connection()
 
     version = _get_version()
-    return HttpResponse("%s is live!" % version.value)
+    return HttpResponse(f"{version.value} is live!")
 
 
 SERVICE_CHOICES = dict(Service.choices)

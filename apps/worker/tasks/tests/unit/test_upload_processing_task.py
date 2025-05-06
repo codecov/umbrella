@@ -32,7 +32,7 @@ def test_default_acks_late() -> None:
     assert task.acks_late == False
 
 
-class TestUploadProcessorTask(object):
+class TestUploadProcessorTask:
     @pytest.mark.integration
     @pytest.mark.django_db
     def test_upload_processor_task_call(

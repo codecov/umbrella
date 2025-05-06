@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from services.comparison import ComparisonProxy
 from services.notification.notifiers.base import (
@@ -56,7 +55,7 @@ class ChecksWithFallback(AbstractBaseNotifier):
     def notify(
         self,
         comparison: ComparisonProxy,
-        status_or_checks_helper_text: Optional[dict[str, str]] = None,
+        status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> NotificationResult:
         try:
             res = self._checks_notifier.notify(

@@ -34,7 +34,7 @@ def admin_handler():
     )
 
 
-class TestGitlabTestCase(object):
+class TestGitlabTestCase:
     @pytest.mark.asyncio
     async def test_get_is_admin(self, admin_handler, codecov_vcr):
         user = {"service_id": "3108129"}

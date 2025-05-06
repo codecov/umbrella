@@ -2,7 +2,7 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 import sentry_sdk
 from sqlalchemy.dialects import postgresql
@@ -43,7 +43,7 @@ BUNDLE_ANALYSIS_REPORT_PROCESSOR_COUNTER = Counter(
 @dataclass
 class ProcessingError:
     code: str
-    params: Dict[str, Any]
+    params: dict[str, Any]
     is_retryable: bool = False
 
     def as_dict(self):
@@ -54,11 +54,11 @@ class ProcessingError:
 class ProcessingResult:
     upload: Upload
     commit: Commit
-    bundle_report: Optional[BundleAnalysisReport] = None
-    previous_bundle_report: Optional[BundleAnalysisReport] = None
-    session_id: Optional[int] = None
-    bundle_name: Optional[str] = None
-    error: Optional[ProcessingError] = None
+    bundle_report: BundleAnalysisReport | None = None
+    previous_bundle_report: BundleAnalysisReport | None = None
+    session_id: int | None = None
+    bundle_name: str | None = None
+    error: ProcessingError | None = None
 
     def as_dict(self):
         return {
@@ -68,7 +68,7 @@ class ProcessingResult:
             "error": self.error.as_dict() if self.error else None,
         }
 
-    def update_upload(self, carriedforward: Optional[bool] = False) -> None:
+    def update_upload(self, carriedforward: bool | None = False) -> None:
         """
         Updates this result's `Upload` record with information from
         this result.
@@ -132,8 +132,8 @@ class BundleAnalysisReportService(BaseReportService):
         self,
         db_session: Session,
         head_commit: Commit,
-        head_bundle_report: Optional[BundleAnalysisReport],
-    ) -> Optional[Commit]:
+        head_bundle_report: BundleAnalysisReport | None,
+    ) -> Commit | None:
         """
         There's two ways to retrieve parent commit of the head commit (in order of priority):
         1. Get the commitSha from head commit bundle report (stored in Metadata during ingestion)

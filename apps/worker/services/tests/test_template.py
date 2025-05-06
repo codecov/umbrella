@@ -4,7 +4,7 @@ from jinja2.exceptions import TemplateNotFound, UndefinedError
 from services.template import TemplateService
 
 
-class TestTemplate(object):
+class TestTemplate:
     def test_get_template(self):
         ts = TemplateService()
         template = ts.get_template("test.txt")

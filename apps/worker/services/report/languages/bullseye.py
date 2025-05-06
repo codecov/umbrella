@@ -26,7 +26,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
         # build_id format has timestamp at the end "4362c668_2020-10-28_17:55:47"
         timestamp = " ".join(build_id.split("_")[1:])
         if timestamp and Date(timestamp) < max_age:
-            raise ReportExpiredException("Bullseye report expired %s" % timestamp)
+            raise ReportExpiredException(f"Bullseye report expired {timestamp}")
 
     for folder in xml.iter("{https://www.bullseye.com/covxml}folder"):
         for file in folder.iter("{https://www.bullseye.com/covxml}src"):

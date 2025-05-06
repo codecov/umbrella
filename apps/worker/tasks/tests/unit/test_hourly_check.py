@@ -1,7 +1,7 @@
 from tasks.hourly_check import HourlyCheckTask
 
 
-class TestHourlyCheck(object):
+class TestHourlyCheck:
     def test_simple_case(self, dbsession):
         task = HourlyCheckTask()
         assert task.run_cron_task(dbsession) == {"checked": True}

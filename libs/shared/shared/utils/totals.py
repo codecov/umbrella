@@ -42,7 +42,7 @@ def sum_totals(totals):
 
 def _sum(array):
     if array:
-        if not isinstance(array[0], (type(None), str)):
+        if not isinstance(array[0], type(None) | str):
             try:
                 return sum(array)
             except Exception:

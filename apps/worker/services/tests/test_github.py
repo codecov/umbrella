@@ -8,7 +8,7 @@ from database.tests.factories.core import CommitFactory, RepositoryFactory
 from services.github import get_github_app_for_commit, set_github_app_for_commit
 
 
-class TestGetSetGithubAppsToCommits(object):
+class TestGetSetGithubAppsToCommits:
     def _get_commit(self, dbsession):
         commit = CommitFactory(repository__owner__service="github")
         dbsession.add(commit)

@@ -1,4 +1,3 @@
-from typing import List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -403,8 +402,8 @@ def test_bundle_asset_route_is_file(input_str, extensions, expected):
 def test_bundle_asset_route_split_by_delimiter(
     s: str,
     splitter: str,
-    escape_open: Optional[str],
-    escape_close: Optional[str],
-    expected: List[str],
+    escape_open: str | None,
+    escape_close: str | None,
+    expected: list[str],
 ):
     assert split_by_delimiter(s, splitter, escape_open, escape_close) == expected

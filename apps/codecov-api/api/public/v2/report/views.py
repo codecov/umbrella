@@ -1,5 +1,3 @@
-from typing import Optional
-
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
@@ -90,9 +88,9 @@ class BaseReportViewSet(
         self,
         commit: Commit,
         report: Report,
-        path: Optional[str] = None,
-        flag: Optional[str] = None,
-        component_id: Optional[str] = None,
+        path: str | None = None,
+        flag: str | None = None,
+        component_id: str | None = None,
     ) -> Report:
         if component_id:
             component = next(

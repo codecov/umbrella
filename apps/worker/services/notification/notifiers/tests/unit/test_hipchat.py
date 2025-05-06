@@ -1,7 +1,7 @@
 from services.notification.notifiers.hipchat import HipchatNotifier
 
 
-class TestHipchatkNotifier(object):
+class TestHipchatkNotifier:
     def test_build_payload_without_special_config(
         self, dbsession, mock_configuration, sample_comparison
     ):

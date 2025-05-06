@@ -24,17 +24,17 @@ class OktaConfigTestCase(GraphQLTestHelper, TestCase):
         )
 
     def test_fetch_enabled_okta_config(self) -> None:
-        query = """
-            query {
-                owner(username: "%s"){
-                    account {
-                        oktaConfig {
+        query = f"""
+            query {{
+                owner(username: "{self.owner.username}"){{
+                    account {{
+                        oktaConfig {{
                             enabled
-                        }
-                    }
-                }
-            }
-        """ % (self.owner.username)
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=self.owner)
 
@@ -44,17 +44,17 @@ class OktaConfigTestCase(GraphQLTestHelper, TestCase):
     def test_fetch_disabled_okta_config(self) -> None:
         self.okta_settings.enabled = False
         self.okta_settings.save()
-        query = """
-            query {
-                owner(username: "%s"){
-                    account {
-                        oktaConfig {
+        query = f"""
+            query {{
+                owner(username: "{self.owner.username}"){{
+                    account {{
+                        oktaConfig {{
                             enabled
-                        }
-                    }
-                }
-            }
-        """ % (self.owner.username)
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=self.owner)
 
@@ -62,17 +62,17 @@ class OktaConfigTestCase(GraphQLTestHelper, TestCase):
         assert result["owner"]["account"]["oktaConfig"]["enabled"] == False
 
     def test_fetch_enforced_okta_config(self) -> None:
-        query = """
-            query {
-                owner(username: "%s"){
-                    account {
-                        oktaConfig {
+        query = f"""
+            query {{
+                owner(username: "{self.owner.username}"){{
+                    account {{
+                        oktaConfig {{
                             enforced
-                        }
-                    }
-                }
-            }
-        """ % (self.owner.username)
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=self.owner)
 
@@ -82,17 +82,17 @@ class OktaConfigTestCase(GraphQLTestHelper, TestCase):
     def test_fetch_enforced_okta_config_true(self) -> None:
         self.okta_settings.enforced = True
         self.okta_settings.save()
-        query = """
-            query {
-                owner(username: "%s"){
-                    account {
-                        oktaConfig {
+        query = f"""
+            query {{
+                owner(username: "{self.owner.username}"){{
+                    account {{
+                        oktaConfig {{
                             enforced
-                        }
-                    }
-                }
-            }
-        """ % (self.owner.username)
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=self.owner)
 
@@ -100,17 +100,17 @@ class OktaConfigTestCase(GraphQLTestHelper, TestCase):
         assert result["owner"]["account"]["oktaConfig"]["enforced"] == True
 
     def test_fetch_url_okta_config(self) -> None:
-        query = """
-            query {
-                owner(username: "%s"){
-                    account{
-                        oktaConfig {
+        query = f"""
+            query {{
+                owner(username: "{self.owner.username}"){{
+                    account{{
+                        oktaConfig {{
                             url
-                        }
-                    }
-                }
-            }
-        """ % (self.owner.username)
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=self.owner)
 
@@ -118,17 +118,17 @@ class OktaConfigTestCase(GraphQLTestHelper, TestCase):
         assert result["owner"]["account"]["oktaConfig"]["url"] == self.okta_settings.url
 
     def test_fetch_okta_config_client_id(self) -> None:
-        query = """
-            query {
-                owner(username: "%s"){
-                    account{
-                        oktaConfig {
+        query = f"""
+            query {{
+                owner(username: "{self.owner.username}"){{
+                    account{{
+                        oktaConfig {{
                             clientId
-                        }
-                    }
-                }
-            }
-        """ % (self.owner.username)
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=self.owner)
 
@@ -139,17 +139,17 @@ class OktaConfigTestCase(GraphQLTestHelper, TestCase):
         )
 
     def test_fetch_okta_config_client_secret(self) -> None:
-        query = """
-            query {
-                owner(username: "%s"){
-                    account{
-                        oktaConfig {
+        query = f"""
+            query {{
+                owner(username: "{self.owner.username}"){{
+                    account{{
+                        oktaConfig {{
                             clientSecret
-                        }
-                    }
-                }
-            }
-        """ % (self.owner.username)
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=self.owner)
 
@@ -162,19 +162,19 @@ class OktaConfigTestCase(GraphQLTestHelper, TestCase):
     def test_fetch_non_existent_okta_config(self) -> None:
         self.okta_settings.delete()
 
-        query = """
-            query {
-                owner(username: "%s"){
-                account{
-                    oktaConfig {
+        query = f"""
+            query {{
+                owner(username: "{self.owner.username}"){{
+                account{{
+                    oktaConfig {{
                         clientId
                         clientSecret
                         url
-                    }
-                }
-                }
-            }
-        """ % (self.owner.username)
+                    }}
+                }}
+                }}
+            }}
+        """
 
         result = self.gql_request(query, owner=self.owner)
 

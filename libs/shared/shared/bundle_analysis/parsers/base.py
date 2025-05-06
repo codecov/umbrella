@@ -1,5 +1,4 @@
 import abc
-from typing import Tuple
 
 from sqlalchemy.orm import Session
 
@@ -16,5 +15,5 @@ class ParserTrait:
         pass
 
     @abc.abstractmethod
-    def parse(self, path: str) -> Tuple[int, str]:
+    def parse(self, path: str) -> tuple[int, str]:
         pass

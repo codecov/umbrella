@@ -65,7 +65,7 @@ class StatusSetPendingTask(BaseCodecovTask, name=status_set_pending_task_name):
                 if settings.get(context):
                     for key, config in default_if_true(settings[context]):
                         try:
-                            title = "codecov/%s%s" % (
+                            title = "codecov/{}{}".format(
                                 context,
                                 ("/" + key if key != "default" else ""),
                             )

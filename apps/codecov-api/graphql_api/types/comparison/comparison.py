@@ -1,5 +1,5 @@
 from asyncio import gather
-from typing import Any, List, Optional
+from typing import Any
 
 import sentry_sdk
 from ariadne import ObjectType, UnionType
@@ -91,7 +91,7 @@ def resolve_impacted_file(
 @comparison_bindable.field("changeCoverage")
 async def resolve_change_coverage(
     comparison: ComparisonReport, info: GraphQLResolveInfo
-) -> Optional[float]:
+) -> float | None:
     repository_id = comparison.commit_comparison.compare_commit.repository_id
     loader = CommitLoader.loader(info, repository_id)
 
@@ -123,7 +123,7 @@ async def resolve_change_coverage(
 @comparison_bindable.field("baseTotals")
 async def resolve_base_totals(
     comparison: ComparisonReport, info: GraphQLResolveInfo
-) -> Optional[ReportLevelTotals]:
+) -> ReportLevelTotals | None:
     repository_id = comparison.commit_comparison.base_commit.repository_id
     loader = CommitLoader.loader(info, repository_id)
 
@@ -140,7 +140,7 @@ async def resolve_base_totals(
 @comparison_bindable.field("headTotals")
 async def resolve_head_totals(
     comparison: ComparisonReport, info: GraphQLResolveInfo
-) -> Optional[ReportLevelTotals]:
+) -> ReportLevelTotals | None:
     repository_id = comparison.commit_comparison.compare_commit.repository_id
     loader = CommitLoader.loader(info, repository_id)
 
@@ -178,7 +178,7 @@ def resolve_patch_totals(
 @sentry_sdk.trace
 def resolve_flag_comparisons(
     comparison: ComparisonReport, info: GraphQLResolveInfo, filters=None
-) -> List[FlagComparison]:
+) -> list[FlagComparison]:
     all_flags = get_flag_comparisons(comparison.commit_comparison)
 
     if filters and filters.get("term"):
@@ -197,7 +197,7 @@ def resolve_flag_comparisons(
 @sentry_sdk.trace
 def resolve_component_comparisons(
     comparison_report: ComparisonReport, info: GraphQLResolveInfo, filters=None
-) -> List[ComponentComparison]:
+) -> list[ComponentComparison]:
     current_owner = info.context["request"].current_owner
     head_commit = comparison_report.commit_comparison.compare_commit
     components = components_service.commit_components(head_commit, current_owner)

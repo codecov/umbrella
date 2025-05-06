@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict
+from typing import Any
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
@@ -30,7 +30,7 @@ class TokenlessGithubActionsHandler(BaseTokenlessUploadHandler):
             },
         )
 
-    def get_build(self) -> Dict[str, Any]:
+    def get_build(self) -> dict[str, Any]:
         git = get(
             "github",
             token={"key": self.actions_token},

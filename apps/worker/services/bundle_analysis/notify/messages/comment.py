@@ -1,5 +1,5 @@
 import logging
-from typing import List, Literal, TypedDict
+from typing import Literal, TypedDict
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
@@ -59,13 +59,13 @@ class AssetData(TypedDict):
     percentage_change_readable: str
     change_icon: str
     asset_size_readable: str
-    module_data: List[ModuleData]
+    module_data: list[ModuleData]
 
 
 class IndividualBundleData(TypedDict):
     bundle_name: str
-    asset_data: List[AssetData]
-    app_routes_data: List[BundleRouteRow]
+    asset_data: list[AssetData]
+    app_routes_data: list[BundleRouteRow]
 
 
 class BundleCommentTemplateContext(TypedDict):
@@ -300,9 +300,9 @@ class BundleAnalysisCommentMarkdownStrategy(MessageStrategyInterface):
         self,
         comparison: BundleAnalysisComparison,
         bundle_name: str,
-        changed_files: List[str] | None,
+        changed_files: list[str] | None,
         warning_threshold: BundleThreshold,
-    ) -> List[AssetData]:
+    ) -> list[AssetData]:
         try:
             asset_data = []
             asset_comparisons = comparison.bundle_comparison(
@@ -361,7 +361,7 @@ class BundleAnalysisCommentMarkdownStrategy(MessageStrategyInterface):
     def _create_individual_bundle_data(
         self,
         comparison: BundleAnalysisComparison,
-        changed_files: List[str] | None,
+        changed_files: list[str] | None,
         warning_threshold: BundleThreshold,
     ) -> dict[str, IndividualBundleData]:
         data = {}

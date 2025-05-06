@@ -1,6 +1,6 @@
+from collections.abc import Sequence
 from difflib import SequenceMatcher
 from os.path import relpath
-from typing import Sequence
 
 
 def _clean_path(path):

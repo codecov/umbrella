@@ -1,5 +1,6 @@
+from unittest.mock import MagicMock
+
 import pytest
-from mock import MagicMock
 
 from helpers.labels import SpecialLabelsEnum
 from services.report.raw_upload_processor import (

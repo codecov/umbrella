@@ -75,9 +75,7 @@ def test_okta_redirect_to_authorize(client, db):
     assert res.status_code == 302
     assert (
         res.url
-        == "https://example.okta.com/oauth2/v1/authorize?response_type=code&client_id=test-client-id&scope=openid+email+profile&redirect_uri=https%3A%2F%2Flocalhost%3A8000%2Flogin%2Fokta&state={}".format(
-            state
-        )
+        == f"https://example.okta.com/oauth2/v1/authorize?response_type=code&client_id=test-client-id&scope=openid+email+profile&redirect_uri=https%3A%2F%2Flocalhost%3A8000%2Flogin%2Fokta&state={state}"
     )
 
 

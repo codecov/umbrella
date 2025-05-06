@@ -121,7 +121,7 @@ def sample_deliveries():
     return sample_deliveries
 
 
-class TestGHAppWebhooksTask(object):
+class TestGHAppWebhooksTask:
     def test_get_min_seconds_interval_between_executions(self, dbsession):
         assert isinstance(
             GitHubAppWebhooksCheckTask.get_min_seconds_interval_between_executions(),

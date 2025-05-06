@@ -19,7 +19,7 @@ class SampleNotifierForTest(StandardNotifier):
         }
 
 
-class TestStandardkNotifier(object):
+class TestStandardkNotifier:
     def test_is_enabled_without_site_settings(self, dbsession):
         repository = RepositoryFactory.create(
             owner__username="test_is_enabled_without_site_settings"
@@ -246,7 +246,7 @@ class TestStandardkNotifier(object):
         assert res.data_received is None
 
 
-class TestRequestsYamlBasedNotifier(object):
+class TestRequestsYamlBasedNotifier:
     def test_send_notification_exception(self, mocker, sample_comparison):
         mocked_post = mocker.patch.object(httpx.Client, "post")
         mocked_post.side_effect = httpx.HTTPError("message")

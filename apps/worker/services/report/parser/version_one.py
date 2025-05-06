@@ -13,7 +13,7 @@ from services.report.parser.types import (
 log = logging.getLogger(__name__)
 
 
-class VersionOneReportParser(object):
+class VersionOneReportParser:
     @sentry_sdk.trace
     def parse_raw_report_from_bytes(self, raw_report: bytes):
         data = orjson.loads(raw_report)

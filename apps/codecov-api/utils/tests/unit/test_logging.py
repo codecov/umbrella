@@ -1,7 +1,7 @@
 from utils.logging_configuration import CustomLocalJsonFormatter
 
 
-class TestLoggingConfig(object):
+class TestLoggingConfig:
     def test_local_formatter(self):
         log_record = {"levelname": "weird_level", "message": "This is a message"}
         cljf = CustomLocalJsonFormatter()

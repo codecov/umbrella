@@ -5,7 +5,7 @@ from services.path_fixer.fixpaths import clean_toc
 from services.report.fixes import get_fixes_from_raw
 
 
-class ParsedUploadedReportFile(object):
+class ParsedUploadedReportFile:
     def __init__(
         self,
         filename: str | None,
@@ -21,7 +21,7 @@ class ParsedUploadedReportFile(object):
         return BytesIO(self.contents).readline()
 
 
-class ParsedRawReport(object):
+class ParsedRawReport:
     """
     Parsed raw report parent class
 
@@ -68,10 +68,10 @@ class ParsedRawReport(object):
         buffer = BytesIO()
         if self.has_toc():
             for file in self.get_toc():
-                buffer.write(f"{file}\n".encode("utf-8"))
+                buffer.write(f"{file}\n".encode())
             buffer.write(b"<<<<<< network\n\n")
         for file in self.uploaded_files:
-            buffer.write(f"# path={file.filename}\n".encode("utf-8"))
+            buffer.write(f"# path={file.filename}\n".encode())
             buffer.write(file.contents)
             buffer.write(b"\n<<<<<< EOF\n\n")
         buffer.seek(0)

@@ -133,13 +133,13 @@ expected_invoices = [
 ]
 
 
-class MockSubscriptionPlan(object):
+class MockSubscriptionPlan:
     def __init__(self, params):
         self.id = params["new_plan"]
         self.interval = "year"
 
 
-class MockSubscription(object):
+class MockSubscription:
     def __init__(self, subscription_params):
         self.schedule = subscription_params["schedule_id"]
         self.current_period_start = subscription_params["start_date"]
@@ -168,7 +168,7 @@ class MockSubscription(object):
         return getattr(self, key)
 
 
-class MockFailedSubscriptionUpgrade(object):
+class MockFailedSubscriptionUpgrade:
     def __init__(self, subscription_params):
         self.id = subscription_params["id"]
         self.object = subscription_params["object"]

@@ -10,7 +10,7 @@ from shared.django_apps.codecov_auth.models import OrganizationLevelToken, Owner
 log = logging.getLogger(__name__)
 
 
-class OrgLevelTokenService(object):
+class OrgLevelTokenService:
     """
     Groups some basic CRUD functionality to create and delete OrganizationLevelToken.
     Restrictions:

@@ -1,8 +1,8 @@
 import os
 from asyncio import CancelledError
 from asyncio import TimeoutError as AsyncioTimeoutError
+from unittest import mock
 
-import mock
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -78,7 +78,7 @@ def sample_comparison(dbsession, request):
     )
 
 
-class TestNotificationService(object):
+class TestNotificationService:
     @pytest.fixture(autouse=True)
     def mock_all_plans_and_tiers_fixture(self):
         mock_all_plans_and_tiers()

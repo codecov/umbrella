@@ -1,5 +1,4 @@
 import logging
-from typing import List, Optional
 
 from sqlalchemy.orm.session import Session
 
@@ -30,7 +29,7 @@ class BackfillOwnersWithoutGHAppInstallations(
     def backfill_owners_with_integration_without_gh_app(
         self,
         db_session: Session,
-        owner_ids: List[int] = None,
+        owner_ids: list[int] = None,
         yield_amount: int = 1000,
     ):
         owners_with_integration_id_without_gh_app_query = (
@@ -53,7 +52,7 @@ class BackfillOwnersWithoutGHAppInstallations(
                 )
             )
 
-        owners: List[Owner] = owners_with_integration_id_without_gh_app_query.yield_per(
+        owners: list[Owner] = owners_with_integration_id_without_gh_app_query.yield_per(
             yield_amount
         )
 
@@ -98,7 +97,7 @@ class BackfillOwnersWithoutGHAppInstallations(
     def run_impl(
         self,
         db_session: Session,
-        owner_ids: Optional[List[int]] = None,
+        owner_ids: list[int] | None = None,
         yield_amount: int = 1000,
         *args,
         **kwargs,
@@ -128,7 +127,7 @@ class BackfillOwnersWithoutGHAppInstallations(
                 )
             )
 
-        owners: List[Owner] = owners_with_integration_id_without_gh_app_query.yield_per(
+        owners: list[Owner] = owners_with_integration_id_without_gh_app_query.yield_per(
             yield_amount
         )
 

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any
 
 from ariadne import UnionType
 from graphql import GraphQLResolveInfo
@@ -14,8 +14,8 @@ from graphql_api.helpers.mutation import (
 @wrap_error_handling_mutation
 @require_authenticated
 async def resolve_update_bundle_cache_config(
-    _: Any, info: GraphQLResolveInfo, input: Dict[str, Any]
-) -> Dict[str, List[Dict[str, str | bool]]]:
+    _: Any, info: GraphQLResolveInfo, input: dict[str, Any]
+) -> dict[str, list[dict[str, str | bool]]]:
     command: RepositoryCommands = info.context["executor"].get_command("repository")
 
     results = await command.update_bundle_cache_config(

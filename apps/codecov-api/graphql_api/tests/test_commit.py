@@ -69,7 +69,7 @@ query FetchCommits($org: String!, $repo: String!) {
 """
 
 
-class MockCoverage(object):
+class MockCoverage:
     def __init__(self, cov):
         self.coverage = cov
         self.sessions = [
@@ -79,7 +79,7 @@ class MockCoverage(object):
         ]
 
 
-class MockLines(object):
+class MockLines:
     def __init__(self):
         self.lines = [
             [0, MockCoverage("1/2")],
@@ -89,7 +89,7 @@ class MockLines(object):
         self.totals = MockCoverage(83)
 
 
-class MockReport(object):
+class MockReport:
     def get(self, filename):
         MockLines()
         return MockLines()
@@ -556,7 +556,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
         assert coverageFile["content"] == fake_coverage["content"]
         assert coverageFile["coverage"] == fake_coverage["coverage"]
         assert coverageFile["totals"] == fake_coverage["totals"]
-        assert coverageFile["hashedPath"] == hashlib.md5("path".encode()).hexdigest()
+        assert coverageFile["hashedPath"] == hashlib.md5(b"path").hexdigest()
 
     @patch("services.components.component_filtered_report")
     @patch("services.components.commit_components")
@@ -2585,7 +2585,7 @@ class TestCommit(GraphQLTestHelper, TestCase):
         assert coverageFile["content"] == fake_coverage["content"]
         assert coverageFile["coverage"] == fake_coverage["coverage"]
         assert coverageFile["totals"] == fake_coverage["totals"]
-        assert coverageFile["hashedPath"] == hashlib.md5("path".encode()).hexdigest()
+        assert coverageFile["hashedPath"] == hashlib.md5(b"path").hexdigest()
 
     @patch("services.components.component_filtered_report")
     @patch("services.components.commit_components")

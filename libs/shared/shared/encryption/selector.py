@@ -7,7 +7,7 @@ log = logging.getLogger(__name__)
 DEFAULT_ENCRYPTOR_CONSTANT = "default_enc"
 
 
-class EncryptorDivider(object):
+class EncryptorDivider:
     def __init__(self, encryptor_mapping, write_encryptor_code):
         self._encryptor_mapping = encryptor_mapping
         self.write_encryptor_code = write_encryptor_code

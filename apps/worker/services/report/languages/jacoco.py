@@ -40,7 +40,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
             timestamp = next(xml.iter("sessioninfo")).get("start")
             if timestamp and Date(timestamp) < max_age:
                 # report expired over 12 hours ago
-                raise ReportExpiredException("Jacoco report expired %s" % timestamp)
+                raise ReportExpiredException(f"Jacoco report expired {timestamp}")
 
         except StopIteration:
             pass
@@ -55,12 +55,12 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
     def try_to_fix_path(path: str) -> str | None:
         if project:
             # project/package/path
-            filename = path_fixer("%s/%s" % (project, path))
+            filename = path_fixer(f"{project}/{path}")
             if filename:
                 return filename
 
             # project/src/main/java/package/path
-            filename = path_fixer("%s/src/main/java/%s" % (project, path))
+            filename = path_fixer(f"{project}/src/main/java/{path}")
             if filename:
                 return filename
 
@@ -91,7 +91,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
 
         # Statements
         for source in package.iter("sourcefile"):
-            source_name = "%s/%s" % (base_name, source.attrib["name"])
+            source_name = "{}/{}".format(base_name, source.attrib["name"])
             filename = try_to_fix_path(source_name)
             if filename is None:
                 continue
@@ -109,11 +109,11 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
                 attr = line.attrib
                 cov: int | str
                 if attr["mb"] != "0":
-                    cov = "%s/%s" % (attr["cb"], int(attr["mb"]) + int(attr["cb"]))
+                    cov = "{}/{}".format(attr["cb"], int(attr["mb"]) + int(attr["cb"]))
                     coverage_type = CoverageType.branch
 
                 elif attr["cb"] != "0":
-                    cov = "%s/%s" % (attr["cb"], attr["cb"])
+                    cov = "{}/{}".format(attr["cb"], attr["cb"])
                     coverage_type = CoverageType.branch
 
                 else:

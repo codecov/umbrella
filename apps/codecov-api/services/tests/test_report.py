@@ -47,7 +47,7 @@ def sorted_files(report: Report) -> list[ReportFile]:
 class ReportServiceTest(TestCase):
     @patch("shared.api_archive.archive.ArchiveService.read_chunks")
     def test_build_report_from_commit(self, read_chunks_mock):
-        f = open(current_file.parent / "samples" / "chunks.txt", "r")
+        f = open(current_file.parent / "samples" / "chunks.txt")
         read_chunks_mock.return_value = f.read()
         commit = CommitWithReportFactory.create(message="aaaaa", commitid="abf6d4d")
         commit_report = commit.reports.first()
@@ -94,7 +94,7 @@ class ReportServiceTest(TestCase):
 
     @patch("shared.api_archive.archive.ArchiveService.read_chunks")
     def test_build_report_from_commit_cff_and_direct_uploads(self, read_chunks_mock):
-        f = open(current_file.parent / "samples" / "chunks.txt", "r")
+        f = open(current_file.parent / "samples" / "chunks.txt")
         read_chunks_mock.return_value = f.read()
 
         commit = CommitWithReportFactory.create()
@@ -118,7 +118,7 @@ class ReportServiceTest(TestCase):
 
     @patch("shared.api_archive.archive.ArchiveService.read_chunks")
     def test_build_report_from_commit_null_session_totals(self, read_chunks_mock):
-        f = open(current_file.parent / "samples" / "chunks.txt", "r")
+        f = open(current_file.parent / "samples" / "chunks.txt")
         read_chunks_mock.return_value = f.read()
         commit = CommitWithReportFactory.create(message="aaaaa", commitid="abf6d4d")
         upload = commit.reports.first().sessions.first()
@@ -151,7 +151,7 @@ class ReportServiceTest(TestCase):
 
     @patch("shared.api_archive.archive.ArchiveService.read_chunks")
     def test_build_report_from_commit_with_flags(self, read_chunks_mock):
-        f = open(current_file.parent / "samples" / "chunks.txt", "r")
+        f = open(current_file.parent / "samples" / "chunks.txt")
         read_chunks_mock.return_value = f.read()
         commit = CommitWithReportFactory.create(message="aaaaa", commitid="abf6d4d")
         report = build_report_from_commit(commit)
@@ -171,7 +171,7 @@ class ReportServiceTest(TestCase):
     def test_build_report_from_commit_with_non_carried_forward_flags(
         self, read_chunks_mock
     ):
-        f = open(current_file.parent / "samples" / "chunks.txt", "r")
+        f = open(current_file.parent / "samples" / "chunks.txt")
         read_chunks_mock.return_value = f.read()
         commit = CommitWithReportFactory.create(
             message="another test",
@@ -219,7 +219,7 @@ class ReportServiceTest(TestCase):
 
     @patch("shared.api_archive.archive.ArchiveService.read_chunks")
     def test_build_report_from_commit_fallback(self, read_chunks_mock):
-        f = open(current_file.parent / "samples" / "chunks.txt", "r")
+        f = open(current_file.parent / "samples" / "chunks.txt")
         read_chunks_mock.return_value = f.read()
 
         report = {

@@ -1,9 +1,9 @@
 import logging
 from collections import defaultdict
+from collections.abc import Iterator, MutableSet
 from dataclasses import dataclass
 from enum import Enum
 from functools import cached_property
-from typing import Dict, Iterator, List, MutableSet, Optional, Tuple
 
 import sentry_sdk
 
@@ -83,14 +83,14 @@ class AssetChange(BaseChange):
     size_head: int
 
 
-AssetMatch = Tuple[Optional[AssetReport], Optional[AssetReport]]
+AssetMatch = tuple[AssetReport | None, AssetReport | None]
 
 
 class AssetComparison:
     def __init__(
         self,
-        base_asset_report: Optional[AssetReport] = None,
-        head_asset_report: Optional[AssetReport] = None,
+        base_asset_report: AssetReport | None = None,
+        head_asset_report: AssetReport | None = None,
     ):
         self.base_asset_report = base_asset_report
         self.head_asset_report = head_asset_report
@@ -135,8 +135,8 @@ class AssetComparison:
             )
 
     def contributing_modules(
-        self, pr_changed_files: Optional[List[str]] = None
-    ) -> List[ModuleReport]:
+        self, pr_changed_files: list[str] | None = None
+    ) -> list[ModuleReport]:
         asset_report = self.head_asset_report
         if asset_report is None:
             return []
@@ -156,7 +156,7 @@ class BundleComparison:
         return head_size - base_size
 
     @sentry_sdk.trace
-    def asset_comparisons(self) -> List[AssetComparison]:
+    def asset_comparisons(self) -> list[AssetComparison]:
         # this groups assets by name
         # there can be multiple assets with the same name and we
         # need to try and match them across base and head reports
@@ -171,7 +171,7 @@ class BundleComparison:
         # (A, B) means that bundle A transformed to bundle B
         # (X, None) means that bundle X was deleted
         # (None, X) means that bundle X was added
-        matches: List[AssetMatch] = []
+        matches: list[AssetMatch] = []
         asset_names = []
         for asset_name, asset_reports in head_asset_reports.items():
             asset_names.append(asset_name)
@@ -189,7 +189,7 @@ class BundleComparison:
         self,
         base_asset_reports: MutableSet[AssetReport],
         head_asset_reports: MutableSet[AssetReport],
-    ) -> List[AssetMatch]:
+    ) -> list[AssetMatch]:
         """
         The given base assets and head assets all have the same name.
         This method attempts to pick the most likely matching of assets between
@@ -202,7 +202,7 @@ class BundleComparison:
         2. Pick asset with the closest size
         """
         n = max([len(base_asset_reports), len(head_asset_reports)])
-        matches: List[AssetMatch] = []
+        matches: list[AssetMatch] = []
 
         while len(matches) < n:
             if len(head_asset_reports) > 0:
@@ -259,7 +259,7 @@ class BundleRoutesComparison:
         self.head_report = head_report
 
     @sentry_sdk.trace
-    def size_changes(self) -> List[RouteChange]:
+    def size_changes(self) -> list[RouteChange]:
         """
         Returns a list of changes for each unique route that exists between the base and head.
         If a route exists on base but not head that is considered "removed" and -100% percentage delta
@@ -323,7 +323,7 @@ class BundleAnalysisComparison:
         loader: BundleAnalysisReportLoader,
         base_report_key: str,
         head_report_key: str,
-        repository: Optional[Repository] = None,
+        repository: Repository | None = None,
     ):
         self.loader = loader
         self.base_report_key = base_report_key
@@ -333,7 +333,7 @@ class BundleAnalysisComparison:
         if compare_sha_external_id:
             self.base_report_key = compare_sha_external_id
 
-    def _check_compare_sha(self, repository: Repository) -> Optional[str]:
+    def _check_compare_sha(self, repository: Repository) -> str | None:
         """
         When doing comparisons first check if there is a compare_sha set in the head report,
         if there is use that commitid to load the base commit report to compare the head to.
@@ -449,7 +449,7 @@ class BundleAnalysisComparison:
         return BundleComparison(base_bundle_report, head_bundle_report)
 
     @sentry_sdk.trace
-    def bundle_routes_changes(self) -> Dict[str, List[RouteChange]]:
+    def bundle_routes_changes(self) -> dict[str, list[RouteChange]]:
         """
         Comparison for all the routes available to a pair of bundles.
         """
@@ -481,7 +481,7 @@ class BundleAnalysisComparison:
         return comparison_mapping
 
     @sentry_sdk.trace
-    def bundle_routes_changes_by_bundle(self, bundle_name: str) -> List[RouteChange]:
+    def bundle_routes_changes_by_bundle(self, bundle_name: str) -> list[RouteChange]:
         """
         Comparison for all the routes available to a pair of bundles.
         """

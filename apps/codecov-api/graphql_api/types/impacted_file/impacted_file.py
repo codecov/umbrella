@@ -1,5 +1,4 @@
 import hashlib
-from typing import List
 
 import sentry_sdk
 from ariadne import ObjectType, UnionType
@@ -141,5 +140,5 @@ impacted_files_result_bindable = UnionType("ImpactedFilesResult")
 def resolve_files_result_type(res, *_):
     if isinstance(res, UnknownFlags):
         return "UnknownFlags"
-    elif isinstance(res, type({"results": List})):
+    elif isinstance(res, type({"results": list})):
         return "ImpactedFiles"

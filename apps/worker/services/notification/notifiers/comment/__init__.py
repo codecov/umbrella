@@ -1,6 +1,7 @@
 import logging
-from datetime import datetime, timezone
-from typing import Any, Mapping, Optional
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
@@ -77,7 +78,7 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
     def notify(
         self,
         comparison: ComparisonProxy,
-        status_or_checks_helper_text: Optional[dict[str, str]] = None,
+        status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> NotificationResult:
         # TODO: remove this when we don't need it anymore
         # this line is measuring how often we try to comment on a PR that is closed
@@ -321,7 +322,7 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
     def build_message(
         self,
         comparison: ComparisonProxy,
-        status_or_checks_helper_text: Optional[dict[str, str]] = None,
+        status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> list[str]:
         if self.should_use_upgrade_decoration():
             return self._create_upgrade_message(comparison)
@@ -346,7 +347,7 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
         Why was this check added? We changed our default behavior on 5/1/2024.
         Change explained on issue 1078
         """
-        introduction_date = datetime(2024, 5, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
+        introduction_date = datetime(2024, 5, 1, 0, 0, 0).replace(tzinfo=UTC)
 
         if (
             not self.repository.private

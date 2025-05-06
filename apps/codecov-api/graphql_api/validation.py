@@ -1,4 +1,4 @@
-from typing import Any, Dict, Type
+from typing import Any
 
 from graphql import GraphQLError, ValidationRule
 from graphql.language.ast import (
@@ -22,7 +22,7 @@ class MissingVariablesError(Exception):
     pass
 
 
-def create_required_variables_rule(variables: Dict) -> Type[ValidationRule]:
+def create_required_variables_rule(variables: dict) -> type[ValidationRule]:
     class RequiredVariablesValidationRule(ValidationRule):
         def __init__(self, context: ValidationContext) -> None:
             super().__init__(context)
@@ -54,7 +54,7 @@ def create_required_variables_rule(variables: Dict) -> Type[ValidationRule]:
     return RequiredVariablesValidationRule
 
 
-def create_max_depth_rule(max_depth: int) -> Type[ValidationRule]:
+def create_max_depth_rule(max_depth: int) -> type[ValidationRule]:
     class MaxDepthRule(ValidationRule):
         def __init__(self, context: ValidationContext) -> None:
             super().__init__(context)
@@ -86,7 +86,7 @@ def create_max_depth_rule(max_depth: int) -> Type[ValidationRule]:
     return MaxDepthRule
 
 
-def create_max_aliases_rule(max_aliases: int) -> Type[ValidationRule]:
+def create_max_aliases_rule(max_aliases: int) -> type[ValidationRule]:
     class MaxAliasesRule(ValidationRule):
         def __init__(self, context: ValidationContext) -> None:
             super().__init__(context)

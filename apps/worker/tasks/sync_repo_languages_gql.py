@@ -1,5 +1,4 @@
 import logging
-from typing import List, Optional
 
 from asgiref.sync import async_to_sync
 from sqlalchemy import String
@@ -37,13 +36,13 @@ class SyncRepoLanguagesGQLTask(BaseCodecovTask, name=sync_repo_languages_gql_tas
         if current_owner is None or org is None:
             return {"successful": False, "error": "no_owner_in_db"}
 
-        org_db_repositories: List[Repository] = (
+        org_db_repositories: list[Repository] = (
             db_session.query(Repository).filter(Repository.ownerid == org.ownerid).all()
         )
         owner_service = get_owner_provider_service(owner=current_owner)
 
         try:
-            repos_in_github: dict[str, List[str]] = async_to_sync(
+            repos_in_github: dict[str, list[str]] = async_to_sync(
                 owner_service.get_repos_with_languages_graphql
             )(owner_username=org_username)
         except TorngitRateLimitError:
@@ -62,9 +61,7 @@ class SyncRepoLanguagesGQLTask(BaseCodecovTask, name=sync_repo_languages_gql_tas
         updated_repoids_for_logging = []
         updated_repos = []
         for db_repo in org_db_repositories:
-            repo_langs_from_github: Optional[List[str]] = repos_in_github.get(
-                db_repo.name
-            )
+            repo_langs_from_github: list[str] | None = repos_in_github.get(db_repo.name)
             if repo_langs_from_github is not None:
                 updated_repoids_for_logging.append(db_repo.repoid)
                 updated_repo = {

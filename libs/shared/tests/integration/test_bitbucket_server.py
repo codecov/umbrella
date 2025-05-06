@@ -12,7 +12,7 @@ def valid_handler():
     )
 
 
-class TestBitbucketTestCase(object):
+class TestBitbucketTestCase:
     @pytest.mark.asyncio
     async def test_find_pull_request_found(self, mocker):
         api_result = {

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any
 
 from django.conf import settings
 from django.db.models import QuerySet
@@ -14,7 +14,7 @@ from shared.api_archive.archive import ArchiveService
 class FlagListField(serializers.ListField):
     child = serializers.CharField()
 
-    def to_representation(self, data: QuerySet) -> List[str | None]:
+    def to_representation(self, data: QuerySet) -> list[str | None]:
         return [item.flag_name if item is not None else None for item in data.all()]
 
 
@@ -66,7 +66,7 @@ class UploadSerializer(serializers.ModelSerializer):
             existing_flags_map[flag_obj.flag_name] = flag_obj
         return existing_flags_map
 
-    def create(self, validated_data: Dict[str, Any]) -> ReportSession | None:
+    def create(self, validated_data: dict[str, Any]) -> ReportSession | None:
         flag_names = (
             validated_data.pop("flags") if "flags" in validated_data.keys() else []
         )
@@ -136,7 +136,7 @@ class CommitSerializer(serializers.ModelSerializer):
             "branch",
         )
 
-    def create(self, validated_data: Dict[str, Any]) -> Commit:
+    def create(self, validated_data: dict[str, Any]) -> Commit:
         repo = validated_data.pop("repository", None)
         commitid = validated_data.pop("commitid", None)
         commit, created = Commit.objects.get_or_create(
@@ -173,7 +173,7 @@ class CommitReportSerializer(serializers.ModelSerializer):
             )
         return None
 
-    def create(self, validated_data: Dict[str, Any]) -> tuple[CommitReport, bool]:
+    def create(self, validated_data: dict[str, Any]) -> tuple[CommitReport, bool]:
         report = (
             CommitReport.objects.coverage_reports()
             .filter(

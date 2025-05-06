@@ -1,13 +1,12 @@
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import psycopg2
 import pytest
 from celery import chain
 from celery.contrib.testing.mocks import TaskMessage
 from celery.exceptions import Retry, SoftTimeLimitExceeded
-from mock import call
 from prometheus_client import REGISTRY
 from sqlalchemy.exc import (
     DBAPIError,
@@ -92,7 +91,7 @@ class RetrySampleTask(BaseCodecovTask, name="test.RetrySampleTask"):
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
-class TestBaseCodecovTask(object):
+class TestBaseCodecovTask:
     def test_hard_time_limit_task_with_request_data(self, mocker):
         mocker.patch.object(SampleTask, "request", timelimit=[200, 123])
         r = SampleTask()
@@ -323,7 +322,7 @@ class TestBaseCodecovTask(object):
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
-class TestBaseCodecovTaskHooks(object):
+class TestBaseCodecovTaskHooks:
     def test_sample_task_success(self, celery_app):
         class SampleTask(BaseCodecovTask, name="test.SampleTask"):
             def run_impl(self, dbsession):
@@ -393,7 +392,7 @@ class TestBaseCodecovTaskHooks(object):
         assert prom_retry_counter_after - prom_retry_counter_before == 1
 
 
-class TestBaseCodecovRequest(object):
+class TestBaseCodecovRequest:
     """
     All in all, this is a really weird class
 
@@ -467,7 +466,7 @@ class TestBaseCodecovRequest(object):
         assert prom_hard_timeout_counter_after - prom_hard_timeout_counter_before == 1
 
 
-class TestBaseCodecovTaskApplyAsyncOverride(object):
+class TestBaseCodecovTaskApplyAsyncOverride:
     @pytest.fixture
     def fake_owners(self, dbsession):
         owner = OwnerFactory.create(plan=PlanName.CODECOV_PRO_MONTHLY.value)

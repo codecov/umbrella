@@ -1,6 +1,6 @@
 import logging
+from collections.abc import Iterator
 from datetime import datetime, timedelta
-from typing import Iterator
 
 from app import celery_app
 from database.enums import Decoration

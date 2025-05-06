@@ -41,7 +41,7 @@ def mock_configuration_no_smtp(mocker):
     return mock_config
 
 
-class TestSendEmailTask(object):
+class TestSendEmailTask:
     def test_send_email(
         self,
         mocker,

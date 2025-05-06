@@ -40,7 +40,7 @@ class Parser:
                         else:
                             return selected_parser(self.db_session)
             error = "version does not exist in bundle file"
-        except IOError:
+        except OSError:
             error = "unable to open file"
         if error:
             raise Exception(f"Couldn't parse bundle: {error}")

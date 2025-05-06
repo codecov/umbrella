@@ -1,6 +1,6 @@
 import logging
+from collections.abc import Iterable
 from datetime import datetime, timedelta
-from typing import Iterable, List, Optional, Tuple
 
 from celery import Celery, chain, group, signature
 from sentry_sdk import set_tag
@@ -16,7 +16,7 @@ celery_app.config_from_object("shared.celery_config:BaseCeleryConfig")
 log = logging.getLogger(__name__)
 
 
-class TaskService(object):
+class TaskService:
     def _create_signature(self, name, args=None, kwargs=None, immutable=False):
         """
         Create Celery signature
@@ -53,7 +53,7 @@ class TaskService(object):
             kwargs={"comparison_id": comparison_id},
         ).apply_async()
 
-    def compute_comparisons(self, comparison_ids: List[int]):
+    def compute_comparisons(self, comparison_ids: list[int]):
         """
         Enqueue a batch of comparison tasks using a Celery group
         """
@@ -172,7 +172,7 @@ class TaskService(object):
         sync_repos=True,
         using_integration=False,
         manual_trigger=False,
-        repos_affected: Optional[List[Tuple[str, str]]] = None,
+        repos_affected: list[tuple[str, str]] | None = None,
     ):
         """
         Send sync_teams and/or sync_repos task message

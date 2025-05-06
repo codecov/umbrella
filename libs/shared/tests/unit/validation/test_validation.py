@@ -1005,7 +1005,7 @@ class TestUserYamlValidation(BaseTestCase):
         assert result == expected
 
 
-class TestValidationConfig(object):
+class TestValidationConfig:
     def test_validate_default_config_yaml(self, mocker):
         mocker.patch.dict(os.environ, {}, clear=True)
         mocker.patch.object(

@@ -1,5 +1,4 @@
 from textwrap import dedent
-from typing import Dict, List
 from unittest.mock import PropertyMock
 
 import pytest
@@ -1489,8 +1488,8 @@ class MockAssetComparison:
 @pytest.mark.django_db
 def test_bundle_analysis_notify_individual_bundle_data(
     bundle_changes: list[BundleChange],
-    route_changes: Dict[str, List[RouteChange]],
-    asset_comparisons: List[AssetComparison],
+    route_changes: dict[str, list[RouteChange]],
+    asset_comparisons: list[AssetComparison],
     expected_message: str,
     dbsession,
     mocker,

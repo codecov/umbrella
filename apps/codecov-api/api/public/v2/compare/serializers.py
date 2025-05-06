@@ -1,5 +1,3 @@
-from typing import List
-
 from rest_framework import serializers
 
 from api.public.v2.commit.serializers import CommitSerializer
@@ -14,7 +12,7 @@ from services.comparison import Comparison
 class ComparisonSerializer(BaseComparisonSerializer):
     commit_uploads = CommitSerializer(many=True, source="upload_commits")
 
-    def get_files(self, comparison: Comparison) -> List[dict]:
+    def get_files(self, comparison: Comparison) -> list[dict]:
         data = []
         if comparison.head_report is not None:
             for filename in comparison.head_report.files:

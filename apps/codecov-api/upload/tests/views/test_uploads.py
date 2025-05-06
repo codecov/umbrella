@@ -256,10 +256,8 @@ def test_uploads_post(db, mocker, mock_redis):
     ).first()
     assert response.status_code == 201
     assert all(
-        (
-            x in response_json.keys()
-            for x in ["external_id", "created_at", "raw_upload_location", "url"]
-        )
+        x in response_json.keys()
+        for x in ["external_id", "created_at", "raw_upload_location", "url"]
     )
     assert (
         response_json.get("url")
@@ -376,10 +374,8 @@ def test_uploads_post_tokenless(db, mocker, mock_redis, private, branch, branch_
             state="started",
         ).first()
         assert all(
-            (
-                x in response_json.keys()
-                for x in ["external_id", "created_at", "raw_upload_location", "url"]
-            )
+            x in response_json.keys()
+            for x in ["external_id", "created_at", "raw_upload_location", "url"]
         )
         assert (
             response_json.get("url")
@@ -523,10 +519,8 @@ def test_uploads_post_token_required_auth_check(
             state="started",
         ).first()
         assert all(
-            (
-                x in response_json.keys()
-                for x in ["external_id", "created_at", "raw_upload_location", "url"]
-            )
+            x in response_json.keys()
+            for x in ["external_id", "created_at", "raw_upload_location", "url"]
         )
         assert (
             response_json.get("url")
@@ -652,10 +646,8 @@ def test_uploads_post_github_oidc_auth(
         state="started",
     ).first()
     assert all(
-        (
-            x in response_json.keys()
-            for x in ["external_id", "created_at", "raw_upload_location", "url"]
-        )
+        x in response_json.keys()
+        for x in ["external_id", "created_at", "raw_upload_location", "url"]
     )
     assert (
         response_json.get("url")

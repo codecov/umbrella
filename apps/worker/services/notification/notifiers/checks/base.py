@@ -1,6 +1,6 @@
 import logging
 from contextlib import nullcontext
-from typing import Any, Optional, TypedDict
+from typing import Any, TypedDict
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
@@ -25,7 +25,7 @@ class CheckOutput(TypedDict):
     title: str
     summary: str
     annotations: list[Any]
-    text: Optional[str]
+    text: str | None
 
 
 class CheckResult(TypedDict):
@@ -93,7 +93,7 @@ class ChecksNotifier(StatusNotifier):
     def notify(
         self,
         comparison: ComparisonProxy,
-        status_or_checks_helper_text: Optional[dict[str, str]] = None,
+        status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> NotificationResult:
         if comparison.pull is None or ():
             log.debug(

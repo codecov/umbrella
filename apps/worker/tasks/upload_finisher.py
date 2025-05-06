@@ -1,7 +1,7 @@
 import logging
 import random
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 import sentry_sdk
@@ -167,7 +167,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
                 # Mark the repository as updated so it will appear earlier in the list
                 # of recently-active repositories
-                now = datetime.now(tz=timezone.utc)
+                now = datetime.now(tz=UTC)
                 threshold = now - timedelta(minutes=30)
                 if not repository.updatestamp or repository.updatestamp < threshold:
                     repository.updatestamp = now
@@ -187,7 +187,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit_yaml: UserYaml,
         processing_results: list[ProcessingResult],
     ):
-        log.debug("In finish_reports_processing for commit: %s" % commit)
+        log.debug(f"In finish_reports_processing for commit: {commit}")
         commitid = commit.commitid
         repoid = commit.repoid
 
@@ -341,16 +341,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         return ShouldCallNotifyResult.NOTIFY
 
     def invalidate_caches(self, redis_connection, commit: Commit):
-        redis_connection.delete("cache/{}/tree/{}".format(commit.repoid, commit.branch))
-        redis_connection.delete(
-            "cache/{0}/tree/{1}".format(commit.repoid, commit.commitid)
-        )
+        redis_connection.delete(f"cache/{commit.repoid}/tree/{commit.branch}")
+        redis_connection.delete(f"cache/{commit.repoid}/tree/{commit.commitid}")
         repository = commit.repository
         key = ":".join((repository.service, repository.owner.username, repository.name))
         if commit.branch:
-            redis_connection.hdel("badge", ("%s:%s" % (key, (commit.branch))).lower())
+            redis_connection.hdel("badge", (f"{key}:{commit.branch}").lower())
             if commit.branch == repository.branch:
-                redis_connection.hdel("badge", ("%s:" % key).lower())
+                redis_connection.hdel("badge", (f"{key}:").lower())
 
 
 RegisteredUploadTask = celery_app.register_task(UploadFinisherTask())

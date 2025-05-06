@@ -9,7 +9,7 @@ from shared.config import get_config
 log = logging.getLogger(__name__)
 
 
-class GitHubMarketplaceService(object):
+class GitHubMarketplaceService:
     """
     Static ids for each of Codecov's plans on GitHub marketplace
     """
@@ -85,7 +85,7 @@ class GitHubMarketplaceService(object):
         Codecov plan. When someone submits a plan change that won't be processed until
         the end of their billing cycle, you will also see the upcoming pending change.
         """
-        return self.api("get", "/marketplace_listing/accounts/{}".format(account_id))
+        return self.api("get", f"/marketplace_listing/accounts/{account_id}")
 
     def get_codecov_plans(self):
         """
@@ -100,7 +100,7 @@ class GitHubMarketplaceService(object):
         params = {"page": page}
         return self.api(
             "get",
-            "/marketplace_listing/plans/{}/accounts".format(plan_id),
+            f"/marketplace_listing/plans/{plan_id}/accounts",
             params=params,
         )
 
@@ -114,7 +114,7 @@ class GitHubMarketplaceService(object):
         }
         return self.api(
             "get",
-            "/user/{}".format(service_id),
+            f"/user/{service_id}",
             params=params,
             auth_with_integration_token=False,
         )

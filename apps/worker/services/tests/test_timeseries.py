@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from celery import group
@@ -113,7 +113,7 @@ def dataset_names():
     ]
 
 
-class TestTimeseriesService(object):
+class TestTimeseriesService:
     def test_insert_commit_measurement(
         self, dbsession, sample_report, repository, dataset_names, mocker
     ):
@@ -144,9 +144,9 @@ class TestTimeseriesService(object):
         assert measurement.repo_id == commit.repoid
         assert measurement.measurable_id == f"{commit.repoid}"
         assert measurement.commit_sha == commit.commitid
-        assert measurement.timestamp.replace(
-            tzinfo=timezone.utc
-        ) == commit.timestamp.replace(tzinfo=timezone.utc)
+        assert measurement.timestamp.replace(tzinfo=UTC) == commit.timestamp.replace(
+            tzinfo=UTC
+        )
         assert measurement.branch == "foo"
         assert measurement.value == 60.0
 
@@ -220,9 +220,9 @@ class TestTimeseriesService(object):
         assert measurement.repo_id == commit.repoid
         assert measurement.measurable_id == f"{commit.repoid}"
         assert measurement.commit_sha == commit.commitid
-        assert measurement.timestamp.replace(
-            tzinfo=timezone.utc
-        ) == commit.timestamp.replace(tzinfo=timezone.utc)
+        assert measurement.timestamp.replace(tzinfo=UTC) == commit.timestamp.replace(
+            tzinfo=UTC
+        )
         assert measurement.branch == "foo"
         assert measurement.value == 60.0
 
@@ -269,9 +269,9 @@ class TestTimeseriesService(object):
         assert measurement.repo_id == commit.repoid
         assert measurement.measurable_id == f"{repository_flag1.id}"
         assert measurement.commit_sha == commit.commitid
-        assert measurement.timestamp.replace(
-            tzinfo=timezone.utc
-        ) == commit.timestamp.replace(tzinfo=timezone.utc)
+        assert measurement.timestamp.replace(tzinfo=UTC) == commit.timestamp.replace(
+            tzinfo=UTC
+        )
         assert measurement.branch == "foo"
         assert measurement.value == 100.0
 
@@ -292,9 +292,9 @@ class TestTimeseriesService(object):
         assert measurement.repo_id == commit.repoid
         assert measurement.measurable_id == f"{repository_flag2.id}"
         assert measurement.commit_sha == commit.commitid
-        assert measurement.timestamp.replace(
-            tzinfo=timezone.utc
-        ) == commit.timestamp.replace(tzinfo=timezone.utc)
+        assert measurement.timestamp.replace(tzinfo=UTC) == commit.timestamp.replace(
+            tzinfo=UTC
+        )
         assert measurement.branch == "foo"
         assert measurement.value == 100.0
 
@@ -367,9 +367,9 @@ class TestTimeseriesService(object):
         assert measurement.repo_id == commit.repoid
         assert measurement.measurable_id == f"{repository_flag1.id}"
         assert measurement.commit_sha == commit.commitid
-        assert measurement.timestamp.replace(
-            tzinfo=timezone.utc
-        ) == commit.timestamp.replace(tzinfo=timezone.utc)
+        assert measurement.timestamp.replace(tzinfo=UTC) == commit.timestamp.replace(
+            tzinfo=UTC
+        )
         assert measurement.branch == "foo"
         assert measurement.value == 100.0
 
@@ -390,9 +390,9 @@ class TestTimeseriesService(object):
         assert measurement.repo_id == commit.repoid
         assert measurement.measurable_id == f"{repository_flag2.id}"
         assert measurement.commit_sha == commit.commitid
-        assert measurement.timestamp.replace(
-            tzinfo=timezone.utc
-        ) == commit.timestamp.replace(tzinfo=timezone.utc)
+        assert measurement.timestamp.replace(tzinfo=UTC) == commit.timestamp.replace(
+            tzinfo=UTC
+        )
         assert measurement.branch == "foo"
         assert measurement.value == 100.0
 
@@ -478,8 +478,8 @@ class TestTimeseriesService(object):
         assert python_file_measurement.measurable_id == "python_files"
         assert python_file_measurement.commit_sha == commit.commitid
         assert python_file_measurement.timestamp.replace(
-            tzinfo=timezone.utc
-        ) == commit.timestamp.replace(tzinfo=timezone.utc)
+            tzinfo=UTC
+        ) == commit.timestamp.replace(tzinfo=UTC)
         assert python_file_measurement.branch == "foo"
         assert python_file_measurement.value == 75.0
 
@@ -507,8 +507,8 @@ class TestTimeseriesService(object):
         )
         assert default_component_settings_measurement.commit_sha == commit.commitid
         assert default_component_settings_measurement.timestamp.replace(
-            tzinfo=timezone.utc
-        ) == commit.timestamp.replace(tzinfo=timezone.utc)
+            tzinfo=UTC
+        ) == commit.timestamp.replace(tzinfo=UTC)
         assert default_component_settings_measurement.branch == "foo"
         assert default_component_settings_measurement.value == 25.0
 
@@ -531,8 +531,8 @@ class TestTimeseriesService(object):
         assert manual_flags_measurements.measurable_id == "i_have_flags"
         assert manual_flags_measurements.commit_sha == commit.commitid
         assert manual_flags_measurements.timestamp.replace(
-            tzinfo=timezone.utc
-        ) == commit.timestamp.replace(tzinfo=timezone.utc)
+            tzinfo=UTC
+        ) == commit.timestamp.replace(tzinfo=UTC)
         assert manual_flags_measurements.branch == "foo"
         assert manual_flags_measurements.value == 25.0
 
@@ -555,8 +555,8 @@ class TestTimeseriesService(object):
         assert all_settings_measurements.measurable_id == "all_settings"
         assert all_settings_measurements.commit_sha == commit.commitid
         assert all_settings_measurements.timestamp.replace(
-            tzinfo=timezone.utc
-        ) == commit.timestamp.replace(tzinfo=timezone.utc)
+            tzinfo=UTC
+        ) == commit.timestamp.replace(tzinfo=UTC)
         assert all_settings_measurements.branch == "foo"
         assert all_settings_measurements.value == 50.0
 
@@ -650,8 +650,8 @@ class TestTimeseriesService(object):
         assert measurements[0].measurable_id == "test-component-123"
         assert measurements[0].commit_sha == commit.commitid
         assert measurements[0].timestamp.replace(
-            tzinfo=timezone.utc
-        ) == commit.timestamp.replace(tzinfo=timezone.utc)
+            tzinfo=UTC
+        ) == commit.timestamp.replace(tzinfo=UTC)
 
     def test_commit_measurement_update_component(
         self, dbsession, sample_report_for_components, repository, dataset_names, mocker
@@ -722,9 +722,9 @@ class TestTimeseriesService(object):
         assert measurement.repo_id == commit.repoid
         assert measurement.measurable_id == "test-component-123"
         assert measurement.commit_sha == commit.commitid
-        assert measurement.timestamp.replace(
-            tzinfo=timezone.utc
-        ) == commit.timestamp.replace(tzinfo=timezone.utc)
+        assert measurement.timestamp.replace(tzinfo=UTC) == commit.timestamp.replace(
+            tzinfo=UTC
+        )
         assert measurement.branch == "foo"
         assert measurement.value == 50.0
 
@@ -751,29 +751,29 @@ class TestTimeseriesService(object):
     def test_repository_commits_query(self, dbsession, repository, mocker):
         commit1 = CommitFactory.create(
             repository=repository,
-            timestamp=datetime(2022, 6, 1, 0, 0, 0).replace(tzinfo=timezone.utc),
+            timestamp=datetime(2022, 6, 1, 0, 0, 0).replace(tzinfo=UTC),
         )
         dbsession.add(commit1)
         commit2 = CommitFactory.create(
             repository=repository,
-            timestamp=datetime(2022, 6, 10, 0, 0, 0).replace(tzinfo=timezone.utc),
+            timestamp=datetime(2022, 6, 10, 0, 0, 0).replace(tzinfo=UTC),
         )
         dbsession.add(commit2)
         commit3 = CommitFactory.create(
             repository=repository,
-            timestamp=datetime(2022, 6, 17, 0, 0, 0).replace(tzinfo=timezone.utc),
+            timestamp=datetime(2022, 6, 17, 0, 0, 0).replace(tzinfo=UTC),
         )
         dbsession.add(commit3)
         commit4 = CommitFactory.create(
-            timestamp=datetime(2022, 6, 10, 0, 0, 0).replace(tzinfo=timezone.utc)
+            timestamp=datetime(2022, 6, 10, 0, 0, 0).replace(tzinfo=UTC)
         )
         dbsession.add(commit4)
         dbsession.flush()
 
         commits = repository_commits_query(
             repository,
-            start_date=datetime(2022, 6, 1, 0, 0, 0).replace(tzinfo=timezone.utc),
-            end_date=datetime(2022, 6, 15, 0, 0, 0).replace(tzinfo=timezone.utc),
+            start_date=datetime(2022, 6, 1, 0, 0, 0).replace(tzinfo=UTC),
+            end_date=datetime(2022, 6, 15, 0, 0, 0).replace(tzinfo=UTC),
         )
 
         assert len(list(commits)) == 2

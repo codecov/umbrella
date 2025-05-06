@@ -169,12 +169,12 @@ class Report:
 
     def __repr__(self):
         try:
-            return "<%s files=%s>" % (
+            return "<{} files={}>".format(
                 self.__class__.__name__,
                 len(getattr(self, "_files", [])),
             )
         except Exception:
-            return "<%s files=n/a>" % self.__class__.__name__
+            return f"<{self.__class__.__name__} files=n/a>"
 
     @property
     def files(self) -> list[str]:
@@ -218,7 +218,7 @@ class Report:
             return False
 
         elif not isinstance(_file, ReportFile):
-            raise TypeError("expecting ReportFile got %s" % type(_file))
+            raise TypeError(f"expecting ReportFile got {type(_file)}")
 
         elif len(_file) == 0:
             # dont append empty files
@@ -256,7 +256,7 @@ class Report:
     def __getitem__(self, filename):
         _file = self.get(filename)
         if _file is None:
-            raise IndexError("File at path %s not found in report" % filename)
+            raise IndexError(f"File at path {filename} not found in report")
         return _file
 
     def __delitem__(self, filename):
@@ -298,8 +298,7 @@ class Report:
         """Iter through all the files
         yielding <ReportFile>
         """
-        for file in self._files.values():
-            yield file
+        yield from self._files.values()
 
     def __contains__(self, filename):
         return filename in self._files
@@ -311,7 +310,7 @@ class Report:
             return
 
         elif not isinstance(new_report, Report):
-            raise TypeError("expecting type Report got %s" % type(new_report))
+            raise TypeError(f"expecting type Report got {type(new_report)}")
 
         elif new_report.is_empty():
             return
@@ -409,10 +408,8 @@ class Report:
 
     def filter(self, paths=None, flags=None):
         if paths:
-            if not isinstance(paths, (list, set, tuple)):
-                raise TypeError(
-                    "expecting list for argument paths got %s" % type(paths)
-                )
+            if not isinstance(paths, list | set | tuple):
+                raise TypeError(f"expecting list for argument paths got {type(paths)}")
         if paths is None and flags is None:
             return self
         return FilteredReport(self, path_patterns=paths, flags=flags)

@@ -6,7 +6,7 @@ from services.task import TaskService, celery_app
 from shared.helpers.redis import get_redis_connection
 
 
-class RefreshService(object):
+class RefreshService:
     def __init__(self):
         self.task_service = TaskService()
         self.redis = get_redis_connection()

@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Callable, Mapping, Optional
+from collections.abc import Callable, Mapping
+from typing import Any
 
 from database.models.core import Owner
 from helpers.environment import is_enterprise
@@ -20,13 +21,13 @@ from shared.reports.resources import ReportTotals
 log = logging.getLogger(__name__)
 
 
-class MessageMixin(object):
+class MessageMixin:
     def create_message(
         self,
         comparison: ComparisonProxy | FilteredComparison,
-        pull_dict: Optional[Mapping[str, Any]],
+        pull_dict: Mapping[str, Any] | None,
         yaml_settings: dict,
-        status_or_checks_helper_text: Optional[dict[str, str]] = None,
+        status_or_checks_helper_text: dict[str, str] | None = None,
     ):
         """
         Assemble the various components of the PR comments message in accordance with their YAML configuration.

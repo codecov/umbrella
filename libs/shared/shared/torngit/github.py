@@ -3,9 +3,8 @@ import hashlib
 import logging
 import os
 from base64 import b64decode
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from string import Template
-from typing import Dict, List, Optional
 from urllib.parse import parse_qs, urlencode
 
 import httpx
@@ -473,7 +472,7 @@ GITHUB_API_ENDPOINTS = {
 external_endpoint_template = Template("${username}/${name}/commit/${commitid}")
 
 
-class GitHubGraphQLQueries(object):
+class GitHubGraphQLQueries:
     _queries = {
         "REPOS_FROM_NODEIDS": """
 query GetReposFromNodeIds($node_ids: [ID!]!) {
@@ -709,8 +708,8 @@ class Github(TorngitBaseAdapter):
     def _possibly_mark_current_entity_as_rate_limited(
         self,
         *,
-        reset_timestamp: Optional[str] = None,
-        retry_in_seconds: Optional[int] = None,
+        reset_timestamp: str | None = None,
+        retry_in_seconds: int | None = None,
         # Couldn't type this to Token cause there's a circular import. Suggestions are welcome
         token,
     ) -> None:
@@ -731,7 +730,7 @@ class Github(TorngitBaseAdapter):
             # https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api?apiVersion=2022-11-28#handle-rate-limit-errors-appropriately
             ttl_seconds = max(
                 0,
-                int(reset_timestamp) - int(datetime.now(timezone.utc).timestamp()),
+                int(reset_timestamp) - int(datetime.now(UTC).timestamp()),
             )
         if ttl_seconds > 0:
             log.info(
@@ -749,7 +748,7 @@ class Github(TorngitBaseAdapter):
 
     def _get_next_fallback_token(
         self,
-    ) -> Optional[str]:
+    ) -> str | None:
         """If additional fallback tokens were passed to this instance of GitHub
         select the next token in line to retry the previous request.
 
@@ -757,7 +756,7 @@ class Github(TorngitBaseAdapter):
         !side effect: Updates the self._token value
         !side effect: Consumes one of self.data.fallback_installations
         """
-        fallback_installations: List[GithubInstallationInfo] = self.data.get(
+        fallback_installations: list[GithubInstallationInfo] = self.data.get(
             "fallback_installations", None
         )
         if fallback_installations is None or fallback_installations == []:
@@ -797,7 +796,7 @@ class Github(TorngitBaseAdapter):
             "User-Agent": os.getenv("USER_AGENT", "Default"),
         }
         if token_to_use:
-            _headers["Authorization"] = "token %s" % token_to_use["key"]
+            _headers["Authorization"] = "token {}".format(token_to_use["key"])
         _headers.update(headers or {})
         log_dict = {}
 
@@ -974,7 +973,7 @@ class Github(TorngitBaseAdapter):
 
     async def refresh_token(
         self, client: httpx.AsyncClient, original_url: str
-    ) -> Optional[OauthConsumerToken]:
+    ) -> OauthConsumerToken | None:
         """
         This function requests a refresh token from Github.
         The refresh_token value is stored as part of the oauth token dict.
@@ -1297,7 +1296,7 @@ class Github(TorngitBaseAdapter):
         return {"username": owner_data["login"], "service_id": owner_data["databaseId"]}
 
     async def get_repos_from_nodeids_generator(
-        self, repo_node_ids: List[str], expected_owner_username, *, token=None
+        self, repo_node_ids: list[str], expected_owner_username, *, token=None
     ):
         """Gets a list of repos from github graphQL API when the node_ids for the repos are known.
         Also gets the owner info (also from graphQL API) if the owner is not the expected one.
@@ -1444,7 +1443,7 @@ class Github(TorngitBaseAdapter):
                     break
 
     # GH App Installation
-    async def get_gh_app_installation(self, installation_id: int) -> Dict:
+    async def get_gh_app_installation(self, installation_id: int) -> dict:
         """
         Gets gh app installation from the source.
         Reference:
@@ -1840,8 +1839,7 @@ class Github(TorngitBaseAdapter):
         files = {}
         for f in res["files"]:
             diff = self.diff_to_json(
-                "diff --git a/%s b/%s%s\n%s\n%s\n%s"
-                % (
+                "diff --git a/{} b/{}{}\n{}\n{}\n{}".format(
                     f.get("previous_filename") or f.get("filename"),
                     f.get("filename"),
                     (
@@ -1918,7 +1916,7 @@ class Github(TorngitBaseAdapter):
                 res = await self.api(
                     client,
                     "get",
-                    "/repos/%s/commits/%s" % (self.slug, commit),
+                    f"/repos/{self.slug}/commits/{commit}",
                     statuses_to_retry=[401],
                     token=token,
                 )
@@ -2217,7 +2215,7 @@ class Github(TorngitBaseAdapter):
             return res
 
     # TODO: deprecated - favour the get_repos_with_languages_graphql() method instead
-    async def get_repo_languages(self, token=None) -> List[str]:
+    async def get_repo_languages(self, token=None) -> list[str]:
         """
         Gets the languages belonging to this repository.
         Reference:
@@ -2234,7 +2232,7 @@ class Github(TorngitBaseAdapter):
 
     async def get_repos_with_languages_graphql(
         self, owner_username: str, token=None, first=100
-    ) -> dict[str, List[str]]:
+    ) -> dict[str, list[str]]:
         """
         Gets the languages belonging to repositories of a specific owner.
         Reference:
@@ -2361,7 +2359,7 @@ class Github(TorngitBaseAdapter):
         installation_info = self.data.get("installation", {})
         if installation_info and "installation_id" in installation_info:
             return f"GitHub_installation_{installation_info['installation_id']}"
-        some_secret = "v1CAF4bFYi2+7sN7hgS/flGtooomdTZF0+uGiigV3AY8f4HHNg".encode()
+        some_secret = b"v1CAF4bFYi2+7sN7hgS/flGtooomdTZF0+uGiigV3AY8f4HHNg"
         hasher = hashlib.sha256()
         hasher.update(some_secret)
         hasher.update(self.service.encode())
@@ -2370,7 +2368,7 @@ class Github(TorngitBaseAdapter):
         hasher.update(token.get("key").encode())
         return base64.b64encode(hasher.digest()).decode()[:5]
 
-    async def get_best_effort_branches(self, commit_sha: str, token=None) -> List[str]:
+    async def get_best_effort_branches(self, commit_sha: str, token=None) -> list[str]:
         """
         Gets a 'best effort' list of branches this commit is in.
         If a branch is returned, this means this commit is in that branch. If not, it could still be

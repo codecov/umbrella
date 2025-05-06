@@ -1,5 +1,4 @@
 import logging
-from typing import List
 
 from shared.analytics_tracking.base import BaseAnalyticsTool
 from shared.analytics_tracking.manager import AnalyticsToolManager
@@ -12,7 +11,7 @@ log = logging.getLogger("__name__")
 __all__ = ["analytics_manager"]
 
 
-def get_list_of_analytic_tools() -> List[BaseAnalyticsTool]:
+def get_list_of_analytic_tools() -> list[BaseAnalyticsTool]:
     return [PubSub(), Marketo()]
 
 

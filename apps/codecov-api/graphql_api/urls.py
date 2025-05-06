@@ -21,5 +21,5 @@ ALLOWED_SERVICES = [
 service_regex = "|".join(ALLOWED_SERVICES)
 
 urlpatterns = [
-    re_path(r"^(?P<service>({}))$".format(service_regex), ariadne_view, name="graphql"),
+    re_path(rf"^(?P<service>({service_regex}))$", ariadne_view, name="graphql"),
 ]

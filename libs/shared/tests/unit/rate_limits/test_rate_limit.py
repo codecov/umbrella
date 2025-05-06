@@ -1,8 +1,7 @@
 import datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from mock import MagicMock
 from redis import RedisError
 
 from shared.django_apps.codecov_auth.models import (

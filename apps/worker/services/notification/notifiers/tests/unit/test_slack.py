@@ -1,7 +1,7 @@
 from services.notification.notifiers.slack import SlackNotifier
 
 
-class TestSlackNotifier(object):
+class TestSlackNotifier:
     def test_build_payload_without_attachments(
         self, dbsession, mock_configuration, sample_comparison
     ):

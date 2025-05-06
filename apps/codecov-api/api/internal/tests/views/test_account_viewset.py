@@ -25,7 +25,7 @@ from utils.test_utils import APIClient
 curr_path = os.path.dirname(__file__)
 
 
-class MockSubscription(object):
+class MockSubscription:
     def __init__(self, subscription_params: dict):
         self.items = {"data": [{"id": "abc"}]}
         self.cancel_at_period_end = False
@@ -76,7 +76,7 @@ class MockSubscription(object):
         return getattr(self, key)
 
 
-class MockMetadata(object):
+class MockMetadata:
     def __init__(self):
         self.obo = 2
         self.obo_organization = 3
@@ -85,7 +85,7 @@ class MockMetadata(object):
         return getattr(self, key)
 
 
-class MockSchedule(object):
+class MockSchedule:
     def __init__(self, schedule_params, phases):
         self.id = schedule_params["id"]
         self.phases = phases

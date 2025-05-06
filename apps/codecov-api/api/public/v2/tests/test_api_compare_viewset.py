@@ -211,7 +211,7 @@ class MockSegment:
     has_unintended_changes: bool = False
 
 
-class MockFileComparison(object):
+class MockFileComparison:
     def __init__(self):
         self.segments = [
             MockSegment(has_unintended_changes=True, has_diff_changes=False),

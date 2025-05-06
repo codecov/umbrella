@@ -24,9 +24,9 @@ class TestInvoiceType(GraphQLTestHelper, TestCase):
         stripe_invoice_response["data"] = stripe_invoice_response["data"] * 100
         mock_list_filtered_invoices.return_value = stripe_invoice_response
 
-        query = """{
-            owner(username: "%s") {
-                invoices {
+        query = f"""{{
+            owner(username: "{self.current_owner.username}") {{
+                invoices {{
                     amountDue
                     amountPaid
                     created
@@ -37,46 +37,46 @@ class TestInvoiceType(GraphQLTestHelper, TestCase):
                     dueDate
                     footer
                     id
-                    lineItems {
+                    lineItems {{
                         amount
                         currency
                         description
-                    }
+                    }}
                     number
                     periodEnd
                     periodStart
                     status
                     subtotal
                     total
-                    defaultPaymentMethod {
-                        card {
+                    defaultPaymentMethod {{
+                        card {{
                             brand
                             expMonth
                             expYear
                             last4
-                        }
-                        billingDetails {
-                            address {
+                        }}
+                        billingDetails {{
+                            address {{
                                 city
                                 country
                                 line1
                                 line2
                                 postalCode
                                 state
-                            }
+                            }}
                             email
                             name
                             phone
-                        }
-                    }
-                    taxIds {
+                        }}
+                    }}
+                    taxIds {{
                         type
                         value
-                    }
-                }
-            }
-        }
-        """ % (self.current_owner.username)
+                    }}
+                }}
+            }}
+        }}
+        """
 
         data = self.gql_request(query, owner=self.current_owner)
         assert len(data["owner"]["invoices"]) == 100
@@ -116,9 +116,9 @@ class TestInvoiceType(GraphQLTestHelper, TestCase):
         invoice["customer"] = self.current_owner.stripe_customer_id
         mock_retrieve_invoice.return_value = invoice
 
-        query = """{
-            owner(username: "%s") {
-                invoice(invoiceId: "in_19yTU92eZvKYlo2C7uDjvu6v") {
+        query = f"""{{
+            owner(username: "{self.current_owner.username}") {{
+                invoice(invoiceId: "in_19yTU92eZvKYlo2C7uDjvu6v") {{
                     amountDue
                     amountPaid
                     created
@@ -129,46 +129,46 @@ class TestInvoiceType(GraphQLTestHelper, TestCase):
                     dueDate
                     footer
                     id
-                    lineItems {
+                    lineItems {{
                         amount
                         currency
                         description
-                    }
+                    }}
                     number
                     periodEnd
                     periodStart
                     status
                     subtotal
                     total
-                    defaultPaymentMethod {
-                        card {
+                    defaultPaymentMethod {{
+                        card {{
                             brand
                             expMonth
                             expYear
                             last4
-                        }
-                        billingDetails {
-                            address {
+                        }}
+                        billingDetails {{
+                            address {{
                                 city
                                 country
                                 line1
                                 line2
                                 postalCode
                                 state
-                            }
+                            }}
                             email
                             name
                             phone
-                        }
-                    }
-                    taxIds {
+                        }}
+                    }}
+                    taxIds {{
                         type
                         value
-                    }
-                }
-            }
-        }
-        """ % (self.current_owner.username)
+                    }}
+                }}
+            }}
+        }}
+        """
 
         data = self.gql_request(query, owner=self.current_owner)
         assert data["owner"]["invoice"] is not None
@@ -204,9 +204,9 @@ class TestInvoiceType(GraphQLTestHelper, TestCase):
     def test_invoice_returns_none_if_no_invoices(self, mock_retrieve_invoice):
         mock_retrieve_invoice.return_value = None
 
-        query = """{
-            owner(username: "%s") {
-                invoice(invoiceId: "in_19yTU92eZvKYlo2C7uDjvu6v") {
+        query = f"""{{
+            owner(username: "{self.current_owner.username}") {{
+                invoice(invoiceId: "in_19yTU92eZvKYlo2C7uDjvu6v") {{
                     amountDue
                     amountPaid
                     created
@@ -217,46 +217,46 @@ class TestInvoiceType(GraphQLTestHelper, TestCase):
                     dueDate
                     footer
                     id
-                    lineItems {
+                    lineItems {{
                         amount
                         currency
                         description
-                    }
+                    }}
                     number
                     periodEnd
                     periodStart
                     status
                     subtotal
                     total
-                    defaultPaymentMethod {
-                        card {
+                    defaultPaymentMethod {{
+                        card {{
                             brand
                             expMonth
                             expYear
                             last4
-                        }
-                        billingDetails {
-                            address {
+                        }}
+                        billingDetails {{
+                            address {{
                                 city
                                 country
                                 line1
                                 line2
                                 postalCode
                                 state
-                            }
+                            }}
                             email
                             name
                             phone
-                        }
-                    }
-                    taxIds {
+                        }}
+                    }}
+                    taxIds {{
                         type
                         value
-                    }
-                }
-            }
-        }
-        """ % (self.current_owner.username)
+                    }}
+                }}
+            }}
+        }}
+        """
 
         data = self.gql_request(query, owner=self.current_owner)
         assert data["owner"]["invoice"] is None

@@ -11,7 +11,7 @@ current_file = Path(__file__)
 
 @pytest.fixture
 def sample_rust_report():
-    with open(current_file.parent / "samples" / "chunks_01.txt", "r") as f:
+    with open(current_file.parent / "samples" / "chunks_01.txt") as f:
         chunks = f.read()
     files_dict = {
         "awesome/__init__.py": [
@@ -53,10 +53,10 @@ def sample_rust_report():
     )
 
 
-class TestLazyRustReport(object):
+class TestLazyRustReport:
     @pytest.mark.parametrize("chunks_file", ["chunks_01.txt", "chunks_03.txt"])
     def test_get_report(self, chunks_file):
-        with open(current_file.parent / "samples" / chunks_file, "r") as f:
+        with open(current_file.parent / "samples" / chunks_file) as f:
             chunks = f.read()
         filename_mapping = {
             "awesome/__init__.py": 2,
@@ -69,7 +69,7 @@ class TestLazyRustReport(object):
         assert r.get_report() is not None
 
 
-class TestReadOnly(object):
+class TestReadOnly:
     @pytest.mark.parametrize(
         "report_header", [{}, {"labels_index": {0: "special_label", 1: "some_test"}}]
     )
@@ -216,7 +216,7 @@ class TestReadOnly(object):
 
     def test_from_chunks_with_totals(self, mocker):
         mocked_process_totals = mocker.patch.object(ReadOnlyReport, "_process_totals")
-        with open(current_file.parent / "samples" / "chunks_01.txt", "r") as f:
+        with open(current_file.parent / "samples" / "chunks_01.txt") as f:
             chunks = f.read()
         files_dict = {
             "awesome/__init__.py": [

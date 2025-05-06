@@ -1,4 +1,3 @@
-from typing import Dict, List, Tuple, Union
 from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse, urlunparse
 
 from shared.config import get_config
@@ -50,9 +49,7 @@ def url_escape(value):
 
 def url_concat(
     url: str,
-    args: Union[
-        None, Dict[str, str], List[Tuple[str, str]], Tuple[Tuple[str, str], ...]
-    ],
+    args: None | dict[str, str] | list[tuple[str, str]] | tuple[tuple[str, str], ...],
 ) -> str:
     """Taken from Tornado.httputil
     https://github.com/tornadoweb/tornado/blob/f059b41d18909f83610bb48eba4678f7f892f52f/tornado/httputil.py#L609
@@ -80,9 +77,7 @@ def url_concat(
         parsed_query = parse_qsl(parsed_url.query, keep_blank_values=True)
         parsed_query.extend(args)
     else:
-        err = "'args' parameter should be dict, list or tuple. Not {0}".format(
-            type(args)
-        )
+        err = f"'args' parameter should be dict, list or tuple. Not {type(args)}"
         raise TypeError(err)
     final_query = urlencode(parsed_query)
     url = urlunparse(

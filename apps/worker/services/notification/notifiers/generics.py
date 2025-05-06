@@ -1,7 +1,8 @@
 import json
 import logging
+from collections.abc import Mapping
 from decimal import Decimal
-from typing import Any, Mapping, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -82,7 +83,7 @@ class StandardNotifier(AbstractBaseNotifier):
     def notify(
         self,
         comparison: ComparisonProxy,
-        status_or_checks_helper_text: Optional[dict[str, str]] = None,
+        status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> NotificationResult:
         filtered_comparison = comparison.get_filtered_comparison(
             **self.get_notifier_filters()

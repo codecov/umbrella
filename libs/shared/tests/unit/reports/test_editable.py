@@ -1,6 +1,5 @@
 from fractions import Fraction
 from pathlib import Path
-from typing import List
 
 import orjson
 import pytest
@@ -40,7 +39,7 @@ def lookup_label(label_id: int) -> str:
 
 
 def create_sample_line(
-    *, coverage, sessionid=None, list_of_lists_of_label_ids: List[List[int]] = None
+    *, coverage, sessionid=None, list_of_lists_of_label_ids: list[list[int]] = None
 ):
     datapoints = [
         CoverageDatapoint(
@@ -112,7 +111,7 @@ def test_change_sessionid():
     assert_sessionid(report, 234)
 
 
-class TestEditableReportHelpers(object):
+class TestEditableReportHelpers:
     def test_line_without_session(self):
         line = ReportLine.create(1, None, [LineSession(1, 0), LineSession(0, 1)])
         assert EditableReportFile.line_without_multiple_sessions(
@@ -226,7 +225,7 @@ class TestEditableReportHelpers(object):
         )
 
 
-class TestEditableReportFile(object):
+class TestEditableReportFile:
     def test_init(self):
         chunks = "\n".join(
             [
@@ -839,7 +838,7 @@ def sample_report():
     return report
 
 
-class TestEditableReport(object):
+class TestEditableReport:
     @pytest.fixture
     def sample_with_labels_report(self):
         first_report = EditableReport()

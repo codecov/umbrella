@@ -1,6 +1,6 @@
 import logging
 import pickle
-from typing import Any, Dict, List
+from typing import Any
 
 from rest_framework import status
 from rest_framework.request import Request
@@ -26,11 +26,11 @@ class FeaturesView(APIView):
         self.redis = get_redis_connection()
         super().__init__(*args, **kwargs)
 
-    def get_many_from_redis(self, keys: List) -> Dict[str, Any]:
+    def get_many_from_redis(self, keys: list) -> dict[str, Any]:
         ret = self.redis.mget(keys)
         return {k: pickle.loads(v) for k, v in zip(keys, ret) if v is not None}
 
-    def set_many_to_redis(self, data: Dict[str, Any]) -> None:
+    def set_many_to_redis(self, data: dict[str, Any]) -> None:
         pipeline = self.redis.pipeline()
         pipeline.mset({k: pickle.dumps(v) for k, v in data.items()})
 

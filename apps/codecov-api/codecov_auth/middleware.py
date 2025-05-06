@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 from urllib.parse import urlparse
 
 from corsheaders.conf import conf as corsconf
@@ -19,7 +18,7 @@ from utils.services import get_long_service_name
 log = logging.getLogger(__name__)
 
 
-def get_service(request: HttpRequest) -> Optional[str]:
+def get_service(request: HttpRequest) -> str | None:
     resolver_match = resolve(request.path_info)
     service = resolver_match.kwargs.get("service")
     if service is not None:

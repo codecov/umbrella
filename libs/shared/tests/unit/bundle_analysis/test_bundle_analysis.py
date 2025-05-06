@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Tuple
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -90,7 +89,7 @@ sample_bundle_stats_path_12 = (
 )
 
 
-def _table_rows_count(db_session: DbSession) -> Tuple[int]:
+def _table_rows_count(db_session: DbSession) -> tuple[int]:
     return (
         db_session.query(Bundle).count(),
         db_session.query(Session).count(),
@@ -1122,7 +1121,7 @@ def test_bundle_report_cleans_bad_chunks(version):
         report = BundleAnalysisReport()
 
         # Read and modify the JSON content
-        with open(sample_bundle_stats_path_10, "r") as f:
+        with open(sample_bundle_stats_path_10) as f:
             content = f.read().replace("__VERSION__", version)
 
         # Create a temporary file with the modified content

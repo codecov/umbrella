@@ -6,7 +6,7 @@ import pytest
 from shared.config import ConfigHelper, get_config
 
 
-class TestConfig(object):
+class TestConfig:
     def test_get_config_nothing_user_set(self, mocker):
         mocker.patch.dict(os.environ, {}, clear=True)
         mocker.patch.object(

@@ -1,7 +1,6 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mock import AsyncMock
 
 from database.enums import Notification
 from database.tests.factories.core import CommitFactory
@@ -331,7 +330,7 @@ def mock_repo_provider(mock_repo_provider):
     return mock_repo_provider
 
 
-class TestBaseStatusNotifier(object):
+class TestBaseStatusNotifier:
     def test_can_we_set_this_status_no_pull(self, sample_comparison_without_pull):
         comparison = sample_comparison_without_pull
         only_pulls_notifier = StatusNotifier(
@@ -908,7 +907,7 @@ class TestBaseStatusNotifier(object):
         assert notifier.get_github_app_used() is None
 
 
-class TestProjectStatusNotifier(object):
+class TestProjectStatusNotifier:
     def test_build_payload(
         self, sample_comparison, mock_repo_provider, mock_configuration
     ):
@@ -2317,7 +2316,7 @@ class TestProjectStatusNotifier(object):
         mock_get_impacted_files.assert_called()
 
 
-class TestPatchStatusNotifier(object):
+class TestPatchStatusNotifier:
     def test_build_payload(
         self, sample_comparison, mock_repo_provider, mock_configuration
     ):
@@ -2655,7 +2654,7 @@ class TestPatchStatusNotifier(object):
         assert expected_result == result
 
 
-class TestChangesStatusNotifier(object):
+class TestChangesStatusNotifier:
     def test_build_payload(
         self, sample_comparison, mock_repo_provider, mock_configuration
     ):

@@ -1,4 +1,5 @@
-from typing import Any, Coroutine, Optional
+from collections.abc import Coroutine
+from typing import Any
 
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
@@ -45,7 +46,7 @@ def resolve_activated_user_count(account: Account, info: GraphQLResolveInfo) -> 
 def resolve_organizations(
     account: Account,
     info: GraphQLResolveInfo,
-    ordering_direction: Optional[OrderingDirection] = OrderingDirection.ASC,
+    ordering_direction: OrderingDirection | None = OrderingDirection.ASC,
     **kwargs: Any,
 ) -> Coroutine[Any, Any, Owner]:
     return queryset_to_connection(

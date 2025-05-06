@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
@@ -15,12 +15,12 @@ query = ariadne_load_local_graphql(__file__, "query.graphql")
 query_bindable = ObjectType("Query")
 
 
-def query_name(info: GraphQLResolveInfo) -> Optional[str]:
+def query_name(info: GraphQLResolveInfo) -> str | None:
     if info.operation and info.operation.name:
         return info.operation.name.value
 
 
-def configure_sentry_scope(query_name: Optional[str]) -> None:
+def configure_sentry_scope(query_name: str | None) -> None:
     # this sets the Sentry transaction name to the GraphQL query name which
     # should make it easier to search/filter transactions
     # we're configuring this here since it's the main entrypoint into GraphQL resolvers
@@ -33,7 +33,7 @@ def configure_sentry_scope(query_name: Optional[str]) -> None:
 
 @query_bindable.field("me")
 @sync_to_async
-def resolve_me(_: Any, info: GraphQLResolveInfo) -> Optional[Owner]:
+def resolve_me(_: Any, info: GraphQLResolveInfo) -> Owner | None:
     configure_sentry_scope(query_name(info))
     # will be `None` for anonymous users or users w/ no linked owners
     return info.context["request"].current_owner
@@ -42,7 +42,7 @@ def resolve_me(_: Any, info: GraphQLResolveInfo) -> Optional[Owner]:
 @query_bindable.field("owner")
 async def resolve_owner(
     _: Any, info: GraphQLResolveInfo, username: str
-) -> Optional[Owner]:
+) -> Owner | None:
     configure_sentry_scope(query_name(info))
 
     service = info.context["service"]

@@ -1,6 +1,6 @@
 from pathlib import Path
+from unittest import mock
 
-import mock
 import pytest
 
 from database.tests.factories import CommitFactory
@@ -10,7 +10,7 @@ from tasks.status_set_pending import StatusSetPendingTask
 here = Path(__file__)
 
 
-class TestSetPendingTaskUnit(object):
+class TestSetPendingTaskUnit:
     def test_no_status(self, mocker, mock_configuration, dbsession, mock_redis):
         mocked_1 = mocker.patch("tasks.status_set_pending.get_repo_provider_service")
         repo = mocker.MagicMock(

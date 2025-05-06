@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Mapping
 from decimal import Decimal
-from typing import Any, List, Mapping
+from typing import Any
 
 from helpers.components import Component
 from helpers.number import precise_round
@@ -54,7 +55,7 @@ def get_paths_from_flags(yaml_dict: UserYaml, flags):
         return []
 
 
-def get_components_from_yaml(yaml: UserYaml) -> List[Component]:
+def get_components_from_yaml(yaml: UserYaml) -> list[Component]:
     component_definitions = read_yaml_field(yaml, ("component_management",))
     if not component_definitions:
         return []

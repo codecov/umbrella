@@ -7,8 +7,8 @@ from database.utils import ArchiveField, ArchiveFieldInterface
 from shared.storage.exceptions import FileNotInStorageError
 
 
-class TestArchiveField(object):
-    class ClassWithArchiveField(object):
+class TestArchiveField:
+    class ClassWithArchiveField:
         commit: Commit
         id = 1
         external_id = "external_id"

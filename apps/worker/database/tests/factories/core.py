@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha1
 from uuid import uuid4
 
@@ -39,7 +39,7 @@ class OwnerFactory(Factory):
     email = factory.Faker("email")
     username = factory.Faker("user_name")
     plan_activated_users = []
-    service_id = factory.Sequence(lambda n: "user%d" % n)
+    service_id = factory.Sequence(lambda n: f"user{n}")
     admins = []
     permission = []
     organizations = []
@@ -71,15 +71,13 @@ class RepositoryFactory(Factory):
     private = True
     name = factory.Faker("slug")
     using_integration = False
-    service_id = factory.Sequence(lambda n: "id_%d" % n)
+    service_id = factory.Sequence(lambda n: f"id_{n}")
 
     owner = factory.SubFactory(OwnerFactory)
     bot = None
-    updatestamp = factory.LazyAttribute(lambda o: datetime.now(tz=timezone.utc))
+    updatestamp = factory.LazyAttribute(lambda o: datetime.now(tz=UTC))
     languages = []
-    languages_last_updated = factory.LazyAttribute(
-        lambda o: datetime.now(tz=timezone.utc)
-    )
+    languages_last_updated = factory.LazyAttribute(lambda o: datetime.now(tz=UTC))
     bundle_analysis_enabled = False
     test_analytics_enabled = True
 
@@ -120,7 +118,7 @@ class CommitFactory(Factory):
     )
     ci_passed = True
     pullid = None
-    timestamp = datetime(2019, 2, 1, 17, 59, 47, tzinfo=timezone.utc)
+    timestamp = datetime(2019, 2, 1, 17, 59, 47, tzinfo=UTC)
     author = factory.SubFactory(OwnerFactory)
     repository = factory.SubFactory(RepositoryFactory)
     totals = factory.LazyFunction(

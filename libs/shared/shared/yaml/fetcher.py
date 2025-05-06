@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitObjectNotFoundError

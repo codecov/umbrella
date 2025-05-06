@@ -1,12 +1,10 @@
-from typing import List
-
 from django.contrib.auth.models import Group, Permission
 from django.db.models.manager import EmptyManager
 
 from core.models import Repository
 
 
-class RepositoryAsUser(object):
+class RepositoryAsUser:
     def __init__(self, repository):
         self._repository = repository
 
@@ -14,18 +12,18 @@ class RepositoryAsUser(object):
         return True
 
 
-class RepositoryAuthInterface(object):
+class RepositoryAuthInterface:
     def get_scopes():
         raise NotImplementedError()
 
-    def get_repositories() -> List[Repository]:
+    def get_repositories() -> list[Repository]:
         raise NotImplementedError()
 
     def allows_repo(self, repository: Repository) -> bool:
         raise NotImplementedError()
 
 
-class DjangoUser(object):
+class DjangoUser:
     id = None
     pk = None
     is_staff = False
@@ -78,7 +76,7 @@ class InternalUser(DjangoUser):
     pass
 
 
-class DjangoToken(object):
+class DjangoToken:
     def __init__(self, token=None):
         self.token = token
 

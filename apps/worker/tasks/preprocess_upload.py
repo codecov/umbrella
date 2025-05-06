@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from redis.exceptions import LockError
 
@@ -108,7 +107,7 @@ class PreProcessUpload(BaseCodecovTask, name="app.tasks.upload.PreProcessUpload"
 
     def get_repo_service(
         self, commit: Commit, installation_name_to_use: str
-    ) -> Optional[TorngitBaseAdapter]:
+    ) -> TorngitBaseAdapter | None:
         repository_service = None
         try:
             repository_service = get_repo_provider_service(

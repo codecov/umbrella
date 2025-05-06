@@ -2,7 +2,6 @@ from collections import defaultdict
 from enum import IntEnum
 from fractions import Fraction
 from itertools import groupby
-from typing import List, Optional
 
 from shared.reports.types import CoverageDatapoint, LineSession, ReportLine
 
@@ -41,9 +40,8 @@ def merge_branch(b1, b2):
     if br3 == br4:  # equal 1/1
         return b2
     # return the greatest found
-    return "%s/%s" % (
-        br1 if int(br1) > int(br3) else br3,
-        br2 if int(br2) > int(br4) else br4,
+    return (
+        f"{br1 if int(br1) > int(br3) else br3}/{br2 if int(br2) > int(br4) else br4}"
     )
 
 
@@ -94,7 +92,7 @@ def merge_coverage(l1, l2, branches_missing=True):
     l1t = cast_ints_float(l1)
     l2t = cast_ints_float(l2)
 
-    if isinstance(l1t, (float, Fraction)) and isinstance(l2t, (float, Fraction)):
+    if isinstance(l1t, float | Fraction) and isinstance(l2t, float | Fraction):
         return l1 if l1 >= l2 else l2
 
     elif isinstance(l1t, str) or isinstance(l2t, str):
@@ -110,13 +108,13 @@ def merge_coverage(l1, l2, branches_missing=True):
         if branches_missing == []:
             # all branches were hit, no need to merge them
             l1 = l1.split("/")[-1]
-            return "%s/%s" % (l1, l1)
+            return f"{l1}/{l1}"
 
         elif isinstance(branches_missing, list):
             # we know how many are missing
             target = int(l1.split("/")[-1])
             bf = target - len(branches_missing)
-            return "%s/%s" % (bf if bf > 0 else 0, target)
+            return f"{bf if bf > 0 else 0}/{target}"
 
         return merge_branch(l1, l2)
 
@@ -182,7 +180,7 @@ def merge_messages(m1, m2):
 
 
 def merge_datapoints(
-    d1: Optional[List[CoverageDatapoint]], d2: Optional[List[CoverageDatapoint]]
+    d1: list[CoverageDatapoint] | None, d2: list[CoverageDatapoint] | None
 ):
     if d1 is None and d2 is None:
         return None

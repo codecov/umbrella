@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from sqlalchemy.orm.session import Session
 
@@ -19,9 +18,9 @@ class TimeseriesDeleteTask(BaseCodecovTask, name=timeseries_delete_task_name):
         db_session: Session,
         *,
         repository_id: int,
-        measurement_only: Optional[bool] = False,
-        measurement_type: Optional[str] = None,
-        measurement_id: Optional[str] = None,
+        measurement_only: bool | None = False,
+        measurement_type: str | None = None,
+        measurement_id: str | None = None,
         **kwargs,
     ):
         if not is_timeseries_enabled():

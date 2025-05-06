@@ -1,4 +1,4 @@
-from typing import Iterator
+from collections.abc import Iterator
 
 from shared.helpers.numeric import ratio
 from shared.reports.types import ReportLine, ReportTotals

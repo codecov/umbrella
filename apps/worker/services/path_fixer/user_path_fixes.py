@@ -46,8 +46,11 @@ class UserPathFixes:
 
         if custom_fixes:
             self.sub_regex = re.compile(
-                r"^(%s)"
-                % ")|(".join(_fixpaths_regs(fix.split("::")[0]) for fix in custom_fixes)
+                r"^({})".format(
+                    ")|(".join(
+                        _fixpaths_regs(fix.split("::")[0]) for fix in custom_fixes
+                    )
+                )
             )
             self.sub_replacements = [fix.split("::")[1] for fix in custom_fixes]
 
@@ -59,7 +62,7 @@ class UserPathFixes:
 
     def __call__(self, path: str, should_add_prefixes=True) -> str:
         if should_add_prefixes and self.prefix:
-            path = "%s/%s" % (self.prefix, path)
+            path = f"{self.prefix}/{path}"
 
         if self.sub_regex:
             path = self.sub_regex.sub(

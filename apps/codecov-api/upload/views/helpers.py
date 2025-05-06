@@ -1,5 +1,3 @@
-import typing
-
 from codecov_auth.models import Owner, Service
 from core.models import Repository
 
@@ -27,9 +25,7 @@ def get_repository_and_owner_from_string(
     return repository, owner
 
 
-def _get_owner_from_string(
-    service: Service, owner_identifier: str
-) -> typing.Optional[Owner]:
+def _get_owner_from_string(service: Service, owner_identifier: str) -> Owner | None:
     if ":::" in owner_identifier:
         owner_identifier = owner_identifier.replace(":::", ":")
     try:

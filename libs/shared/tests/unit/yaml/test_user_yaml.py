@@ -16,7 +16,7 @@ from shared.yaml.user_yaml import (
 )
 
 
-class TestYamlMerge(object):
+class TestYamlMerge:
     def test_merge_yamls(self):
         d1 = {
             "key_one": "value",
@@ -41,7 +41,7 @@ class TestYamlMerge(object):
         assert second_expected_result == merge_yamls(d2, d1)
 
 
-class TestUserYaml(object):
+class TestUserYaml:
     def test_init(self):
         d = {"value": "sample"}
         v = UserYaml(d)
@@ -349,10 +349,10 @@ class TestUserYaml(object):
         current_yaml = LEGACY_DEFAULT_SITE_CONFIG
         day_timedelta = datetime.timedelta(days=1)
         patch_centric_expected_onboarding_date = (
-            datetime.datetime.now(datetime.timezone.utc) + day_timedelta
+            datetime.datetime.now(datetime.UTC) + day_timedelta
         )
         no_change_expected_onboarding_date = (
-            datetime.datetime.now(datetime.timezone.utc) - day_timedelta
+            datetime.datetime.now(datetime.UTC) - day_timedelta
         )
         no_change = _fix_yaml_defaults_based_on_owner_onboarding_date(
             current_yaml, no_change_expected_onboarding_date

@@ -62,7 +62,7 @@ def fetch_commit_yaml(commit: Commit, owner: Owner | None) -> dict | None:
         return None
 
 
-@lru_cache()
+@lru_cache
 @sentry_sdk.trace
 def final_commit_yaml(commit: Commit, owner: Owner | None) -> UserYaml:
     return UserYaml.get_final_yaml(

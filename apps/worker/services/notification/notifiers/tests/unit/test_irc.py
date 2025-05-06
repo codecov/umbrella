@@ -3,7 +3,7 @@ import socket
 from services.notification.notifiers.irc import IRCNotifier
 
 
-class TestIRCNotifier(object):
+class TestIRCNotifier:
     def test_build_payload(self, dbsession, mock_configuration, sample_comparison):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         comparison = sample_comparison

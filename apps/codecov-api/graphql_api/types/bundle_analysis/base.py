@@ -1,6 +1,6 @@
+from collections.abc import Mapping
 from copy import deepcopy
 from datetime import datetime
-from typing import Dict, List, Mapping, Optional, Union
 
 import sentry_sdk
 from ariadne import ObjectType
@@ -32,7 +32,7 @@ bundle_report_bindable = ObjectType("BundleReport")
 bundle_report_info_bindable = ObjectType("BundleReportInfo")
 
 
-def _find_index_by_cursor(assets: List, cursor: str) -> int:
+def _find_index_by_cursor(assets: list, cursor: str) -> int:
     try:
         for i, asset in enumerate(assets):
             if asset.id == int(cursor):
@@ -42,7 +42,7 @@ def _find_index_by_cursor(assets: List, cursor: str) -> int:
     return -1
 
 
-def _compute_unknown_asset_size_raw_measurements(fetched_data: dict) -> List[dict]:
+def _compute_unknown_asset_size_raw_measurements(fetched_data: dict) -> list[dict]:
     """
     Computes measurements for the unknown asset types, some asset types are not in
     the predetermined list of types so we must compute those measurements manually.
@@ -135,7 +135,7 @@ def resolve_bundle_asset_bundle_data(
 @bundle_asset_bindable.field("modules")
 def resolve_modules(
     bundle_asset: AssetReport, info: GraphQLResolveInfo
-) -> List[ModuleReport]:
+) -> list[ModuleReport]:
     return bundle_asset.modules
 
 
@@ -147,9 +147,9 @@ def resolve_asset_report_measurements(
     info: GraphQLResolveInfo,
     interval: Interval,
     before: datetime,
-    after: Optional[datetime] = None,
-    branch: Optional[str] = None,
-) -> Optional[BundleAnalysisMeasurementData]:
+    after: datetime | None = None,
+    branch: str | None = None,
+) -> BundleAnalysisMeasurementData | None:
     bundle_analysis_measurements = BundleAnalysisMeasurementsService(
         repository=info.context["commit"].repository,
         interval=interval,
@@ -163,7 +163,7 @@ def resolve_asset_report_measurements(
 @bundle_asset_bindable.field("routes")
 def resolve_routes(
     bundle_asset: AssetReport, info: GraphQLResolveInfo
-) -> Optional[List[str]]:
+) -> list[str] | None:
     return bundle_asset.routes
 
 
@@ -184,7 +184,7 @@ def resolve_module_count(bundle_report: BundleReport, info: GraphQLResolveInfo) 
 def resolve_assets(
     bundle_report: BundleReport,
     info: GraphQLResolveInfo,
-) -> List[AssetReport]:
+) -> list[AssetReport]:
     return list(bundle_report.assets())
 
 
@@ -195,11 +195,11 @@ def resolve_assets_paginated(
     info: GraphQLResolveInfo,
     ordering: AssetOrdering = AssetOrdering.SIZE,
     ordering_direction: OrderingDirection = OrderingDirection.DESC,
-    first: Optional[int] = None,
-    after: Optional[str] = None,
-    last: Optional[int] = None,
-    before: Optional[str] = None,
-) -> Union[Dict[str, object], ValidationError]:
+    first: int | None = None,
+    after: str | None = None,
+    last: int | None = None,
+    before: str | None = None,
+) -> dict[str, object] | ValidationError:
     if first is not None and last is not None:
         return ValidationError("First and last can not be used at the same time")
     if after is not None and before is not None:
@@ -256,7 +256,7 @@ def resolve_assets_paginated(
 @bundle_report_bindable.field("asset")
 def resolve_asset(
     bundle_report: BundleReport, info: GraphQLResolveInfo, name: str
-) -> Optional[AssetReport]:
+) -> AssetReport | None:
     return bundle_report.asset(name)
 
 
@@ -291,11 +291,11 @@ def resolve_bundle_report_measurements(
     info: GraphQLResolveInfo,
     interval: Interval,
     before: datetime,
-    after: Optional[datetime] = None,
-    branch: Optional[str] = None,
+    after: datetime | None = None,
+    branch: str | None = None,
     filters: Mapping = {},
-    ordering_direction: Optional[OrderingDirection] = OrderingDirection.ASC,
-) -> List[BundleAnalysisMeasurementData]:
+    ordering_direction: OrderingDirection | None = OrderingDirection.ASC,
+) -> list[BundleAnalysisMeasurementData]:
     asset_types = list(filters.get("asset_types", []))
     bundle_analysis_measurements = BundleAnalysisMeasurementsService(
         repository=info.context["commit"].repository,

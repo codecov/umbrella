@@ -35,12 +35,12 @@ class OwnEncoder(JSONEncoder):
 
 class TestNodeProcessor(BaseTestCase):
     def readjson(self, filename):
-        with open(folder / filename, "r") as d:
+        with open(folder / filename) as d:
             contents = loads(d.read())
             return contents
 
     def readfile(self, filename, if_empty_write=None):
-        with open(folder / filename, "r") as r:
+        with open(folder / filename) as r:
             contents = r.read()
 
         # codecov: assert not covered start [FUTURE new concept]
@@ -86,7 +86,7 @@ class TestNodeProcessor(BaseTestCase):
                 return None
             return path
 
-        nodejson = loads(self.readfile("node/node%s.json" % i))
+        nodejson = loads(self.readfile(f"node/node{i}.json"))
         nodejson.update(base_report)
 
         report_builder_session = create_report_builder_session(
@@ -99,7 +99,7 @@ class TestNodeProcessor(BaseTestCase):
         loaded_json = loads(report_json)
         loaded_json.pop("totals")
 
-        expected_result = loads(self.readfile("node/node%s-result.json" % i))
+        expected_result = loads(self.readfile(f"node/node{i}-result.json"))
         assert {
             "report": loaded_json,
             "archive": chunks.decode().split("<<<<< end_of_chunk >>>>>"),
@@ -108,7 +108,7 @@ class TestNodeProcessor(BaseTestCase):
 
     @pytest.mark.parametrize("name", ["inline", "ifbinary", "ifbinarymb"])
     def test_singles(self, name):
-        record = self.readjson("node/%s.json" % name)
+        record = self.readjson(f"node/{name}.json")
         report_builder_session = create_report_builder_session(
             current_yaml={"parsers": {"javascript": {"enable_partials": True}}},
         )
@@ -163,7 +163,7 @@ class TestNodeProcessor(BaseTestCase):
         ],
     )
     def test_singles_no_partials_statement_map(self, name, result):
-        record = self.readjson("node/%s.json" % name)
+        record = self.readjson(f"node/{name}.json")
         report_builder_session = create_report_builder_session(
             current_yaml={"parsers": {"javascript": {"enable_partials": False}}},
         )
@@ -221,7 +221,7 @@ class TestNodeProcessor(BaseTestCase):
         ],
     )
     def test_singles_no_partials_branch_map(self, name, result):
-        record = self.readjson("node/%s.json" % name)
+        record = self.readjson(f"node/{name}.json")
         report_builder_session = create_report_builder_session(
             current_yaml={"parsers": {"javascript": {"enable_partials": False}}},
         )

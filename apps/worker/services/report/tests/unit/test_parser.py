@@ -314,7 +314,7 @@ github.com/mypath/bugsbunny.go:13.20,16.3 2 1
 github.com/mypath/bugsbunny.go:20.36,22.17 2 1"""
 
 
-class TestParser(object):
+class TestParser:
     def test_parser_with_toc(self):
         res = LegacyReportParser().parse_raw_report_from_bytes(simple_content)
         assert res.has_toc()

@@ -1,11 +1,11 @@
-from typing import Dict, List, NotRequired, Optional, TypedDict, Union
+from typing import NotRequired, TypedDict
 
 from shared.reports.types import UploadType
 
 
 class OwnerInfo(TypedDict):
     service_id: str
-    ownerid: Optional[int]
+    ownerid: int | None
     username: str
 
 
@@ -14,7 +14,7 @@ class RepoInfo(TypedDict):
     using_integration: bool
     service_id: str
     repoid: int
-    private: Optional[bool]
+    private: bool | None
 
 
 class GithubInstallationInfo(TypedDict):
@@ -38,8 +38,8 @@ class AdditionalData(TypedDict):
 
 
 class TorngitInstanceData(TypedDict):
-    owner: Union[OwnerInfo, Dict]
-    repo: Union[RepoInfo, Dict]
-    fallback_installations: List[Optional[GithubInstallationInfo]] | None
-    installation: Optional[GithubInstallationInfo]
-    additional_data: Optional[AdditionalData]
+    owner: OwnerInfo | dict
+    repo: RepoInfo | dict
+    fallback_installations: list[GithubInstallationInfo | None] | None
+    installation: GithubInstallationInfo | None
+    additional_data: AdditionalData | None

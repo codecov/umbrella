@@ -1,5 +1,4 @@
 import logging
-from typing import Set
 
 import shared.helpers.redis as redis_service
 from app import celery_app
@@ -16,7 +15,7 @@ class HealthCheckTask(CodecovCronTask, name=health_check_task_name):
     def get_min_seconds_interval_between_executions(cls):
         return 8  # This task should run every 10s, so this time should be small.
 
-    def _get_all_queue_names_from_config(self) -> Set[str]:
+    def _get_all_queue_names_from_config(self) -> set[str]:
         """
         Gets all queue names defined in the *install* codecov.yaml.
         EXCEPT the healthcheck queue itself that's hardcoded in celery_config.py.
@@ -46,7 +45,7 @@ class HealthCheckTask(CodecovCronTask, name=health_check_task_name):
         queue_names = self._get_all_queue_names_from_config()
         redis = self._get_correct_redis_connection()
         for q in queue_names:
-            metrics.gauge("celery.queue.%s.len" % q, redis.llen(q))
+            metrics.gauge(f"celery.queue.{q}.len", redis.llen(q))
 
 
 RegisteredHealthCheckTask = celery_app.register_task(HealthCheckTask())

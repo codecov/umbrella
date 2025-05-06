@@ -59,7 +59,7 @@ def setup_with_torngit_error(mocker, mock_repo_provider):
     mock_repo_provider.get_repo_languages = Mock(side_effect=TorngitError())
 
 
-class TestSyncRepoLanguages(object):
+class TestSyncRepoLanguages:
     def test_languages_no_intersection_and_not_synced_github(
         self, dbsession, setup_with_languages
     ):

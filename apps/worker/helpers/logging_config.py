@@ -9,7 +9,7 @@ from helpers.log_context import get_log_context
 
 class BaseLogger(JsonFormatter):
     def add_fields(self, log_record, record, message_dict) -> None:
-        super(BaseLogger, self).add_fields(log_record, record, message_dict)
+        super().add_fields(log_record, record, message_dict)
 
         log_context = get_log_context()
         log_context.add_to_log_record(log_record)
@@ -43,9 +43,7 @@ class CustomLocalJsonFormatter(BaseLogger):
 
 class CustomDatadogJsonFormatter(BaseLogger):
     def add_fields(self, log_record, record, message_dict):
-        super(CustomDatadogJsonFormatter, self).add_fields(
-            log_record, record, message_dict
-        )
+        super().add_fields(log_record, record, message_dict)
         if not log_record.get("logger.name") and log_record.get("name"):
             log_record["logger.name"] = log_record.get("name")
         if not log_record.get("logger.thread_name") and log_record.get("threadName"):

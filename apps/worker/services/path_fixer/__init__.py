@@ -1,7 +1,7 @@
 import logging
 import os.path
+from collections.abc import Sequence
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Sequence
 
 import sentry_sdk
 
@@ -19,10 +19,10 @@ def invert_pattern(string: str) -> str:
     if string.startswith("!"):
         return string[1:]
     else:
-        return "!%s" % string
+        return f"!{string}"
 
 
-class PathFixer(object):
+class PathFixer:
     """
     Applies default path fixes and any fixes specified in the codecov yaml file to resolve file paths in coverage reports.
     Also applies any "ignore" and "paths" yaml fields to determine which files to include in the report.

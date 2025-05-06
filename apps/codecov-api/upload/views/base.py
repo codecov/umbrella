@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from django.conf import settings
 from rest_framework.exceptions import ValidationError
@@ -61,9 +60,7 @@ class GetterMixin(ShelterMixin):
     def get_report(
         self,
         commit: Commit,
-        report_type: Optional[
-            CommitReport.ReportType
-        ] = CommitReport.ReportType.COVERAGE,
+        report_type: CommitReport.ReportType | None = CommitReport.ReportType.COVERAGE,
     ) -> CommitReport:
         report_code = self.kwargs.get("report_code")
         if report_code not in (None, "default"):

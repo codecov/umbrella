@@ -65,7 +65,7 @@ def from_xml(xml: bytes, report_builder_session: ReportBuilderSession) -> None:
                                 )
                                 hits += 1 if branch["x"] > 0 else 0
                         # set coverage ratio
-                        coverage = "%s/%s" % (hits, len(partials))
+                        coverage = f"{hits}/{len(partials)}"
 
                     else:
                         # statement line

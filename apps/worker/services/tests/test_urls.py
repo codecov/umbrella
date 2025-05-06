@@ -32,7 +32,7 @@ def test_append_tracking_params_to_urls():
     assert result == expected_result
 
 
-class TestURLs(object):
+class TestURLs:
     def test_gitlab_url_username_swap(self, dbsession):
         base_for_member_url = "https://app.codecov.io/members/"
         base_for_plan_url = "https://app.codecov.io/plan/"

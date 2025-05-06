@@ -1,6 +1,7 @@
 import logging
 import uuid
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any
 
 from django.http import HttpRequest, HttpResponseNotAllowed
 from django.utils import timezone
@@ -219,7 +220,7 @@ class UploadViews(ListCreateAPIView, GetterMixin):
 
     throttle_classes = [UploadsPerCommitThrottle, UploadsPerWindowThrottle]
 
-    def get_exception_handler(self) -> Callable[[Exception, Dict[str, Any]], Response]:
+    def get_exception_handler(self) -> Callable[[Exception, dict[str, Any]], Response]:
         return repo_auth_custom_exception_handler
 
     def perform_create(self, serializer: UploadSerializer) -> ReportSession:

@@ -15,7 +15,7 @@ class SessionType(Enum):
         return None
 
 
-class Session(object):
+class Session:
     def __init__(
         self,
         id=None,

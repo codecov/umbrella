@@ -1,5 +1,3 @@
-from typing import Dict, List
-
 from asgiref.sync import sync_to_async
 
 from codecov.commands.base import BaseInteractor
@@ -13,7 +11,7 @@ from shared.django_apps.bundle_analysis.service.bundle_analysis import (
 
 class UpdateBundleCacheConfigInteractor(BaseInteractor):
     def validate(
-        self, repo: Repository, cache_config: List[Dict[str, str | bool]]
+        self, repo: Repository, cache_config: list[dict[str, str | bool]]
     ) -> None:
         # Find any missing bundle names
         bundle_names = [
@@ -38,8 +36,8 @@ class UpdateBundleCacheConfigInteractor(BaseInteractor):
         self,
         owner_username: str,
         repo_name: str,
-        cache_config: List[Dict[str, str | bool]],
-    ) -> List[Dict[str, str | bool]]:
+        cache_config: list[dict[str, str | bool]],
+    ) -> list[dict[str, str | bool]]:
         _owner, repo = self.resolve_owner_and_repo(
             owner_username, repo_name, only_viewable=True
         )

@@ -10,7 +10,7 @@ from services.license import (
 )
 
 
-class TestLicenseService(object):
+class TestLicenseService:
     def test_is_properly_licensed_doesnt_require_license(self, dbsession, mocker):
         mocker.patch("services.license.requires_license", return_value=False)
         mocker.patch("services.license.has_valid_license", return_value=False)

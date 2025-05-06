@@ -30,7 +30,7 @@ USER_BASIC_LIMIT_UPLOAD = 250
 
 
 @dataclass
-class DecorationDetails(object):
+class DecorationDetails:
     decoration_type: Decoration
     reason: str
     should_attempt_author_auto_activation: bool = False

@@ -13,18 +13,18 @@ class BillingTestCase(GraphQLTestHelper, TestCase):
         self.owner = OwnerFactory(stripe_customer_id="test-customer-id")
 
     def test_fetch_unverified_payment_methods(self):
-        query = """
-            query {
-                owner(username: "%s") {
-                    billing {
-                        unverifiedPaymentMethods {
+        query = f"""
+            query {{
+                owner(username: "{self.owner.username}") {{
+                    billing {{
+                        unverifiedPaymentMethods {{
                             paymentMethodId
                             hostedVerificationUrl
-                        }
-                    }
-                }
-            }
-        """ % (self.owner.username)
+                        }}
+                    }}
+                }}
+            }}
+        """
 
         payment_intent = PaymentIntent.construct_from(
             {

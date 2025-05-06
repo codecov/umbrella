@@ -129,7 +129,7 @@ def get_github_integration_token(
         headers = {
             "Accept": "application/vnd.github.machine-man-preview+json",
             "User-Agent": "Codecov",
-            "Authorization": "Bearer %s" % token,
+            "Authorization": f"Bearer {token}",
         }
         if host_override is not None:
             headers["Host"] = host_override

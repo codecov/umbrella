@@ -25,7 +25,7 @@ C/tY+lZIEO1Gg/FxSMB+hwwhwfSuE3WohZfEcSy+R48=
 -----END RSA PRIVATE KEY-----"""
 
 
-class TestGithubSpecificLogic(object):
+class TestGithubSpecificLogic:
     def test_get_github_integration_token_enterprise(self, mocker, mock_configuration):
         before = REGISTRY.get_sample_value(
             "git_provider_api_calls_github_total",

@@ -43,18 +43,9 @@ import functools
 import itertools
 import logging
 import time
+from collections.abc import Callable, Iterable, Mapping, MutableMapping
 from enum import Enum
-from typing import (
-    Any,
-    Callable,
-    ClassVar,
-    Iterable,
-    Mapping,
-    MutableMapping,
-    Optional,
-    TypeAlias,
-    TypeVar,
-)
+from typing import Any, ClassVar, TypeVar
 
 import sentry_sdk
 
@@ -64,7 +55,7 @@ from helpers.log_context import get_log_context, set_log_context
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound="BaseFlow")
-TSubflows: TypeAlias = Mapping[T, Iterable[tuple[str, T]]]
+type TSubflows[T: "BaseFlow"] = Mapping[T, Iterable[tuple[str, T]]]
 
 
 def _error(msg, flow, strict=False):
@@ -187,7 +178,7 @@ class BaseFlow(str, Enum):
         cls: type[T],
         checkpoint: T,
         ignore_repeat: bool = False,
-        kwargs: Optional[MutableMapping[str, Any]] = None,
+        kwargs: MutableMapping[str, Any] | None = None,
         strict: bool = False,
     ) -> type[T]:
         cls._validate_checkpoint(checkpoint)
@@ -244,7 +235,7 @@ class BaseFlow(str, Enum):
     @classmethod
     def _subflow_duration(
         cls: type[T], start: T, end: T, data: Mapping[T, int], strict=False
-    ) -> Optional[int]:
+    ) -> int | None:
         cls._validate_checkpoint(start)
         cls._validate_checkpoint(end)
         if start not in data:
@@ -285,7 +276,7 @@ class BaseFlow(str, Enum):
         return cls
 
 
-TClassDecorator: TypeAlias = Callable[[type[T]], type[T]]
+type TClassDecorator[T: "BaseFlow"] = Callable[[type[T]], type[T]]
 
 
 def failure_events(*args: str) -> TClassDecorator:
@@ -405,7 +396,7 @@ def subflows(*args: tuple[str, str, str]) -> TClassDecorator:
                     flows_ending_here = subflows.setdefault(
                         end, []
                     )  # [(metric, begin)]
-                    if not any((x[1] == flow_begin for x in flows_ending_here)):
+                    if not any(x[1] == flow_begin for x in flows_ending_here):
                         flows_ending_here.append(
                             (
                                 f"{klass.__name__}_{flow_begin.name}_to_{end.name}",
@@ -420,7 +411,7 @@ def subflows(*args: tuple[str, str, str]) -> TClassDecorator:
                     flows_ending_here = subflows.setdefault(
                         end, []
                     )  # [(metric, begin)]
-                    if not any((x[1] == flow_begin for x in flows_ending_here)):
+                    if not any(x[1] == flow_begin for x in flows_ending_here):
                         flows_ending_here.append(
                             (
                                 f"{klass.__name__}_{flow_begin.name}_to_{end.name}",

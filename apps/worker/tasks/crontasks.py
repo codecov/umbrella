@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from redis.exceptions import LockError
 
@@ -49,9 +49,7 @@ class CodecovCronTask(BaseCodecovTask):
                 last_execution_on = redis_connection.get(last_executed_key)
                 if last_execution_on is not None and generation_time - timedelta(
                     seconds=min_seconds_interval
-                ) < datetime.fromtimestamp(
-                    int(float(last_execution_on)), tz=timezone.utc
-                ):
+                ) < datetime.fromtimestamp(int(float(last_execution_on)), tz=UTC):
                     log.info("Cron task executed very recently. Skipping")
                     return {"executed": False}
                 redis_connection.setex(

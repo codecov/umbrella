@@ -9,7 +9,7 @@ from shared.reports.types import UploadType
 from shared.typings.torngit import AdditionalData
 
 
-class TestOwnerServiceTestCase(object):
+class TestOwnerServiceTestCase:
     def test_get_owner_provider_service(self, dbsession):
         owner = OwnerFactory.create(
             service="github",
