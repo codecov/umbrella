@@ -1,5 +1,6 @@
 from asgiref.sync import sync_to_async
 from django.conf import settings
+from sentry_sdk import capture_exception
 
 import services.self_hosted as self_hosted
 from api.shared.permissions import is_admin_on_provider
@@ -27,5 +28,6 @@ class GetIsCurrentUserAnAdminInteractor(BaseInteractor):
                         owner.add_admin(current_owner)
                     return isAdmin or (current_owner.ownerid in admins)
                 except Exception as error:
+                    capture_exception(error)
                     print("Error Calling Admin Provider " + repr(error))  # noqa: T201
                     return False
