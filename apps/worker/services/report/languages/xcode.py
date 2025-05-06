@@ -111,13 +111,10 @@ def from_txt(content: bytes, report_builder_session: ReportBuilderSession) -> No
             if parts[2]:
                 partials = get_partials_in_line(parts[2])
                 if partials:
-                    _file.append(
-                        ln,
-                        report_builder_session.create_coverage_line(
-                            0,
-                            partials=partials,
-                        ),
+                    _line = report_builder_session.create_coverage_line(
+                        0, partials=partials
                     )
+                    _file.append(ln, _line)
                     continue
 
             cov_s = parts[cov_i].replace("E", "").strip()

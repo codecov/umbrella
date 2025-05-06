@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session as DbSession
 from database.models.reports import Upload, UploadError, UploadLevelTotals
 from helpers.number import precise_round
 from services.report import delete_uploads_by_sessionid
-from services.report.raw_upload_processor import clear_carryforward_sessions
 from services.yaml.reader import read_yaml_field
 from shared.reports.enums import UploadState
 from shared.reports.resources import Report, ReportTotals
+from shared.utils.sessions import SessionType
 from shared.yaml import UserYaml
 
 from .types import IntermediateReport, MergeResult, ProcessingResult
@@ -27,7 +27,10 @@ def merge_reports(
     intermediate_reports: list[IntermediateReport],
 ) -> tuple[Report, MergeResult]:
     session_mapping: dict[int, int] = {}
-    deleted_sessions: set[int] = set()
+
+    deleted_sessions = clear_all_carryforward_sessions(
+        commit_yaml, master_report, intermediate_reports
+    )
 
     for intermediate_report in intermediate_reports:
         report = intermediate_report.report
@@ -50,14 +53,7 @@ def merge_reports(
             session, use_id_from_session=True
         )
 
-        joined = True
-        if flags := session.flags:
-            session_adjustment = clear_carryforward_sessions(
-                master_report, report, flags, commit_yaml
-            )
-            deleted_sessions.update(session_adjustment.fully_deleted_sessions)
-            joined = get_joined_flag(commit_yaml, flags)
-
+        joined = get_joined_flag(commit_yaml, session.flags or [])
         master_report.merge(report, joined)
 
     return master_report, MergeResult(session_mapping, deleted_sessions)
@@ -179,3 +175,47 @@ def get_joined_flag(commit_yaml: UserYaml, flags: list[str]) -> bool:
             return False
 
     return True
+
+
+def clear_all_carryforward_sessions(
+    commit_yaml: UserYaml,
+    master_report: Report,
+    intermediate_reports: list[IntermediateReport],
+) -> set[int]:
+    if master_report.is_empty():
+        return set()
+
+    all_flags: set[str] = set()
+    for intermediate_report in intermediate_reports:
+        report = intermediate_report.report
+        if report.is_empty():
+            continue
+
+        sessionid = next(iter(report.sessions))
+        session = report.sessions[sessionid]
+        all_flags.update(session.flags or [])
+
+    if not all_flags:
+        return set()
+
+    return clear_carryforward_sessions(master_report, all_flags, commit_yaml)
+
+
+@sentry_sdk.trace
+def clear_carryforward_sessions(
+    report: Report, flags: set[str], current_yaml: UserYaml
+) -> set[int]:
+    carryforward_flags = {f for f in flags if current_yaml.flag_has_carryfoward(f)}
+    if not carryforward_flags:
+        return set()
+
+    sessions_to_delete = set()
+    for session_id, session in report.sessions.items():
+        if session.session_type == SessionType.carriedforward and session.flags:
+            if any(f in carryforward_flags for f in session.flags):
+                sessions_to_delete.add(session_id)
+
+    if sessions_to_delete:
+        report.delete_multiple_sessions(sessions_to_delete)
+
+    return sessions_to_delete

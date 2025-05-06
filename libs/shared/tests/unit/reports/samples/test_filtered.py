@@ -2,16 +2,8 @@ from unittest.mock import patch
 
 from shared.reports.filtered import FilteredReport, FilteredReportFile
 from shared.reports.resources import Report, ReportFile, ReportTotals, Session
-from shared.reports.types import CoverageDatapoint, LineSession, NetworkFile, ReportLine
+from shared.reports.types import LineSession, NetworkFile, ReportLine
 from shared.utils.sessions import SessionType
-
-
-# This immitates what a report.labels_index looks like
-# It's an map idx -> label, so we can go from CoverageDatapoint.label_id to the actual label
-# typically via Report.lookup_label_by_id
-def lookup_label(label_id: int) -> str:
-    lookup_table = {1: "simpletest", 2: "complextest", 3: "simple"}
-    return lookup_table[label_id]
 
 
 class TestFilteredReportFile:
@@ -114,15 +106,6 @@ class TestFilteredReportFile:
                     LineSession(2, 0, complexity=4),
                     LineSession(10, 0, complexity=3),
                 ],
-                datapoints=[
-                    CoverageDatapoint(0, 0, None, [1]),
-                    CoverageDatapoint(0, 1, None, [2]),
-                    CoverageDatapoint(1, "1/2", None, [1]),
-                    CoverageDatapoint(1, 1, None, [2]),
-                    CoverageDatapoint(2, 0, None, [3]),
-                    CoverageDatapoint(2, 0, None, [2]),
-                    CoverageDatapoint(10, 0, None, [2]),
-                ],
             )
         )
         assert res.coverage == 1
@@ -132,12 +115,6 @@ class TestFilteredReportFile:
             LineSession(id=1, coverage=1, complexity=4),
         ]
         assert res.messages is None
-        assert res.datapoints == [
-            CoverageDatapoint(0, 0, None, [1]),
-            CoverageDatapoint(0, 1, None, [2]),
-            CoverageDatapoint(1, "1/2", None, [1]),
-            CoverageDatapoint(1, 1, None, [2]),
-        ]
         assert res.complexity == 5
 
     def test_line_modifier_empty(self):

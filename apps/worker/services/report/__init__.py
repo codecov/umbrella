@@ -1,4 +1,3 @@
-import copy
 import itertools
 import logging
 import uuid
@@ -275,11 +274,6 @@ class ReportService(BaseReportService):
         if report_class is None:
             report_class = Report
 
-            # TODO(swatinem): move this logic into the `Report` constructor
-            for session_id, session in sessions.items():
-                if not isinstance(session, Session):
-                    session["id"] = int(session_id)
-
         return report_class.from_chunks(
             chunks=chunks, files=files, sessions=sessions, totals=totals
         )
@@ -457,17 +451,6 @@ class ReportService(BaseReportService):
             paths_to_carryforward,
             session_extras={"carriedforward_from": parent_commit.commitid},
         )
-        # If the parent report has labels we also need to carryforward the label index
-        # Considerations:
-        #   1. It's necessary for labels flags to be carryforward, so it's ok to carryforward the entire index
-        #   2. As tests are renamed the index might start to be filled with stale labels. This is not good.
-        #      but I'm unsure if we should try to clean it up at this point. Cleaning it up requires going through
-        #      all lines of the report. It will be handled by a dedicated task that is encoded by the UploadFinisher
-        #   3. We deepcopy the header so we can change them independently
-        #   4. The parent_commit always uses the default report to carryforward
-        # parent_commit and commit should belong to the same repository
-        carryforward_report.header = copy.deepcopy(parent_report.header)
-
         self._possibly_shift_carryforward_report(
             carryforward_report, parent_commit, commit
         )

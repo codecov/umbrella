@@ -3,7 +3,6 @@ from fractions import Fraction
 import pytest
 
 from shared.utils.merge import (
-    CoverageDatapoint,
     LineSession,
     LineType,
     ReportLine,
@@ -14,7 +13,6 @@ from shared.utils.merge import (
     merge_all,
     merge_branch,
     merge_coverage,
-    merge_datapoints,
     merge_line,
     merge_line_session,
     merge_missed_branches,
@@ -57,43 +55,6 @@ def test_merge_branch(b1, b2, res):
     )
     assert res == merge_branch(b2, b1), (
         f"{b2} <> {b1} expected {res} got {str(merge_branch(b2, b1))}"
-    )
-
-
-# This immitates what a report.labels_index looks like
-# It's an map idx -> label, so we can go from CoverageDatapoint.label_id to the actual label
-# typically via Report.lookup_label_by_id
-def lookup_label(label_id: int) -> str:
-    lookup_table = {1: "banana", 2: "apple", 3: "simpletest"}
-    return lookup_table[label_id]
-
-
-def test_merge_datapoints():
-    c_1 = CoverageDatapoint(sessionid=1, coverage=1, coverage_type=None, label_ids=None)
-    c_1_copy = CoverageDatapoint(
-        sessionid=1, coverage=1, coverage_type=None, label_ids=None
-    )
-    c_2 = CoverageDatapoint(sessionid=1, coverage=1, coverage_type=None, label_ids=[1])
-    c_2_copy = CoverageDatapoint(
-        sessionid=1, coverage=1, coverage_type=None, label_ids=[1]
-    )
-    c_2_other_session = CoverageDatapoint(
-        sessionid=2, coverage=1, coverage_type=None, label_ids=[1]
-    )
-    c_3 = CoverageDatapoint(sessionid=1, coverage=1, coverage_type=None, label_ids=[2])
-    assert [c_1, c_2] == merge_datapoints(
-        [c_1],
-        [c_2],
-    )
-    assert [c_1, c_2] == merge_datapoints(
-        [c_2],
-        [c_1],
-    )
-    assert [c_1, c_2, c_3] == merge_datapoints([c_2, c_1], [c_3])
-    assert [c_1, c_2] == merge_datapoints([c_2, c_1], None)
-    assert [c_1, c_2] == merge_datapoints([c_2, c_1], [None])
-    assert [c_1, c_2, c_2_other_session] == merge_datapoints(
-        [c_1, c_2, c_2_other_session], [c_1_copy, c_2_copy, c_2_other_session]
     )
 
 
@@ -240,28 +201,14 @@ def test_merge_missed_branches(sessions, res):
         # types
         ((1, None, [[1, 1]]), (1, "b", [[1, 1]]), (1, "b", [LineSession(1, 1)])),
         (
-            (1, None, [[1, 1]], None, None, [(1, 1, None, [1])]),
-            (1, "b", [[1, 1]], None, None, [(1, 1, "b", [3])]),
+            (1, None, [[1, 1]]),
+            (1, "b", [[1, 1]]),
             (
                 1,
                 "b",
                 [LineSession(1, 1)],
                 None,  # messages
                 None,  # complexity
-                [
-                    CoverageDatapoint(
-                        sessionid=1,
-                        coverage=1,
-                        coverage_type=None,
-                        label_ids=[1],
-                    ),
-                    CoverageDatapoint(
-                        sessionid=1,
-                        coverage=1,
-                        coverage_type="b",
-                        label_ids=[3],
-                    ),
-                ],
             ),
         ),
     ],

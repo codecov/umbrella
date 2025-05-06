@@ -4,16 +4,14 @@ from copy import copy
 from itertools import filterfalse
 from typing import Any
 
-import orjson
 import sentry_sdk
 
 from shared.helpers.flag import Flag
 from shared.helpers.yaml import walk
 from shared.reports.diff import CalculatedDiff, RawDiff, calculate_report_diff
-from shared.reports.exceptions import LabelIndexNotFoundError, LabelNotFoundError
 from shared.reports.filtered import FilteredReport
 from shared.reports.reportfile import ReportFile
-from shared.reports.types import ReportHeader, ReportTotals
+from shared.reports.types import ReportTotals
 from shared.utils.flare import report_to_flare
 from shared.utils.make_network_file import make_network_file
 from shared.utils.migrate import migrate_totals
@@ -38,7 +36,6 @@ def unique_everseen(iterable):
 
 class Report:
     sessions: dict[int, Session]
-    _header: ReportHeader
     _totals: ReportTotals | None
     _files: dict[str, ReportFile]
 
@@ -52,7 +49,6 @@ class Report:
         **kwargs,
     ):
         self.sessions = {}
-        self._header = ReportHeader()
         self._totals = None
         self._files = {}
 
@@ -60,7 +56,7 @@ class Report:
             self.sessions = {
                 int(sid): copy(session)
                 if isinstance(session, Session)
-                else Session.parse_session(**session)
+                else Session.parse_session(session.pop("id", int(sid)), **session)
                 for sid, session in sessions.items()
             }
 
@@ -71,13 +67,6 @@ class Report:
             if isinstance(chunks, str):
                 splits = chunks.split(END_OF_HEADER, maxsplit=1)
                 if len(splits) > 1:
-                    _header = orjson.loads(splits[0] or "{}")
-                    self._header = ReportHeader(
-                        labels_index={
-                            int(k): v
-                            for k, v in _header.get("labels_index", {}).items()
-                        }
-                    )
                     chunks = splits[1]
 
                 _chunks = chunks.split(END_OF_CHUNK)
@@ -128,29 +117,6 @@ class Report:
         totals = agg_totals(file.totals for file in self._files.values())
         totals.sessions = len(self.sessions)
         return totals
-
-    @property
-    def header(self) -> ReportHeader:
-        return self._header
-
-    @header.setter
-    def header(self, value: ReportHeader):
-        self._header = value
-
-    @property
-    def labels_index(self) -> dict[int, str] | None:
-        return self._header.get("labels_index")
-
-    @labels_index.setter
-    def labels_index(self, value: dict[int, str]):
-        self.header = {**self.header, "labels_index": value}
-
-    def lookup_label_by_id(self, label_id: int) -> str:
-        if self.labels_index is None:
-            raise LabelIndexNotFoundError()
-        if label_id not in self.labels_index:
-            raise LabelNotFoundError()
-        return self.labels_index[label_id]
 
     @classmethod
     def from_chunks(cls, *args, **kwargs):
@@ -527,22 +493,7 @@ class Report:
                 flags.update(sess.flags)
         return flags
 
-    def delete_labels(
-        self, sessionids: list[int] | set[int], labels_to_delete: list[int] | set[int]
-    ):
-        files_to_delete = []
-        for file in self:
-            file.delete_labels(sessionids, labels_to_delete)
-            if not file:
-                files_to_delete.append(file.name)
-        for file in files_to_delete:
-            del self[file]
-
-        self._invalidate_caches()
-        return sessionids
-
-    def delete_multiple_sessions(self, session_ids_to_delete: list[int] | set[int]):
-        session_ids_to_delete = set(session_ids_to_delete)
+    def delete_multiple_sessions(self, session_ids_to_delete: set[int]):
         for sessionid in session_ids_to_delete:
             self.sessions.pop(sessionid)
 
@@ -562,7 +513,7 @@ class Report:
         This changes the session with `old_id` to have `new_id` instead.
         It patches up all the references to that session across all files and line records.
 
-        In particular, it changes the id in all the `LineSession`s and `CoverageDatapoint`s,
+        In particular, it changes the id in all the `LineSession`s,
         and does the equivalent of `calculate_present_sessions`.
         """
         session = self.sessions[new_id] = self.sessions.pop(old_id)
@@ -582,11 +533,6 @@ class Report:
                     if session.id == old_id:
                         session.id = new_id
                     all_sessions.add(session.id)
-
-                if line.datapoints:
-                    for point in line.datapoints:
-                        if point.sessionid == old_id:
-                            point.sessionid = new_id
 
             file._invalidate_caches()
             file.__present_sessions = all_sessions

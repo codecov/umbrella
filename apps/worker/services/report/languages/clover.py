@@ -100,9 +100,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
             _file.append(
                 ln,
                 report_builder_session.create_coverage_line(
-                    coverage,
-                    _type,
-                    complexity=complexity,
+                    coverage, _type, complexity=complexity
                 ),
             )
 

@@ -380,76 +380,6 @@ class ReportFile:
         self._invalidate_caches()
 
     @classmethod
-    def line_without_labels(
-        cls, line, session_ids_to_delete: set[int], label_ids_to_delete: set[int]
-    ):
-        new_datapoints = (
-            [
-                dp
-                for dp in line.datapoints
-                if dp.sessionid not in session_ids_to_delete
-                or all(lb not in label_ids_to_delete for lb in dp.label_ids)
-            ]
-            if line.datapoints is not None
-            else None
-        )
-        remaining_session_ids = {dp.sessionid for dp in new_datapoints}
-        removed_session_ids = session_ids_to_delete - remaining_session_ids
-        if {s.id for s in line.sessions} & removed_session_ids:
-            new_sessions = [s for s in line.sessions if s.id not in removed_session_ids]
-        else:
-            new_sessions = line.sessions
-        if len(new_sessions) == 0:
-            return EMPTY
-        remaining_coverages_from_datapoints = [s.coverage for s in new_datapoints]
-        remaining_coverage_from_sessions_with_no_datapoints = [
-            s.coverage for s in new_sessions if s.id not in remaining_session_ids
-        ]
-
-        new_coverage = merge_all(
-            remaining_coverages_from_datapoints
-            + remaining_coverage_from_sessions_with_no_datapoints
-        )
-        return dataclasses.replace(
-            line,
-            coverage=new_coverage,
-            datapoints=new_datapoints,
-            sessions=new_sessions,
-        )
-
-    def delete_labels(
-        self,
-        session_ids_to_delete: list[int] | set[int],
-        label_ids_to_delete: list[int] | set[int],
-    ):
-        """
-        Given a list of session_ids and label_ids to delete, remove all datapoints
-        that belong to at least 1 session_ids to delete and include at least 1 of the label_ids to be removed.
-        """
-        session_ids_to_delete = set(session_ids_to_delete)
-        label_ids_to_delete = set(label_ids_to_delete)
-        for index, line in self.lines:
-            if line.datapoints is not None:
-                if any(
-                    (
-                        dp.sessionid in session_ids_to_delete
-                        and label_id in label_ids_to_delete
-                    )
-                    for dp in line.datapoints
-                    for label_id in dp.label_ids
-                ):
-                    # Line fits change requirements
-                    new_line = self.line_without_labels(
-                        line, session_ids_to_delete, label_ids_to_delete
-                    )
-                    if new_line == EMPTY:
-                        del self[index]
-                    else:
-                        self[index] = new_line
-
-        self._invalidate_caches()
-
-    @classmethod
     def line_without_multiple_sessions(
         cls, line: ReportLine, session_ids_to_delete: set[int]
     ):
@@ -457,19 +387,9 @@ class ReportFile:
         if len(new_sessions) == 0:
             return EMPTY
 
-        new_datapoints = (
-            [dt for dt in line.datapoints if dt.sessionid not in session_ids_to_delete]
-            if line.datapoints is not None
-            else None
-        )
         remaining_coverages = [s.coverage for s in new_sessions]
         new_coverage = merge_all(remaining_coverages)
-        return dataclasses.replace(
-            line,
-            sessions=new_sessions,
-            coverage=new_coverage,
-            datapoints=new_datapoints,
-        )
+        return dataclasses.replace(line, sessions=new_sessions, coverage=new_coverage)
 
     def delete_multiple_sessions(self, session_ids_to_delete: set[int]):
         current_sessions = self._present_sessions

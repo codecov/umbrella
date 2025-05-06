@@ -2,7 +2,6 @@ from decimal import Decimal
 
 from shared.reports.types import (
     Change,
-    CoverageDatapoint,
     LineSession,
     NetworkFile,
     ReportLine,
@@ -85,19 +84,7 @@ def test_reportline_as_tuple():
         [(1, 0), (2, "1/2", 1, None, None)],
         None,
         "10",
-        None,
     )
-
-
-def test_coverage_datapoint_as_tuple():
-    cd = CoverageDatapoint(
-        sessionid=3, coverage=1, coverage_type="b", label_ids=[1, 2, 3]
-    )
-    assert cd.astuple() == (3, 1, "b", [1, 2, 3])
-    cd = CoverageDatapoint(
-        sessionid=3, coverage=1, coverage_type="b", label_ids=["1", "2", "3"]
-    )
-    assert cd.astuple() == (3, 1, "b", [1, 2, 3])
 
 
 class TestNetworkFile:

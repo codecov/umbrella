@@ -37,11 +37,6 @@ class FilteredReportFile:
         new_sessions = [s for s in line.sessions if s.id in self.session_ids]
         if len(new_sessions) == 0:
             return EMPTY
-        new_datapoints = (
-            [dp for dp in line.datapoints if dp.sessionid in self.session_ids]
-            if line.datapoints is not None
-            else None
-        )
         remaining_coverages = [s.coverage for s in new_sessions]
         new_coverage = merge_all(remaining_coverages)
         return dataclasses.replace(
@@ -49,7 +44,6 @@ class FilteredReportFile:
             complexity=get_complexity_from_sessions(new_sessions),
             sessions=new_sessions,
             coverage=new_coverage,
-            datapoints=new_datapoints,
         )
 
     @property

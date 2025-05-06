@@ -70,11 +70,7 @@ class TestLazyRustReport:
 
 
 class TestReadOnly:
-    @pytest.mark.parametrize(
-        "report_header", [{}, {"labels_index": {0: "special_label", 1: "some_test"}}]
-    )
-    def test_create_from_report(self, sample_report, report_header):
-        sample_report._header = report_header
+    def test_create_from_report(self, sample_report):
         r = ReadOnlyReport.create_from_report(sample_report)
         assert r.rust_report is not None
         assert r.totals == sample_report.totals

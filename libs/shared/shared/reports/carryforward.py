@@ -50,10 +50,10 @@ def generate_carryforward_report(
         for filename in files_to_delete:
             del report[filename]
 
-    sessions_to_delete = []
+    sessions_to_delete = set()
     for sid, session in report.sessions.items():
         if not contain_any_of_the_flags(flags, session.flags):
-            sessions_to_delete.append(int(sid))
+            sessions_to_delete.add(int(sid))
         else:
             session.session_extras = session_extras or session.session_extras
             session.name = carriedforward_session_name(session.name)

@@ -39,16 +39,13 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
             _file.append(
                 sl,
                 report_builder_session.create_coverage_line(
-                    cov,
-                    partials=[[sc, ec, cov]],
+                    cov, partials=[[sc, ec, cov]]
                 ),
             )
         else:
             _file.append(
                 sl,
-                report_builder_session.create_coverage_line(
-                    cov,
-                ),
+                report_builder_session.create_coverage_line(cov),
             )
 
     for content in file_by_id.values():

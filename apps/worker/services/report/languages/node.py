@@ -172,10 +172,7 @@ def next_from_json(
             else:
                 _file.append(
                     ln,
-                    report_builder_session.create_coverage_line(
-                        cov,
-                        partials=partials,
-                    ),
+                    report_builder_session.create_coverage_line(cov, partials=partials),
                 )
 
         # NOTE: All the modifications done here rely on *overwriting* the given line record using index notation.
@@ -259,13 +256,10 @@ def next_from_json(
             if func.get("skip") is not True:
                 ln, cov, partials = get_line_coverage(func, data["f"][fid], "m")
                 if ln:
-                    _file.append(
-                        ln,
-                        report_builder_session.create_coverage_line(
-                            cov,
-                            CoverageType.method,
-                        ),
+                    _line = report_builder_session.create_coverage_line(
+                        cov, CoverageType.method
                     )
+                    _file.append(ln, _line)
 
         report_builder_session.append(_file)
 

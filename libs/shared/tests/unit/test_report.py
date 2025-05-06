@@ -1,16 +1,9 @@
 import pytest
 
 from shared.reports.editable import EditableReport, EditableReportFile
-from shared.reports.exceptions import LabelIndexNotFoundError, LabelNotFoundError
 from shared.reports.resources import Report, ReportFile
 from shared.reports.serde import _encode_chunk
-from shared.reports.types import (
-    CoverageDatapoint,
-    LineSession,
-    ReportHeader,
-    ReportLine,
-    ReportTotals,
-)
+from shared.reports.types import LineSession, ReportLine, ReportTotals
 from shared.utils.sessions import Session
 
 
@@ -96,51 +89,6 @@ def test_files():
 
 
 @pytest.mark.unit
-class TestReportHeader:
-    def test_default(self):
-        r = Report()
-        assert r.header == ReportHeader()
-        assert r.labels_index is None
-
-    def test_get(self):
-        r = Report()
-        r._header = ReportHeader(labels_index={0: "special_label"})
-        assert r.header == ReportHeader(labels_index={0: "special_label"})
-
-    def test_from_archive(self):
-        r = Report(
-            files={"other-file.py": [1, ReportTotals(2)]},
-            chunks='{"labels_index":{"0": "special_label"}}\n<<<<< end_of_header >>>>>\nnull\n[1]\n[1]\n[1]\n<<<<< end_of_chunk >>>>>\nnull\n[1]\n[1]\n[1]',
-        )
-        assert r.header == ReportHeader(labels_index={0: "special_label"})
-
-    def test_setter(self):
-        r = Report()
-        header = ReportHeader(labels_index={0: "special_label"})
-        r.header = header
-        assert r.header == header
-
-    def test_get_labels_index(self):
-        r = Report()
-        r._header = ReportHeader(labels_index={0: "special_label"})
-        assert r.labels_index == {0: "special_label"}
-
-    def test_set_labels_index(self):
-        r = Report()
-        assert r.labels_index is None
-        r.labels_index = {0: "special_label"}
-        assert r.labels_index == {0: "special_label"}
-        assert r.header == ReportHeader(labels_index={0: "special_label"})
-
-    def test_partial_set_labels_index(self):
-        r = Report()
-        r._header = ReportHeader(labels_index={0: "special_label"})
-        assert r.labels_index == {0: "special_label"}
-        r.labels_index[1] = "some_test"
-        r.labels_index == {0: "special_label", 1: "some_test"}
-
-
-@pytest.mark.unit
 def test_get_file_totals(mocker):
     report = report_with_file_summaries()
 
@@ -160,49 +108,6 @@ def test_get_file_totals(mocker):
         diff=0,
     )
     assert report.get_file_totals("calc/CalcCore.cpp") == expected_totals
-
-
-def test_get_label_from_idx():
-    report = Report()
-    label_idx = {0: "Special_global_label", 1: "banana", 2: "cachorro"}
-    report._header = ReportHeader(labels_index=label_idx)
-    report_file = ReportFile(
-        name="something.py",
-        lines=[
-            ReportLine.create(
-                coverage=1,
-                type=None,
-                sessions=[[0, 1]],
-                datapoints=[
-                    CoverageDatapoint(
-                        sessionid=0, coverage=1, coverage_type=None, label_ids=[0, 2]
-                    )
-                ],
-            )
-        ],
-    )
-    report.append(report_file)
-    labels_in_report = set()
-    for file in report:
-        for line in file:
-            for datapoint in line.datapoints:
-                for label_id in datapoint.label_ids:
-                    labels_in_report.add(report.lookup_label_by_id(label_id))
-    assert "Special_global_label" in labels_in_report
-    assert "cachorro" in labels_in_report
-    assert "banana" not in labels_in_report
-
-
-def test_lookup_label_by_id_fails():
-    report = Report()
-    with pytest.raises(LabelIndexNotFoundError):
-        report.lookup_label_by_id(0)
-
-    label_idx = {0: "Special_global_label", 1: "banana", 2: "cachorro"}
-    report._header = ReportHeader(labels_index=label_idx)
-
-    with pytest.raises(LabelNotFoundError):
-        report.lookup_label_by_id(100)
 
 
 @pytest.mark.unit
@@ -303,7 +208,7 @@ def test_encode_chunk():
     assert _encode_chunk(ReportFile(name="name.ply")) == '{"present_sessions":[]}\n'
     assert (
         _encode_chunk([ReportLine.create(2), ReportLine.create(1)])
-        == "[[2,null,null,null,null,null],[1,null,null,null,null,null]]"
+        == "[[2,null,null,null,null],[1,null,null,null,null]]"
     )
 
 

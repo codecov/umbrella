@@ -23,27 +23,14 @@ def test_report_repr():
     [
         (
             Report(files={"py.py": [0, ReportTotals(1)]}),
-            [
-                (
-                    "py.py",
-                    NetworkFile(totals=ReportTotals(1), diff_totals=None),
-                )
-            ],
+            [("py.py", NetworkFile(ReportTotals(1)))],
         ),
         (
             Report(
                 files={"py.py": [0, ReportTotals(1, 1, 1, 1, 1, 1)]},
                 chunks="null\n[1]\n[1]\n[1]\n<<<<< end_of_chunk >>>>>\nnull\n[1]\n[1]\n[1]",
             ).filter(paths=["py.py"]),
-            [
-                (
-                    "py.py",
-                    NetworkFile(
-                        totals=ReportTotals(1, 1, 1, 1, 1, 1),
-                        diff_totals=None,
-                    ),
-                )
-            ],
+            [("py.py", NetworkFile(ReportTotals(1, 1, 1, 1, 1, 1)))],
         ),
     ],
 )
@@ -405,7 +392,7 @@ def test_non_zero(r, boolean):
 def test_serialize(mocker):
     report = Report(
         files={"file.py": [0, ReportTotals()]},
-        chunks="null\n[1]\n[1]\n[1]\n<<<<< end_of_chunk >>>>>\nnull\n[1]\n[1]\n[1]",
+        chunks="{}\n<<<<< end_of_header >>>>>\nnull\n[1]\n[1]\n[1]\n<<<<< end_of_chunk >>>>>\nnull\n[1]\n[1]\n[1]",
     )
     report_json1, chunks1, totals1 = report.serialize()
 
@@ -413,7 +400,7 @@ def test_serialize(mocker):
         report_json1
         == b'{"files":{"file.py":[0,[0,0,0,0,0,0,0,0,0,0,0,0,0],null,null]},"sessions":{},"totals":[1,0,0,0,0,null,0,0,0,0,0,0,null]}'
     )
-    assert chunks1 == b"""{}\n<<<<< end_of_header >>>>>\nnull\n[1]\n[1]\n[1]"""
+    assert chunks1 == b"""null\n[1]\n[1]\n[1]"""
     assert totals1 == ReportTotals(files=1, coverage=None, diff=None)
 
     report = Report(

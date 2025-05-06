@@ -32,11 +32,7 @@ def serialize_report(
 
     indexed_files = list(enumerate(report._files.values()))
 
-    chunks = (
-        orjson.dumps(report._header, option=orjson_option).decode()
-        + END_OF_HEADER
-        + END_OF_CHUNK.join(_encode_chunk(file) for i, file in indexed_files)
-    )
+    chunks = END_OF_CHUNK.join(_encode_chunk(file) for i, file in indexed_files)
 
     if with_totals:
         totals = report.totals

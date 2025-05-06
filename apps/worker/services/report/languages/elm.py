@@ -39,16 +39,13 @@ def from_json(json: dict, report_builder_session: ReportBuilderSession) -> None:
                     _file.append(
                         ln,
                         report_builder_session.create_coverage_line(
-                            cov,
-                            complexity=complexity,
+                            cov, complexity=complexity
                         ),
                     )
                 _file.append(
                     sl,
                     report_builder_session.create_coverage_line(
-                        cov,
-                        complexity=complexity,
-                        partials=[[None, ec, cov]],
+                        cov, complexity=complexity, partials=[[None, ec, cov]]
                     ),
                 )
 

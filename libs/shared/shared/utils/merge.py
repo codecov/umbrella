@@ -3,7 +3,7 @@ from enum import IntEnum
 from fractions import Fraction
 from itertools import groupby
 
-from shared.reports.types import CoverageDatapoint, LineSession, ReportLine
+from shared.reports.types import LineSession, ReportLine
 
 
 def merge_all(coverages, missing_branches=None):
@@ -171,32 +171,11 @@ def merge_line(l1, l2, joined=True):
         complexity=get_complexity_from_sessions(sessions) if joined else l1.complexity,
         sessions=sessions,
         messages=merge_messages(l1.messages, l2.messages),
-        datapoints=merge_datapoints(l1.datapoints, l2.datapoints),
     )
 
 
 def merge_messages(m1, m2):
     pass
-
-
-def merge_datapoints(
-    d1: list[CoverageDatapoint] | None, d2: list[CoverageDatapoint] | None
-):
-    if d1 is None and d2 is None:
-        return None
-    # Remove duplicates
-    # str(dp) -> dp
-    index_of_dps = {}
-    both_lists = filter(None, (d1 or []) + (d2 or []))
-    for dp in both_lists:
-        key = str(dp)
-        index_of_dps[key] = dp
-    dps_no_duplicates = index_of_dps.values()
-    # the sorting doesn't really matter how as long as it is a consistent thing
-    return sorted(
-        dps_no_duplicates,
-        key=lambda x: x.key_sorting_tuple(),
-    )
 
 
 def merge_line_session(s1, s2):

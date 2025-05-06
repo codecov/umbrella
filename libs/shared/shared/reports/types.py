@@ -97,47 +97,13 @@ class LineSession:
 
 
 @dataclass
-class CoverageDatapoint:
-    __slots__ = ("sessionid", "coverage", "coverage_type", "label_ids")
-    sessionid: int
-    coverage: Decimal
-    coverage_type: str | None
-    label_ids: list[int]
-
-    def astuple(self):
-        return (
-            self.sessionid,
-            self.coverage,
-            self.coverage_type,
-            self.label_ids,
-        )
-
-    def __post_init__(self):
-        if self.label_ids is not None:
-
-            def possibly_cast_to_int(el):
-                return int(el) if isinstance(el, str) and el.isnumeric() else el
-
-            self.label_ids = [possibly_cast_to_int(el) for el in self.label_ids]
-
-    def key_sorting_tuple(self):
-        return (
-            self.sessionid,
-            str(self.coverage),
-            self.coverage_type if self.coverage_type is not None else "",
-            self.label_ids if self.label_ids is not None else [],
-        )
-
-
-@dataclass
 class ReportLine:
-    __slots__ = ("coverage", "type", "sessions", "messages", "complexity", "datapoints")
+    __slots__ = ("coverage", "type", "sessions", "messages", "complexity")
     coverage: Decimal
     type: str
-    sessions: Sequence[LineSession]
+    sessions: list[LineSession]
     messages: list[str]
     complexity: int | tuple[int, int]
-    datapoints: list[CoverageDatapoint] | None
 
     @classmethod
     def create(
@@ -149,13 +115,21 @@ class ReportLine:
         complexity=None,
         datapoints=None,
     ):
+        if sessions:
+            sessions = [
+                LineSession(*sess) if not isinstance(sess, LineSession) else sess
+                for sess in sessions
+                if sess
+            ]
+        else:
+            sessions = []
+
         return cls(
             coverage=coverage,
             type=type,
             sessions=sessions,
             messages=messages,
             complexity=complexity,
-            datapoints=datapoints,
         )
 
     def astuple(self):
@@ -165,21 +139,7 @@ class ReportLine:
             [s.astuple() for s in self.sessions] if self.sessions else None,
             self.messages,
             self.complexity,
-            [dt.astuple() for dt in self.datapoints] if self.datapoints else None,
         )
-
-    def __post_init__(self):
-        if self.sessions is not None:
-            for i, sess in enumerate(self.sessions):
-                if not isinstance(sess, LineSession) and sess is not None:
-                    self.sessions[i] = LineSession(*sess)
-        else:
-            self.sessions = {}
-
-        if self.datapoints is not None:
-            for i, cov_dp in enumerate(self.datapoints):
-                if not isinstance(cov_dp, CoverageDatapoint) and cov_dp is not None:
-                    self.datapoints[i] = CoverageDatapoint(*cov_dp)
 
 
 @dataclass
@@ -226,7 +186,7 @@ class NetworkFile:
 
 
 class ReportHeader(TypedDict):
-    labels_index: dict[int, str]
+    pass
 
 
 class UploadType(Enum):

@@ -30,10 +30,7 @@ def from_json(json: dict, report_builder_session: ReportBuilderSession) -> None:
             )
             _file.append(
                 start["line"],
-                report_builder_session.create_coverage_line(
-                    1,
-                    partials=partials,
-                ),
+                report_builder_session.create_coverage_line(1, partials=partials),
             )
 
         for loc in data["expressions"].get("uncovered_locs", []):
@@ -45,10 +42,7 @@ def from_json(json: dict, report_builder_session: ReportBuilderSession) -> None:
             )
             _file.append(
                 start["line"],
-                report_builder_session.create_coverage_line(
-                    0,
-                    partials=partials,
-                ),
+                report_builder_session.create_coverage_line(0, partials=partials),
             )
 
         report_builder_session.append(_file)
