@@ -105,12 +105,9 @@ class UploadContext:
         else:
             return f"uploads/{self.repoid}/{self.commitid}/{self.report_type.value}"
 
-    def is_locked(self, lock_type: str) -> bool:
-        lock_name = self.lock_name(lock_type)
-        return bool(self.redis_connection.get(lock_name))
-
     def is_currently_processing(self) -> bool:
-        return self.is_locked("upload_processing")
+        lock_name = self.lock_name("upload_processing")
+        return bool(self.redis_connection.get(lock_name))
 
     def has_pending_jobs(self) -> bool:
         return bool(self.redis_connection.exists(self.upload_location))

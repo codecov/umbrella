@@ -247,9 +247,6 @@ class ReportService(BaseReportService):
             self.flag_dict = {flag.flag_name: flag for flag in existing_flags_on_repo}
         return self.flag_dict
 
-    def get_archive_service(self, repository: Repository) -> ArchiveService:
-        return ArchiveService(repository)
-
     @sentry_sdk.trace
     def get_existing_report_for_commit(
         self, commit: Commit, report_class=None
@@ -259,7 +256,7 @@ class ReportService(BaseReportService):
             return None
 
         try:
-            archive_service = self.get_archive_service(commit.repository)
+            archive_service = ArchiveService(commit.repository)
             chunks = archive_service.read_chunks(commitid)
         except FileNotInStorageError:
             log.warning(
@@ -486,7 +483,7 @@ class ReportService(BaseReportService):
         Raises:
             shared.storage.exceptions.FileNotInStorageError
         """
-        archive_service = self.get_archive_service(repo)
+        archive_service = ArchiveService(repo)
         archive_url = upload.storage_path
 
         log.info(
@@ -656,7 +653,7 @@ class ReportService(BaseReportService):
 
     @sentry_sdk.trace
     def save_report(self, commit: Commit, report: Report):
-        archive_service = self.get_archive_service(commit.repository)
+        archive_service = ArchiveService(commit.repository)
 
         report_json, chunks, _totals = report.serialize()
 

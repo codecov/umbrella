@@ -47,12 +47,6 @@ class LockManager:
         else:
             return f"{lock_type.value}_lock_{self.repoid}_{self.commitid}_{self.report_type.value}"
 
-    def is_locked(self, lock_type: LockType) -> bool:
-        lock_name = self.lock_name(lock_type)
-        if self.redis_connection.get(lock_name):
-            return True
-        return False
-
     @contextmanager
     def locked(self, lock_type: LockType, retry_num=0):
         lock_name = self.lock_name(lock_type)

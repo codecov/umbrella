@@ -39,21 +39,15 @@ def pytest_itemcollected(item):
 
 
 @pytest.fixture(scope="session")
-def engine(request, sqlalchemy_db, sqlalchemy_connect_url, app_config):
+def engine(request, sqlalchemy_db, sqlalchemy_connect_url):
     """Engine configuration.
     See http://docs.sqlalchemy.org/en/latest/core/engines.html
     for more details.
     :sqlalchemy_connect_url: Connection URL to the database. E.g
     postgresql://scott:tiger@localhost:5432/mydatabase
-    :app_config: Path to a ini config file containing the sqlalchemy.url
-    config variable in the DEFAULT section.
     :returns: Engine instance
     """
-    if app_config:
-        from sqlalchemy import engine_from_config
-
-        engine = engine_from_config(app_config)
-    elif sqlalchemy_connect_url:
+    if sqlalchemy_connect_url:
         from sqlalchemy.engine import create_engine
 
         engine = create_engine(sqlalchemy_connect_url, json_serializer=json_dumps)
@@ -79,23 +73,6 @@ def engine(request, sqlalchemy_db, sqlalchemy_connect_url, app_config):
     )
     Base.metadata.tables["compare_flagcomparison"].create(bind=engine, checkfirst=True)
     Base.metadata.tables["compare_componentcomparison"].create(
-        bind=engine, checkfirst=True
-    )
-
-    Base.metadata.tables["labelanalysis_labelanalysisrequest"].create(
-        bind=engine, checkfirst=True
-    )
-    Base.metadata.tables["labelanalysis_labelanalysisprocessingerror"].create(
-        bind=engine, checkfirst=True
-    )
-
-    Base.metadata.tables["staticanalysis_staticanalysissuite"].create(
-        bind=engine, checkfirst=True
-    )
-    Base.metadata.tables["staticanalysis_staticanalysissinglefilesnapshot"].create(
-        bind=engine, checkfirst=True
-    )
-    Base.metadata.tables["staticanalysis_staticanalysissuitefilepath"].create(
         bind=engine, checkfirst=True
     )
 

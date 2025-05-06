@@ -26,13 +26,11 @@ class SiteUrls(Enum):
     commit_url = (
         "{base_url}/{service_short}/{username}/{project_name}/commit/{commit_sha}"
     )
-    compare_url = "{base_url}/{service_short}/{username}/{project_name}/compare/{base_sha}...{head_sha}"
     repository_url = "{base_url}/{service_short}/{username}/{project_name}"
     graph_url = "{base_url}/{service_short}/{username}/{project_name}/commit/{commit_sha}/graphs/{graph_filename}"
     pull_url = "{base_url}/{service_short}/{username}/{project_name}/pull/{pull_id}"
     new_client_pull_url = "https://app.codecov.io/{service_short}/{username}/{project_name}/compare/{pull_id}"
     pull_graph_url = "{base_url}/{service_short}/{username}/{project_name}/pull/{pull_id}/graphs/{graph_filename}"
-    org_acccount_url = "{dashboard_base_url}/account/{service_short}/{username}"
     members_url = "{dashboard_base_url}/members/{service_short}/{username}"
     members_url_self_hosted = "{dashboard_base_url}/account/{service_short}/{username}"
     plan_url = "{dashboard_base_url}/plan/{service_short}/{username}"
@@ -100,20 +98,6 @@ def get_graph_url(commit: Commit, graph_filename: str, **kwargs) -> str:
     return f"{url}?{encoded_kwargs}"
 
 
-def get_compare_url(base_commit: Commit, head_commit: Commit) -> str:
-    log.warning(
-        "Compare links are deprecated.", extra={"head_commit": head_commit.commitid}
-    )
-    return SiteUrls.compare_url.get_url(
-        base_url=get_base_url(),
-        service_short=services_short_dict.get(head_commit.repository.service),
-        username=head_commit.repository.owner.username,
-        project_name=head_commit.repository.name,
-        base_sha=base_commit.commitid,
-        head_sha=head_commit.commitid,
-    )
-
-
 def get_repository_url(repository: Repository) -> str:
     return SiteUrls.repository_url.get_url(
         base_url=get_dashboard_base_url(),
@@ -159,15 +143,6 @@ def get_pull_graph_url(pull: Pull, graph_filename: str, **kwargs) -> str:
     )
     encoded_kwargs = urlencode(kwargs)
     return f"{url}?{encoded_kwargs}"
-
-
-def get_org_account_url(pull: Pull) -> str:
-    repository = pull.repository
-    return SiteUrls.org_acccount_url.get_url(
-        dashboard_base_url=get_dashboard_base_url(),
-        service_short=services_short_dict.get(repository.service),
-        username=repository.owner.username,
-    )
 
 
 def get_members_url(pull: Pull) -> str:

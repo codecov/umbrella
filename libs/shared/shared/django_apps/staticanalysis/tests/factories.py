@@ -3,19 +3,8 @@ from uuid import uuid4
 import factory
 from factory.django import DjangoModelFactory
 
-from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
-from shared.django_apps.staticanalysis.models import (
-    StaticAnalysisSingleFileSnapshot,
-    StaticAnalysisSuite,
-    StaticAnalysisSuiteFilepath,
-)
-
-
-class StaticAnalysisSuiteFactory(DjangoModelFactory):
-    class Meta:
-        model = StaticAnalysisSuite
-
-    commit = factory.SubFactory(CommitFactory)
+from shared.django_apps.core.tests.factories import RepositoryFactory
+from shared.django_apps.staticanalysis.models import StaticAnalysisSingleFileSnapshot
 
 
 class StaticAnalysisSingleFileSnapshotFactory(DjangoModelFactory):
@@ -26,11 +15,3 @@ class StaticAnalysisSingleFileSnapshotFactory(DjangoModelFactory):
     file_hash = factory.LazyFunction(lambda: uuid4().hex)
     content_location = "a/b/c.txt"
     state_id = 1
-
-
-class StaticAnalysisSuiteFilepathFactory(DjangoModelFactory):
-    class Meta:
-        model = StaticAnalysisSuiteFilepath
-
-    file_snapshot = factory.SubFactory(StaticAnalysisSingleFileSnapshotFactory)
-    analysis_suite = factory.SubFactory(StaticAnalysisSuiteFactory)

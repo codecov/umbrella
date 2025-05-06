@@ -46,7 +46,7 @@ def process_upload(
     state.mark_uploads_as_processing([upload_id])
 
     report_service = ReportService(commit_yaml)
-    archive_service = report_service.get_archive_service(commit.repository)
+    archive_service = ArchiveService(commit.repository)
 
     result = ProcessingResult(
         upload_id=upload_id, arguments=arguments, successful=False

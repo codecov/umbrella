@@ -3098,9 +3098,7 @@ class TestReportService(BaseTestCase):
         ].name = "this name contains more than 100 chars 1111111111111111111111111111111111111111111111111111111111111this is more than 100"
         report_service = ReportService({})
         res = report_service.save_full_report(commit, sample_report)
-        storage_hash = report_service.get_archive_service(
-            commit.repository
-        ).storage_hash
+        storage_hash = ArchiveService(commit.repository).storage_hash
         assert res == {
             "url": f"v4/repos/{storage_hash}/commits/{commit.commitid}/chunks.txt"
         }
@@ -3167,9 +3165,7 @@ class TestReportService(BaseTestCase):
         dbsession.flush()
         report_service = ReportService({})
         res = report_service.save_report(commit, report)
-        storage_hash = report_service.get_archive_service(
-            commit.repository
-        ).storage_hash
+        storage_hash = ArchiveService(commit.repository).storage_hash
         assert res == {
             "url": f"v4/repos/{storage_hash}/commits/{commit.commitid}/chunks.txt"
         }
@@ -3208,9 +3204,7 @@ class TestReportService(BaseTestCase):
         dbsession.flush()
         report_service = ReportService({})
         res = report_service.save_report(commit, sample_report)
-        storage_hash = report_service.get_archive_service(
-            commit.repository
-        ).storage_hash
+        storage_hash = ArchiveService(commit.repository).storage_hash
 
         assert res == {
             "url": f"v4/repos/{storage_hash}/commits/{commit.commitid}/chunks.txt"

@@ -10,7 +10,6 @@ from database.models import CompareCommit
 from services.comparison.changes import get_changes
 from services.comparison.types import Comparison, FullCommit, ReportUploadedCount
 from services.repository import get_repo_provider_service
-from shared.api_archive.archive import ArchiveService
 from shared.reports.changes import run_comparison_using_rust
 from shared.reports.types import Change, ReportTotals
 from shared.torngit.base import TorngitBaseAdapter
@@ -70,16 +69,8 @@ class ComparisonProxy(object):
         self._existing_statuses = None
         self._behind_by = None
         self._branch = None
-        self._archive_service = None
         self.context = context or ComparisonContext()
         self._cached_reports_uploaded_per_flag: list[ReportUploadedCount] | None = None
-
-    def get_archive_service(self):
-        if self._archive_service is None:
-            self._archive_service = ArchiveService(
-                self.comparison.project_coverage_base.commit.repository
-            )
-        return self._archive_service
 
     def get_filtered_comparison(self, flags, path_patterns):
         if not flags and not path_patterns:
