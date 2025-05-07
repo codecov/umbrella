@@ -29,6 +29,8 @@ class Testrun(ExportModelOperationsMixin("ta_timeseries.testrun"), models.Model)
     flags = ArrayField(models.TextField(), null=True)
     upload_id = models.BigIntegerField(null=True)
 
+    properties = models.JSONField(null=True)
+
     class Meta:
         app_label = TA_TIMESERIES_APP_LABEL
         indexes = [
