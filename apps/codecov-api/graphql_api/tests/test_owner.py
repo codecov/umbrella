@@ -8,7 +8,7 @@ from freezegun import freeze_time
 from graphql import GraphQLError
 from prometheus_client import REGISTRY
 
-from billing.helpers import mock_all_plans_and_tiers
+from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov.commands.exceptions import (
     UnauthorizedGuestAccess,
 )

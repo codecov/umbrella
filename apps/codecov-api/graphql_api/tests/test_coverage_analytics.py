@@ -5,7 +5,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from freezegun import freeze_time
 
-from billing.helpers import mock_all_plans_and_tiers
+from billing.tests.mocks import mock_all_plans_and_tiers
 from core.models import Commit, Repository
 from graphql_api.tests.helper import GraphQLTestHelper
 from graphql_api.types.coverage_analytics.coverage_analytics import (

@@ -7,7 +7,7 @@ from django.conf import settings
 from django.test import TestCase
 from rest_framework.exceptions import Throttled, ValidationError
 
-from billing.helpers import mock_all_plans_and_tiers
+from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov_auth.models import GithubAppInstallation, Service
 from reports.tests.factories import CommitReportFactory, UploadFactory
 from shared.django_apps.core.tests.factories import (
