@@ -59,6 +59,7 @@ services:
       - RUN_ENV=DEV
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - SETUP__TA_TIMESERIES__ENABLED=true
     volumes:
       - ./tools/devenv/config:/config:ro,cached
       - ./tools/devenv/scripts:/devenv-scripts:ro,cached
@@ -77,6 +78,8 @@ services:
     # This is the name of the image build in libs/shared
     image: shared-shared
     tty: true
+    environment:
+      - SETUP__TA_TIMESERIES__ENABLED=true
     volumes:
       - ./libs/shared/shared:/app/libs/shared/shared
       - ./libs/shared/tests:/app/libs/shared/tests
