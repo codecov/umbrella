@@ -17,27 +17,7 @@ from shared.api_archive.archive import ArchiveService
 from shared.django_apps.reports.models import UploadError
 from shared.django_apps.reports.tests.factories import UploadFactory
 from shared.django_apps.ta_timeseries.models import Testrun
-from shared.storage import get_appropriate_storage_service
-from shared.storage.exceptions import BucketAlreadyExistsError, FileNotInStorageError
-
-
-@pytest.fixture(autouse=True)
-def minio_service(custom_config):
-    conf = {
-        "services": {
-            "minio": {
-                "port": 9000,
-            },
-        }
-    }
-
-    custom_config(conf)
-
-    storage = get_appropriate_storage_service(1)
-    try:
-        storage.create_root_storage()
-    except BucketAlreadyExistsError:
-        pass
+from shared.storage.exceptions import FileNotInStorageError
 
 
 @pytest.mark.django_db
@@ -76,33 +56,24 @@ def test_parsing_error():
         (None, False, True),
     ],
 )
-def test_should_delete_archive(expire_raw, uploads, result, custom_config):
-    custom_config(
-        {
-            "services": {
-                "minio": {"expire_raw_after_n_days": expire_raw},
-            }
-        }
+def test_should_delete_archive(
+    expire_raw, uploads, result, mock_configuration, mock_storage
+):
+    mock_configuration.set_params(
+        {"services": {"minio": {"expire_raw_after_n_days": expire_raw}}}
     )
-
     fake_yaml = UserYaml.from_dict(
         {"codecov": {"archive": {"uploads": uploads}}} if uploads is not None else {}
     )
+
     assert should_delete_archive_settings(fake_yaml) == result
 
 
 @pytest.mark.django_db
-def test_rewrite_or_delete_upload_deletes(custom_config):
-    conf = {
-        "services": {
-            "minio": {
-                "port": 9000,
-                "expire_raw_after_n_days": 1,
-            },
-        }
-    }
-
-    custom_config(conf)
+def test_rewrite_or_delete_upload_deletes(mock_configuration, mock_storage):
+    mock_configuration.set_params(
+        {"services": {"minio": {"expire_raw_after_n_days": 1}}}
+    )
 
     upload = UploadFactory(storage_path="url")
     archive_service = ArchiveService(upload.report.commit.repository)
@@ -118,17 +89,10 @@ def test_rewrite_or_delete_upload_deletes(custom_config):
 
 
 @pytest.mark.django_db
-def test_rewrite_or_delete_upload_does_not_delete(custom_config):
-    conf = {
-        "services": {
-            "minio": {
-                "port": 9000,
-                "expire_raw_after_n_days": 1,
-            },
-        }
-    }
-
-    custom_config(conf)
+def test_rewrite_or_delete_upload_does_not_delete(mock_configuration, mock_storage):
+    mock_configuration.set_params(
+        {"services": {"minio": {"expire_raw_after_n_days": 1}}}
+    )
 
     upload = UploadFactory(storage_path="http_url")
     archive_service = ArchiveService(upload.report.commit.repository)
@@ -143,17 +107,7 @@ def test_rewrite_or_delete_upload_does_not_delete(custom_config):
 
 
 @pytest.mark.django_db
-def test_rewrite_or_delete_upload_rewrites(custom_config):
-    conf = {
-        "services": {
-            "minio": {
-                "port": 9000,
-            },
-        }
-    }
-
-    custom_config(conf)
-
+def test_rewrite_or_delete_upload_rewrites(mock_storage):
     upload = UploadFactory(storage_path="url")
     archive_service = ArchiveService(upload.report.commit.repository)
 

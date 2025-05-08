@@ -7,6 +7,7 @@ from shared.config import (
     LEGACY_DEFAULT_SITE_CONFIG,
     PATCH_CENTRIC_DEFAULT_CONFIG,
     PATCH_CENTRIC_DEFAULT_TIME_START,
+    ConfigHelper,
 )
 from shared.yaml import UserYaml, merge_yamls
 from shared.yaml.user_yaml import (
@@ -364,7 +365,10 @@ class TestUserYaml:
         assert patch_centric != current_yaml
         assert patch_centric == PATCH_CENTRIC_DEFAULT_CONFIG
 
-    def test_get_final_yaml_default_based_on_owner_context(self):
+    def test_get_final_yaml_default_based_on_owner_context(self, mocker):
+        mocker.patch("shared.config._get_config_instance", return_value=ConfigHelper())
+        mocker.patch("shared.config.ConfigHelper.yaml_content", return_value={})
+
         day_timedelta = datetime.timedelta(days=1)
         patch_centric_expected_onboarding_date = (
             PATCH_CENTRIC_DEFAULT_TIME_START + day_timedelta

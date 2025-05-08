@@ -10,7 +10,7 @@ services:
       - timescale
     volumes:
       - ./:/app/apps/worker
-      - ./docker/test_codecov_config.yml:/config/codecov.yml
+      - ./docker/test.yml:/config/codecov.yml
     environment:
       # Improves pytest-cov performance in python 3.12
       # https://github.com/nedbat/coveragepy/issues/1665#issuecomment-1937075835
