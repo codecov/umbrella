@@ -395,7 +395,7 @@ class TestUploadProcessorTask:
         assert commit.state == "complete"
 
     def test_upload_task_process_individual_report_with_notfound_report_no_retries_yet(
-        self, dbsession, mocker
+        self, dbsession, mocker, mock_storage
     ):
         commit = CommitFactory.create()
         dbsession.add(commit)
