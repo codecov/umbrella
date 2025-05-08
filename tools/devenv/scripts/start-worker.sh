@@ -21,7 +21,7 @@ fi
 
 python manage.py migrate
 python manage.py migrate --database "timeseries"
-python manage.py migrate_timeseries.py
+python migrate_timeseries.py
 
 # Auto-restart worker when Python files change.
 watchmedo auto-restart \
