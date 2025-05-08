@@ -1,0 +1,74 @@
+ARG PYTHON_IMAGE=ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+ARG RUST_VERSION=stable
+
+# Build stage:
+# builds all the dependencies, including Rust packages
+FROM $PYTHON_IMAGE AS build
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    libffi-dev \
+    libxml2-dev \
+    libxslt-dev
+
+# Install Rust compiler
+# this is currently needed because we build `test-results-parser` from git.
+# we should ideally package that and consume it from pypi instead.
+ARG RUST_VERSION
+ENV RUST_VERSION=${RUST_VERSION}
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | bash -s -- -y --profile minimal --default-toolchain $RUST_VERSION
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Configure uv builds
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1
+
+# Install python dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=libs/shared/pyproject.toml,target=libs/shared/pyproject.toml \
+    --mount=type=bind,source=apps/codecov-api/pyproject.toml,target=apps/codecov-api/pyproject.toml \
+    --mount=type=bind,source=apps/worker/pyproject.toml,target=apps/worker/pyproject.toml \
+    uv sync --locked --no-dev --no-install-workspace --no-editable
+
+
+# Base stage:
+# Copies the actually installed workspace to a minimal runner image
+FROM $PYTHON_IMAGE AS base
+WORKDIR /app
+
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1
+
+COPY --from=build --chown=app:app /app /app
+
+# Copy the project into the intermediate image
+ADD . /app
+
+# Sync the project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev --no-editable
+
+# Test stage:
+# Based on the `base` stage, installs all the dev-dependencies to be able to run tests
+FROM base AS test
+
+ENV UV_LINK_MODE=copy \
+    PYTHONDONTWRITEBYTECODE=1 \
+    COVERAGE_CORE=sysmon \
+    RUN_ENV=DEV
+
+# Install all dev-dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked
+
+# Add the venv to the PATH
+ENV PATH="/app/.venv/bin:$PATH"
+
+CMD ["bash"]

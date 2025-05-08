@@ -58,7 +58,7 @@ class TestBundleAnalysisPRCommentNotificationContext:
     )
     @pytest.mark.asyncio
     async def test_load_bundle_comparison_missing_some_info(
-        self, expected_missing_detail, dbsession, mocker
+        self, expected_missing_detail, dbsession, mocker, mock_storage
     ):
         head_commit, base_commit = get_commit_pair(dbsession)
         sink_commit = CommitFactory(repository=head_commit.repository)

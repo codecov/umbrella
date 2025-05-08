@@ -70,6 +70,3 @@ dev-dependencies = [
     "urllib3==1.26.19",
     "vcrpy>=6.0.1",
 ]
-
-[tool.uv.sources]
-shared = { path = "../../libs/shared" }

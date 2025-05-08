@@ -821,7 +821,9 @@ def test_upsert_author_needs_update(dbsession):
 
 
 @pytest.mark.asyncio
-async def test_update_commit_from_provider_info_no_author_id(dbsession, mocker):
+async def test_update_commit_from_provider_info_no_author_id(
+    dbsession, mocker, mock_storage
+):
     possible_parent_commit = CommitFactory.create(
         message="possible_parent_commit", pullid=None
     )
@@ -873,7 +875,7 @@ async def test_update_commit_from_provider_info_no_author_id(dbsession, mocker):
 
 @pytest.mark.asyncio
 async def test_update_commit_from_provider_info_no_pullid_on_defaultbranch(
-    dbsession, mocker, mock_repo_provider
+    dbsession, mocker, mock_repo_provider, mock_storage
 ):
     repository = RepositoryFactory.create(branch="superbranch")
     dbsession.add(repository)
@@ -928,7 +930,7 @@ async def test_update_commit_from_provider_info_no_pullid_on_defaultbranch(
 
 @pytest.mark.asyncio
 async def test_update_commit_from_provider_info_no_pullid_not_on_defaultbranch(
-    dbsession, mocker, mock_repo_provider
+    dbsession, mocker, mock_repo_provider, mock_storage
 ):
     repository = RepositoryFactory.create(branch="superbranch")
     dbsession.add(repository)
@@ -978,7 +980,9 @@ async def test_update_commit_from_provider_info_no_pullid_not_on_defaultbranch(
 
 
 @pytest.mark.asyncio
-async def test_update_commit_from_provider_info_with_author_id(dbsession, mocker):
+async def test_update_commit_from_provider_info_with_author_id(
+    dbsession, mocker, mock_storage
+):
     possible_parent_commit = CommitFactory.create(
         message="possible_parent_commit", pullid=None
     )
@@ -1029,7 +1033,9 @@ async def test_update_commit_from_provider_info_with_author_id(dbsession, mocker
 
 
 @pytest.mark.asyncio
-async def test_update_commit_from_provider_info_pull_from_fork(dbsession, mocker):
+async def test_update_commit_from_provider_info_pull_from_fork(
+    dbsession, mocker, mock_storage
+):
     possible_parent_commit = CommitFactory.create(
         message="possible_parent_commit", pullid=None
     )
@@ -1083,7 +1089,9 @@ async def test_update_commit_from_provider_info_pull_from_fork(dbsession, mocker
 
 
 @pytest.mark.asyncio
-async def test_update_commit_from_provider_info_bitbucket_merge(dbsession, mocker):
+async def test_update_commit_from_provider_info_bitbucket_merge(
+    dbsession, mocker, mock_storage
+):
     possible_parent_commit = CommitFactory.create(
         message="possible_parent_commit",
         pullid=None,

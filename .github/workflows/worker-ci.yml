@@ -38,15 +38,12 @@ jobs:
   worker-test:
     name: Test (Worker)
     if: ${{ inputs.skip == false }}
-    needs: [worker-build]
     uses: ./.github/workflows/_run-tests.yml
     secrets: inherit
     with:
-      repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
+      make_target_suffix: worker
       output_directory: apps/worker
       flag_prefix: worker
-      pytest_rootdir: /app
-      make_target_prefix: worker.
 
   worker-build-self-hosted:
     name: Build Self Hosted (Worker)

@@ -1,3 +1,7 @@
+# !!! ATTENTION !!!
+# This file is a copy of the root `tools/devenv/config/test.yml`.
+# Make sure to keep it in sync!
+
 setup:
   codecov_url: https://codecov.io
   debug: no
@@ -7,6 +11,14 @@ setup:
     enabled: true
   ta_timeseries:
     enabled: true
+  okta:
+    iss: "https://example.okta.com"
+  http:
+    force_https: yes
+    cookie_secret: abc123
+    timeouts:
+      connect: 10
+      receive: 15
 
 services:
   database_url: postgres://postgres:password@postgres:5432/postgres
@@ -14,10 +26,10 @@ services:
   redis_url: redis://redis:6379
   minio:
     hash_key: testixik8qdauiab1yiffydimvi72ekq # never change this
-    bucket: archive
     access_key_id: codecov-default-key
     secret_access_key: codecov-default-secret
     verify_ssl: false
+    bucket: archive
     port: 9000
     host: minio
   smtp:

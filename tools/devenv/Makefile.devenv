@@ -21,7 +21,7 @@ devenv.start.deps:
 devenv.start.backend:
 	# No-op if they have not already been started
 	docker compose down worker api
-	docker compose up worker api shared gateway --detach
+	docker compose up worker api umbrella gateway --detach
 
 .PHONY: devenv.start
 devenv.start: devenv.start.deps devenv.start.backend

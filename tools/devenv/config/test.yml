@@ -1,7 +1,3 @@
-# !!! ATTENTION !!!
-# This file is a copy of the root `tools/devenv/config/test.yml`.
-# Make sure to keep it in sync!
-
 setup:
   codecov_url: https://codecov.io
   debug: no

@@ -13,6 +13,7 @@ services:
       - ./shared/:/app/libs/shared/shared
       - ./tests/:/app/libs/shared/tests
       - ./.coveragerc:/app/libs/shared/.coveragerc
+      - ./docker/test.yml:/config/codecov.yml
 
   postgres:
     image: postgres:14-alpine

@@ -2,13 +2,13 @@ import json
 
 from database.tests.factories import RepositoryFactory
 from shared.api_archive.archive import ArchiveService
-from shared.storage import MinioStorageService
+from shared.storage.memory import MemoryStorageService
 from test_utils.base import BaseTestCase
 
 
 class TestArchiveService(BaseTestCase):
-    def test_read_file_hard_to_decode(self, mocker):
-        mock_read_file = mocker.patch.object(MinioStorageService, "read_file")
+    def test_read_file_hard_to_decode(self, mocker, mock_storage):
+        mock_read_file = mocker.patch.object(MemoryStorageService, "read_file")
         mock_read_file.return_value = b"\x80abc"
         repo = RepositoryFactory.create()
         service = ArchiveService(repo)
@@ -19,11 +19,11 @@ class TestArchiveService(BaseTestCase):
 
 
 class TestWriteJsonData(BaseTestCase):
-    def test_write_report_details_to_storage(self, mocker, dbsession):
+    def test_write_report_details_to_storage(self, mocker, dbsession, mock_storage):
         repo = RepositoryFactory()
         dbsession.add(repo)
         dbsession.flush()
-        mock_write_file = mocker.patch.object(MinioStorageService, "write_file")
+        mock_write_file = mocker.patch.object(MemoryStorageService, "write_file")
 
         data = [
             {
@@ -61,11 +61,13 @@ class TestWriteJsonData(BaseTestCase):
             reduced_redundancy=False,
         )
 
-    def test_write_report_details_to_storage_no_commitid(self, mocker, dbsession):
+    def test_write_report_details_to_storage_no_commitid(
+        self, mocker, dbsession, mock_storage
+    ):
         repo = RepositoryFactory()
         dbsession.add(repo)
         dbsession.flush()
-        mock_write_file = mocker.patch.object(MinioStorageService, "write_file")
+        mock_write_file = mocker.patch.object(MemoryStorageService, "write_file")
 
         data = [
             {
