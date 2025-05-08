@@ -25,6 +25,7 @@ ignore = [
     "F405",    # `{name}` may be undefined, or defined from star imports
     "F841",    # Local variable `{name}` is assigned to but never used
     "PLW2901", # Outer {outer_kind} variable {name} overwritten by inner {inner_kind} target
+    "PERF203", # `try`-`except` within a loop incurs performance overhead
     # Trailing whitespace, and blank lines which we use in test assertions:
     "W291",
     "W293",

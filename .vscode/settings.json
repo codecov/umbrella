@@ -6,5 +6,10 @@
       "source.fixAll": "explicit",
       "source.organizeImports": "explicit"
     }
-  }
+  },
+  "python.analysis.extraPaths": [
+    "apps/codecov-api",
+    "apps/worker",
+    "libs/shared",
+  ],
 }

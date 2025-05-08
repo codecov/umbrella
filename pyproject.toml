@@ -1,11 +1,18 @@
-[project]
-name = "umbrella"
-version = "0.1.0"
-requires-python = ">=3.13"
-
 [dependency-groups]
 dev = [
+    # workspace dev-dependencies
     "mypy>=1.15.0",
     "pre-commit>=4.2.0",
     "ruff>=0.11.8",
 ]
+
+[tool.uv.workspace]
+members = [
+    "apps/*",
+    # TODO: making `shared` a workspace member would require us to actually consume it from the workspace
+    # (the `sources` definition below), but our build is not quite ready for that.
+    # "libs/*",
+]
+
+# [tool.uv.sources]
+# shared = { workspace = true }
