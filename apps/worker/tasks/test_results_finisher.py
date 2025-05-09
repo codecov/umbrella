@@ -64,7 +64,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
     def run_impl(
         self,
         db_session: Session,
-        chain_result: bool,
+        _chain_result: bool,
         *,
         repoid: int,
         commitid: str,
@@ -99,7 +99,6 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                     repoid=repoid,
                     commitid=commitid,
                     commit_yaml=UserYaml.from_dict(commit_yaml),
-                    chain_result=chain_result,
                     impl_type=impl_type,
                     **kwargs,
                 )
@@ -125,7 +124,6 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
         repoid: int,
         commitid: str,
         commit_yaml: UserYaml,
-        chain_result: bool,
         impl_type: Literal["old", "new", "both"],
         **kwargs,
     ) -> FinisherResult:
@@ -139,9 +137,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
         repo = commit.repository
 
         if impl_type == "old" or impl_type == "both":
-            return self.old_impl(
-                db_session, repo, commit, chain_result, commit_yaml, impl_type
-            )
+            return self.old_impl(db_session, repo, commit, commit_yaml, impl_type)
         else:
             return new_impl(db_session, repo, commit, commit_yaml, impl_type)
 
@@ -211,7 +207,6 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
         db_session: Session,
         repo: Repository,
         commit: Commit,
-        chain_result: bool,
         commit_yaml: UserYaml,
         impl_type: Literal["old", "both"],
     ) -> FinisherResult:
