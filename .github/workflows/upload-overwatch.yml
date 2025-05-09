@@ -12,13 +12,19 @@ permissions:
 jobs:
   upload-overwatch:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [apps/worker, apps/codecov-api, libs/shared]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
 
       - uses: astral-sh/setup-uv@v5
       - run: uv sync
-      
+        working-directory: ${{ matrix.project }}
+      - run: uv pip install mypy==1.15.0 ruff==0.11.8
+        working-directory: ${{ matrix.project }}
+
       - name: Install Overwatch CLI
         run: |
           curl -o overwatch-cli https://overwatch.codecov.dev/linux/cli
@@ -27,6 +33,7 @@ jobs:
           mv overwatch-cli /usr/local/bin/overwatch-cli
 
       - name: Run Overwatch CLI
+        working-directory: ${{ matrix.project }}
         run: |
           overwatch-cli \
             --auth-token ${{ secrets.SENTRY_AUTH_TOKEN }} \

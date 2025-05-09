@@ -21,7 +21,7 @@ case $proj in
         ;;
 esac
 
-uv sync --frozen
+uv sync
 
 if [ "$(git diff --name-only uv.lock)" != '' ]; then
     echo "\`uv sync\` made new changes for $proj. Please review and then commit again."
