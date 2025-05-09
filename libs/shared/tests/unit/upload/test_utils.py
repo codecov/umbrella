@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import PropertyMock, patch
 
 from django.test import TestCase
@@ -112,8 +112,8 @@ class CoverageMeasurement(TestCase):
         freezer.start()
         owner = OwnerFactory(
             trial_status="expired",
-            trial_start_date=datetime.utcnow(),
-            trial_end_date=datetime.utcnow() + timedelta(days=14),
+            trial_start_date=datetime.now(UTC),
+            trial_end_date=datetime.now(UTC) + timedelta(days=14),
         )
         freezer.stop()
 

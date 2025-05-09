@@ -45,9 +45,7 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
             )
 
             if isinstance(commit.timestamp, str):
-                commit.timestamp = dt.datetime.fromisoformat(commit.timestamp).replace(
-                    tzinfo=None
-                )
+                commit.timestamp = dt.datetime.fromisoformat(commit.timestamp)
 
             if commit.pullid is not None:
                 # upsert pull
