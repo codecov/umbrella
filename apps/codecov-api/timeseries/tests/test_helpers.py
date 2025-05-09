@@ -16,9 +16,6 @@ from shared.django_apps.timeseries.tests.factories import (
     DatasetFactory,
     MeasurementFactory,
 )
-from shared.reports.resources import Report, ReportFile
-from shared.reports.types import ReportLine
-from shared.utils.sessions import Session
 from timeseries.helpers import (
     coverage_measurements,
     fill_sparse_measurements,
@@ -27,30 +24,6 @@ from timeseries.helpers import (
     repository_coverage_measurements_with_fallback,
 )
 from timeseries.models import Dataset, Interval, MeasurementName
-
-
-def sample_report():
-    report = Report()
-    first_file = ReportFile("file_1.go")
-    first_file.append(
-        1, ReportLine.create(coverage=1, sessions=[[0, 1]], complexity=(10, 2))
-    )
-    first_file.append(2, ReportLine.create(coverage=0, sessions=[[0, 1]]))
-    first_file.append(3, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-    first_file.append(5, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-    first_file.append(6, ReportLine.create(coverage=0, sessions=[[0, 1]]))
-    first_file.append(8, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-    first_file.append(9, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-    first_file.append(10, ReportLine.create(coverage=0, sessions=[[0, 1]]))
-    second_file = ReportFile("file_2.py")
-    second_file.append(12, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-    second_file.append(
-        51, ReportLine.create(coverage="1/2", type="b", sessions=[[0, 1]])
-    )
-    report.append(first_file)
-    report.append(second_file)
-    report.add_session(Session(flags=["flag1", "flag2"]))
-    return report
 
 
 @pytest.mark.skipif(

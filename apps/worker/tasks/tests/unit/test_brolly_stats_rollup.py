@@ -1,7 +1,6 @@
-import asyncio
 import datetime
 import uuid
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -41,12 +40,6 @@ def install_id(dbsession) -> int:
 
 def _get_n_hours_ago(n):
     return datetime.datetime.now() - datetime.timedelta(hours=n)
-
-
-def _mock_response():
-    f = asyncio.Future()
-    f.set_result = Mock(status_code=200)
-    return f
 
 
 class TestBrollyStatsRollupTask:

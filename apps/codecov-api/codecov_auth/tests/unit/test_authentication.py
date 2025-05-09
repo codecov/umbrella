@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, call, patch
 import pytest
 from django.conf import settings
 from django.test import TestCase, override_settings
-from django.urls import ResolverMatch
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework.test import APIRequestFactory
 
@@ -26,13 +25,6 @@ from shared.django_apps.codecov_auth.tests.factories import (
     UserTokenFactory,
 )
 from shared.django_apps.core.tests.factories import RepositoryFactory
-
-# Using the standard RequestFactory API to create a form POST request
-
-
-def set_resolver_match(request, kwargs={}):
-    match = ResolverMatch(func=lambda: None, args=(), kwargs=kwargs)
-    request.resolver_match = match
 
 
 class UserTokenAuthenticationTests(TestCase):

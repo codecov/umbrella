@@ -171,46 +171,6 @@ def gitlab_enriched_pull_subgroup(dbsession, gitlab_middle_group):
     return EnrichedPull(database_pull=pull, provider_pull=provider_pull)
 
 
-@pytest.fixture
-def gitlab_enriched_pull_root(dbsession, gitlab_root_group):
-    repository = RepositoryFactory.create(
-        owner=gitlab_root_group,
-        name="example-python",
-        image_token="abcdefghij",
-        private=True,
-    )
-    dbsession.add(repository)
-    dbsession.flush()
-    base_commit = CommitFactory.create(repository=repository)
-    head_commit = CommitFactory.create(repository=repository)
-    pull = PullFactory.create(
-        repository=repository,
-        base=base_commit.commitid,
-        head=head_commit.commitid,
-        state="merged",
-    )
-    dbsession.add(base_commit)
-    dbsession.add(head_commit)
-    dbsession.add(pull)
-    dbsession.flush()
-    provider_pull = {
-        "author": {"id": "7123", "username": "tomcat"},
-        "base": {
-            "branch": "master",
-            "commitid": "b92edba44fdd29fcc506317cc3ddeae1a723dd08",
-        },
-        "head": {
-            "branch": "reason/some-testing",
-            "commitid": "a06aef4356ca35b34c5486269585288489e578db",
-        },
-        "number": "1",
-        "id": "1",
-        "state": "open",
-        "title": "Creating new code for reasons no one knows",
-    }
-    return EnrichedPull(database_pull=pull, provider_pull=provider_pull)
-
-
 class TestDecorationServiceTestCase:
     @pytest.fixture(autouse=True)
     def setup(self):
