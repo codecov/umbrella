@@ -1,6 +1,3 @@
-ignore:
-  - "**tests**/test_*.py"
-
 flag_management:
   default_rules:
     carryforward: true
