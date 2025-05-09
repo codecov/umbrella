@@ -1,7 +1,11 @@
 ### :x: Unsupported file format
 
 > Upload processing failed due to unsupported file format. Please review the parser error message:
-> `parser error message`
+>
+> ```python
+> parser error message
+> ```
+>
 > For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).
 
 ---
@@ -11,67 +15,67 @@
 | 4 | 4 | 0 | 0 |
 <details><summary>View the top 3 failed test(s) by shortest run time</summary>
 
-> 
+>
 > ```python
 > test_name1
 > ```
-> 
+>
 > <details><summary>Stack Traces | 2s run time</summary>
-> 
+>
 > > `````````python
-> > Shared 
-> > 
-> > 
-> > 
+> > Shared
+> >
+> >
+> >
 > >  <pre> ````````
-> >  
-> > 
+> >
+> >
 > >  | test | test | test </pre>failure message
 > > `````````
 > > [View](https://example.com/build_url_1) the CI Build
-> 
+>
 > </details>
 
 
-> 
+>
 > ```python
 > Other Class Name test_name2
 > ```
-> 
+>
 > <details><summary>Stack Traces | 3s run time</summary>
-> 
+>
 > > `````````python
-> > Shared 
-> > 
-> > 
-> > 
-> >  <pre> 
-> >   ````````  
-> >  
-> > 
+> > Shared
+> >
+> >
+> >
+> >  <pre>
+> >   ````````
+> >
+> >
 > >  | test | test | test </pre>failure message
 > > `````````
 > > [View](https://example.com/build_url_2) the CI Build
-> 
+>
 > </details>
 
 
-> 
+>
 > ```python
 > Class Name test_name0
 > ```
-> 
+>
 > <details><summary>Stack Traces | 4s run time</summary>
-> 
-> > 
+>
+> >
 > > ```python
-> > <pre>Fourth 
-> > 
+> > <pre>Fourth
+> >
 > > </pre> | test  | instance |
 > > ```
-> > 
+> >
 > > [View](https://example.com/build_url_3) the CI Build
-> 
+>
 > </details>
 
 </details>

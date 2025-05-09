@@ -20,7 +20,6 @@ from services.test_results import (
     generate_test_id,
     should_do_flaky_detection,
 )
-from services.urls import services_short_dict
 from services.yaml import UserYaml
 from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.torngit.exceptions import TorngitClientError
@@ -81,7 +80,7 @@ def test_send_to_provider_fail():
     assert res == False
 
 
-def test_generate_failure_info():
+def test_generate_failure_info(snapshot):
     flags_hash = generate_flags_hash([])
     test_id = generate_test_id(1, "testsuite", "testname", flags_hash)
     fail = TestResultsNotificationFailure(
@@ -95,18 +94,10 @@ def test_generate_failure_info():
 
     res = generate_failure_info(fail)
 
-    assert (
-        res
-        == """
-```python
-hello world
-```
-
-[View](https://example.com/build_url) the CI Build"""
-    )
+    assert snapshot("txt") == res
 
 
-def test_build_message():
+def test_build_message(snapshot):
     flags_hash = generate_flags_hash([])
     test_id = generate_test_id(1, "testsuite", "testname", flags_hash)
     fail = TestResultsNotificationFailure(
@@ -119,42 +110,19 @@ def test_build_message():
     )
     info = TACommentInDepthInfo(failures=[fail], flaky_tests={})
     payload = TestResultsNotificationPayload(1, 2, 3, info)
-    commit = CommitFactory(branch="thing/thing")
+    commit = CommitFactory(
+        branch="thing/thing",
+        repository__owner__username="username",
+        repository__owner__service="github",
+        repository__name="name",
+    )
     tn = TestResultsNotifier(commit, None, None, None, payload)
     res = tn.build_message()
 
-    assert (
-        res
-        == f"""### :x: 1 Tests Failed:
-| Tests completed | Failed | Passed | Skipped |
-|---|---|---|---|
-| 3 | 1 | 2 | 3 |
-<details><summary>View the top 1 failed test(s) by shortest run time</summary>
-
-> 
-> ```python
-> testname
-> ```
-> 
-> <details><summary>Stack Traces | 1s run time</summary>
-> 
-> > 
-> > ```python
-> > hello world
-> > ```
-> > 
-> > [View](https://example.com/build_url) the CI Build
-> 
-> </details>
-
-</details>
-
-To view more test analytics, go to the [Test Analytics Dashboard](https://app.codecov.io/{services_short_dict.get(commit.repository.service)}/{commit.repository.owner.username}/{commit.repository.name}/tests/thing%2Fthing)
-<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/BpocVj23nhr2Y45G7) to help us improve Test Analytics.</sub>"""
-    )
+    assert snapshot("txt") == res
 
 
-def test_build_message_with_flake():
+def test_build_message_with_flake(snapshot):
     flags_hash = generate_flags_hash([])
     test_id = generate_test_id(1, "testsuite", "testname", flags_hash)
     fail = TestResultsNotificationFailure(
@@ -168,40 +136,16 @@ def test_build_message_with_flake():
     flaky_test = FlakeInfo(1, 3)
     info = TACommentInDepthInfo(failures=[fail], flaky_tests={test_id: flaky_test})
     payload = TestResultsNotificationPayload(1, 2, 3, info)
-    commit = CommitFactory(branch="test_branch")
+    commit = CommitFactory(
+        branch="test_branch",
+        repository__owner__username="username",
+        repository__owner__service="github",
+        repository__name="name",
+    )
     tn = TestResultsNotifier(commit, None, None, None, payload)
     res = tn.build_message()
 
-    assert (
-        res
-        == f"""### :x: 1 Tests Failed:
-| Tests completed | Failed | Passed | Skipped |
-|---|---|---|---|
-| 3 | 1 | 2 | 3 |
-<details><summary>View the full list of 1 :snowflake: flaky tests</summary>
-
-> 
-> ```python
-> testname
-> ```
-> 
-> **Flake rate in main:** 33.33% (Passed 2 times, Failed 1 times)
-> <details><summary>Stack Traces | 1s run time</summary>
-> 
-> > 
-> > ```python
-> > hello world
-> > ```
-> > 
-> > [View](https://example.com/build_url) the CI Build
-> 
-> </details>
-
-</details>
-
-To view more test analytics, go to the [Test Analytics Dashboard](https://app.codecov.io/{services_short_dict.get(commit.repository.service)}/{commit.repository.owner.username}/{commit.repository.name}/tests/{commit.branch})
-<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/BpocVj23nhr2Y45G7) to help us improve Test Analytics.</sub>"""
-    )
+    assert snapshot("txt") == res
 
 
 def test_notify(mocker):
@@ -261,7 +205,7 @@ def test_should_do_flake_detection(dbsession, mocker, config, private, plan, ex_
     assert result == ex_result
 
 
-def test_specific_error_message(mocker):
+def test_specific_error_message(mocker, snapshot):
     mock_repo_service = mock.AsyncMock()
     mocker.patch(
         "helpers.notifier.get_repo_provider_service", return_value=mock_repo_service
@@ -277,20 +221,17 @@ def test_specific_error_message(mocker):
     )
     tn = TestResultsNotifier(CommitFactory(), None, error=error)
     result = tn.error_comment()
-    expected = """### :x: Unsupported file format
-
-> Upload processing failed due to unsupported file format. Please review the parser error message:
-> `Error parsing JUnit XML in test.xml at 4:32: ParserError: No name found`
-> For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).
-"""
 
     assert result == (True, "comment_posted")
-    mock_repo_service.edit_comment.assert_called_with(
-        tn._pull.database_pull.pullid, tn._pull.database_pull.commentid, expected
-    )
+
+    args = mock_repo_service.edit_comment.call_args[0]
+    db_pull = tn._pull.database_pull
+    assert args[0] == db_pull.pullid
+    assert args[1] == db_pull.commentid
+    assert snapshot("txt") == args[2]
 
 
-def test_specific_error_message_no_error(mocker):
+def test_specific_error_message_no_error(mocker, snapshot):
     mock_repo_service = mock.AsyncMock()
     mocker.patch(
         "helpers.notifier.get_repo_provider_service", return_value=mock_repo_service
@@ -302,9 +243,11 @@ def test_specific_error_message_no_error(mocker):
 
     tn = TestResultsNotifier(CommitFactory(), None)
     result = tn.error_comment()
-    expected = """:x: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format."""
 
     assert result == (True, "comment_posted")
-    mock_repo_service.edit_comment.assert_called_with(
-        tn._pull.database_pull.pullid, tn._pull.database_pull.commentid, expected
-    )
+
+    args = mock_repo_service.edit_comment.call_args[0]
+    db_pull = tn._pull.database_pull
+    assert args[0] == db_pull.pullid
+    assert args[1] == db_pull.commentid
+    assert snapshot("txt") == args[2]

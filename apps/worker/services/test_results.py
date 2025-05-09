@@ -258,16 +258,19 @@ def messagify_flake(
 
 
 def specific_error_message(error: ErrorPayload) -> str:
-    title = f"### :x: {error.error_code.replace('_', ' ').capitalize()}"
     if error.error_code == "unsupported_file_format":
-        description = "\n".join(
-            [
-                "Upload processing failed due to unsupported file format. Please review the parser error message:",
-                f"`{error.error_message}`",
-                "For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).",
-            ]
-        )
+        title = "### :x: Unsupported file format"
+
+        assert error.error_message is not None
+
+        message = [
+            "Upload processing failed due to unsupported file format. Please review the parser error message:",
+            wrap_in_code(error.error_message),
+            "For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).",
+        ]
+        description = "\n".join(message)
     elif error.error_code == "file_not_in_storage":
+        title = "### :x: File not in storage"
         description = "\n".join(
             [
                 "No result to display due to the CLI not being able to find the file.",
@@ -275,6 +278,17 @@ def specific_error_message(error: ErrorPayload) -> str:
                 "or the desired file specified by the `file` and `search_dir` arguments of the CLI.",
             ]
         )
+    elif error.error_code == "warning":
+        title = "### :warning: Parser warning"
+
+        # we will always expect a specific error message with a warning
+        assert error.error_message is not None
+
+        message = [
+            "The parser emitted a warning. Please review your JUnit XML file:",
+            wrap_in_code(error.error_message),
+        ]
+        description = "\n".join(message)
     else:
         raise ValueError("Unrecognized error code")
     message = [
