@@ -446,7 +446,6 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
 
         payload_bytes = archive_service.read_file(upload.storage_path)
         parsing_results: list[test_results_parser.ParsingInfo] = []
-        report_contents: list[ReadableFile] = []
 
         result = self.parse_file(db_session, payload_bytes, upload)
         if result is None:
@@ -456,13 +455,17 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
 
         parsing_results, readable_files = result
 
-        if all(len(result["testruns"]) == 0 for result in parsing_results):
-            successful = False
-            log.error(
-                "No test result files were successfully parsed for this upload",
-                extra={"upload_id": upload_id},
-            )
-        else:
+        for info in parsing_results:
+            for warning in info["warnings"]:
+                err = UploadError(
+                    report_upload=upload,
+                    error_code="warning",
+                    error_params={"warning_message": warning},
+                )
+                db_session.add(err)
+                db_session.commit()
+
+        if any(len(result["testruns"]) > 0 for result in parsing_results):
             successful = True
 
             with write_tests_summary.labels("old").time():
@@ -476,6 +479,8 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
                     flaky_test_set,
                     upload.flag_names,
                 )
+        else:
+            successful = False
 
         upload.state = "processed"
         db_session.commit()

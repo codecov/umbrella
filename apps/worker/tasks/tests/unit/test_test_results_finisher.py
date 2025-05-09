@@ -549,6 +549,38 @@ class TestUploadTestFinisherTask:
         self.assert_notify_called(yaml={})
         self.assert_cache_rollup_called()
 
+    @pytest.mark.django_db
+    @pytest.mark.integration
+    def test_upload_finisher_task_call_warning(self, snapshot):
+        for instance in self.test_instances:
+            instance.outcome = "pass"
+        self.dbsession.flush()
+
+        upload_error = UploadError(
+            report_upload=self.test_instances[0].upload,
+            error_code="warning",
+            error_params={"warning_message": "parser warning message"},
+        )
+
+        self.dbsession.add(upload_error)
+        self.dbsession.flush()
+
+        result = self.run_test_results_finisher(chain_result=False, commit_yaml={})
+
+        expected_result = {
+            "notify_attempted": True,
+            "notify_succeeded": True,
+            "queue_notify": True,
+        }
+
+        assert expected_result == result
+        assert (
+            snapshot("txt")
+            == self.mock_repo_provider_comments.post_comment.call_args[0][1]
+        )
+        self.assert_notify_called(yaml={})
+        self.assert_cache_rollup_called()
+
     @pytest.mark.integration
     @pytest.mark.django_db
     def test_upload_finisher_task_call_upgrade_comment(self, snapshot):

@@ -1,0 +1,10 @@
+[
+  {
+    "code": "warning",
+    "message": "Error validating classname ending at 7:65 in junit.xml"
+  },
+  {
+    "code": "warning",
+    "message": "Error validating classname ending at 11:65 in junit.xml"
+  }
+]

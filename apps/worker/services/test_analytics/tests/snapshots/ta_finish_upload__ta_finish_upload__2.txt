@@ -11,17 +11,10 @@
 | 1 | 1 | 0 | 0 |
 <details><summary>View the top 1 failed test(s) by shortest run time</summary>
 
-> 
-> ```python
-> computed_0
-> ```
-> 
+> <pre><code class="language-python">computed_0</code></pre>
 > <details><summary>Stack Traces | 100s run time</summary>
 > 
-> > 
-> > ```python
-> > No failure message available
-> > ```
+> > <pre><code class="language-python">No failure message available</code></pre>
 > 
 > </details>
 

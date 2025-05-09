@@ -1,0 +1,4 @@
+### :warning: Parser warning
+
+> The parser emitted a warning. Please review your JUnit XML file:
+> <pre><code class="language-python">parser warning message</code></pre>

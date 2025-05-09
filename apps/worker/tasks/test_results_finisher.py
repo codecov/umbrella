@@ -198,9 +198,20 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
         )
         if upload_error is None:
             return None
-        return ErrorPayload(
-            upload_error.error_code, upload_error.error_params["error_message"]
-        )
+
+        match upload_error.error_code:
+            case "unsupported_file_format":
+                return ErrorPayload(
+                    upload_error.error_code,
+                    upload_error.error_params.get("error_message"),
+                )
+            case "file_not_in_storage":
+                return ErrorPayload(upload_error.error_code, None)
+            case "warning":
+                return ErrorPayload(
+                    upload_error.error_code,
+                    upload_error.error_params.get("warning_message"),
+                )
 
     def old_impl(
         self,

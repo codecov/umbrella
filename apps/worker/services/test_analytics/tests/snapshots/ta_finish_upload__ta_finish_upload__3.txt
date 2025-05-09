@@ -11,18 +11,11 @@
 | 1 | 1 | 0 | 0 |
 <details><summary>View the full list of 1 :snowflake: flaky tests</summary>
 
-> 
-> ```python
-> computed_0
-> ```
-> 
+> <pre><code class="language-python">computed_0</code></pre>
 > **Flake rate in main:** 100.00% (Passed 0 times, Failed 10 times)
 > <details><summary>Stack Traces | 100s run time</summary>
 > 
-> > 
-> > ```python
-> > No failure message available
-> > ```
+> > <pre><code class="language-python">No failure message available</code></pre>
 > 
 > </details>
 

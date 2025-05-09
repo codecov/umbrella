@@ -9,6 +9,7 @@ from services.test_analytics.ta_processing import (
     get_ta_processing_info,
     handle_file_not_found,
     handle_parsing_error,
+    handle_warning,
     insert_testruns_timeseries,
     rewrite_or_delete_upload,
 )
@@ -66,6 +67,11 @@ def ta_processor_impl(
         if update_state:
             handle_parsing_error(upload, exc)
         return False
+
+    if update_state:
+        for info in parsing_infos:
+            for warning in info["warnings"]:
+                handle_warning(upload, warning)
 
     with write_tests_summary.labels("new").time():
         insert_testruns_timeseries(

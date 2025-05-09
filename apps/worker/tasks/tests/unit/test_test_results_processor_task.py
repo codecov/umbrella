@@ -1,3 +1,6 @@
+import base64
+import json
+import zlib
 from datetime import UTC, date, datetime, timedelta
 from itertools import chain
 from pathlib import Path
@@ -6,7 +9,13 @@ import pytest
 from freezegun import freeze_time
 
 from database.models import CommitReport, RepositoryFlag
-from database.models.reports import DailyTestRollup, Test, TestFlagBridge, TestInstance
+from database.models.reports import (
+    DailyTestRollup,
+    Test,
+    TestFlagBridge,
+    TestInstance,
+    UploadError,
+)
 from database.tests.factories import CommitFactory, UploadFactory
 from database.tests.factories.reports import FlakeFactory
 from services.test_results import generate_flags_hash, generate_test_id
@@ -271,10 +280,6 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
         expected_result = False
 
         assert expected_result == result
-        assert (
-            "No test result files were successfully parsed for this upload"
-            in caplog.text
-        )
 
     @pytest.mark.integration
     @freeze_time("2025-01-01T00:00:00Z")
@@ -702,3 +707,45 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
             b"""# path=codecov-demo/temp.junit.xml
 """
         )
+
+
+def test_test_result_processor_task_warnings(dbsession, mock_storage, snapshot):
+    with open(here.parent.parent / "samples" / "sample-warnings-junit.xml") as f:
+        content = f.read()
+    encoded = {
+        "test_results_files": [
+            {
+                "filename": "junit.xml",
+                "data": base64.b64encode(zlib.compress(content.encode())).decode(),
+            }
+        ]
+    }
+    mock_storage.write_file("archive", "url", json.dumps(encoded))
+
+    upload = UploadFactory(storage_path="url", report__report_type="test_results")
+    dbsession.add(upload)
+    dbsession.flush()
+
+    redis_queue = [{"url": "url", "upload_id": upload.id_}]
+
+    result = TestResultsProcessorTask().run_impl(
+        dbsession,
+        previous_result=None,
+        repoid=upload.report.commit.repoid,
+        commitid=upload.report.commit.commitid,
+        commit_yaml={},
+        arguments_list=redis_queue,
+    )
+
+    assert result is False
+
+    errors = dbsession.query(UploadError).all()
+    assert len(errors) > 0
+    errors = [
+        {
+            "code": error.error_code,
+            "message": error.error_params["warning_message"],
+        }
+        for error in errors
+    ]
+    assert snapshot("json") == errors
