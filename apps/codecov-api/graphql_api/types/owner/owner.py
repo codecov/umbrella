@@ -326,6 +326,12 @@ def resolve_is_current_user_activated(owner: Owner, info: GraphQLResolveInfo) ->
     if not current_owner:
         return False
 
+    # handle gitlab subgroups
+    if owner.service == "gitlab":
+        root_owner = owner.root_organization
+        if root_owner:
+            owner = root_owner
+
     if owner.ownerid == current_owner.ownerid:
         return True
     if owner.plan_activated_users is None:
