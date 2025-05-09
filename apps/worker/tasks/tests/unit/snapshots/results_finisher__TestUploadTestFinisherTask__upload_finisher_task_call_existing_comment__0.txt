@@ -1,14 +1,3 @@
-### :x: Unsupported file format
-
-> Upload processing failed due to unsupported file format. Please review the parser error message:
-> 
-> ```python
-> parser error message
-> ```
-> 
-> For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).
-
----
 ### :x: 4 Tests Failed:
 | Tests completed | Failed | Passed | Skipped |
 |---|---|---|---|

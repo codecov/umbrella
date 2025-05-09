@@ -1,0 +1,33 @@
+### :x: 1 Tests Failed:
+| Tests completed | Failed | Passed | Skipped |
+|---|---|---|---|
+| 1 | 1 | 0 | 0 |
+<details><summary>View the full list of 1 :snowflake: flaky tests</summary>
+
+> 
+> ```python
+> Other Class Name test_name2
+> ```
+> 
+> **Flake rate in main:** 33.33% (Passed 100 times, Failed 50 times)
+> <details><summary>Stack Traces | 3s run time</summary>
+> 
+> > `````````python
+> > Shared 
+> > 
+> > 
+> > 
+> >  <pre> 
+> >   ````````  
+> >  
+> > 
+> >  | test | test | test </pre>failure message
+> > `````````
+> > [View](https://example.com/build_url_2) the CI Build
+> 
+> </details>
+
+</details>
+
+To view more test analytics, go to the [Test Analytics Dashboard](https://app.codecov.io/gh/test-username/test-repo-name/tests/main)
+<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/BpocVj23nhr2Y45G7) to help us improve Test Analytics.</sub>

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Literal
 from unittest.mock import AsyncMock
 
 import pytest
@@ -23,7 +24,6 @@ from database.tests.factories import (
 )
 from services.repository import EnrichedPull
 from services.test_results import generate_test_id
-from services.urls import get_members_url
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from shared.torngit.exceptions import TorngitClientError
 from tasks.test_results_finisher import TestResultsFinisherTask
@@ -344,9 +344,8 @@ class TestUploadTestFinisherTask:
     def setup(self):
         mock_all_plans_and_tiers()
 
-    @pytest.mark.integration
-    @pytest.mark.django_db
-    def test_upload_finisher_task_call(
+    @pytest.fixture(autouse=True)
+    def setup_common_fixtures(
         self,
         mocker,
         mock_configuration,
@@ -359,16 +358,85 @@ class TestUploadTestFinisherTask:
         mock_repo_provider_comments,
         test_results_setup,
     ):
-        repoid, commit, pull, _ = test_results_setup
+        self.mocker = mocker
+        self.mock_configuration = mock_configuration
+        self.dbsession = dbsession
+        self.codecov_vcr = codecov_vcr
+        self.mock_storage = mock_storage
+        self.mock_redis = mock_redis
+        self.celery_app = celery_app
+        self.test_results_mock_app = test_results_mock_app
+        self.mock_repo_provider_comments = mock_repo_provider_comments
+        self.test_results_setup = test_results_setup
+        repoid, commit, pull, test_instances = test_results_setup
+        self.repoid = repoid
+        self.commit = commit
+        self.pull = pull
+        self.test_instances = test_instances
 
-        result = TestResultsFinisherTask().run_impl(
-            dbsession,
-            True,
-            repoid=repoid,
-            commitid=commit.commitid,
-            commit_yaml={"codecov": {"max_report_age": False}},
-            impl_type="both",
+    def assert_notify_called(self, yaml=None):
+        if yaml is None:
+            yaml = {}
+
+        self.test_results_mock_app.tasks[
+            "app.tasks.notify.Notify"
+        ].apply_async.assert_called_with(
+            args=None,
+            kwargs={
+                "commitid": self.commit.commitid,
+                "current_yaml": yaml,
+                "repoid": self.repoid,
+            },
         )
+
+    def assert_notify_not_called(self):
+        self.test_results_mock_app.tasks["app.tasks.notify.Notify"].assert_not_called()
+
+    def assert_cache_rollup_called(self, impl_type="old"):
+        self.test_results_mock_app.tasks[
+            "app.tasks.cache_rollup.CacheTestRollupsTask"
+        ].apply_async.assert_called_with(
+            kwargs={
+                "repo_id": self.repoid,
+                "branch": "main",
+                "impl_type": impl_type,
+            },
+        )
+
+    def assert_process_flakes_called(self, impl_type="old"):
+        self.test_results_mock_app.tasks[
+            "app.tasks.flakes.ProcessFlakesTask"
+        ].apply_async.assert_called_with(
+            kwargs={
+                "repo_id": self.repoid,
+                "impl_type": impl_type,
+            },
+        )
+
+    def assert_process_flakes_not_called(self):
+        self.test_results_mock_app.tasks[
+            "app.tasks.flakes.ProcessFlakesTask"
+        ].apply_async.assert_not_called()
+
+    def run_test_results_finisher(
+        self,
+        chain_result=True,
+        commit_yaml={},
+        impl_type: Literal["old", "new", "both"] = "old",
+    ):
+        return TestResultsFinisherTask().run_impl(
+            self.dbsession,
+            chain_result,
+            repoid=self.repoid,
+            commitid=self.commit.commitid,
+            commit_yaml=commit_yaml,
+            impl_type=impl_type,
+        )
+
+    @pytest.mark.integration
+    @pytest.mark.django_db
+    def test_upload_finisher_task_call(self, snapshot):
+        result = self.run_test_results_finisher(impl_type="both")
 
         expected_result = {
             "notify_attempted": True,
@@ -376,180 +444,43 @@ class TestUploadTestFinisherTask:
             "queue_notify": False,
         }
 
-        test_results_mock_app.tasks[
-            "app.tasks.cache_rollup.CacheTestRollupsTask"
-        ].apply_async.assert_called_with(
-            kwargs={
-                "repo_id": repoid,
-                "branch": "main",
-                "impl_type": "both",
-            },
-        )
+        self.assert_cache_rollup_called(impl_type="both")
 
         assert expected_result == result
-        mock_repo_provider_comments.post_comment.assert_called_with(
-            pull.pullid,
-            """### :x: 4 Tests Failed:
-| Tests completed | Failed | Passed | Skipped |
-|---|---|---|---|
-| 4 | 4 | 0 | 0 |
-<details><summary>View the top 3 failed test(s) by shortest run time</summary>
-
-> 
-> ```python
-> test_name1
-> ```
-> 
-> <details><summary>Stack Traces | 2s run time</summary>
-> 
-> > `````````python
-> > Shared 
-> > 
-> > 
-> > 
-> >  <pre> ````````
-> >  
-> > 
-> >  | test | test | test </pre>failure message
-> > `````````
-> > [View](https://example.com/build_url_1) the CI Build
-> 
-> </details>
-
-
-> 
-> ```python
-> Other Class Name test_name2
-> ```
-> 
-> <details><summary>Stack Traces | 3s run time</summary>
-> 
-> > `````````python
-> > Shared 
-> > 
-> > 
-> > 
-> >  <pre> 
-> >   ````````  
-> >  
-> > 
-> >  | test | test | test </pre>failure message
-> > `````````
-> > [View](https://example.com/build_url_2) the CI Build
-> 
-> </details>
-
-
-> 
-> ```python
-> Class Name test_name0
-> ```
-> 
-> <details><summary>Stack Traces | 4s run time</summary>
-> 
-> > 
-> > ```python
-> > <pre>Fourth 
-> > 
-> > </pre> | test  | instance |
-> > ```
-> > 
-> > [View](https://example.com/build_url_3) the CI Build
-> 
-> </details>
-
-</details>
-
-To view more test analytics, go to the [Test Analytics Dashboard](https://app.codecov.io/gh/test-username/test-repo-name/tests/main)
-<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/BpocVj23nhr2Y45G7) to help us improve Test Analytics.</sub>""",
+        assert (
+            snapshot("txt")
+            == self.mock_repo_provider_comments.post_comment.call_args[0][1]
         )
 
     @pytest.mark.integration
     @pytest.mark.django_db
-    def test_upload_finisher_task_call_no_failures(
-        self,
-        mocker,
-        mock_configuration,
-        dbsession,
-        codecov_vcr,
-        mock_storage,
-        mock_redis,
-        celery_app,
-        test_results_mock_app,
-        mock_repo_provider_comments,
-        test_results_setup,
-    ):
-        repoid, commit, _, test_instances = test_results_setup
-
-        for instance in test_instances:
+    def test_upload_finisher_task_call_no_failures(self):
+        for instance in self.test_instances:
             instance.outcome = "pass"
-        dbsession.flush()
+        self.dbsession.flush()
 
-        result = TestResultsFinisherTask().run_impl(
-            dbsession,
-            True,
-            repoid=repoid,
-            commitid=commit.commitid,
-            commit_yaml={"codecov": {"max_report_age": False}},
-        )
+        result = self.run_test_results_finisher()
 
         expected_result = {
             "notify_attempted": False,
             "notify_succeeded": False,
             "queue_notify": True,
         }
-        test_results_mock_app.tasks[
-            "app.tasks.notify.Notify"
-        ].apply_async.assert_called_with(
-            args=None,
-            kwargs={
-                "commitid": commit.commitid,
-                "current_yaml": {"codecov": {"max_report_age": False}},
-                "repoid": repoid,
-            },
-        )
 
-        test_results_mock_app.tasks[
-            "app.tasks.cache_rollup.CacheTestRollupsTask"
-        ].apply_async.assert_called_with(
-            kwargs={
-                "repo_id": repoid,
-                "branch": "main",
-                "impl_type": "old",
-            },
-        )
+        self.assert_notify_called()
+        self.assert_cache_rollup_called()
 
         assert expected_result == result
 
     @pytest.mark.integration
     @pytest.mark.django_db
-    def test_upload_finisher_task_call_no_pull(
-        self,
-        mocker,
-        mock_configuration,
-        dbsession,
-        codecov_vcr,
-        mock_storage,
-        mock_redis,
-        celery_app,
-        test_results_mock_app,
-        mock_repo_provider_comments,
-        test_results_setup,
-    ):
-        repoid, commit, pull, _ = test_results_setup
-
-        _ = mocker.patch(
+    def test_upload_finisher_task_call_no_pull(self):
+        _ = self.mocker.patch(
             "tasks.test_results_finisher.fetch_and_update_pull_request_information_from_commit",
             return_value=None,
         )
 
-        result = TestResultsFinisherTask().run_impl(
-            dbsession,
-            True,
-            repoid=repoid,
-            commitid=commit.commitid,
-            commit_yaml={"codecov": {"max_report_age": False}},
-        )
+        result = self.run_test_results_finisher()
 
         expected_result = {
             "notify_attempted": False,
@@ -561,38 +492,17 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
 
     @pytest.mark.django_db
     @pytest.mark.integration
-    def test_upload_finisher_task_call_error_with_failures(
-        self,
-        mocker,
-        mock_configuration,
-        dbsession,
-        codecov_vcr,
-        mock_storage,
-        mock_redis,
-        celery_app,
-        test_results_mock_app,
-        mock_repo_provider_comments,
-        test_results_setup,
-        snapshot,
-    ):
-        repoid, commit, pull, test_instances = test_results_setup
-
+    def test_upload_finisher_task_call_error_with_failures(self, snapshot):
         upload_error = UploadError(
-            report_upload=test_instances[0].upload,
+            report_upload=self.test_instances[0].upload,
             error_code="unsupported_file_format",
             error_params={"error_message": "parser error message"},
         )
 
-        dbsession.add(upload_error)
-        dbsession.flush()
+        self.dbsession.add(upload_error)
+        self.dbsession.flush()
 
-        result = TestResultsFinisherTask().run_impl(
-            dbsession,
-            False,
-            repoid=repoid,
-            commitid=commit.commitid,
-            commit_yaml={"codecov": {"max_report_age": False}},
-        )
+        result = self.run_test_results_finisher(chain_result=False)
 
         expected_result = {
             "notify_attempted": True,
@@ -601,59 +511,29 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
         }
 
         assert expected_result == result
-
         assert (
-            snapshot("txt") == mock_repo_provider_comments.post_comment.call_args[0][1]
+            snapshot("txt")
+            == self.mock_repo_provider_comments.post_comment.call_args[0][1]
         )
-
-        test_results_mock_app.tasks[
-            "app.tasks.cache_rollup.CacheTestRollupsTask"
-        ].apply_async.assert_called_with(
-            kwargs={
-                "repo_id": repoid,
-                "branch": "main",
-                "impl_type": "old",
-            },
-        )
+        self.assert_cache_rollup_called()
 
     @pytest.mark.django_db
     @pytest.mark.integration
-    def test_upload_finisher_task_call_error_only(
-        self,
-        mocker,
-        mock_configuration,
-        dbsession,
-        codecov_vcr,
-        mock_storage,
-        mock_redis,
-        celery_app,
-        test_results_mock_app,
-        mock_repo_provider_comments,
-        test_results_setup,
-        snapshot,
-    ):
-        repoid, commit, pull, test_instances = test_results_setup
-
-        for instance in test_instances:
+    def test_upload_finisher_task_call_error_only(self, snapshot):
+        for instance in self.test_instances:
             instance.outcome = "pass"
-        dbsession.flush()
+        self.dbsession.flush()
 
         upload_error = UploadError(
-            report_upload=test_instances[0].upload,
+            report_upload=self.test_instances[0].upload,
             error_code="unsupported_file_format",
             error_params={"error_message": "parser error message"},
         )
 
-        dbsession.add(upload_error)
-        dbsession.flush()
+        self.dbsession.add(upload_error)
+        self.dbsession.flush()
 
-        result = TestResultsFinisherTask().run_impl(
-            dbsession,
-            False,
-            repoid=repoid,
-            commitid=commit.commitid,
-            commit_yaml={"codecov": {"max_report_age": False}},
-        )
+        result = self.run_test_results_finisher(chain_result=False, commit_yaml={})
 
         expected_result = {
             "notify_attempted": True,
@@ -662,79 +542,44 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
         }
 
         assert expected_result == result
-
         assert (
-            snapshot("txt") == mock_repo_provider_comments.post_comment.call_args[0][1]
+            snapshot("txt")
+            == self.mock_repo_provider_comments.post_comment.call_args[0][1]
         )
-
-        test_results_mock_app.tasks[
-            "app.tasks.notify.Notify"
-        ].apply_async.assert_called_with(
-            args=None,
-            kwargs={
-                "commitid": commit.commitid,
-                "current_yaml": {"codecov": {"max_report_age": False}},
-                "repoid": repoid,
-            },
-        )
-
-        test_results_mock_app.tasks[
-            "app.tasks.cache_rollup.CacheTestRollupsTask"
-        ].apply_async.assert_called_with(
-            kwargs={
-                "repo_id": repoid,
-                "branch": "main",
-                "impl_type": "old",
-            },
-        )
+        self.assert_notify_called(yaml={})
+        self.assert_cache_rollup_called()
 
     @pytest.mark.integration
     @pytest.mark.django_db
-    def test_upload_finisher_task_call_upgrade_comment(
-        self,
-        mocker,
-        mock_configuration,
-        dbsession,
-        codecov_vcr,
-        mock_storage,
-        mock_redis,
-        celery_app,
-        test_results_mock_app,
-        mock_repo_provider_comments,
-        test_results_setup,
-    ):
-        repoid, commit, pull, _ = test_results_setup
-
-        repo = dbsession.query(Repository).filter(Repository.repoid == repoid).first()
+    def test_upload_finisher_task_call_upgrade_comment(self, snapshot):
+        repo = (
+            self.dbsession.query(Repository)
+            .filter(Repository.repoid == self.repoid)
+            .first()
+        )
         repo.owner.plan_activated_users = []
         repo.owner.plan = PlanName.CODECOV_PRO_MONTHLY.value
         repo.private = True
-        dbsession.flush()
+        self.dbsession.flush()
 
         pr_author = OwnerFactory(service="github", service_id=100)
-        dbsession.add(pr_author)
-        dbsession.flush()
+        self.dbsession.add(pr_author)
+        self.dbsession.flush()
 
         enriched_pull = EnrichedPull(
-            database_pull=pull,
+            database_pull=self.pull,
             provider_pull={"author": {"id": "100", "username": "test_username"}},
         )
-        _ = mocker.patch(
+        _ = self.mocker.patch(
             "helpers.notifier.fetch_and_update_pull_request_information_from_commit",
             return_value=enriched_pull,
         )
-        _ = mocker.patch(
+        _ = self.mocker.patch(
             "tasks.test_results_finisher.fetch_and_update_pull_request_information_from_commit",
             return_value=enriched_pull,
         )
 
-        result = TestResultsFinisherTask().run_impl(
-            dbsession,
-            True,
-            repoid=repoid,
-            commitid=commit.commitid,
-            commit_yaml={"codecov": {"max_report_age": False}},
-        )
+        result = self.run_test_results_finisher()
 
         assert result == {
             "notify_attempted": True,
@@ -742,50 +587,20 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
             "queue_notify": False,
         }
 
-        mock_repo_provider_comments.post_comment.assert_called_with(
-            pull.pullid,
-            f"The author of this PR, test_username, is not an activated member of this organization on Codecov.\nPlease [activate this user on Codecov]({get_members_url(pull)}) to display this PR comment.\nCoverage data is still being uploaded to Codecov.io for purposes of overall coverage calculations.\nPlease don't hesitate to email us at support@codecov.io with any questions.",
+        assert (
+            snapshot("txt")
+            == self.mock_repo_provider_comments.post_comment.call_args[0][1]
         )
-
-        test_results_mock_app.tasks["app.tasks.notify.Notify"].assert_not_called()
-
-        test_results_mock_app.tasks[
-            "app.tasks.cache_rollup.CacheTestRollupsTask"
-        ].apply_async.assert_called_with(
-            kwargs={
-                "repo_id": repoid,
-                "branch": "main",
-                "impl_type": "old",
-            },
-        )
+        self.assert_notify_not_called()
+        self.assert_cache_rollup_called()
 
     @pytest.mark.integration
     @pytest.mark.django_db
-    def test_upload_finisher_task_call_existing_comment(
-        self,
-        mocker,
-        mock_configuration,
-        dbsession,
-        codecov_vcr,
-        mock_storage,
-        mock_redis,
-        celery_app,
-        test_results_mock_app,
-        mock_repo_provider_comments,
-        test_results_setup,
-    ):
-        repoid, commit, pull, _ = test_results_setup
+    def test_upload_finisher_task_call_existing_comment(self, snapshot):
+        self.pull.commentid = 1
+        self.dbsession.flush()
 
-        pull.commentid = 1
-        dbsession.flush()
-
-        result = TestResultsFinisherTask().run_impl(
-            dbsession,
-            True,
-            repoid=repoid,
-            commitid=commit.commitid,
-            commit_yaml={"codecov": {"max_report_age": False}},
-        )
+        result = self.run_test_results_finisher()
 
         expected_result = {
             "notify_attempted": True,
@@ -793,122 +608,26 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
             "queue_notify": False,
         }
 
-        test_results_mock_app.tasks[
-            "app.tasks.cache_rollup.CacheTestRollupsTask"
-        ].apply_async.assert_called_with(
-            kwargs={
-                "repo_id": repoid,
-                "branch": "main",
-                "impl_type": "old",
-            },
+        self.assert_cache_rollup_called()
+
+        assert (
+            self.mock_repo_provider_comments.edit_comment.call_args[0][0]
+            == self.pull.pullid
         )
-
-        mock_repo_provider_comments.edit_comment.assert_called_with(
-            pull.pullid,
-            1,
-            """### :x: 4 Tests Failed:
-| Tests completed | Failed | Passed | Skipped |
-|---|---|---|---|
-| 4 | 4 | 0 | 0 |
-<details><summary>View the top 3 failed test(s) by shortest run time</summary>
-
-> 
-> ```python
-> test_name1
-> ```
-> 
-> <details><summary>Stack Traces | 2s run time</summary>
-> 
-> > `````````python
-> > Shared 
-> > 
-> > 
-> > 
-> >  <pre> ````````
-> >  
-> > 
-> >  | test | test | test </pre>failure message
-> > `````````
-> > [View](https://example.com/build_url_1) the CI Build
-> 
-> </details>
-
-
-> 
-> ```python
-> Other Class Name test_name2
-> ```
-> 
-> <details><summary>Stack Traces | 3s run time</summary>
-> 
-> > `````````python
-> > Shared 
-> > 
-> > 
-> > 
-> >  <pre> 
-> >   ````````  
-> >  
-> > 
-> >  | test | test | test </pre>failure message
-> > `````````
-> > [View](https://example.com/build_url_2) the CI Build
-> 
-> </details>
-
-
-> 
-> ```python
-> Class Name test_name0
-> ```
-> 
-> <details><summary>Stack Traces | 4s run time</summary>
-> 
-> > 
-> > ```python
-> > <pre>Fourth 
-> > 
-> > </pre> | test  | instance |
-> > ```
-> > 
-> > [View](https://example.com/build_url_3) the CI Build
-> 
-> </details>
-
-</details>
-
-To view more test analytics, go to the [Test Analytics Dashboard](https://app.codecov.io/gh/test-username/test-repo-name/tests/main)
-<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/BpocVj23nhr2Y45G7) to help us improve Test Analytics.</sub>""",
+        assert self.mock_repo_provider_comments.edit_comment.call_args[0][1] == 1
+        assert (
+            snapshot("txt")
+            == self.mock_repo_provider_comments.edit_comment.call_args[0][2]
         )
 
         assert expected_result == result
 
     @pytest.mark.integration
     @pytest.mark.django_db
-    def test_upload_finisher_task_call_comment_fails(
-        self,
-        mocker,
-        mock_configuration,
-        dbsession,
-        codecov_vcr,
-        mock_storage,
-        mock_redis,
-        celery_app,
-        test_results_mock_app,
-        mock_repo_provider_comments,
-        test_results_setup,
-    ):
-        repoid, commit, _, _ = test_results_setup
+    def test_upload_finisher_task_call_comment_fails(self):
+        self.mock_repo_provider_comments.post_comment.side_effect = TorngitClientError
 
-        mock_repo_provider_comments.post_comment.side_effect = TorngitClientError
-
-        result = TestResultsFinisherTask().run_impl(
-            dbsession,
-            True,
-            repoid=repoid,
-            commitid=commit.commitid,
-            commit_yaml={"codecov": {"max_report_age": False}},
-        )
+        result = self.run_test_results_finisher()
 
         expected_result = {
             "notify_attempted": True,
@@ -916,16 +635,7 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
             "queue_notify": False,
         }
 
-        test_results_mock_app.tasks[
-            "app.tasks.cache_rollup.CacheTestRollupsTask"
-        ].apply_async.assert_called_with(
-            kwargs={
-                "repo_id": repoid,
-                "branch": "main",
-                "impl_type": "old",
-            },
-        )
-
+        self.assert_cache_rollup_called()
         assert expected_result == result
 
     @pytest.mark.parametrize(
@@ -934,37 +644,22 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
     @pytest.mark.integration
     @pytest.mark.django_db
     def test_upload_finisher_task_call_with_flaky(
-        self,
-        mocker,
-        mock_configuration,
-        dbsession,
-        codecov_vcr,
-        mock_storage,
-        mock_redis,
-        celery_app,
-        test_results_mock_app,
-        mock_repo_provider_comments,
-        test_results_setup,
-        fail_count,
-        count,
-        recent_passes_count,
+        self, fail_count, count, recent_passes_count, snapshot
     ):
-        repoid, commit, pull, test_instances = test_results_setup
-
-        for i, instance in enumerate(test_instances):
+        for i, instance in enumerate(self.test_instances):
             if i != 2:
-                dbsession.delete(instance)
-        dbsession.flush()
+                self.dbsession.delete(instance)
+        self.dbsession.flush()
 
         r = ReducedError()
         r.message = "failure_message"
 
-        dbsession.add(r)
-        dbsession.flush()
+        self.dbsession.add(r)
+        self.dbsession.flush()
 
         f = Flake()
-        f.repoid = repoid
-        f.testid = test_instances[2].test_id
+        f.repoid = self.repoid
+        f.testid = self.test_instances[2].test_id
         f.reduced_error = r
         f.count = count
         f.fail_count = fail_count
@@ -972,16 +667,11 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
         f.start_date = datetime.now()
         f.end_date = None
 
-        dbsession.add(f)
-        dbsession.flush()
+        self.dbsession.add(f)
+        self.dbsession.flush()
 
-        result = TestResultsFinisherTask().run_impl(
-            dbsession,
-            True,
-            repoid=repoid,
-            commitid=commit.commitid,
+        result = self.run_test_results_finisher(
             commit_yaml={
-                "codecov": {"max_report_age": False},
                 "test_analytics": {"flake_detection": True},
             },
         )
@@ -993,83 +683,21 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
         }
 
         assert expected_result == result
-
-        test_results_mock_app.tasks[
-            "app.tasks.cache_rollup.CacheTestRollupsTask"
-        ].apply_async.assert_called_with(
-            kwargs={
-                "repo_id": repoid,
-                "branch": "main",
-                "impl_type": "old",
-            },
-        )
-
-        mock_repo_provider_comments.post_comment.assert_called_with(
-            pull.pullid,
-            f"""### :x: 1 Tests Failed:
-| Tests completed | Failed | Passed | Skipped |
-|---|---|---|---|
-| 1 | 1 | 0 | 0 |
-<details><summary>{"View the top 1 failed test(s) by shortest run time" if (count - fail_count) == recent_passes_count else "View the full list of 1 :snowflake: flaky tests"}</summary>
-
-> 
-> ```python
-> Other Class Name test_name2
-> ```
-> {f"\n> **Flake rate in main:** 33.33% (Passed {count - fail_count} times, Failed {fail_count} times)" if (count - fail_count) != recent_passes_count else ""}
-> <details><summary>Stack Traces | 3s run time</summary>
-> 
-> > `````````python
-> > Shared 
-> > 
-> > 
-> > 
-> >  <pre> 
-> >   ````````  
-> >  
-> > 
-> >  | test | test | test </pre>failure message
-> > `````````
-> > [View](https://example.com/build_url_2) the CI Build
-> 
-> </details>
-
-</details>
-
-To view more test analytics, go to the [Test Analytics Dashboard](https://app.codecov.io/gh/test-username/test-repo-name/tests/main)
-<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/BpocVj23nhr2Y45G7) to help us improve Test Analytics.</sub>""",
+        self.assert_cache_rollup_called()
+        assert (
+            snapshot("txt")
+            == self.mock_repo_provider_comments.post_comment.call_args[0][1]
         )
 
     @pytest.mark.integration
     @pytest.mark.django_db
-    def test_upload_finisher_task_call_main_branch(
-        self,
-        mocker,
-        mock_configuration,
-        dbsession,
-        codecov_vcr,
-        mock_storage,
-        mock_redis,
-        celery_app,
-        test_results_mock_app,
-        mock_repo_provider_comments,
-        test_results_setup,
-    ):
-        commit_yaml = {
-            "codecov": {"max_report_age": False},
-            "test_analytics": {"flake_detection": True},
-        }
+    def test_upload_finisher_task_call_main_branch(self):
+        self.commit.merged = True
 
-        repoid, commit, pull, test_instances = test_results_setup
-
-        commit.merged = True
-
-        result = TestResultsFinisherTask().run_impl(
-            dbsession,
-            True,
-            repoid=repoid,
-            commitid=commit.commitid,
-            commit_yaml=commit_yaml,
+        result = self.run_test_results_finisher(
+            commit_yaml={
+                "test_analytics": {"flake_detection": True},
+            },
         )
 
         expected_result = {
@@ -1079,54 +707,18 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
         }
 
         assert expected_result == result
-
-        test_results_mock_app.tasks[
-            "app.tasks.flakes.ProcessFlakesTask"
-        ].apply_async.assert_called_with(
-            kwargs={
-                "repo_id": repoid,
-                "impl_type": "old",
-            },
-        )
-        test_results_mock_app.tasks[
-            "app.tasks.cache_rollup.CacheTestRollupsTask"
-        ].apply_async.assert_called_with(
-            kwargs={
-                "repo_id": repoid,
-                "branch": "main",
-                "impl_type": "old",
-            },
-        )
+        self.assert_process_flakes_called()
+        self.assert_cache_rollup_called()
 
     @pytest.mark.integration
     @pytest.mark.django_db
-    def test_upload_finisher_task_call_computed_name(
-        self,
-        mocker,
-        mock_configuration,
-        dbsession,
-        codecov_vcr,
-        mock_storage,
-        mock_redis,
-        celery_app,
-        test_results_mock_app,
-        mock_repo_provider_comments,
-        test_results_setup,
-    ):
-        repoid, commit, pull, test_instances = test_results_setup
-
-        for instance in test_instances:
+    def test_upload_finisher_task_call_computed_name(self, snapshot):
+        for instance in self.test_instances:
             instance.test.computed_name = f"hello_{instance.test.name}"
 
-        dbsession.flush()
+        self.dbsession.flush()
 
-        result = TestResultsFinisherTask().run_impl(
-            dbsession,
-            True,
-            repoid=repoid,
-            commitid=commit.commitid,
-            commit_yaml={"codecov": {"max_report_age": False}},
-        )
+        result = self.run_test_results_finisher()
 
         expected_result = {
             "notify_attempted": True,
@@ -1135,121 +727,28 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
         }
 
         assert expected_result == result
-        mock_repo_provider_comments.post_comment.assert_called_with(
-            pull.pullid,
-            """### :x: 4 Tests Failed:
-| Tests completed | Failed | Passed | Skipped |
-|---|---|---|---|
-| 4 | 4 | 0 | 0 |
-<details><summary>View the top 3 failed test(s) by shortest run time</summary>
-
-> 
-> ```python
-> hello_test_name1
-> ```
-> 
-> <details><summary>Stack Traces | 2s run time</summary>
-> 
-> > `````````python
-> > Shared 
-> > 
-> > 
-> > 
-> >  <pre> ````````
-> >  
-> > 
-> >  | test | test | test </pre>failure message
-> > `````````
-> > [View](https://example.com/build_url_1) the CI Build
-> 
-> </details>
-
-
-> 
-> ```python
-> hello_Other Class Name test_name2
-> ```
-> 
-> <details><summary>Stack Traces | 3s run time</summary>
-> 
-> > `````````python
-> > Shared 
-> > 
-> > 
-> > 
-> >  <pre> 
-> >   ````````  
-> >  
-> > 
-> >  | test | test | test </pre>failure message
-> > `````````
-> > [View](https://example.com/build_url_2) the CI Build
-> 
-> </details>
-
-
-> 
-> ```python
-> hello_Class Name test_name0
-> ```
-> 
-> <details><summary>Stack Traces | 4s run time</summary>
-> 
-> > 
-> > ```python
-> > <pre>Fourth 
-> > 
-> > </pre> | test  | instance |
-> > ```
-> > 
-> > [View](https://example.com/build_url_3) the CI Build
-> 
-> </details>
-
-</details>
-
-To view more test analytics, go to the [Test Analytics Dashboard](https://app.codecov.io/gh/test-username/test-repo-name/tests/main)
-<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/BpocVj23nhr2Y45G7) to help us improve Test Analytics.</sub>""",
+        assert (
+            snapshot("txt")
+            == self.mock_repo_provider_comments.post_comment.call_args[0][1]
         )
 
     @pytest.mark.integration
     @pytest.mark.django_db
     @pytest.mark.parametrize("plan", [DEFAULT_FREE_PLAN, "users-pr-inappm"])
-    def test_upload_finisher_task_call_main_with_plan(
-        self,
-        mocker,
-        mock_configuration,
-        dbsession,
-        codecov_vcr,
-        mock_storage,
-        mock_redis,
-        celery_app,
-        test_results_mock_app,
-        mock_repo_provider_comments,
-        test_results_setup,
-        plan,
-    ):
-        mocker.patch.object(TestResultsFinisherTask, "get_flaky_tests")
+    def test_upload_finisher_task_call_main_with_plan(self, plan):
+        self.mocker.patch.object(TestResultsFinisherTask, "get_flaky_tests")
 
         commit_yaml = {
-            "codecov": {
-                "max_report_age": False,
-            },
             "test_analytics": {"flake_detection": True},
         }
 
-        repoid, commit, pull, test_instances = test_results_setup
+        self.commit.merged = True
 
-        commit.merged = True
-
-        repo = dbsession.query(Repository).filter_by(repoid=repoid).first()
+        repo = self.dbsession.query(Repository).filter_by(repoid=self.repoid).first()
         repo.owner.plan = plan
-        dbsession.flush()
-        result = TestResultsFinisherTask().run_impl(
-            dbsession,
-            True,
-            repoid=repoid,
-            commitid=commit.commitid,
+        self.dbsession.flush()
+
+        result = self.run_test_results_finisher(
             commit_yaml=commit_yaml,
         )
 
@@ -1262,53 +761,38 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
         assert expected_result == result
 
         if plan == PlanName.CODECOV_PRO_MONTHLY.value:
-            test_results_mock_app.tasks[
-                "app.tasks.flakes.ProcessFlakesTask"
-            ].apply_async.assert_called_with(
-                kwargs={
-                    "repo_id": repoid,
-                    "impl_type": "old",
-                },
-            )
+            self.assert_process_flakes_called()
         else:
-            test_results_mock_app.tasks[
-                "app.tasks.flakes.ProcessFlakesTask"
-            ].apply_async.assert_not_called()
+            self.assert_process_flakes_not_called()
 
+    @pytest.mark.integration
+    @pytest.mark.django_db
+    def test_upload_finisher_new_impl(self):
+        new_impl = self.mocker.patch(
+            "tasks.test_results_finisher.new_impl",
+            return_value={
+                "notify_attempted": True,
+                "notify_succeeded": True,
+                "queue_notify": False,
+            },
+        )
 
-def test_upload_finisher_new_impl(mocker, dbsession, test_results_setup):
-    repoid, commit, pull, test_instances = test_results_setup
+        result = self.run_test_results_finisher(
+            impl_type="new",
+        )
 
-    new_impl = mocker.patch(
-        "tasks.test_results_finisher.new_impl",
-        return_value={
+        assert result == {
             "notify_attempted": True,
             "notify_succeeded": True,
             "queue_notify": False,
-        },
-    )
+        }
 
-    result = TestResultsFinisherTask().run_impl(
-        dbsession,
-        True,
-        repoid=repoid,
-        commitid=commit.commitid,
-        commit_yaml={},
-        impl_type="new",
-    )
-
-    assert result == {
-        "notify_attempted": True,
-        "notify_succeeded": True,
-        "queue_notify": False,
-    }
-
-    assert new_impl.call_count == 1
-    repo = dbsession.query(Repository).filter_by(repoid=repoid).first()
-    assert (
-        dbsession,
-        repo,
-        commit,
-        mocker.ANY,
-        "new",
-    ) == new_impl.call_args[0]
+        assert new_impl.call_count == 1
+        repo = self.dbsession.query(Repository).filter_by(repoid=self.repoid).first()
+        assert (
+            self.dbsession,
+            repo,
+            self.commit,
+            self.mocker.ANY,
+            "new",
+        ) == new_impl.call_args[0]
