@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import call
 
@@ -79,7 +79,7 @@ class TestSyncReposTaskUnit:
         service_id = "123456"
         old_username = "codecov_org"
         new_username = "Codecov"
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         existing_owner = OwnerFactory.create(
             ownerid=ownerid,
             organizations=[],
