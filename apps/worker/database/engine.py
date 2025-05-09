@@ -33,8 +33,8 @@ def json_dumps(d):
 
 class SessionFactory:
     def __init__(self, database_url, timeseries_database_url=None):
-        self.database_url = database_url
-        self.timeseries_database_url = timeseries_database_url
+        self.database_url = _fix_engine(database_url)
+        self.timeseries_database_url = _fix_engine(timeseries_database_url)
         self.main_engine = None
         self.timeseries_engine = None
 
@@ -54,7 +54,7 @@ class SessionFactory:
             timeseries_engine = self.timeseries_engine
 
             class RoutingSession(Session):
-                def get_bind(self, mapper=None, clause=None):
+                def get_bind(self, mapper=None, clause=None, **kwargs):
                     if mapper is not None and issubclass(
                         mapper.class_, TimeseriesBaseModel
                     ):
@@ -74,16 +74,20 @@ class SessionFactory:
         return scoped_session(session_factory)
 
 
+def _fix_engine(database_url: str) -> str:
+    return database_url.replace("postgres://", "postgresql://")
+
+
 session_factory = SessionFactory(
     database_url=get_config(
         "services",
         "database_url",
-        default="postgres://postgres:@postgres:5432/postgres",
+        default="postgresql://postgres:@postgres:5432/postgres",
     ),
     timeseries_database_url=get_config(
         "services",
         "timeseries_database_url",
-        default="postgres://postgres:@timescale:5432/postgres",
+        default="postgresql://postgres:@timescale:5432/postgres",
     ),
 )
 
