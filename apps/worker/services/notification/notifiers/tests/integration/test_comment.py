@@ -21,69 +21,6 @@ def is_not_first_pull(mocker):
 
 
 @pytest.fixture
-def codecove2e_comparison(dbsession, request, sample_report, small_report):
-    repository = RepositoryFactory.create(
-        owner__service="github",
-        owner__username="codecove2e",
-        name="example-python",
-        owner__unencrypted_oauth_token="ghp_testxh25kbya8pcenroaxwqsiq23ff9xzr0u",
-        image_token="abcdefghij",
-    )
-    dbsession.add(repository)
-    dbsession.flush()
-    base_commit = CommitFactory.create(
-        repository=repository, commitid="93189ce50f224296d6412e2884b93dcc3c7c8654"
-    )
-    head_commit = CommitFactory.create(
-        repository=repository,
-        branch="new_branch",
-        commitid="8589c19ce95a2b13cf7b3272cbf275ca9651ae9c",
-    )
-    pull = PullFactory.create(
-        repository=repository,
-        base=base_commit.commitid,
-        head=head_commit.commitid,
-        pullid=4,
-    )
-    dbsession.add(base_commit)
-    dbsession.add(head_commit)
-    dbsession.add(pull)
-    dbsession.flush()
-    repository = base_commit.repository
-    base_full_commit = FullCommit(
-        commit=base_commit, report=ReadOnlyReport.create_from_report(small_report)
-    )
-    head_full_commit = FullCommit(
-        commit=head_commit, report=ReadOnlyReport.create_from_report(sample_report)
-    )
-    return ComparisonProxy(
-        Comparison(
-            head=head_full_commit,
-            project_coverage_base=base_full_commit,
-            patch_coverage_base_commitid=base_commit.commitid,
-            enriched_pull=EnrichedPull(
-                database_pull=pull,
-                provider_pull={
-                    "author": {"id": "12345", "username": "codecove2e"},
-                    "base": {
-                        "branch": "main",
-                        "commitid": "93189ce50f224296d6412e2884b93dcc3c7c8654",
-                    },
-                    "head": {
-                        "branch": "codecove2e-patch-3",
-                        "commitid": "8589c19ce95a2b13cf7b3272cbf275ca9651ae9c",
-                    },
-                    "state": "open",
-                    "title": "Update __init__.py",
-                    "id": "4",
-                    "number": "4",
-                },
-            ),
-        )
-    )
-
-
-@pytest.fixture
 def sample_comparison(dbsession, request, sample_report, small_report):
     repository = RepositoryFactory.create(
         owner__service="github",
