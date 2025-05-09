@@ -1,10 +1,4 @@
-from codecov_auth.models import Owner
 from shared.rollouts import Feature
-
-
-def owner_slug(owner: Owner) -> str:
-    return f"{owner.service}/{owner.username}"
-
 
 __all__ = ["Feature"]
 
