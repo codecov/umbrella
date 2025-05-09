@@ -13,6 +13,7 @@ from database.models import (
     RepositoryFlag,
     Test,
     TestInstance,
+    UploadError,
 )
 from database.tests.factories import (
     CommitFactory,
@@ -560,7 +561,7 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
 
     @pytest.mark.django_db
     @pytest.mark.integration
-    def test_upload_finisher_task_call_no_success(
+    def test_upload_finisher_task_call_error_with_failures(
         self,
         mocker,
         mock_configuration,
@@ -571,9 +572,19 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
         celery_app,
         test_results_mock_app,
         mock_repo_provider_comments,
-        test_results_setup_no_instances,
+        test_results_setup,
+        snapshot,
     ):
-        repoid, commit, pull, _ = test_results_setup_no_instances
+        repoid, commit, pull, test_instances = test_results_setup
+
+        upload_error = UploadError(
+            report_upload=test_instances[0].upload,
+            error_code="unsupported_file_format",
+            error_params={"error_message": "parser error message"},
+        )
+
+        dbsession.add(upload_error)
+        dbsession.flush()
 
         result = TestResultsFinisherTask().run_impl(
             dbsession,
@@ -584,16 +595,76 @@ To view more test analytics, go to the [Test Analytics Dashboard](https://app.co
         )
 
         expected_result = {
-            "notify_attempted": False,
-            "notify_succeeded": False,
+            "notify_attempted": True,
+            "notify_succeeded": True,
+            "queue_notify": False,
+        }
+
+        assert expected_result == result
+
+        assert (
+            snapshot("txt") == mock_repo_provider_comments.post_comment.call_args[0][1]
+        )
+
+        test_results_mock_app.tasks[
+            "app.tasks.cache_rollup.CacheTestRollupsTask"
+        ].apply_async.assert_called_with(
+            kwargs={
+                "repo_id": repoid,
+                "branch": "main",
+                "impl_type": "old",
+            },
+        )
+
+    @pytest.mark.django_db
+    @pytest.mark.integration
+    def test_upload_finisher_task_call_error_only(
+        self,
+        mocker,
+        mock_configuration,
+        dbsession,
+        codecov_vcr,
+        mock_storage,
+        mock_redis,
+        celery_app,
+        test_results_mock_app,
+        mock_repo_provider_comments,
+        test_results_setup,
+        snapshot,
+    ):
+        repoid, commit, pull, test_instances = test_results_setup
+
+        for instance in test_instances:
+            instance.outcome = "pass"
+        dbsession.flush()
+
+        upload_error = UploadError(
+            report_upload=test_instances[0].upload,
+            error_code="unsupported_file_format",
+            error_params={"error_message": "parser error message"},
+        )
+
+        dbsession.add(upload_error)
+        dbsession.flush()
+
+        result = TestResultsFinisherTask().run_impl(
+            dbsession,
+            False,
+            repoid=repoid,
+            commitid=commit.commitid,
+            commit_yaml={"codecov": {"max_report_age": False}},
+        )
+
+        expected_result = {
+            "notify_attempted": True,
+            "notify_succeeded": True,
             "queue_notify": True,
         }
 
         assert expected_result == result
 
-        mock_repo_provider_comments.post_comment.assert_called_with(
-            pull.pullid,
-            ":x: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format.",
+        assert (
+            snapshot("txt") == mock_repo_provider_comments.post_comment.call_args[0][1]
         )
 
         test_results_mock_app.tasks[
