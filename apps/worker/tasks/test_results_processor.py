@@ -20,6 +20,7 @@ from database.models import (
     TestFlagBridge,
     TestInstance,
     Upload,
+    UploadError,
 )
 from services.processing.types import UploadArguments
 from services.test_analytics.ta_metrics import write_tests_summary
@@ -110,6 +111,16 @@ def update_daily_totals(
         daily_totals[test_id]["fail_count"] += 1
     elif outcome == "skip":
         daily_totals[test_id]["skip_count"] += 1
+
+
+def handle_parsing_error(db_session: Session, upload: Upload, exc: Exception):
+    upload_error = UploadError(
+        report_upload=upload,
+        error_code="unsupported_file_format",
+        error_params={"error_message": str(exc)},
+    )
+    db_session.add(upload_error)
+    db_session.commit()
 
 
 @dataclass
@@ -390,6 +401,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
 
     def parse_file(
         self,
+        db_session: Session,
         file_bytes: bytes,
         upload: Upload,
     ) -> tuple[list[test_results_parser.ParsingInfo], bytes] | None:
@@ -410,6 +422,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
                 },
             )
             sentry_sdk.capture_exception(exc, tags={"upload_state": upload.state})
+            handle_parsing_error(db_session, upload, exc)
             return None
 
     def process_individual_upload(
@@ -434,7 +447,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
         parsing_results: list[test_results_parser.ParsingInfo] = []
         report_contents: list[ReadableFile] = []
 
-        result = self.parse_file(payload_bytes, upload)
+        result = self.parse_file(db_session, payload_bytes, upload)
         if result is None:
             upload.state = "has_failed"
             db_session.commit()

@@ -6,7 +6,14 @@ from sqlalchemy.orm import Session
 
 from app import celery_app
 from database.enums import ReportType
-from database.models import Commit, Flake, Repository, TestResultReportTotals
+from database.models import (
+    Commit,
+    CommitReport,
+    Flake,
+    Repository,
+    TestResultReportTotals,
+    UploadError,
+)
 from helpers.checkpoint_logger.flows import TestResultsFlow
 from helpers.notifier import NotifierResult
 from helpers.string import EscapeEnum, Replacement, StringEscaper, shorten_file_paths
@@ -24,6 +31,7 @@ from services.test_analytics.ta_metrics import (
 )
 from services.test_analytics.ta_process_flakes import KEY_NAME
 from services.test_results import (
+    ErrorPayload,
     FinisherResult,
     FlakeInfo,
     TACommentInDepthInfo,
@@ -137,6 +145,67 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
         else:
             return new_impl(db_session, repo, commit, commit_yaml, impl_type)
 
+    def optional_tasks(
+        self,
+        repo: Repository,
+        commit: Commit,
+        commit_yaml: UserYaml,
+        impl_type: Literal["old", "both"],
+    ):
+        redis_client = get_redis_connection()
+
+        if should_do_flaky_detection(repo, commit_yaml):
+            if commit.merged is True or commit.branch == repo.branch:
+                redis_client.lpush(NEW_KEY.format(repo.repoid), commit.commitid)
+                if impl_type == "both":
+                    redis_client.lpush(KEY_NAME.format(repo.repoid), commit.commitid)
+                self.app.tasks[process_flakes_task_name].apply_async(
+                    kwargs={
+                        "repo_id": repo.repoid,
+                        "impl_type": impl_type,
+                    }
+                )
+
+        if commit.branch is not None:
+            self.app.tasks[cache_test_rollups_task_name].apply_async(
+                kwargs={
+                    "repo_id": repo.repoid,
+                    "branch": commit.branch,
+                    "impl_type": impl_type,
+                },
+            )
+
+    def get_totals(
+        self, db_session: Session, commit_report: CommitReport
+    ) -> TestResultReportTotals:
+        totals = commit_report.test_result_totals
+        if totals is None:
+            totals = TestResultReportTotals(
+                report_id=commit_report.id,
+            )
+            totals.passed = 0
+            totals.skipped = 0
+            totals.failed = 0
+            db_session.add(totals)
+            db_session.flush()
+
+        return totals
+
+    def get_upload_error(
+        self, db_session: Session, commit_report: CommitReport
+    ) -> ErrorPayload | None:
+        upload_ids = [upload.id for upload in commit_report.uploads]
+        upload_error = (
+            db_session.query(UploadError)
+            .filter(UploadError.upload_id.in_(upload_ids))
+            .first()
+        )
+        if upload_error is None:
+            return None
+        return ErrorPayload(
+            upload_error.error_code, upload_error.error_params["error_message"]
+        )
+
     def old_impl(
         self,
         db_session: Session,
@@ -148,67 +217,11 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
     ) -> FinisherResult:
         repoid = repo.repoid
         commitid = commit.commitid
-        redis_client = get_redis_connection()
 
-        if should_do_flaky_detection(repo, commit_yaml):
-            if commit.merged is True or commit.branch == repo.branch:
-                redis_client.lpush(NEW_KEY.format(repo.repoid), commit.commitid)
-                if impl_type == "both":
-                    redis_client.lpush(KEY_NAME.format(repo.repoid), commit.commitid)
-                self.app.tasks[process_flakes_task_name].apply_async(
-                    kwargs={
-                        "repo_id": repoid,
-                        "impl_type": impl_type,
-                    }
-                )
-
-        if commit.branch is not None:
-            self.app.tasks[cache_test_rollups_task_name].apply_async(
-                kwargs={
-                    "repo_id": repoid,
-                    "branch": commit.branch,
-                    "impl_type": impl_type,
-                },
-            )
+        self.optional_tasks(repo, commit, commit_yaml, impl_type)
 
         commit_report = commit.commit_report(ReportType.TEST_RESULTS)
-
-        totals = commit_report.test_result_totals
-        if totals is None:
-            totals = TestResultReportTotals(
-                report_id=commit_report.id,
-            )
-            totals.passed = 0
-            totals.skipped = 0
-            totals.failed = 0
-            totals.error = "failure"
-            db_session.add(totals)
-            db_session.flush()
-
-        if not chain_result:
-            # every processor errored, nothing to notify on
-            queue_notify = False
-
-            # if error is None this whole process should be a noop
-            if totals.error is not None:
-                # make an attempt to make test results comment
-                notifier = TestResultsNotifier(commit, commit_yaml)
-                success, reason = notifier.error_comment()
-
-                # also make attempt to make coverage comment
-                queue_notify = True
-
-            return {
-                "notify_attempted": False,
-                "notify_succeeded": False,
-                "queue_notify": queue_notify,
-            }
-
-        # if we succeed once, error should be None for this commit forever
-        if totals.error is not None:
-            totals.error = None
-            db_session.flush()
-
+        totals = self.get_totals(db_session, commit_report)
         cached_uploads: dict[int, dict] = {}
         escaper = StringEscaper(ESCAPE_FAILURE_MESSAGE_DEFN)
         shorten_paths = commit_yaml.read_yaml_field(
@@ -217,6 +230,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
 
         with read_tests_totals_summary.labels("old").time():
             test_summary = get_test_summary_for_commit(db_session, repoid, commitid)
+
         failed_tests = test_summary.get("error", 0) + test_summary.get("failure", 0)
         passed_tests = test_summary.get("pass", 0)
         skipped_tests = test_summary.get("skip", 0)
@@ -261,18 +275,43 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
         totals.failed = failed_tests
         db_session.flush()
 
-        if failed_tests == 0:
-            return {
-                "notify_attempted": False,
-                "notify_succeeded": False,
-                "queue_notify": True,
-            }
+        error_payload = self.get_upload_error(db_session, commit_report)
 
         additional_data: AdditionalData = {"upload_type": UploadType.TEST_RESULTS}
         repo_service = get_repo_provider_service(repo, additional_data=additional_data)
         pull = async_to_sync(fetch_and_update_pull_request_information_from_commit)(
             repo_service, commit, commit_yaml
         )
+
+        if failed_tests == 0:
+            if error_payload is None:
+                return {
+                    "notify_attempted": False,
+                    "notify_succeeded": False,
+                    "queue_notify": True,
+                }
+            else:
+                payload = TestResultsNotificationPayload(
+                    failed_tests, passed_tests, skipped_tests, None
+                )
+                notifier = TestResultsNotifier(
+                    commit,
+                    commit_yaml,
+                    payload=payload,
+                    _pull=pull,
+                    _repo_service=repo_service,
+                    error=error_payload,
+                )
+                notifier_result = notifier.notify()
+                success = (
+                    True if notifier_result is NotifierResult.COMMENT_POSTED else False
+                )
+                TestResultsFlow.log(TestResultsFlow.TEST_RESULTS_NOTIFY)
+                return {
+                    "notify_attempted": True,
+                    "notify_succeeded": success,
+                    "queue_notify": True,
+                }
 
         if not pull:
             success = False
@@ -338,6 +377,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                 payload=payload,
                 _pull=pull,
                 _repo_service=repo_service,
+                error=error_payload,
             )
 
             if repo.private == False:

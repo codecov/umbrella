@@ -921,12 +921,6 @@ def get_ta_relevant_context(
 
         if upload_error:
             ta_error_msg = upload_error.error_params["error_message"]
-        elif totals and totals.error:
-            # this branch covers old behavior of setting the error on the totals
-            # TODO: remove this in the future
-            ta_error_msg = GENERIC_TA_ERROR_MSG
-        else:
-            ta_error_msg = None
 
         all_tests_passed = False
         if totals:
