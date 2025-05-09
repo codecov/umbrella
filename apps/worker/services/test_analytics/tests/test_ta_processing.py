@@ -175,7 +175,7 @@ def test_insert_testruns_timeseries(snapshot):
     testruns = Testrun.objects.filter(upload_id=upload.id)
     assert testruns.count() == 2
 
-    testruns_list = list(
+    testruns_list = sorted(
         testruns.values(
             "timestamp",
             "test_id",
@@ -193,7 +193,8 @@ def test_insert_testruns_timeseries(snapshot):
             "branch",
             "flags",
             "upload_id",
-        )
+        ),
+        key=lambda x: x["test_id"].hex(),
     )
 
     for testrun in testruns_list:
