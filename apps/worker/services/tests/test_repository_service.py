@@ -868,7 +868,7 @@ async def test_update_commit_from_provider_info_no_author_id(
     assert commit.report_json == {}
     assert commit.branch == "newbranchyeah"
     assert commit.merged is False
-    assert commit.timestamp == datetime(2018, 7, 9, 23, 39, 20, tzinfo=UTC)
+    assert commit.timestamp == datetime(2018, 7, 9, 23, 39, 20)
     assert commit.parent_commit_id == possible_parent_commit.commitid
     assert commit.state == "complete"
 
@@ -923,7 +923,7 @@ async def test_update_commit_from_provider_info_no_pullid_on_defaultbranch(
     assert commit.report_json == {}
     assert commit.branch == "superbranch"
     assert commit.merged is True
-    assert commit.timestamp == datetime(2018, 7, 9, 23, 39, 20, tzinfo=UTC)
+    assert commit.timestamp == datetime(2018, 7, 9, 23, 39, 20)
     assert commit.parent_commit_id == possible_parent_commit.commitid
     assert commit.state == "complete"
 
@@ -974,7 +974,7 @@ async def test_update_commit_from_provider_info_no_pullid_not_on_defaultbranch(
     assert commit.report_json == {}
     assert commit.branch == "papapa"
     assert commit.merged is False
-    assert commit.timestamp == datetime(2018, 7, 9, 23, 39, 20, tzinfo=UTC)
+    assert commit.timestamp == datetime(2018, 7, 9, 23, 39, 20)
     assert commit.parent_commit_id == possible_parent_commit.commitid
     assert commit.state == "complete"
 
@@ -1028,7 +1028,7 @@ async def test_update_commit_from_provider_info_with_author_id(
     assert commit.parent_commit_id == possible_parent_commit.commitid
     assert commit.state == "complete"
     assert commit.author is not None
-    assert commit.timestamp == datetime(2018, 7, 9, 23, 39, 20, tzinfo=UTC)
+    assert commit.timestamp == datetime(2018, 7, 9, 23, 39, 20)
     assert commit.author.username == "author_username"
 
 
@@ -1084,7 +1084,7 @@ async def test_update_commit_from_provider_info_pull_from_fork(
     assert commit.parent_commit_id == possible_parent_commit.commitid
     assert commit.state == "complete"
     assert commit.author is not None
-    assert commit.timestamp == datetime(2018, 7, 9, 23, 39, 20, tzinfo=UTC)
+    assert commit.timestamp == datetime(2018, 7, 9, 23, 39, 20)
     assert commit.author.username == "author_username"
 
 
@@ -1142,7 +1142,7 @@ async def test_update_commit_from_provider_info_bitbucket_merge(
     assert commit.parent_commit_id == possible_parent_commit.commitid
     assert commit.state == "complete"
     assert commit.author is not None
-    assert commit.timestamp == datetime(2018, 7, 9, 23, 39, 20, tzinfo=UTC)
+    assert commit.timestamp == datetime(2018, 7, 9, 23, 39, 20)
     assert commit.author.username == "author_username"
 
 

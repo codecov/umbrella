@@ -340,7 +340,7 @@ class Commit(CodecovBaseModel):
     pullid = Column(types.Integer)
     repoid = Column(types.Integer, ForeignKey("repos.repoid"))
     state = Column(types.String(256))
-    timestamp = Column(types.DateTime(timezone=True), nullable=False)
+    timestamp = Column(types.DateTime, nullable=False)
     updatestamp = Column(types.DateTime, nullable=True)
     totals = Column(postgresql.JSON)
 
