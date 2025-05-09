@@ -4,25 +4,19 @@
 | 1 | 1 | 0 | 0 |
 <details><summary>View the full list of 1 :snowflake: flaky tests</summary>
 
-> 
-> ```python
-> Other Class Name test_name2
-> ```
-> 
+> <pre><code class="language-python">Other Class Name test_name2</code></pre>
 > **Flake rate in main:** 33.33% (Passed 100 times, Failed 50 times)
 > <details><summary>Stack Traces | 3s run time</summary>
 > 
-> > `````````python
-> > Shared 
+> > <pre><code class="language-python">Shared 
 > > 
 > > 
 > > 
-> >  <pre> 
+> >  &lt;pre&gt; 
 > >   ````````  
 > >  
 > > 
-> >  | test | test | test </pre>failure message
-> > `````````
+> >  | test | test | test &lt;/pre&gt;failure message</code></pre>
 > > [View](https://example.com/build_url_2) the CI Build
 > 
 > </details>

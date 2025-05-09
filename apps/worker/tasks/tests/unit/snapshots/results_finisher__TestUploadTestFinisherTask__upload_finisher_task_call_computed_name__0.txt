@@ -4,65 +4,45 @@
 | 4 | 4 | 0 | 0 |
 <details><summary>View the top 3 failed test(s) by shortest run time</summary>
 
-> 
-> ```python
-> hello_test_name1
-> ```
-> 
+> <pre><code class="language-python">hello_test_name1</code></pre>
 > <details><summary>Stack Traces | 2s run time</summary>
 > 
-> > `````````python
-> > Shared 
+> > <pre><code class="language-python">Shared 
 > > 
 > > 
 > > 
-> >  <pre> ````````
+> >  &lt;pre&gt; ````````
 > >  
 > > 
-> >  | test | test | test </pre>failure message
-> > `````````
+> >  | test | test | test &lt;/pre&gt;failure message</code></pre>
 > > [View](https://example.com/build_url_1) the CI Build
 > 
 > </details>
 
 
-> 
-> ```python
-> hello_Other Class Name test_name2
-> ```
-> 
+> <pre><code class="language-python">hello_Other Class Name test_name2</code></pre>
 > <details><summary>Stack Traces | 3s run time</summary>
 > 
-> > `````````python
-> > Shared 
+> > <pre><code class="language-python">Shared 
 > > 
 > > 
 > > 
-> >  <pre> 
+> >  &lt;pre&gt; 
 > >   ````````  
 > >  
 > > 
-> >  | test | test | test </pre>failure message
-> > `````````
+> >  | test | test | test &lt;/pre&gt;failure message</code></pre>
 > > [View](https://example.com/build_url_2) the CI Build
 > 
 > </details>
 
 
-> 
-> ```python
-> hello_Class Name test_name0
-> ```
-> 
+> <pre><code class="language-python">hello_Class Name test_name0</code></pre>
 > <details><summary>Stack Traces | 4s run time</summary>
 > 
+> > <pre><code class="language-python">&lt;pre&gt;Fourth 
 > > 
-> > ```python
-> > <pre>Fourth 
-> > 
-> > </pre> | test  | instance |
-> > ```
-> > 
+> > &lt;/pre&gt; | test  | instance |</code></pre>
 > > [View](https://example.com/build_url_3) the CI Build
 > 
 > </details>

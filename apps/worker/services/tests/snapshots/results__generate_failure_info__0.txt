@@ -1,6 +1,2 @@
-
-```python
-hello world
-```
-
+<pre><code class="language-python">hello world</code></pre>
 [View](https://example.com/build_url) the CI Build

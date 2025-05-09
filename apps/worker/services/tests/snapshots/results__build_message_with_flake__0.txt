@@ -4,21 +4,13 @@
 | 3 | 1 | 2 | 3 |
 <details><summary>View the full list of 1 :snowflake: flaky tests</summary>
 
->
-> ```python
-> testname
-> ```
->
+> <pre><code class="language-python">testname</code></pre>
 > **Flake rate in main:** 33.33% (Passed 2 times, Failed 1 times)
 > <details><summary>Stack Traces | 1s run time</summary>
->
-> >
-> > ```python
-> > hello world
-> > ```
-> >
+> 
+> > <pre><code class="language-python">hello world</code></pre>
 > > [View](https://example.com/build_url) the CI Build
->
+> 
 > </details>
 
 </details>

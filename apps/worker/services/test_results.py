@@ -1,8 +1,9 @@
+import html
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Generic, TypedDict, TypeVar
+from typing import Generic, Literal, TypedDict, TypeVar
 
 from sqlalchemy import desc, func
 from sqlalchemy.orm import joinedload
@@ -159,7 +160,7 @@ class TestResultsNotificationPayload(Generic[T]):
 
 @dataclass
 class ErrorPayload:
-    error_code: str
+    error_code: Literal["unsupported_file_format", "file_not_in_storage", "warning"]
     error_message: str | None = None
 
 
@@ -174,28 +175,9 @@ def make_quoted(content: str) -> str:
     return f"\n{result}\n"
 
 
-def properly_backtick(content: str) -> str:
-    max_backtick_count = 0
-    curr_backtick_count = 0
-    prev_char = None
-    for char in content:
-        if char == "`":
-            curr_backtick_count += 1
-        else:
-            curr_backtick_count = 0
-
-        if curr_backtick_count > max_backtick_count:
-            max_backtick_count = curr_backtick_count
-
-    backticks = "`" * (max_backtick_count + 1)
-    return f"{backticks}python\n{content}\n{backticks}"
-
-
-def wrap_in_code(content: str) -> str:
-    if "```" in content:
-        return properly_backtick(content)
-    else:
-        return f"\n```python\n{content}\n```\n"
+def wrap_in_code(content: str, language: str = "python") -> str:
+    escaped_content = html.escape(content)
+    return f'<pre><code class="language-{language}">{escaped_content}</code></pre>'
 
 
 def display_duration(f: float) -> str:
