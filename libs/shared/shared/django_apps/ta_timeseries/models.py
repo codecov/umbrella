@@ -22,7 +22,7 @@ class Testrun(ExportModelOperationsMixin("ta_timeseries.testrun"), models.Model)
     framework = models.TextField(null=True)
     filename = models.TextField(null=True)
 
-    repo_id = models.BigIntegerField(null=True)
+    repo_id = models.BigIntegerField(null=False)
     commit_sha = models.TextField(null=True)
     branch = models.TextField(null=True)
 
@@ -43,12 +43,16 @@ class Testrun(ExportModelOperationsMixin("ta_timeseries.testrun"), models.Model)
                 fields=["repo_id", "branch", "test_id", "timestamp"],
             ),
             models.Index(
-                name="ta_ts__test_id_i",
+                name="ta_ts__test_i",
                 fields=["repo_id", "test_id", "timestamp"],
             ),
             models.Index(
                 name="ta_ts__commit_i",
                 fields=["repo_id", "commit_sha", "timestamp"],
+            ),
+            models.Index(
+                name="ta_ts__upload_i",
+                fields=["upload_id", "outcome"],
             ),
         ]
 
