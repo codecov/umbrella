@@ -31,22 +31,38 @@ def cleanup_flare(
         non_open_pulls = Pull.objects.exclude(state=PullStates.OPEN.value).order_by(
             "updatestamp"
         )
+        # with analyze=False, the database engine generates an execution plan without executing the query
+        log.info(
+            f"Flare cleanup: non_open_pulls query {non_open_pulls.explain(analyze=False)}"
+        )
 
         # Clear in db
         non_open_pulls_with_flare_in_db = non_open_pulls.filter(
             _flare__isnull=False
         ).exclude(_flare={})
+        # same as above, with analyze=False
+        log.info(
+            f"Flare cleanup: non_open_pulls_with_flare_in_db query {non_open_pulls_with_flare_in_db.explain(analyze=False)}"
+        )
 
         # Process in batches - this is being overprotective at the moment, the batch size could be much larger
         start = 0
         while start < limit:
             try:
                 stop = start + batch_size if start + batch_size < limit else limit
-                batch = non_open_pulls_with_flare_in_db.values_list("id", flat=True)[start:stop]
+                batch = list(
+                    non_open_pulls_with_flare_in_db.values_list("id", flat=True)
+                )[start:stop]
+                # with analyze=True, the query is actually executed so cost and execution time are measured
+                log.info(
+                    f"Flare cleanup: batch query {non_open_pulls_with_flare_in_db.values_list('id', flat=True).explain(analyze=True, verbose=True)}"
+                )
                 if not batch:
                     break
-                n_updated = non_open_pulls_with_flare_in_db.filter(id__in=batch).update(
-                    _flare=None
+                n_updated = Pull.objects.filter(id__in=batch).update(_flare=None)
+                # same as above, with analyze=True
+                log.info(
+                    f"Flare cleanup: n_updated query {Pull.objects.filter(id__in=batch).explain(analyze=True, verbose=True)}"
                 )
                 context.add_progress(cleaned_models=n_updated, model=Pull)
                 start = stop
@@ -71,9 +87,12 @@ def cleanup_flare(
             try:
                 stop = start + batch_size if start + batch_size < limit else limit
                 # Get ids and paths together
-                batch_of_id_path_pairs = non_open_pulls_with_flare_in_archive.values_list(
-                    "id", "_flare_storage_path"
+                batch_of_id_path_pairs = list(
+                    non_open_pulls_with_flare_in_archive.values_list(
+                        "id", "_flare_storage_path"
+                    )
                 )[start:stop]
+
                 if not batch_of_id_path_pairs:
                     break
 
@@ -99,7 +118,9 @@ def cleanup_flare(
                     )
 
                 total_files_processed += len(batch_of_id_path_pairs)
-                context.add_progress(cleaned_files=len(successful_deletions), model=Pull)
+                context.add_progress(
+                    cleaned_files=len(successful_deletions), model=Pull
+                )
 
                 start = stop
             except Exception as e:
