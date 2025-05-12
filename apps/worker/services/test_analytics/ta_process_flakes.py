@@ -38,7 +38,9 @@ def get_testruns(
 ) -> QuerySet[Testrun]:
     upload_filter = Q(upload_id=upload.id)
     flaky_pass_filter = Q(outcome="pass") & Q(test_id__in=curr_flakes.keys())
-    return Testrun.objects.filter(upload_filter & (FAIL_FILTER | flaky_pass_filter))
+    return Testrun.objects.filter(
+        upload_filter & (FAIL_FILTER | flaky_pass_filter)
+    ).order_by("timestamp")
 
 
 def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
