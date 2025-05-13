@@ -1,5 +1,5 @@
 import inspect
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -1299,7 +1299,7 @@ class TestGetRepoProviderServiceForSpecificCommit:
     async def test_fetch_and_update_pull_request_information_from_commit_new_pull_commits_in_place(
         self, dbsession, mocker
     ):
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         commit = CommitFactory.create(message="", totals=None, _report_json=None)
         base_commit = CommitFactory.create(repository=commit.repository)
         dbsession.add(commit)
@@ -1358,7 +1358,7 @@ class TestGetRepoProviderServiceForSpecificCommit:
     async def test_fetch_and_update_pull_request_information_from_commit_existing_pull_commits_in_place(
         self, dbsession, mocker, repo, pull
     ):
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         commit = CommitFactory.create(
             message="",
             pullid=pull.pullid,
@@ -1433,7 +1433,7 @@ class TestGetRepoProviderServiceForSpecificCommit:
     async def test_fetch_and_update_pull_request_multiple_pulls_same_repo(
         self, dbsession, mocker, repo, pull
     ):
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         pull.title = "purposelly bad title"
         second_pull = PullFactory.create(repository=repo)
         commit = CommitFactory.create(
@@ -1517,7 +1517,7 @@ class TestGetRepoProviderServiceForSpecificCommit:
         repo,
         pull,
     ):
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         commit = CommitFactory.create(
             message="",
             pullid=pull.pullid,
@@ -1603,7 +1603,7 @@ class TestGetRepoProviderServiceForSpecificCommit:
     async def test_fetch_and_update_pull_request_information_no_compared_to(
         self, dbsession, mocker, repo, pull
     ):
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         compared_to_commit = CommitFactory.create(
             repository=repo, branch="master", merged=True
         )
