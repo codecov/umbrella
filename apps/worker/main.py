@@ -136,7 +136,14 @@ def _get_queues_param_from_queue_input(queues: list[str]) -> str:
 
     # Support passing comma separated values, as those will be split again:
     joined_queues = ",".join(queues)
-    enterprise_queues = ["enterprise_" + q for q in joined_queues.split(",")]
+    enterprise_queues = (
+        [
+            "enterprise_" + q if not q.startswith("enterprise_") else q
+            for q in joined_queues.split(",")
+        ]
+        if get_config("setup", "enterprise_queues_enabled", default=True)
+        else []
+    )
     all_queues = [
         joined_queues,
         *enterprise_queues,
