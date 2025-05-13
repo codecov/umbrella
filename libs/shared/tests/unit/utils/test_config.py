@@ -1,6 +1,6 @@
 import pytest
 
-from utils.config import should_write_data_to_storage_config_check
+from shared.django_apps.utils.config import should_write_data_to_storage_config_check
 
 
 @pytest.mark.parametrize(
@@ -103,5 +103,5 @@ def test_should_write_data_to_storage_config_check(
                 return default
         return curr
 
-    mocker.patch("utils.config.get_config", side_effect=fake_config)
+    mocker.patch("shared.django_apps.utils.config.get_config", side_effect=fake_config)
     assert should_write_data_to_storage_config_check(*func_args) == result

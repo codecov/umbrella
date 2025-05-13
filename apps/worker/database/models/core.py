@@ -14,7 +14,7 @@ import database.models
 from database.base import CodecovBaseModel, MixinBaseClass, MixinBaseClassNoExternalID
 from database.enums import Decoration, Notification, NotificationState, ReportType
 from database.utils import ArchiveField
-from helpers.config import should_write_data_to_storage_config_check
+from shared.django_apps.utils.config import should_write_data_to_storage_config_check
 from shared.plan.constants import DEFAULT_FREE_PLAN
 
 
