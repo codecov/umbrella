@@ -11,14 +11,14 @@ django.setup()
 import logging  # noqa: E402
 import sys  # noqa: E402
 
-import click  # noqa: E402
-from celery.signals import worker_process_shutdown  # noqa: E402
-from prometheus_client import REGISTRY, CollectorRegistry, multiprocess  # noqa: E402
-
 import app  # noqa: E402
+import click  # noqa: E402
 import shared.storage  # noqa: E402
+from celery.signals import worker_process_shutdown  # noqa: E402
 from helpers.environment import get_external_dependencies_folder  # noqa: E402
 from helpers.version import get_current_version  # noqa: E402
+from prometheus_client import (REGISTRY, CollectorRegistry,  # noqa: E402
+                               multiprocess)
 from shared.celery_config import BaseCeleryConfig  # noqa: E402
 from shared.config import get_config  # noqa: E402
 from shared.license import startup_license_logging  # noqa: E402
@@ -136,21 +136,19 @@ def _get_queues_param_from_queue_input(queues: list[str]) -> str:
 
     # Support passing comma separated values, as those will be split again:
     joined_queues = ",".join(queues)
-    enterprise_queues = (
-        [
-            "enterprise_" + q if not q.startswith("enterprise_") else q
+    enterprise_queues = []
+    if get_config("setup", "enterprise_queues_enabled", default=True):
+        enterprise_queues = [
+            "enterprise_" + q if not q.startswith("enterprise_") else ""
             for q in joined_queues.split(",")
         ]
-        if get_config("setup", "enterprise_queues_enabled", default=True)
-        else []
-    )
     all_queues = [
         joined_queues,
         *enterprise_queues,
         BaseCeleryConfig.health_check_default_queue,
     ]
 
-    return ",".join(all_queues)
+    return ",".join([q for q in all_queues if q])
 
 
 def main():

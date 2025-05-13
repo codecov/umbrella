@@ -19,7 +19,7 @@ def test_get_queues_param_from_queue_input():
     )
 
 def test_get_queues_param_from_queue_input_disabled_enterprise_queues(mocker):
-    mocker.patch.dict(os.environ, {"SETUP__ENTERPRISE_QUEUES_ENABLED": "False"})
+    mocker.patch('main.get_config', return_value=False)
     assert (
         _get_queues_param_from_queue_input(["worker,profiling,notify"])
         == f"worker,profiling,notify,{BaseCeleryConfig.health_check_default_queue}"
