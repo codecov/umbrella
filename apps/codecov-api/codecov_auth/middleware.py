@@ -7,9 +7,8 @@ from corsheaders.middleware import (
     ACCESS_CONTROL_ALLOW_ORIGIN,
 )
 from corsheaders.middleware import CorsMiddleware as BaseCorsMiddleware
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest
 from django.urls import resolve
-from django.utils.deprecation import MiddlewareMixin
 from rest_framework import exceptions
 
 from codecov_auth.models import Owner, Service
@@ -29,9 +28,10 @@ def get_service(request: HttpRequest) -> str | None:
         except ValueError:
             # not a valid service
             return None
+    return None
 
 
-class CurrentOwnerMiddleware(MiddlewareMixin):
+class CurrentOwnerMiddleware:
     """
     The authenticated `User` may have multiple linked `Owners` and we need a way
     to load the "currently active" `Owner` for use in this request.
@@ -45,10 +45,13 @@ class CurrentOwnerMiddleware(MiddlewareMixin):
     additional database queries).
     """
 
-    def process_request(self, request: HttpRequest) -> None:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
         if not request.user or request.user.is_anonymous:
             request.current_owner = None
-            return
+            return self.get_response(request)
 
         current_user = request.user
         current_owner = None
@@ -64,14 +67,18 @@ class CurrentOwnerMiddleware(MiddlewareMixin):
             current_owner = current_user.owners.filter(service=service).first()
 
         request.current_owner = current_owner
+        return self.get_response(request)
 
 
-class ImpersonationMiddleware(MiddlewareMixin):
+class ImpersonationMiddleware:
     """
     Allows staff users to impersonate other users for debugging.
     """
 
-    def process_request(self, request: HttpRequest) -> None:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
         """Log and ensure that the impersonating user is authenticated.
         The `current user` is the staff user that is impersonating the
         user owner at `impersonating_ownerid`.
@@ -82,7 +89,7 @@ class ImpersonationMiddleware(MiddlewareMixin):
             impersonating_ownerid = request.COOKIES.get("staff_user")
             if impersonating_ownerid is None:
                 request.impersonation = False
-                return
+                return self.get_response(request)
 
             log.info(
                 "Impersonation attempted",
@@ -133,12 +140,16 @@ class ImpersonationMiddleware(MiddlewareMixin):
         else:
             request.impersonation = False
 
+        return self.get_response(request)
+
 
 class CorsMiddleware(BaseCorsMiddleware):
-    def process_response(
-        self, request: HttpRequest, response: HttpResponse
-    ) -> HttpResponse:
-        response = super().process_response(request, response)
+    def __init__(self, get_response):
+        super().__init__(get_response)
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = super().__call__(request)
         if not self.is_enabled(request):
             return response
 
