@@ -31,7 +31,7 @@ def get_service(request: HttpRequest) -> str | None:
     return None
 
 
-class CurrentOwnerMiddleware:
+def current_owner_middleware(get_response):
     """
     The authenticated `User` may have multiple linked `Owners` and we need a way
     to load the "currently active" `Owner` for use in this request.
@@ -45,13 +45,10 @@ class CurrentOwnerMiddleware:
     additional database queries).
     """
 
-    def __init__(self, get_response):
-        self.get_response = get_response
-
-    def __call__(self, request):
+    def middleware(request):
         if not request.user or request.user.is_anonymous:
             request.current_owner = None
-            return self.get_response(request)
+            return get_response(request)
 
         current_user = request.user
         current_owner = None
@@ -67,18 +64,17 @@ class CurrentOwnerMiddleware:
             current_owner = current_user.owners.filter(service=service).first()
 
         request.current_owner = current_owner
-        return self.get_response(request)
+        return get_response(request)
+
+    return middleware
 
 
-class ImpersonationMiddleware:
+def impersonation_middleware(get_response):
     """
     Allows staff users to impersonate other users for debugging.
     """
 
-    def __init__(self, get_response):
-        self.get_response = get_response
-
-    def __call__(self, request):
+    def middleware(request):
         """Log and ensure that the impersonating user is authenticated.
         The `current user` is the staff user that is impersonating the
         user owner at `impersonating_ownerid`.
@@ -89,7 +85,7 @@ class ImpersonationMiddleware:
             impersonating_ownerid = request.COOKIES.get("staff_user")
             if impersonating_ownerid is None:
                 request.impersonation = False
-                return self.get_response(request)
+                return get_response(request)
 
             log.info(
                 "Impersonation attempted",
@@ -140,17 +136,17 @@ class ImpersonationMiddleware:
         else:
             request.impersonation = False
 
-        return self.get_response(request)
+        return get_response(request)
+
+    return middleware
 
 
-class CorsMiddleware(BaseCorsMiddleware):
-    def __init__(self, get_response):
-        super().__init__(get_response)
-        self.get_response = get_response
+def cors_middleware(get_response):
+    base_cors = BaseCorsMiddleware(get_response)
 
-    def __call__(self, request):
-        response = super().__call__(request)
-        if not self.is_enabled(request):
+    def middleware(request):
+        response = base_cors(request)
+        if not base_cors.is_enabled(request):
             return response
 
         origin = request.META.get("HTTP_ORIGIN")
@@ -163,7 +159,7 @@ class CorsMiddleware(BaseCorsMiddleware):
         allow_credentials = False
         if corsconf.CORS_ALLOW_CREDENTIALS:
             url = urlparse(origin)
-            if self.origin_found_in_white_lists(origin, url):
+            if base_cors.origin_found_in_white_lists(origin, url):
                 allow_credentials = True
 
         response.headers[ACCESS_CONTROL_ALLOW_ORIGIN] = origin
@@ -173,3 +169,5 @@ class CorsMiddleware(BaseCorsMiddleware):
             del response.headers[ACCESS_CONTROL_ALLOW_CREDENTIALS]
 
         return response
+
+    return middleware
