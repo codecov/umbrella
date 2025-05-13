@@ -18,8 +18,9 @@ def test_get_queues_param_from_queue_input():
         == f"worker,profiling,notify,enterprise_worker,enterprise_profiling,enterprise_notify,{BaseCeleryConfig.health_check_default_queue}"
     )
 
+
 def test_get_queues_param_from_queue_input_disabled_enterprise_queues(mocker):
-    mocker.patch('main.get_config', return_value=False)
+    mocker.patch("main.get_config", return_value=False)
     assert (
         _get_queues_param_from_queue_input(["worker,profiling,notify"])
         == f"worker,profiling,notify,{BaseCeleryConfig.health_check_default_queue}"
@@ -29,15 +30,21 @@ def test_get_queues_param_from_queue_input_disabled_enterprise_queues(mocker):
         == f"worker,profiling,notify,{BaseCeleryConfig.health_check_default_queue}"
     )
 
+
 def test_get_queues_param_from_queue_input_does_not_double_enterprise():
     assert (
-        _get_queues_param_from_queue_input(["enterprise_worker,enterprise_profiling,enterprise_notify"])
+        _get_queues_param_from_queue_input(
+            ["enterprise_worker,enterprise_profiling,enterprise_notify"]
+        )
         == f"enterprise_worker,enterprise_profiling,enterprise_notify,{BaseCeleryConfig.health_check_default_queue}"
     )
     assert (
-        _get_queues_param_from_queue_input(["enterprise_worker", "enterprise_profiling", "enterprise_notify"])
+        _get_queues_param_from_queue_input(
+            ["enterprise_worker", "enterprise_profiling", "enterprise_notify"]
+        )
         == f"enterprise_worker,enterprise_profiling,enterprise_notify,{BaseCeleryConfig.health_check_default_queue}"
     )
+
 
 @mock.patch("main.startup_license_logging")
 @mock.patch("main.start_prometheus")
