@@ -1,6 +1,5 @@
 from django.http import HttpRequest
 from django.urls import resolve
-from django.utils.deprecation import MiddlewareMixin
 from django_prometheus.middleware import (
     Metrics,
     PrometheusAfterMiddleware,
@@ -39,7 +38,13 @@ def get_service_long_name(request: HttpRequest) -> str | None:
     return None
 
 
-class ServiceMiddleware(MiddlewareMixin):
+class ServiceMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        return self.get_response(request)
+
     def process_view(self, request, view_func, view_args, view_kwargs):
         service = get_service_long_name(request)
         if service:
