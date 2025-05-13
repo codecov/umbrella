@@ -413,7 +413,7 @@ class GraphHandler(APIView, RepoPropertyMixin, GraphBadgeAPIMixin):
         pull = Pull.objects.filter(pullid=pullid, repository_id=repo.repoid).first()
         if pull is not None:
             # pull found
-            if pull._flare or pull._flare_storage_path is not None:
+            if pull._flare or pull._flare_storage_path:
                 # pull has flare
                 storage_location = "db" if pull._flare else "archive"
                 inc_counter(

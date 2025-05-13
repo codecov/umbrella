@@ -44,10 +44,10 @@ def should_write_data_to_storage_config_check(
     if master_write_switch == "general_access":
         # for everyone
         return True
-    elif master_write_switch in {"codecov_access", True}:
+    if master_write_switch in {"codecov_access", True}:
         # for us
         return is_codecov_repo
-    elif master_write_switch == "restricted_access":
+    if master_write_switch == "restricted_access":
         # for us and any special repos we have in repo_ids config
         allowed_repo_ids = get_config(
             "setup", "save_report_data_in_storage", "repo_ids", default=[]
