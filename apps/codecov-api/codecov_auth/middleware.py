@@ -1,13 +1,15 @@
 import logging
 from urllib.parse import urlparse
 
+import jwt
 from corsheaders.conf import conf as corsconf
 from corsheaders.middleware import (
     ACCESS_CONTROL_ALLOW_CREDENTIALS,
     ACCESS_CONTROL_ALLOW_ORIGIN,
 )
 from corsheaders.middleware import CorsMiddleware as BaseCorsMiddleware
-from django.http import HttpRequest
+from django.conf import settings
+from django.http import HttpRequest, HttpResponseForbidden
 from django.urls import resolve
 from rest_framework import exceptions
 
@@ -169,5 +171,66 @@ def cors_middleware(get_response):
             del response.headers[ACCESS_CONTROL_ALLOW_CREDENTIALS]
 
         return response
+
+    return middleware
+
+
+def jwt_middleware(get_response):
+    """
+    Middleware to extract user ID from JWT payload,
+    and resolve the user ID to an Owner object.
+
+    It will create an owner if they don't exist yet.
+    Returns 403 if auth header is missing, JWT decoding fails, or token is expired.
+    """
+
+    def middleware(request):
+        # Initialize current_owner as None
+        request.current_owner = None
+
+        # Extract JWT token from Authorization header
+        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+        if not auth_header.startswith("Bearer "):
+            return HttpResponseForbidden("Missing or invalid Authorization header")
+
+        token = auth_header.split(" ")[1]
+        try:
+            # TODO: use the correct decoding algorithm
+            payload = jwt.decode(
+                token,
+                settings.SENTRY_JWT_SECRET_KEY,
+                algorithms=["HS256"],
+                options={"verify_exp": True},  # Explicitly enable expiry verification
+            )
+
+            # Extract user_id from payload
+            provider_user_id = payload.get("provider_user_id")
+            provider = payload.get("provider")
+
+            if not provider_user_id or not provider:
+                return HttpResponseForbidden("Invalid JWT payload")
+
+            owner, _created = Owner.objects.get_or_create(
+                service_id=provider_user_id, service=provider
+            )
+            request.current_owner = owner
+            return get_response(request)
+
+        except jwt.ExpiredSignatureError:
+            log.warning(
+                "JWT token has expired",
+                extra={
+                    "token": token,
+                },
+            )
+            return HttpResponseForbidden("JWT token has expired")
+        except Exception as e:
+            log.warning(
+                "Error processing JWT token",
+                extra={
+                    "error": str(e),
+                },
+            )
+            return HttpResponseForbidden("Invalid JWT token")
 
     return middleware
