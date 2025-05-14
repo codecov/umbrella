@@ -39,7 +39,7 @@ class MapRoute:
                     return {"queue": route}
 
 
-def route_tasks_based_on_user_plan(task_name: str, user_plan: str):
+def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int):
     """Helper function to dynamically route tasks based on the user plan.
     This cannot be used as a celery router function directly.
     Returns extra config for the queue, if any.
@@ -50,6 +50,12 @@ def route_tasks_based_on_user_plan(task_name: str, user_plan: str):
     )["queue"]
     plan = Plan.objects.get(name=user_plan)
     if plan.is_enterprise_plan:
+        owner_specific_config = get_config(
+            "setup",
+            "tasks",
+            "enterprise_queues",
+            default={},
+        )
         default_enterprise_queue_specific_config = get_config(
             "setup", "tasks", "celery", "enterprise", default={}
         )
@@ -60,8 +66,11 @@ def route_tasks_based_on_user_plan(task_name: str, user_plan: str):
             "enterprise",
             default=default_enterprise_queue_specific_config,
         )
+        task_queue = "enterprise_" + default_task_queue
+        if owner in owner_specific_config:
+            task_queue = task_queue + "_" + owner_specific_config[owner]
         return {
-            "queue": "enterprise_" + default_task_queue,
+            "queue": task_queue,
             "extra_config": this_queue_specific_config,
         }
     return {"queue": default_task_queue, "extra_config": {}}

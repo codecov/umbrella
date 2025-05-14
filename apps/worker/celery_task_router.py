@@ -41,6 +41,64 @@ def _get_user_plan_from_comparison_id(dbsession, comparison_id, *args, **kwargs)
         return result.plan
     return DEFAULT_FREE_PLAN
 
+def _get_owner_from_ownerid(dbsession, ownerid, *args, **kwargs) -> int:
+    return ownerid;
+
+def _get_owner_from_org_ownerid(dbsession, org_ownerid, *args, **kwargs) -> int:
+    return _get_owner_from_ownerid(dbsession, ownerid=org_ownerid)
+
+def _get_owner_from_repoid(dbsession, repoid, *args, **kwargs) -> int:
+    result = (
+        dbsession.query(Owner.ownerid)
+        .join(Repository.owner)
+        .filter(Repository.repoid == repoid)
+        .first()
+    )
+    if result:
+        return result.ownerid
+    return None
+
+def _get_owner_from_comparison_id(dbsession, comparison_id, *args, **kwargs) -> int:
+    result = (
+        dbsession.query(Owner.ownerid)
+        .join(CompareCommit.compare_commit)
+        .join(Commit.repository)
+        .join(Repository.owner)
+        .filter(CompareCommit.id_ == comparison_id)
+        .first()
+    )
+    if result:
+        return result.ownerid
+    return None
+
+def _get_owner_from_task(dbsession, task_name: str, task_kwargs: dict) -> int:
+    owner_lookup_funcs = {
+        # from ownerid
+        shared_celery_config.delete_owner_task_name: _get_owner_from_ownerid,
+        shared_celery_config.send_email_task_name: _get_owner_from_ownerid,
+        shared_celery_config.sync_repos_task_name: _get_owner_from_ownerid,
+        shared_celery_config.sync_teams_task_name: _get_owner_from_ownerid,
+        # from org_ownerid
+        shared_celery_config.new_user_activated_task_name: _get_owner_from_org_ownerid,
+        # from repoid
+        shared_celery_config.pre_process_upload_task_name: _get_owner_from_repoid,
+        shared_celery_config.upload_task_name: _get_owner_from_repoid,
+        shared_celery_config.upload_processor_task_name: _get_owner_from_repoid,
+        shared_celery_config.notify_task_name: _get_owner_from_repoid,
+        shared_celery_config.commit_update_task_name: _get_owner_from_repoid,
+        shared_celery_config.flush_repo_task_name: _get_owner_from_repoid,
+        shared_celery_config.status_set_error_task_name: _get_owner_from_repoid,
+        shared_celery_config.status_set_pending_task_name: _get_owner_from_repoid,
+        shared_celery_config.pulls_task_name: _get_owner_from_repoid,
+        shared_celery_config.upload_finisher_task_name: _get_owner_from_repoid,  # didn't want to directly import the task module
+        shared_celery_config.manual_upload_completion_trigger_task_name: _get_owner_from_repoid,
+        # from comparison_id
+        shared_celery_config.compute_comparison_task_name: _get_owner_from_comparison_id,
+    }
+    func_to_use = owner_lookup_funcs.get(
+        task_name, lambda *args, **kwargs: None
+    )
+    return func_to_use(dbsession, **task_kwargs)
 
 def _get_user_plan_from_task(dbsession, task_name: str, task_kwargs: dict) -> str:
     owner_plan_lookup_funcs = {
@@ -81,4 +139,5 @@ def route_task(name, args, kwargs, options, task=None, **kw):
     if user_plan is None:
         db_session = get_db_session()
         user_plan = _get_user_plan_from_task(db_session, name, kwargs)
-    return route_tasks_based_on_user_plan(name, user_plan)
+    owner = _get_owner_from_task(db_session, name, kwargs)
+    return route_tasks_based_on_user_plan(name, user_plan, owner)
