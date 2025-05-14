@@ -168,10 +168,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 # Mark the repository as updated so it will appear earlier in the list
                 # of recently-active repositories
                 now = datetime.now(tz=UTC)
-                threshold = now - timedelta(minutes=30)
+                threshold = now - timedelta(minutes=60)
                 if not repository.updatestamp or repository.updatestamp < threshold:
                     repository.updatestamp = now
                     db_session.commit()
+                else:
+                    log.info(
+                        "Skipping repository update because it was updated recently",
+                        extra={"repository": repository.name, "updatestamp": repository.updatestamp, "threshold": threshold},
+                    )
 
                 self.invalidate_caches(redis_connection, commit)
                 log.info("Finished upload_finisher task")
