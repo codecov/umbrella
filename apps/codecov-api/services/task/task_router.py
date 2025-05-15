@@ -57,18 +57,18 @@ def _get_user_plan_from_task(task_name: str, task_kwargs: dict) -> str:
     return func_to_use(**task_kwargs)
 
 
-def _get_owner_from_ownerid(ownerid, *args, **kwargs) -> int:
+def _get_ownerid_from_ownerid(ownerid, *args, **kwargs) -> int:
     return ownerid
 
 
-def _get_owner_from_repoid(repoid, *args, **kwargs) -> int:
+def _get_ownerid_from_repoid(repoid, *args, **kwargs) -> int:
     repo = Repository.objects.filter(repoid=repoid).first()
     if repo and repo.author:
         return repo.author.ownerid
     return None
 
 
-def _get_owner_from_comparison_id(comparison_id, *args, **kwargs) -> int:
+def _get_ownerid_from_comparison_id(comparison_id, *args, **kwargs) -> int | None:
     compare_commit = (
         CommitComparison.objects.filter(id=comparison_id)
         .select_related("compare_commit__repository__author")
@@ -84,20 +84,20 @@ def _get_owner_from_comparison_id(comparison_id, *args, **kwargs) -> int:
     return None
 
 
-def _get_owner_from_task(task_name: str, task_kwargs: dict) -> int:
+def _get_ownerid_from_task(task_name: str, task_kwargs: dict) -> int | None:
     owner_lookup_funcs = {
         # from ownerid
-        shared_celery_config.delete_owner_task_name: _get_owner_from_ownerid,
-        shared_celery_config.sync_repos_task_name: _get_owner_from_ownerid,
-        shared_celery_config.sync_teams_task_name: _get_owner_from_ownerid,
+        shared_celery_config.delete_owner_task_name: _get_ownerid_from_ownerid,
+        shared_celery_config.sync_repos_task_name: _get_ownerid_from_ownerid,
+        shared_celery_config.sync_teams_task_name: _get_ownerid_from_ownerid,
         # from repoid
-        shared_celery_config.upload_task_name: _get_owner_from_repoid,
-        shared_celery_config.notify_task_name: _get_owner_from_repoid,
-        shared_celery_config.status_set_error_task_name: _get_owner_from_repoid,
-        shared_celery_config.status_set_pending_task_name: _get_owner_from_repoid,
-        shared_celery_config.pulls_task_name: _get_owner_from_repoid,
+        shared_celery_config.upload_task_name: _get_ownerid_from_repoid,
+        shared_celery_config.notify_task_name: _get_ownerid_from_repoid,
+        shared_celery_config.status_set_error_task_name: _get_ownerid_from_repoid,
+        shared_celery_config.status_set_pending_task_name: _get_ownerid_from_repoid,
+        shared_celery_config.pulls_task_name: _get_ownerid_from_repoid,
         # from comparison_id
-        shared_celery_config.compute_comparison_task_name: _get_owner_from_comparison_id,
+        shared_celery_config.compute_comparison_task_name: _get_ownerid_from_comparison_id,
     }
     func_to_use = owner_lookup_funcs.get(task_name, lambda *args, **kwargs: None)
     return func_to_use(**task_kwargs)
@@ -108,5 +108,5 @@ def route_task(name, args, kwargs, options={}, task=None, **kw):
     Docs: https://docs.celeryq.dev/en/stable/userguide/routing.html#routers
     """
     user_plan = _get_user_plan_from_task(name, kwargs)
-    owner = _get_owner_from_task(name, kwargs)
-    return route_tasks_based_on_user_plan(name, user_plan, owner)
+    ownerid = _get_ownerid_from_task(name, kwargs)
+    return route_tasks_based_on_user_plan(name, user_plan, ownerid)

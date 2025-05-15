@@ -3,10 +3,10 @@ import pytest
 import shared.celery_config as shared_celery_config
 from compare.tests.factories import CommitComparisonFactory
 from services.task.task_router import (
-    _get_owner_from_comparison_id,
-    _get_owner_from_ownerid,
-    _get_owner_from_repoid,
-    _get_owner_from_task,
+    _get_ownerid_from_comparison_id,
+    _get_ownerid_from_ownerid,
+    _get_ownerid_from_repoid,
+    _get_ownerid_from_task,
     _get_user_plan_from_comparison_id,
     _get_user_plan_from_ownerid,
     _get_user_plan_from_repoid,
@@ -65,9 +65,9 @@ def test_get_owner_plan_from_ownerid(fake_owners):
 
 def test_get_owner_from_ownerid(fake_owners):
     (owner, owner_enterprise_cloud) = fake_owners
-    assert _get_owner_from_ownerid(owner.ownerid) == owner.ownerid
+    assert _get_ownerid_from_ownerid(owner.ownerid) == owner.ownerid
     assert (
-        _get_owner_from_ownerid(owner_enterprise_cloud.ownerid)
+        _get_ownerid_from_ownerid(owner_enterprise_cloud.ownerid)
         == owner_enterprise_cloud.ownerid
     )
 
@@ -84,11 +84,11 @@ def test_get_owner_plan_from_repoid(fake_repos):
 
 def test_get_owner_from_repoid(fake_repos):
     (repo, repo_enterprise) = fake_repos
-    assert _get_owner_from_repoid(repo.repoid) == repo.author.ownerid
+    assert _get_ownerid_from_repoid(repo.repoid) == repo.author.ownerid
     assert (
-        _get_owner_from_repoid(repo_enterprise.repoid) == repo_enterprise.author.ownerid
+        _get_ownerid_from_repoid(repo_enterprise.repoid) == repo_enterprise.author.ownerid
     )
-    assert _get_owner_from_repoid(10000000) is None
+    assert _get_ownerid_from_repoid(10000000) is None
 
 
 def test_get_user_plan_from_comparison_id(fake_compare_commit):
@@ -110,12 +110,12 @@ def test_get_owner_from_comparison_id(fake_compare_commit):
     (compare_commit, compare_commit_enterprise, repo, repo_enterprise) = (
         fake_compare_commit
     )
-    assert _get_owner_from_comparison_id(compare_commit.id) == repo.author.ownerid
+    assert _get_ownerid_from_comparison_id(compare_commit.id) == repo.author.ownerid
     assert (
-        _get_owner_from_comparison_id(compare_commit_enterprise.id)
+        _get_ownerid_from_comparison_id(compare_commit_enterprise.id)
         == repo_enterprise.author.ownerid
     )
-    assert _get_owner_from_comparison_id(10000000) is None
+    assert _get_ownerid_from_comparison_id(10000000) is None
 
 
 def test_get_user_plan_from_task(
@@ -171,7 +171,7 @@ def test_get_user_plan_from_task(
     assert _get_user_plan_from_task("unknown task", task_kwargs) == DEFAULT_FREE_PLAN
 
 
-def test_get_owner_from_task(
+def test_get_ownerid_from_task(
     fake_repos,
     fake_compare_commit,
 ):
@@ -184,7 +184,7 @@ def test_get_owner_from_task(
         "rebuild": False,
     }
     assert (
-        _get_owner_from_task(shared_celery_config.upload_task_name, task_kwargs)
+        _get_ownerid_from_task(shared_celery_config.upload_task_name, task_kwargs)
         == repo.author.ownerid
     )
 
@@ -195,19 +195,19 @@ def test_get_owner_from_task(
         "rebuild": False,
     }
     assert (
-        _get_owner_from_task(shared_celery_config.upload_task_name, task_kwargs)
+        _get_ownerid_from_task(shared_celery_config.upload_task_name, task_kwargs)
         == repo_enterprise_cloud.author.ownerid
     )
 
     task_kwargs = {"ownerid": repo.author.ownerid}
     assert (
-        _get_owner_from_task(shared_celery_config.delete_owner_task_name, task_kwargs)
+        _get_ownerid_from_task(shared_celery_config.delete_owner_task_name, task_kwargs)
         == repo.author.ownerid
     )
 
     task_kwargs = {"comparison_id": compare_commit.id}
     assert (
-        _get_owner_from_task(
+        _get_ownerid_from_task(
             shared_celery_config.compute_comparison_task_name, task_kwargs
         )
         == repo.author.ownerid
@@ -219,7 +219,7 @@ def test_get_owner_from_task(
         "debug": False,
         "rebuild": False,
     }
-    assert _get_owner_from_task("unknown task", task_kwargs) is None
+    assert _get_ownerid_from_task("unknown task", task_kwargs) is None
 
 
 def test_route_task(mocker, fake_repos):
