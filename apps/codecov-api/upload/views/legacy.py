@@ -333,6 +333,8 @@ class UploadHandler(APIView, ShelterMixin):
             "commit": commitid,
             "branch": branch,
             "pr": pr,
+            "owner": owner.ownerid,
+            "user_plan": owner.plan,
         }
 
         log.info(
