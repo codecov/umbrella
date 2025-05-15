@@ -167,15 +167,10 @@ def merge_line(l1, l2, joined=True):
 
     return ReportLine.create(
         type=l1.type or l2.type,
-        coverage=get_coverage_from_sessions(sessions) if joined else l1.coverage,
-        complexity=get_complexity_from_sessions(sessions) if joined else l1.complexity,
+        coverage=None if joined else l1.coverage,
+        complexity=None if joined else l1.complexity,
         sessions=sessions,
-        messages=merge_messages(l1.messages, l2.messages),
     )
-
-
-def merge_messages(m1, m2):
-    pass
 
 
 def merge_line_session(s1, s2):
@@ -319,18 +314,18 @@ def partials_to_line(partials):
     ln = len(partials)
     if ln == 1:
         return partials[0][2]
-    v = sum([1 for (sc, ec, hits) in partials if hits > 0])
+    v = sum(1 for (sc, ec, hits) in partials if hits > 0)
     return f"{v}/{ln}"
 
 
 def get_complexity_from_sessions(sessions):
     _type = type(sessions[0].complexity)
     if _type is int:
-        return max([(s.complexity or 0) for s in sessions])
+        return max((s.complexity or 0) for s in sessions)
     elif _type in (tuple, list):
         return (
-            max([(s.complexity or (0, 0))[0] for s in sessions]),
-            max([(s.complexity or (0, 0))[1] for s in sessions]),
+            max((s.complexity or (0, 0))[0] for s in sessions),
+            max((s.complexity or (0, 0))[1] for s in sessions),
         )
 
 

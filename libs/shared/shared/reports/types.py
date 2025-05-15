@@ -5,6 +5,8 @@ from decimal import Decimal
 from enum import Enum
 from typing import TypedDict
 
+from shared.utils.merge import get_complexity_from_sessions, get_coverage_from_sessions
+
 log = logging.getLogger(__name__)
 
 
@@ -98,11 +100,10 @@ class LineSession:
 
 @dataclass
 class ReportLine:
-    __slots__ = ("coverage", "type", "sessions", "messages", "complexity")
+    __slots__ = ("coverage", "type", "sessions", "complexity")
     coverage: Decimal
     type: str
     sessions: list[LineSession]
-    messages: list[str]
     complexity: int | tuple[int, int]
 
     @classmethod
@@ -125,20 +126,23 @@ class ReportLine:
             sessions = []
 
         return cls(
-            coverage=coverage,
-            type=type,
-            sessions=sessions,
-            messages=messages,
-            complexity=complexity,
+            coverage=coverage, type=type, sessions=sessions, complexity=complexity
         )
 
     def astuple(self):
+        if self.coverage is None:
+            sessions = self.sessions or []
+            coverage = get_coverage_from_sessions(sessions)
+            complexity = get_complexity_from_sessions(sessions)
+        else:
+            coverage, complexity = self.coverage, self.complexity
+
         return (
-            self.coverage,
+            coverage,
             self.type,
             [s.astuple() for s in self.sessions] if self.sessions else None,
-            self.messages,
-            self.complexity,
+            None,
+            complexity,
         )
 
 

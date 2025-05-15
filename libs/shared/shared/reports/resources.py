@@ -1,7 +1,6 @@
 import dataclasses
 import logging
 from copy import copy
-from itertools import filterfalse
 from typing import Any
 
 import sentry_sdk
@@ -21,17 +20,6 @@ from shared.utils.totals import agg_totals
 from .serde import END_OF_CHUNK, END_OF_HEADER, serialize_report
 
 log = logging.getLogger(__name__)
-
-
-def unique_everseen(iterable):
-    "List unique elements, preserving order. Remember all elements ever seen."
-    # unique_everseen('AAAABBBCCDAABBB') --> A B C D
-    # unique_everseen('ABBCcAD', str.lower) --> A B C D
-    seen = set()
-    seen_add = seen.add
-    for element in filterfalse(seen.__contains__, iterable):
-        seen_add(element)
-        yield element
 
 
 class Report:
