@@ -260,6 +260,17 @@ class Report:
 
     @sentry_sdk.trace
     def merge(self, new_report, joined=True, is_disjoint=False):
+        """
+        Merge the `new_report` into this one.
+
+        If `joined=False`, that means that any coverage information from `new_report` takes precedence.
+        Otherwise, the existing and new coverage `ReportLine` records are being merged.
+
+        If `is_disjoint=True` is specified, all coverage records from `new_report` will be *appended* to this report.
+        A later call to `finish_merge` will then fully merge those coverage record.
+        This in an optimization when the `merge` fn is being called multiple times with multiple `Report`s,
+        as intermediate merge steps can be avoided in favor of only doing one merge step at the end.
+        """
         """combine report data from another"""
         if new_report is None:
             return
