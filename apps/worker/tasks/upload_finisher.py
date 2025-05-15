@@ -175,7 +175,11 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 else:
                     log.info(
                         "Skipping repository update because it was updated recently",
-                        extra={"repository": repository.name, "updatestamp": repository.updatestamp, "threshold": threshold},
+                        extra={
+                            "repository": repository.name,
+                            "updatestamp": repository.updatestamp,
+                            "threshold": threshold,
+                        },
                     )
 
                 self.invalidate_caches(redis_connection, commit)

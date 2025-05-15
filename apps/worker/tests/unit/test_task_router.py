@@ -2,15 +2,15 @@ import pytest
 
 import shared.celery_config as shared_celery_config
 from celery_task_router import (
+    _get_owner_from_comparison_id,
+    _get_owner_from_ownerid,
+    _get_owner_from_repoid,
+    _get_owner_from_task,
     _get_user_plan_from_comparison_id,
     _get_user_plan_from_org_ownerid,
     _get_user_plan_from_ownerid,
     _get_user_plan_from_repoid,
     _get_user_plan_from_task,
-    _get_owner_from_ownerid,
-    _get_owner_from_repoid,
-    _get_owner_from_comparison_id,
-    _get_owner_from_task,
     route_task,
 )
 from database.tests.factories.core import (
@@ -61,10 +61,15 @@ def fake_comparison_commit(dbsession, fake_repos):
     dbsession.flush()
     return (compare_commit, compare_commit_enterprise, repo, repo_enterprise_cloud)
 
+
 def test_get_owner_from_ownerid(dbsession, fake_owners):
     (owner, owner_enterprise_cloud) = fake_owners
     assert _get_owner_from_ownerid(dbsession, owner.ownerid) == owner.ownerid
-    assert _get_owner_from_ownerid(dbsession, owner_enterprise_cloud.ownerid) == owner_enterprise_cloud.ownerid
+    assert (
+        _get_owner_from_ownerid(dbsession, owner_enterprise_cloud.ownerid)
+        == owner_enterprise_cloud.ownerid
+    )
+
 
 def test_get_owner_plan_from_id(dbsession, fake_owners):
     (owner, owner_enterprise_cloud) = fake_owners
@@ -103,20 +108,21 @@ def test_get_owner_plan_from_repoid(dbsession, fake_repos):
     )
     assert _get_user_plan_from_repoid(dbsession, 10000000) == DEFAULT_FREE_PLAN
 
+
 def test_get_owner_from_repoid(dbsession, fake_repos):
     (repo, repo_enterprise_cloud) = fake_repos
-    assert (
-        _get_owner_from_repoid(dbsession, repo.repoid)
-        == repo.ownerid
-    )
+    assert _get_owner_from_repoid(dbsession, repo.repoid) == repo.ownerid
     assert (
         _get_owner_from_repoid(dbsession, repo_enterprise_cloud.repoid)
         == repo_enterprise_cloud.ownerid
     )
-    assert _get_owner_from_repoid(dbsession, 10000000) == None
+    assert _get_owner_from_repoid(dbsession, 10000000) is None
+
 
 def test_get_user_plan_from_comparison_id(dbsession, fake_comparison_commit):
-    (compare_commit, compare_commit_enterprise, repo, repo_enterprise_cloud) = fake_comparison_commit
+    (compare_commit, compare_commit_enterprise, repo, repo_enterprise_cloud) = (
+        fake_comparison_commit
+    )
     assert (
         _get_user_plan_from_comparison_id(dbsession, comparison_id=compare_commit.id)
         == PlanName.CODECOV_PRO_MONTHLY.value
@@ -129,8 +135,11 @@ def test_get_user_plan_from_comparison_id(dbsession, fake_comparison_commit):
     )
     assert _get_user_plan_from_comparison_id(dbsession, 10000000) == DEFAULT_FREE_PLAN
 
+
 def test_get_owner_from_comparison_id(dbsession, fake_comparison_commit):
-    (compare_commit, compare_commit_enterprise, repo, repo_enterprise_cloud) = fake_comparison_commit
+    (compare_commit, compare_commit_enterprise, repo, repo_enterprise_cloud) = (
+        fake_comparison_commit
+    )
     assert (
         _get_owner_from_comparison_id(dbsession, comparison_id=compare_commit.id)
         == repo.ownerid
@@ -141,7 +150,8 @@ def test_get_owner_from_comparison_id(dbsession, fake_comparison_commit):
         )
         == repo_enterprise_cloud.ownerid
     )
-    assert _get_owner_from_comparison_id(dbsession, 10000000) == None
+    assert _get_owner_from_comparison_id(dbsession, 10000000) is None
+
 
 def test_get_user_plan_from_task(
     dbsession,
@@ -211,6 +221,7 @@ def test_get_user_plan_from_task(
         == DEFAULT_FREE_PLAN
     )
 
+
 def test_get_owner_from_task(
     dbsession,
     fake_repos,
@@ -279,6 +290,7 @@ def test_get_owner_from_task(
         == DEFAULT_FREE_PLAN
     )
 
+
 def test_route_task(mocker, dbsession, fake_repos):
     mock_get_db_session = mocker.patch("celery_task_router.get_db_session")
     mock_route_tasks_shared = mocker.patch(
@@ -297,5 +309,7 @@ def test_route_task(mocker, dbsession, fake_repos):
     assert response == {"queue": "correct queue"}
     mock_get_db_session.assert_called()
     mock_route_tasks_shared.assert_called_with(
-        shared_celery_config.upload_task_name, PlanName.CODECOV_PRO_MONTHLY.value, repo.ownerid
+        shared_celery_config.upload_task_name,
+        PlanName.CODECOV_PRO_MONTHLY.value,
+        repo.ownerid,
     )

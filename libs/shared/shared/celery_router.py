@@ -44,10 +44,15 @@ def _get_default_queue(task_name: str) -> str:
     route = MapRoute(BaseCeleryConfig.task_routes)
     return (route(task_name) or {"queue": BaseCeleryConfig.task_default_queue})["queue"]
 
+
 def _get_enterprise_config(task_name: str, owner: int) -> tuple[str, dict]:
     """Get enterprise-specific queue name and configuration."""
-    owner_specific_config = get_config("setup", "tasks", "enterprise_queues", default={})
-    default_enterprise_config = get_config("setup", "tasks", "celery", "enterprise", default={})
+    owner_specific_config = get_config(
+        "setup", "tasks", "enterprise_queues", default={}
+    )
+    default_enterprise_config = get_config(
+        "setup", "tasks", "celery", "enterprise", default={}
+    )
     queue_specific_config = get_config(
         "setup",
         "tasks",
@@ -55,34 +60,29 @@ def _get_enterprise_config(task_name: str, owner: int) -> tuple[str, dict]:
         "enterprise",
         default=default_enterprise_config,
     )
-    
+
     base_queue = f"enterprise_{_get_default_queue(task_name)}"
     if str(owner) in owner_specific_config:
         base_queue = f"{base_queue}_{owner_specific_config[str(owner)]}"
-    
+
     return base_queue, queue_specific_config
+
 
 def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int) -> dict:
     """Helper function to dynamically route tasks based on the user plan.
-    
+
     Args:
         task_name: Name of the task to route
         user_plan: Name of the user's plan
         owner: Owner ID for enterprise routing
-        
+
     Returns:
         Dict containing queue name and any extra configuration
     """
     plan = Plan.objects.get(name=user_plan)
-    
+
     if not plan.is_enterprise_plan:
-        return {
-            "queue": _get_default_queue(task_name),
-            "extra_config": {}
-        }
-        
+        return {"queue": _get_default_queue(task_name), "extra_config": {}}
+
     queue, config = _get_enterprise_config(task_name, owner)
-    return {
-        "queue": queue,
-        "extra_config": config
-    }
+    return {"queue": queue, "extra_config": config}

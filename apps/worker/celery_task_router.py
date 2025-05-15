@@ -41,11 +41,14 @@ def _get_user_plan_from_comparison_id(dbsession, comparison_id, *args, **kwargs)
         return result.plan
     return DEFAULT_FREE_PLAN
 
+
 def _get_owner_from_ownerid(dbsession, ownerid, *args, **kwargs) -> int:
-    return ownerid;
+    return ownerid
+
 
 def _get_owner_from_org_ownerid(dbsession, org_ownerid, *args, **kwargs) -> int:
     return _get_owner_from_ownerid(dbsession, ownerid=org_ownerid)
+
 
 def _get_owner_from_repoid(dbsession, repoid, *args, **kwargs) -> int:
     result = (
@@ -57,6 +60,7 @@ def _get_owner_from_repoid(dbsession, repoid, *args, **kwargs) -> int:
     if result:
         return result.ownerid
     return None
+
 
 def _get_owner_from_comparison_id(dbsession, comparison_id, *args, **kwargs) -> int:
     result = (
@@ -70,6 +74,7 @@ def _get_owner_from_comparison_id(dbsession, comparison_id, *args, **kwargs) -> 
     if result:
         return result.ownerid
     return None
+
 
 def _get_owner_from_task(dbsession, task_name: str, task_kwargs: dict) -> int:
     owner_lookup_funcs = {
@@ -95,10 +100,9 @@ def _get_owner_from_task(dbsession, task_name: str, task_kwargs: dict) -> int:
         # from comparison_id
         shared_celery_config.compute_comparison_task_name: _get_owner_from_comparison_id,
     }
-    func_to_use = owner_lookup_funcs.get(
-        task_name, lambda *args, **kwargs: None
-    )
+    func_to_use = owner_lookup_funcs.get(task_name, lambda *args, **kwargs: None)
     return func_to_use(dbsession, **task_kwargs)
+
 
 def _get_user_plan_from_task(dbsession, task_name: str, task_kwargs: dict) -> str:
     owner_plan_lookup_funcs = {

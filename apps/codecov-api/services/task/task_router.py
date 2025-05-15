@@ -56,14 +56,17 @@ def _get_user_plan_from_task(task_name: str, task_kwargs: dict) -> str:
     )
     return func_to_use(**task_kwargs)
 
+
 def _get_owner_from_ownerid(ownerid, *args, **kwargs) -> int:
-    return ownerid;
+    return ownerid
+
 
 def _get_owner_from_repoid(repoid, *args, **kwargs) -> int:
     repo = Repository.objects.filter(repoid=repoid).first()
     if repo and repo.author:
         return repo.author.ownerid
     return None
+
 
 def _get_owner_from_comparison_id(comparison_id, *args, **kwargs) -> int:
     compare_commit = (
@@ -80,6 +83,7 @@ def _get_owner_from_comparison_id(comparison_id, *args, **kwargs) -> int:
         return compare_commit.compare_commit.repository.author.ownerid
     return None
 
+
 def _get_owner_from_task(task_name: str, task_kwargs: dict) -> int:
     owner_lookup_funcs = {
         # from ownerid
@@ -95,10 +99,9 @@ def _get_owner_from_task(task_name: str, task_kwargs: dict) -> int:
         # from comparison_id
         shared_celery_config.compute_comparison_task_name: _get_owner_from_comparison_id,
     }
-    func_to_use = owner_lookup_funcs.get(
-        task_name, lambda *args, **kwargs: None
-    )
+    func_to_use = owner_lookup_funcs.get(task_name, lambda *args, **kwargs: None)
     return func_to_use(**task_kwargs)
+
 
 def route_task(name, args, kwargs, options={}, task=None, **kw):
     """Function to dynamically route tasks to the proper queue.
