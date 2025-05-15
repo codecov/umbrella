@@ -140,8 +140,11 @@ def route_task(name, args, kwargs, options, task=None, **kw):
     """
 
     user_plan = options.get("user_plan")
-    if user_plan is None:
+    owner = options.get("owner")
+    if user_plan is None or owner is None:
         db_session = get_db_session()
-        user_plan = _get_user_plan_from_task(db_session, name, kwargs)
-    owner = _get_owner_from_task(db_session, name, kwargs)
+        if user_plan is None:
+            user_plan = _get_user_plan_from_task(db_session, name, kwargs)
+        if owner is None:
+            owner = _get_owner_from_task(db_session, name, kwargs)
     return route_tasks_based_on_user_plan(name, user_plan, owner)
