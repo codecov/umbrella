@@ -1,6 +1,6 @@
 from services.report.languages import gcov
 from shared.reports.resources import Report
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -149,7 +149,7 @@ _ZNK3rsl4h26413Mp4NaluParserINS_8DataViewIKhEEE7IsEmptyEv::
 """
 
 
-class TestGcov(BaseTestCase):
+class TestGcov:
     def test_report(self):
         report_builder_session = create_report_builder_session(
             filename="temp.c.gcov",
@@ -161,7 +161,7 @@ class TestGcov(BaseTestCase):
         )
         gcov.from_txt(txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "tmp.c": [
@@ -186,7 +186,7 @@ class TestGcov(BaseTestCase):
         )
         gcov.from_txt(txt_duplicate, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "project/rsl/h264/Mp4NaluParser.h": [
@@ -205,7 +205,7 @@ class TestGcov(BaseTestCase):
         )
         gcov.from_txt(txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"]["tmp.c"][3] == (
             10,
@@ -234,7 +234,7 @@ class TestGcov(BaseTestCase):
         )
         gcov.from_txt(txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"]["tmp.c"][3] == (
             10,
@@ -259,7 +259,7 @@ class TestGcov(BaseTestCase):
         )
         gcov.from_txt(txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"]["tmp.c"][3] == (
             10,
@@ -284,7 +284,7 @@ class TestGcov(BaseTestCase):
         )
         gcov.from_txt(txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"]["tmp.c"][3] == (
             10,

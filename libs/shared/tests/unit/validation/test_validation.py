@@ -10,10 +10,9 @@ from shared.yaml.validation import (
     do_actual_validation,
     validate_yaml,
 )
-from tests.base import BaseTestCase
 
 
-class TestUserYamlValidation(BaseTestCase):
+class TestUserYamlValidation:
     def test_empty_case(self):
         user_input = {}
         expected_result = {}

@@ -4,7 +4,7 @@ For the tests with encoded labels see services/report/languages/tests/unit/test_
 """
 
 from services.report.languages.pycoverage import PyCoverageProcessor
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -185,7 +185,7 @@ COMPRESSED_SAMPLE = {
 }
 
 
-class TestPyCoverageProcessor(BaseTestCase):
+class TestPyCoverageProcessor:
     def test_matches_content_pycoverage(self):
         p = PyCoverageProcessor()
         assert p.matches_content(SAMPLE, "", "coverage.json")
@@ -207,7 +207,7 @@ class TestPyCoverageProcessor(BaseTestCase):
         )
         p.process(content, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report == {
             "archive": {
@@ -301,7 +301,7 @@ class TestPyCoverageProcessor(BaseTestCase):
         )
         p.process(content, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report == {
             "archive": {

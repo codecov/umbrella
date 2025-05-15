@@ -1,5 +1,5 @@
 from services.report.languages import coveralls
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -20,7 +20,7 @@ nested_json = {
 }
 
 
-class TestCoveralls(BaseTestCase):
+class TestCoveralls:
     def test_detect(self):
         processor = coveralls.CoverallsProcessor()
         assert processor.matches_content({"source_files": ""}, "", "")
@@ -34,7 +34,7 @@ class TestCoveralls(BaseTestCase):
         report_builder_session = create_report_builder_session(path_fixer=fixes)
         coveralls.from_json(json, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report == {
             "archive": {
@@ -75,7 +75,7 @@ class TestCoveralls(BaseTestCase):
         report_builder_session = create_report_builder_session()
         coveralls.from_json(nested_json, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "foobar": [

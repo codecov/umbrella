@@ -7,7 +7,6 @@ import pytest
 
 from services.report import legacy_totals
 from services.report.languages import node
-from test_utils.base import BaseTestCase
 
 from . import create_report_builder_session
 
@@ -33,7 +32,7 @@ class OwnEncoder(JSONEncoder):
         return super().default(o)
 
 
-class TestNodeProcessor(BaseTestCase):
+class TestNodeProcessor:
     def readjson(self, filename):
         with open(folder / filename) as d:
             contents = loads(d.read())

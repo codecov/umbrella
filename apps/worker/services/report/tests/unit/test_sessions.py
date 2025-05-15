@@ -3,13 +3,13 @@ import pytest
 from services.processing.merging import clear_carryforward_sessions
 from shared.reports.reportfile import ReportFile
 from shared.reports.resources import Report
+from shared.reports.test_utils import convert_report_to_better_readable
 from shared.reports.types import LineSession, ReportLine
 from shared.utils.sessions import Session, SessionType
 from shared.yaml import UserYaml
-from test_utils.base import BaseTestCase
 
 
-class TestAdjustSession(BaseTestCase):
+class TestAdjustSession:
     @pytest.fixture
     def sample_first_report(self):
         first_report = Report(
@@ -45,7 +45,7 @@ class TestAdjustSession(BaseTestCase):
         second_file = ReportFile("second_file.py")
         first_report.append(first_file)
         first_report.append(second_file)
-        assert self.convert_report_to_better_readable(first_report)["archive"] == {
+        assert convert_report_to_better_readable(first_report)["archive"] == {
             "first_file.py": [
                 (1, 14, None, [[0, 0], [3, 7], [2, 14]], None, None),
                 (2, 15, None, [[1, 1], [0, 8], [3, 15]], None, None),
@@ -65,7 +65,7 @@ class TestAdjustSession(BaseTestCase):
         )
 
     def test_adjust_sessions_no_cf(self, sample_first_report):
-        first_value = self.convert_report_to_better_readable(sample_first_report)
+        first_value = convert_report_to_better_readable(sample_first_report)
         current_yaml = UserYaml({})
         assert (
             clear_carryforward_sessions(
@@ -73,9 +73,7 @@ class TestAdjustSession(BaseTestCase):
             )
             == set()
         )
-        assert first_value == self.convert_report_to_better_readable(
-            sample_first_report
-        )
+        assert first_value == convert_report_to_better_readable(sample_first_report)
 
     def test_adjust_sessions_full_cf_only(self, sample_first_report):
         current_yaml = UserYaml(
@@ -88,7 +86,7 @@ class TestAdjustSession(BaseTestCase):
         assert clear_carryforward_sessions(
             sample_first_report, {"enterprise"}, current_yaml
         ) == {0}
-        assert self.convert_report_to_better_readable(sample_first_report) == {
+        assert convert_report_to_better_readable(sample_first_report) == {
             "archive": {
                 "first_file.py": [
                     (1, 14, None, [[3, 7], [2, 14]], None, None),
@@ -194,7 +192,7 @@ class TestAdjustSession(BaseTestCase):
         assert clear_carryforward_sessions(
             sample_first_report, {"enterprise"}, current_yaml
         ) == {0}
-        res = self.convert_report_to_better_readable(sample_first_report)
+        res = convert_report_to_better_readable(sample_first_report)
         assert res["report"]["sessions"] == {
             "1": {
                 "t": None,

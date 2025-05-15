@@ -1,10 +1,10 @@
 from services.report.languages.salesforce import SalesforceProcessor
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
 
-class TestSalesforce(BaseTestCase):
+class TestSalesforce:
     def test_salesforce_processor_nones(self):
         user_input = [
             None,
@@ -22,7 +22,7 @@ class TestSalesforce(BaseTestCase):
         report_builder_session = create_report_builder_session()
         processor.process(user_input, report_builder_session)
         report = report_builder_session.output_report()
-        result = self.convert_report_to_better_readable(report)
+        result = convert_report_to_better_readable(report)
 
         assert result == {
             "archive": {"file.py": [(1, 5, None, [[0, 5]], None, None)]},

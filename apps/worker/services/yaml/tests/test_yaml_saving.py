@@ -2,10 +2,9 @@ import pytest
 
 from database.tests.factories import CommitFactory, OwnerFactory
 from services.yaml import save_repo_yaml_to_database_if_needed
-from test_utils.base import BaseTestCase
 
 
-class TestYamlSavingService(BaseTestCase):
+class TestYamlSavingService:
     def test_save_repo_yaml_to_database_if_needed(self, mocker):
         commit = CommitFactory.create(
             branch="master", repository__branch="master", repository__yaml={"old_stuff"}

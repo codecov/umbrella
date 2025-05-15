@@ -9,10 +9,9 @@ from services.yaml import get_current_yaml
 from shared.torngit.exceptions import TorngitClientError, TorngitServerUnreachableError
 from shared.validation.types import CoverageCommentRequiredChanges
 from shared.yaml import UserYaml
-from test_utils.base import BaseTestCase
 
 
-class TestYamlService(BaseTestCase):
+class TestYamlService:
     def test_get_final_yaml_no_yaml_no_config_yaml(self, mock_configuration):
         expected_result = {}
         result = UserYaml.get_final_yaml(

@@ -17,10 +17,9 @@ from shared.validation.helpers import (
     translate_glob_to_regex,
 )
 from shared.yaml.validation import pre_process_yaml
-from tests.base import BaseTestCase
 
 
-class TestPathPatternSchemaField(BaseTestCase):
+class TestPathPatternSchemaField:
     def test_simple_path_structure_no_star(self):
         ps = PathPatternSchemaField()
         res = ps.validate("a/b")
@@ -126,7 +125,7 @@ class TestPathPatternSchemaField(BaseTestCase):
             assert compiled.match(path) is None
 
 
-class TestLayoutStructure(BaseTestCase):
+class TestLayoutStructure:
     def test_simple_layout(self):
         schema = LayoutStructure()
         result = "reach, diff, flags, files, components, footer"
@@ -163,7 +162,7 @@ class TestLayoutStructure(BaseTestCase):
         assert exc.value.error_message == "Unexpected values on layout: love"
 
 
-class TestCoverageRangeSchemaField(BaseTestCase):
+class TestCoverageRangeSchemaField:
     def test_simple_coverage_range(self):
         crsf = CoverageRangeSchemaField()
         assert crsf.validate([80, 90]) == [80.0, 90.0]
@@ -190,7 +189,7 @@ class TestCoverageRangeSchemaField(BaseTestCase):
                 crsf.validate(invalid)
 
 
-class TestUserGivenBranchRegex(BaseTestCase):
+class TestUserGivenBranchRegex:
     def test_user_givne_branch(self):
         a = UserGivenBranchRegex()
         assert a.validate(None) is None
@@ -200,7 +199,7 @@ class TestUserGivenBranchRegex(BaseTestCase):
         assert a.validate("apple") == "^apple$"
 
 
-class TestPercentSchemaField(BaseTestCase):
+class TestPercentSchemaField:
     def test_simple_coverage_range(self):
         crsf = PercentSchemaField()
         assert crsf.validate(80) == 80.0
@@ -224,7 +223,7 @@ class TestPercentSchemaField(BaseTestCase):
             crsf.validate("nan")
 
 
-class TestPatternTypeDetermination(BaseTestCase):
+class TestPatternTypeDetermination:
     def test_determine_path_pattern_type(self):
         assert determine_path_pattern_type("path/to/folder") == "path_prefix"
         assert determine_path_pattern_type("path/*/folder") == "glob"
@@ -235,7 +234,7 @@ class TestPatternTypeDetermination(BaseTestCase):
         assert determine_path_pattern_type("before/test-*::after/") == "glob"
 
 
-class TestPreprocess(BaseTestCase):
+class TestPreprocess:
     def test_preprocess_empty(self):
         user_input = {}
         expected_result = {}
@@ -249,7 +248,7 @@ class TestPreprocess(BaseTestCase):
         assert expected_result == user_input
 
 
-class TestGlobToRegexTranslation(BaseTestCase):
+class TestGlobToRegexTranslation:
     def test_translate_glob_to_regex(self):
         assert re.compile(translate_glob_to_regex("a")).match("a") is not None
         assert re.compile(translate_glob_to_regex("[abc]*")).match("a") is not None
@@ -308,7 +307,7 @@ class TestGlobToRegexTranslation(BaseTestCase):
         )
 
 
-class TestCustomFixPathSchemaField(BaseTestCase):
+class TestCustomFixPathSchemaField:
     def test_custom_fixpath(self):
         cfpsf = CustomFixPathSchemaField()
         res = cfpsf.validate("a::b")

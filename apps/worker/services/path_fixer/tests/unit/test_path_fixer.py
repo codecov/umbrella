@@ -2,16 +2,15 @@ from pathlib import PurePosixPath, PureWindowsPath
 
 from services.path_fixer import PathFixer, invert_pattern
 from shared.yaml import UserYaml
-from test_utils.base import BaseTestCase
 
 
-class TestPathFixerHelpers(BaseTestCase):
+class TestPathFixerHelpers:
     def test_invert_pattern(self):
         assert invert_pattern("aaaa") == "!aaaa"
         assert invert_pattern("!aaaa") == "aaaa"
 
 
-class TestPathFixer(BaseTestCase):
+class TestPathFixer:
     def test_path_fixer_empty(self):
         pf = PathFixer([], [], [])
         assert pf("simple/path/to/something.py") == "simple/path/to/something.py"

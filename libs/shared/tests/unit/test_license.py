@@ -11,7 +11,6 @@ from shared.license import (
     parse_license,
     startup_license_logging,
 )
-from tests.base import BaseTestCase
 
 valid_trial_license_encrypted = "8rz8TfoZ1HDR5P2kpXSOaSvihqbHnJ4DANvDTB/J94tMjovTUUmuIX07W9FwB0UiiAp4j9McdH4JH5cloihjKqwluwC03t22/UA+4SHwxHbi6IhBbYXCEggYcrwtyjcdA4y3yARixGEsNEwDqAzxXLOe95nMetpb1u1Jr8E6CWp/2QSqvIUww8qTkegESk+3CiH3bPrA71pW8w9KYDX65g=="
 invalid_license_encrypted = (
@@ -151,7 +150,7 @@ def test_get_current_license_no_license(mock_configuration):
 
 
 @patch("builtins.print")
-class TestUserGivenSecret(BaseTestCase):
+class TestUserGivenSecret:
     def test_startup_license_logging_valid(self, mock_print, mock_configuration):
         encrypted_license = valid_trial_license_encrypted
         mock_configuration.set_params(

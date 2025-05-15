@@ -1,8 +1,7 @@
 from services.path_fixer.user_path_includes import UserPathIncludes
-from test_utils.base import BaseTestCase
 
 
-class TestUserPathIncludes(BaseTestCase):
+class TestUserPathIncludes:
     def test_user_path_fixes_empty(self):
         path_patterns = []
         upi = UserPathIncludes(path_patterns)

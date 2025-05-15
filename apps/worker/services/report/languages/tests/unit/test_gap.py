@@ -1,5 +1,5 @@
 from services.report.languages import gap
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -15,12 +15,12 @@ RAW = b"""{"Type":"S","File":"lib/error.g","FileId":37}
 """
 
 
-class TestGap(BaseTestCase):
+class TestGap:
     def test_report(self):
         report_builder_session = create_report_builder_session()
         gap.from_string(RAW, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         expected_result_archive = {
             "lib/error.g": [
@@ -38,7 +38,7 @@ class TestGap(BaseTestCase):
         report_builder_session = create_report_builder_session(filename="aaa")
         gap.GapProcessor().process(data, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         expected_result_archive = {}
         assert expected_result_archive == processed_report["archive"]

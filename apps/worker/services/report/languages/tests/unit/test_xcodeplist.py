@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from services.report.languages import xcodeplist
-from test_utils.base import BaseTestCase
 
 from . import create_report_builder_session
 
@@ -34,7 +33,7 @@ sample_small_plist = b"""<?xml version="1.0" encoding="UTF-8"?>
 </plist>"""
 
 
-class TestXCodePlist(BaseTestCase):
+class TestXCodePlist:
     def readfile(self, filename, if_empty_write=None):
         with open(folder / filename) as r:
             contents = r.read()

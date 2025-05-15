@@ -2,7 +2,7 @@ import pytest
 
 from helpers.exceptions import CorruptRawReportError
 from services.report.languages import v1
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -26,7 +26,7 @@ alternative_report_format = {
 }
 
 
-class TestVOne(BaseTestCase):
+class TestVOne:
     def test_report(self):
         def fixes(path):
             assert path in ("source", "file", "empty")
@@ -35,7 +35,7 @@ class TestVOne(BaseTestCase):
         report_builder_session = create_report_builder_session(path_fixer=fixes)
         v1.from_json(json, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         expected_result_archive = {
             "file": [
@@ -60,7 +60,7 @@ class TestVOne(BaseTestCase):
         report_builder_session = create_report_builder_session()
         v1.from_json(alternative_report_format, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         expected_result_archive = {
             "/home/repo/app/scable/channel.rb": [

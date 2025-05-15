@@ -6,7 +6,7 @@ import pytest
 
 from helpers.exceptions import ReportExpiredException
 from services.report.languages import clover
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -68,7 +68,7 @@ xml = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-class TestCloverProcessor(BaseTestCase):
+class TestCloverProcessor:
     def test_report(self):
         def fixes(path):
             if path == "ignore":
@@ -79,7 +79,7 @@ class TestCloverProcessor(BaseTestCase):
         report_builder_session = create_report_builder_session(path_fixer=fixes)
         clover.from_xml(etree.fromstring(xml % int(time())), report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report == {
             "archive": {

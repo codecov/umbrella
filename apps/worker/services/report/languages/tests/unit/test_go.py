@@ -2,8 +2,8 @@ import pytest
 
 from helpers.exceptions import CorruptRawReportError
 from services.report.languages import go
+from shared.reports.test_utils import convert_report_to_better_readable
 from shared.reports.types import ReportTotals
-from test_utils.base import BaseTestCase
 
 from . import create_report_builder_session
 
@@ -115,7 +115,7 @@ path/file.go:291.2,292.63 2 1
 path/file.go:300.2,300.15 1 0"""
 
 
-class TestGo(BaseTestCase):
+class TestGo:
     def test_report(self):
         def fixes(path):
             return None if "ignore" in path else path
@@ -123,7 +123,7 @@ class TestGo(BaseTestCase):
         report_builder_session = create_report_builder_session(path_fixer=fixes)
         go.from_txt(txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         expected_result_archive = {
             "source": [
@@ -147,7 +147,7 @@ class TestGo(BaseTestCase):
         report_builder_session = create_report_builder_session(path_fixer=fixes)
         go.from_txt(huge_txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "path/file.go": [
@@ -376,7 +376,7 @@ class TestGo(BaseTestCase):
         )
         go.from_txt(huge_txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "path/file.go": [

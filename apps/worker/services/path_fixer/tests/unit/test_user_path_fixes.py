@@ -1,8 +1,7 @@
 from services.path_fixer.user_path_fixes import UserPathFixes
-from test_utils.base import BaseTestCase
 
 
-class TestUserPathFixes(BaseTestCase):
+class TestUserPathFixes:
     def test_user_path_fixes_empty(self):
         yaml_fixes = []
         upf = UserPathFixes(yaml_fixes)

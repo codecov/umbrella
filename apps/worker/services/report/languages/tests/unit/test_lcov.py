@@ -1,5 +1,5 @@
 from services.report.languages import lcov
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -118,7 +118,7 @@ end_of_record
 """
 
 
-class TestLcov(BaseTestCase):
+class TestLcov:
     def test_report(self):
         def fixes(path):
             if path == "ignore":
@@ -129,7 +129,7 @@ class TestLcov(BaseTestCase):
         report_builder_session = create_report_builder_session(path_fixer=fixes)
         lcov.from_txt(txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "file.cpp": [
@@ -164,7 +164,7 @@ class TestLcov(BaseTestCase):
         report_builder_session = create_report_builder_session()
         lcov.from_txt(negative_count, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "file.js": [
@@ -181,7 +181,7 @@ class TestLcov(BaseTestCase):
         report_builder_session = create_report_builder_session()
         lcov.from_txt(corrupt_txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "foo.cpp": [
@@ -201,7 +201,7 @@ end_of_record
         report_builder_session = create_report_builder_session()
         lcov.from_txt(text, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "foo.c": [

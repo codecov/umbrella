@@ -6,10 +6,10 @@ import pytest
 
 from shared.reports.editable import EditableReport, EditableReportFile
 from shared.reports.resources import ReportFile, Session
+from shared.reports.test_utils import convert_report_to_better_readable
 from shared.reports.types import LineSession, ReportLine, ReportTotals
 from shared.utils.merge import merge_coverage
 from shared.utils.sessions import SessionType
-from tests.unit.reports.utils import convert_report_to_better_readable
 
 current_file = Path(__file__)
 

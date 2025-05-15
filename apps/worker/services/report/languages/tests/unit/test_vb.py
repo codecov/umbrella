@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as etree
 
 from services.report.languages import vb
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -42,12 +42,12 @@ txt = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-class TestVBOne(BaseTestCase):
+class TestVBOne:
     def test_report(self):
         report_builder_session = create_report_builder_session()
         vb.from_xml(etree.fromstring(txt), report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         expected_result_archive = {
             "Source/Mobius/csharp/Tests.Common/Picklers.cs": [

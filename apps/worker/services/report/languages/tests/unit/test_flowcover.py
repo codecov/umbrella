@@ -1,5 +1,5 @@
 from services.report.languages import flowcover
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -19,12 +19,12 @@ json = {
 }
 
 
-class TestFlowCover(BaseTestCase):
+class TestFlowCover:
     def test_report(self):
         report_builder_session = create_report_builder_session()
         flowcover.from_json(json, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         expected_result_archive = {
             "file.js": [

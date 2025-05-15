@@ -12,10 +12,10 @@ from services.report import NotReadyToBuildReportYetError, ReportService
 from services.report import log as report_log
 from shared.api_archive.archive import ArchiveService
 from shared.reports.resources import Report, ReportFile, Session, SessionType
+from shared.reports.test_utils import convert_report_to_better_readable
 from shared.reports.types import ReportLine, ReportTotals
 from shared.torngit.exceptions import TorngitRateLimitError
 from shared.yaml import UserYaml
-from test_utils.base import BaseTestCase
 
 
 @pytest.fixture
@@ -398,7 +398,7 @@ def sample_commit_with_report_big_already_carriedforward(dbsession, mock_storage
     return commit
 
 
-class TestReportService(BaseTestCase):
+class TestReportService:
     @pytest.mark.django_db(databases={"default", "timeseries"})
     def test_create_new_report_for_commit(
         self,
@@ -453,8 +453,9 @@ class TestReportService(BaseTestCase):
             complexity_total=0,
             diff=0,
         )
-        readable_report = self.convert_report_to_better_readable(report)
-        expected_results = {
+        readable_report = convert_report_to_better_readable(report)
+
+        assert readable_report == {
             "archive": {
                 "file_00.py": [
                     (1, 1, None, [[2, 1]], None, None),
@@ -817,21 +818,6 @@ class TestReportService(BaseTestCase):
                 "s": 2,
             },
         }
-        assert (
-            expected_results["report"]["sessions"]["2"]
-            == readable_report["report"]["sessions"]["2"]
-        )
-        assert (
-            expected_results["report"]["sessions"]["3"]
-            == readable_report["report"]["sessions"]["3"]
-        )
-        assert (
-            expected_results["report"]["sessions"]
-            == readable_report["report"]["sessions"]
-        )
-        assert expected_results["report"]["files"] == readable_report["report"]["files"]
-        assert expected_results["report"] == readable_report["report"]
-        assert expected_results == readable_report
 
     @pytest.mark.django_db(databases={"default", "timeseries"})
     def test_create_new_report_for_commit_with_labels(
@@ -867,8 +853,8 @@ class TestReportService(BaseTestCase):
             complexity_total=0,
             diff=0,
         )
-        readable_report = self.convert_report_to_better_readable(report)
-        expected_results = {
+        readable_report = convert_report_to_better_readable(report)
+        assert readable_report == {
             "archive": {
                 "file_00.py": [
                     (1, 0, None, [[0, 0]], None, None),
@@ -960,9 +946,6 @@ class TestReportService(BaseTestCase):
                 "s": 1,
             },
         }
-        assert expected_results["report"]["files"] == readable_report["report"]["files"]
-        assert expected_results["report"] == readable_report["report"]
-        assert expected_results == readable_report
 
     @pytest.mark.django_db(databases={"default", "timeseries"})
     def test_build_report_from_commit_carriedforward_add_sessions(
@@ -997,8 +980,8 @@ class TestReportService(BaseTestCase):
         assert sorted(report.sessions.keys()) == [2, 3, 4]
         assert clear_carryforward_sessions(report, ["enterprise"], yaml) == {2, 3}
         assert sorted(report.sessions.keys()) == [4]
-        readable_report = self.convert_report_to_better_readable(report)
-        expected_results = {
+        readable_report = convert_report_to_better_readable(report)
+        assert readable_report == {
             "archive": {},
             "report": {
                 "files": {},
@@ -1036,16 +1019,6 @@ class TestReportService(BaseTestCase):
                 "s": 1,
             },
         }
-        assert (
-            readable_report["report"]["sessions"]
-            == expected_results["report"]["sessions"]
-        )
-        assert (
-            readable_report["report"]["sessions"]
-            == expected_results["report"]["sessions"]
-        )
-        assert readable_report["report"] == expected_results["report"]
-        assert readable_report == expected_results
 
     def test_get_existing_report_for_commit_already_carriedforward_add_sessions(
         self, dbsession, sample_commit_with_report_big_already_carriedforward
@@ -1063,7 +1036,7 @@ class TestReportService(BaseTestCase):
         assert sorted(report.sessions.keys()) == [0, 1, 2, 3, 4]
         assert clear_carryforward_sessions(report, {"enterprise"}, yaml) == {2, 3}
         assert sorted(report.sessions.keys()) == [0, 1, 4]
-        readable_report = self.convert_report_to_better_readable(report)
+        readable_report = convert_report_to_better_readable(report)
         expected_sessions_dict = {
             "0": {
                 "N": None,
@@ -1111,10 +1084,8 @@ class TestReportService(BaseTestCase):
                 "u": None,
             },
         }
-        assert readable_report["report"]["sessions"]["0"] == expected_sessions_dict["0"]
-        assert readable_report["report"]["sessions"]["1"] == expected_sessions_dict["1"]
-        assert readable_report["report"]["sessions"]["4"] == expected_sessions_dict["4"]
         assert readable_report["report"]["sessions"] == expected_sessions_dict
+
         newly_added_session = {
             "N": None,
             "a": None,
@@ -1135,7 +1106,7 @@ class TestReportService(BaseTestCase):
         assert sorted(report.sessions.keys()) == [0, 1, 3, 4]
         assert clear_carryforward_sessions(report, {"unit"}, yaml) == set()
         assert sorted(report.sessions.keys()) == [0, 1, 3, 4]
-        new_readable_report = self.convert_report_to_better_readable(report)
+        new_readable_report = convert_report_to_better_readable(report)
         assert len(new_readable_report["report"]["sessions"]) == 4
         assert (
             new_readable_report["report"]["sessions"]["0"]
@@ -1201,7 +1172,7 @@ class TestReportService(BaseTestCase):
             complexity_total=0,
             diff=0,
         )
-        readable_report = self.convert_report_to_better_readable(report)
+        readable_report = convert_report_to_better_readable(report)
 
         assert readable_report == {
             "archive": {
@@ -1413,8 +1384,8 @@ class TestReportService(BaseTestCase):
             complexity_total=0,
             diff=0,
         )
-        readable_report = self.convert_report_to_better_readable(report)
-        expected_results = {
+        readable_report = convert_report_to_better_readable(report)
+        assert readable_report == {
             "archive": {},
             "report": {"files": {}, "sessions": {}},
             "totals": {
@@ -1433,14 +1404,6 @@ class TestReportService(BaseTestCase):
                 "s": 0,
             },
         }
-        assert (
-            expected_results["report"]["sessions"]
-            == readable_report["report"]["sessions"]
-        )
-        assert expected_results["report"]["files"] == readable_report["report"]["files"]
-        assert expected_results["report"] == readable_report["report"]
-        assert expected_results["totals"] == readable_report["totals"]
-        assert expected_results == readable_report
 
     @pytest.mark.django_db(databases={"default", "timeseries"})
     def test_create_new_report_for_commit_no_parent(
@@ -1477,8 +1440,8 @@ class TestReportService(BaseTestCase):
             complexity_total=0,
             diff=0,
         )
-        readable_report = self.convert_report_to_better_readable(report)
-        expected_results = {
+        readable_report = convert_report_to_better_readable(report)
+        assert readable_report == {
             "archive": {},
             "report": {"files": {}, "sessions": {}},
             "totals": {
@@ -1497,14 +1460,6 @@ class TestReportService(BaseTestCase):
                 "s": 0,
             },
         }
-        assert (
-            expected_results["report"]["sessions"]
-            == readable_report["report"]["sessions"]
-        )
-        assert expected_results["report"]["files"] == readable_report["report"]["files"]
-        assert expected_results["report"] == readable_report["report"]
-        assert expected_results["totals"] == readable_report["totals"]
-        assert expected_results == readable_report
 
     @pytest.mark.django_db(databases={"default", "timeseries"})
     def test_create_new_report_for_commit_parent_not_ready(
@@ -1566,7 +1521,7 @@ class TestReportService(BaseTestCase):
             complexity_total=0,
             diff=0,
         )
-        readable_report = self.convert_report_to_better_readable(report)
+        readable_report = convert_report_to_better_readable(report)
         assert readable_report["report"] == {
             "files": {
                 "file_00.py": [
@@ -1752,7 +1707,7 @@ class TestReportService(BaseTestCase):
             complexity_total=0,
             diff=0,
         )
-        readable_report = self.convert_report_to_better_readable(report)
+        readable_report = convert_report_to_better_readable(report)
         expected_results_report = {
             "sessions": {
                 "2": {
@@ -1828,9 +1783,9 @@ class TestReportService(BaseTestCase):
         assert report is not None
         mock_possibly_shift.assert_not_called()
         assert sorted(report.files) == []
-        readable_report = self.convert_report_to_better_readable(report)
-        expected_results_report = {"files": {}, "sessions": {}}
-        assert expected_results_report == readable_report["report"]
+        readable_report = convert_report_to_better_readable(report)
+
+        assert readable_report["report"] == {"files": {}, "sessions": {}}
 
     @pytest.mark.django_db(databases={"default", "timeseries"})
     def test_create_new_report_parent_had_no_parent_and_pending(self, dbsession):
@@ -2448,7 +2403,7 @@ class TestReportService(BaseTestCase):
         result = ReportService({})._possibly_shift_carryforward_report(
             sample_report, parent_commit, commit
         )
-        readable_report = self.convert_report_to_better_readable(result)
+        readable_report = convert_report_to_better_readable(result)
         assert readable_report["archive"] == {
             "file_1.go": [
                 (1, 1, None, [[0, 1]], None, (10, 2)),
@@ -2538,7 +2493,7 @@ class TestReportService(BaseTestCase):
 
         result = ReportService(UserYaml(yaml_dict)).create_new_report_for_commit(commit)
         assert mock_get_report.call_count == 1
-        readable_report = self.convert_report_to_better_readable(result)
+        readable_report = convert_report_to_better_readable(result)
         assert readable_report["archive"] == {
             "file_1.go": [
                 (1, 1, None, [[0, 1]], None, (10, 2)),

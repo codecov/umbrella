@@ -5,7 +5,7 @@ from lxml import etree
 
 from helpers.exceptions import ReportExpiredException
 from services.report.languages import bullseye
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -127,7 +127,7 @@ expected_result = {
 }
 
 
-class TestBullseye(BaseTestCase):
+class TestBullseye:
     def test_report(self):
         def fixes(path):
             if path == "ignore":
@@ -145,7 +145,7 @@ class TestBullseye(BaseTestCase):
             etree.fromstring((xml % date).encode(), None), report_builder_session
         )
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
         assert processed_report == expected_result
 
     @pytest.mark.parametrize(

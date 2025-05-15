@@ -1,7 +1,7 @@
 from json import loads
 
 from services.report.languages import simplecov
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -47,7 +47,7 @@ txt_v18 = """
 """
 
 
-class TestSimplecovProcessor(BaseTestCase):
+class TestSimplecovProcessor:
     def test_parse_simplecov(self):
         def fixes(path):
             assert path == "controllers/tests_controller.rb"
@@ -64,13 +64,13 @@ class TestSimplecovProcessor(BaseTestCase):
         report_builder_session = create_report_builder_session(path_fixer=fixes)
         simplecov.from_json(loads(txt_v17), report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert expected_result_archive == processed_report["archive"]
 
         simplecov.from_json(loads(txt_v18), report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert expected_result_archive == processed_report["archive"]
 
@@ -91,6 +91,6 @@ class TestSimplecovProcessor(BaseTestCase):
         processor = simplecov.SimplecovProcessor()
         processor.process(loads(txt_v17), report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert expected_result_archive == processed_report["archive"]
