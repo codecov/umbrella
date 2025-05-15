@@ -10,10 +10,6 @@ from rest_framework.test import APIClient as DjangoAPIClient
 from codecov_auth.models import Owner
 
 
-class BaseTestCase:
-    pass
-
-
 class ClientMixin:
     def force_login_owner(self, owner: Owner) -> None:
         self.force_login(user=owner.user)

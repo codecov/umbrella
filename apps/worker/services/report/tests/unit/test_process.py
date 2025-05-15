@@ -18,10 +18,9 @@ from shared.reports.resources import Report
 from shared.reports.types import LineSession, ReportLine, ReportTotals
 from shared.utils.sessions import Session
 from shared.yaml import UserYaml
-from test_utils.base import BaseTestCase
 
 
-class TestProcessRawUpload(BaseTestCase):
+class TestProcessRawUpload:
     @pytest.mark.parametrize("keys", ["nm", "n", "m", "nme", "ne", "M"])
     def test_process_raw_upload(self, keys):
         report = []
@@ -212,7 +211,7 @@ class TestProcessRawUpload(BaseTestCase):
             process.process_raw_upload(None, parsed_report, Session())
 
 
-class TestProcessRawUploadFixed(BaseTestCase):
+class TestProcessRawUploadFixed:
     def test_fixes(self):
         report_lines = [
             "# path=coverage.info",
@@ -235,7 +234,7 @@ class TestProcessRawUploadFixed(BaseTestCase):
         assert 9 not in report["file.go"], "9 should have been removed"
 
 
-class TestProcessRawUploadFlags(BaseTestCase):
+class TestProcessRawUploadFlags:
     @pytest.mark.parametrize(
         "flag",
         [{"paths": ["!tests/.*"]}, {"ignore": ["tests/.*"]}, {"paths": ["folder/"]}],
@@ -254,7 +253,7 @@ class TestProcessRawUploadFlags(BaseTestCase):
         assert master.sessions[0].flags == ["docker"]
 
 
-class TestProcessReport(BaseTestCase):
+class TestProcessReport:
     @pytest.mark.parametrize("report", [b"<idk>", b"<?xml", b""])
     def test_emptys(self, report):
         res = process.process_report(

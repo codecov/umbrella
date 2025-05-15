@@ -7,7 +7,6 @@ import pytest
 
 from services.report import legacy_totals
 from services.report.languages import node
-from test_utils.base import BaseTestCase
 
 from . import create_report_builder_session
 
@@ -33,7 +32,7 @@ class OwnEncoder(JSONEncoder):
         return super().default(o)
 
 
-class TestNodeProcessor(BaseTestCase):
+class TestNodeProcessor:
     def readjson(self, filename):
         with open(folder / filename) as d:
             contents = loads(d.read())
@@ -124,31 +123,11 @@ class TestNodeProcessor(BaseTestCase):
         [
             (
                 "inline",
-                {
-                    "file.js": {
-                        "728": [
-                            8,
-                            None,
-                            [[0, 8, None, None, None]],
-                            None,
-                            None,
-                        ]
-                    }
-                },
+                {"file.js": {"728": [8, None, [[0, 8, None, None, None]], None]}},
             ),
             (
                 "ifbinary",
-                {
-                    "file.js": {
-                        "731": [
-                            8,
-                            None,
-                            [[0, 8, None, None, None]],
-                            None,
-                            None,
-                        ]
-                    }
-                },
+                {"file.js": {"731": [8, None, [[0, 8, None, None, None]], None]}},
             ),
         ],
     )
@@ -172,31 +151,11 @@ class TestNodeProcessor(BaseTestCase):
         [
             (
                 "inline",
-                {
-                    "file.js": {
-                        "728": [
-                            8,
-                            "b",
-                            [[0, 8, None, None, None]],
-                            None,
-                            None,
-                        ]
-                    }
-                },
+                {"file.js": {"728": [8, "b", [[0, 8, None, None, None]], None]}},
             ),
             (
                 "ifbinary",
-                {
-                    "file.js": {
-                        "731": [
-                            8,
-                            "b",
-                            [[0, 8, None, None, None]],
-                            None,
-                            None,
-                        ]
-                    }
-                },
+                {"file.js": {"731": [8, "b", [[0, 8, None, None, None]], None]}},
             ),
         ],
     )

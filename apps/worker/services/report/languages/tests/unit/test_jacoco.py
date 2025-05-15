@@ -8,7 +8,7 @@ from pytest import LogCaptureFixture
 
 from helpers.exceptions import ReportExpiredException
 from services.report.languages import jacoco
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -54,7 +54,7 @@ xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 """
 
 
-class TestJacoco(BaseTestCase):
+class TestJacoco:
     @pytest.fixture(autouse=True)
     def inject_fixtures(self, caplog: LogCaptureFixture):
         self.caplog = caplog
@@ -77,15 +77,15 @@ class TestJacoco(BaseTestCase):
             )
 
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         expected_result_archive = {
-            "base/file.java": [(1, 1, None, [[0, 1, None, None, None]], None, None)],
+            "base/file.java": [(1, 1, None, [[0, 1]], None, None)],
             "base/source.java": [
                 (1, "2/2", "m", [[0, "2/2", None, None, (1, 4)]], None, (1, 4)),
                 (2, "1/2", "m", [[0, "1/2", None, None, (1, 4)]], None, (1, 4)),
-                (3, 0, None, [[0, 0, None, None, None]], None, None),
-                (4, 2, None, [[0, 2, None, None, None]], None, None),
+                (3, 0, None, [[0, 0]], None, None),
+                (4, 2, None, [[0, 2]], None, None),
             ],
         }
 
@@ -104,15 +104,15 @@ class TestJacoco(BaseTestCase):
         )
         jacoco.from_xml(etree.fromstring(xml % int(time())), report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         expected_result_archive = {
-            "base/file.java": [(1, 1, None, [[0, 1, None, None, None]], None, None)],
+            "base/file.java": [(1, 1, None, [[0, 1]], None, None)],
             "base/source.java": [
                 (1, "2/2", "m", [[0, "2/2", None, None, (1, 4)]], None, (1, 4)),
                 (2, 1, "m", [[0, 1, None, None, (1, 4)]], None, (1, 4)),
-                (3, 0, None, [[0, 0, None, None, None]], None, None),
-                (4, 2, None, [[0, 2, None, None, None]], None, None),
+                (3, 0, None, [[0, 0]], None, None),
+                (4, 2, None, [[0, 2]], None, None),
             ],
         }
 
@@ -142,7 +142,7 @@ class TestJacoco(BaseTestCase):
         report_builder_session = create_report_builder_session(path_fixer=fixes)
         jacoco.from_xml(etree.fromstring(data), report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert [path] == list(processed_report["archive"].keys())
 

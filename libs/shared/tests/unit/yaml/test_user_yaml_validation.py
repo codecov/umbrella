@@ -1,7 +1,6 @@
 from base64 import b64encode
 
 from shared.yaml.validation import UserGivenSecret, validate_yaml
-from tests.base import BaseTestCase
 
 
 def test_show_secret_case():
@@ -39,7 +38,7 @@ def test_show_secret_case():
     assert result == expected_result
 
 
-class TestUserGivenSecret(BaseTestCase):
+class TestUserGivenSecret:
     def test_simple_user_given_secret(self):
         value = "github/11934774/154468867/https://hooks.slack.com/services/first_key/BE7FWCVHV/dkbfscprianc7wrb"
         encoded_value = UserGivenSecret.encode(value)

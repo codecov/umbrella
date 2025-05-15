@@ -1,5 +1,5 @@
 from services.report.languages import scala
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -34,7 +34,7 @@ json = {
 }
 
 
-class TestScala(BaseTestCase):
+class TestScala:
     def test_report(self):
         def fixes(path):
             if path == "ignore":
@@ -45,24 +45,24 @@ class TestScala(BaseTestCase):
         report_builder_session = create_report_builder_session(path_fixer=fixes)
         scala.from_json(json, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         expected_result_archive = {
             "f1": [
-                (16, 0, None, [[0, 0, None, None, None]], None, None),
-                (18, 1, None, [[0, 1, None, None, None]], None, None),
-                (19, 1, None, [[0, 1, None, None, None]], None, None),
-                (25, 1, None, [[0, 1, None, None, None]], None, None),
-                (26, 0, None, [[0, 0, None, None, None]], None, None),
-                (32, 0, None, [[0, 0, None, None, None]], None, None),
-                (34, 1, None, [[0, 1, None, None, None]], None, None),
-                (36, 1, None, [[0, 1, None, None, None]], None, None),
+                (16, 0, None, [[0, 0]], None, None),
+                (18, 1, None, [[0, 1]], None, None),
+                (19, 1, None, [[0, 1]], None, None),
+                (25, 1, None, [[0, 1]], None, None),
+                (26, 0, None, [[0, 0]], None, None),
+                (32, 0, None, [[0, 0]], None, None),
+                (34, 1, None, [[0, 1]], None, None),
+                (36, 1, None, [[0, 1]], None, None),
             ],
             "f2": [
-                (23, 1, None, [[0, 1, None, None, None]], None, None),
-                (24, 1, None, [[0, 1, None, None, None]], None, None),
-                (25, 0, None, [[0, 0, None, None, None]], None, None),
-                (28, 1, None, [[0, 1, None, None, None]], None, None),
+                (23, 1, None, [[0, 1]], None, None),
+                (24, 1, None, [[0, 1]], None, None),
+                (25, 0, None, [[0, 0]], None, None),
+                (28, 1, None, [[0, 1]], None, None),
             ],
         }
 

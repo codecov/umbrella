@@ -5,7 +5,7 @@ from lxml import etree
 
 from helpers.exceptions import ReportExpiredException
 from services.report.languages import bullseye
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -67,23 +67,23 @@ xml = """<?xml version="1.0" encoding="UTF-8"?>
 expected_result = {
     "archive": {
         "calc/CalcCore.cpp": [
-            (11, 1, "m", [[0, 1, None, None, None]], None, None),
-            (40, "1/2", "m", [[0, "1/2", None, None, None]], None, None),
-            (47, 1, "m", [[0, 1, None, None, None]], None, None),
-            (49, 1, "b", [[0, 1, None, None, None]], None, None),
-            (57, 1, "m", [[0, 1, None, None, None]], None, None),
-            (60, 0, "b", [[0, 0, None, None, None]], None, None),
-            (63, 0, "b", [[0, 0, None, None, None]], None, None),
-            (66, 1, "b", [[0, 1, None, None, None]], None, None),
-            (69, 1, "b", [[0, 1, None, None, None]], None, None),
-            (70, 1, "b", [[0, 1, None, None, None]], None, None),
+            (11, 1, "m", [[0, 1]], None, None),
+            (40, "1/2", "m", [[0, "1/2"]], None, None),
+            (47, 1, "m", [[0, 1]], None, None),
+            (49, 1, "b", [[0, 1]], None, None),
+            (57, 1, "m", [[0, 1]], None, None),
+            (60, 0, "b", [[0, 0]], None, None),
+            (63, 0, "b", [[0, 0]], None, None),
+            (66, 1, "b", [[0, 1]], None, None),
+            (69, 1, "b", [[0, 1]], None, None),
+            (70, 1, "b", [[0, 1]], None, None),
         ],
-        "calc/CalcCore.h": [(15, 1, "m", [[0, 1, None, None, None]], None, None)],
+        "calc/CalcCore.h": [(15, 1, "m", [[0, 1]], None, None)],
         "calc/Calculator.cpp": [
-            (100, 1, "m", [[0, 1, None, None, None]], None, None),
-            (122, 1, "b", [[0, 1, None, None, None]], None, None),
-            (125, 1, None, [[0, 1, None, None, None]], None, None),
-            (126, 0, None, [[0, 0, None, None, None]], None, None),
+            (100, 1, "m", [[0, 1]], None, None),
+            (122, 1, "b", [[0, 1]], None, None),
+            (125, 1, None, [[0, 1]], None, None),
+            (126, 0, None, [[0, 0]], None, None),
         ],
     },
     "report": {
@@ -127,7 +127,7 @@ expected_result = {
 }
 
 
-class TestBullseye(BaseTestCase):
+class TestBullseye:
     def test_report(self):
         def fixes(path):
             if path == "ignore":
@@ -145,7 +145,7 @@ class TestBullseye(BaseTestCase):
             etree.fromstring((xml % date).encode(), None), report_builder_session
         )
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
         assert processed_report == expected_result
 
     @pytest.mark.parametrize(

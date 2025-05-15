@@ -1,5 +1,5 @@
 from services.report.languages import xcode
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -26,7 +26,7 @@ txt = b"""/source:
 """
 
 
-class TestXCode2(BaseTestCase):
+class TestXcode2:
     def test_report(self):
         def fixes(path):
             if path == "ignore":
@@ -37,16 +37,16 @@ class TestXCode2(BaseTestCase):
         report_builder_session = create_report_builder_session(path_fixer=fixes)
         xcode.from_txt(txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         expected_result_archive = {
             "file": [
-                (2, 1000, None, [[0, 1000, None, None, None]], None, None),
-                (3, 99999, None, [[0, 99999, None, None, None]], None, None),
+                (2, 1000, None, [[0, 1000]], None, None),
+                (3, 99999, None, [[0, 99999]], None, None),
             ],
             "source": [
-                (2, 1, None, [[0, 1, None, None, None]], None, None),
-                (3, 0, None, [[0, 0, None, None, None]], None, None),
+                (2, 1, None, [[0, 1]], None, None),
+                (3, 0, None, [[0, 0]], None, None),
             ],
         }
 
@@ -59,7 +59,7 @@ class TestXCode2(BaseTestCase):
             report_builder_session,
         )
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert "totally_empty" not in processed_report["archive"]
         assert "file" in processed_report["archive"]

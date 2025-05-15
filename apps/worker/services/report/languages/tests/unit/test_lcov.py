@@ -1,5 +1,5 @@
 from services.report.languages import lcov
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -118,7 +118,7 @@ end_of_record
 """
 
 
-class TestLcov(BaseTestCase):
+class TestLcov:
     def test_report(self):
         def fixes(path):
             if path == "ignore":
@@ -129,13 +129,13 @@ class TestLcov(BaseTestCase):
         report_builder_session = create_report_builder_session(path_fixer=fixes)
         lcov.from_txt(txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "file.cpp": [
-                (1, 1, None, [[0, 1, None, None, None]], None, None),
+                (1, 1, None, [[0, 1]], None, None),
                 (2, "1/3", "m", [[0, "1/3", ["1:1", "1:3"], None, None]], None, None),
-                (5, "2/2", "b", [[0, "2/2", None, None, None]], None, None),
+                (5, "2/2", "b", [[0, "2/2"]], None, None),
                 (
                     77,
                     "0/4",
@@ -144,20 +144,13 @@ class TestLcov(BaseTestCase):
                     None,
                     None,
                 ),
-                (
-                    78,
-                    1,
-                    None,
-                    [[0, 1, None, None, None]],
-                    None,
-                    None,
-                ),
+                (78, 1, None, [[0, 1]], None, None),
             ],
             "file.js": [
-                (1, 1, None, [[0, 1, None, None, None]], None, None),
-                (2, 1, None, [[0, 1, None, None, None]], None, None),
+                (1, 1, None, [[0, 1]], None, None),
+                (2, 1, None, [[0, 1]], None, None),
             ],
-            "file.ts": [(2, 1, None, [[0, 1, None, None, None]], None, None)],
+            "file.ts": [(2, 1, None, [[0, 1]], None, None)],
         }
 
     def test_detect(self):
@@ -171,16 +164,16 @@ class TestLcov(BaseTestCase):
         report_builder_session = create_report_builder_session()
         lcov.from_txt(negative_count, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "file.js": [
-                (1, 1, None, [[0, 1, None, None, None]], None, None),
-                (2, 2, None, [[0, 2, None, None, None]], None, None),
-                (3, 0, None, [[0, 0, None, None, None]], None, None),
-                (4, 0, None, [[0, 0, None, None, None]], None, None),
-                (5, 0, None, [[0, 0, None, None, None]], None, None),
-                (6, 0, None, [[0, 0, None, None, None]], None, None),
+                (1, 1, None, [[0, 1]], None, None),
+                (2, 2, None, [[0, 2]], None, None),
+                (3, 0, None, [[0, 0]], None, None),
+                (4, 0, None, [[0, 0]], None, None),
+                (5, 0, None, [[0, 0]], None, None),
+                (6, 0, None, [[0, 0]], None, None),
             ]
         }
 
@@ -188,11 +181,11 @@ class TestLcov(BaseTestCase):
         report_builder_session = create_report_builder_session()
         lcov.from_txt(corrupt_txt, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "foo.cpp": [
-                (1, 1, None, [[0, 1, None, None, None]], None, None),
+                (1, 1, None, [[0, 1]], None, None),
             ]
         }
 
@@ -208,7 +201,7 @@ end_of_record
         report_builder_session = create_report_builder_session()
         lcov.from_txt(text, report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report["archive"] == {
             "foo.c": [

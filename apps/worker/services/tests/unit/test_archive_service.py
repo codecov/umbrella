@@ -3,10 +3,9 @@ import json
 from database.tests.factories import RepositoryFactory
 from shared.api_archive.archive import ArchiveService
 from shared.storage.memory import MemoryStorageService
-from test_utils.base import BaseTestCase
 
 
-class TestArchiveService(BaseTestCase):
+class TestArchiveService:
     def test_read_file_hard_to_decode(self, mocker, mock_storage):
         mock_read_file = mocker.patch.object(MemoryStorageService, "read_file")
         mock_read_file.return_value = b"\x80abc"
@@ -18,7 +17,7 @@ class TestArchiveService(BaseTestCase):
         assert expected_result == result
 
 
-class TestWriteJsonData(BaseTestCase):
+class TestWriteJsonData:
     def test_write_report_details_to_storage(self, mocker, dbsession, mock_storage):
         repo = RepositoryFactory()
         dbsession.add(repo)

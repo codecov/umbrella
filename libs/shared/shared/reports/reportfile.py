@@ -279,7 +279,7 @@ class ReportFile:
         self._invalidate_caches()
         return True
 
-    def merge(self, other_file, joined=True):
+    def merge(self, other_file, joined=True, is_disjoint=False):
         """merges another report chunk
         returning the <dict totals>
         It's quicker to run the totals during processing
@@ -322,7 +322,7 @@ class ReportFile:
         else:
             # set new lines object
             self._parsed_lines = [
-                merge_line(before, after, joined)
+                merge_line(before, after, joined, is_disjoint)
                 for before, after in zip_longest(self, other_file)
             ]
             self._raw_lines = None

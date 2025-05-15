@@ -158,9 +158,14 @@ def merge_missed_branches(sessions: list[LineSession]) -> list | None:
     return list(missed_branches) if missed_branches is not None else None
 
 
-def merge_line(l1, l2, joined=True):
+def merge_line(l1, l2, joined=True, is_disjoint=False):
     if not l1 or not l2:
         return l1 or l2
+
+    if joined and is_disjoint:
+        sessions = list(l1.sessions or [])
+        sessions.extend(l2.sessions or [])
+        return ReportLine.create(type=l1.type or l2.type, sessions=sessions)
 
     # merge sessions
     sessions = _merge_sessions(list(l1.sessions or []), list(l2.sessions or []))
@@ -170,12 +175,7 @@ def merge_line(l1, l2, joined=True):
         coverage=get_coverage_from_sessions(sessions) if joined else l1.coverage,
         complexity=get_complexity_from_sessions(sessions) if joined else l1.complexity,
         sessions=sessions,
-        messages=merge_messages(l1.messages, l2.messages),
     )
-
-
-def merge_messages(m1, m2):
-    pass
 
 
 def merge_line_session(s1, s2):
@@ -319,18 +319,18 @@ def partials_to_line(partials):
     ln = len(partials)
     if ln == 1:
         return partials[0][2]
-    v = sum([1 for (sc, ec, hits) in partials if hits > 0])
+    v = sum(1 for (sc, ec, hits) in partials if hits > 0)
     return f"{v}/{ln}"
 
 
 def get_complexity_from_sessions(sessions):
     _type = type(sessions[0].complexity)
     if _type is int:
-        return max([(s.complexity or 0) for s in sessions])
+        return max((s.complexity or 0) for s in sessions)
     elif _type in (tuple, list):
         return (
-            max([(s.complexity or (0, 0))[0] for s in sessions]),
-            max([(s.complexity or (0, 0))[1] for s in sessions]),
+            max((s.complexity or (0, 0))[0] for s in sessions),
+            max((s.complexity or (0, 0))[1] for s in sessions),
         )
 
 

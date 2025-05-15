@@ -5,12 +5,11 @@ import pytest
 from services.yaml.parser import parse_yaml_file
 from shared.validation.exceptions import InvalidYamlException
 from shared.validation.types import CoverageCommentRequiredChanges
-from test_utils.base import BaseTestCase
 
 here = Path(__file__)
 
 
-class TestYamlSavingService(BaseTestCase):
+class TestYamlSavingService:
     def test_parse_empty_yaml(self):
         contents = ""
         res = parse_yaml_file(contents, show_secrets_for=("github", 123, 456))
@@ -25,7 +24,7 @@ class TestYamlSavingService(BaseTestCase):
         with open(here.parent / "samples" / "sample_yaml_1.yaml") as f:
             contents = f.read()
         res = parse_yaml_file(contents, show_secrets_for=("github", 123, 456))
-        expected_result = {
+        assert res == {
             "coverage": {
                 "precision": 2,
                 "round": "down",
@@ -51,7 +50,6 @@ class TestYamlSavingService(BaseTestCase):
                 }
             },
         }
-        assert res == expected_result
 
     def test_parse_big_yaml_file(self):
         with open(here.parent / "samples" / "big.yaml") as f:
@@ -59,7 +57,7 @@ class TestYamlSavingService(BaseTestCase):
         res = parse_yaml_file(
             contents, show_secrets_for=("github", 44376991, 156617777)
         )
-        expected_result = {
+        assert res == {
             "comment": {
                 "branches": [".*"],
                 "layout": "diff, flags, reach",
@@ -193,19 +191,3 @@ class TestYamlSavingService(BaseTestCase):
             },
             "fixes": ["^old_path::new_path"],
         }
-        assert sorted(res.get("comment").items()) == sorted(
-            expected_result.get("comment").items()
-        )
-        assert sorted(res.get("ignore")) == sorted(expected_result.get("ignore"))
-        assert sorted(res.get("flags").items()) == sorted(
-            expected_result.get("flags").items()
-        )
-        assert sorted(res.get("codecov").items()) == sorted(
-            expected_result.get("codecov").items()
-        )
-        assert sorted(res.get("coverage").items()) == sorted(
-            expected_result.get("coverage").items()
-        )
-        assert sorted(res.get("fixes")) == sorted(expected_result.get("fixes"))
-        assert sorted(res.items()) == sorted(expected_result.items())
-        assert res == expected_result

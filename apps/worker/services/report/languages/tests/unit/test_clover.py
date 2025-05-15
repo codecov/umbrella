@@ -6,7 +6,7 @@ import pytest
 
 from helpers.exceptions import ReportExpiredException
 from services.report.languages import clover
-from test_utils.base import BaseTestCase
+from shared.reports.test_utils import convert_report_to_better_readable
 
 from . import create_report_builder_session
 
@@ -68,7 +68,7 @@ xml = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-class TestCloverProcessor(BaseTestCase):
+class TestCloverProcessor:
     def test_report(self):
         def fixes(path):
             if path == "ignore":
@@ -79,23 +79,23 @@ class TestCloverProcessor(BaseTestCase):
         report_builder_session = create_report_builder_session(path_fixer=fixes)
         clover.from_xml(etree.fromstring(xml % int(time())), report_builder_session)
         report = report_builder_session.output_report()
-        processed_report = self.convert_report_to_better_readable(report)
+        processed_report = convert_report_to_better_readable(report)
 
         assert processed_report == {
             "archive": {
-                "file.php": [(11, 1, None, [[0, 1, None, None, None]], None, None)],
+                "file.php": [(11, 1, None, [[0, 1]], None, None)],
                 "source.php": [
-                    (1, "1/2", "b", [[0, "1/2", None, None, None]], None, None),
-                    (2, "1/2", "b", [[0, "1/2", None, None, None]], None, None),
-                    (3, "2/2", "b", [[0, "2/2", None, None, None]], None, None),
-                    (4, "0/2", "b", [[0, "0/2", None, None, None]], None, None),
+                    (1, "1/2", "b", [[0, "1/2"]], None, None),
+                    (2, "1/2", "b", [[0, "1/2"]], None, None),
+                    (3, "2/2", "b", [[0, "2/2"]], None, None),
+                    (4, "0/2", "b", [[0, "0/2"]], None, None),
                     (5, 1, "m", [[0, 1, None, None, 0]], None, 0),
                     (6, 2969, "m", [[0, 2969, None, None, 9]], None, 9),
-                    (8, 0, None, [[0, 0, None, None, None]], None, None),
-                    (11, 1, None, [[0, 1, None, None, None]], None, None),
-                    (21, 0, None, [[0, 0, None, None, None]], None, None),
-                    (22, 0, None, [[0, 0, None, None, None]], None, None),
-                    (23, 0, None, [[0, 0, None, None, None]], None, None),
+                    (8, 0, None, [[0, 0]], None, None),
+                    (11, 1, None, [[0, 1]], None, None),
+                    (21, 0, None, [[0, 0]], None, None),
+                    (22, 0, None, [[0, 0]], None, None),
+                    (23, 0, None, [[0, 0]], None, None),
                 ],
             },
             "report": {

@@ -3,7 +3,6 @@ import os
 import pytest
 
 from services.path_fixer import fixpaths
-from test_utils.base import BaseTestCase
 
 # Hand-written TOCs.
 paths = [
@@ -24,7 +23,7 @@ unquoted_files = {
 }
 
 
-class TestFixpaths(BaseTestCase):
+class TestFixpaths:
     @pytest.mark.parametrize("toc, result", paths)
     def test_clean_toc(self, toc, result):
         assert fixpaths.clean_toc(toc) == result

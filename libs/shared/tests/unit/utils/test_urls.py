@@ -3,10 +3,9 @@
 import pytest
 
 from shared.utils.urls import escape, make_url, url_concat
-from tests.base import BaseTestCase
 
 
-class TestUrlsUtil(BaseTestCase):
+class TestUrlsUtil:
     @pytest.mark.parametrize(
         "string, result",
         [

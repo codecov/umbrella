@@ -5,8 +5,8 @@ from shared.reports.carryforward import (
     generate_carryforward_report,
 )
 from shared.reports.resources import Report, ReportFile, Session
+from shared.reports.test_utils import convert_report_to_better_readable
 from shared.reports.types import LineSession, ReportLine
-from tests.unit.reports.utils import convert_report_to_better_readable
 
 
 @pytest.fixture
@@ -67,18 +67,19 @@ class TestCarryfowardFlag:
         res = generate_carryforward_report(sample_report, flags=["simple"], paths=None)
         assert res.files == ["file_1.go", "file_2.py"]
         readable_report = convert_report_to_better_readable(res)
-        expected_result = {
+
+        assert readable_report == {
             "archive": {
                 "file_1.go": [
-                    (1, 1, None, [[0, 1, None, None, None]], None, None),
-                    (2, 0, None, [[0, 0, None, None, None]], None, None),
-                    (3, 1, None, [[0, 1, None, None, None]], None, None),
-                    (5, 0, None, [[0, 0, None, None, None]], None, None),
-                    (6, "1/2", None, [[0, "1/2", None, None, None]], None, None),
+                    (1, 1, None, [[0, 1]], None, None),
+                    (2, 0, None, [[0, 0]], None, None),
+                    (3, 1, None, [[0, 1]], None, None),
+                    (5, 0, None, [[0, 0]], None, None),
+                    (6, "1/2", None, [[0, "1/2"]], None, None),
                 ],
                 "file_2.py": [
-                    (12, 1, None, [[0, 1, None, None, None]], None, None),
-                    (51, "1/2", "b", [[0, "1/2", None, None, None]], None, None),
+                    (12, 1, None, [[0, 1]], None, None),
+                    (51, "1/2", "b", [[0, "1/2"]], None, None),
                 ],
             },
             "report": {
@@ -130,27 +131,6 @@ class TestCarryfowardFlag:
                 "s": 1,
             },
         }
-        assert (
-            readable_report["archive"]["file_2.py"]
-            == expected_result["archive"]["file_2.py"]
-        )
-        assert readable_report["archive"] == expected_result["archive"]
-        assert (
-            readable_report["report"]["sessions"]
-            == expected_result["report"]["sessions"]
-        )
-        assert (
-            readable_report["report"]["files"]["file_2.py"]
-            == expected_result["report"]["files"]["file_2.py"]
-        )
-        assert (
-            readable_report["report"]["files"]["file_1.go"]
-            == expected_result["report"]["files"]["file_1.go"]
-        )
-        assert readable_report["report"]["files"] == expected_result["report"]["files"]
-        assert readable_report["report"] == expected_result["report"]
-        assert readable_report["totals"] == expected_result["totals"]
-        assert readable_report == expected_result
 
     def test_generate_carryforward_report_with_paths(self, sample_report):
         res = generate_carryforward_report(
@@ -158,14 +138,15 @@ class TestCarryfowardFlag:
         )
         assert res.files == ["file_1.go"]
         readable_report = convert_report_to_better_readable(res)
-        expected_result = {
+
+        assert readable_report == {
             "archive": {
                 "file_1.go": [
-                    (1, 1, None, [[0, 1, None, None, None]], None, None),
-                    (2, 0, None, [[0, 0, None, None, None]], None, None),
-                    (3, 1, None, [[0, 1, None, None, None]], None, None),
-                    (5, 0, None, [[0, 0, None, None, None]], None, None),
-                    (6, "1/2", None, [[0, "1/2", None, None, None]], None, None),
+                    (1, 1, None, [[0, 1]], None, None),
+                    (2, 0, None, [[0, 0]], None, None),
+                    (3, 1, None, [[0, 1]], None, None),
+                    (5, 0, None, [[0, 0]], None, None),
+                    (6, "1/2", None, [[0, "1/2"]], None, None),
                 ]
             },
             "report": {
@@ -211,14 +192,6 @@ class TestCarryfowardFlag:
                 "s": 1,
             },
         }
-        assert readable_report["archive"] == expected_result["archive"]
-        assert (
-            readable_report["report"]["sessions"]
-            == expected_result["report"]["sessions"]
-        )
-        assert readable_report["report"] == expected_result["report"]
-        assert readable_report["totals"] == expected_result["totals"]
-        assert readable_report == expected_result
 
     def test_generate_carryforward_report_with_path_none_matches(self, sample_report):
         res = generate_carryforward_report(
@@ -226,7 +199,7 @@ class TestCarryfowardFlag:
         )
         assert res.files == []
         readable_report = convert_report_to_better_readable(res)
-        expected_result = {
+        assert readable_report == {
             "archive": {},
             "report": {
                 "files": {},
@@ -264,14 +237,6 @@ class TestCarryfowardFlag:
                 "s": 1,
             },
         }
-        assert readable_report["archive"] == expected_result["archive"]
-        assert (
-            readable_report["report"]["sessions"]
-            == expected_result["report"]["sessions"]
-        )
-        assert readable_report["report"] == expected_result["report"]
-        assert readable_report["totals"] == expected_result["totals"]
-        assert readable_report == expected_result
 
     def test_generate_carryforward_report_with_path_two_patterns(self, sample_report):
         res = generate_carryforward_report(
@@ -282,8 +247,8 @@ class TestCarryfowardFlag:
         assert readable_report == {
             "archive": {
                 "file_2.py": [
-                    (12, 1, None, [[0, 1, None, None, None]], None, None),
-                    (51, "1/2", "b", [[0, "1/2", None, None, None]], None, None),
+                    (12, 1, None, [[0, 1]], None, None),
+                    (51, "1/2", "b", [[0, "1/2"]], None, None),
                 ]
             },
             "report": {
@@ -335,14 +300,14 @@ class TestCarryfowardFlag:
         assert res.files == ["file_1.go"]
         readable_report = convert_report_to_better_readable(res)
 
-        expected_result = {
+        assert readable_report == {
             "archive": {
                 "file_1.go": [
-                    (1, 1, None, [[1, 1, None, None, None]], None, None),
-                    (2, 1, None, [[1, 1, None, None, None]], None, None),
-                    (3, 0, None, [[1, 0, None, None, None]], None, None),
-                    (5, 0, None, [[1, 0, None, None, None]], None, None),
-                    (6, 0, None, [[1, 0, None, None, None]], None, None),
+                    (1, 1, None, [[1, 1]], None, None),
+                    (2, 1, None, [[1, 1]], None, None),
+                    (3, 0, None, [[1, 0]], None, None),
+                    (5, 0, None, [[1, 0]], None, None),
+                    (6, 0, None, [[1, 0]], None, None),
                 ]
             },
             "report": {
@@ -388,14 +353,6 @@ class TestCarryfowardFlag:
                 "s": 1,
             },
         }
-        assert (
-            readable_report["archive"]["file_1.go"]
-            == expected_result["archive"]["file_1.go"]
-        )
-        assert readable_report["archive"] == expected_result["archive"]
-        assert readable_report["report"] == expected_result["report"]
-        assert readable_report["totals"] == expected_result["totals"]
-        assert readable_report == expected_result
 
     def test_generate_carryforward_report_session_extras(self, sample_report):
         res = generate_carryforward_report(
@@ -407,14 +364,14 @@ class TestCarryfowardFlag:
         assert res.files == ["file_1.go"]
         readable_report = convert_report_to_better_readable(res)
 
-        expected_result = {
+        assert readable_report == {
             "archive": {
                 "file_1.go": [
-                    (1, 1, None, [[1, 1, None, None, None]], None, None),
-                    (2, 1, None, [[1, 1, None, None, None]], None, None),
-                    (3, 0, None, [[1, 0, None, None, None]], None, None),
-                    (5, 0, None, [[1, 0, None, None, None]], None, None),
-                    (6, 0, None, [[1, 0, None, None, None]], None, None),
+                    (1, 1, None, [[1, 1]], None, None),
+                    (2, 1, None, [[1, 1]], None, None),
+                    (3, 0, None, [[1, 0]], None, None),
+                    (5, 0, None, [[1, 0]], None, None),
+                    (6, 0, None, [[1, 0]], None, None),
                 ]
             },
             "report": {
@@ -462,10 +419,6 @@ class TestCarryfowardFlag:
                 "s": 1,
             },
         }
-        assert readable_report["archive"] == expected_result["archive"]
-        assert readable_report["report"] == expected_result["report"]
-        assert readable_report["totals"] == expected_result["totals"]
-        assert readable_report == expected_result
 
 
 def test_generate_carryforward_report_similar_flags():

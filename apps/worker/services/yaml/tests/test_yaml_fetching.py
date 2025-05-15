@@ -4,7 +4,6 @@ import pytest
 
 from database.tests.factories import CommitFactory
 from services.yaml.fetcher import fetch_commit_yaml_from_provider
-from test_utils.base import BaseTestCase
 
 sample_yaml = """
 codecov:
@@ -33,7 +32,7 @@ coverage:
 """
 
 
-class TestYamlSavingService(BaseTestCase):
+class TestYamlSavingService:
     @pytest.mark.asyncio
     async def test_fetch_commit_yaml_from_provider(self, mocker):
         mocked_list_files_result = [

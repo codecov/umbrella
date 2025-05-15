@@ -98,11 +98,10 @@ class LineSession:
 
 @dataclass
 class ReportLine:
-    __slots__ = ("coverage", "type", "sessions", "messages", "complexity")
+    __slots__ = ("coverage", "type", "sessions", "complexity")
     coverage: Decimal
     type: str
     sessions: list[LineSession]
-    messages: list[str]
     complexity: int | tuple[int, int]
 
     @classmethod
@@ -125,11 +124,7 @@ class ReportLine:
             sessions = []
 
         return cls(
-            coverage=coverage,
-            type=type,
-            sessions=sessions,
-            messages=messages,
-            complexity=complexity,
+            coverage=coverage, type=type, sessions=sessions, complexity=complexity
         )
 
     def astuple(self):
@@ -137,7 +132,7 @@ class ReportLine:
             self.coverage,
             self.type,
             [s.astuple() for s in self.sessions] if self.sessions else None,
-            self.messages,
+            None,
             self.complexity,
         )
 
