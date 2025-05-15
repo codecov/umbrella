@@ -1,10 +1,10 @@
 [
   {
     "code": "warning",
-    "message": "Error validating classname ending at 7:65 in junit.xml"
+    "message": "Warning while parsing testcase attributes: Limit of string is 1000 chars, for classname, we got 2010 at 5:6 in junit.xml"
   },
   {
     "code": "warning",
-    "message": "Error validating classname ending at 11:65 in junit.xml"
+    "message": "Warning while parsing testcase attributes: Limit of string is 1000 chars, for classname, we got 2010 at 9:6 in junit.xml"
   }
 ]

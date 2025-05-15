@@ -1824,7 +1824,7 @@ wheels = [
 [[package]]
 name = "test-results-parser"
 version = "0.5.4"
-source = { git = "https://github.com/codecov/test-results-parser?rev=cc400acc01b814a4a5255a21a74e87800fd21e56#cc400acc01b814a4a5255a21a74e87800fd21e56" }
+source = { git = "https://github.com/codecov/test-results-parser?rev=f4f44a3a144471c2b304ed1a6d03945a6d00bd84#f4f44a3a144471c2b304ed1a6d03945a6d00bd84" }
 
 [[package]]
 name = "timestring"
@@ -2014,7 +2014,7 @@ requires-dist = [
     { name = "sqlparse", specifier = ">=0.5.0" },
     { name = "statsd", specifier = ">=3.3.0" },
     { name = "stripe", specifier = ">=11.4.1" },
-    { name = "test-results-parser", git = "https://github.com/codecov/test-results-parser?rev=cc400acc01b814a4a5255a21a74e87800fd21e56" },
+    { name = "test-results-parser", git = "https://github.com/codecov/test-results-parser?rev=f4f44a3a144471c2b304ed1a6d03945a6d00bd84" },
     { name = "timestring", git = "https://github.com/codecov/timestring?rev=d37ceacc5954dff3b5bd2f887936a98a668dda42" },
     { name = "zstandard", specifier = ">=0.23.0" },
 ]

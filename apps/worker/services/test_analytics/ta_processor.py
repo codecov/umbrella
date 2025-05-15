@@ -9,12 +9,11 @@ from services.test_analytics.ta_processing import (
     get_ta_processing_info,
     handle_file_not_found,
     handle_parsing_error,
-    handle_warning,
     insert_testruns_timeseries,
     rewrite_or_delete_upload,
 )
 from shared.api_archive.archive import ArchiveService
-from shared.django_apps.reports.models import ReportSession
+from shared.django_apps.reports.models import ReportSession, UploadError
 from shared.storage.exceptions import FileNotInStorageError
 
 log = logging.getLogger(__name__)
@@ -69,9 +68,17 @@ def ta_processor_impl(
         return False
 
     if update_state:
-        for info in parsing_infos:
-            for warning in info["warnings"]:
-                handle_warning(upload, warning)
+        UploadError.objects.bulk_create(
+            [
+                UploadError(
+                    report_session=upload,
+                    error_code="warning",
+                    error_params={"warning_message": warning},
+                )
+                for info in parsing_infos
+                for warning in info["warnings"]
+            ]
+        )
 
     with write_tests_summary.labels("new").time():
         insert_testruns_timeseries(

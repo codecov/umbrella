@@ -42,14 +42,6 @@ def handle_parsing_error(upload: ReportSession, exc: Exception):
     )
 
 
-def handle_warning(upload: ReportSession, warning: str):
-    UploadError.objects.create(
-        report_session=upload,
-        error_code="warning",
-        error_params={"warning_message": warning},
-    )
-
-
 def get_ta_processing_info(
     repoid: int,
     commitid: str,

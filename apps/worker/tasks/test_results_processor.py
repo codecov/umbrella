@@ -114,16 +114,6 @@ def update_daily_totals(
         daily_totals[test_id]["skip_count"] += 1
 
 
-def handle_parsing_error(db_session: Session, upload: Upload, exc: Exception):
-    upload_error = UploadError(
-        report_upload=upload,
-        error_code="unsupported_file_format",
-        error_params={"error_message": str(exc)},
-    )
-    db_session.add(upload_error)
-    db_session.commit()
-
-
 @dataclass
 class PytestName:
     actual_class_name: str
@@ -423,7 +413,13 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
                 },
             )
             sentry_sdk.capture_exception(exc, tags={"upload_state": upload.state})
-            handle_parsing_error(db_session, upload, exc)
+            upload_error = UploadError(
+                report_upload=upload,
+                error_code="unsupported_file_format",
+                error_params={"error_message": str(exc)},
+            )
+            db_session.add(upload_error)
+            db_session.commit()
             return None
 
     def process_individual_upload(
@@ -455,15 +451,20 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
 
         parsing_results, readable_files = result
 
-        for info in parsing_results:
-            for warning in info["warnings"]:
-                err = UploadError(
-                    report_upload=upload,
-                    error_code="warning",
-                    error_params={"warning_message": warning},
-                )
-                db_session.add(err)
-                db_session.commit()
+        warnings = [
+            {
+                "upload_id": upload_id,
+                "error_code": "warning",
+                "error_params": {"warning_message": warning},
+            }
+            for info in parsing_results
+            for warning in info["warnings"]
+        ]
+
+        if warnings:
+            bulk_create_warnings = insert(UploadError.__table__).values(warnings)
+            db_session.execute(bulk_create_warnings)
+            db_session.commit()
 
         if any(len(result["testruns"]) > 0 for result in parsing_results):
             successful = True
