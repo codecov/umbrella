@@ -47,7 +47,7 @@ def _get_ownerid_from_ownerid(dbsession, ownerid, *args, **kwargs) -> int:
 
 
 def _get_ownerid_from_org_ownerid(dbsession, org_ownerid, *args, **kwargs) -> int:
-    return _get_owner_id_from_ownerid(dbsession, ownerid=org_ownerid)
+    return _get_ownerid_from_ownerid(dbsession, ownerid=org_ownerid)
 
 
 def _get_ownerid_from_repoid(dbsession, repoid, *args, **kwargs) -> int | None:
@@ -62,7 +62,9 @@ def _get_ownerid_from_repoid(dbsession, repoid, *args, **kwargs) -> int | None:
     return None
 
 
-def _get_ownerid_from_comparison_id(dbsession, comparison_id, *args, **kwargs) -> int | None:
+def _get_ownerid_from_comparison_id(
+    dbsession, comparison_id, *args, **kwargs
+) -> int | None:
     result = (
         dbsession.query(Owner.ownerid)
         .join(CompareCommit.compare_commit)

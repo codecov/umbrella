@@ -86,7 +86,8 @@ def test_get_owner_from_repoid(fake_repos):
     (repo, repo_enterprise) = fake_repos
     assert _get_ownerid_from_repoid(repo.repoid) == repo.author.ownerid
     assert (
-        _get_ownerid_from_repoid(repo_enterprise.repoid) == repo_enterprise.author.ownerid
+        _get_ownerid_from_repoid(repo_enterprise.repoid)
+        == repo_enterprise.author.ownerid
     )
     assert _get_ownerid_from_repoid(10000000) is None
 
