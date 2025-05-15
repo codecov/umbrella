@@ -13,7 +13,7 @@ from sqlalchemy.exc import (
 )
 
 from app import celery_app
-from celery_task_router import _get_owner_from_task, _get_user_plan_from_task
+from celery_task_router import _get_ownerid_from_task, _get_user_plan_from_task
 from database.engine import get_db_session
 from database.enums import CommitErrorTypes
 from database.models.core import (
@@ -152,9 +152,9 @@ class BaseCodecovTask(celery_app.Task):
     def apply_async(self, args=None, kwargs=None, **options):
         db_session = get_db_session()
         user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
-        owner = _get_owner_from_task(db_session, self.name, kwargs)
+        ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
         route_with_extra_config = route_tasks_based_on_user_plan(
-            self.name, user_plan, owner
+            self.name, user_plan, ownerid
         )
         extra_config = route_with_extra_config.get("extra_config", {})
         celery_compatible_config = {
