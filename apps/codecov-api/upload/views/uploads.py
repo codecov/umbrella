@@ -124,8 +124,6 @@ def trigger_upload_task(
         "upload_id": upload.id,
         "version": "v4",
         "reportid": str(report.external_id),
-        "owner": repository.author.ownerid,
-        "user_plan": repository.author.plan,
     }
     dispatch_upload_task(redis, repository.repoid, task_arguments)
 

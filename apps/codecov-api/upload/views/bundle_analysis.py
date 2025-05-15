@@ -172,8 +172,6 @@ class BundleAnalysisView(APIView, ShelterMixin):
             "commit": commit.commitid,
             # custom comparison sha for the current uploaded commit sha
             "bundle_analysis_compare_sha": data.get("compareSha"),
-            "owner": repo.author.ownerid,
-            "user_plan": repo.author.plan,
         }
 
         log.info(

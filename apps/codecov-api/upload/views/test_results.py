@@ -183,8 +183,6 @@ class TestResultsView(
             "url": storage_path,  # storage_path
             # these are used for dispatching the task below
             "commit": commit.commitid,
-            "owner": repo.author.ownerid,
-            "user_plan": repo.author.plan,
         }
 
         log.info(
