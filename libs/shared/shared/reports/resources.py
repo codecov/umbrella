@@ -10,9 +10,10 @@ from shared.helpers.yaml import walk
 from shared.reports.diff import CalculatedDiff, RawDiff, calculate_report_diff
 from shared.reports.filtered import FilteredReport
 from shared.reports.reportfile import ReportFile
-from shared.reports.types import ReportTotals
+from shared.reports.types import ReportLine, ReportTotals
 from shared.utils.flare import report_to_flare
 from shared.utils.make_network_file import make_network_file
+from shared.utils.merge import get_complexity_from_sessions, get_coverage_from_sessions
 from shared.utils.migrate import migrate_totals
 from shared.utils.sessions import Session, SessionType
 from shared.utils.totals import agg_totals
@@ -165,7 +166,7 @@ class Report:
                 all_flags.update(session.flags)
         return sorted(all_flags)
 
-    def append(self, _file, joined=True):
+    def append(self, _file, joined=True, is_disjoint=False):
         """adds or merged a file into the report"""
         if _file is None:
             # skip empty adds
@@ -182,7 +183,7 @@ class Report:
 
         existing_file = self._files.get(_file.name)
         if existing_file is not None:
-            existing_file.merge(_file, joined)
+            existing_file.merge(_file, joined, is_disjoint)
         else:
             self._files[_file.name] = _file
 
@@ -258,7 +259,7 @@ class Report:
         return filename in self._files
 
     @sentry_sdk.trace
-    def merge(self, new_report, joined=True):
+    def merge(self, new_report, joined=True, is_disjoint=False):
         """combine report data from another"""
         if new_report is None:
             return
@@ -272,7 +273,26 @@ class Report:
         # merge files
         for _file in new_report:
             if _file.name:
-                self.append(_file, joined)
+                self.append(_file, joined, is_disjoint)
+
+    @sentry_sdk.trace
+    def finish_merge(self):
+        """
+        When calling `merge(is_disjoint=True)` above, the line records are not fully merged.
+        This function here is iterating over all those lines once more, to make sure they are.
+
+        This is an optimization to avoid having to repeatedly merge line records.
+        Instead, the `merge` code above just appends disjoint session records,
+        and this `finish_merge` is then fully merging those in one go.
+        """
+
+        for file in self:
+            if not file._parsed_lines:
+                continue
+            for line in file._parsed_lines:
+                if isinstance(line, ReportLine) and line.coverage is None:
+                    line.coverage = get_coverage_from_sessions(line.sessions)
+                    line.complexity = get_complexity_from_sessions(line.sessions)
 
     def is_empty(self):
         """returns boolean if the report has no content"""

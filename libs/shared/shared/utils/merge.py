@@ -158,17 +158,22 @@ def merge_missed_branches(sessions: list[LineSession]) -> list | None:
     return list(missed_branches) if missed_branches is not None else None
 
 
-def merge_line(l1, l2, joined=True):
+def merge_line(l1, l2, joined=True, is_disjoint=False):
     if not l1 or not l2:
         return l1 or l2
+
+    if joined and is_disjoint:
+        sessions = list(l1.sessions or [])
+        sessions.extend(l2.sessions or [])
+        return ReportLine.create(type=l1.type or l2.type, sessions=sessions)
 
     # merge sessions
     sessions = _merge_sessions(list(l1.sessions or []), list(l2.sessions or []))
 
     return ReportLine.create(
         type=l1.type or l2.type,
-        coverage=None if joined else l1.coverage,
-        complexity=None if joined else l1.complexity,
+        coverage=get_coverage_from_sessions(sessions) if joined else l1.coverage,
+        complexity=get_complexity_from_sessions(sessions) if joined else l1.complexity,
         sessions=sessions,
     )
 

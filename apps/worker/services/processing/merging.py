@@ -54,7 +54,9 @@ def merge_reports(
         )
 
         joined = get_joined_flag(commit_yaml, session.flags or [])
-        master_report.merge(report, joined)
+        master_report.merge(report, joined, is_disjoint=True)
+
+    master_report.finish_merge()
 
     return master_report, MergeResult(session_mapping, deleted_sessions)
 
