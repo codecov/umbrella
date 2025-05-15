@@ -67,8 +67,8 @@ def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int):
             default=default_enterprise_queue_specific_config,
         )
         task_queue = "enterprise_" + default_task_queue
-        if owner in owner_specific_config:
-            task_queue = task_queue + "_" + owner_specific_config[owner]
+        if str(owner) in owner_specific_config:
+            task_queue = task_queue + "_" + owner_specific_config.get(str(owner))
         return {
             "queue": task_queue,
             "extra_config": this_queue_specific_config,
