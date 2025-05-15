@@ -43,17 +43,18 @@ def cleanup_flare(context: CleanupContext, batch_size: int = DELETE_FILES_BATCHS
             non_open_pulls_with_flare_in_db = Pull.objects.filter(
                 id__gt=id_start, id__lte=id_end, _flare__isnull=False
             ).exclude(state=PullStates.OPEN.value)
-
             # with analyze=False, the db engine generates an execution plan without executing the query
             log.info(
                 f"Flare cleanup: non_open_pulls_with_flare_in_db query {non_open_pulls_with_flare_in_db.explain(analyze=False)}"
             )
-            batch_ids = list(
-                non_open_pulls_with_flare_in_db.values_list("id", flat=True)
-            )
+
             # with analyze=True, the query is actually executed so cost and execution time are measured
+            # run this before the "real" query so measurements aren't impacted by cache
             log.info(
                 f"Flare cleanup: batch ids query {non_open_pulls_with_flare_in_db.values_list('id', flat=True).explain(analyze=True, verbose=True)}"
+            )
+            batch_ids = list(
+                non_open_pulls_with_flare_in_db.values_list("id", flat=True)
             )
 
             # Update directly with ID list
@@ -74,19 +75,20 @@ def cleanup_flare(context: CleanupContext, batch_size: int = DELETE_FILES_BATCHS
             non_open_pulls_with_flare_in_archive = Pull.objects.filter(
                 id__gt=id_start, id__lte=id_end, _flare_storage_path__isnull=False
             ).exclude(state=PullStates.OPEN.value)
-
             # with analyze=False, the db engine generates an execution plan without executing the query
             log.info(
                 f"Flare cleanup: non_open_pulls_with_flare_in_archive query {non_open_pulls_with_flare_in_archive.explain(analyze=False)}"
+            )
+
+            # with analyze=True, the query is actually executed so cost and execution time are measured
+            # run this before the "real" query so measurements aren't impacted by cache
+            log.info(
+                f"Flare cleanup: batch_of_id_path_pairs query {non_open_pulls_with_flare_in_archive.values_list('id', '_flare_storage_path').explain(analyze=True, verbose=True)}"
             )
             batch_of_id_path_pairs = list(
                 non_open_pulls_with_flare_in_archive.values_list(
                     "id", "_flare_storage_path"
                 )
-            )
-            # with analyze=True, the query is actually executed so cost and execution time are measured
-            log.info(
-                f"Flare cleanup: batch_of_id_path_pairs query {non_open_pulls_with_flare_in_archive.values_list('id', '_flare_storage_path').explain(analyze=True, verbose=True)}"
             )
 
             # Track which pulls had successful deletions
