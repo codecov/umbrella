@@ -70,15 +70,15 @@ class TestCarryfowardFlag:
         expected_result = {
             "archive": {
                 "file_1.go": [
-                    (1, 1, None, [[0, 1, None, None, None]], None, None),
-                    (2, 0, None, [[0, 0, None, None, None]], None, None),
-                    (3, 1, None, [[0, 1, None, None, None]], None, None),
-                    (5, 0, None, [[0, 0, None, None, None]], None, None),
-                    (6, "1/2", None, [[0, "1/2", None, None, None]], None, None),
+                    (1, 1, None, [[0, 1]], None, None),
+                    (2, 0, None, [[0, 0]], None, None),
+                    (3, 1, None, [[0, 1]], None, None),
+                    (5, 0, None, [[0, 0]], None, None),
+                    (6, "1/2", None, [[0, "1/2"]], None, None),
                 ],
                 "file_2.py": [
-                    (12, 1, None, [[0, 1, None, None, None]], None, None),
-                    (51, "1/2", "b", [[0, "1/2", None, None, None]], None, None),
+                    (12, 1, None, [[0, 1]], None, None),
+                    (51, "1/2", "b", [[0, "1/2"]], None, None),
                 ],
             },
             "report": {
@@ -161,11 +161,11 @@ class TestCarryfowardFlag:
         expected_result = {
             "archive": {
                 "file_1.go": [
-                    (1, 1, None, [[0, 1, None, None, None]], None, None),
-                    (2, 0, None, [[0, 0, None, None, None]], None, None),
-                    (3, 1, None, [[0, 1, None, None, None]], None, None),
-                    (5, 0, None, [[0, 0, None, None, None]], None, None),
-                    (6, "1/2", None, [[0, "1/2", None, None, None]], None, None),
+                    (1, 1, None, [[0, 1]], None, None),
+                    (2, 0, None, [[0, 0]], None, None),
+                    (3, 1, None, [[0, 1]], None, None),
+                    (5, 0, None, [[0, 0]], None, None),
+                    (6, "1/2", None, [[0, "1/2"]], None, None),
                 ]
             },
             "report": {
@@ -282,8 +282,8 @@ class TestCarryfowardFlag:
         assert readable_report == {
             "archive": {
                 "file_2.py": [
-                    (12, 1, None, [[0, 1, None, None, None]], None, None),
-                    (51, "1/2", "b", [[0, "1/2", None, None, None]], None, None),
+                    (12, 1, None, [[0, 1]], None, None),
+                    (51, "1/2", "b", [[0, "1/2"]], None, None),
                 ]
             },
             "report": {
@@ -338,11 +338,11 @@ class TestCarryfowardFlag:
         expected_result = {
             "archive": {
                 "file_1.go": [
-                    (1, 1, None, [[1, 1, None, None, None]], None, None),
-                    (2, 1, None, [[1, 1, None, None, None]], None, None),
-                    (3, 0, None, [[1, 0, None, None, None]], None, None),
-                    (5, 0, None, [[1, 0, None, None, None]], None, None),
-                    (6, 0, None, [[1, 0, None, None, None]], None, None),
+                    (1, 1, None, [[1, 1]], None, None),
+                    (2, 1, None, [[1, 1]], None, None),
+                    (3, 0, None, [[1, 0]], None, None),
+                    (5, 0, None, [[1, 0]], None, None),
+                    (6, 0, None, [[1, 0]], None, None),
                 ]
             },
             "report": {
@@ -410,11 +410,11 @@ class TestCarryfowardFlag:
         expected_result = {
             "archive": {
                 "file_1.go": [
-                    (1, 1, None, [[1, 1, None, None, None]], None, None),
-                    (2, 1, None, [[1, 1, None, None, None]], None, None),
-                    (3, 0, None, [[1, 0, None, None, None]], None, None),
-                    (5, 0, None, [[1, 0, None, None, None]], None, None),
-                    (6, 0, None, [[1, 0, None, None, None]], None, None),
+                    (1, 1, None, [[1, 1]], None, None),
+                    (2, 1, None, [[1, 1]], None, None),
+                    (3, 0, None, [[1, 0]], None, None),
+                    (5, 0, None, [[1, 0]], None, None),
+                    (6, 0, None, [[1, 0]], None, None),
                 ]
             },
             "report": {

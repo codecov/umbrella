@@ -51,15 +51,15 @@ class TestVBOne(BaseTestCase):
 
         expected_result_archive = {
             "Source/Mobius/csharp/Tests.Common/Picklers.cs": [
-                (42, 1, None, [[0, 1, None, None, None]], None, None),
-                (45, 0, None, [[0, 0, None, None, None]], None, None),
-                (50, 1, None, [[0, 1, None, None, None]], None, None),
-                (52, True, None, [[0, True, None, None, None]], None, None),
+                (42, 1, None, [[0, 1]], None, None),
+                (45, 0, None, [[0, 0]], None, None),
+                (50, 1, None, [[0, 1]], None, None),
+                (52, True, None, [[0, True]], None, None),
             ],
             "Source/Mobius/csharp/Tests.Common/RowHelper.cs": [
-                (90, 1, None, [[0, 1, None, None, None]], None, None),
-                (91, 0, None, [[0, 0, None, None, None]], None, None),
-                (92, 1, None, [[0, 1, None, None, None]], None, None),
+                (90, 1, None, [[0, 1]], None, None),
+                (91, 0, None, [[0, 0]], None, None),
+                (92, 1, None, [[0, 1]], None, None),
             ],
         }
 

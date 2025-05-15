@@ -1,4 +1,3 @@
-import dataclasses
 from json import loads
 
 from services.report import legacy_totals
@@ -16,9 +15,7 @@ class BaseTestCase:
             file_report = report.get(filename)
             lines = []
             for line_number, line in file_report.lines:
-                (coverage, line_type, sessions, messages, complexity) = (
-                    dataclasses.astuple(line)
-                )
+                (coverage, line_type, sessions, messages, complexity) = line.astuple()
                 sessions = [list(s) for s in sessions]
                 lines.append(
                     (line_number, coverage, line_type, sessions, messages, complexity)

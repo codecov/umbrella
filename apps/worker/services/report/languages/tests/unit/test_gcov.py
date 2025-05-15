@@ -165,13 +165,13 @@ class TestGcov(BaseTestCase):
 
         assert processed_report["archive"] == {
             "tmp.c": [
-                (2, 1, None, [[0, 1, None, None, None]], None, None),
-                (3, 0, None, [[0, 0, None, None, None]], None, None),
-                (8, 0, None, [[0, 0, None, None, None]], None, None),
-                (10, "2/4", "b", [[0, "2/4", None, None, None]], None, None),
-                (11, 1, "m", [[0, 1, None, None, None]], None, None),
-                (13, 1, None, [[0, 1, None, None, None]], None, None),
-                (14, "2/2", "b", [[0, "2/2", None, None, None]], None, None),
+                (2, 1, None, [[0, 1]], None, None),
+                (3, 0, None, [[0, 0]], None, None),
+                (8, 0, None, [[0, 0]], None, None),
+                (10, "2/4", "b", [[0, "2/4"]], None, None),
+                (11, 1, "m", [[0, 1]], None, None),
+                (13, 1, None, [[0, 1]], None, None),
+                (14, "2/2", "b", [[0, "2/2"]], None, None),
             ]
         }
 
@@ -190,10 +190,10 @@ class TestGcov(BaseTestCase):
 
         assert processed_report["archive"] == {
             "project/rsl/h264/Mp4NaluParser.h": [
-                (13, 90, "m", [[0, 90, None, None, None]], None, None),
-                (15, 730, "m", [[0, 730, None, None, None]], None, None),
-                (16, 730, None, [[0, 730, None, None, None]], None, None),
-                (17, 730, None, [[0, 730, None, None, None]], None, None),
+                (13, 90, "m", [[0, 90]], None, None),
+                (15, 730, "m", [[0, 730]], None, None),
+                (16, 730, None, [[0, 730]], None, None),
+                (17, 730, None, [[0, 730]], None, None),
             ]
         }
 
@@ -211,7 +211,7 @@ class TestGcov(BaseTestCase):
             10,
             1,
             "b",
-            [[0, 1, None, None, None]],
+            [[0, 1]],
             None,
             None,
         )
@@ -240,7 +240,7 @@ class TestGcov(BaseTestCase):
             10,
             1,
             "b",
-            [[0, 1, None, None, None]],
+            [[0, 1]],
             None,
             None,
         )
@@ -248,7 +248,7 @@ class TestGcov(BaseTestCase):
             14,
             1,
             "b",
-            [[0, 1, None, None, None]],
+            [[0, 1]],
             None,
             None,
         )
@@ -265,7 +265,7 @@ class TestGcov(BaseTestCase):
             10,
             1,
             "b",
-            [[0, 1, None, None, None]],
+            [[0, 1]],
             None,
             None,
         )
@@ -273,7 +273,7 @@ class TestGcov(BaseTestCase):
             13,
             "0/2",
             None,
-            [[0, "0/2", None, None, None]],
+            [[0, "0/2"]],
             None,
             None,
         )
@@ -290,7 +290,7 @@ class TestGcov(BaseTestCase):
             10,
             1,
             "b",
-            [[0, 1, None, None, None]],
+            [[0, 1]],
             None,
             None,
         )
@@ -298,7 +298,7 @@ class TestGcov(BaseTestCase):
             13,
             1,
             None,
-            [[0, 1, None, None, None]],
+            [[0, 1]],
             None,
             None,
         )

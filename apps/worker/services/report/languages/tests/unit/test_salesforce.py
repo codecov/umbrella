@@ -25,9 +25,7 @@ class TestSalesforce(BaseTestCase):
         result = self.convert_report_to_better_readable(report)
 
         assert result == {
-            "archive": {
-                "file.py": [(1, 5, None, [[0, 5, None, None, None]], None, None)]
-            },
+            "archive": {"file.py": [(1, 5, None, [[0, 5]], None, None)]},
             "report": {
                 "files": {
                     "file.py": [

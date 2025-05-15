@@ -114,7 +114,6 @@ class TestFilteredReportFile:
             LineSession(id=0, coverage=1, branches=None, partials=None, complexity=5),
             LineSession(id=1, coverage=1, complexity=4),
         ]
-        assert res.messages is None
         assert res.complexity == 5
 
     def test_line_modifier_empty(self):

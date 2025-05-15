@@ -47,86 +47,13 @@ class TestAdjustSession(BaseTestCase):
         first_report.append(second_file)
         assert self.convert_report_to_better_readable(first_report)["archive"] == {
             "first_file.py": [
-                (
-                    1,
-                    14,
-                    None,
-                    [
-                        [0, 0, None, None, None],
-                        [3, 7, None, None, None],
-                        [2, 14, None, None, None],
-                    ],
-                    None,
-                    None,
-                ),
-                (
-                    2,
-                    15,
-                    None,
-                    [
-                        [1, 1, None, None, None],
-                        [0, 8, None, None, None],
-                        [3, 15, None, None, None],
-                    ],
-                    None,
-                    None,
-                ),
-                (
-                    3,
-                    16,
-                    None,
-                    [
-                        [2, 2, None, None, None],
-                        [1, 9, None, None, None],
-                        [0, 16, None, None, None],
-                    ],
-                    None,
-                    None,
-                ),
-                (
-                    4,
-                    17,
-                    None,
-                    [
-                        [3, 3, None, None, None],
-                        [2, 10, None, None, None],
-                        [1, 17, None, None, None],
-                    ],
-                    None,
-                    None,
-                ),
-                (
-                    5,
-                    18,
-                    None,
-                    [
-                        [0, 4, None, None, None],
-                        [3, 11, None, None, None],
-                        [2, 18, None, None, None],
-                    ],
-                    None,
-                    None,
-                ),
-                (
-                    6,
-                    19,
-                    None,
-                    [
-                        [1, 5, None, None, None],
-                        [0, 12, None, None, None],
-                        [3, 19, None, None, None],
-                    ],
-                    None,
-                    None,
-                ),
-                (
-                    7,
-                    13,
-                    None,
-                    [[2, 6, None, None, None], [1, 13, None, None, None]],
-                    None,
-                    None,
-                ),
+                (1, 14, None, [[0, 0], [3, 7], [2, 14]], None, None),
+                (2, 15, None, [[1, 1], [0, 8], [3, 15]], None, None),
+                (3, 16, None, [[2, 2], [1, 9], [0, 16]], None, None),
+                (4, 17, None, [[3, 3], [2, 10], [1, 17]], None, None),
+                (5, 18, None, [[0, 4], [3, 11], [2, 18]], None, None),
+                (6, 19, None, [[1, 5], [0, 12], [3, 19]], None, None),
+                (7, 13, None, [[2, 6], [1, 13]], None, None),
             ]
         }
         return first_report
@@ -164,66 +91,13 @@ class TestAdjustSession(BaseTestCase):
         assert self.convert_report_to_better_readable(sample_first_report) == {
             "archive": {
                 "first_file.py": [
-                    (
-                        1,
-                        14,
-                        None,
-                        [[3, 7, None, None, None], [2, 14, None, None, None]],
-                        None,
-                        None,
-                    ),
-                    (
-                        2,
-                        15,
-                        None,
-                        [[1, 1, None, None, None], [3, 15, None, None, None]],
-                        None,
-                        None,
-                    ),
-                    (
-                        3,
-                        9,
-                        None,
-                        [[2, 2, None, None, None], [1, 9, None, None, None]],
-                        None,
-                        None,
-                    ),
-                    (
-                        4,
-                        17,
-                        None,
-                        [
-                            [3, 3, None, None, None],
-                            [2, 10, None, None, None],
-                            [1, 17, None, None, None],
-                        ],
-                        None,
-                        None,
-                    ),
-                    (
-                        5,
-                        18,
-                        None,
-                        [[3, 11, None, None, None], [2, 18, None, None, None]],
-                        None,
-                        None,
-                    ),
-                    (
-                        6,
-                        19,
-                        None,
-                        [[1, 5, None, None, None], [3, 19, None, None, None]],
-                        None,
-                        None,
-                    ),
-                    (
-                        7,
-                        13,
-                        None,
-                        [[2, 6, None, None, None], [1, 13, None, None, None]],
-                        None,
-                        None,
-                    ),
+                    (1, 14, None, [[3, 7], [2, 14]], None, None),
+                    (2, 15, None, [[1, 1], [3, 15]], None, None),
+                    (3, 9, None, [[2, 2], [1, 9]], None, None),
+                    (4, 17, None, [[3, 3], [2, 10], [1, 17]], None, None),
+                    (5, 18, None, [[3, 11], [2, 18]], None, None),
+                    (6, 19, None, [[1, 5], [3, 19]], None, None),
+                    (7, 13, None, [[2, 6], [1, 13]], None, None),
                 ]
             },
             "report": {
@@ -370,65 +244,12 @@ class TestAdjustSession(BaseTestCase):
         }
         assert res["archive"] == {
             "first_file.py": [
-                (
-                    1,
-                    14,
-                    None,
-                    [[3, 7, None, None, None], [2, 14, None, None, None]],
-                    None,
-                    None,
-                ),
-                (
-                    2,
-                    15,
-                    None,
-                    [[1, 1, None, None, None], [3, 15, None, None, None]],
-                    None,
-                    None,
-                ),
-                (
-                    3,
-                    9,
-                    None,
-                    [[2, 2, None, None, None], [1, 9, None, None, None]],
-                    None,
-                    None,
-                ),
-                (
-                    4,
-                    17,
-                    None,
-                    [
-                        [3, 3, None, None, None],
-                        [2, 10, None, None, None],
-                        [1, 17, None, None, None],
-                    ],
-                    None,
-                    None,
-                ),
-                (
-                    5,
-                    18,
-                    None,
-                    [[3, 11, None, None, None], [2, 18, None, None, None]],
-                    None,
-                    None,
-                ),
-                (
-                    6,
-                    19,
-                    None,
-                    [[1, 5, None, None, None], [3, 19, None, None, None]],
-                    None,
-                    None,
-                ),
-                (
-                    7,
-                    13,
-                    None,
-                    [[2, 6, None, None, None], [1, 13, None, None, None]],
-                    None,
-                    None,
-                ),
+                (1, 14, None, [[3, 7], [2, 14]], None, None),
+                (2, 15, None, [[1, 1], [3, 15]], None, None),
+                (3, 9, None, [[2, 2], [1, 9]], None, None),
+                (4, 17, None, [[3, 3], [2, 10], [1, 17]], None, None),
+                (5, 18, None, [[3, 11], [2, 18]], None, None),
+                (6, 19, None, [[1, 5], [3, 19]], None, None),
+                (7, 13, None, [[2, 6], [1, 13]], None, None),
             ]
         }

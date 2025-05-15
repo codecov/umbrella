@@ -124,31 +124,11 @@ class TestNodeProcessor(BaseTestCase):
         [
             (
                 "inline",
-                {
-                    "file.js": {
-                        "728": [
-                            8,
-                            None,
-                            [[0, 8, None, None, None]],
-                            None,
-                            None,
-                        ]
-                    }
-                },
+                {"file.js": {"728": [8, None, [[0, 8, None, None, None]], None]}},
             ),
             (
                 "ifbinary",
-                {
-                    "file.js": {
-                        "731": [
-                            8,
-                            None,
-                            [[0, 8, None, None, None]],
-                            None,
-                            None,
-                        ]
-                    }
-                },
+                {"file.js": {"731": [8, None, [[0, 8, None, None, None]], None]}},
             ),
         ],
     )
@@ -172,31 +152,11 @@ class TestNodeProcessor(BaseTestCase):
         [
             (
                 "inline",
-                {
-                    "file.js": {
-                        "728": [
-                            8,
-                            "b",
-                            [[0, 8, None, None, None]],
-                            None,
-                            None,
-                        ]
-                    }
-                },
+                {"file.js": {"728": [8, "b", [[0, 8, None, None, None]], None]}},
             ),
             (
                 "ifbinary",
-                {
-                    "file.js": {
-                        "731": [
-                            8,
-                            "b",
-                            [[0, 8, None, None, None]],
-                            None,
-                            None,
-                        ]
-                    }
-                },
+                {"file.js": {"731": [8, "b", [[0, 8, None, None, None]], None]}},
             ),
         ],
     )

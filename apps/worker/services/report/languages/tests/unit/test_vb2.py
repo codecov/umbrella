@@ -55,11 +55,11 @@ class TestVBTwo(BaseTestCase):
 
         assert processed_report["archive"] == {
             "Source/Mobius/csharp/Tests.Common/RowHelper.cs": [
-                (260, 1, None, [[0, 1, None, None, None]], None, None),
-                (261, 0, None, [[0, 0, None, None, None]], None, None),
-                (262, 0, None, [[0, 0, None, None, None]], None, None),
+                (260, 1, None, [[0, 1]], None, None),
+                (261, 0, None, [[0, 0]], None, None),
+                (262, 0, None, [[0, 0]], None, None),
             ],
             "source/mobius/cpp/riosock/riosock.cpp": [
-                (258, True, None, [[0, True, None, None, None]], None, None)
+                (258, True, None, [[0, True]], None, None)
             ],
         }

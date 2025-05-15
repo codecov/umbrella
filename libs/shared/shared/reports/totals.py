@@ -15,7 +15,6 @@ def get_line_totals(lines: Iterator[ReportLine]) -> ReportTotals:
     partials = 0
     branches = 0
     methods = 0
-    messages = 0
     complexity = 0
     complexity_total = 0
 
@@ -32,9 +31,6 @@ def get_line_totals(lines: Iterator[ReportLine]) -> ReportTotals:
             branches += 1
         elif line.type == "m":
             methods += 1
-
-        if line.messages:
-            messages += len(line.messages)
 
         if isinstance(line.complexity, int):
             complexity += line.complexity
@@ -53,7 +49,7 @@ def get_line_totals(lines: Iterator[ReportLine]) -> ReportTotals:
         coverage=ratio(hits, total_lines) if total_lines else None,
         branches=branches,
         methods=methods,
-        messages=messages,
+        messages=0,
         sessions=0,
         complexity=complexity,
         complexity_total=complexity_total,

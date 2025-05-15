@@ -29,7 +29,7 @@ class TestFlowCover(BaseTestCase):
         expected_result_archive = {
             "file.js": [
                 (1, 1, None, [[0, 1, None, [[1, 5, 1]], None]], None, None),
-                (2, 0, None, [[0, 0, None, None, None]], None, None),
+                (2, 0, None, [[0, 0]], None, None),
             ]
         }
         assert expected_result_archive == processed_report["archive"]

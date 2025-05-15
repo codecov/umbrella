@@ -79,12 +79,12 @@ class TestCSharp2(BaseTestCase):
 
         assert processed_report["archive"] == {
             "source": [
-                (1, 2, None, [[0, 2, None, None, None]], None, None),
-                (2, 2, None, [[0, 2, None, None, None]], None, None),
-                (3, 0, None, [[0, 0, None, None, None]], None, None),
-                (4, 0, None, [[0, 0, None, None, None]], None, None),
-                (5, 0, None, [[0, 0, None, None, None]], None, None),
-                (6, 0, None, [[0, 0, None, None, None]], None, None),
-                (10, 2, None, [[0, 2, None, None, None]], None, None),
+                (1, 2, None, [[0, 2]], None, None),
+                (2, 2, None, [[0, 2]], None, None),
+                (3, 0, None, [[0, 0]], None, None),
+                (4, 0, None, [[0, 0]], None, None),
+                (5, 0, None, [[0, 0]], None, None),
+                (6, 0, None, [[0, 0]], None, None),
+                (10, 2, None, [[0, 2]], None, None),
             ]
         }

@@ -59,16 +59,16 @@ class TestLua(BaseTestCase):
 
         assert processed_report["archive"] == {
             "file.lua": [
-                (1, 1, None, [[0, 1, None, None, None]], None, None),
-                (3, 1, None, [[0, 1, None, None, None]], None, None),
-                (4, 0, None, [[0, 0, None, None, None]], None, None),
-                (5, 0, None, [[0, 0, None, None, None]], None, None),
+                (1, 1, None, [[0, 1]], None, None),
+                (3, 1, None, [[0, 1]], None, None),
+                (4, 0, None, [[0, 0]], None, None),
+                (5, 0, None, [[0, 0]], None, None),
             ],
             "source.lua": [
-                (2, 0, None, [[0, 0, None, None, None]], None, None),
-                (3, 1, None, [[0, 1, None, None, None]], None, None),
-                (4, 0, None, [[0, 0, None, None, None]], None, None),
-                (5, 1, None, [[0, 1, None, None, None]], None, None),
+                (2, 0, None, [[0, 0]], None, None),
+                (3, 1, None, [[0, 1]], None, None),
+                (4, 0, None, [[0, 0]], None, None),
+                (5, 1, None, [[0, 1]], None, None),
             ],
         }
 
@@ -98,14 +98,14 @@ class TestLua(BaseTestCase):
 
         assert processed_report["archive"] == {
             "socks.lua": [
-                (2, 914, None, [[0, 914, None, None, None]], None, None),
-                (4, 914, None, [[0, 914, None, None, None]], None, None),
-                (5, 914, None, [[0, 914, None, None, None]], None, None),
-                (6, 914, None, [[0, 914, None, None, None]], None, None),
-                (7, 914, None, [[0, 914, None, None, None]], None, None),
-                (8, 914, None, [[0, 914, None, None, None]], None, None),
-                (9, 914, None, [[0, 914, None, None, None]], None, None),
-                (10, 914, None, [[0, 914, None, None, None]], None, None),
+                (2, 914, None, [[0, 914]], None, None),
+                (4, 914, None, [[0, 914]], None, None),
+                (5, 914, None, [[0, 914]], None, None),
+                (6, 914, None, [[0, 914]], None, None),
+                (7, 914, None, [[0, 914]], None, None),
+                (8, 914, None, [[0, 914]], None, None),
+                (9, 914, None, [[0, 914]], None, None),
+                (10, 914, None, [[0, 914]], None, None),
             ]
         }
 
