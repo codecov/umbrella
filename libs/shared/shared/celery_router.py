@@ -39,38 +39,50 @@ class MapRoute:
                     return {"queue": route}
 
 
-def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int):
-    """Helper function to dynamically route tasks based on the user plan.
-    This cannot be used as a celery router function directly.
-    Returns extra config for the queue, if any.
-    """
+def _get_default_queue(task_name: str) -> str:
+    """Get the default queue for a task based on routing configuration."""
     route = MapRoute(BaseCeleryConfig.task_routes)
-    default_task_queue = (
-        route(task_name) or {"queue": BaseCeleryConfig.task_default_queue}
-    )["queue"]
+    return (route(task_name) or {"queue": BaseCeleryConfig.task_default_queue})["queue"]
+
+def _get_enterprise_config(task_name: str, owner: int) -> tuple[str, dict]:
+    """Get enterprise-specific queue name and configuration."""
+    owner_specific_config = get_config("setup", "tasks", "enterprise_queues", default={})
+    default_enterprise_config = get_config("setup", "tasks", "celery", "enterprise", default={})
+    queue_specific_config = get_config(
+        "setup",
+        "tasks",
+        get_task_group(task_name),
+        "enterprise",
+        default=default_enterprise_config,
+    )
+    
+    base_queue = f"enterprise_{_get_default_queue(task_name)}"
+    if str(owner) in owner_specific_config:
+        base_queue = f"{base_queue}_{owner_specific_config[str(owner)]}"
+    
+    return base_queue, queue_specific_config
+
+def route_tasks_based_on_user_plan(task_name: str, user_plan: str, owner: int) -> dict:
+    """Helper function to dynamically route tasks based on the user plan.
+    
+    Args:
+        task_name: Name of the task to route
+        user_plan: Name of the user's plan
+        owner: Owner ID for enterprise routing
+        
+    Returns:
+        Dict containing queue name and any extra configuration
+    """
     plan = Plan.objects.get(name=user_plan)
-    if plan.is_enterprise_plan:
-        owner_specific_config = get_config(
-            "setup",
-            "tasks",
-            "enterprise_queues",
-            default={},
-        )
-        default_enterprise_queue_specific_config = get_config(
-            "setup", "tasks", "celery", "enterprise", default={}
-        )
-        this_queue_specific_config = get_config(
-            "setup",
-            "tasks",
-            get_task_group(task_name),
-            "enterprise",
-            default=default_enterprise_queue_specific_config,
-        )
-        task_queue = "enterprise_" + default_task_queue
-        if str(owner) in owner_specific_config:
-            task_queue = task_queue + "_" + owner_specific_config.get(str(owner))
+    
+    if not plan.is_enterprise_plan:
         return {
-            "queue": task_queue,
-            "extra_config": this_queue_specific_config,
+            "queue": _get_default_queue(task_name),
+            "extra_config": {}
         }
-    return {"queue": default_task_queue, "extra_config": {}}
+        
+    queue, config = _get_enterprise_config(task_name, owner)
+    return {
+        "queue": queue,
+        "extra_config": config
+    }
