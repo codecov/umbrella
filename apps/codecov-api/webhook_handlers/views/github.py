@@ -493,6 +493,13 @@ class GithubWebhookHandler(APIView):
             )
             if ghapp_installation is not None:
                 ghapp_installation.delete()
+
+            # Deprecated flow - BEGIN
+            owner.integration_id = None
+            owner.save()
+            owner.repository_set.all().update(using_integration=False, bot=None)
+            # Deprecated flow - END
+
             log.info(
                 "Owner deleted app integration",
                 extra={"ownerid": owner.ownerid, "github_webhook_event": self.event},
@@ -565,10 +572,10 @@ class GithubWebhookHandler(APIView):
                 log.info(
                     "Request to suspend/unsuspend App",
                     extra={
-                        "action":action,
-                        "is_currently_suspended":ghapp_installation.is_suspended,
-                        "ownerid":owner.ownerid,
-                        "installation_id":request.data["installation"]["id"],
+                        "action": action,
+                        "is_currently_suspended": ghapp_installation.is_suspended,
+                        "ownerid": owner.ownerid,
+                        "installation_id": request.data["installation"]["id"],
                     },
                 )
                 ghapp_installation.is_suspended = action == "suspend"

@@ -849,12 +849,13 @@ class GithubWebhookHandlerTests(APITestCase):
         owner.refresh_from_db()
         repo1.refresh_from_db()
         repo2.refresh_from_db()
-        # we no longer update these fields on the Owner or Repos
-        assert owner.integration_id == 12
-        assert repo1.using_integration == True
-        assert repo2.using_integration == True
-        assert repo1.bot is not None
-        assert repo2.bot is not None
+
+        assert owner.integration_id is None
+        assert repo1.using_integration == False
+        assert repo2.using_integration == False
+
+        assert repo1.bot is None
+        assert repo2.bot is None
 
         assert not owner.github_app_installations.exists()
 
@@ -973,7 +974,7 @@ class GithubWebhookHandlerTests(APITestCase):
         using_integration,
         repos_affected: None,
     )
-    def test_installation_with_other_actions(
+    def test_installation_with_other_actions_sets_owner_integration_id_if_none(
         self,
     ):
         installation_id = 44
@@ -996,6 +997,9 @@ class GithubWebhookHandlerTests(APITestCase):
                 "sender": {"type": "User"},
             },
         )
+
+        owner.refresh_from_db()
+        assert owner.integration_id is None  # no longer set this during install
 
         ghapp_installations_set = GithubAppInstallation.objects.filter(
             owner_id=owner.ownerid
@@ -1022,7 +1026,7 @@ class GithubWebhookHandlerTests(APITestCase):
         self,
     ):
         installation_id = 44
-        owner = OwnerFactory(service=Service.GITHUB.value)
+        owner = OwnerFactory(service=Service.GITHUB.value, integration_id=None)
 
         self._post_event_data(
             event=GitHubWebhookEvents.INSTALLATION_REPOSITORIES,
@@ -1038,6 +1042,9 @@ class GithubWebhookHandlerTests(APITestCase):
                 "sender": {"type": "User"},
             },
         )
+
+        owner.refresh_from_db()
+        assert owner.integration_id is None  # no longer set this during install
 
         ghapp_installations_set = GithubAppInstallation.objects.filter(
             owner_id=owner.ownerid
