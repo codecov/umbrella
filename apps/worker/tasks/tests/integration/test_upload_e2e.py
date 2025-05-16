@@ -31,6 +31,7 @@ def write_raw_upload(
     commitid: str,
     contents: bytes,
     upload_json: dict | None = None,
+    key_suffix: str = "",
 ):
     report_id = uuid4().hex
     written_path = f"upload/{report_id}.txt"
@@ -40,7 +41,7 @@ def write_raw_upload(
     upload_json.update({"reportid": report_id, "url": written_path})
     upload = json.dumps(upload_json)
 
-    redis_key = f"uploads/{repoid}/{commitid}"
+    redis_key = f"uploads/{repoid}/{commitid}{key_suffix}"
     redis.lpush(redis_key, upload)
 
     return upload_json

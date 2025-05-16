@@ -73,6 +73,7 @@ def insert_testrun(
                 failure_message=testrun["failure_message"],
                 framework=parsing_info["framework"],
                 filename=testrun["filename"],
+                properties=testrun.get("properties"),
                 repo_id=repo_id,
                 commit_sha=commit_sha,
                 branch=branch,
