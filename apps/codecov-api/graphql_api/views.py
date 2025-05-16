@@ -21,7 +21,6 @@ from django.http import (
     HttpResponseNotAllowed,
     JsonResponse,
 )
-from django.utils.decorators import decorator_from_middleware
 from graphql import DocumentNode
 from sentry_sdk import capture_exception
 
@@ -441,6 +440,6 @@ async def ariadne_view(request: WSGIRequest, service: str) -> HttpResponse:
     return response
 
 
-@decorator_from_middleware(jwt_middleware)
+@jwt_middleware
 async def sentry_ariadne_view(request: WSGIRequest, service: str) -> HttpResponse:
-    return ariadne_view(request, service)
+    return await ariadne_view(request, service)

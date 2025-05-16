@@ -2,6 +2,7 @@ import logging
 from urllib.parse import urlparse
 
 import jwt
+from asgiref.sync import sync_to_async
 from corsheaders.conf import conf as corsconf
 from corsheaders.middleware import (
     ACCESS_CONTROL_ALLOW_CREDENTIALS,
@@ -184,7 +185,7 @@ def jwt_middleware(get_response):
     Returns 403 if auth header is missing, JWT decoding fails, or token is expired.
     """
 
-    def middleware(request):
+    async def middleware(request, *args, **kwargs):
         # Initialize current_owner as None
         request.current_owner = None
 
@@ -210,11 +211,11 @@ def jwt_middleware(get_response):
             if not provider_user_id or not provider:
                 return HttpResponseForbidden("Invalid JWT payload")
 
-            owner, _created = Owner.objects.get_or_create(
+            owner, _created = await sync_to_async(Owner.objects.get_or_create)(
                 service_id=provider_user_id, service=provider
             )
             request.current_owner = owner
-            return get_response(request)
+            return await get_response(request, *args, **kwargs)
 
         except jwt.ExpiredSignatureError:
             log.warning(
