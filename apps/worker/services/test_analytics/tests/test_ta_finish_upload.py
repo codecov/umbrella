@@ -234,6 +234,17 @@ def test_ta_finish_upload(
     assert_tasks([])
     assert_comment_snapshot()
 
+    # only warning
+    error.error_code = "warning"
+    error.error_params = {"warning_message": "warning message"}
+    error.save()
+
+    result = run_task()
+
+    assert_result(True, False, True)
+    assert_tasks([])
+    assert_comment_snapshot()
+
     # no flake detection
 
     testrun.outcome = "failure"

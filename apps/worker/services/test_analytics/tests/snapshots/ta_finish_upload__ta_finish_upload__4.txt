@@ -1,3 +1,9 @@
+### :warning: Parser warning
+
+> The parser emitted a warning. Please review your JUnit XML file:
+> <pre><code class="language-python">warning message</code></pre>
+
+---
 ### :x: 1 Tests Failed:
 | Tests completed | Failed | Passed | Skipped |
 |---|---|---|---|
