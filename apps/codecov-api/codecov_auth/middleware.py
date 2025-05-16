@@ -20,11 +20,6 @@ from utils.services import get_long_service_name
 log = logging.getLogger(__name__)
 
 
-class JWTClaims:
-    provider_user_id: str
-    provider: str
-
-
 def get_service(request: HttpRequest) -> str | None:
     resolver_match = resolve(request.path_info)
     service = resolver_match.kwargs.get("service")
@@ -206,12 +201,11 @@ def jwt_middleware(get_response):
                 token,
                 settings.SENTRY_JWT_SHARED_SECRET,
                 algorithms=["HS256"],
-                options={"verify_exp": True},  # Explicitly enable expiry verification
+                options={"verify_exp": True},
             )
 
-            # Extract user_id from payload
-            provider_user_id = payload.get("provider_user_id")
-            provider = payload.get("provider")
+            provider_user_id = payload.get("g_u")
+            provider = payload.get("g_p")
 
             if not provider_user_id or not provider:
                 return HttpResponseForbidden("Invalid JWT payload")

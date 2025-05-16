@@ -12,8 +12,6 @@ from codecov_auth.middleware import (
 )
 from codecov_auth.models import Owner
 
-# ... existing fixtures ...
-
 
 @pytest.fixture
 def request_factory():
@@ -31,7 +29,7 @@ def sentry_jwt_middleware_instance():
 @pytest.fixture
 def valid_jwt_token():
     return jwt.encode(
-        {"provider_user_id": "123", "provider": "github"},
+        {"g_u": "123", "g_p": "github"},
         settings.SENTRY_JWT_SHARED_SECRET,
         algorithm="HS256",
     )
@@ -95,8 +93,8 @@ async def test_sentry_jwt_expired_token(
     """Test middleware behavior with expired JWT token"""
     # Create a token with an expired timestamp
     payload = {
-        "provider_user_id": "123",
-        "provider": "github",
+        "g_u": "123",
+        "g_p": "github",
         "exp": int(time.time()) - 3600,  # Expired 1 hour ago
     }
     token = jwt.encode(payload, settings.SENTRY_JWT_SHARED_SECRET, algorithm="HS256")
@@ -115,7 +113,7 @@ async def test_sentry_jwt_missing_provider_user_id(
 ):
     """Test middleware behavior with JWT token missing provider_user_id"""
     token = jwt.encode(
-        {"provider": "github"},
+        {"g_p": "github"},
         settings.SENTRY_JWT_SHARED_SECRET,
         algorithm="HS256",
     )
@@ -134,7 +132,7 @@ async def test_sentry_jwt_missing_provider(
 ):
     """Test middleware behavior with JWT token missing provider"""
     token = jwt.encode(
-        {"provider_user_id": "123"},
+        {"g_u": "123"},
         settings.SENTRY_JWT_SHARED_SECRET,
         algorithm="HS256",
     )
