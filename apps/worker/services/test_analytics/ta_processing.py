@@ -21,7 +21,7 @@ class TAProcInfo:
     user_yaml: UserYaml
 
 
-def handle_file_not_found(upload: ReportSession):
+def create_file_not_found_error(upload: ReportSession):
     upload.state = "processed"
     upload.save()
     UploadError.objects.create(
@@ -31,7 +31,19 @@ def handle_file_not_found(upload: ReportSession):
     )
 
 
-def handle_parsing_error(upload: ReportSession, exc: Exception):
+def create_missing_raw_upload_error(upload: ReportSession):
+    upload.state = "processed"
+    upload.save()
+    UploadError.objects.create(
+        report_session=upload,
+        error_code="upload_not_found",
+        error_params={
+            "error_message": f"Build URL: {upload.build_url}\nJob Code: {upload.job_code}\nBuild Code: {upload.build_code}",
+        },
+    )
+
+
+def create_parsing_error(upload: ReportSession, exc: Exception):
     sentry_sdk.capture_exception(exc, tags={"upload_state": upload.state})
     upload.state = "processed"
     upload.save()

@@ -62,7 +62,7 @@ def get_upload_error(upload_ids: list[int]) -> ErrorPayload | None:
     )
     if error:
         match error.error_code:
-            case "unsupported_file_format":
+            case "unsupported_file_format" | "upload_not_found":
                 return ErrorPayload(
                     error_code=error.error_code,
                     error_message=error.error_params.get("error_message"),

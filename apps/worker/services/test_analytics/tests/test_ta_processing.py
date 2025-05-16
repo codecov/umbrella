@@ -6,8 +6,9 @@ import pytest
 import test_results_parser
 
 from services.test_analytics.ta_processing import (
-    handle_file_not_found,
-    handle_parsing_error,
+    create_file_not_found_error,
+    create_missing_raw_upload_error,
+    create_parsing_error,
     insert_testruns_timeseries,
     rewrite_or_delete_upload,
     should_delete_archive_settings,
@@ -24,7 +25,7 @@ from shared.storage.exceptions import FileNotInStorageError
 def test_handle_file_not_found():
     upload = UploadFactory()
 
-    handle_file_not_found(upload)
+    create_file_not_found_error(upload)
 
     assert upload.state == "processed"
 
@@ -34,10 +35,29 @@ def test_handle_file_not_found():
 
 
 @pytest.mark.django_db
+def test_missing_raw_upload_error():
+    upload = UploadFactory(
+        build_url="test_url", job_code="test_job", build_code="test_build"
+    )
+
+    create_missing_raw_upload_error(upload)
+
+    assert upload.state == "processed"
+
+    error = UploadError.objects.filter(report_session=upload).first()
+    assert error is not None
+    assert error.error_code == "upload_not_found"
+    assert (
+        error.error_params["error_message"]
+        == "Build URL: test_url\nJob Code: test_job\nBuild Code: test_build"
+    )
+
+
+@pytest.mark.django_db
 def test_parsing_error():
     upload = UploadFactory()
 
-    handle_parsing_error(upload, Exception("test string"))
+    create_parsing_error(upload, Exception("test string"))
 
     assert upload.state == "processed"
 

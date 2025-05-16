@@ -161,7 +161,9 @@ class TestResultsNotificationPayload(Generic[T]):
 
 @dataclass
 class ErrorPayload:
-    error_code: Literal["unsupported_file_format", "file_not_in_storage", "warning"]
+    error_code: Literal[
+        "unsupported_file_format", "file_not_in_storage", "warning", "upload_not_found"
+    ]
     error_message: str | None = None
 
 
@@ -241,43 +243,52 @@ def messagify_flake(
 
 
 def specific_error_message(error: ErrorPayload) -> str:
-    if error.error_code == "unsupported_file_format":
-        title = "### :x: Unsupported file format"
+    match error.error_code:
+        case "unsupported_file_format":
+            title = "### :x: Unsupported file format"
 
-        assert error.error_message is not None
+            assert error.error_message is not None
 
-        message = [
-            "Upload processing failed due to unsupported file format. Please review the parser error message:",
-            wrap_in_code(error.error_message),
-            "For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).",
-        ]
-        description = "\n".join(message)
-    elif error.error_code == "file_not_in_storage":
-        title = "### :x: File not in storage"
-        description = "\n".join(
-            [
-                "No result to display due to the CLI not being able to find the file.",
-                "Please ensure the file contains `junit` in the name and automated file search is enabled,",
-                "or the desired file specified by the `file` and `search_dir` arguments of the CLI.",
+            message = [
+                "Upload processing failed due to unsupported file format. Please review the parser error message:",
+                wrap_in_code(error.error_message),
+                "For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).",
             ]
-        )
-    elif error.error_code == "warning":
-        title = "### :warning: Parser warning"
+            description = "\n".join(message)
+        case "file_not_in_storage":
+            title = "### :x: File not in storage"
+            description = "\n".join(
+                [
+                    "No result to display due to the CLI not being able to find the file.",
+                    "Please ensure the file contains `junit` in the name and automated file search is enabled,",
+                    "or the desired file specified by the `file` and `search_dir` arguments of the CLI.",
+                ]
+            )
+        case "warning":
+            title = "### :warning: Parser warning"
 
-        # we will always expect a specific error message with a warning
-        assert error.error_message is not None
+            # we will always expect a specific error message with a warning
+            assert error.error_message is not None
 
-        message = [
-            "The parser emitted a warning. Please review your JUnit XML file:",
-            wrap_in_code(error.error_message),
-        ]
-        description = "\n".join(message)
-    else:
-        sentry_sdk.capture_message(
-            f"Unrecognized error code: {error.error_code}",
-            level="error",
-        )
-        return ""
+            message = [
+                "The parser emitted a warning. Please review your JUnit XML file:",
+                wrap_in_code(error.error_message),
+            ]
+            description = "\n".join(message)
+        case "upload_not_found":
+            title = "### :x: Upload not found"
+            description = "\n".join(
+                [
+                    "Upload was created but report file was not found in storage:",
+                    wrap_in_code(error.error_message),
+                ]
+            )
+        case _:
+            sentry_sdk.capture_message(
+                f"Unrecognized error code: {error.error_code}",
+                level="error",
+            )
+            return ""
     message = [
         title,
         make_quoted(description),

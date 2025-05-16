@@ -6,9 +6,10 @@ from test_results_parser import parse_raw_upload
 from services.processing.types import UploadArguments
 from services.test_analytics.ta_metrics import write_tests_summary
 from services.test_analytics.ta_processing import (
+    create_file_not_found_error,
+    create_missing_raw_upload_error,
+    create_parsing_error,
     get_ta_processing_info,
-    handle_file_not_found,
-    handle_parsing_error,
     insert_testruns_timeseries,
     rewrite_or_delete_upload,
 )
@@ -46,7 +47,7 @@ def ta_processor_impl(
 
     if upload.storage_path is None:
         if update_state:
-            handle_file_not_found(upload)
+            create_file_not_found_error(upload)
         return False
 
     ta_proc_info = get_ta_processing_info(repoid, commitid, commit_yaml)
@@ -57,28 +58,27 @@ def ta_processor_impl(
         payload_bytes = archive_service.read_file(upload.storage_path)
     except FileNotInStorageError:
         if update_state:
-            handle_file_not_found(upload)
+            create_missing_raw_upload_error(upload)
         return False
 
     try:
         parsing_infos, readable_file = parse_raw_upload(payload_bytes)
     except RuntimeError as exc:
         if update_state:
-            handle_parsing_error(upload, exc)
+            create_parsing_error(upload, exc)
         return False
 
     if update_state:
-        UploadError.objects.bulk_create(
-            [
-                UploadError(
-                    report_session=upload,
-                    error_code="warning",
-                    error_params={"warning_message": warning},
-                )
-                for info in parsing_infos
-                for warning in info["warnings"]
-            ]
-        )
+        warnings = [
+            UploadError(
+                report_session=upload,
+                error_code="warning",
+                error_params={"warning_message": warning},
+            )
+            for info in parsing_infos
+            for warning in info["warnings"]
+        ]
+        UploadError.objects.bulk_create(warnings)
 
     with write_tests_summary.labels("new").time():
         insert_testruns_timeseries(
