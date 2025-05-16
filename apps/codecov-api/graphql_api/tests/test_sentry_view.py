@@ -21,11 +21,11 @@ class TestSentryAriadneView(TestCase):
 
     def _create_valid_jwt_token(self):
         payload = {
-            "provider_user_id": "1234567890",
+            "provider_user_id": self.mock_owner.service_id,
             "provider": "github",
             "exp": int(time.time()) + 3600,  # Expires in 1 hour
         }
-        return jwt.encode(payload, settings.SENTRY_JWT_SECRET_KEY, algorithm="HS256")
+        return jwt.encode(payload, settings.SENTRY_JWT_SHARED_SECRET, algorithm="HS256")
 
     def _create_mock_owner(self):
         owner = OwnerFactory(
@@ -50,19 +50,12 @@ class TestSentryAriadneView(TestCase):
 
     def test_sentry_ariadne_view_valid_token(self):
         """Test sentry_ariadne_view with valid JWT token"""
-        with patch(
-            "codecov_auth.middleware.Owner.objects.get_or_create"
-        ) as mock_get_or_create:
-            mock_get_or_create.return_value = (self.mock_owner, False)
-            response = self.do_query(query=self.query, token=self.valid_jwt_token)
+        response = self.do_query(query=self.query, token=self.valid_jwt_token)
 
-            assert response.status_code == 200
-            assert response.json() == {
-                "data": {"me": {"owner": {"username": str(self.mock_owner.username)}}}
-            }
-            mock_get_or_create.assert_called_once_with(
-                service_id="1234567890", service="github"
-            )
+        assert response.status_code == 200
+        assert response.json() == {
+            "data": {"me": {"owner": {"username": str(self.mock_owner.username)}}}
+        }
 
     def test_sentry_ariadne_view_missing_token(self):
         """Test sentry_ariadne_view with missing JWT token"""
@@ -81,12 +74,12 @@ class TestSentryAriadneView(TestCase):
     def test_sentry_ariadne_view_expired_token(self):
         """Test sentry_ariadne_view with expired JWT token"""
         payload = {
-            "provider_user_id": "1234567890",
+            "provider_user_id": self.mock_owner.ownerid,
             "provider": "github",
             "exp": int(time.time()) - 3600,  # Expired 1 hour ago
         }
         expired_token = jwt.encode(
-            payload, settings.SENTRY_JWT_SECRET_KEY, algorithm="HS256"
+            payload, settings.SENTRY_JWT_SHARED_SECRET, algorithm="HS256"
         )
 
         response = self.do_query(query=self.query, token=expired_token)

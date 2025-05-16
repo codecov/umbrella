@@ -20,6 +20,11 @@ from utils.services import get_long_service_name
 log = logging.getLogger(__name__)
 
 
+class JWTClaims:
+    provider_user_id: str
+    provider: str
+
+
 def get_service(request: HttpRequest) -> str | None:
     resolver_match = resolve(request.path_info)
     service = resolver_match.kwargs.get("service")
@@ -199,7 +204,7 @@ def jwt_middleware(get_response):
             # TODO: use the correct decoding algorithm
             payload = jwt.decode(
                 token,
-                settings.SENTRY_JWT_SECRET_KEY,
+                settings.SENTRY_JWT_SHARED_SECRET,
                 algorithms=["HS256"],
                 options={"verify_exp": True},  # Explicitly enable expiry verification
             )
