@@ -108,7 +108,7 @@ class GithubWebhookHandler(APIView):
 
     def _get_repo(self, request):
         """
-        Attempts to fetch the repo first via the index on (ownerid, service_id),
+        Attempts to fetch the repo first via the index on o(wnerid, service_id),
         then naively on service, service_id if that fails.
         """
         repo_data = self.request.data.get("repository", {})
@@ -447,13 +447,12 @@ class GithubWebhookHandler(APIView):
         )
 
     def _decide_app_name(self, ghapp: GithubAppInstallation) -> str:
-        """
-        Possibly update the name of a GithubAppInstallation that has been fetched from DB or created.
-        Only the real default installation may use the name `GITHUB_APP_INSTALLATION_DEFAULT_NAME`
+        """Possibly updated the name of a GithubAppInstallation that has been fetched from DB or created.
+        Only the real default installation maybe use the name `GITHUB_APP_INSTALLATION_DEFAULT_NAME`
         (otherwise we break the app)
         We check that apps:
             * already were given a custom name (do nothing);
-            * app_id matches the configured default app app_id (use default name);
+            * app_id match the configured default app app_id (use default name);
             * none of the above (use 'unconfigured_app');
 
         Returns the app name that should be used
@@ -465,6 +464,47 @@ class GithubWebhookHandler(APIView):
             extra={"installation": ghapp.external_id, "previous_name": ghapp.name},
         )
         return "unconfigured_app"
+
+    def _handle_installation_repository_events(self, request, *args, **kwargs):
+        # https://docs.github.com/en/webhooks/webhook-events-and-payloads#installation_repositories
+        service_id = request.data["installation"]["account"]["id"]
+        username = request.data["installation"]["account"]["login"]
+        owner, _ = Owner.objects.get_or_create(
+            service=self.service_name,
+            service_id=service_id,
+            defaults={
+                "username": username,
+                "createstamp": timezone.now(),
+            },
+        )
+
+        installation_id = request.data["installation"]["id"]
+
+        ghapp_installation, _ = GithubAppInstallation.objects.get_or_create(
+            installation_id=installation_id, owner=owner
+        )
+        app_id = request.data["installation"]["app_id"]
+        # Either update or set
+        # But this value shouldn't change for the installation, so doesn't matter
+        ghapp_installation.app_id = app_id
+        ghapp_installation.name = self._decide_app_name(ghapp_installation)
+
+        all_repos_affected = request.data.get("repository_selection") == "all"
+        if all_repos_affected:
+            ghapp_installation.repository_service_ids = None
+        else:
+            repo_list_to_save = set(ghapp_installation.repository_service_ids or [])
+            repositories_added_service_ids = {
+                obj["id"] for obj in request.data.get("repositories_added", [])
+            }
+            repositories_removed_service_ids = {
+                obj["id"] for obj in request.data.get("repositories_removed", [])
+            }
+            repo_list_to_save = repo_list_to_save.union(
+                repositories_added_service_ids
+            ).difference(repositories_removed_service_ids)
+            ghapp_installation.repository_service_ids = list(repo_list_to_save)
+        ghapp_installation.save()
 
     def _handle_installation_events(
         self, request, *args, event=GitHubWebhookEvents.INSTALLATION, **kwargs
@@ -485,102 +525,96 @@ class GithubWebhookHandler(APIView):
         installation_id = request.data["installation"]["id"]
 
         # https://docs.github.com/en/webhooks/webhook-events-and-payloads#installation
-        if action == "deleted" and event == GitHubWebhookEvents.INSTALLATION:
-            ghapp_installation: GithubAppInstallation | None = (
-                owner.github_app_installations.filter(
-                    installation_id=installation_id
-                ).first()
-            )
-            if ghapp_installation is not None:
-                ghapp_installation.delete()
-
+        if action == "deleted":
+            if event == GitHubWebhookEvents.INSTALLATION:
+                ghapp_installation: GithubAppInstallation | None = (
+                    owner.github_app_installations.filter(
+                        installation_id=installation_id
+                    ).first()
+                )
+                if ghapp_installation is not None:
+                    ghapp_installation.delete()
             # Deprecated flow - BEGIN
             owner.integration_id = None
             owner.save()
             owner.repository_set.all().update(using_integration=False, bot=None)
             # Deprecated flow - END
-
             log.info(
                 "Owner deleted app integration",
                 extra={"ownerid": owner.ownerid, "github_webhook_event": self.event},
             )
         else:
-            ghapp_installation, was_created = (
-                GithubAppInstallation.objects.get_or_create(
-                    installation_id=installation_id, owner=owner
+            # GithubWebhookEvents.INSTALLTION_REPOSITORIES also execute this code
+            # because of deprecated flow. But the GithubAppInstallation shouldn't be changed
+            if event == GitHubWebhookEvents.INSTALLATION:
+                ghapp_installation, was_created = (
+                    GithubAppInstallation.objects.get_or_create(
+                        installation_id=installation_id, owner=owner
+                    )
                 )
-            )
-            if was_created:
-                installer_username = request.data.get("sender", {}).get("login", None)
-                installer = (
-                    Owner.objects.filter(
-                        service=self.service_name,
-                        username=installer_username,
-                    ).first()
-                    if installer_username
-                    else None
-                )
-                # If installer does not exist, just attribute the action to the org owner.
-                AmplitudeEventPublisher().publish(
-                    "App Installed",
-                    {
-                        "user_ownerid": (
-                            installer.ownerid
-                            if installer is not None
-                            else owner.ownerid
-                        ),
-                        "ownerid": owner.ownerid,
-                    },
-                )
+                if was_created:
+                    installer_username = request.data.get("sender", {}).get(
+                        "login", None
+                    )
+                    installer = (
+                        Owner.objects.filter(
+                            service=self.service_name,
+                            username=installer_username,
+                        ).first()
+                        if installer_username
+                        else None
+                    )
+                    # If installer does not exist, just attribute the action to the org owner.
+                    AmplitudeEventPublisher().publish(
+                        "App Installed",
+                        {
+                            "user_ownerid": (
+                                installer.ownerid
+                                if installer is not None
+                                else owner.ownerid
+                            ),
+                            "ownerid": owner.ownerid,
+                        },
+                    )
 
-            app_id = request.data["installation"]["app_id"]
-            # Either update or set
-            # But this value shouldn't change for the installation, so doesn't matter
-            ghapp_installation.app_id = app_id
-            ghapp_installation.name = self._decide_app_name(ghapp_installation)
+                app_id = request.data["installation"]["app_id"]
+                # Either update or set
+                # But this value shouldn't change for the installation, so doesn't matter
+                ghapp_installation.app_id = app_id
+                ghapp_installation.name = self._decide_app_name(ghapp_installation)
 
-            all_repos_affected = (
-                request.data.get("installation", {}).get("repository_selection")
-                == "all"
-            )
-            if all_repos_affected:
-                ghapp_installation.repository_service_ids = None
-            else:
-                # installation event has "repositories"
-                if request.data.get("repositories"):
+                affects_all_repositories = (
+                    request.data["installation"]["repository_selection"] == "all"
+                )
+                if affects_all_repositories:
+                    ghapp_installation.repository_service_ids = None
+                else:
                     repositories_service_ids = [
                         obj["id"] for obj in request.data.get("repositories", [])
                     ]
                     ghapp_installation.repository_service_ids = repositories_service_ids
-                else:
-                    # installation_repositories event has "repositories_added" and "repositories_removed"
-                    # https://docs.github.com/en/webhooks/webhook-events-and-payloads#installation_repositories
-                    current_repos = set(ghapp_installation.repository_service_ids or [])
-                    repositories_added_service_ids = {
-                        obj["id"] for obj in request.data.get("repositories_added", [])
-                    }
-                    repositories_removed_service_ids = {
-                        obj["id"]
-                        for obj in request.data.get("repositories_removed", [])
-                    }
-                    repo_list_to_save = current_repos.union(
-                        repositories_added_service_ids
-                    ).difference(repositories_removed_service_ids)
-                    ghapp_installation.repository_service_ids = list(repo_list_to_save)
 
-            if action in ["suspend", "unsuspend"]:
-                log.info(
-                    "Request to suspend/unsuspend App",
-                    extra={
-                        "action": action,
-                        "is_currently_suspended": ghapp_installation.is_suspended,
-                        "ownerid": owner.ownerid,
-                        "installation_id": request.data["installation"]["id"],
-                    },
-                )
-                ghapp_installation.is_suspended = action == "suspend"
+                if action in ["suspend", "unsuspend"]:
+                    log.info(
+                        "Request to suspend/unsuspend App",
+                        extra={
+                            "action": action,
+                            "is_currently_suspended": ghapp_installation.is_suspended,
+                            "ownerid": owner.ownerid,
+                            "installation_id": request.data["installation"]["id"],
+                        },
+                    )
+                    ghapp_installation.is_suspended = action == "suspend"
 
-            ghapp_installation.save()
+                ghapp_installation.save()
+
+            # This flow is deprecated and should be removed once the
+            # work on github app integration model is complete and backfilled
+            # Deprecated flow - BEGIN
+            if owner.integration_id is None:
+                owner.integration_id = request.data["installation"]["id"]
+                owner.save()
+            # Deprecated flow - END
 
             log.info(
                 "Triggering refresh task to sync repos",
@@ -613,6 +647,9 @@ class GithubWebhookHandler(APIView):
         )
 
     def installation_repositories(self, request, *args, **kwargs):
+        self._handle_installation_repository_events(request, *args, **kwargs)
+        # This is kept to preserve the logic for deprecated usage of owner.installation_id
+        # It can be removed once the move to codecov_auth.GithubAppInstallation is complete
         return self._handle_installation_events(
             request,
             *args,
