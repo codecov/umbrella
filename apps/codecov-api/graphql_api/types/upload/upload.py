@@ -48,7 +48,10 @@ def resolve_errors(report_session: ReportSession, info: GraphQLResolveInfo, **kw
 
 @upload_error_bindable.field("errorCode")
 def resolve_error_code(error, info: GraphQLResolveInfo) -> UploadErrorEnum:
-    return UploadErrorEnum(error.error_code)
+    try:
+        return UploadErrorEnum(error.error_code)
+    except ValueError:
+        return UploadErrorEnum.UNKNOWN_ERROR_CODE
 
 
 @upload_bindable.field("ciUrl")
