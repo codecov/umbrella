@@ -7,4 +7,6 @@ enum UploadErrorEnum {
 
   UNKNOWN_PROCESSING
   UNKNOWN_STORAGE
+
+  UNKNOWN_ERROR_CODE
 }

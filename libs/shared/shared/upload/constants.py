@@ -234,3 +234,5 @@ class UploadErrorCode(StrEnum):
     # We don't want these - try to add error cases when they arise
     UNKNOWN_PROCESSING = "unknown_processing"
     UNKNOWN_STORAGE = "unknown_storage"
+
+    UNKNOWN_ERROR_CODE = "unknown_error_code"
