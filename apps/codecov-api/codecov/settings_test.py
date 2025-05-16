@@ -13,3 +13,4 @@ SHELTER_PUBSUB_SYNC_REPO_TOPIC_ID = "test-topic-id"
 os.environ["PUBSUB_EMULATOR_HOST"] = "localhost"
 
 GRAPHQL_INTROSPECTION_ENABLED = True
+SENTRY_JWT_SHARED_SECRET = "test-shared-secret"

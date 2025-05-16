@@ -26,6 +26,7 @@ from sentry_sdk import capture_exception
 
 from codecov.commands.exceptions import BaseException
 from codecov.commands.executor import get_executor_from_request
+from codecov_auth.middleware import jwt_middleware
 from services import ServiceException
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Counter, Histogram, inc_counter
@@ -439,4 +440,6 @@ async def ariadne_view(request: WSGIRequest, service: str) -> HttpResponse:
     return response
 
 
-ariadne_view.csrf_exempt = True
+@jwt_middleware
+async def sentry_ariadne_view(request: WSGIRequest, service: str) -> HttpResponse:
+    return await ariadne_view(request, service)
