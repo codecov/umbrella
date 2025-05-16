@@ -61,10 +61,25 @@ def get_upload_error(upload_ids: list[int]) -> ErrorPayload | None:
         .first()
     )
     if error:
-        return ErrorPayload(
-            error_code=error.error_code,
-            error_message=error.error_params.get("error_message"),
-        )
+        match error.error_code:
+            case "unsupported_file_format":
+                return ErrorPayload(
+                    error_code=error.error_code,
+                    error_message=error.error_params.get("error_message"),
+                )
+            case "warning":
+                return ErrorPayload(
+                    error_code=error.error_code,
+                    error_message=error.error_params.get("warning_message"),
+                )
+            case "file_not_in_storage":
+                return ErrorPayload(error_code=error.error_code, error_message=None)
+            case _:
+                sentry_sdk.capture_message(
+                    f"Unrecognized error code: {error.error_code}",
+                    level="error",
+                )
+                return None
     return None
 
 

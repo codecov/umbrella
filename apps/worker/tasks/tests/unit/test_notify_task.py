@@ -1252,7 +1252,7 @@ class TestNotifyTask:
             == expected_response
         )
 
-    def test_ta_relevant_context(self, mocker, dbsession):
+    def test_ta_relevant_context(self, mocker, dbsession, snapshot):
         report = ReportFactory(report_type="test_results")
         dbsession.add(report)
         dbsession.flush()
@@ -1261,14 +1261,16 @@ class TestNotifyTask:
         dbsession.add(upload)
         dbsession.flush()
 
-        upload_error = UploadErrorFactory(report_upload=upload)
+        upload_error = UploadErrorFactory(
+            report_upload=upload, error_code="file_not_in_storage"
+        )
         dbsession.add(upload_error)
         dbsession.flush()
 
         all_tests_passed, ta_error_msg = get_ta_relevant_context(dbsession, report)
 
         assert all_tests_passed is False
-        assert ta_error_msg == "error message"
+        assert snapshot("txt") == ta_error_msg
 
     def test_ta_relevant_context_no_error(self, mocker, dbsession):
         report = ReportFactory(report_type="test_results")

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from typing import Generic, Literal, TypedDict, TypeVar
 
+import sentry_sdk
 from sqlalchemy import desc, func
 from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.session import Session
@@ -272,7 +273,12 @@ def specific_error_message(error: ErrorPayload) -> str:
         ]
         description = "\n".join(message)
     else:
-        raise ValueError("Unrecognized error code")
+        sentry_sdk.capture_message(
+            f"Unrecognized error code: {error.error_code}",
+            level="error",
+        )
+        return "Error processing test results"
+
     message = [
         title,
         make_quoted(description),

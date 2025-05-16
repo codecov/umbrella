@@ -47,6 +47,24 @@ def test_parsing_error():
     assert error.error_params["error_message"] == "test string"
 
 
+@pytest.mark.django_db
+def test_warning():
+    upload = UploadFactory()
+
+    UploadError.objects.create(
+        report_session=upload,
+        error_code="warning",
+        error_params={"warning_message": "test warning"},
+    )
+
+    assert upload.state == "processed"
+
+    error = UploadError.objects.filter(report_session=upload).first()
+    assert error is not None
+    assert error.error_code == "warning"
+    assert error.error_params["warning_message"] == "test warning"
+
+
 @pytest.mark.parametrize(
     "expire_raw,uploads,result",
     [

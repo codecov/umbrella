@@ -1,6 +1,7 @@
 import logging
 
 from asgiref.sync import sync_to_async
+from django.db.models import Q
 
 from codecov.commands.base import BaseInteractor
 from core.models import Commit
@@ -31,8 +32,11 @@ class GetLatestUploadErrorInteractor(BaseInteractor):
     def _fetch_latest_error(self, commit: Commit) -> UploadError | None:
         return (
             UploadError.objects.filter(
-                report_session__report__commit=commit,
-                report_session__report__report_type=CommitReport.ReportType.TEST_RESULTS,
+                Q(report_session__report__commit=commit)
+                & Q(
+                    report_session__report__report_type=CommitReport.ReportType.TEST_RESULTS
+                )
+                & ~Q(error_code="warning")
             )
             .only("error_code", "error_params")
             .order_by("-created_at")

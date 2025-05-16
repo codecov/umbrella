@@ -42,6 +42,7 @@ from services.repository import (
     fetch_and_update_pull_request_information_from_commit,
     get_repo_provider_service,
 )
+from services.test_results import ErrorPayload, specific_error_message
 from services.yaml import get_current_yaml, read_yaml_field
 from shared.bots.github_apps import (
     get_github_app_token,
@@ -920,7 +921,24 @@ def get_ta_relevant_context(
         totals: TestResultReportTotals | None = ta_commit_report.test_result_totals
 
         if upload_error:
-            ta_error_msg = upload_error.error_params["error_message"]
+            match upload_error.error_code:
+                case "unsupported_file_format":
+                    error_message = upload_error.error_params.get("error_message")
+                case "warning":
+                    error_message = upload_error.error_params.get("warning_message")
+                case "file_not_in_storage":
+                    error_message = None
+                case _:
+                    sentry_sdk.capture_message(
+                        f"Unrecognized error code: {upload_error.error_code}",
+                        level="error",
+                    )
+                    error_message = None
+            error_payload = ErrorPayload(
+                error_code=upload_error.error_code,
+                error_message=error_message,
+            )
+            ta_error_msg = specific_error_message(error_payload)
 
         all_tests_passed = False
         if totals:
