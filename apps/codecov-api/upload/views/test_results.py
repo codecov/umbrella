@@ -46,8 +46,8 @@ class UploadSerializer(serializers.Serializer):
     slug = serializers.CharField(required=True)
     service = serializers.CharField(required=False)  # git_service
     build = serializers.CharField(required=False)
-    buildURL = serializers.CharField(required=False)
-    job = serializers.CharField(required=False)
+    buildUrl = serializers.CharField(required=False)
+    code = serializers.CharField(required=False)
     flags = FlagListField(required=False)
     pr = serializers.CharField(required=False)
     branch = serializers.CharField(required=False, allow_null=True)
@@ -176,8 +176,8 @@ class TestResultsView(
             # (eventual reports_upload columns indicated by comments)
             "reportid": upload_external_id,  # external_id
             "build": data.get("build"),  # build_code
-            "build_url": data.get("buildURL"),  # build_url
-            "job": data.get("job"),  # job_code
+            "build_url": data.get("buildUrl"),  # build_url
+            "job": data.get("code"),  # job_code
             "flags": data.get("flags"),
             "service": data.get("service"),  # git provider
             "url": storage_path,  # storage_path
