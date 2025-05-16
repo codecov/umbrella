@@ -1,3 +1,7 @@
+import base64
+import json
+import os
+import zlib
 from pathlib import Path
 
 import pytest
@@ -141,6 +145,53 @@ def test_ta_processor_impl_parsing_error(storage):
     assert error.error_params == {
         "error_message": "Error deserializing json\n\nCaused by:\n    expected value at line 1 column 1"
     }
+
+
+@pytest.mark.django_db(databases=["default", "ta_timeseries"])
+def test_ta_processor_impl_warning(storage, snapshot):
+    repository = RepositoryFactory.create()
+    commit = CommitFactory.create(repository=repository, branch="main")
+    upload = UploadFactory.create(
+        report__commit=commit, state="processing", storage_path="path/to/invalid.xml"
+    )
+    commit_yaml = {}
+
+    argument: UploadArguments = {"upload_id": upload.id}
+
+    script_dir = os.path.dirname(__file__)
+
+    with open(
+        os.path.join(script_dir, "samples", "sample-warnings-junit.xml"), "rb"
+    ) as f:
+        sample_junit = f.read()
+    sample_content = {
+        "test_results_files": [
+            {
+                "filename": "codecov-demo/temp.junit.xml",
+                "format": "base64+compressed",
+                "data": base64.b64encode(zlib.compress(sample_junit)).decode("utf-8"),
+                "labels": "",
+            }
+        ],
+        "metadata": {},
+    }
+
+    storage.write_file("archive", "path/to/invalid.xml", json.dumps(sample_content))
+
+    result = ta_processor_impl(
+        repository.repoid, commit.commitid, commit_yaml, argument, update_state=True
+    )
+
+    assert result is True
+
+    upload.refresh_from_db()
+    assert upload.state == "processed"
+
+    errors = UploadError.objects.filter(report_session=upload)
+    assert errors.count() == 2
+    for error in errors:
+        assert error.error_code == "warning"
+        assert snapshot("json") == error.error_params
 
 
 @pytest.mark.django_db(databases=["default", "ta_timeseries"])
