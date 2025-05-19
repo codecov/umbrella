@@ -4,9 +4,8 @@ from enum import Enum
 import sqlalchemy
 from sqlalchemy import Column, ForeignKey, Table, create_engine, types
 from sqlalchemy import Enum as SQLAlchemyEnum
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session as DbSession
-from sqlalchemy.orm import backref, relationship, sessionmaker
+from sqlalchemy.orm import backref, declarative_base, relationship, sessionmaker
 
 log = logging.getLogger(__name__)
 
