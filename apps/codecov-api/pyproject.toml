@@ -59,17 +59,16 @@ py-modules = []
 [tool.uv]
 required-version = ">=0.7.5"
 dev-dependencies = [
-    "factory-boy>=3.2.0",
-    "fakeredis==2.10.3",
+    "factory-boy>=3.3.3",
+    "fakeredis>=2.29.0",
     "freezegun>=1.5.1",
-    "pytest>=8.1.1",
-    "pytest-cov>=6.0.0",
-    "pytest-asyncio>=0.14.0",
-    "pytest-django==4.8.0",
+    "pytest>=8.3.5",
+    "pytest-cov>=6.1.1",
+    "pytest-asyncio>=0.26.0",
+    "pytest-django>=4.11.1",
     "pytest-insta>=0.3.0",
-    "pytest-mock==3.14.0",
-    "urllib3==1.26.19",
-    "vcrpy>=6.0.1",
+    "pytest-mock>=3.14.0",
+    "vcrpy>=7.0.0",
 ]
 
 [tool.uv.sources]
