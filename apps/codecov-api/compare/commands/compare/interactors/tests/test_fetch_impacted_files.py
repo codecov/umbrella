@@ -579,10 +579,10 @@ class FetchImpactedFilesTest(TestCase):
         session_a_id, _ = commit_report.add_session(Session(flags=["flag-123"]))
         session_b_id, _ = commit_report.add_session(Session(flags=["flag-456"]))
         file_a = ReportFile("fileA")
-        file_a.append(1, ReportLine.create(coverage=1, sessions=[[session_a_id, 1]]))
+        file_a.append(1, ReportLine.create(1, sessions=[[session_a_id, 1]]))
         commit_report.append(file_a)
         file_b = ReportFile("fileB")
-        file_b.append(1, ReportLine.create(coverage=1, sessions=[[session_b_id, 1]]))
+        file_b.append(1, ReportLine.create(1, sessions=[[session_b_id, 1]]))
         commit_report.append(file_b)
         build_report_from_commit_mock.return_value = commit_report
 
@@ -623,10 +623,10 @@ class FetchImpactedFilesTest(TestCase):
         session_a_id, _ = commit_report.add_session(Session(flags=["flag-123"]))
         session_b_id, _ = commit_report.add_session(Session(flags=["flag-456"]))
         file_a = ReportFile("fileA")
-        file_a.append(1, ReportLine.create(coverage=1, sessions=[[session_a_id, 1]]))
+        file_a.append(1, ReportLine.create(1, sessions=[[session_a_id, 1]]))
         commit_report.append(file_a)
         file_b = ReportFile("fileB")
-        file_b.append(1, ReportLine.create(coverage=1, sessions=[[session_b_id, 1]]))
+        file_b.append(1, ReportLine.create(1, sessions=[[session_b_id, 1]]))
         commit_report.append(file_b)
         build_report_from_commit_mock.return_value = commit_report
 
@@ -660,10 +660,10 @@ class FetchImpactedFilesTest(TestCase):
         session_a_id, _ = commit_report.add_session(Session(flags=["flag-123"]))
         session_b_id, _ = commit_report.add_session(Session(flags=["flag-456"]))
         file_a = ReportFile("fileA.py")
-        file_a.append(1, ReportLine.create(coverage=1, sessions=[[session_a_id, 1]]))
+        file_a.append(1, ReportLine.create(1, sessions=[[session_a_id, 1]]))
         commit_report.append(file_a)
         file_b = ReportFile("fileB.js")
-        file_b.append(1, ReportLine.create(coverage=1, sessions=[[session_b_id, 1]]))
+        file_b.append(1, ReportLine.create(1, sessions=[[session_b_id, 1]]))
         commit_report.append(file_b)
         build_report_from_commit_mock.return_value = commit_report
 
@@ -706,10 +706,10 @@ class FetchImpactedFilesTest(TestCase):
         session_a_id, _ = commit_report.add_session(Session(flags=["flag-123"]))
         session_b_id, _ = commit_report.add_session(Session(flags=["flag-456"]))
         file_a = ReportFile("fileA.py")
-        file_a.append(1, ReportLine.create(coverage=1, sessions=[[session_a_id, 1]]))
+        file_a.append(1, ReportLine.create(1, sessions=[[session_a_id, 1]]))
         commit_report.append(file_a)
         file_b = ReportFile("fileB.js")
-        file_b.append(1, ReportLine.create(coverage=1, sessions=[[session_b_id, 1]]))
+        file_b.append(1, ReportLine.create(1, sessions=[[session_b_id, 1]]))
         commit_report.append(file_b)
         build_report_from_commit_mock.return_value = commit_report
 
@@ -758,10 +758,10 @@ class FetchImpactedFilesTest(TestCase):
         session_a_id, _ = commit_report.add_session(Session(flags=["flag-123"]))
         session_b_id, _ = commit_report.add_session(Session(flags=["flag-456"]))
         file_a = ReportFile("fileA.py")
-        file_a.append(1, ReportLine.create(coverage=1, sessions=[[session_a_id, 1]]))
+        file_a.append(1, ReportLine.create(1, sessions=[[session_a_id, 1]]))
         commit_report.append(file_a)
         file_b = ReportFile("fileB.js")
-        file_b.append(1, ReportLine.create(coverage=1, sessions=[[session_b_id, 1]]))
+        file_b.append(1, ReportLine.create(1, sessions=[[session_b_id, 1]]))
         commit_report.append(file_b)
         build_report_from_commit_mock.return_value = commit_report
 

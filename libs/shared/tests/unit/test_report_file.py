@@ -20,14 +20,14 @@ def format_lines_idx_and_coverage_only(lines):
 def test_shift_lines_by_diff_mixed_changes():
     file = ReportFile("file_1.go")
     # Coverage is the line number before the shift
-    file.append(1, ReportLine.create(coverage=1))
-    file.append(2, ReportLine.create(coverage=2))
-    file.append(3, ReportLine.create(coverage=3))
-    file.append(5, ReportLine.create(coverage=5))
-    file.append(6, ReportLine.create(coverage=6))
-    file.append(8, ReportLine.create(coverage=8))
-    file.append(9, ReportLine.create(coverage=9))
-    file.append(10, ReportLine.create(coverage=10))
+    file.append(1, ReportLine.create(1))
+    file.append(2, ReportLine.create(2))
+    file.append(3, ReportLine.create(3))
+    file.append(5, ReportLine.create(5))
+    file.append(6, ReportLine.create(6))
+    file.append(8, ReportLine.create(8))
+    file.append(9, ReportLine.create(9))
+    file.append(10, ReportLine.create(10))
 
     fake_diff = {
         "type": "modified",
@@ -79,7 +79,7 @@ def test_shift_lines_by_diff_mixed_changes():
 def test_shift_lines_by_diff_only_adds():
     file = ReportFile("file_1.go")
     for i in range(1, 11):
-        file.append(i, ReportLine.create(coverage=(i)))
+        file.append(i, ReportLine.create(i))
     fake_diff = {
         "type": "modified",
         "before": None,
@@ -129,7 +129,7 @@ def test_shift_lines_by_diff_only_adds():
 def test_shift_lines_by_diff_only_removals():
     file = ReportFile("file_1.go")
     for i in range(1, 11):
-        file.append(i, ReportLine.create(coverage=(i)))
+        file.append(i, ReportLine.create(i))
     fake_diff = {
         "type": "modified",
         "before": None,
@@ -170,7 +170,7 @@ def test_shift_lines_by_diff_only_removals():
 def test_shift_lines_by_diff_wiki_example():
     file = ReportFile("file")
     for i in range(1, 31):
-        file.append(i, ReportLine.create(coverage=(i)))
+        file.append(i, ReportLine.create(i))
     fake_diff = {
         "segments": [
             {
@@ -264,7 +264,7 @@ def test_shift_lines_by_diff_wiki_example():
 def test_shift_lines_by_diff_changes_to_no_code_at_eof():
     file = ReportFile("file")
     for i in range(1, 10):
-        file.append(i, ReportLine.create(coverage=(i)))
+        file.append(i, ReportLine.create(i))
     fake_diff = {
         "segments": [
             {

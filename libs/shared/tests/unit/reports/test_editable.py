@@ -7,7 +7,7 @@ import pytest
 from shared.reports.editable import EditableReport, EditableReportFile
 from shared.reports.resources import ReportFile, Session
 from shared.reports.test_utils import convert_report_to_better_readable
-from shared.reports.types import LineSession, ReportLine, ReportTotals
+from shared.reports.types import ReportLine, ReportTotals
 from shared.utils.merge import merge_coverage
 from shared.utils.sessions import SessionType
 
@@ -15,9 +15,7 @@ current_file = Path(__file__)
 
 
 def create_sample_line(*, coverage, sessionid=None):
-    return ReportLine.create(
-        coverage=coverage, sessions=[(LineSession(id=sessionid, coverage=coverage))]
-    )
+    return ReportLine.create(coverage, sessions=[(sessionid, coverage)])
 
 
 def test_merge_coverage():
@@ -26,7 +24,7 @@ def test_merge_coverage():
 
 
 def test_change_sessionid():
-    line = ReportLine.create(1, sessions=[LineSession(0, 1)])
+    line = ReportLine.create(1, sessions=[(0, 1)])
     file = EditableReportFile(name="foo.rs")
     file.append(1, line)
     report = EditableReport()
@@ -64,13 +62,13 @@ def test_change_sessionid():
 
 class TestEditableReportHelpers:
     def test_line_without_session(self):
-        line = ReportLine.create(1, None, [LineSession(1, 0), LineSession(0, 1)])
+        line = ReportLine.create(1, None, [(1, 0), (0, 1)])
         assert EditableReportFile.line_without_multiple_sessions(
             line, {1}
-        ) == ReportLine.create(1, None, [LineSession(0, 1)])
+        ) == ReportLine.create(1, None, [(0, 1)])
         assert EditableReportFile.line_without_multiple_sessions(
             line, {0}
-        ) == ReportLine.create(0, None, [LineSession(1, 0)])
+        ) == ReportLine.create(0, None, [(1, 0)])
         assert (
             EditableReportFile.line_without_multiple_sessions(
                 EditableReportFile.line_without_multiple_sessions(line, {0}), {1}
@@ -104,56 +102,16 @@ class TestEditableReportFile:
         )
         report_file = EditableReportFile(name="file.py", lines=chunks)
         expected_result = [
-            (
-                1,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 1), LineSession(1, 0)]
-                ),
-            ),
-            (
-                4,
-                ReportLine.create(
-                    coverage=0, sessions=[LineSession(0, 0), LineSession(1, 0)]
-                ),
-            ),
-            (
-                5,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 1), LineSession(1, 1)]
-                ),
-            ),
-            (
-                6,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 0), LineSession(1, 1)]
-                ),
-            ),
-            (
-                9,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 1), LineSession(1, "1/2")]
-                ),
-            ),
-            (
-                10,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, "1/2"), LineSession(1, 1)]
-                ),
-            ),
-            (13, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-            (14, ReportLine.create(coverage=1, sessions=[LineSession(1, 1)])),
-            (
-                15,
-                ReportLine.create(
-                    coverage="1/2", sessions=[LineSession(0, "1/2"), LineSession(1, 0)]
-                ),
-            ),
-            (
-                16,
-                ReportLine.create(
-                    coverage="1/2", sessions=[LineSession(0, 0), LineSession(1, "1/2")]
-                ),
-            ),
+            (1, ReportLine.create(1, sessions=[(0, 1), (1, 0)])),
+            (4, ReportLine.create(0, sessions=[(0, 0), (1, 0)])),
+            (5, ReportLine.create(1, sessions=[(0, 1), (1, 1)])),
+            (6, ReportLine.create(1, sessions=[(0, 0), (1, 1)])),
+            (9, ReportLine.create(1, sessions=[(0, 1), (1, "1/2")])),
+            (10, ReportLine.create(1, sessions=[(0, "1/2"), (1, 1)])),
+            (13, ReportLine.create(1, sessions=[(0, 1)])),
+            (14, ReportLine.create(1, sessions=[(1, 1)])),
+            (15, ReportLine.create("1/2", sessions=[(0, "1/2"), (1, 0)])),
+            (16, ReportLine.create("1/2", sessions=[(0, 0), (1, "1/2")])),
         ]
         assert list(report_file.lines) == expected_result
 
@@ -286,56 +244,16 @@ class TestEditableReportFile:
         )
         report_file = EditableReportFile(name="file.py", lines=chunks)
         assert list(report_file.lines) == [
-            (
-                1,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 1), LineSession(1, 0)]
-                ),
-            ),
-            (
-                4,
-                ReportLine.create(
-                    coverage=0, sessions=[LineSession(0, 0), LineSession(1, 0)]
-                ),
-            ),
-            (
-                5,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 1), LineSession(1, 1)]
-                ),
-            ),
-            (
-                6,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 0), LineSession(1, 1)]
-                ),
-            ),
-            (
-                9,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 1), LineSession(1, "1/2")]
-                ),
-            ),
-            (
-                10,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, "1/2"), LineSession(1, 1)]
-                ),
-            ),
-            (13, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-            (14, ReportLine.create(coverage=1, sessions=[LineSession(1, 1)])),
-            (
-                15,
-                ReportLine.create(
-                    coverage="1/2", sessions=[LineSession(0, "1/2"), LineSession(1, 0)]
-                ),
-            ),
-            (
-                16,
-                ReportLine.create(
-                    coverage="1/2", sessions=[LineSession(0, 0), LineSession(1, "1/2")]
-                ),
-            ),
+            (1, ReportLine.create(1, sessions=[(0, 1), (1, 0)])),
+            (4, ReportLine.create(0, sessions=[(0, 0), (1, 0)])),
+            (5, ReportLine.create(1, sessions=[(0, 1), (1, 1)])),
+            (6, ReportLine.create(1, sessions=[(0, 0), (1, 1)])),
+            (9, ReportLine.create(1, sessions=[(0, 1), (1, "1/2")])),
+            (10, ReportLine.create(1, sessions=[(0, "1/2"), (1, 1)])),
+            (13, ReportLine.create(1, sessions=[(0, 1)])),
+            (14, ReportLine.create(1, sessions=[(1, 1)])),
+            (15, ReportLine.create("1/2", sessions=[(0, "1/2"), (1, 0)])),
+            (16, ReportLine.create("1/2", sessions=[(0, 0), (1, "1/2")])),
         ]
         assert report_file.totals == ReportTotals(
             files=0, lines=10, hits=7, misses=1, partials=2, coverage="70.00000"
@@ -344,23 +262,19 @@ class TestEditableReportFile:
         report_file.delete_multiple_sessions({1})
 
         assert list(report_file.lines) == [
-            (1, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-            (4, ReportLine.create(coverage=0, sessions=[LineSession(0, 0)])),
-            (5, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-            (6, ReportLine.create(coverage=0, sessions=[LineSession(0, 0)])),
-            (9, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-            (10, ReportLine.create(coverage="1/2", sessions=[LineSession(0, "1/2")])),
-            (13, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-            (15, ReportLine.create(coverage="1/2", sessions=[LineSession(0, "1/2")])),
-            (16, ReportLine.create(coverage=0, sessions=[LineSession(0, 0)])),
+            (1, ReportLine.create(1, sessions=[(0, 1)])),
+            (4, ReportLine.create(0, sessions=[(0, 0)])),
+            (5, ReportLine.create(1, sessions=[(0, 1)])),
+            (6, ReportLine.create(0, sessions=[(0, 0)])),
+            (9, ReportLine.create(1, sessions=[(0, 1)])),
+            (10, ReportLine.create("1/2", sessions=[(0, "1/2")])),
+            (13, ReportLine.create(1, sessions=[(0, 1)])),
+            (15, ReportLine.create("1/2", sessions=[(0, "1/2")])),
+            (16, ReportLine.create(0, sessions=[(0, 0)])),
         ]
 
-        assert report_file.get(1) == ReportLine.create(
-            coverage=1, sessions=[LineSession(0, 1)]
-        )
-        assert report_file.get(13) == ReportLine.create(
-            coverage=1, sessions=[LineSession(0, 1)]
-        )
+        assert report_file.get(1) == ReportLine.create(1, sessions=[(0, 1)])
+        assert report_file.get(13) == ReportLine.create(1, sessions=[(0, 1)])
         assert report_file.get(14) is None
         assert report_file.totals == ReportTotals(
             files=0,
@@ -397,56 +311,16 @@ class TestEditableReportFile:
         )
         report_file = EditableReportFile(name="file.py", lines=chunks)
         original_lines = [
-            (
-                1,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 1), LineSession(1, 0)]
-                ),
-            ),
-            (
-                4,
-                ReportLine.create(
-                    coverage=0, sessions=[LineSession(0, 0), LineSession(1, 0)]
-                ),
-            ),
-            (
-                5,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 1), LineSession(1, 1)]
-                ),
-            ),
-            (
-                6,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 0), LineSession(1, 1)]
-                ),
-            ),
-            (
-                9,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 1), LineSession(1, "1/2")]
-                ),
-            ),
-            (
-                10,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, "1/2"), LineSession(1, 1)]
-                ),
-            ),
-            (13, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-            (14, ReportLine.create(coverage=1, sessions=[LineSession(1, 1)])),
-            (
-                15,
-                ReportLine.create(
-                    coverage="1/2", sessions=[LineSession(0, "1/2"), LineSession(1, 0)]
-                ),
-            ),
-            (
-                16,
-                ReportLine.create(
-                    coverage="1/2", sessions=[LineSession(0, 0), LineSession(1, "1/2")]
-                ),
-            ),
+            (1, ReportLine.create(1, sessions=[(0, 1), (1, 0)])),
+            (4, ReportLine.create(0, sessions=[(0, 0), (1, 0)])),
+            (5, ReportLine.create(1, sessions=[(0, 1), (1, 1)])),
+            (6, ReportLine.create(1, sessions=[(0, 0), (1, 1)])),
+            (9, ReportLine.create(1, sessions=[(0, 1), (1, "1/2")])),
+            (10, ReportLine.create(1, sessions=[(0, "1/2"), (1, 1)])),
+            (13, ReportLine.create(1, sessions=[(0, 1)])),
+            (14, ReportLine.create(1, sessions=[(1, 1)])),
+            (15, ReportLine.create("1/2", sessions=[(0, "1/2"), (1, 0)])),
+            (16, ReportLine.create("1/2", sessions=[(0, 0), (1, "1/2")])),
         ]
         assert list(report_file.lines) == original_lines
         report_file.delete_multiple_sessions({3})
@@ -478,81 +352,30 @@ class TestEditableReportFile:
         report_file = EditableReportFile(name="file.py", lines=chunks)
 
         assert list(report_file.lines) == [
-            (
-                1,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 1), LineSession(1, 0)]
-                ),
-            ),
-            (
-                4,
-                ReportLine.create(
-                    coverage=0, sessions=[LineSession(2, 0), LineSession(1, 0)]
-                ),
-            ),
-            (
-                5,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 1), LineSession(3, 1)]
-                ),
-            ),
-            (
-                6,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 0), LineSession(1, 1)]
-                ),
-            ),
-            (
-                9,
-                ReportLine.create(
-                    coverage=1,
-                    sessions=[
-                        LineSession(0, 1),
-                        LineSession(1, "1/2"),
-                        LineSession(2, 1),
-                        LineSession(3, 1),
-                    ],
-                ),
-            ),
-            (
-                10,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, "1/2"), LineSession(1, 1)]
-                ),
-            ),
-            (13, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-            (14, ReportLine.create(coverage=1, sessions=[LineSession(1, 1)])),
-            (
-                15,
-                ReportLine.create(
-                    coverage="1/2", sessions=[LineSession(0, "1/2"), LineSession(1, 0)]
-                ),
-            ),
-            (
-                16,
-                ReportLine.create(
-                    coverage="1/2", sessions=[LineSession(0, 0), LineSession(1, "1/2")]
-                ),
-            ),
+            (1, ReportLine.create(1, sessions=[(0, 1), (1, 0)])),
+            (4, ReportLine.create(0, sessions=[(2, 0), (1, 0)])),
+            (5, ReportLine.create(1, sessions=[(0, 1), (3, 1)])),
+            (6, ReportLine.create(1, sessions=[(0, 0), (1, 1)])),
+            (9, ReportLine.create(1, sessions=[(0, 1), (1, "1/2"), (2, 1), (3, 1)])),
+            (10, ReportLine.create(1, sessions=[(0, "1/2"), (1, 1)])),
+            (13, ReportLine.create(1, sessions=[(0, 1)])),
+            (14, ReportLine.create(1, sessions=[(1, 1)])),
+            (15, ReportLine.create("1/2", sessions=[(0, "1/2"), (1, 0)])),
+            (16, ReportLine.create("1/2", sessions=[(0, 0), (1, "1/2")])),
         ]
 
         report_file.delete_multiple_sessions({1, 3, 5})
 
         assert list(report_file.lines) == [
-            (1, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-            (4, ReportLine.create(coverage=0, sessions=[LineSession(2, 0)])),
-            (5, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-            (6, ReportLine.create(coverage=0, sessions=[LineSession(0, 0)])),
-            (
-                9,
-                ReportLine.create(
-                    coverage=1, sessions=[LineSession(0, 1), LineSession(2, 1)]
-                ),
-            ),
-            (10, ReportLine.create(coverage="1/2", sessions=[LineSession(0, "1/2")])),
-            (13, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-            (15, ReportLine.create(coverage="1/2", sessions=[LineSession(0, "1/2")])),
-            (16, ReportLine.create(coverage=0, sessions=[LineSession(0, 0)])),
+            (1, ReportLine.create(1, sessions=[(0, 1)])),
+            (4, ReportLine.create(0, sessions=[(2, 0)])),
+            (5, ReportLine.create(1, sessions=[(0, 1)])),
+            (6, ReportLine.create(0, sessions=[(0, 0)])),
+            (9, ReportLine.create(1, sessions=[(0, 1), (2, 1)])),
+            (10, ReportLine.create("1/2", sessions=[(0, "1/2")])),
+            (13, ReportLine.create(1, sessions=[(0, 1)])),
+            (15, ReportLine.create("1/2", sessions=[(0, "1/2")])),
+            (16, ReportLine.create(0, sessions=[(0, 0)])),
         ]
 
         assert report_file.details == {"present_sessions": [0, 2]}
@@ -564,82 +387,34 @@ def sample_report():
     first_file = EditableReportFile("file_1.go")
     first_file.append(
         1,
-        ReportLine.create(
-            coverage=1,
-            sessions=[LineSession(0, 1), LineSession(1, 1), LineSession(2, 1)],
-            complexity=(10, 2),
-        ),
+        ReportLine.create(1, sessions=[(0, 1), (1, 1), (2, 1)], complexity=(10, 2)),
     )
     first_file.append(
         2,
-        ReportLine.create(
-            coverage=1,
-            sessions=[LineSession(0, 1), LineSession(1, "1/2"), LineSession(2, 1)],
-            complexity=(10, 2),
-        ),
+        ReportLine.create(1, sessions=[(0, 1), (1, "1/2"), (2, 1)], complexity=(10, 2)),
+    )
+    first_file.append(3, ReportLine.create(1, sessions=[(0, 1)], complexity=(10, 2)))
+    first_file.append(4, ReportLine.create(1, sessions=[(1, 1)], complexity=(10, 2)))
+    first_file.append(5, ReportLine.create(1, sessions=[(2, 1)], complexity=(10, 2)))
+    first_file.append(
+        6, ReportLine.create(1, sessions=[(0, 1), (1, 1)], complexity=(10, 2))
     )
     first_file.append(
-        3,
-        ReportLine.create(coverage=1, sessions=[LineSession(0, 1)], complexity=(10, 2)),
+        7, ReportLine.create(1, sessions=[(1, 1), (2, 1)], complexity=(10, 2))
     )
     first_file.append(
-        4,
-        ReportLine.create(coverage=1, sessions=[LineSession(1, 1)], complexity=(10, 2)),
-    )
-    first_file.append(
-        5,
-        ReportLine.create(coverage=1, sessions=[LineSession(2, 1)], complexity=(10, 2)),
-    )
-    first_file.append(
-        6,
-        ReportLine.create(
-            coverage=1,
-            sessions=[LineSession(0, 1), LineSession(1, 1)],
-            complexity=(10, 2),
-        ),
-    )
-    first_file.append(
-        7,
-        ReportLine.create(
-            coverage=1,
-            sessions=[LineSession(1, 1), LineSession(2, 1)],
-            complexity=(10, 2),
-        ),
-    )
-    first_file.append(
-        8,
-        ReportLine.create(
-            coverage=1,
-            sessions=[LineSession(2, 1), LineSession(0, 1)],
-            complexity=(10, 2),
-        ),
+        8, ReportLine.create(1, sessions=[(2, 1), (0, 1)], complexity=(10, 2))
     )
     second_file = EditableReportFile("file_2.py")
-    second_file.append(
-        12,
-        ReportLine.create(
-            coverage=1,
-            sessions=[LineSession(0, 1), LineSession(1, "1/2"), LineSession(2, 0)],
-        ),
-    )
+    second_file.append(12, ReportLine.create(1, sessions=[(0, 1), (1, "1/2"), (2, 0)]))
     second_file.append(
         51,
-        ReportLine.create(
-            coverage="1/2",
-            type="b",
-            sessions=[LineSession(0, "1/3"), LineSession(1, "1/2")],
-        ),
+        ReportLine.create("1/2", type="b", sessions=[(0, "1/3"), (1, "1/2")]),
     )
     single_session_file = EditableReportFile("single_session_file.c")
-    single_session_file.append(
-        101, ReportLine.create(coverage="1/2", sessions=[LineSession(1, "1/2")])
-    )
-    single_session_file.append(
-        110, ReportLine.create(coverage=1, sessions=[LineSession(1, 1)])
-    )
-    single_session_file.append(
-        111, ReportLine.create(coverage=0, sessions=[LineSession(1, 0)])
-    )
+    single_session_file.append(101, ReportLine.create("1/2", sessions=[(1, "1/2")]))
+    single_session_file.append(110, ReportLine.create(1, sessions=[(1, 1)]))
+    single_session_file.append(111, ReportLine.create(0, sessions=[(1, 0)]))
     report.append(first_file)
     report.append(second_file)
     report.append(single_session_file)
@@ -680,11 +455,10 @@ class TestEditableReport:
         for _ in range(5):
             for sessionid in range(4):
                 first_file.append(
-                    c % 7 + 1,
-                    create_sample_line(coverage=c, sessionid=sessionid),
+                    c % 7 + 1, create_sample_line(coverage=c, sessionid=sessionid)
                 )
                 c += 1
-        first_file.append(23, ReportLine.create(1, sessions=[LineSession(1, 1)]))
+        first_file.append(23, ReportLine.create(1, sessions=[(1, 1)]))
         second_file = EditableReportFile("second_file.py")
         first_report.append(first_file)
         first_report.append(second_file)

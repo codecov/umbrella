@@ -25,15 +25,15 @@ def flags_report():
     session_c_id, _ = report.add_session(Session(flags=["flag-c"]))
 
     file_a = ReportFile("foo/file1.py")
-    file_a.append(1, ReportLine.create(coverage=1, sessions=[[session_a_id, 1]]))
+    file_a.append(1, ReportLine.create(1, sessions=[[session_a_id, 1]]))
     report.append(file_a)
 
     file_b = ReportFile("bar/file2.py")
-    file_b.append(12, ReportLine.create(coverage=1, sessions=[[session_b_id, 1]]))
+    file_b.append(12, ReportLine.create(1, sessions=[[session_b_id, 1]]))
     report.append(file_b)
 
     file_c = ReportFile("another/file3.py")
-    file_c.append(12, ReportLine.create(coverage=1, sessions=[[session_c_id, 1]]))
+    file_c.append(12, ReportLine.create(1, sessions=[[session_c_id, 1]]))
     report.append(file_c)
 
     return report

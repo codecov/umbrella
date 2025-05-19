@@ -3,7 +3,7 @@ import pytest
 from shared.reports.editable import EditableReport, EditableReportFile
 from shared.reports.resources import Report, ReportFile
 from shared.reports.serde import _encode_chunk
-from shared.reports.types import LineSession, ReportLine, ReportTotals
+from shared.reports.types import ReportLine, ReportTotals
 from shared.utils.sessions import Session
 
 
@@ -253,23 +253,19 @@ def test_delete_session():
     )
     report_file.delete_multiple_sessions({1})
     expected_result = [
-        (1, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-        (4, ReportLine.create(coverage=0, sessions=[LineSession(0, 0)])),
-        (5, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-        (6, ReportLine.create(coverage=0, sessions=[LineSession(0, 0)])),
-        (9, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-        (10, ReportLine.create(coverage="1/2", sessions=[LineSession(0, "1/2")])),
-        (13, ReportLine.create(coverage=1, sessions=[LineSession(0, 1)])),
-        (15, ReportLine.create(coverage="1/2", sessions=[LineSession(0, "1/2")])),
-        (16, ReportLine.create(coverage=0, sessions=[LineSession(0, 0)])),
+        (1, ReportLine.create(1, sessions=[(0, 1)])),
+        (4, ReportLine.create(0, sessions=[(0, 0)])),
+        (5, ReportLine.create(1, sessions=[(0, 1)])),
+        (6, ReportLine.create(0, sessions=[(0, 0)])),
+        (9, ReportLine.create(1, sessions=[(0, 1)])),
+        (10, ReportLine.create("1/2", sessions=[(0, "1/2")])),
+        (13, ReportLine.create(1, sessions=[(0, 1)])),
+        (15, ReportLine.create("1/2", sessions=[(0, "1/2")])),
+        (16, ReportLine.create(0, sessions=[(0, 0)])),
     ]
     assert list(report_file.lines) == expected_result
-    assert report_file.get(1) == ReportLine.create(
-        coverage=1, sessions=[LineSession(0, 1)]
-    )
-    assert report_file.get(13) == ReportLine.create(
-        coverage=1, sessions=[LineSession(0, 1)]
-    )
+    assert report_file.get(1) == ReportLine.create(1, sessions=[(0, 1)])
+    assert report_file.get(13) == ReportLine.create(1, sessions=[(0, 1)])
     assert report_file.get(14) is None
     assert report_file.totals == ReportTotals(
         files=0,

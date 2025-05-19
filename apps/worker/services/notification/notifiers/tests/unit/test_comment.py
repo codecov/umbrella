@@ -33,7 +33,7 @@ from services.yaml.reader import get_components_from_yaml
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from shared.reports.readonly import ReadOnlyReport
 from shared.reports.resources import Report, ReportFile
-from shared.reports.types import Change, LineSession, ReportLine, ReportTotals
+from shared.reports.types import Change, ReportLine, ReportTotals
 from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitClientGeneralError,
@@ -84,28 +84,12 @@ def sample_comparison_bunch_empty_flags(request, dbsession, mocker):
     base_report.add_session(Session(flags=["eighth"]))
     # assert False
     file_1 = ReportFile("space.py")
-    file_1.append(
-        1,
-        ReportLine.create(
-            coverage=1, sessions=[LineSession(0, 1), LineSession(1, "1/2")]
-        ),
-    )
-    file_1.append(
-        40,
-        ReportLine.create(coverage=1, sessions=[LineSession(5, 1), LineSession(1, 1)]),
-    )
+    file_1.append(1, ReportLine.create(1, sessions=[(0, 1), (1, "1/2")]))
+    file_1.append(40, ReportLine.create(1, sessions=[(5, 1), (1, 1)]))
     head_report.append(file_1)
     file_2 = ReportFile("jupiter.py")
-    file_2.append(
-        1,
-        ReportLine.create(
-            coverage=1, sessions=[LineSession(0, 1), LineSession(2, "1/2")]
-        ),
-    )
-    file_2.append(
-        40,
-        ReportLine.create(coverage=1, sessions=[LineSession(5, 1), LineSession(2, 1)]),
-    )
+    file_2.append(1, ReportLine.create(1, sessions=[(0, 1), (2, "1/2")]))
+    file_2.append(40, ReportLine.create(1, sessions=[(5, 1), (2, 1)]))
     base_report.append(file_2)
     mocker.patch(
         "shared.bots.github_apps.get_github_integration_token",
@@ -1518,9 +1502,9 @@ class TestCommentNotifier:
         new_base_file = ReportFile("file.py")
         # Produce numbers that we know can be tricky for rounding
         for i in range(1, 6760):
-            new_base_file.append(i, ReportLine.create(coverage=1))
+            new_base_file.append(i, ReportLine.create(1))
         for i in range(6760, 7631):
-            new_base_file.append(i, ReportLine.create(coverage=0))
+            new_base_file.append(i, ReportLine.create(0))
         new_base_report.append(new_base_file)
         comparison.project_coverage_base.report = ReadOnlyReport.create_from_report(
             new_base_report
@@ -1528,9 +1512,9 @@ class TestCommentNotifier:
         new_head_report = Report()
         new_head_file = ReportFile("file.py")
         for i in range(1, 6758):
-            new_head_file.append(i, ReportLine.create(coverage=1))
+            new_head_file.append(i, ReportLine.create(1))
         for i in range(6758, 7632):
-            new_head_file.append(i, ReportLine.create(coverage=0))
+            new_head_file.append(i, ReportLine.create(0))
         new_head_report.append(new_head_file)
         comparison.head.report = ReadOnlyReport.create_from_report(new_head_report)
         result = notifier.build_message(comparison)
@@ -1586,9 +1570,9 @@ class TestCommentNotifier:
         new_base_file = ReportFile("file.py")
         # Produce numbers that we know can be tricky for rounding
         for i in range(1, 6760):
-            new_base_file.append(i, ReportLine.create(coverage=1))
+            new_base_file.append(i, ReportLine.create(1))
         for i in range(6760, 7631):
-            new_base_file.append(i, ReportLine.create(coverage=0))
+            new_base_file.append(i, ReportLine.create(0))
         new_base_report.append(new_base_file)
         comparison.project_coverage_base.report = ReadOnlyReport.create_from_report(
             new_base_report
@@ -1596,9 +1580,9 @@ class TestCommentNotifier:
         new_head_report = Report()
         new_head_file = ReportFile("file.py")
         for i in range(1, 6758):
-            new_head_file.append(i, ReportLine.create(coverage=1))
+            new_head_file.append(i, ReportLine.create(1))
         for i in range(6758, 7632):
-            new_head_file.append(i, ReportLine.create(coverage=0))
+            new_head_file.append(i, ReportLine.create(0))
         new_head_report.append(new_head_file)
         comparison.head.report = ReadOnlyReport.create_from_report(new_head_report)
         result = notifier.build_message(comparison)
@@ -4680,16 +4664,12 @@ class TestCommentNotifierWelcome:
 
         head_report = Report()
         head_file = ReportFile("file_1.go")
-        head_file.append(
-            1, ReportLine.create(coverage=1, sessions=[[0, 1]], complexity=(10, 2))
-        )
+        head_file.append(1, ReportLine.create(1, sessions=[[0, 1]], complexity=(10, 2)))
         head_report.append(head_file)
 
         base_report = Report()
         base_file = ReportFile("file_1.go")
-        base_file.append(
-            1, ReportLine.create(coverage=0, sessions=[[0, 1]], complexity=(10, 2))
-        )
+        base_file.append(1, ReportLine.create(0, sessions=[[0, 1]], complexity=(10, 2)))
         base_report.append(base_file)
 
         head_full_commit = FullCommit(

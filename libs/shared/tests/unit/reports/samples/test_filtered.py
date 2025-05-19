@@ -23,13 +23,7 @@ class TestFilteredReportFile:
         line_modifier_mock.return_value = True
 
         first_file = ReportFile("file_1.go")
-        first_file.append(
-            1,
-            ReportLine.create(
-                coverage=1,
-                sessions=[LineSession(0, 1), LineSession(1, 1), LineSession(2, 1)],
-            ),
-        )
+        first_file.append(1, ReportLine.create(1, sessions=[(0, 1), (1, 1), (2, 1)]))
         filtered_report_file = FilteredReportFile(first_file, [1])
 
         assert filtered_report_file.lines == filtered_report_file.lines
@@ -37,41 +31,12 @@ class TestFilteredReportFile:
 
     def test_totals(self):
         first_file = ReportFile("file_1.go")
+        first_file.append(1, ReportLine.create(1, sessions=[(0, 1), (1, 1), (2, 1)]))
+        first_file.append(2, ReportLine.create(1, sessions=[(0, 0), (1, 1)]))
+        first_file.append(3, ReportLine.create(1, sessions=[(0, 1), (1, 0)]))
+        first_file.append(5, ReportLine.create(0, sessions=[(0, 0), (1, 0)]))
         first_file.append(
-            1,
-            ReportLine.create(
-                coverage=1,
-                sessions=[LineSession(0, 1), LineSession(1, 1), LineSession(2, 1)],
-            ),
-        )
-        first_file.append(
-            2,
-            ReportLine.create(
-                coverage=1, sessions=[LineSession(0, 0), LineSession(1, 1)]
-            ),
-        )
-        first_file.append(
-            3,
-            ReportLine.create(
-                coverage=1, sessions=[LineSession(0, 1), LineSession(1, 0)]
-            ),
-        )
-        first_file.append(
-            5,
-            ReportLine.create(
-                coverage=0, sessions=[LineSession(0, 0), LineSession(1, 0)]
-            ),
-        )
-        first_file.append(
-            6,
-            ReportLine.create(
-                coverage="1/2",
-                sessions=[
-                    LineSession(0, "1/2"),
-                    LineSession(1, 0),
-                    LineSession(2, "1/4"),
-                ],
-            ),
+            6, ReportLine.create("1/2", sessions=[(0, "1/2"), (1, 0), (2, "1/4")])
         )
         f = FilteredReportFile(first_file, [1])
         expected_result = ReportTotals(
@@ -275,46 +240,15 @@ class TestFilteredReport:
         report = Report()
         first_file = ReportFile("file_1.go")
         first_file.append(
-            1,
-            ReportLine.create(
-                coverage=1,
-                sessions=[
-                    LineSession(0, 1),
-                    LineSession(1, 1),
-                    LineSession(2, 1),
-                    LineSession(4, 1),
-                ],
-            ),
+            1, ReportLine.create(1, sessions=[(0, 1), (1, 1), (2, 1), (4, 1)])
         )
-        first_file.append(
-            2,
-            ReportLine.create(
-                coverage=1, sessions=[LineSession(0, 0), LineSession(1, 1)]
-            ),
-        )
-        first_file.append(
-            3,
-            ReportLine.create(
-                coverage=1, sessions=[LineSession(0, 1), LineSession(1, 0)]
-            ),
-        )
-        first_file.append(
-            5,
-            ReportLine.create(
-                coverage=0, sessions=[LineSession(0, 0), LineSession(1, 0)]
-            ),
-        )
+        first_file.append(2, ReportLine.create(1, sessions=[(0, 0), (1, 1)]))
+        first_file.append(3, ReportLine.create(1, sessions=[(0, 1), (1, 0)]))
+        first_file.append(5, ReportLine.create(0, sessions=[(0, 0), (1, 0)]))
         first_file.append(
             6,
             ReportLine.create(
-                coverage="1/2",
-                sessions=[
-                    LineSession(0, "1/2"),
-                    LineSession(1, 0),
-                    LineSession(2, "1/4"),
-                    LineSession(3, 0),
-                    LineSession(4, 0),
-                ],
+                "1/2", sessions=[(0, "1/2"), (1, 0), (2, "1/4"), (3, 0), (4, 0)]
             ),
         )
         report.append(first_file)
@@ -875,30 +809,14 @@ class TestFilteredReport:
             file_1.append(
                 i + 1,
                 ReportLine.create(
-                    coverage=1,
-                    sessions=[
-                        LineSession(0, 0),
-                        LineSession(1, 1),
-                        LineSession(2, "1/2"),
-                        LineSession(3, 0),
-                        LineSession(4, 1),
-                    ],
+                    1, sessions=[(0, 0), (1, 1), (2, "1/2"), (3, 0), (4, 1)]
                 ),
             )
         file_2 = ReportFile("second.py")
         for i in range(0, 100):
             file_2.append(
                 i + 1,
-                ReportLine.create(
-                    coverage=1,
-                    sessions=[
-                        LineSession(0, 1),
-                        LineSession(1, 1),
-                        LineSession(2, 0),
-                        LineSession(3, 0),
-                        LineSession(4, 1),
-                    ],
-                ),
+                ReportLine.create(1, sessions=[(0, 1), (1, 1), (2, 0), (3, 0), (4, 1)]),
             )
         report.append(file_1)
         report.append(file_2)

@@ -4,7 +4,7 @@ from services.processing.merging import clear_carryforward_sessions
 from shared.reports.reportfile import ReportFile
 from shared.reports.resources import Report
 from shared.reports.test_utils import convert_report_to_better_readable
-from shared.reports.types import LineSession, ReportLine
+from shared.reports.types import ReportLine
 from shared.utils.sessions import Session, SessionType
 from shared.yaml import UserYaml
 
@@ -59,10 +59,7 @@ class TestAdjustSession:
         return first_report
 
     def create_sample_line(self, *, coverage, sessionid=None):
-        return ReportLine.create(
-            coverage=coverage,
-            sessions=[(LineSession(id=sessionid, coverage=coverage))],
-        )
+        return ReportLine.create(coverage, sessions=[(sessionid, coverage)])
 
     def test_adjust_sessions_no_cf(self, sample_first_report):
         first_value = convert_report_to_better_readable(sample_first_report)

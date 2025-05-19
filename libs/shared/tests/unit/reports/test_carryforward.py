@@ -6,40 +6,21 @@ from shared.reports.carryforward import (
 )
 from shared.reports.resources import Report, ReportFile, Session
 from shared.reports.test_utils import convert_report_to_better_readable
-from shared.reports.types import LineSession, ReportLine
+from shared.reports.types import ReportLine
 
 
 @pytest.fixture
 def sample_report():
     report = Report()
     first_file = ReportFile("file_1.go")
-    first_file.append(
-        1,
-        ReportLine.create(coverage=1, sessions=[LineSession(0, 1), LineSession(1, 1)]),
-    )
-    first_file.append(
-        2,
-        ReportLine.create(coverage=1, sessions=[LineSession(0, 0), LineSession(1, 1)]),
-    )
-    first_file.append(
-        3,
-        ReportLine.create(coverage=1, sessions=[LineSession(0, 1), LineSession(1, 0)]),
-    )
-    first_file.append(
-        5,
-        ReportLine.create(coverage=0, sessions=[LineSession(0, 0), LineSession(1, 0)]),
-    )
-    first_file.append(
-        6,
-        ReportLine.create(
-            coverage="1/2", sessions=[LineSession(0, "1/2"), LineSession(1, 0)]
-        ),
-    )
+    first_file.append(1, ReportLine.create(1, sessions=[(0, 1), (1, 1)]))
+    first_file.append(2, ReportLine.create(1, sessions=[(0, 0), (1, 1)]))
+    first_file.append(3, ReportLine.create(1, sessions=[(0, 1), (1, 0)]))
+    first_file.append(5, ReportLine.create(0, sessions=[(0, 0), (1, 0)]))
+    first_file.append(6, ReportLine.create("1/2", sessions=[(0, "1/2"), (1, 0)]))
     second_file = ReportFile("file_2.py")
-    second_file.append(12, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-    second_file.append(
-        51, ReportLine.create(coverage="1/2", type="b", sessions=[[0, "1/2"]])
-    )
+    second_file.append(12, ReportLine.create(1, sessions=[[0, 1]]))
+    second_file.append(51, ReportLine.create("1/2", type="b", sessions=[[0, "1/2"]]))
     report.append(first_file)
     report.append(second_file)
     report.add_session(Session(id=0, flags=["simple"]))

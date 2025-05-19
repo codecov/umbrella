@@ -622,10 +622,10 @@ class TestNotificationService:
         commit = sample_comparison.head.commit
         report = Report()
         first_deleted_file = ReportFile("file_1.go")
-        first_deleted_file.append(1, ReportLine.create(coverage=0, sessions=[]))
-        first_deleted_file.append(2, ReportLine.create(coverage=0, sessions=[]))
-        first_deleted_file.append(3, ReportLine.create(coverage=0, sessions=[]))
-        first_deleted_file.append(5, ReportLine.create(coverage=0, sessions=[]))
+        first_deleted_file.append(1, ReportLine.create(0, sessions=[]))
+        first_deleted_file.append(2, ReportLine.create(0, sessions=[]))
+        first_deleted_file.append(3, ReportLine.create(0, sessions=[]))
+        first_deleted_file.append(5, ReportLine.create(0, sessions=[]))
         report.append(first_deleted_file)
         sample_comparison.head.report = report
         mock_repo_provider.create_check_run.return_value = 2234563
@@ -697,10 +697,10 @@ class TestNotificationService:
         commit = sample_comparison.head.commit
         report = Report()
         first_deleted_file = ReportFile("file_1.go")
-        first_deleted_file.append(1, ReportLine.create(coverage=0, sessions=[]))
-        first_deleted_file.append(2, ReportLine.create(coverage=0, sessions=[]))
-        first_deleted_file.append(3, ReportLine.create(coverage=0, sessions=[]))
-        first_deleted_file.append(5, ReportLine.create(coverage=0, sessions=[]))
+        first_deleted_file.append(1, ReportLine.create(0, sessions=[]))
+        first_deleted_file.append(2, ReportLine.create(0, sessions=[]))
+        first_deleted_file.append(3, ReportLine.create(0, sessions=[]))
+        first_deleted_file.append(5, ReportLine.create(0, sessions=[]))
         report.append(first_deleted_file)
         sample_comparison.head.report = report
         sample_comparison.project_coverage_base.report = report

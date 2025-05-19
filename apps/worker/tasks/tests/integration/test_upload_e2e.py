@@ -52,12 +52,12 @@ def lines(lines: Iterable[tuple[int, ReportLine]]) -> list[tuple[int, int]]:
 
 def get_base_report():
     file_a = ReportFile("a.rs")
-    file_a.append(1, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-    file_a.append(1, ReportLine.create(coverage=2, sessions=[[1, 2]]))
+    file_a.append(1, ReportLine.create(1, sessions=[[0, 1]]))
+    file_a.append(1, ReportLine.create(2, sessions=[[1, 2]]))
 
     file_b = ReportFile("b.rs")
-    file_b.append(1, ReportLine.create(coverage=3, sessions=[[0, 3]]))
-    file_b.append(2, ReportLine.create(coverage=5, sessions=[[1, 5]]))
+    file_b.append(1, ReportLine.create(3, sessions=[[0, 3]]))
+    file_b.append(2, ReportLine.create(5, sessions=[[1, 5]]))
     report = Report()
     report.append(file_a)
     report.append(file_b)

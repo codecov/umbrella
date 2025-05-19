@@ -10,17 +10,15 @@ from shared.utils.sessions import Session
 
 from ..types.commit.commit import resolve_path_contents
 from ..types.errors.errors import MissingCoverage, UnknownPath
-from ..types.path_contents.path_content import (
-    resolve_path_content_type,
-)
+from ..types.path_contents.path_content import resolve_path_content_type
 
 
 def sample_report() -> Report:
     report = Report()
     first_file = ReportFile("foo/file1.py")
-    first_file.append(1, ReportLine.create(coverage=1, sessions=[[0, 1]]))
+    first_file.append(1, ReportLine.create(1, sessions=[[0, 1]]))
     second_file = ReportFile("bar/file2.py")
-    second_file.append(1, ReportLine.create(coverage=1, sessions=[[0, 1]]))
+    second_file.append(1, ReportLine.create(1, sessions=[[0, 1]]))
     report.append(first_file)
     report.append(second_file)
     report.add_session(Session())

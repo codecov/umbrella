@@ -32,7 +32,6 @@ from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
-from shared.reports.types import LineSession
 
 from .helper import GraphQLTestHelper, paginate_connection
 
@@ -72,11 +71,7 @@ query FetchCommits($org: String!, $repo: String!) {
 class MockCoverage:
     def __init__(self, cov):
         self.coverage = cov
-        self.sessions = [
-            LineSession(0, None),
-            LineSession(1, None),
-            LineSession(2, None),
-        ]
+        self.sessions = [(0, None), (1, None), (2, None)]
 
 
 class MockLines:

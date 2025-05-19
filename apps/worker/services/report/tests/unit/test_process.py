@@ -15,7 +15,7 @@ from services.report.parser.types import LegacyParsedRawReport, ParsedUploadedRe
 from services.report.report_builder import ReportBuilder
 from shared.reports.reportfile import ReportFile
 from shared.reports.resources import Report
-from shared.reports.types import LineSession, ReportLine, ReportTotals
+from shared.reports.types import ReportLine, ReportTotals
 from shared.utils.sessions import Session
 from shared.yaml import UserYaml
 
@@ -119,20 +119,18 @@ class TestProcessRawUpload:
         original_report = Report()
         first_file = ReportFile("file_1.go")
         first_file.append(
-            1, ReportLine.create(coverage=1, sessions=[[0, 1]], complexity=(10, 2))
+            1, ReportLine.create(1, sessions=[[0, 1]], complexity=(10, 2))
         )
-        first_file.append(2, ReportLine.create(coverage=0, sessions=[[0, 1]]))
-        first_file.append(3, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-        first_file.append(5, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-        first_file.append(6, ReportLine.create(coverage=0, sessions=[[0, 1]]))
-        first_file.append(8, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-        first_file.append(9, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-        first_file.append(10, ReportLine.create(coverage=0, sessions=[[0, 1]]))
+        first_file.append(2, ReportLine.create(0, sessions=[[0, 1]]))
+        first_file.append(3, ReportLine.create(1, sessions=[[0, 1]]))
+        first_file.append(5, ReportLine.create(1, sessions=[[0, 1]]))
+        first_file.append(6, ReportLine.create(0, sessions=[[0, 1]]))
+        first_file.append(8, ReportLine.create(1, sessions=[[0, 1]]))
+        first_file.append(9, ReportLine.create(1, sessions=[[0, 1]]))
+        first_file.append(10, ReportLine.create(0, sessions=[[0, 1]]))
         second_file = ReportFile("file_2.py")
-        second_file.append(12, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-        second_file.append(
-            51, ReportLine.create(coverage="1/2", type="b", sessions=[[0, 1]])
-        )
+        second_file.append(12, ReportLine.create(1, sessions=[[0, 1]]))
+        second_file.append(51, ReportLine.create("1/2", type="b", sessions=[[0, 1]]))
         original_report.append(first_file)
         original_report.append(second_file)
         original_report.add_session(Session(flags=["unit"]))
@@ -652,28 +650,22 @@ class TestProcessReport:
     def test_process_raw_upload_multiple_raw_reports(self, mocker):
         first_raw_report_result = Report()
         first_banana = ReportFile("banana.py")
-        first_banana.append(1, ReportLine.create(1, sessions=[LineSession(0, 1)]))
-        first_banana.append(2, ReportLine.create(0, sessions=[LineSession(0, 0)]))
+        first_banana.append(1, ReportLine.create(1, sessions=[(0, 1)]))
+        first_banana.append(2, ReportLine.create(0, sessions=[(0, 0)]))
         first_raw_report_result.append(first_banana)
         second_raw_report_result = Report()
         second_banana = ReportFile("banana.py")
-        second_banana.append(2, ReportLine.create(1, sessions=[LineSession(0, 1)]))
-        second_banana.append(3, ReportLine.create(0, sessions=[LineSession(0, 0)]))
+        second_banana.append(2, ReportLine.create(1, sessions=[(0, 1)]))
+        second_banana.append(3, ReportLine.create(0, sessions=[(0, 0)]))
         second_raw_report_result.append(second_banana)
         second_another_file = ReportFile("another.c")
-        second_another_file.append(
-            2, ReportLine.create(0, sessions=[LineSession(0, 0)])
-        )
-        second_another_file.append(
-            3, ReportLine.create(1, sessions=[LineSession(0, 1)])
-        )
+        second_another_file.append(2, ReportLine.create(0, sessions=[(0, 0)]))
+        second_another_file.append(3, ReportLine.create(1, sessions=[(0, 1)]))
         second_raw_report_result.append(second_another_file)
         third_raw_report_result = Report()
         third_banana = ReportFile("banana.py")
-        third_banana.append(
-            3, ReportLine.create("1/2", sessions=[LineSession(0, "1/2")])
-        )
-        third_banana.append(5, ReportLine.create(0, sessions=[LineSession(0, 0)]))
+        third_banana.append(3, ReportLine.create("1/2", sessions=[(0, "1/2")]))
+        third_banana.append(5, ReportLine.create(0, sessions=[(0, 0)]))
         third_raw_report_result.append(third_banana)
         uploaded_reports = LegacyParsedRawReport(
             toc=None,

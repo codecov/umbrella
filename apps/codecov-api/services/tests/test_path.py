@@ -225,7 +225,7 @@ class TestReportPaths(TestCase):
         session_a_id, _ = report.add_session(Session(flags=["flag-123"]))
 
         file_a = ReportFile("foo/file1.py")
-        file_a.append(1, ReportLine.create(coverage=1, sessions=[[session_a_id, 1]]))
+        file_a.append(1, ReportLine.create(1, sessions=[[session_a_id, 1]]))
         report.append(file_a)
 
         report_paths = ReportPaths(report=report, filter_flags=flags)

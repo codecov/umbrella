@@ -5,7 +5,7 @@ import vcr
 
 from shared.config import ConfigHelper
 from shared.reports.resources import Report, ReportFile, Session
-from shared.reports.types import LineSession, ReportLine
+from shared.reports.types import ReportLine
 from shared.storage.memory import MemoryStorageService
 
 
@@ -68,42 +68,19 @@ def sample_report():
     first_file = ReportFile("file_1.go")
     second_file = ReportFile("file_2.go")
     third_file = ReportFile("location/file_1.py")
+    first_file.append(1, ReportLine.create(1, sessions=[(0, 1), (1, 1), (2, 1)]))
+    first_file.append(2, ReportLine.create(1, sessions=[(0, 0), (1, 1)]))
+    first_file.append(3, ReportLine.create(1, sessions=[(0, 1), (1, 0)]))
+    first_file.append(5, ReportLine.create(0, sessions=[(0, 0), (1, 0)]))
     first_file.append(
-        1,
-        ReportLine.create(
-            coverage=1,
-            sessions=[LineSession(0, 1), LineSession(1, 1), LineSession(2, 1)],
-        ),
+        6, ReportLine.create("1/2", sessions=[(0, "1/2"), (1, 0), (2, "1/4")])
     )
-    first_file.append(
-        2,
-        ReportLine.create(coverage=1, sessions=[LineSession(0, 0), LineSession(1, 1)]),
-    )
-    first_file.append(
-        3,
-        ReportLine.create(coverage=1, sessions=[LineSession(0, 1), LineSession(1, 0)]),
-    )
-    first_file.append(
-        5,
-        ReportLine.create(coverage=0, sessions=[LineSession(0, 0), LineSession(1, 0)]),
-    )
-    first_file.append(
-        6,
-        ReportLine.create(
-            coverage="1/2",
-            sessions=[LineSession(0, "1/2"), LineSession(1, 0), LineSession(2, "1/4")],
-        ),
-    )
-    second_file.append(12, ReportLine.create(coverage=1, sessions=[[0, 1]]))
-    second_file.append(
-        51, ReportLine.create(coverage="1/2", type="b", sessions=[[0, "1/2"]])
-    )
-    third_file.append(
-        100, ReportLine.create(coverage="1/2", type="b", sessions=[[3, "1/2"]])
-    )
+    second_file.append(12, ReportLine.create(1, sessions=[[0, 1]]))
+    second_file.append(51, ReportLine.create("1/2", type="b", sessions=[[0, "1/2"]]))
+    third_file.append(100, ReportLine.create("1/2", type="b", sessions=[[3, "1/2"]]))
     third_file.append(
         101,
-        ReportLine.create(coverage="1/2", type="b", sessions=[[2, "1/2"], [3, "1/2"]]),
+        ReportLine.create("1/2", type="b", sessions=[[2, "1/2"], [3, "1/2"]]),
     )
     report.append(first_file)
     report.append(second_file)

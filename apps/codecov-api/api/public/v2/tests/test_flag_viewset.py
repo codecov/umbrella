@@ -21,21 +21,19 @@ def flags_report():
     session_b_id, _ = report.add_session(Session(flags=["bar"]))
 
     file_a = ReportFile("foo/file1.py")
-    file_a.append(1, ReportLine.create(coverage=1, sessions=[[session_a_id, 1]]))
-    file_a.append(2, ReportLine.create(coverage=0, sessions=[[session_a_id, 0]]))
-    file_a.append(3, ReportLine.create(coverage=1, sessions=[[session_a_id, 1]]))
-    file_a.append(5, ReportLine.create(coverage=1, sessions=[[session_a_id, 1]]))
-    file_a.append(6, ReportLine.create(coverage=0, sessions=[[session_a_id, 0]]))
-    file_a.append(8, ReportLine.create(coverage=1, sessions=[[session_a_id, 1]]))
-    file_a.append(9, ReportLine.create(coverage=1, sessions=[[session_a_id, 1]]))
-    file_a.append(10, ReportLine.create(coverage=0, sessions=[[session_a_id, 0]]))
+    file_a.append(1, ReportLine.create(1, sessions=[[session_a_id, 1]]))
+    file_a.append(2, ReportLine.create(0, sessions=[[session_a_id, 0]]))
+    file_a.append(3, ReportLine.create(1, sessions=[[session_a_id, 1]]))
+    file_a.append(5, ReportLine.create(1, sessions=[[session_a_id, 1]]))
+    file_a.append(6, ReportLine.create(0, sessions=[[session_a_id, 0]]))
+    file_a.append(8, ReportLine.create(1, sessions=[[session_a_id, 1]]))
+    file_a.append(9, ReportLine.create(1, sessions=[[session_a_id, 1]]))
+    file_a.append(10, ReportLine.create(0, sessions=[[session_a_id, 0]]))
     report.append(file_a)
 
     file_b = ReportFile("bar/file2.py")
-    file_b.append(12, ReportLine.create(coverage=1, sessions=[[session_b_id, 1]]))
-    file_b.append(
-        51, ReportLine.create(coverage="1/2", type="b", sessions=[[session_b_id, 2]])
-    )
+    file_b.append(12, ReportLine.create(1, sessions=[[session_b_id, 1]]))
+    file_b.append(51, ReportLine.create("1/2", type="b", sessions=[[session_b_id, 2]]))
     report.append(file_b)
 
     return report

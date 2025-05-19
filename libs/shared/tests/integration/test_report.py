@@ -1,13 +1,7 @@
 import pytest
 
 from shared.reports.resources import Report, ReportFile
-from shared.reports.types import (
-    Change,
-    LineSession,
-    NetworkFile,
-    ReportLine,
-    ReportTotals,
-)
+from shared.reports.types import Change, NetworkFile, ReportLine, ReportTotals
 from shared.utils.sessions import Session
 from tests.helper import v2_to_v3
 
@@ -100,18 +94,18 @@ def test_append_already_exists():
     report = Report()
     first_file = ReportFile("path.py")
     second_file = ReportFile("path.py")
-    first_file.append(1, ReportLine.create(1, sessions=[LineSession(1, 1)]))
-    first_file.append(2, ReportLine.create(1, sessions=[LineSession(1, 1)]))
-    first_file.append(3, ReportLine.create(0, sessions=[LineSession(1, 0)]))
-    first_file.append(4, ReportLine.create(0, sessions=[LineSession(1, 0)]))
-    first_file.append(5, ReportLine.create("1/2", sessions=[LineSession(1, "1/2")]))
-    first_file.append(6, ReportLine.create("1/2", sessions=[LineSession(1, "1/2")]))
-    second_file.append(2, ReportLine.create(0, sessions=[LineSession(1, 0)]))
-    second_file.append(3, ReportLine.create("1/2", sessions=[LineSession(1, "1/2")]))
-    second_file.append(4, ReportLine.create(1, sessions=[LineSession(1, 1)]))
-    second_file.append(5, ReportLine.create(0, sessions=[LineSession(1, 0)]))
-    second_file.append(6, ReportLine.create("3/4", sessions=[LineSession(1, "3/4")]))
-    second_file.append(7, ReportLine.create(1, sessions=[LineSession(1, 1)]))
+    first_file.append(1, ReportLine.create(1, sessions=[(1, 1)]))
+    first_file.append(2, ReportLine.create(1, sessions=[(1, 1)]))
+    first_file.append(3, ReportLine.create(0, sessions=[(1, 0)]))
+    first_file.append(4, ReportLine.create(0, sessions=[(1, 0)]))
+    first_file.append(5, ReportLine.create("1/2", sessions=[(1, "1/2")]))
+    first_file.append(6, ReportLine.create("1/2", sessions=[(1, "1/2")]))
+    second_file.append(2, ReportLine.create(0, sessions=[(1, 0)]))
+    second_file.append(3, ReportLine.create("1/2", sessions=[(1, "1/2")]))
+    second_file.append(4, ReportLine.create(1, sessions=[(1, 1)]))
+    second_file.append(5, ReportLine.create(0, sessions=[(1, 0)]))
+    second_file.append(6, ReportLine.create("3/4", sessions=[(1, "3/4")]))
+    second_file.append(7, ReportLine.create(1, sessions=[(1, 1)]))
     report.append(first_file)
     assert report.totals == ReportTotals(
         files=1,
