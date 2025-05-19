@@ -2,12 +2,11 @@ import asyncio
 import enum
 import json
 from collections import Counter
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import PropertyMock, patch
 
 import minio
 import pytest
-import pytz
 from django.test import TestCase
 
 from compare.models import CommitComparison
@@ -1831,7 +1830,7 @@ class CommitComparisonTests(TestCase):
 
     def test_stale_base_commit(self):
         # base_commit was updated after this comparison was made
-        self.commit_comparison.updated_at = datetime(2021, 1, 1, tzinfo=pytz.utc)
+        self.commit_comparison.updated_at = datetime(2021, 1, 1, tzinfo=UTC)
         self.commit_comparison.save()
         self.base_commit.updatestamp = datetime(2023, 1, 2)
         self.base_commit.save()
@@ -1842,7 +1841,7 @@ class CommitComparisonTests(TestCase):
 
     def test_stale_compare_commit(self):
         # compare_commit was updated after this comparison was made
-        self.commit_comparison.updated_at = datetime(2021, 1, 1, tzinfo=pytz.utc)
+        self.commit_comparison.updated_at = datetime(2021, 1, 1, tzinfo=UTC)
         self.commit_comparison.save()
 
         self.compare_commit.updatestamp = datetime(2023, 1, 2)

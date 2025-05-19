@@ -2,7 +2,6 @@ import logging
 
 from app import celery_app
 from celery_config import hourly_check_task_name
-from helpers.metrics import metrics
 from tasks.crontasks import CodecovCronTask
 
 log = logging.getLogger(__name__)
@@ -15,7 +14,6 @@ class HourlyCheckTask(CodecovCronTask, name=hourly_check_task_name):
 
     def run_cron_task(self, db_session, *args, **kwargs):
         log.info("Doing hourly check")
-        metrics.incr(f"{self.metrics_prefix}.checks")
         return {"checked": True}
 
 

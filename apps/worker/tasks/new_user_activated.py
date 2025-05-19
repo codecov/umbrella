@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from app import celery_app
 from database.enums import Decoration
 from database.models import Owner, Pull, Repository
-from helpers.metrics import metrics
 from shared.celery_config import new_user_activated_task_name, notify_task_name
 from shared.plan.service import PlanService
 from tasks.base import BaseCodecovTask
@@ -92,7 +91,6 @@ class NewUserActivatedTask(BaseCodecovTask, name=new_user_activated_task_name):
 
         return plan.is_pr_billing_plan
 
-    @metrics.timer("worker.task.new_user_activated.get_pulls_authored_by_user")
     def get_pulls_authored_by_user(
         self, db_session, org_ownerid: int, user_ownerid: int
     ) -> Iterator[Pull]:

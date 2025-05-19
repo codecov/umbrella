@@ -15,7 +15,6 @@ from app import celery_app
 from database.models import Commit, Pull, Repository
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
-from helpers.metrics import metrics
 from rollouts import SYNC_PULL_USE_MERGE_COMMIT_SHA
 from services.comparison.changes import get_changes
 from services.report import Report, ReportService
@@ -164,10 +163,9 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             repo_yaml=repository.yaml,
             owner_context=context,
         )
-        with metrics.timer(f"{self.metrics_prefix}.fetch_pull"):
-            enriched_pull = async_to_sync(fetch_and_update_pull_request_information)(
-                repository_service, db_session, repoid, pullid, current_yaml
-            )
+        enriched_pull = async_to_sync(fetch_and_update_pull_request_information)(
+            repository_service, db_session, repoid, pullid, current_yaml
+        )
         pull = enriched_pull.database_pull
         if pull is None:
             log.info(

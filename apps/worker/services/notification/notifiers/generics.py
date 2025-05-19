@@ -9,7 +9,6 @@ import httpx
 import sentry_sdk
 
 from helpers.match import match
-from helpers.metrics import metrics
 from services.comparison import ComparisonProxy
 from services.comparison.types import Comparison
 from services.notification.notifiers.base import (
@@ -237,15 +236,12 @@ class RequestsYamlBasedNotifier(StandardNotifier):
         _timeouts = get_config("setup", "http", "timeouts", "external", default=10)
         kwargs = {"timeout": _timeouts, "headers": self.json_headers}
         try:
-            with metrics.timer(
-                f"worker.services.notifications.notifiers.{self.name}.actual_connection"
-            ):
-                with httpx.Client() as client:
-                    res = client.post(
-                        url=self.notifier_yaml_settings["url"],
-                        data=json.dumps(data, cls=EnhancedJSONEncoder),
-                        **kwargs,
-                    )
+            with httpx.Client() as client:
+                res = client.post(
+                    url=self.notifier_yaml_settings["url"],
+                    data=json.dumps(data, cls=EnhancedJSONEncoder),
+                    **kwargs,
+                )
             return {
                 "notification_attempted": True,
                 "notification_successful": res.status_code < 400,

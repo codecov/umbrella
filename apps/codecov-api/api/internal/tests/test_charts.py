@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from math import isclose
 from random import randint
@@ -9,7 +9,6 @@ from dateutil.relativedelta import relativedelta
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from factory.faker import faker
-from pytz import UTC
 from rest_framework.exceptions import ValidationError
 from rest_framework.reverse import reverse
 
