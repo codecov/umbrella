@@ -57,6 +57,7 @@ build-backend = "setuptools.build_meta"
 py-modules = []
 
 [tool.uv]
+required-version = ">=0.7.5"
 dev-dependencies = [
     "factory-boy>=3.2.0",
     "fakeredis==2.10.3",
