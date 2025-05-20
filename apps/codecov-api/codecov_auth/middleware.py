@@ -219,9 +219,6 @@ def jwt_middleware(get_response):
         except jwt.ExpiredSignatureError:
             log.warning(
                 "JWT token has expired",
-                extra={
-                    "token": token,
-                },
             )
             return HttpResponseForbidden("JWT token has expired")
         except Exception as e:
