@@ -302,10 +302,8 @@ class ReportFile:
             # OR previous file had END issue
             self._parsed_lines = other_file._lines.copy()
             self._raw_lines = None
-            log.warning(
-                "Doing something weird because of weird .rb logic",
-                extra={"report_filename": self.name},
-            )
+            # This previously logged a warning about 
+            # doing something weird because of weird .rb logic
 
         elif (
             self.name.endswith(".rb")
