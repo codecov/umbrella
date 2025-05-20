@@ -29,24 +29,18 @@ def cleanup_flare(context: CleanupContext, batch_size: int = DELETE_FILES_BATCHS
 
         # this method looks hacky, but sorting by updatestamp on a table this large is not possible,
         # so this is my approach to get the oldest pulls first - using the sequential pk id.
-        # going to hard-code limits here for initial runs: Pulls with id 0-5000 count is 786
-        # 453 are non-open (these are the ones we would clean)
-        # none of them have _flare or flare_storage_path (probably didn't have this column when these pulls were created)
-        # so this would be a true dry run to make sure that the queries are manageable and that we can loop through 100 times
-        max_id = 5000
+        # going to hard-code limits here for initial runs: Pulls with id 0-5000, batch_size=50 -> ran in under 1 sec
+        # start at 5.000, go to 500.000, increase batch_size to 500, so loop through 1000 times
+        max_id = 500000
 
         # Clear in db
         # Process in ID ranges instead of sorting by updatestamp
-        for id_start in range(0, max_id, batch_size):
+        for id_start in range(0, max_id, 500):
             id_end = id_start + batch_size
 
             non_open_pulls_with_flare_in_db = Pull.objects.filter(
                 id__gt=id_start, id__lte=id_end, _flare__isnull=False
             ).exclude(state=PullStates.OPEN.value)
-            # with analyze=False, the db engine generates an execution plan without executing the query
-            log.info(
-                f"Flare cleanup: non_open_pulls_with_flare_in_db query {non_open_pulls_with_flare_in_db.explain(analyze=False)}"
-            )
 
             # with analyze=True, the query is actually executed so cost and execution time are measured
             # run this before the "real" query so measurements aren't impacted by cache
@@ -69,16 +63,13 @@ def cleanup_flare(context: CleanupContext, batch_size: int = DELETE_FILES_BATCHS
         # Clear in Archive
         total_files_processed = 0
         # Process in ID ranges instead of sorting by updatestamp
+        # keep small batch_size here since files are deleted 1 by 1
         for id_start in range(0, max_id, batch_size):
             id_end = id_start + batch_size
 
             non_open_pulls_with_flare_in_archive = Pull.objects.filter(
                 id__gt=id_start, id__lte=id_end, _flare_storage_path__isnull=False
             ).exclude(state=PullStates.OPEN.value)
-            # with analyze=False, the db engine generates an execution plan without executing the query
-            log.info(
-                f"Flare cleanup: non_open_pulls_with_flare_in_archive query {non_open_pulls_with_flare_in_archive.explain(analyze=False)}"
-            )
 
             # with analyze=True, the query is actually executed so cost and execution time are measured
             # run this before the "real" query so measurements aren't impacted by cache
