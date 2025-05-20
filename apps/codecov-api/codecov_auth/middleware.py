@@ -201,7 +201,7 @@ def jwt_middleware(get_response):
                 token,
                 settings.SENTRY_JWT_SHARED_SECRET,
                 algorithms=["HS256"],
-                options={"verify_exp": True},
+                options={"verify_exp": True, "require": ["exp", "iat", "iss"]},
             )
 
             provider_user_id = payload.get("g_u")

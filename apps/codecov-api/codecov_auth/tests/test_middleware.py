@@ -29,7 +29,13 @@ def sentry_jwt_middleware_instance():
 @pytest.fixture
 def valid_jwt_token():
     return jwt.encode(
-        {"g_u": "123", "g_p": "github"},
+        {
+            "g_u": "123",
+            "g_p": "github",
+            "exp": int(time.time()) + 3600,  # Expires in 1 hour
+            "iat": int(time.time()),  # Issued at current time
+            "iss": "sentry",  # Issuer
+        },
         settings.SENTRY_JWT_SHARED_SECRET,
         algorithm="HS256",
     )
@@ -96,6 +102,8 @@ async def test_sentry_jwt_expired_token(
         "g_u": "123",
         "g_p": "github",
         "exp": int(time.time()) - 3600,  # Expired 1 hour ago
+        "iat": int(time.time()) - 7200,  # Issued 2 hours ago
+        "iss": "sentry",  # Issuer
     }
     token = jwt.encode(payload, settings.SENTRY_JWT_SHARED_SECRET, algorithm="HS256")
     request = request_factory.get("/", HTTP_AUTHORIZATION=f"Bearer {token}")
@@ -113,7 +121,12 @@ async def test_sentry_jwt_missing_provider_user_id(
 ):
     """Test middleware behavior with JWT token missing provider_user_id"""
     token = jwt.encode(
-        {"g_p": "github"},
+        {
+            "g_p": "github",
+            "exp": int(time.time()) + 3600,
+            "iat": int(time.time()),
+            "iss": "sentry",  # Issuer
+        },
         settings.SENTRY_JWT_SHARED_SECRET,
         algorithm="HS256",
     )
@@ -132,7 +145,12 @@ async def test_sentry_jwt_missing_provider(
 ):
     """Test middleware behavior with JWT token missing provider"""
     token = jwt.encode(
-        {"g_u": "123"},
+        {
+            "g_u": "123",
+            "exp": int(time.time()) + 3600,
+            "iat": int(time.time()),
+            "iss": "sentry",  # Issuer
+        },
         settings.SENTRY_JWT_SHARED_SECRET,
         algorithm="HS256",
     )
