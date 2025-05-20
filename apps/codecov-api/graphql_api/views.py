@@ -440,6 +440,12 @@ async def ariadne_view(request: WSGIRequest, service: str) -> HttpResponse:
     return response
 
 
+ariadne_view.csrf_exempt = True
+
+
 @jwt_middleware
 async def sentry_ariadne_view(request: WSGIRequest, service: str) -> HttpResponse:
     return await ariadne_view(request, service)
+
+
+sentry_ariadne_view.csrf_exempt = True
