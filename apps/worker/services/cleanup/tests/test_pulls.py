@@ -16,7 +16,6 @@ def test_flare_cleanup_in_regular_cleanup(
     mocker,
     mock_archive_storage,
 ):
-    mocker.patch("logging.Logger.info")
     # Directly mock the storage service's delete_file method instead of the base class
     mock_delete = mocker.patch.object(
         mock_archive_storage, "delete_file", return_value=True
@@ -110,6 +109,9 @@ def test_flare_cleanup_in_regular_cleanup(
     assert merged_pull_with_archive_flare._flare is None
     assert merged_pull_with_archive_flare._flare_storage_path is None
 
+    # Verify that running cleanup again doesn't process the already cleaned pulls
+    mock_delete.reset_mock()
+
     # Run cleanup again
     context = CleanupContext()
     cleanup_flare(context=context)
@@ -122,7 +124,6 @@ def test_flare_cleanup_in_regular_cleanup(
 def test_flare_cleanup_failed_deletion(transactional_db, mocker, mock_archive_storage):
     """Test that when file deletion fails, the _flare_storage_path remains intact."""
     # Directly mock the storage service's delete_file method to return False (failed deletion)
-    mocker.patch("logging.Logger.info")
     mock_delete = mocker.patch.object(
         mock_archive_storage, "delete_file", return_value=False
     )
@@ -163,7 +164,6 @@ def test_flare_cleanup_file_not_in_storage(
     transactional_db, mocker, mock_archive_storage
 ):
     """Test that FileNotInStorageError is treated as a successful deletion."""
-    mocker.patch("logging.Logger.info")
     # Mock delete_file to raise FileNotInStorageError
     mock_delete = mocker.patch.object(
         mock_archive_storage,
@@ -208,7 +208,6 @@ def test_flare_cleanup_general_exception(
     transactional_db, mocker, mock_archive_storage
 ):
     """Test that any other exception is captured by Sentry and the file isn't marked as deleted."""
-    mocker.patch("logging.Logger.info")
     # Mock delete_file to raise a general exception
     mock_delete = mocker.patch.object(
         mock_archive_storage,
