@@ -36,6 +36,7 @@ jobs:
         working-directory: ${{ matrix.project }}
         run: |
           overwatch-cli \
+            --url https://overwatch.codecov.dev \
             --auth-token ${{ secrets.SENTRY_AUTH_TOKEN }} \
             --organization-slug codecov \
             python \
