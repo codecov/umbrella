@@ -21,7 +21,7 @@ class TestSentry:
             traces_sample_rate=1.0,
             profiles_sample_rate=1.0,
             environment="production",
-            _expirements=mocker.ANY,
+            _experiments=mocker.ANY,
             integrations=mocker.ANY,
         )
         mocked_set_tag.assert_called_with("cluster", cluster)
