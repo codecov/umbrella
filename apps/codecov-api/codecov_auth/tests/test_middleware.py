@@ -34,7 +34,7 @@ def valid_jwt_token():
             "g_p": "github",
             "exp": int(time.time()) + 3600,  # Expires in 1 hour
             "iat": int(time.time()),  # Issued at current time
-            "iss": "sentry",  # Issuer
+            "iss": "https://sentry.io",  # Issuer
         },
         settings.SENTRY_JWT_SHARED_SECRET,
         algorithm="HS256",
@@ -60,7 +60,7 @@ async def test_sentry_jwt_no_auth_header(
     response = await sentry_jwt_middleware_instance(request)
 
     assert isinstance(response, HttpResponseForbidden)
-    assert response.content.decode() == "Missing or invalid Authorization header"
+    assert response.content.decode() == "Missing or Invalid Authorization header"
     assert request.current_owner is None
 
 
@@ -74,7 +74,7 @@ async def test_sentry_jwt_invalid_auth_format(
     response = await sentry_jwt_middleware_instance(request)
 
     assert isinstance(response, HttpResponseForbidden)
-    assert response.content.decode() == "Missing or invalid Authorization header"
+    assert response.content.decode() == "Missing or Invalid Authorization header"
     assert request.current_owner is None
 
 
@@ -103,7 +103,7 @@ async def test_sentry_jwt_expired_token(
         "g_p": "github",
         "exp": int(time.time()) - 3600,  # Expired 1 hour ago
         "iat": int(time.time()) - 7200,  # Issued 2 hours ago
-        "iss": "sentry",  # Issuer
+        "iss": "https://sentry.io",  # Issuer
     }
     token = jwt.encode(payload, settings.SENTRY_JWT_SHARED_SECRET, algorithm="HS256")
     request = request_factory.get("/", HTTP_AUTHORIZATION=f"Bearer {token}")
@@ -116,40 +116,17 @@ async def test_sentry_jwt_expired_token(
 
 
 @pytest.mark.asyncio
-async def test_sentry_jwt_missing_provider_user_id(
+async def test_sentry_jwt_invalid_issuer(
     request_factory, sentry_jwt_middleware_instance
 ):
-    """Test middleware behavior with JWT token missing provider_user_id"""
-    token = jwt.encode(
-        {
-            "g_p": "github",
-            "exp": int(time.time()) + 3600,
-            "iat": int(time.time()),
-            "iss": "sentry",  # Issuer
-        },
-        settings.SENTRY_JWT_SHARED_SECRET,
-        algorithm="HS256",
-    )
-    request = request_factory.get("/", HTTP_AUTHORIZATION=f"Bearer {token}")
-
-    response = await sentry_jwt_middleware_instance(request)
-
-    assert isinstance(response, HttpResponseForbidden)
-    assert response.content.decode() == "Invalid JWT payload"
-    assert request.current_owner is None
-
-
-@pytest.mark.asyncio
-async def test_sentry_jwt_missing_provider(
-    request_factory, sentry_jwt_middleware_instance
-):
-    """Test middleware behavior with JWT token missing provider"""
+    """Test middleware behavior with invalid issuer"""
     token = jwt.encode(
         {
             "g_u": "123",
+            "g_p": "github",
             "exp": int(time.time()) + 3600,
             "iat": int(time.time()),
-            "iss": "sentry",  # Issuer
+            "iss": "invalid_issuer",
         },
         settings.SENTRY_JWT_SHARED_SECRET,
         algorithm="HS256",
@@ -159,7 +136,7 @@ async def test_sentry_jwt_missing_provider(
     response = await sentry_jwt_middleware_instance(request)
 
     assert isinstance(response, HttpResponseForbidden)
-    assert response.content.decode() == "Invalid JWT payload"
+    assert response.content.decode() == "Missing or Invalid Authorization header"
     assert request.current_owner is None
 
 

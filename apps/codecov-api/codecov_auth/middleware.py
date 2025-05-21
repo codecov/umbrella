@@ -9,12 +9,12 @@ from corsheaders.middleware import (
     ACCESS_CONTROL_ALLOW_ORIGIN,
 )
 from corsheaders.middleware import CorsMiddleware as BaseCorsMiddleware
-from django.conf import settings
 from django.http import HttpRequest, HttpResponseForbidden
 from django.urls import resolve
 from rest_framework import exceptions
 
 from codecov_auth.models import Owner, Service
+from codecov_auth.utils import get_sentry_jwt_payload
 from utils.services import get_long_service_name
 
 log = logging.getLogger(__name__)
@@ -189,37 +189,22 @@ def jwt_middleware(get_response):
         # Initialize current_owner as None
         request.current_owner = None
 
-        # Extract JWT token from Authorization header
-        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
-        if not auth_header.startswith("Bearer "):
-            return HttpResponseForbidden("Missing or invalid Authorization header")
-
-        token = auth_header.split(" ")[1]
         try:
-            # TODO: use the correct decoding algorithm
-            payload = jwt.decode(
-                token,
-                settings.SENTRY_JWT_SHARED_SECRET,
-                algorithms=["HS256"],
-                options={"verify_exp": True, "require": ["exp", "iat", "iss"]},
-            )
-
+            payload = get_sentry_jwt_payload(request)
             provider_user_id = payload.get("g_u")
             provider = payload.get("g_p")
 
-            if not provider_user_id or not provider:
-                return HttpResponseForbidden("Invalid JWT payload")
+            if provider_user_id and provider:
+                owner, _created = await sync_to_async(Owner.objects.get_or_create)(
+                    service_id=provider_user_id, service=provider
+                )
+                request.current_owner = owner
 
-            owner, _created = await sync_to_async(Owner.objects.get_or_create)(
-                service_id=provider_user_id, service=provider
-            )
-            request.current_owner = owner
             return await get_response(request, *args, **kwargs)
 
+        except PermissionError:
+            return HttpResponseForbidden("Missing or Invalid Authorization header")
         except jwt.ExpiredSignatureError:
-            log.warning(
-                "JWT token has expired",
-            )
             return HttpResponseForbidden("JWT token has expired")
         except Exception as e:
             log.warning(

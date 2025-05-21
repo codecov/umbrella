@@ -25,7 +25,7 @@ class TestSentryAriadneView(TestCase):
             "g_p": "github",
             "exp": int(time.time()) + 3600,  # Expires in 1 hour
             "iat": int(time.time()),  # Issued at current time
-            "iss": "sentry",  # Issuer
+            "iss": "https://sentry.io",  # Issuer
         }
         return jwt.encode(payload, settings.SENTRY_JWT_SHARED_SECRET, algorithm="HS256")
 
@@ -71,7 +71,7 @@ class TestSentryAriadneView(TestCase):
         response = self.do_query(query=self.query)
 
         assert response.status_code == 403
-        assert response.content.decode() == "Missing or invalid Authorization header"
+        assert response.content.decode() == "Missing or Invalid Authorization header"
 
     def test_sentry_ariadne_view_invalid_token(self):
         """Test sentry_ariadne_view with invalid JWT token"""
@@ -87,7 +87,7 @@ class TestSentryAriadneView(TestCase):
             "g_p": "github",
             "exp": int(time.time()) - 3600,  # Expired 1 hour ago
             "iat": int(time.time()),  # Issued at current time
-            "iss": "sentry",  # Issuer
+            "iss": "https://sentry.io",  # Issuer
         }
         expired_token = jwt.encode(
             payload, settings.SENTRY_JWT_SHARED_SECRET, algorithm="HS256"
@@ -115,7 +115,7 @@ class TestSentryAriadneView(TestCase):
             "g_u": "1234567890",
             "g_p": "github",
             "iat": int(time.time()),
-            "iss": "sentry",
+            "iss": "https://sentry.io",
         }
         token = jwt.encode(
             payload, settings.SENTRY_JWT_SHARED_SECRET, algorithm="HS256"
