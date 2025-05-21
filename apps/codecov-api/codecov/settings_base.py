@@ -427,6 +427,9 @@ if SENTRY_DSN is not None:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
+        _experiments={
+            "enable_logs": True,
+        },
         integrations=[
             DjangoIntegration(signals_spans=False),
             CeleryIntegration(),
