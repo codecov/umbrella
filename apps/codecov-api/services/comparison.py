@@ -4,10 +4,9 @@ import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 import minio
-import pytz
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from django.db.models import Prefetch, QuerySet
@@ -1245,16 +1244,10 @@ class CommitComparisonService:
         """
         Returns true if the given timestamp occurred after the commit comparison's last update
         """
-        timezone = pytz.utc
         if not timestamp:
             return False
 
-        if timestamp.tzinfo is None:
-            timestamp = timezone.localize(timestamp)
-        else:
-            timestamp = timezone.normalize(timestamp)
-
-        return timezone.normalize(self.commit_comparison.updated_at) < timestamp
+        return self.commit_comparison.updated_at < timestamp.replace(tzinfo=UTC)
 
     def _load_commit(self, commit_id: int) -> Commit | None:
         prefetch = Prefetch(
