@@ -27,7 +27,7 @@ jobs:
 
       - name: Install Overwatch CLI
         run: |
-          curl -o overwatch-cli https://overwatch.codecov.dev/linux/cli
+          curl -o overwatch-cli https://overwatch.codecov.io/linux/cli
           chmod +x overwatch-cli
           # Move the CLI to a location accessible from working directories
           mv overwatch-cli /usr/local/bin/overwatch-cli
