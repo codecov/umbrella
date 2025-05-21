@@ -32,7 +32,7 @@ jobs:
           # Move the CLI to a location accessible from working directories
           mv overwatch-cli /usr/local/bin/overwatch-cli
 
-      - name: Run Overwatch CLI
+      - name: Run Overwatch CLI (agentic)
         working-directory: ${{ matrix.project }}
         run: |
           overwatch-cli \
