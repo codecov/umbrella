@@ -10,7 +10,7 @@ from shared.django_apps.core.tests.factories import (
 from shared.storage.exceptions import FileNotInStorageError
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)  # flakes when running in parallel
 def test_flare_cleanup_in_regular_cleanup(
     transactional_db,
     mocker,
@@ -76,7 +76,20 @@ def test_flare_cleanup_in_regular_cleanup(
 
     # Run flare cleanup
     context = CleanupContext()
-    cleanup_flare(context=context)
+    cleanup_flare(context=context, start_id=1, max_id=500)
+
+    # Check that the non-open pulls have had their flare data cleaned
+    closed_pull_with_local_flare = Pull.objects.get(id=closed_pull_with_local_flare.id)
+    assert closed_pull_with_local_flare.flare == {}
+    assert closed_pull_with_local_flare._flare is None
+    assert closed_pull_with_local_flare._flare_storage_path is None
+
+    merged_pull_with_archive_flare = Pull.objects.get(
+        id=merged_pull_with_archive_flare.id
+    )
+    assert merged_pull_with_archive_flare.flare == {}
+    assert merged_pull_with_archive_flare._flare is None
+    assert merged_pull_with_archive_flare._flare_storage_path is None
 
     # Verify the delete_file was called for the merged pull's flare
     storage_path = merged_pull_with_archive_flare._flare_storage_path
@@ -84,37 +97,23 @@ def test_flare_cleanup_in_regular_cleanup(
 
     # There is a cache for flare on the object (all ArchiveFields have this),
     # so get a fresh copy of each object without the cached value
-    open_pull_with_local_flare = Pull.objects.get(id=open_pull_with_local_flare.id)
-    closed_pull_with_local_flare = Pull.objects.get(id=closed_pull_with_local_flare.id)
-    open_pull_with_archive_flare = Pull.objects.get(id=open_pull_with_archive_flare.id)
-    merged_pull_with_archive_flare = Pull.objects.get(
-        id=merged_pull_with_archive_flare.id
-    )
-
     # Check that the open pulls still have their flare data
+    open_pull_with_local_flare = Pull.objects.get(id=open_pull_with_local_flare.id)
     assert open_pull_with_local_flare.flare == local_value_for_flare
     assert open_pull_with_local_flare._flare == local_value_for_flare
     assert open_pull_with_local_flare._flare_storage_path is None
 
+    open_pull_with_archive_flare = Pull.objects.get(id=open_pull_with_archive_flare.id)
     assert open_pull_with_archive_flare.flare == archive_value_for_flare
     assert open_pull_with_archive_flare._flare is None
     assert open_pull_with_archive_flare._flare_storage_path is not None
-
-    # Check that the non-open pulls have had their flare data cleaned
-    assert closed_pull_with_local_flare.flare == {}
-    assert closed_pull_with_local_flare._flare is None
-    assert closed_pull_with_local_flare._flare_storage_path is None
-
-    assert merged_pull_with_archive_flare.flare == {}
-    assert merged_pull_with_archive_flare._flare is None
-    assert merged_pull_with_archive_flare._flare_storage_path is None
 
     # Verify that running cleanup again doesn't process the already cleaned pulls
     mock_delete.reset_mock()
 
     # Run cleanup again
     context = CleanupContext()
-    cleanup_flare(context=context)
+    cleanup_flare(context=context, start_id=1, max_id=500)
 
     # Verify no delete calls were made for already processed pulls
     mock_delete.assert_not_called()
@@ -148,7 +147,7 @@ def test_flare_cleanup_failed_deletion(transactional_db, mocker, mock_archive_st
 
     # Run cleanup
     context = CleanupContext()
-    cleanup_flare(context=context)
+    cleanup_flare(context=context, start_id=1, max_id=500)
 
     # Verify the delete_file was called
     storage_path = failed_deletion_pull._flare_storage_path
@@ -190,7 +189,7 @@ def test_flare_cleanup_file_not_in_storage(
 
     # Run cleanup
     context = CleanupContext()
-    cleanup_flare(context=context)
+    cleanup_flare(context=context, start_id=1, max_id=500)
 
     # Verify the delete_file was called
     storage_path = file_not_in_storage_pull._flare_storage_path
@@ -236,7 +235,7 @@ def test_flare_cleanup_general_exception(
 
     # Run cleanup
     context = CleanupContext()
-    cleanup_flare(context=context)
+    cleanup_flare(context=context, start_id=1, max_id=500)
 
     # Verify the delete_file was called
     storage_path = exception_pull._flare_storage_path
