@@ -41,11 +41,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # The resulting requirements.txt includes ourselves as a dependency we should install
 # "editably". Filter that out, leaving only external dependencies.
-RUN grep -v '^-e ' requirements.txt > ${APP_DIR}/requirements.remote.txt
+RUN grep -v '^-e ' requirements.txt > requirements.remote.txt
 
 # Fetch/build wheels for all external dependencies.
 RUN --mount=type=bind,source=libs/shared,target=libs/shared \
-    (cd ${APP_DIR} && pip wheel -w /wheels --find-links /wheels -r requirements.remote.txt)
+    (cd ${APP_DIR} && pip wheel -w /wheels --find-links /wheels -r /requirements.remote.txt)
 
 # Build a wheel for ourselves
 RUN --mount=type=cache,target=/root/.cache/uv \
