@@ -6,9 +6,6 @@ on:
       repo:
         type: string
         required: true
-      cache_requirements:
-        type: boolean
-        default: true
       output_directory:
         type: string
         default: .
@@ -48,16 +45,13 @@ jobs:
 
       - name: Cache Requirements
         id: cache-requirements
-        if: inputs.cache_requirements
         uses: actions/cache@v4
         env:
           cache-name: ${{ inputs.repo }}-requirements
         with:
           path: |
             ${{ inputs.output_directory }}/requirements.tar
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles(format('{0}/uv.lock', inputs.output_directory)) }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ env.cache-name }}-
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles(format('{0}/uv.lock', inputs.output_directory)) }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
 
       - name: Cache App
         id: cache-app
@@ -70,20 +64,18 @@ jobs:
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
 
       - name: Load requirements from cache
-        if: ${{ steps.cache-requirements.outputs.cache-hit == 'true' && inputs.cache_requirements }}
+        if: ${{ steps.cache-requirements.outputs.cache-hit == 'true' }}
         run: |
           make ${{ inputs.make_target_prefix }}load.requirements
 
+      # This shouldn't happen; the _build-requirements.yml job should have run.
       - name: Build/pull requirements
-        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && inputs.cache_requirements }}
+        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' }}
         run: |
+          echo "Warning: requirements image not in cache, building a new one"
           make ${{ inputs.make_target_prefix }}build.requirements
           make ${{ inputs.make_target_prefix }}save.requirements
 
-      - name: Push Requirements
-        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' && inputs.cache_requirements }}
-        run: |
-          make ${{ inputs.make_target_prefix }}push.requirements
       - name: Build app
         run: |
           make ${{ inputs.make_target_prefix }}build.app

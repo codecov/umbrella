@@ -1,0 +1,66 @@
+name: Build Requirements
+
+on:
+  workflow_call:
+    inputs:
+      repo:
+        type: string
+        required: true
+      output_directory:
+        type: string
+        default: .
+      make_target_prefix:
+        type: string
+        default: ""
+
+env:
+  AR_REPO: ${{ inputs.repo }}
+
+jobs:
+  build:
+    name: Build Requirements
+    strategy:
+      matrix:
+        # Build on amd64 and arm64
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Cache Requirements
+        id: cache-requirements
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ inputs.repo }}-requirements
+        with:
+          path: |
+            ${{ inputs.output_directory }}/requirements.tar
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles(format('{0}/uv.lock', inputs.output_directory)) }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
+
+      - id: "auth"
+        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v2.1.2"
+        with:
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
+          service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
+
+      - name: Docker configuration
+        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |-
+          echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
+
+      - name: Build/pull requirements
+        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' }}
+        run: |
+          make ${{ inputs.make_target_prefix }}build.requirements
+          make ${{ inputs.make_target_prefix }}save.requirements
+
+      - name: Push Requirements
+        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |
+          make ${{ inputs.make_target_prefix }}push.requirements

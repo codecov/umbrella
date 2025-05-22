@@ -25,8 +25,19 @@ jobs:
   #   with:
   #     working_directory: apps/worker
 
+  worker-reqs:
+    name: Build Requirements (Worker)
+    if: ${{ inputs.skip == false }}
+    uses: ./.github/workflows/_build-requirements.yml
+    secrets: inherit
+    with:
+      repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
+      output_directory: apps/worker
+      make_target_prefix: worker.
+
   worker-build:
     name: Build App (Worker)
+    needs: worker-reqs
     if: ${{ inputs.skip == false }}
     uses: ./.github/workflows/_build-app.yml
     secrets: inherit
