@@ -73,12 +73,6 @@ $(eval $(call api_rule_prefix,api.proxy%))
 api.proxy%:
 	$(MAKE) -C apps/codecov-api proxy$*
 
-# Any API target starting with `test` should be forwarded to
-# `apps/codecov-api/Makefile`.
-$(eval $(call api_rule_prefix,api.test%))
-api.test%:
-	$(MAKE) -C apps/codecov-api test$*
-
 # Any API target starting with `shell` should be forwarded to
 # `apps/codecov-api/Makefile`.
 $(eval $(call api_rule_prefix,api.shell%))
@@ -106,12 +100,6 @@ $(1): export DOCKERHUB_REPO ?= codecov/self-hosted-worker
 $(1): export CI_REQS_REPO ?= codecov/worker-ci-requirements
 endef
 
-# Any Worker target starting with `test` should be forwarded to
-# `apps/worker/Makefile`.
-$(eval $(call worker_rule_prefix,worker.test%))
-worker.test%:
-	$(MAKE) -C apps/worker test$*
-
 # Any Worker target starting with `shell` should be forwarded to
 # `apps/worker/Makefile`.
 $(eval $(call worker_rule_prefix,worker.shell%))
@@ -134,9 +122,14 @@ shared.%:
 	$(MAKE) -C libs/shared $*
 
 ######
-# Targets for building docker images + CI
+# Targets for building docker images
 ######
 include docker/Makefile.docker
+
+######
+# Targets for running tests in CI
+######
+include docker/Makefile.ci-tests
 
 ######
 # Development environment targets
