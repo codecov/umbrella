@@ -302,7 +302,7 @@ class ReportFile:
             # OR previous file had END issue
             self._parsed_lines = other_file._lines.copy()
             self._raw_lines = None
-            # This previously logged a warning about 
+            # This previously logged a warning about
             # doing something weird because of weird .rb logic
 
         elif (
