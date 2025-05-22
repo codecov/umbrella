@@ -35,46 +35,5 @@ CODECOV_CLI_VERSION := 0.5.1
 test:
 	COVERAGE_CORE=sysmon pytest --cov=./ --junitxml=junit.xml -o junit_family=legacy -c pytest.ini --rootdir=${PYTEST_ROOTDIR}
 
-test.unit:
-	COVERAGE_CORE=sysmon pytest --cov=./ -m "not integration" --cov-report=xml:unit.coverage.xml --junitxml=unit.junit.xml -o junit_family=legacy -c pytest.ini --rootdir=${PYTEST_ROOTDIR}
-
-test.integration:
-	COVERAGE_CORE=sysmon pytest --cov=./ -m "integration" --cov-report=xml:integration.coverage.xml --junitxml=integration.junit.xml -o junit_family=legacy -c pytest.ini --rootdir=${PYTEST_ROOTDIR}
-
 shell:
 	docker-compose exec worker bash
-
-test_env.up:
-	env | grep GITHUB > .testenv; true
-	docker-compose up -d
-
-test_env.prepare:
-	docker-compose exec worker make test_env.container_prepare
-
-test_env.check_db:
-	docker-compose exec worker make test_env.container_check_db
-
-test_env.install_cli:
-	pip install --no-cache-dir codecov-cli==$(CODECOV_CLI_VERSION)
-
-test_env.container_prepare:
-	apt-get update
-	apt-get install -y git build-essential netcat-traditional
-	git config --global --add safe.directory /apps/app/worker || true
-
-test_env.container_check_db:
-	while ! nc -vz postgres 5432; do sleep 1; echo "waiting for postgres"; done
-	while ! nc -vz timescale 5432; do sleep 1; echo "waiting for timescale"; done
-
-test_env.run_unit:
-	docker-compose exec worker make test.unit PYTEST_ROOTDIR=${PYTEST_ROOTDIR}
-
-test_env.run_integration:
-	docker-compose exec worker make test.integration PYTEST_ROOTDIR=${PYTEST_ROOTDIR}
-
-test_env:
-	make test_env.up
-	make test_env.prepare
-	make test_env.check_db
-	make test_env.run_unit
-	make test_env.run_integration

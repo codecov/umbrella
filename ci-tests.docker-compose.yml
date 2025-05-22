@@ -1,20 +1,21 @@
 version: "3"
 
 services:
-  worker:
-    image: ${WORKER_DOCKER_REPO}:${WORKER_DOCKER_VERSION}
+  repo:
+    image: ${DOCKER_REPO}:${DOCKER_VERSION}
     depends_on:
       - minio
       - postgres
       - redis
       - timescale
     volumes:
-      - ./:/app/apps/worker
-      - ./docker/test.yml:/config/codecov.yml
+      - ./${APP_DIR}:/app/${APP_DIR}
+      - ./tools/devenv/config/test.yml:/config/codecov.yml
     environment:
       # Improves pytest-cov performance in python 3.12
       # https://github.com/nedbat/coveragepy/issues/1665#issuecomment-1937075835
       - COVERAGE_CORE=sysmon
+      - RUN_ENV=DEV
     env_file:
       - .testenv
     command:
