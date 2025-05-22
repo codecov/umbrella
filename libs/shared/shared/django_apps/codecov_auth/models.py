@@ -689,17 +689,16 @@ class GithubAppInstallation(
 ):
     # replacement for owner.integration_id
     # installation id GitHub sends us in the installation-related webhook events
-    installation_id = models.IntegerField(null=False, blank=False)
+    installation_id = models.IntegerField(null=False)
     name = models.TextField(default=GITHUB_APP_INSTALLATION_DEFAULT_NAME)
     # if null, all repos are covered by this installation
     # otherwise, it's a list of repo.id values
     repository_service_ids = ArrayField(models.TextField(null=False), null=True)
 
     # Needed to get a JWT for the app
-    # NULL for the default app, which is configured in the install YAML
-    app_id = models.IntegerField(null=True, blank=False)
-    # Same comments for app_id apply
-    pem_path = models.TextField(null=True, blank=False)
+    # app_id and pem_path for default apps are configured in the install YAML
+    app_id = models.IntegerField(null=False)
+    pem_path = models.TextField(null=True)
 
     is_suspended = models.BooleanField(null=False, default=False)
 
@@ -707,7 +706,6 @@ class GithubAppInstallation(
         Owner,
         null=False,
         on_delete=models.CASCADE,
-        blank=False,
         related_name="github_app_installations",
     )
 
