@@ -649,9 +649,10 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
             },
         ),
         (
-            "Plan fields",
+            "Plan fields - if the Owner has an Account, none of these fields are used, refer to the ones on the Account",
             {
                 "fields": [
+                    "account",
                     "plan_auto_activate",
                     "plan",
                     "plan_user_count",
@@ -687,7 +688,6 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "bot",
                     "max_upload_limit",
                     "organizations",
-                    "account",
                     "permission",
                     "student_created_at",
                     "student_updated_at",
