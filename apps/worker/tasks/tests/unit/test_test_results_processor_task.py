@@ -1,6 +1,3 @@
-import base64
-import json
-import zlib
 from datetime import UTC, date, datetime, timedelta
 from itertools import chain
 from pathlib import Path
@@ -14,7 +11,6 @@ from database.models.reports import (
     Test,
     TestFlagBridge,
     TestInstance,
-    UploadError,
 )
 from database.tests.factories import CommitFactory, UploadFactory
 from database.tests.factories.reports import FlakeFactory
@@ -709,43 +705,43 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
         )
 
 
-def test_test_result_processor_task_warnings(dbsession, mock_storage, snapshot):
-    with open(here.parent.parent / "samples" / "sample-warnings-junit.xml") as f:
-        content = f.read()
-    encoded = {
-        "test_results_files": [
-            {
-                "filename": "junit.xml",
-                "data": base64.b64encode(zlib.compress(content.encode())).decode(),
-            }
-        ]
-    }
-    mock_storage.write_file("archive", "url", json.dumps(encoded))
+# def test_test_result_processor_task_warnings(dbsession, mock_storage, snapshot):
+#     with open(here.parent.parent / "samples" / "sample-warnings-junit.xml") as f:
+#         content = f.read()
+#     encoded = {
+#         "test_results_files": [
+#             {
+#                 "filename": "junit.xml",
+#                 "data": base64.b64encode(zlib.compress(content.encode())).decode(),
+#             }
+#         ]
+#     }
+#     mock_storage.write_file("archive", "url", json.dumps(encoded))
 
-    upload = UploadFactory(storage_path="url", report__report_type="test_results")
-    dbsession.add(upload)
-    dbsession.flush()
+#     upload = UploadFactory(storage_path="url", report__report_type="test_results")
+#     dbsession.add(upload)
+#     dbsession.flush()
 
-    redis_queue = [{"url": "url", "upload_id": upload.id_}]
+#     redis_queue = [{"url": "url", "upload_id": upload.id_}]
 
-    result = TestResultsProcessorTask().run_impl(
-        dbsession,
-        previous_result=None,
-        repoid=upload.report.commit.repoid,
-        commitid=upload.report.commit.commitid,
-        commit_yaml={},
-        arguments_list=redis_queue,
-    )
+#     result = TestResultsProcessorTask().run_impl(
+#         dbsession,
+#         previous_result=None,
+#         repoid=upload.report.commit.repoid,
+#         commitid=upload.report.commit.commitid,
+#         commit_yaml={},
+#         arguments_list=redis_queue,
+#     )
 
-    assert result is False
+#     assert result is False
 
-    errors = dbsession.query(UploadError).all()
-    assert len(errors) > 0
-    errors = [
-        {
-            "code": error.error_code,
-            "message": error.error_params["warning_message"],
-        }
-        for error in errors
-    ]
-    assert snapshot("json") == errors
+#     errors = dbsession.query(UploadError).all()
+#     assert len(errors) > 0
+#     errors = [
+#         {
+#             "code": error.error_code,
+#             "message": error.error_params["warning_message"],
+#         }
+#         for error in errors
+#     ]
+#     assert snapshot("json") == errors

@@ -451,20 +451,20 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
 
         parsing_results, readable_files = result
 
-        warnings = [
-            {
-                "upload_id": upload_id,
-                "error_code": "warning",
-                "error_params": {"warning_message": warning},
-            }
-            for info in parsing_results
-            for warning in info["warnings"]
-        ]
+        # warnings = [
+        #     {
+        #         "upload_id": upload_id,
+        #         "error_code": "warning",
+        #         "error_params": {"warning_message": warning},
+        #     }
+        #     for info in parsing_results
+        #     for warning in info["warnings"]
+        # ]
 
-        if warnings:
-            bulk_create_warnings = insert(UploadError.__table__).values(warnings)
-            db_session.execute(bulk_create_warnings)
-            db_session.commit()
+        # if warnings:
+        #     bulk_create_warnings = insert(UploadError.__table__).values(warnings)
+        #     db_session.execute(bulk_create_warnings)
+        #     db_session.commit()
 
         if any(len(result["testruns"]) > 0 for result in parsing_results):
             successful = True
