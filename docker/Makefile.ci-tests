@@ -1,0 +1,66 @@
+# We currently run `pytest` inside subdirectories but want the junit and coverage
+# output to use source file paths that are relative to the repository root, which
+# our images put in `/app`.
+PYTEST_ROOTDIR ?= "/app"
+
+# Directory containing source files to measure coverage for. Overridden by `shared`.
+COV_SOURCE ?= "./"
+
+######
+# Generic targets for running Python tests inside a Docker environment.
+#
+# Assumes a number of Makefile variables have been populated:
+# - PYTEST_ROOTDIR: Source file paths in coverage data will be relative to this path.
+# - (Optional) COV_SOURCE: Directory where relevant source files are located (if sources and tests are separated)
+# - DOCKER_REPO: Name of the image to load and run tests inside of.
+# - DOCKER_VERSION: Image tag of the above image to load and run tests inside of.
+# - APP_DIR: Directory to bind-mount into the container before running tests.
+######
+
+# Outside the Docker env: Start up the Docker env for tests.
+_test_env.up:
+	env | grep GITHUB > .testenv; true
+	DOCKER_REPO=${AR_REPO} DOCKER_VERSION=${VERSION} APP_DIR=${APP_DIR} docker-compose -f ci-tests.docker-compose.yml up -d
+
+# Outside the Docker env: Install some runtime dependencies inside the running Docker env.
+_test_env.prepare:
+	docker-compose -f ci-tests.docker-compose.yml exec repo apt-get update
+	docker-compose -f ci-tests.docker-compose.yml exec repo apt-get install -y git build-essential netcat-traditional
+	docker-compose -f ci-tests.docker-compose.yml exec repo git config --global --add safe.directory /app || true
+
+# Outside the Docker env: Block until Postgres and Timescale are healthy.
+_test_env.check_db:
+	docker-compose -f ci-tests.docker-compose.yml exec repo /bin/sh -c 'while ! nc -vz postgres 5432; do sleep 1; echo "waiting for postgres"; done'
+	docker-compose -f ci-tests.docker-compose.yml exec repo /bin/sh -c 'while ! nc -vz timescale 5432; do sleep 1; echo "waiting for timescale"; done'
+
+# Outside the Docker env: Run unit tests.
+_test_env.run_unit:
+	docker-compose exec repo /bin/sh -c \
+		"COVERAGE_CORE=sysmon \
+		pytest --cov=${COV_SOURCE} \
+		    -m 'not integration' \
+		    --cov-report=xml:unit.coverage.xml \
+		    --junitxml=unit.junit.xml \
+		    -o junit_family=legacy \
+		    -c pytest.ini \
+		    --rootdir=${PYTEST_ROOTDIR}"
+
+# Outside the Docker env: Run integration tests.
+_test_env.run_integration:
+	docker-compose exec repo /bin/sh -c \
+		"COVERAGE_CORE=sysmon \
+		pytest --cov=${COV_SOURCE} \
+		    -m 'integration' \
+		    --cov-report=xml:integration.coverage.xml \
+		    --junitxml=integration.junit.xml \
+		    -o junit_family=legacy \
+		    -c pytest.ini \
+		    --rootdir=${PYTEST_ROOTDIR}"
+
+# Outside the Docker env: Start the Docker env and run unit + integration tests in one go.
+_test_env:
+	$(MAKE) _test_env.up
+	$(MAKE) _test_env.prepare
+	$(MAKE) _test_env.check_db
+	$(MAKE) _test_env.run_unit
+	$(MAKE) _test_env.run_integration
