@@ -5,8 +5,10 @@ from django.utils import timezone
 from factory.django import DjangoModelFactory
 
 from shared.django_apps.codecov_auth.models import (
+    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
     Account,
     AccountsUsers,
+    GithubAppInstallation,
     InvoiceBilling,
     OktaSettings,
     OktaUser,
@@ -200,3 +202,15 @@ class PlanFactory(DjangoModelFactory):
     name = PlanName.BASIC_PLAN_NAME.value
     paid_plan = False
     stripe_id = None
+
+
+class GithubAppInstallationFactory(DjangoModelFactory):
+    class Meta:
+        model = GithubAppInstallation
+
+    installation_id = factory.Sequence(lambda n: n + 1000)
+    name = GITHUB_APP_INSTALLATION_DEFAULT_NAME
+    repository_service_ids = None
+    app_id = factory.Sequence(lambda n: n + 100)
+    pem_path = None
+    owner = factory.SubFactory(OwnerFactory)

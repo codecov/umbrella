@@ -18,7 +18,6 @@ from shared.django_apps.codecov_auth.models import (
     SERVICE_GITHUB_ENTERPRISE,
     Account,
     AccountsUsers,
-    GithubAppInstallation,
     OrganizationLevelToken,
     Owner,
     Service,
@@ -26,6 +25,7 @@ from shared.django_apps.codecov_auth.models import (
 )
 from shared.django_apps.codecov_auth.tests.factories import (
     AccountFactory,
+    GithubAppInstallationFactory,
     InvoiceBillingFactory,
     OktaSettingsFactory,
     OrganizationLevelTokenFactory,
@@ -607,12 +607,13 @@ class TestGithubAppInstallationModel(TestCase):
         repo2 = RepositoryFactory(author=owner)
         repo3 = RepositoryFactory(author=owner)
         other_repo_different_owner = RepositoryFactory()
-        installation_obj = GithubAppInstallation(
+
+        installation_obj = GithubAppInstallationFactory(
             owner=owner,
             repository_service_ids=None,
             installation_id=100,
         )
-        installation_obj.save()
+
         assert installation_obj.name == "codecov_app_installation"
         assert installation_obj.covers_all_repos() == True
         assert installation_obj.is_repo_covered_by_integration(repo1) == True
@@ -633,12 +634,13 @@ class TestGithubAppInstallationModel(TestCase):
         repo = RepositoryFactory(author=owner)
         same_owner_other_repo = RepositoryFactory(author=owner)
         other_repo_different_owner = RepositoryFactory()
-        installation_obj = GithubAppInstallation(
+
+        installation_obj = GithubAppInstallationFactory(
             owner=owner,
             repository_service_ids=[repo.service_id],
             installation_id=100,
         )
-        installation_obj.save()
+
         assert installation_obj.covers_all_repos() == False
         assert installation_obj.is_repo_covered_by_integration(repo) == True
         assert (
@@ -655,14 +657,18 @@ class TestGithubAppInstallationModel(TestCase):
 
     def test_is_configured(self):
         owner = OwnerFactory()
-        installation_default = GithubAppInstallation(
+
+        # Default installation with default app ID
+        installation_default = GithubAppInstallationFactory(
             owner=owner,
             repository_service_ids=None,
             installation_id=123,
             app_id=self.DEFAULT_APP_ID,
             name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
         )
-        installation_configured = GithubAppInstallation(
+
+        # Fully configured installation with custom app ID
+        installation_configured = GithubAppInstallationFactory(
             owner=owner,
             repository_service_ids=None,
             name="my_installation",
@@ -670,40 +676,47 @@ class TestGithubAppInstallationModel(TestCase):
             app_id=123,
             pem_path="some_path",
         )
-        installation_not_configured = GithubAppInstallation(
+
+        # Installation not configured - missing pem_path
+        installation_not_configured = GithubAppInstallationFactory(
             owner=owner,
             repository_service_ids=None,
             installation_id=100,
             name="my_other_installation",
             app_id=1234,
+            pem_path=None,
         )
-        installation_default_name_not_configured = GithubAppInstallation(
-            owner=owner,
-            repository_service_ids=None,
-            installation_id=100,
-            app_id=121212,
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-        )
-        installation_default_name_not_default_id_configured = GithubAppInstallation(
-            owner=owner,
-            repository_service_ids=None,
-            installation_id=100,
-            app_id=121212,
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-            pem_path="some_path",
-        )
-        installation_default.save()
 
-        installation_configured.save()
-        installation_not_configured.save()
-        installation_default_name_not_configured.save()
-        installation_default_name_not_default_id_configured.save()
+        # Default name but not default ID and no pem_path
+        installation_default_name_not_configured = GithubAppInstallationFactory(
+            owner=owner,
+            repository_service_ids=None,
+            installation_id=100,
+            app_id=121212,
+            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+            pem_path=None,
+        )
+
+        # Default name, not default ID, but has pem_path
+        installation_default_name_not_default_id_configured = (
+            GithubAppInstallationFactory(
+                owner=owner,
+                repository_service_ids=None,
+                installation_id=100,
+                app_id=121212,
+                name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+                pem_path="some_path",
+            )
+        )
 
         assert installation_default.is_configured() == True
         installation_default.app_id = str(self.DEFAULT_APP_ID)
+        installation_default.save()
         assert installation_default.is_configured() == True
+
         # Unconfigured apps are not configured
         installation_default.name = "unconfigured_app"
+        installation_default.save()
         assert installation_default.is_configured() == False
 
         assert installation_configured.is_configured() == True
@@ -726,14 +739,14 @@ class TestGitHubAppInstallationNoDefaultAppIdConfig(TestCase):
 
     def test_is_configured_no_default(self):
         owner = OwnerFactory()
-        installation_default = GithubAppInstallation(
+        installation_default = GithubAppInstallationFactory(
             owner=owner,
             repository_service_ids=None,
             installation_id=123,
             app_id=1200,
             name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
         )
-        installation_default.save()
+
         assert installation_default.is_configured() == True
 
 
