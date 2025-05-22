@@ -20,6 +20,19 @@ class Migration0067Test(TestMigrations):
             username="test_owner", service="github", service_id="12345"
         )
 
+        self.installation1 = self.GithubAppInstallation.objects.create(
+            owner=self.owner, installation_id=101, app_id=1, name="test-app"
+        )
+        self.installation2 = self.GithubAppInstallation.objects.create(
+            owner=self.owner,
+            installation_id=101,  # Same as installation1 - duplicate
+            app_id=1,  # Same as installation1 - duplicate
+            name="test-app",
+        )
+        self.installation3 = self.GithubAppInstallation.objects.create(
+            owner=self.owner, installation_id=102, app_id=1, name="test-app"
+        )
+
         self.null_app_id1 = self.GithubAppInstallation.objects.create(
             owner=self.owner, installation_id=201, app_id=None, name="test-null-app"
         )
@@ -34,6 +47,19 @@ class Migration0067Test(TestMigrations):
             app_id=54321,
             name="test-existing-app",
         )
+
+    def test_eliminate_dupes(self):
+        eliminate_dupes(self.GithubAppInstallation)
+
+        installations = self.GithubAppInstallation.objects.filter(
+            installation_id__in=[101, 102]
+        )
+        self.assertEqual(installations.count(), 2)  # Should have removed 1 duplicate
+
+        # Should keep the installation with the lowest ID
+        ids = list(installations.values_list("id", flat=True))
+        self.assertIn(self.installation1.id, ids)
+        self.assertIn(self.installation3.id, ids)
 
     @patch(
         "shared.django_apps.codecov_auth.migrations.migration_helpers.migration_0067.get_config"
