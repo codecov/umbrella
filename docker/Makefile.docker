@@ -1,0 +1,156 @@
+export DOCKER_BUILDKIT=1
+
+######
+# Generic targets for building images.
+#
+# Assumes a number of Makefile variables have been populated:
+# - APP_DIR: the directory within umbrella that images should be "rooted" at.
+#   Images use the pyproject.toml and uv.lock in this directory and also save
+#   and load container image archives in this directory.
+# - AR_REPO: the container repository that images should be loaded from or
+#   published to.
+# - REQUIREMENTS_TAG: the tag in the above image repository that contains the
+#   appropriate requirements image for the current commit.
+# - DOCKERHUB_REPO: the repository on Docker Hub that images will be published
+#   to. Generally only for self-hosted images.
+# - CI_REQS_REPO: an alternate repository where only requirements images are
+#   published.
+# - Various version/SHA variables.
+######
+
+# Build a requirements image.
+_build.requirements:
+	docker pull ${AR_REPO}:${REQUIREMENTS_TAG} || docker build \
+			   --network host \
+               -f docker/Dockerfile.requirements . \
+               --build-arg APP_DIR=${APP_DIR} \
+               -t ${AR_REPO}:${REQUIREMENTS_TAG} \
+	       -t ${CI_REQS_REPO}:${REQUIREMENTS_TAG}
+
+# Build an image for local development.
+_build.local:
+	cd ${APP_DIR} && \
+	docker build -f docker/Dockerfile . \
+		-t ${AR_REPO}:latest \
+		-t ${AR_REPO}:${VERSION} \
+		--build-arg REQUIREMENTS_IMAGE=${AR_REPO}:${REQUIREMENTS_TAG} \
+		--build-arg BUILD_ENV=local
+
+# Build an image (+ its reqs base) for local development.
+_build:
+	$(MAKE) _build.requirements
+	$(MAKE) _build.local
+
+# Build a production image.
+_build.app:
+	cd ${APP_DIR} && \
+	docker build -f docker/Dockerfile . \
+		-t ${AR_REPO}:latest \
+		-t ${AR_REPO}:${VERSION} \
+		--label "org.label-schema.vendor"="Codecov" \
+		--label "org.label-schema.version"="${release_version}-${sha}" \
+		--label "org.opencontainers.image.revision"="$(full_sha)" \
+		--label "org.opencontainers.image.source"="github.com/codecov/umbrella" \
+		--build-arg REQUIREMENTS_IMAGE=${AR_REPO}:${REQUIREMENTS_TAG} \
+		--build-arg RELEASE_VERSION=${VERSION} \
+		--build-arg BUILD_ENV=cloud
+
+# Build a self-hosted image.
+_build.self-hosted:
+	$(MAKE) _build.self-hosted-base
+	$(MAKE) _build.self-hosted-runtime
+
+_build.self-hosted-base:
+	cd ${APP_DIR} && \
+	docker build -f docker/Dockerfile . \
+		-t ${DOCKERHUB_REPO}:latest-no-dependencies \
+		-t ${DOCKERHUB_REPO}:${VERSION}-no-dependencies \
+		--build-arg REQUIREMENTS_IMAGE=${AR_REPO}:${REQUIREMENTS_TAG} \
+		--build-arg RELEASE_VERSION=${VERSION} \
+		--build-arg BUILD_ENV=self-hosted
+
+_build.self-hosted-runtime:
+	cd ${APP_DIR} && \
+	docker build -f docker/Dockerfile . \
+		-t ${DOCKERHUB_REPO}:latest \
+		-t ${DOCKERHUB_REPO}:${VERSION} \
+		--label "org.label-schema.vendor"="Codecov" \
+		--label "org.label-schema.version"="${release_version}-${sha}" \
+		--build-arg REQUIREMENTS_IMAGE=${AR_REPO}:${REQUIREMENTS_TAG} \
+        --build-arg RELEASE_VERSION=${VERSION} \
+        --build-arg BUILD_ENV=self-hosted-runtime
+
+_tag.latest:
+	docker tag ${AR_REPO}:${VERSION} ${AR_REPO}:latest
+
+_tag.staging:
+	docker tag ${AR_REPO}:${VERSION} ${AR_REPO}:staging-${VERSION}
+
+_tag.production:
+	docker tag ${AR_REPO}:${VERSION} ${AR_REPO}:production-${VERSION}
+
+_tag.self-hosted-rolling:
+	docker tag ${DOCKERHUB_REPO}:${VERSION}-no-dependencies ${DOCKERHUB_REPO}:rolling_no_dependencies
+	docker tag ${DOCKERHUB_REPO}:${VERSION} ${DOCKERHUB_REPO}:rolling
+
+_tag.self-hosted-release:
+	docker tag ${DOCKERHUB_REPO}:${VERSION}-no-dependencies ${DOCKERHUB_REPO}:${release_version}_no_dependencies
+	docker tag ${DOCKERHUB_REPO}:${VERSION}-no-dependencies ${DOCKERHUB_REPO}:latest_calver_no_dependencies
+	docker tag ${DOCKERHUB_REPO}:${VERSION}-no-dependencies ${DOCKERHUB_REPO}:latest_stable_no_dependencies
+	docker tag ${DOCKERHUB_REPO}:${VERSION} ${DOCKERHUB_REPO}:${release_version}
+	docker tag ${DOCKERHUB_REPO}:${VERSION} ${DOCKERHUB_REPO}:latest-stable
+	docker tag ${DOCKERHUB_REPO}:${VERSION} ${DOCKERHUB_REPO}:latest-calver
+
+# Load an exported requirements image (e.g. from GHA's cache)
+_load.requirements:
+	docker load --input ${APP_DIR}/requirements.tar
+	docker tag ${CI_REQS_REPO}:${REQUIREMENTS_TAG} ${AR_REPO}:${REQUIREMENTS_TAG}
+
+# Load an exported self-hosted image (e.g. from GHA's cache)
+_load.self-hosted:
+	docker load --input ${APP_DIR}/self-hosted-runtime.tar
+	docker load --input ${APP_DIR}/self-hosted.tar
+
+# Export a production image.
+_save.app:
+	docker save -o ${APP_DIR}/app.tar ${AR_REPO}:${VERSION}
+
+# Export a requirements image.
+_save.requirements:
+	docker tag ${AR_REPO}:${REQUIREMENTS_TAG} ${CI_REQS_REPO}:${REQUIREMENTS_TAG}
+	docker save -o ${APP_DIR}/requirements.tar ${CI_REQS_REPO}:${REQUIREMENTS_TAG}
+
+# Export a self-hosted image pair (base and runtime)
+_save.self-hosted:
+	$(MAKE) _save.self-hosted-base
+	$(MAKE) _save.self-hosted-runtime
+
+_save.self-hosted-base:
+	docker save -o ${APP_DIR}/self-hosted.tar ${DOCKERHUB_REPO}:${VERSION}-no-dependencies
+
+_save.self-hosted-runtime:
+	docker save -o ${APP_DIR}/self-hosted-runtime.tar ${DOCKERHUB_REPO}:${VERSION}
+
+_push.latest:
+	docker push ${AR_REPO}:latest
+
+_push.staging:
+	docker push ${AR_REPO}:staging-${VERSION}
+
+_push.production:
+	docker push ${AR_REPO}:production-${VERSION}
+
+_push.requirements:
+	docker push ${AR_REPO}:${REQUIREMENTS_TAG}
+
+_push.self-hosted-release:
+	docker push ${DOCKERHUB_REPO}:${release_version}_no_dependencies
+	docker push ${DOCKERHUB_REPO}:latest_calver_no_dependencies
+	docker push ${DOCKERHUB_REPO}:latest_stable_no_dependencies
+	docker push ${DOCKERHUB_REPO}:${release_version}
+	docker push ${DOCKERHUB_REPO}:latest-stable
+	docker push ${DOCKERHUB_REPO}:latest-calver
+
+_push.self-hosted-rolling:
+	docker push ${DOCKERHUB_REPO}:rolling_no_dependencies
+	docker push ${DOCKERHUB_REPO}:rolling

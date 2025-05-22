@@ -1,32 +1,56 @@
+######
+# ~~~ Welcome to our Makefile ~~~
+# We hope you enjoy your stay!
+#
+# We use `make` for quite a lot, so targets are defined across different
+# `Makefile`s and `include`d here. Maybe that's a sign that we need a different
+# system, but old habits die hard.
+#
+# This `Makefile` exports some generally-applicable `Makefile` variables that
+# will apply across all of the `Makefile`s it `include`s, and it also defines
+# some "wrapper" targets that will run generic `make` targets with values for
+# specific subprojects plugged in:
+# - `worker.*` for `apps/worker`
+# - `api.*` for `apps/codecov-api`
+# - `shared.*` for `libs/shared`
+#
+# These "wrapper" targets rely on two somewhat obtuse `make` features:
+# - a "function" or "macro" of sorts that is expanded before each target to set
+#   variables for that target. This is the `define` and `eval`/`call` stuff.
+# - pattern rules, which let you match basically a wildcard in a rule name. A %
+#   in a rule name matches anything, and then $* in the rule definition expands
+#   to whatever was matched. If multiple rules can match, `make` picks the most
+#   specific one (i.e. the one with the smallest `$*` value)
+#
+# If you run `make worker.build`, the wrapper target will set worker-specific
+# values and then run `$(MAKE) _build` to run the generic `_build` target with
+# worker's propagated through. 
+#
+# We are interested in making `umbrella` more of a monolith instead of a
+# collection of subprojects. If and when we do, the goal is not to need the
+# "wrapper" targets anymore; we should be able to set a single set of values for
+# the variables used in the wrapper targets, delete the `_` from generic rule
+# names like `_build` or `_save.requirements`, and invoke `make` on the same
+# target no matter what.
+#####
+
 export sha := $(shell git rev-parse --short=7 HEAD)
 export full_sha := $(shell git rev-parse HEAD)
 export long_sha := ${full_sha}
 export merge_sha := $(shell git merge-base HEAD^ origin/main)
-export release_version := `cat VERSION`
-export VERSION := release-${sha}
+export release_version := $(shell cat VERSION)
+export VERSION ?= release-${sha}
 
 export build_date ?= $(shell git show -s --date=iso8601-strict --pretty=format:%cd $$sha)
 export branch := $(shell git branch | grep \* | cut -f2 -d' ')
 
-export DOCKER_BUILDKIT=1
+# This can be overridden with an environment variable to pull from a GCR registry.
+export AR_REPO_PREFIX ?= codecov
 
 # `LC_ALL=C` is added to `sort` to ensure you get the same order across systems.
 # Otherwise, a Mac may sort according to en_US.UTF-8 while CI may sort according to C/POSIX.
 export SHARED_SHA := $(shell git ls-files libs/shared | LC_ALL=C sort | xargs sha1sum | cut -d ' ' -f 1 | sha1sum | head -c 40)
 export DOCKER_REQS_SHA := $(shell sha1sum docker/Dockerfile.requirements | head -c 40)
-
-# This can be overridden with an environment variable to pull from a GCR registry.
-export AR_REPO_PREFIX ?= codecov
-
-# Generic target for building a requirements image. You probably want
-# `worker.build.requirements` or `api.build.requirements`.
-_build.requirements:
-	docker pull ${AR_REPO}:${REQUIREMENTS_TAG} || docker build \
-			   --network host \
-               -f docker/Dockerfile.requirements . \
-               --build-arg APP_DIR=${APP_DIR} \
-               -t ${AR_REPO}:${REQUIREMENTS_TAG} \
-	       -t ${CI_REQS_REPO}:${REQUIREMENTS_TAG}
 
 ######
 # codecov-api targets
@@ -43,23 +67,29 @@ $(1): export DOCKERHUB_REPO ?= codecov/self-hosted-api
 $(1): export CI_REQS_REPO ?= codecov/api-ci-requirements
 endef
 
-# umbrella builds a special requirements image for api that installs shared properly.
-$(eval $(call api_rule_prefix,api.build.requirements))
-api.build.requirements:
-	$(MAKE) _build.requirements
+# Any API target starting with `proxy` should be forwarded to
+# `apps/codecov-api/Makefile`.
+$(eval $(call api_rule_prefix,api.proxy%))
+api.proxy%:
+	$(MAKE) -C apps/codecov-api proxy$*
 
-# This target calls `make build.requirements` for api so we have to make sure it calls our
-# custom `build.requirements` instead.
-$(eval $(call api_rule_prefix,api.build))
-api.build:
-	$(MAKE) api.build.requirements
-	$(MAKE) -C apps/codecov-api build.local
+# Any API target starting with `test` should be forwarded to
+# `apps/codecov-api/Makefile`.
+$(eval $(call api_rule_prefix,api.test%))
+api.test%:
+	$(MAKE) -C apps/codecov-api test$*
 
-# Any other target starting with `api.` should be forwarded to `apps/codecov-api`.
-# The `$*` variable is the string caught by the `%` in the rule pattern.
+# Any API target starting with `shell` should be forwarded to
+# `apps/codecov-api/Makefile`.
+$(eval $(call api_rule_prefix,api.shell%))
+api.shell%:
+	$(MAKE) -C apps/codecov-api shell$*
+
+# All other API targets are implemented as generic targets that are `include`d
+# from the root `Makefile`.
 $(eval $(call api_rule_prefix,api.%))
 api.%:
-	$(MAKE) -C apps/codecov-api $*
+	$(MAKE) _$*
 
 ######
 # worker targets
@@ -76,32 +106,37 @@ $(1): export DOCKERHUB_REPO ?= codecov/self-hosted-worker
 $(1): export CI_REQS_REPO ?= codecov/worker-ci-requirements
 endef
 
-# umbrella builds a special requirements image for worker that installs shared properly.
-$(eval $(call worker_rule_prefix,worker.build.requirements))
-worker.build.requirements:
-	$(MAKE) _build.requirements
+# Any Worker target starting with `test` should be forwarded to
+# `apps/worker/Makefile`.
+$(eval $(call worker_rule_prefix,worker.test%))
+worker.test%:
+	$(MAKE) -C apps/worker test$*
 
-# This target calls `make build.requirements` for worker so we have to make sure it calls our
-# custom `build.requirements` instead.
-$(eval $(call worker_rule_prefix,worker.build))
-worker.build:
-	$(MAKE) worker.build.requirements
-	$(MAKE) -C apps/worker build.local
+# Any Worker target starting with `shell` should be forwarded to
+# `apps/worker/Makefile`.
+$(eval $(call worker_rule_prefix,worker.shell%))
+worker.shell%:
+	$(MAKE) -C apps/worker shell$*
 
-# Any other target starting with `worker.` should be forwarded to `apps/worker`.
-# The `$*` variable is the string caught by the `%` in the rule pattern.
+# All other Worker targets are implemented as generic targets that are
+# `include`d from the root `Makefile`.
 $(eval $(call worker_rule_prefix,worker.%))
 worker.%:
-	$(MAKE) -C apps/worker $*
+	$(MAKE) _$*
 
 ######
 # shared targets
 ######
 
-# No need to override any of shared's targets. Just run make in `libs/shared`.
+# Currently, all shared targets should be forwarded to `libs/shared/Makefile`.
 .PHONY: shared.%
 shared.%:
 	$(MAKE) -C libs/shared $*
+
+######
+# Targets for building docker images + CI
+######
+include docker/Makefile.docker
 
 ######
 # Development environment targets
