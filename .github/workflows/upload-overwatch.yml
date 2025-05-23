@@ -32,10 +32,11 @@ jobs:
           # Move the CLI to a location accessible from working directories
           mv overwatch-cli /usr/local/bin/overwatch-cli
 
-      - name: Run Overwatch CLI
+      - name: Run Overwatch CLI (agentic 2)
         working-directory: ${{ matrix.project }}
         run: |
           overwatch-cli \
+            --url https://overwatch.codecov.dev \
             --auth-token ${{ secrets.SENTRY_AUTH_TOKEN }} \
             --organization-slug codecov \
             python \
