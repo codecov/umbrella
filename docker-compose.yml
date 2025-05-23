@@ -1,5 +1,3 @@
-version: "3.3"
-
 services:
   gateway:
     image: codecov/self-hosted-gateway:latest-calver
