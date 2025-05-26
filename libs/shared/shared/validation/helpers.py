@@ -380,11 +380,6 @@ class PathPatternSchemaField:
         return determine_path_pattern_type(value)
 
     def validate_glob(self, value):
-        if not value.endswith("$") and not value.endswith("*"):
-            log.warning(
-                "Old glob behavior would have interpreted this glob as prefix",
-                extra={"glob": value},
-            )
         return translate_glob_to_regex(value)
 
     def validate_path_prefix(self, value):
