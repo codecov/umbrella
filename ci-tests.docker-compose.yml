@@ -9,7 +9,7 @@ services:
       - redis
       - timescale
     volumes:
-      - ./${APP_DIR}:/app/${APP_DIR}
+      - ./:/app
       - ./tools/devenv/config/test.yml:/config/codecov.yml
     environment:
       # Improves pytest-cov performance in python 3.12

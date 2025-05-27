@@ -115,11 +115,25 @@ worker.%:
 ######
 # shared targets
 ######
+SHARED_UV_LOCK_SHA := $(shell sha1sum libs/shared/uv.lock | head -c 40)
+SHARED_REQS_TAG := reqs-${SHARED_UV_LOCK_SHA}-${DOCKER_REQS_SHA}
 
-# Currently, all shared targets should be forwarded to `libs/shared/Makefile`.
-.PHONY: shared.%
+define shared_rule_prefix
+.PHONY: $(1)
+$(1): export APP_DIR := libs/shared
+$(1): export REQUIREMENTS_TAG := ${SHARED_REQS_TAG}
+$(1): export AR_REPO ?= ${AR_REPO_PREFIX}/dev-shared
+$(1): export DOCKERHUB_REPO ?= codecov/dev-hosted-shared
+$(1): export CI_REQS_REPO ?= codecov/shared-ci-requirements
+$(1): export COV_SOURCE := ./shared
+endef
+
+# All other Shared targets are implemented as generic targets above. Declare the
+# appropriate Makefile variables with this rule prefix function and then invoke
+# `make` again on the generic target.
+$(eval $(call shared_rule_prefix,shared.%))
 shared.%:
-	$(MAKE) -C libs/shared $*
+	$(MAKE) _$*
 
 ######
 # Targets for building docker images

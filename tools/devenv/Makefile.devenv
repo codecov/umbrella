@@ -8,7 +8,7 @@ devenv.build.api:
 
 .PHONY: devenv.build.shared
 devenv.build.shared:
-	$(MAKE) -C libs/shared test_env.build
+	$(MAKE) shared.build
 
 .PHONY: devenv.build
 devenv.build: devenv.build.api devenv.build.worker devenv.build.shared

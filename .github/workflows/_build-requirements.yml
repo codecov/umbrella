@@ -12,6 +12,9 @@ on:
       make_target_prefix:
         type: string
         default: ""
+      push_reqs:
+        type: boolean
+        default: true
 
 env:
   AR_REPO: ${{ inputs.repo }}
@@ -62,6 +65,6 @@ jobs:
           make ${{ inputs.make_target_prefix }}save.requirements
 
       - name: Push Requirements
-        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        if: ${{ inputs.push_reqs && steps.cache-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
         run: |
           make ${{ inputs.make_target_prefix }}push.requirements

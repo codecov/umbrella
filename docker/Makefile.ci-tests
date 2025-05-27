@@ -27,6 +27,7 @@ _test_env.prepare:
 	docker-compose -f ci-tests.docker-compose.yml exec repo apt-get update
 	docker-compose -f ci-tests.docker-compose.yml exec repo apt-get install -y git build-essential netcat-traditional
 	docker-compose -f ci-tests.docker-compose.yml exec repo git config --global --add safe.directory /app || true
+	docker-compose -f ci-tests.docker-compose.yml exec repo pip install -e ../../libs/shared
 
 # Outside the Docker env: Block until Postgres and Timescale are healthy.
 _test_env.check_db:

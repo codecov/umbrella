@@ -74,7 +74,7 @@ services:
   # Dummy service to run shared tests
   shared:
     # This is the name of the image build in libs/shared
-    image: shared-shared
+    image: ${AR_REPO_PREFIX-codecov}/dev-shared
     tty: true
     environment:
       - SETUP__TA_TIMESERIES__ENABLED=true
