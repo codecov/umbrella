@@ -48,7 +48,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    command: server /export
+    command: server --address ":9002" /export
     environment:
       - MINIO_ACCESS_KEY=codecov-default-key
       - MINIO_SECRET_KEY=codecov-default-secret

@@ -165,9 +165,10 @@ services:
 
   minio:
     image: minio/minio:latest
-    command: server /export
+    command: server --address ":9002" --console-address ":9001" /export
     ports:
-      - "${CODECOV_MINIO_PORT-9001}:9000"
+      - "9002:9002"
+      - "9001:9001"
     environment:
       - MINIO_ACCESS_KEY=codecov-default-key
       - MINIO_SECRET_KEY=codecov-default-secret
