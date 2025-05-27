@@ -405,6 +405,9 @@ SENTRY_OAUTH_CLIENT_SECRET = get_config("sentry", "client_secret") or get_config
 SENTRY_OIDC_SHARED_SECRET = get_config("sentry", "oidc_shared_secret") or get_config(
     "setup", "sentry", "oidc_shared_secret"
 )
+SENTRY_APP_ID = get_config("sentry", "app_id") or get_config(
+    "setup", "sentry", "app_id", default=None
+)
 
 OKTA_OAUTH_CLIENT_ID = get_config("setup", "okta", "oauth_client_id")
 OKTA_OAUTH_CLIENT_SECRET = get_config("setup", "okta", "oauth_client_secret")
