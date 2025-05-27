@@ -2,15 +2,15 @@
 
 `umbrella` is Codecov's monorepo. It was created by absorbing a few of our repositories into subdirectories in this repository:
 
-- [`codecov/worker`](https://github.com/codecov/worker) in `apps/worker`
-- [`codecov/codecov-api`](https://github.com/codecov/codecov-api) in `apps/codecov-api`
-- [`codecov/shared`](https://github.com/codecov/shared) in `libs/shared`
+- [`codecov/worker`](https://github.com/codecov/worker) in [`apps/worker`](apps/worker)
+- [`codecov/codecov-api`](https://github.com/codecov/codecov-api) in [`apps/codecov-api`](apps/codecov-api)
+- [`codecov/shared`](https://github.com/codecov/shared) in [`libs/shared`](libs/shared)
 
-There is also a `tools` directory for development tools that we use to develop Codecov.
+There is also a [`tools`](tools) directory for development tools that we use to develop Codecov.
 
 ### Absorbing a new repo
 
-`tools/absorb-repo` contains a script that absorbs a repository while preserving its history. See the README in that directory for more information.
+`tools/absorb-repo` contains a script that absorbs a repository while preserving its history. See the `README` in that directory for more information.
 
 # Running Codecov locally
 
@@ -96,6 +96,9 @@ These `make` targets capture a few magic incantations involved in running our te
 
 ### Submitting coverage and test results locally
 
+> [!NOTE]
+> For CLI uploads to work, you must add `127.0.0.1 minio` to your `/etc/hosts` file.
+
 Using `codecovcli` with your local Codecov instance can be a pain, so `tools/devenv/scripts/codecovcli-helper.sh` exists to make it a little easier.
 
 The first time you want to upload something for a respository, you'll need to get its local upload token for your local Codecov instance. Navigate to http://localhost:8080/gh/codecov/umbrella/new (or the same page for a different repository) and copy the upload token on that page. Add a line to `~/.local-codecov-tokens` like the following:
@@ -109,10 +112,10 @@ From then on, you can invoke `./tools/devenv/scripts/codecovcli-helper.sh` more-
 ```
 
 # Upload worker coverage report with workerunit flag
-$ ./tools/devenv/scripts/codecovcli-helper.sh upload-process --report-type coverage -f apps/worker/unit.coverage.xml -F workerunit
+$ ./tools/devenv/scripts/codecovcli-helper.sh upload-process --report-type coverage -f apps/worker/coverage.xml -F workerunit
 
 # Upload api test results with apiunit flag
-$ ./tools/devenv/scripts/codecovcli-helper.sh upload-process --report-type test_results -f apps/codecov-api/unit.junit.xml -F apiunit
+$ ./tools/devenv/scripts/codecovcli-helper.sh upload-process --report-type test_results -f apps/codecov-api/junit.xml -F apiunit
 ```
 
 For convenience, some `make` targets have been created that will upload the coverage and junit files produced by the `make` targest for tests:
