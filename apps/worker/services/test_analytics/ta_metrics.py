@@ -40,5 +40,5 @@ process_flakes_summary = Summary(
 
 new_ta_tasks_repo_summary = Counter(
     "new_ta_tasks_repo_summary",
-    "Number of repos that were processed using 'new' ta tasks, due to being created after 2025-04-25",
+    "Number of repos that were processed using 'new' ta tasks, due to being created after 2025-05-30",
 )
