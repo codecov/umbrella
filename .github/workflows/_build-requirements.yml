@@ -22,7 +22,8 @@ jobs:
     strategy:
       matrix:
         # Build on amd64 and arm64
-        os: [ubuntu-latest, ubuntu-24.04-arm]
+        # TODO Use docker buildx to build multi-arch image
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
