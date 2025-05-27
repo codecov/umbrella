@@ -2,7 +2,7 @@ services:
   gateway:
     image: codecov/self-hosted-gateway:latest-calver
     volumes:
-      - ./tools/devenv/config:/config
+      - ./tools/devenv/config:/config:ro,cached
     ports:
       - "${CODECOV_PORT-8080}:8080"
     environment:
@@ -21,12 +21,10 @@ services:
     environment:
       - CODECOV_BASE_HOST=localhost:8080
       - CODECOV_API_HOST=localhost:8080
-      - CODECOV_IA_HOST=localhost:8080
       - CODECOV_SCHEME=http
     volumes:
-      - ./tools/devenv/config:/config
+      - ./tools/devenv/config:/config:ro,cached
     ports:
-      - "8080"
       - "3000:8080"
     networks:
       - codecov
