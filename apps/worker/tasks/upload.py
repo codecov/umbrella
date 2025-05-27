@@ -758,7 +758,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 db_session.query(Commit)
                 .filter(
                     Commit.repoid == commit.repoid,
-                    Commit.timestamp > datetime(2025, 5, 10, tzinfo=timezone.utc),
+                    Commit.timestamp > datetime(2025, 6, 16, tzinfo=timezone.utc),
                 )
                 .order_by(Commit.timestamp)
                 .limit(1)

@@ -577,12 +577,12 @@ class TestUploadTaskIntegration:
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=timezone.utc),
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
         dbsession.refresh(commit)
-        commit.timestamp = datetime(2025, 5, 11, tzinfo=timezone.utc)
+        commit.timestamp = datetime(2025, 6, 1, tzinfo=UTC)
         dbsession.flush()
 
         mock_redis.lists[f"uploads/{commit.repoid}/{commit.commitid}/test_results"] = (
@@ -590,7 +590,7 @@ class TestUploadTaskIntegration:
         )
 
         mock_repo_provider_service.get_commit.return_value["timestamp"] = datetime(
-            2025, 5, 11, tzinfo=timezone.utc
+            2025, 6, 1, tzinfo=UTC
         )
 
         UploadTask().run_impl(
