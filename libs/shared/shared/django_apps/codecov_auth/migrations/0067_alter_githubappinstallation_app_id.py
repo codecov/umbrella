@@ -4,18 +4,12 @@ from django.db import migrations, models
 
 from shared.django_apps.codecov_auth.migrations.migration_helpers import (
     backfill_app_id,
-    eliminate_dupes,
 )
 
 
 def backfill_app_id_helper(apps, schema):
     GithubAppInstallation = apps.get_model("codecov_auth", "GithubAppInstallation")
     backfill_app_id(model=GithubAppInstallation)
-
-
-def eliminate_dupes_helper(apps, schema):
-    GithubAppInstallation = apps.get_model("codecov_auth", "GithubAppInstallation")
-    eliminate_dupes(model=GithubAppInstallation)
 
 
 class Migration(migrations.Migration):
@@ -26,10 +20,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunPython(
             backfill_app_id_helper,
-            reverse_code=migrations.RunPython.noop,
-        ),
-        migrations.RunPython(
-            eliminate_dupes_helper,
             reverse_code=migrations.RunPython.noop,
         ),
         migrations.AlterField(

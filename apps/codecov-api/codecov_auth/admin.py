@@ -669,7 +669,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
                     "delinquent",
                     "stripe_customer_id",
                     "stripe_subscription_id",
-                    "plan_provider"
+                    "plan_provider",
                 ]
             },
         ),
