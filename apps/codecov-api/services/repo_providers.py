@@ -12,8 +12,13 @@ from codecov_auth.models import (
     Service,
 )
 from core.models import Repository
+from shared.bots.github_apps import (
+    GithubInstallationInfo,
+    get_github_app_token,
+)
 from shared.encryption.token import encode_token
 from shared.torngit import get
+from shared.typings.oauth_token_types import OauthConsumerToken
 from utils.config import get_config
 from utils.encryption import encryptor
 
@@ -41,7 +46,7 @@ def get_token_refresh_callback(
         return None
 
     @sync_to_async
-    def callback(new_token: dict) -> None:
+    def callback(new_token: OauthConsumerToken) -> None:
         log.info(
             "Saving new token after refresh",
             extra={"owner": owner.username, "ownerid": owner.ownerid},
@@ -53,15 +58,19 @@ def get_token_refresh_callback(
     return callback
 
 
-def get_generic_adapter_params(owner: Owner | None, service, use_ssl=False, token=None):
+def verify_ssl_config(use_ssl: bool, service: Service) -> str | None:
     if use_ssl:
-        verify_ssl = (
+        return (
             get_config(service, "ssl_pem")
             if get_config(service, "verify_ssl") is not False
             else getenv("REQUESTS_CA_BUNDLE")
         )
     else:
-        verify_ssl = None
+        return None
+
+
+def get_generic_adapter_params(owner: Owner | None, service, use_ssl=False, token=None):
+    verify_ssl = verify_ssl_config(use_ssl, service)
 
     if token is None:
         if owner is not None and owner.oauth_token is not None:
@@ -85,6 +94,29 @@ def get_generic_adapter_params(owner: Owner | None, service, use_ssl=False, toke
     }
 
 
+def get_sentry_adapter_params(
+    owner: Owner, service: Service, ghapp: GithubAppInstallation, use_ssl=False
+) -> dict:
+    verify_ssl = verify_ssl_config(use_ssl, service)
+
+    ghapp_info = GithubInstallationInfo(
+        id=ghapp.id,
+        installation_id=ghapp.installation_id,
+        app_id=ghapp.app_id,
+        pem_path=ghapp.pem_path,
+    )
+
+    token = get_github_app_token(
+        service=owner.service,
+        installation_info=ghapp_info,
+    )
+    return {
+        "verify_ssl": verify_ssl,
+        "token": token,
+        "timeouts": (5, 15),
+    }
+
+
 def get_provider(service, adapter_params):
     provider = get(service, **adapter_params)
     if provider:
@@ -93,71 +125,145 @@ def get_provider(service, adapter_params):
         raise TorngitInitializationFailed()
 
 
-def get_ghapp_default_installation(
+def get_default_ghapp_installation(
     owner: Owner | None,
+) -> GithubAppInstallation | None:
+    return _get_ghapp_installation(
+        owner, {"name": GITHUB_APP_INSTALLATION_DEFAULT_NAME}
+    )
+
+
+async def async_get_default_ghapp_installation(
+    owner: Owner | None,
+) -> GithubAppInstallation | None:
+    return await _async_get_ghapp_installation(
+        owner, {"name": GITHUB_APP_INSTALLATION_DEFAULT_NAME}
+    )
+
+
+def get_sentry_ghapp_installation(
+    owner: Owner | None,
+) -> GithubAppInstallation | None:
+    return _get_ghapp_installation(owner, {"app_id": settings.SENTRY_APP_ID})
+
+
+async def async_get_sentry_ghapp_installation(
+    owner: Owner | None,
+) -> GithubAppInstallation | None:
+    return await _async_get_ghapp_installation(
+        owner, {"app_id": settings.SENTRY_APP_ID}
+    )
+
+
+def _get_ghapp_installation(
+    owner: Owner | None, filter_by: dict | None
 ) -> GithubAppInstallation | None:
     if owner is None or owner.service not in [
         Service.GITHUB.value,
         Service.GITHUB_ENTERPRISE.value,
     ]:
         return None
-    return owner.github_app_installations.filter(
-        name=GITHUB_APP_INSTALLATION_DEFAULT_NAME
-    ).first()
+    return owner.github_app_installations.filter(**filter_by).first()
 
 
-async def async_get_ghapp_default_installation(
-    owner: Owner | None,
+async def _async_get_ghapp_installation(
+    owner: Owner | None, filter_by: dict | None
 ) -> GithubAppInstallation | None:
     if owner is None or owner.service not in [
         Service.GITHUB.value,
         Service.GITHUB_ENTERPRISE.value,
     ]:
         return None
-    return await owner.github_app_installations.filter(
-        name=GITHUB_APP_INSTALLATION_DEFAULT_NAME
-    ).afirst()
+    return await owner.github_app_installations.filter(**filter_by).afirst()
 
 
 class RepoProviderService:
     def _is_using_integration(
-        self, ghapp_installation: GithubAppInstallation, repo: Repository
+        self, ghapp_installation: GithubAppInstallation | None, repo: Repository
     ) -> bool:
         if ghapp_installation:
             return ghapp_installation.is_repo_covered_by_integration(repo)
         return repo.using_integration
 
     async def async_get_adapter(
-        self, owner: Owner | None, repo: Repository, use_ssl=False, token=None
-    ):
-        ghapp = await async_get_ghapp_default_installation(owner)
-        return self._get_adapter(owner, repo, ghapp=ghapp)
-
-    def get_adapter(
-        self, owner: Owner | None, repo: Repository, use_ssl=False, token=None
-    ):
-        ghapp = get_ghapp_default_installation(owner)
-        return self._get_adapter(owner, repo, ghapp=ghapp, token=token)
-
-    def _get_adapter(
         self,
         owner: Owner | None,
         repo: Repository,
         use_ssl=False,
         token=None,
-        ghapp=None,
+        should_use_sentry_app=False,
+    ):
+        if should_use_sentry_app:
+            ghapp = await async_get_sentry_ghapp_installation(owner)
+        else:
+            ghapp = await async_get_default_ghapp_installation(owner)
+        return self._get_adapter(
+            owner,
+            repo,
+            use_ssl=use_ssl,
+            ghapp=ghapp,
+            token=token,
+            should_use_sentry_app=should_use_sentry_app,
+        )
+
+    def get_adapter(
+        self,
+        owner: Owner | None,
+        repo: Repository,
+        use_ssl=False,
+        token=None,
+        should_use_sentry_app=False,
+    ):
+        if should_use_sentry_app:
+            ghapp = get_sentry_ghapp_installation(owner)
+        else:
+            ghapp = get_default_ghapp_installation(owner)
+        return self._get_adapter(
+            owner,
+            repo,
+            use_ssl=use_ssl,
+            ghapp=ghapp,
+            token=token,
+            should_use_sentry_app=should_use_sentry_app,
+        )
+
+    def _get_adapter(
+        self,
+        owner: Owner | None,
+        repo: Repository,
+        use_ssl: bool = False,
+        token=None,
+        ghapp: GithubAppInstallation | None = None,
+        should_use_sentry_app: bool = False,
     ):
         """
         Return the corresponding implementation for calling the repository provider
 
         :param owner: :class:`codecov_auth.models.Owner`
         :param repo: :class:`core.models.Repository`
+        :param use_ssl: bool, whether to use SSL for the connection
+        :param token: optional OAuth token to use for the connection
+        :param ghapp: :class:`codecov_auth.models.GithubAppInstallation`, optional
+            Github App installation to use for the connection
+        :param should_use_sentry_app: bool, whether to use the Sentry GitHub App
+            for authentication
         :return:
         :raises: TorngitInitializationFailed
         """
-        generic_adapter_params = get_generic_adapter_params(
-            owner, repo.author.service, use_ssl, token
-        )
+        if should_use_sentry_app:
+            if ghapp is None or owner is None:
+                raise TorngitInitializationFailed(
+                    "Using the Sentry Github App for authentication requires that it is installed."
+                )
+
+            generic_adapter_params = get_sentry_adapter_params(
+                owner, repo.author.service, ghapp, use_ssl
+            )
+
+        else:
+            generic_adapter_params = get_generic_adapter_params(
+                owner, repo.author.service, use_ssl, token
+            )
 
         owner_and_repo_params = {
             "repo": {
