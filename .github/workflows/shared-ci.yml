@@ -2,7 +2,7 @@ name: Shared CI
 
 on:
   workflow_call:
-    inputs: 
+    inputs:
       skip:
         type: boolean
         default: false
@@ -54,7 +54,9 @@ jobs:
 
   shared-benchmark:
     name: Benchmarks (Shared)
-    if: ${{ inputs.skip == false }}
+    # Skip on merge_group because CodSpeed does not support it yet.
+    # Ref: https://github.com/CodSpeedHQ/action/issues/126
+    if: ${{ inputs.skip == false && github.event_name != 'merge_group' }}
     runs-on: ubuntu-latest
     defaults:
       run:
