@@ -9,10 +9,11 @@ from corsheaders.middleware import (
     ACCESS_CONTROL_ALLOW_ORIGIN,
 )
 from corsheaders.middleware import CorsMiddleware as BaseCorsMiddleware
-from django.http import HttpRequest, HttpResponseForbidden
+from django.http import HttpRequest, HttpResponseForbidden, HttpResponseNotFound
 from django.urls import resolve
 from rest_framework import exceptions
 
+from codecov_auth.constants import USE_SENTRY_APP_INDICATOR
 from codecov_auth.models import Owner, Service
 from codecov_auth.utils import get_sentry_jwt_payload
 from utils.services import get_long_service_name
@@ -191,14 +192,21 @@ def jwt_middleware(get_response):
 
         try:
             payload = get_sentry_jwt_payload(request)
-            provider_user_id = payload.get("g_u")
             provider = payload.get("g_p")
+            organization_slug = payload.get("g_o")
 
-            if provider_user_id and provider:
-                owner, _created = await sync_to_async(Owner.objects.get_or_create)(
-                    service_id=provider_user_id, service=provider
+            if organization_slug and provider:
+                owner, _created = await sync_to_async(Owner.objects.get)(
+                    username=organization_slug,
+                    service=provider,
                 )
+
                 request.current_owner = owner
+                setattr(request, USE_SENTRY_APP_INDICATOR, True)
+            else:
+                # If the JWT does not contain the organization slug or provider,
+                # we cannot determine the owner
+                raise PermissionError()
 
             return await get_response(request, *args, **kwargs)
 
@@ -206,6 +214,10 @@ def jwt_middleware(get_response):
             return HttpResponseForbidden("Missing or Invalid Authorization header")
         except jwt.ExpiredSignatureError:
             return HttpResponseForbidden("JWT token has expired")
+        except Owner.DoesNotExist:
+            # If the owner does not exist, we cannot proceed since we need the
+            # application installed
+            return HttpResponseNotFound("Account not found")
         except Exception as e:
             log.warning(
                 "Error processing JWT token",
