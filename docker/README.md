@@ -16,11 +16,21 @@ as the Rust compiler, which are needed to install everything but not actually
 needed to run the service. The second image copies only the _runtime dependencies_
 over from the first image. This is the image "returned by" `docker build`.
 
-The requirements image is pushed under the name `<GCP repo prefix/umbrella-reqs`.
+The requirements image is pushed under the name `<GCP repo prefix>/umbrella-reqs`.
 Its tag includes the SHA1 hash of its inputs:
 - `uv.lock`
 - `docker/Dockerfile.requirements`
 - `libs/shared/**`
+
+### The "test requirements image": `Dockerfile.test-requirements`
+
+On top of the base "requirements image", this image installs development
+dependencies like linters and such which don't belong in our production
+deployments.
+
+The test requirements image is pushed under the name
+`<GCP repo prefix>/umbrella-test-reqs`. Its tag matches the SHA of the base
+requirements image.
 
 ### The "app image": `Dockerfile`
 
@@ -33,9 +43,15 @@ self-hosted, local, or production (a.k.a. "cloud"). All three flavors are pretty
 trivial variants on the same base, so we build all three and then choose which
 one to "return" based on a build arg with the final line: `FROM ${BUILD_ENV}`.
 
-These images are pushed with names like:
+The base image for each "app image" is passed in as the `REQUIREMENTS_IMAGE`
+build argument. Production images will use the `Dockerfile.requirements` image
+as a base while tests and local development will use `Dockerfile.test-requirements`.
+
+When built against `Dockerfile.requirements`, these images are pushed with names like:
 - `<GCP repo prefix>/codecov/worker`
 - `<GCP repo prefix>/codecov/api`
 - `<GCP repo prefix>/codecov/dev-shared`
+
+When built against `Dockerfile.test-requirements`, add `test-` before the image name.
 
 Tags include `:latest` or things like `:release-<short-commit-sha>`.

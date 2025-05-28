@@ -41,18 +41,18 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'recursive'
-      - name: Cache App
-        id: cache-app
+      - name: Cache Test App
+        id: cache-test-app
         uses: actions/cache@v4
         env:
-          cache-name: ${{ inputs.repo }}-app
+          cache-name: ${{ inputs.repo }}-test-app
         with:
           path: |
-            ${{ inputs.output_directory }}/app.tar
+            ${{ inputs.output_directory }}/test-app.tar
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
       - name: Load built image
         run: |
-          docker load --input ${{ inputs.output_directory }}/app.tar
+          docker load --input ${{ inputs.output_directory }}/test-app.tar
       - name: Install docker compose
         run: |
           sudo curl -SL https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose

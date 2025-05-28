@@ -73,4 +73,3 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 RUN addgroup --system application \
     && adduser --system codecov --ingroup application --home /home/codecov
-
