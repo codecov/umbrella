@@ -9,7 +9,7 @@ from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APIRequestFactory, APITestCase
 
-from billing.helpers import mock_all_plans_and_tiers
+from billing.tests.mocks import mock_all_plans_and_tiers
 from billing.views import StripeWebhookHandler
 from codecov_auth.models import Plan
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
