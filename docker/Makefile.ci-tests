@@ -23,10 +23,8 @@ _test_env.up:
 	docker compose -f ci-tests.docker-compose.yml up -d
 
 # Outside the Docker env: Install some runtime dependencies inside the running Docker env.
+# TODO: Remove this step entirely after shared is no longer a package.
 _test_env.prepare:
-	docker-compose -f ci-tests.docker-compose.yml exec -u root repo apt-get update
-	docker-compose -f ci-tests.docker-compose.yml exec -u root repo apt-get install -y git build-essential netcat-traditional
-	docker-compose -f ci-tests.docker-compose.yml exec repo git config --global --add safe.directory /app || true
 	docker-compose -f ci-tests.docker-compose.yml exec repo pip install -e ../../libs/shared
 
 # Outside the Docker env: Block until Postgres and Timescale are healthy.
