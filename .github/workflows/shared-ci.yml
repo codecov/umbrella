@@ -17,20 +17,8 @@ permissions:
   pull-requests: "write"
 
 jobs:
-  shared-reqs:
-    name: Build Requirements (Shared)
-    if: ${{ inputs.skip == false }}
-    uses: ./.github/workflows/_build-requirements.yml
-    secrets: inherit
-    with:
-      repo: codecov/dev-shared
-      output_directory: libs/shared
-      make_target_prefix: shared.
-      push_reqs: false
-
   shared-build:
     name: Build App (Shared)
-    needs: shared-reqs
     if: ${{ inputs.skip == false }}
     uses: ./.github/workflows/_build-app.yml
     secrets: inherit

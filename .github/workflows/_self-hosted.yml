@@ -25,6 +25,7 @@ on:
 
 env:
   AR_REPO: ${{ inputs.repo }}
+  AR_REQS_REPO: ${{ vars.CODECOV_UMBRELLA_REQS_IMAGE }}
 
 jobs:
   build-self-hosted:
@@ -54,11 +55,11 @@ jobs:
         id: cache-requirements
         uses: actions/cache@v4
         env:
-          cache-name: ${{ inputs.repo }}-requirements
+          cache-name: umbrella-requirements
         with:
           path: |
-            ${{ inputs.output_directory }}/requirements.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles(format('{0}/uv.lock', inputs.output_directory)) }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
+            ./requirements.tar
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
 
       - name: Cache Self hosted
         id: cache-self-hosted
@@ -74,15 +75,15 @@ jobs:
       - name: Load requirements from cache
         if: ${{ steps.cache-requirements.outputs.cache-hit == 'true' }}
         run: |
-          make ${{ inputs.make_target_prefix }}load.requirements
+          make load.requirements
 
       # This shouldn't happen; the _build-requirements.yml job should have run.
       - name: Build/pull requirements
         if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' }}
         run: |
           echo "Warning: requirements image not in cache, building a new one"
-          make ${{ inputs.make_target_prefix }}build.requirements
-          make ${{ inputs.make_target_prefix }}save.requirements
+          make build.requirements
+          make save.requirements
 
       - name: Load built image
         if: ${{ steps.cache-self-hosted.outputs.cache-hit == 'true' }}

@@ -67,9 +67,14 @@ jobs:
               - 'libs/shared/**'
               - '.github/workflows/shared-ci.yml'
 
+  reqs:
+    name: Build Requirements
+    uses: ./.github/workflows/_build-requirements.yml
+    secrets: inherit
+
   api-ci:
     name: API CI
-    needs: change-detection
+    needs: [change-detection, reqs]
     uses: ./.github/workflows/api-ci.yml
     secrets: inherit
     with:
@@ -78,7 +83,7 @@ jobs:
 
   worker-ci:
     name: Worker CI
-    needs: change-detection
+    needs: [change-detection, reqs]
     uses: ./.github/workflows/worker-ci.yml
     secrets: inherit
     with:
@@ -87,7 +92,7 @@ jobs:
 
   shared-ci:
     name: Shared CI
-    needs: change-detection
+    needs: [change-detection, reqs]
     uses: ./.github/workflows/shared-ci.yml
     secrets: inherit
     with:

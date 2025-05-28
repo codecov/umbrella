@@ -1,30 +1,40 @@
 export DOCKER_BUILDKIT=1
 
+export AR_REQS_REPO ?= ${AR_REPO_PREFIX}/umbrella-reqs
+export CI_REQS_REPO ?= codecov/umbrella-reqs
+
+# `LC_ALL=C` is added to `sort` to ensure you get the same order across systems.
+# Otherwise, a Mac may sort according to en_US.UTF-8 while CI may sort according to C/POSIX.
+SHARED_SHA := $(shell git ls-files libs/shared | LC_ALL=C sort | xargs sha1sum | cut -d ' ' -f 1 | sha1sum | head -c 40)
+DOCKER_REQS_SHA := $(shell sha1sum docker/Dockerfile.requirements | head -c 40)
+UV_LOCK_SHA := $(shell sha1sum ./uv.lock | head -c 40)
+export REQUIREMENTS_TAG := reqs-${UV_LOCK_SHA}-${DOCKER_REQS_SHA}-${SHARED_SHA}
+
 ######
 # Generic targets for building images.
 #
+# If a target starts with `_`, you will probably call it through a wrapper
+# target like `worker.build` or `api.build`. If a target does not start with `_`
+# then it should not be wrapped.
+#
 # Assumes a number of Makefile variables have been populated:
 # - APP_DIR: the directory within umbrella that images should be "rooted" at.
-#   Images use the pyproject.toml and uv.lock in this directory and also save
-#   and load container image archives in this directory.
+#   The requirements image is the same under the hood but each image still
+#   builds with a superficially different `docker/Dockerfile` inside of
+#   `APP_DIR`. Container images are also saved to/loaded from `APP_DIR`.
 # - AR_REPO: the container repository that images should be loaded from or
 #   published to.
-# - REQUIREMENTS_TAG: the tag in the above image repository that contains the
-#   appropriate requirements image for the current commit.
 # - DOCKERHUB_REPO: the repository on Docker Hub that images will be published
 #   to. Generally only for self-hosted images.
-# - CI_REQS_REPO: an alternate repository where only requirements images are
-#   published.
 # - Various version/SHA variables.
 ######
 
 # Build a requirements image.
-_build.requirements:
-	docker pull ${AR_REPO}:${REQUIREMENTS_TAG} || docker build \
+build.requirements:
+	docker pull ${AR_REQS_REPO}:${REQUIREMENTS_TAG} || docker build \
 			   --network host \
                -f docker/Dockerfile.requirements . \
-               --build-arg APP_DIR=${APP_DIR} \
-               -t ${AR_REPO}:${REQUIREMENTS_TAG} \
+               -t ${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
 	       -t ${CI_REQS_REPO}:${REQUIREMENTS_TAG}
 
 # Build an image for local development.
@@ -33,12 +43,12 @@ _build.local:
 	docker build -f docker/Dockerfile . \
 		-t ${AR_REPO}:latest \
 		-t ${AR_REPO}:${VERSION} \
-		--build-arg REQUIREMENTS_IMAGE=${AR_REPO}:${REQUIREMENTS_TAG} \
+		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
 		--build-arg BUILD_ENV=local
 
 # Build an image (+ its reqs base) for local development.
 _build:
-	$(MAKE) _build.requirements
+	$(MAKE) build.requirements
 	$(MAKE) _build.local
 
 # Build a production image.
@@ -51,7 +61,7 @@ _build.app:
 		--label "org.label-schema.version"="${release_version}-${sha}" \
 		--label "org.opencontainers.image.revision"="$(full_sha)" \
 		--label "org.opencontainers.image.source"="github.com/codecov/umbrella" \
-		--build-arg REQUIREMENTS_IMAGE=${AR_REPO}:${REQUIREMENTS_TAG} \
+		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
 		--build-arg RELEASE_VERSION=${VERSION} \
 		--build-arg BUILD_ENV=cloud
 
@@ -65,7 +75,7 @@ _build.self-hosted-base:
 	docker build -f docker/Dockerfile . \
 		-t ${DOCKERHUB_REPO}:latest-no-dependencies \
 		-t ${DOCKERHUB_REPO}:${VERSION}-no-dependencies \
-		--build-arg REQUIREMENTS_IMAGE=${AR_REPO}:${REQUIREMENTS_TAG} \
+		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
 		--build-arg RELEASE_VERSION=${VERSION} \
 		--build-arg BUILD_ENV=self-hosted
 
@@ -76,7 +86,7 @@ _build.self-hosted-runtime:
 		-t ${DOCKERHUB_REPO}:${VERSION} \
 		--label "org.label-schema.vendor"="Codecov" \
 		--label "org.label-schema.version"="${release_version}-${sha}" \
-		--build-arg REQUIREMENTS_IMAGE=${AR_REPO}:${REQUIREMENTS_TAG} \
+		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
         --build-arg RELEASE_VERSION=${VERSION} \
         --build-arg BUILD_ENV=self-hosted-runtime
 
@@ -102,9 +112,9 @@ _tag.self-hosted-release:
 	docker tag ${DOCKERHUB_REPO}:${VERSION} ${DOCKERHUB_REPO}:latest-calver
 
 # Load an exported requirements image (e.g. from GHA's cache)
-_load.requirements:
-	docker load --input ${APP_DIR}/requirements.tar
-	docker tag ${CI_REQS_REPO}:${REQUIREMENTS_TAG} ${AR_REPO}:${REQUIREMENTS_TAG}
+load.requirements:
+	docker load --input requirements.tar
+	docker tag ${CI_REQS_REPO}:${REQUIREMENTS_TAG} ${AR_REQS_REPO}:${REQUIREMENTS_TAG}
 
 # Load an exported self-hosted image (e.g. from GHA's cache)
 _load.self-hosted:
@@ -116,9 +126,9 @@ _save.app:
 	docker save -o ${APP_DIR}/app.tar ${AR_REPO}:${VERSION}
 
 # Export a requirements image.
-_save.requirements:
-	docker tag ${AR_REPO}:${REQUIREMENTS_TAG} ${CI_REQS_REPO}:${REQUIREMENTS_TAG}
-	docker save -o ${APP_DIR}/requirements.tar ${CI_REQS_REPO}:${REQUIREMENTS_TAG}
+save.requirements:
+	docker tag ${AR_REQS_REPO}:${REQUIREMENTS_TAG} ${CI_REQS_REPO}:${REQUIREMENTS_TAG}
+	docker save -o requirements.tar ${CI_REQS_REPO}:${REQUIREMENTS_TAG}
 
 # Export a self-hosted image pair (base and runtime)
 _save.self-hosted:
@@ -140,8 +150,8 @@ _push.staging:
 _push.production:
 	docker push ${AR_REPO}:production-${VERSION}
 
-_push.requirements:
-	docker push ${AR_REPO}:${REQUIREMENTS_TAG}
+push.requirements:
+	docker push ${AR_REQS_REPO}:${REQUIREMENTS_TAG}
 
 _push.self-hosted-release:
 	docker push ${DOCKERHUB_REPO}:${release_version}_no_dependencies

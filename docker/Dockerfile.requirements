@@ -1,12 +1,8 @@
 # syntax=docker/dockerfile:1.4
 ARG PYTHON_IMAGE=ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
-ARG APP_DIR
-
 # BUILD STAGE
 FROM $PYTHON_IMAGE as build
-
-ARG APP_DIR
 
 # Install all system packages needed by either worker OR codecov-api
 RUN apt-get update
@@ -34,10 +30,10 @@ ENV UV_LINK_MODE=copy \
 
 # Export a requirements.txt
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=${APP_DIR}/pyproject.toml,target=${APP_DIR}/pyproject.toml \
-    --mount=type=bind,source=${APP_DIR}/uv.lock,target=${APP_DIR}/uv.lock \
+    --mount=type=bind,source=./pyproject.toml,target=./pyproject.toml \
+    --mount=type=bind,source=./uv.lock,target=./uv.lock \
     --mount=type=bind,source=libs/shared,target=libs/shared \
-    uv --directory ${APP_DIR} export --no-hashes --frozen --format requirements-txt > requirements.txt
+    uv export --no-hashes --frozen --format requirements-txt > requirements.txt
 
 # The resulting requirements.txt includes ourselves as a dependency we should install
 # "editably". Filter that out, leaving only external dependencies.
@@ -45,14 +41,14 @@ RUN grep -v '^-e ' requirements.txt > requirements.remote.txt
 
 # Fetch/build wheels for all external dependencies.
 RUN --mount=type=bind,source=libs/shared,target=libs/shared \
-    (cd ${APP_DIR} && pip wheel -w /wheels --find-links /wheels -r /requirements.remote.txt)
+    pip wheel -w /wheels --find-links /wheels -r /requirements.remote.txt
 
 # Build a wheel for ourselves
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=${APP_DIR}/pyproject.toml,target=${APP_DIR}/pyproject.toml \
-    --mount=type=bind,source=${APP_DIR}/uv.lock,target=${APP_DIR}/uv.lock \
+    --mount=type=bind,source=./pyproject.toml,target=./pyproject.toml \
+    --mount=type=bind,source=./uv.lock,target=./uv.lock \
     --mount=type=bind,source=libs/shared,target=libs/shared \
-    uv build --directory ${APP_DIR} --all-packages --wheel -o /wheels
+    uv build --all-packages --wheel -o /wheels
 
 # RUNTIME STAGE
 FROM $PYTHON_IMAGE
@@ -70,10 +66,10 @@ RUN apt-get install -y \
 COPY --from=build /wheels/ /wheels/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=${APP_DIR}/pyproject.toml,target=${APP_DIR}/pyproject.toml \
-    --mount=type=bind,source=${APP_DIR}/uv.lock,target=${APP_DIR}/uv.lock \
+    --mount=type=bind,source=./pyproject.toml,target=./pyproject.toml \
+    --mount=type=bind,source=./uv.lock,target=./uv.lock \
     --mount=type=bind,source=libs/shared,target=libs/shared \
-    uv --directory ${APP_DIR} pip install --no-deps --no-index --find-links=/wheels /wheels/* --system
+    uv pip install --no-deps --no-index --find-links=/wheels /wheels/* --system
 
 RUN addgroup --system application \
     && adduser --system codecov --ingroup application --home /home/codecov

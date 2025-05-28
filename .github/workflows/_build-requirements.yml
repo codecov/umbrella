@@ -2,22 +2,9 @@ name: Build Requirements
 
 on:
   workflow_call:
-    inputs:
-      repo:
-        type: string
-        required: true
-      output_directory:
-        type: string
-        default: .
-      make_target_prefix:
-        type: string
-        default: ""
-      push_reqs:
-        type: boolean
-        default: true
 
 env:
-  AR_REPO: ${{ inputs.repo }}
+  AR_REQS_REPO: ${{ vars.CODECOV_UMBRELLA_REQS_IMAGE }}
 
 jobs:
   build:
@@ -38,11 +25,11 @@ jobs:
         id: cache-requirements
         uses: actions/cache@v4
         env:
-          cache-name: ${{ inputs.repo }}-requirements
+          cache-name: umbrella-requirements
         with:
           path: |
-            ${{ inputs.output_directory }}/requirements.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles(format('{0}/uv.lock', inputs.output_directory)) }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
+            ./requirements.tar
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('./uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
 
       - id: "auth"
         if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
@@ -61,10 +48,10 @@ jobs:
       - name: Build/pull requirements
         if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' }}
         run: |
-          make ${{ inputs.make_target_prefix }}build.requirements
-          make ${{ inputs.make_target_prefix }}save.requirements
+          make build.requirements
+          make save.requirements
 
       - name: Push Requirements
-        if: ${{ inputs.push_reqs && steps.cache-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
         run: |
-          make ${{ inputs.make_target_prefix }}push.requirements
+          make push.requirements

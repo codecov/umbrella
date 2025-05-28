@@ -47,24 +47,15 @@ export branch := $(shell git branch | grep \* | cut -f2 -d' ')
 # This can be overridden with an environment variable to pull from a GCR registry.
 export AR_REPO_PREFIX ?= codecov
 
-# `LC_ALL=C` is added to `sort` to ensure you get the same order across systems.
-# Otherwise, a Mac may sort according to en_US.UTF-8 while CI may sort according to C/POSIX.
-export SHARED_SHA := $(shell git ls-files libs/shared | LC_ALL=C sort | xargs sha1sum | cut -d ' ' -f 1 | sha1sum | head -c 40)
-export DOCKER_REQS_SHA := $(shell sha1sum docker/Dockerfile.requirements | head -c 40)
-
 ######
 # codecov-api targets
 ######
-API_UV_LOCK_SHA := $(shell sha1sum apps/codecov-api/uv.lock | head -c 40)
-API_REQS_TAG := reqs-${API_UV_LOCK_SHA}-${DOCKER_REQS_SHA}-${SHARED_SHA}
 
 define api_rule_prefix
 .PHONY: $(1)
 $(1): export APP_DIR := apps/codecov-api
-$(1): export REQUIREMENTS_TAG := ${API_REQS_TAG}
 $(1): export AR_REPO ?= ${AR_REPO_PREFIX}/api
 $(1): export DOCKERHUB_REPO ?= codecov/self-hosted-api
-$(1): export CI_REQS_REPO ?= codecov/api-ci-requirements
 endef
 
 # Any API target starting with `proxy` should be forwarded to
@@ -88,16 +79,12 @@ api.%:
 ######
 # worker targets
 ######
-WORKER_UV_LOCK_SHA := $(shell sha1sum apps/worker/uv.lock | head -c 40)
-WORKER_REQS_TAG := reqs-${WORKER_UV_LOCK_SHA}-${DOCKER_REQS_SHA}-${SHARED_SHA}
 
 define worker_rule_prefix
 .PHONY: $(1)
 $(1): export APP_DIR := apps/worker
-$(1): export REQUIREMENTS_TAG := ${WORKER_REQS_TAG}
 $(1): export AR_REPO ?= ${AR_REPO_PREFIX}/worker
 $(1): export DOCKERHUB_REPO ?= codecov/self-hosted-worker
-$(1): export CI_REQS_REPO ?= codecov/worker-ci-requirements
 endef
 
 # Any Worker target starting with `shell` should be forwarded to
@@ -115,16 +102,12 @@ worker.%:
 ######
 # shared targets
 ######
-SHARED_UV_LOCK_SHA := $(shell sha1sum libs/shared/uv.lock | head -c 40)
-SHARED_REQS_TAG := reqs-${SHARED_UV_LOCK_SHA}-${DOCKER_REQS_SHA}
 
 define shared_rule_prefix
 .PHONY: $(1)
 $(1): export APP_DIR := libs/shared
-$(1): export REQUIREMENTS_TAG := ${SHARED_REQS_TAG}
 $(1): export AR_REPO ?= ${AR_REPO_PREFIX}/dev-shared
 $(1): export DOCKERHUB_REPO ?= codecov/dev-hosted-shared
-$(1): export CI_REQS_REPO ?= codecov/shared-ci-requirements
 $(1): export COV_SOURCE := ./shared
 endef
 

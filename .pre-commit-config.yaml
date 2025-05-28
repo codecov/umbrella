@@ -7,29 +7,15 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
-      - id: uv-sync-shared
-        name: uv sync for shared
+      - id: uv-lock-shared
+        name: uv lock for shared
         entry: tools/devenv/scripts/uv-sync.sh
         files: ^libs/shared/pyproject.toml$
         args: [shared]
         language: script
         types: [file]
-      - id: uv-sync-worker
-        name: uv sync for worker
-        entry: tools/devenv/scripts/uv-sync.sh
-        files: ^(apps/worker|libs/shared)/pyproject.toml$
-        args: [worker]
-        language: script
-        types: [file]
-      - id: uv-sync-codecov-api
-        name: uv sync for api
-        entry: tools/devenv/scripts/uv-sync.sh
-        files: ^(apps/codecov-api|libs/shared)/pyproject.toml$
-        args: [codecov-api]
-        language: script
-        types: [file]
-      - id: uv-sync-umbrella
-        name: uv sync for umbrella
+      - id: uv-lock-umbrella
+        name: uv lock for umbrella
         entry: tools/devenv/scripts/uv-sync.sh
         files: ^pyproject.toml$
         args: [umbrella]
