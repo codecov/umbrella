@@ -56,6 +56,13 @@ class MockSubscription:
             "id": "cus_LK&*Hli8YLIO",
             "discount": None,
             "email": None,
+            "name": "Cool guy",
+            "address": {
+                "line1": "123 Main St",
+                "city": "Anytown",
+                "state": "CA",
+                "postal_code": "12345",
+            },
         }
         self.schedule = subscription_params.get("schedule_id")
         self.status = subscription_params.get("status", "active")
@@ -296,7 +303,18 @@ class AccountViewSetTests(APITestCase):
                 "default_payment_method": None,
                 "cancel_at_period_end": False,
                 "current_period_end": 1633512445,
-                "customer": {"id": "cus_LK&*Hli8YLIO", "discount": None, "email": None},
+                "customer": {
+                    "id": "cus_LK&*Hli8YLIO",
+                    "discount": None,
+                    "email": None,
+                    "name": "Cool guy",
+                    "address": {
+                        "line1": "123 Main St",
+                        "city": "Anytown",
+                        "state": "CA",
+                        "postal_code": "12345",
+                    },
+                },
                 "collection_method": "charge_automatically",
                 "tax_ids": None,
                 "trial_end": None,
@@ -382,7 +400,18 @@ class AccountViewSetTests(APITestCase):
                 "default_payment_method": None,
                 "cancel_at_period_end": False,
                 "current_period_end": 1633512445,
-                "customer": {"id": "cus_LK&*Hli8YLIO", "discount": None, "email": None},
+                "customer": {
+                    "id": "cus_LK&*Hli8YLIO",
+                    "discount": None,
+                    "email": None,
+                    "name": "Cool guy",
+                    "address": {
+                        "line1": "123 Main St",
+                        "city": "Anytown",
+                        "state": "CA",
+                        "postal_code": "12345",
+                    },
+                },
                 "collection_method": "charge_automatically",
                 "trial_end": 1633512445,
                 "tax_ids": None,
@@ -456,7 +485,18 @@ class AccountViewSetTests(APITestCase):
                 "default_payment_method": None,
                 "cancel_at_period_end": False,
                 "current_period_end": 1633512445,
-                "customer": {"id": "cus_LK&*Hli8YLIO", "discount": None, "email": None},
+                "customer": {
+                    "id": "cus_LK&*Hli8YLIO",
+                    "discount": None,
+                    "email": None,
+                    "name": "Cool guy",
+                    "address": {
+                        "line1": "123 Main St",
+                        "city": "Anytown",
+                        "state": "CA",
+                        "postal_code": "12345",
+                    },
+                },
                 "collection_method": "charge_automatically",
                 "trial_end": None,
                 "tax_ids": None,
@@ -633,7 +673,18 @@ class AccountViewSetTests(APITestCase):
                     "last4": "abcd",
                 }
             },
-            "customer": {"id": "cus_LK&*Hli8YLIO", "discount": None, "email": None},
+            "customer": {
+                "id": "cus_LK&*Hli8YLIO",
+                "discount": None,
+                "email": None,
+                "name": "Cool guy",
+                "address": {
+                    "line1": "123 Main St",
+                    "city": "Anytown",
+                    "state": "CA",
+                    "postal_code": "12345",
+                },
+            },
             "collection_method": "charge_automatically",
             "trial_end": None,
             "tax_ids": None,

@@ -9,10 +9,7 @@ from rest_framework.exceptions import PermissionDenied
 from codecov_auth.models import Owner, Plan
 from services.billing import BillingService
 from services.sentry import send_user_webhook as send_sentry_webhook
-from shared.plan.constants import (
-    TEAM_PLAN_MAX_USERS,
-    TierName,
-)
+from shared.plan.constants import TEAM_PLAN_MAX_USERS, TierName
 from shared.plan.service import PlanService
 
 log = logging.getLogger(__name__)
@@ -97,6 +94,8 @@ class StripeCustomerSerializer(serializers.Serializer):
     id = serializers.CharField()
     discount = StripeDiscountSerializer()
     email = serializers.CharField()
+    name = serializers.CharField(read_only=True)
+    address = serializers.JSONField(read_only=True)
 
 
 class StripeCardSerializer(serializers.Serializer):
