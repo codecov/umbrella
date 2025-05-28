@@ -87,7 +87,7 @@ def decide_installation_error_cause(
 def get_github_jwt_token(
     service: str, app_id: str | None = None, pem_path: str | None = None
 ) -> str:
-    # https://developer.github.com/apps/building-github-apps/authenticating-with-github-apps/
+    # https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/about-authentication-with-a-github-app
     now = int(time())
     payload = {
         # issued at time
@@ -110,7 +110,7 @@ def get_github_integration_token(
     app_id: str | None = None,
     pem_path: str | None = None,
 ) -> str:
-    # https://developer.github.com/apps/building-github-apps/authenticating-with-github-apps/
+    # https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/about-authentication-with-a-github-app
     token = get_github_jwt_token(service, app_id, pem_path)
     if integration_id:
         if service == "github":

@@ -145,7 +145,7 @@ def get_github_app_token(
     service: Service, installation_info: GithubInstallationInfo
 ) -> TokenWithOwner:
     """Get an access_token from GitHub that we can use to authenticate as the installation
-    See https://docs.github.com/en/enterprise-server@3.9/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation#generating-an-installation-access-token
+    See https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation#generating-an-installation-access-token
 
     ⚠️ side effect: handle_invalid_installation has potential side effects to GithubAppInstallation and Owner models
 
@@ -251,7 +251,7 @@ def get_github_app_info_for_owner(
 
     ⚠️ The return of this function is NOT enough to actually send requests to GitHub using the app. For that you need to call 'get_github_integration_token'
     with an installation info, to get a token. This token is used to send requests to GitHub _as the app_
-    (i.e. authenticating as an app installation, see https://docs.github.com/en/enterprise-server@3.9/apps/creating-github-apps/authenticating-with-a-github-app/about-authentication-with-a-github-app#authentication-as-an-app-installation)
+    (i.e. authenticating as an app installation, see https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/about-authentication-with-a-github-app#authentication-as-an-app-installation)
 
     GitHub App information can be:
         1. A GithubAppInstallation that belongs to the owner
