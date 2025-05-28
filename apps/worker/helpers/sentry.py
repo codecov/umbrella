@@ -27,9 +27,7 @@ def initialize_sentry() -> None:
         profiles_sample_rate=float(
             os.environ.get("SERVICES__SENTRY__PROFILES_SAMPLE_RATE", "1")
         ),
-        _experiments={
-            "enable_logs": True
-        },
+        _experiments={"enable_logs": True},
         integrations=[
             CeleryIntegration(monitor_beat_tasks=True),
             DjangoIntegration(signals_spans=False),
