@@ -64,6 +64,7 @@ jobs:
         run: |
           make ${{ inputs.make_target_prefix }}test_env.prepare
           make ${{ inputs.make_target_prefix }}test_env.check_db
+
       - name: Run unit tests
         run: |
           make ${{ inputs.make_target_prefix }}test_env.run_unit PYTEST_ROOTDIR=${{ inputs.pytest_rootdir }}

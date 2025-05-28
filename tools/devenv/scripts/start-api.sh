@@ -7,6 +7,7 @@ pip install -e /app/libs/shared
 # Install a hot-reload utility. gunicorn and `manage.py runserver` both have
 # their own but they don't support watching other directories.
 pip install watchdog[watchmedo]
+PATH="~/.local/bin:$PATH"
 
 # TODO: Deduplicate pretty much all of this with `apps/codecov-api/dev.sh`
 if [ -n "$PROMETHEUS_MULTIPROC_DIR" ]; then
