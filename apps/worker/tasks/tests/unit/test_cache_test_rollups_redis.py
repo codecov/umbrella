@@ -1,4 +1,4 @@
-import shared.storage
+from shared import storage
 from shared.django_apps.core.tests.factories import RepositoryFactory
 from shared.helpers.redis import get_redis_connection
 from shared.storage.exceptions import BucketAlreadyExistsError
@@ -9,7 +9,7 @@ def test_cache_test_rollups(mock_storage, db):
     repo = RepositoryFactory()
 
     redis = get_redis_connection()
-    storage_service = shared.storage.get_appropriate_storage_service(repo.repoid)
+    storage_service = storage.get_appropriate_storage_service(repo.repoid)
     storage_key = f"test_results/rollups/{repo.repoid}/main/1"
     try:
         storage_service.create_root_storage("archive")

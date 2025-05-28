@@ -2,8 +2,8 @@ import datetime as dt
 
 from redis.exceptions import LockError
 
-import shared.storage
 from app import celery_app
+from shared import storage
 from shared.celery_config import cache_test_rollups_redis_task_name
 from shared.config import get_config
 from shared.helpers.redis import get_redis_connection
@@ -28,7 +28,7 @@ class CacheTestRollupsRedisTask(
             return {"in_progress": True}
 
     def run_impl_within_lock(self, repoid, branch) -> None:
-        storage_service = shared.storage.get_appropriate_storage_service(repoid)
+        storage_service = storage.get_appropriate_storage_service(repoid)
         redis_conn = get_redis_connection()
 
         for interval_start, interval_end in [

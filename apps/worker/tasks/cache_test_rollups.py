@@ -5,13 +5,13 @@ import polars as pl
 from django.db import connections
 from redis.exceptions import LockError
 
-import shared.storage
 from app import celery_app
 from services.test_analytics.ta_cache_rollups import cache_rollups
 from services.test_analytics.ta_metrics import (
     read_rollups_from_db_summary,
     rollup_size_summary,
 )
+from shared import storage
 from shared.celery_config import cache_test_rollups_task_name
 from shared.config import get_config
 from shared.django_apps.reports.models import LastCacheRollupDate
@@ -143,7 +143,7 @@ class CacheTestRollupsTask(BaseCodecovTask, name=cache_test_rollups_task_name):
             return {"in_progress": True}
 
     def run_impl_within_lock(self, repo_id: int, branch: str):
-        storage_service = shared.storage.get_appropriate_storage_service(repo_id)
+        storage_service = storage.get_appropriate_storage_service(repo_id)
 
         if get_config("setup", "database", "read_replica_enabled", default=False):
             connection = connections["default_read"]

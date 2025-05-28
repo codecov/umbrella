@@ -6,7 +6,7 @@ from contextlib import contextmanager
 
 from django.db.models import Model
 
-import shared.storage
+from shared import storage
 from shared.config import get_config
 from shared.storage.base import BaseStorageService
 
@@ -37,7 +37,7 @@ class CleanupContext:
 
     def __init__(self):
         self.threadpool = ThreadPoolExecutor()
-        self.storage = shared.storage.get_appropriate_storage_service()
+        self.storage = storage.get_appropriate_storage_service()
         self.default_bucket = get_config(
             "services", "minio", "bucket", default="archive"
         )

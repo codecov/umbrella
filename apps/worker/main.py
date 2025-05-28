@@ -7,11 +7,11 @@ import django
 from celery.signals import worker_process_shutdown
 from prometheus_client import REGISTRY, CollectorRegistry, multiprocess
 
-import app
-import shared.storage
+from app import celery_app
 from helpers.environment import get_external_dependencies_folder
 from helpers.logging_config import get_logging_config_dict
 from helpers.version import get_current_version
+from shared import storage
 from shared.celery_config import BaseCeleryConfig
 from shared.config import get_config
 from shared.django_apps.utils.config import get_settings_module
@@ -82,7 +82,7 @@ def setup_worker():
 
             # this storage client is only used to create the bucket so it doesn't need to be
             # aware of the repoid
-            storage_client = shared.storage.get_appropriate_storage_service()
+            storage_client = storage.get_appropriate_storage_service()
             storage_client.create_root_storage(bucket_name, region)
         except BucketAlreadyExistsError:
             pass
@@ -128,7 +128,7 @@ def worker(name: str, concurrency: int, debug: bool, queue: list[str]):
     if get_config("setup", "celery_beat_enabled", default=True):
         args += ["-B", "-s", "/home/codecov/celerybeat-schedule"]
 
-    return app.celery_app.worker_main(argv=args)
+    return celery_app.worker_main(argv=args)
 
 
 def _get_queues_param_from_queue_input(queues: list[str]) -> str:

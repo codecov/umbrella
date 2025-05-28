@@ -1,9 +1,9 @@
-import shared.bots.exceptions
+from shared.bots import exceptions
 
-RepositoryWithoutValidBotError = shared.bots.exceptions.RepositoryWithoutValidBotError
-OwnerWithoutValidBotError = shared.bots.exceptions.OwnerWithoutValidBotError
-RequestedGithubAppNotFound = shared.bots.exceptions.RequestedGithubAppNotFound
-NoConfiguredAppsAvailable = shared.bots.exceptions.NoConfiguredAppsAvailable
+RepositoryWithoutValidBotError = exceptions.RepositoryWithoutValidBotError
+OwnerWithoutValidBotError = exceptions.OwnerWithoutValidBotError
+RequestedGithubAppNotFound = exceptions.RequestedGithubAppNotFound
+NoConfiguredAppsAvailable = exceptions.NoConfiguredAppsAvailable
 
 
 class ReportExpiredException(Exception):

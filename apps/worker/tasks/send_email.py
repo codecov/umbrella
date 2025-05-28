@@ -1,9 +1,9 @@
 import logging
 
-import services.smtp
 from app import celery_app
 from helpers.email import Email
 from helpers.metrics import metrics
+from services import smtp
 from services.template import TemplateService
 from shared.celery_config import send_email_task_name
 from shared.config import get_config
@@ -37,7 +37,7 @@ class SendEmailTask(BaseCodecovTask, name=send_email_task_name):
                 extra=log_extra_dict,
             )
 
-            smtp_service = services.smtp.SMTPService()
+            smtp_service = smtp.SMTPService()
 
             if not smtp_service.active():
                 log.warning(
@@ -63,7 +63,7 @@ class SendEmailTask(BaseCodecovTask, name=send_email_task_name):
             with metrics.timer("worker.tasks.send_email.send"):
                 try:
                     smtp_service.send(email_wrapper)
-                except services.smtp.SMTPServiceError as exc:
+                except smtp.SMTPServiceError as exc:
                     err_msg = str(exc)
 
             if err_msg is not None:

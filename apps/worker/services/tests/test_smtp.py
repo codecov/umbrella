@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
-import services.smtp
 from helpers.email import Email
+from services import smtp
 from services.smtp import SMTPService, SMTPServiceError
 
 LOGGER = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ def set_username_and_password(mock_configuration):
 
 @pytest.fixture
 def reset_connection_at_start():
-    services.smtp.SMTPService.connection = None
+    smtp.SMTPService.connection = None
 
 
 class TestSMTP:

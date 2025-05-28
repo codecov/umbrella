@@ -4,7 +4,7 @@ import django.db.models.deletion
 import django_better_admin_arrayfield.models.fields
 from django.db import migrations, models
 
-import shared.django_apps.rollouts.models
+from shared.django_apps import rollouts
 
 
 class Migration(migrations.Migration):
@@ -40,7 +40,7 @@ class Migration(migrations.Migration):
                 (
                     "salt",
                     models.CharField(
-                        default=shared.django_apps.rollouts.models.default_random_salt,
+                        default=rollouts.models.default_random_salt,
                         max_length=32,
                     ),
                 ),

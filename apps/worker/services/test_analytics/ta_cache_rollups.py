@@ -4,7 +4,6 @@ from typing import cast
 
 import polars as pl
 
-import shared.storage
 from services.test_analytics.ta_metrics import (
     read_rollups_from_db_summary,
     rollup_size_summary,
@@ -14,6 +13,7 @@ from services.test_analytics.ta_timeseries import (
     get_summary,
     get_testrun_branch_summary_via_testrun,
 )
+from shared import storage
 from shared.config import get_config
 
 
@@ -104,7 +104,7 @@ def cache_rollups(repoid: int, branch: str | None = None):
 
     serialized_table.seek(0)
 
-    storage_service = shared.storage.get_appropriate_storage_service(repoid)
+    storage_service = storage.get_appropriate_storage_service(repoid)
     storage_service.write_file(
         cast(str, get_config("services", "minio", "bucket", default="archive")),
         rollup_blob_path(repoid, branch),

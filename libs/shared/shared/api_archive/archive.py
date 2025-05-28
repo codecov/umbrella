@@ -6,7 +6,7 @@ from hashlib import md5
 
 import sentry_sdk
 
-import shared.storage
+from shared import storage
 from shared.config import get_config
 from shared.utils.ReportEncoder import ReportEncoder
 
@@ -67,7 +67,7 @@ class ArchiveService:
         else:
             self.root = bucket
 
-        self.storage = shared.storage.get_appropriate_storage_service(
+        self.storage = storage.get_appropriate_storage_service(
             repository.repoid if repository else None
         )
         self.storage_hash = self.get_archive_hash(repository) if repository else None

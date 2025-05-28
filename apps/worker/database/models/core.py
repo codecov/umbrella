@@ -10,7 +10,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session, backref, relationship, validates
 from sqlalchemy.schema import FetchedValue
 
-import database.models
+from database import models
 from database.base import CodecovBaseModel, MixinBaseClass, MixinBaseClassNoExternalID
 from database.enums import Decoration, Notification, NotificationState, ReportType
 from database.utils import ArchiveField
@@ -381,7 +381,7 @@ class Commit(CodecovBaseModel):
     @property
     def report(self):
         db_session = self.get_db_session()
-        CommitReport = database.models.reports.CommitReport
+        CommitReport = models.reports.CommitReport
         return (
             db_session.query(CommitReport)
             .filter(
@@ -397,7 +397,7 @@ class Commit(CodecovBaseModel):
 
     def commit_report(self, report_type: ReportType):
         db_session = self.get_db_session()
-        CommitReport = database.models.reports.CommitReport
+        CommitReport = models.reports.CommitReport
         if report_type == ReportType.COVERAGE:
             return self.report
         else:
