@@ -47,10 +47,19 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          # As long as worker/api/shared are submodules, we should include
-          # patterns that match the submodule placeholder to be sure submodule
-          # updates will trigger the right workflows.
           filters: |
+            build-glue:
+              - 'Makefile'
+              - 'docker/Makefile.docker'
+              - 'docker/Makefile.ci-tests'
+              - 'docker/Dockerfile.requirements'
+              - 'docker/Dockerfile'
+              - 'uv.lock'
+              - 'ci-tests.docker-compose.yml'
+              - '.github/workflows/ci-router.yml'
+              - '.github/workflows/_build-requirements.yml'
+              - '.github/workflows/_build-app.yml'
+              - '.github/workflows/_self-hosted.yml'
             worker:
               - 'apps/worker'
               - 'apps/worker/**'
@@ -79,7 +88,7 @@ jobs:
     uses: ./.github/workflows/api-ci.yml
     secrets: inherit
     with:
-      skip: ${{ needs.change-detection.outputs.codecov-api == 'false' }}
+      skip: ${{ needs.change-detection.outputs.codecov-api == 'false' && needs.change-detection.outputs.build-glue == 'false' }}
       event_name: ${{ github.event_name }}
 
   worker-ci:
@@ -88,7 +97,7 @@ jobs:
     uses: ./.github/workflows/worker-ci.yml
     secrets: inherit
     with:
-      skip: ${{ needs.change-detection.outputs.worker == 'false' }}
+      skip: ${{ needs.change-detection.outputs.worker == 'false' && needs.change-detection.outputs.build-glue == 'false' }}
       event_name: ${{ github.event_name }}
 
   shared-ci:
@@ -97,7 +106,7 @@ jobs:
     uses: ./.github/workflows/shared-ci.yml
     secrets: inherit
     with:
-      skip: ${{ needs.change-detection.outputs.shared == 'false' }}
+      skip: ${{ needs.change-detection.outputs.shared == 'false' && needs.change-detection.outputs.build-glue == 'false' }}
       event_name: ${{ github.event_name }}
 
   push-staging:
