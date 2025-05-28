@@ -642,16 +642,19 @@ class FileComparison:
 
 
 class Comparison:
-    def __init__(self, user, base_commit, head_commit):
+    def __init__(self, user, base_commit, head_commit, should_use_sentry_app=False):
         # TODO: rename to owner
         self.user = user
         self._base_commit = base_commit
         self._head_commit = head_commit
+        self._should_use_sentry_app = should_use_sentry_app
 
     @cached_property
     def _adapter(self) -> TorngitBaseAdapter:
         return RepoProviderService().get_adapter(
-            owner=self.user, repo=self.base_commit.repository
+            owner=self.user,
+            repo=self.base_commit.repository,
+            should_use_sentry_app=self._should_use_sentry_app,
         )
 
     def validate(self):
@@ -1041,13 +1044,14 @@ class PullRequestComparison(Comparison):
     'pseudo-comparisons'.
     """
 
-    def __init__(self, user, pull):
+    def __init__(self, user, pull, should_use_sentry_app=False):
         self.pull = pull
         super().__init__(
             user=user,
             # these are lazy loaded in the property methods below
             base_commit=None,
             head_commit=None,
+            should_use_sentry_app=should_use_sentry_app,
         )
 
     # TODO: try using the dataloader to fetch the commits before you create this class, and pass those commits
@@ -1167,7 +1171,9 @@ class PullRequestComparison(Comparison):
         Returns the diff between the 'self.pull.compared_to' field and the
         'self.pull.base' field.
         """
-        adapter = RepoProviderService().get_adapter(self.user, self.pull.repository)
+        adapter = RepoProviderService().get_adapter(
+            self.user, self.pull.repository, self._should_use_sentry_app
+        )
         return async_to_sync(adapter.get_compare)(
             self.pull.compared_to, self.pull.base
         )["diff"]

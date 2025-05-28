@@ -10,6 +10,7 @@ from graphql import GraphQLResolveInfo
 import services.components as components_service
 import services.path as path_service
 import shared.reports.api_report_service as report_service
+from codecov_auth.constants import USE_SENTRY_APP_INDICATOR
 from codecov_auth.models import Owner
 from core.models import Commit
 from graphql_api.actions.commits import commit_status
@@ -29,12 +30,11 @@ from graphql_api.helpers.connection import (
 from graphql_api.helpers.requested_fields import selected_fields
 from graphql_api.types.comparison.comparison import (
     MissingBaseCommit,
+    MissingBaseReport,
+    MissingComparison,
     MissingHeadReport,
 )
-from graphql_api.types.enums import (
-    OrderingDirection,
-    PathContentDisplayType,
-)
+from graphql_api.types.enums import OrderingDirection, PathContentDisplayType
 from graphql_api.types.errors import MissingCoverage, UnknownPath
 from graphql_api.types.errors.errors import UnknownFlags
 from reports.models import CommitReport
@@ -42,10 +42,7 @@ from services.bundle_analysis import BundleAnalysisComparison, BundleAnalysisRep
 from services.comparison import Comparison, ComparisonReport
 from services.components import Component
 from services.path import Dir, File, ReportPaths
-from services.yaml import (
-    YamlStates,
-    get_yaml_state,
-)
+from services.yaml import YamlStates, get_yaml_state
 from shared.reports.api_report_service import ReadOnlyReport
 from shared.reports.filtered import FilteredReportFile
 from shared.reports.resources import ReportFile
@@ -119,7 +116,13 @@ def resolve_list_uploads(commit: Commit, info: GraphQLResolveInfo, **kwargs):
 @sentry_sdk.trace
 async def resolve_compare_with_parent(
     commit: Commit, info: GraphQLResolveInfo, **kwargs: Any
-) -> ComparisonReport | Any:
+) -> (
+    ComparisonReport
+    | MissingBaseCommit
+    | MissingComparison
+    | MissingBaseReport
+    | MissingHeadReport
+):
     if not commit.parent_commit_id:
         return MissingBaseCommit()
 
@@ -132,18 +135,23 @@ async def resolve_compare_with_parent(
     if comparison_error:
         return comparison_error
 
-    if commit_comparison and commit_comparison.is_processed:
+    if commit_comparison.is_processed:
         current_owner = info.context["request"].current_owner
         parent_commit = await CommitLoader.loader(info, commit.repository_id).load(
             commit.parent_commit_id
         )
+        should_use_sentry_app = getattr(
+            info.context["request"], USE_SENTRY_APP_INDICATOR, False
+        )
         comparison = Comparison(
-            user=current_owner, base_commit=parent_commit, head_commit=commit
+            user=current_owner,
+            base_commit=parent_commit,
+            head_commit=commit,
+            should_use_sentry_app=should_use_sentry_app,
         )
         info.context["comparison"] = comparison
 
-    if commit_comparison:
-        return ComparisonReport(commit_comparison)
+    return ComparisonReport(commit_comparison)
 
 
 @sentry_sdk.trace
@@ -152,6 +160,7 @@ def get_sorted_path_contents(
     commit: Commit,
     path: str | None = None,
     filters: dict | None = None,
+    should_use_sentry_app: bool = False,
 ) -> (
     list[File | Dir] | MissingHeadReport | MissingCoverage | UnknownFlags | UnknownPath
 ):
@@ -176,7 +185,9 @@ def get_sorted_path_contents(
     report_flags = report.get_flag_names()
 
     if component_filter:
-        all_components = components_service.commit_components(commit, current_owner)
+        all_components = components_service.commit_components(
+            commit, current_owner, should_use_sentry_app=should_use_sentry_app
+        )
         filtered_components = components_service.filter_components_by_name_or_id(
             all_components, component_filter
         )
@@ -211,7 +222,12 @@ def get_sorted_path_contents(
     if len(report_paths.paths) == 0:
         # we do not know about this path
 
-        if path_service.provider_path_exists(path, commit, current_owner) is False:
+        if (
+            path_service.provider_path_exists(
+                path, commit, current_owner, should_use_sentry_app=should_use_sentry_app
+            )
+            is False
+        ):
             # file doesn't exist
             return UnknownPath(f"path does not exist: {path}")
 
@@ -241,8 +257,17 @@ def resolve_path_contents(
     and nested directories.
     """
     current_owner = info.context["request"].current_owner
+    should_use_sentry_app = getattr(
+        info.context["request"], USE_SENTRY_APP_INDICATOR, False
+    )
 
-    contents = get_sorted_path_contents(current_owner, commit, path, filters)
+    contents = get_sorted_path_contents(
+        current_owner,
+        commit,
+        path,
+        filters,
+        should_use_sentry_app=should_use_sentry_app,
+    )
     if isinstance(contents, list):
         return {"results": contents}
     return contents
@@ -267,8 +292,17 @@ def resolve_deprecated_path_contents(
     and nested directories.
     """
     current_owner = info.context["request"].current_owner
+    should_use_sentry_app = getattr(
+        info.context["request"], USE_SENTRY_APP_INDICATOR, False
+    )
 
-    contents = get_sorted_path_contents(current_owner, commit, path, filters)
+    contents = get_sorted_path_contents(
+        current_owner,
+        commit,
+        path,
+        filters,
+        should_use_sentry_app=should_use_sentry_app,
+    )
     if not isinstance(contents, list):
         return contents
 
@@ -349,7 +383,11 @@ def resolve_coverage_file(commit, info, path, flags=None, components=None):
     fallback_file, paths = None, []
     if components:
         all_components = components_service.commit_components(
-            commit, info.context["request"].current_owner
+            commit,
+            info.context["request"].current_owner,
+            should_use_sentry_app=getattr(
+                info.context["request"], USE_SENTRY_APP_INDICATOR, False
+            ),
         )
         filtered_components = components_service.filter_components_by_name_or_id(
             all_components, components
@@ -377,7 +415,15 @@ def resolve_coverage_file(commit, info, path, flags=None, components=None):
 def resolve_coverage_components(commit: Commit, info, filters=None) -> list[Component]:
     info.context["component_commit"] = commit
     current_owner = info.context["request"].current_owner
-    all_components = components_service.commit_components(commit, current_owner)
+    all_components = components_service.commit_components(
+        commit,
+        current_owner,
+        should_use_sentry_app=getattr(
+            info.context["request"],
+            USE_SENTRY_APP_INDICATOR,
+            False,
+        ),
+    )
 
     if filters and filters.get("components"):
         return components_service.filter_components_by_name_or_id(

@@ -16,13 +16,15 @@ from timeseries.helpers import fill_sparse_measurements
 from timeseries.models import Interval
 
 
-def commit_components(commit: Commit, owner: Owner | None) -> list[Component]:
+def commit_components(
+    commit: Commit, owner: Owner | None, should_use_sentry_app: bool = False
+) -> list[Component]:
     """
     Get the list of components for a commit.
     A request is made to the provider on behalf of the given `owner`
     to fetch the commit YAML (from which component config is parsed).
     """
-    yaml = final_commit_yaml(commit, owner)
+    yaml = final_commit_yaml(commit, owner, should_use_sentry_app=should_use_sentry_app)
     return yaml.get_components()
 
 

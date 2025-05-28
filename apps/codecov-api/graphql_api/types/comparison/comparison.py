@@ -7,6 +7,7 @@ from asgiref.sync import sync_to_async
 from graphql.type.definition import GraphQLResolveInfo
 
 import services.components as components_service
+from codecov_auth.constants import USE_SENTRY_APP_INDICATOR
 from compare.commands.compare.compare import CompareCommands
 from compare.models import ComponentComparison, FlagComparison
 from graphql_api.actions.flags import get_flag_comparisons
@@ -200,7 +201,13 @@ def resolve_component_comparisons(
 ) -> list[ComponentComparison]:
     current_owner = info.context["request"].current_owner
     head_commit = comparison_report.commit_comparison.compare_commit
-    components = components_service.commit_components(head_commit, current_owner)
+    components = components_service.commit_components(
+        head_commit,
+        current_owner,
+        should_use_sentry_app=getattr(
+            info.context["request"], USE_SENTRY_APP_INDICATOR, False
+        ),
+    )
     list_components = comparison_report.commit_comparison.component_comparisons.all()
 
     if filters and filters.get("components"):

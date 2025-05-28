@@ -13,7 +13,9 @@ class GetFileContentInteractor(BaseInteractor):
     async def get_file_from_service(self, commit: Commit, path: str) -> str | None:
         try:
             repository_service = await RepoProviderService().async_get_adapter(
-                owner=self.current_owner, repo=commit.repository
+                owner=self.current_owner,
+                repo=commit.repository,
+                should_use_sentry_app=self.should_use_sentry_app,
             )
             content = await repository_service.get_source(path, commit.commitid)
 

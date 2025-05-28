@@ -42,7 +42,7 @@ class FetchImpactedFiles(BaseInteractor):
         report_flags = head_commit_report and head_commit_report.get_flag_names()
         if components_filter:
             all_components = components.commit_components(
-                comparison.head_commit, comparison.user
+                comparison.head_commit, comparison.user, self.should_use_sentry_app
             )
             filtered_components = components.filter_components_by_name_or_id(
                 all_components, components_filter

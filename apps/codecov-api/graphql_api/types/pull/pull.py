@@ -5,6 +5,7 @@ from ariadne import ObjectType
 from asgiref.sync import sync_to_async
 from graphql import GraphQLResolveInfo
 
+from codecov_auth.constants import USE_SENTRY_APP_INDICATOR
 from codecov_auth.models import Owner
 from compare.models import CommitComparison
 from core.models import Commit, Pull
@@ -79,14 +80,18 @@ async def resolve_compare_with_base(
     if comparison_error:
         return comparison_error
 
-    if commit_comparison and commit_comparison.is_processed:
+    if commit_comparison.is_processed:
         current_owner = info.context["request"].current_owner
-        comparison = PullRequestComparison(current_owner, pull)
+        should_use_sentry_app = getattr(
+            info.context["request"], USE_SENTRY_APP_INDICATOR, False
+        )
+        comparison = PullRequestComparison(
+            current_owner, pull, should_use_sentry_app=should_use_sentry_app
+        )
         # store the comparison in the context - to be used in the `Comparison` resolvers
         info.context["comparison"] = comparison
 
-    if commit_comparison:
-        return ComparisonReport(commit_comparison)
+    return ComparisonReport(commit_comparison)
 
 
 @pull_bindable.field("bundleAnalysisCompareWithBase")

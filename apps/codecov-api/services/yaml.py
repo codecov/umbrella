@@ -22,7 +22,9 @@ log = logging.getLogger(__name__)
 
 
 @cache.cache_function(ttl=60 * 60)
-def fetch_commit_yaml(commit: Commit, owner: Owner | None) -> dict | None:
+def fetch_commit_yaml(
+    commit: Commit, owner: Owner | None, should_use_sentry_app: bool = False
+) -> dict | None:
     """
     Fetches the codecov.yaml file for a particular commit from the service provider.
     Service provider API request is made on behalf of the given `owner`.
@@ -39,7 +41,9 @@ def fetch_commit_yaml(commit: Commit, owner: Owner | None) -> dict | None:
 
     try:
         repository_service = RepoProviderService().get_adapter(
-            owner=owner, repo=commit.repository
+            owner=owner,
+            repo=commit.repository,
+            should_use_sentry_app=should_use_sentry_app,
         )
         yaml_str = async_to_sync(fetch_current_yaml_from_provider_via_reference)(
             commit.commitid, repository_service
@@ -64,11 +68,15 @@ def fetch_commit_yaml(commit: Commit, owner: Owner | None) -> dict | None:
 
 @lru_cache
 @sentry_sdk.trace
-def final_commit_yaml(commit: Commit, owner: Owner | None) -> UserYaml:
+def final_commit_yaml(
+    commit: Commit, owner: Owner | None, should_use_sentry_app: bool = False
+) -> UserYaml:
     return UserYaml.get_final_yaml(
         owner_yaml=commit.repository.author.yaml,
         repo_yaml=commit.repository.yaml,
-        commit_yaml=fetch_commit_yaml(commit, owner),
+        commit_yaml=fetch_commit_yaml(
+            commit, owner, should_use_sentry_app=should_use_sentry_app
+        ),
     )
 
 
