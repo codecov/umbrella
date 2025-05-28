@@ -400,6 +400,7 @@ class TestConfig:
                     {"assets": "aaa", "dependancies": "bbb"}
                 ),
             },
+            clear=True,
         )
         expected_res = {
             "services": {
