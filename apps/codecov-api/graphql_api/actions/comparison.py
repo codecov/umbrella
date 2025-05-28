@@ -26,3 +26,5 @@ def validate_commit_comparison(
 
     if commit_comparison.state == CommitComparison.CommitComparisonStates.ERROR:
         return MissingComparison()
+
+    return None

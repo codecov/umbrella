@@ -21,3 +21,4 @@ async def resolve_head_commit(
     if head:
         loader = CommitLoader.loader(info, branch.repository_id)
         return await loader.load(head)
+    return None
