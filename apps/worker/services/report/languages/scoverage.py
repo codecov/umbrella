@@ -2,7 +2,6 @@ import sentry_sdk
 from lxml.etree import Element
 
 from services.report.report_builder import CoverageType, ReportBuilderSession
-from shared.helpers.numeric import maxint
 from shared.reports.resources import ReportFile
 
 from .base import BaseLanguageProcessor
@@ -57,7 +56,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
             is_partial = len(included_statements) > 1 and len(covered_statements) < len(included_statements)
 
             # CodeCov takes a maxint of 99999 as per shared.helpers.numeric.maxint
-            covered_statements_cnt = maxint(len(covered_statements))
+            covered_statements_cnt = min(len(covered_statements), 99999)
 
             # Set to covered ratio if partial coverage, else set to number of invocations of the line.
             # Since Scoverage does not provide line invocations, we set to num of covered statements as an approximation
