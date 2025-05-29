@@ -711,6 +711,7 @@ class GithubAppInstallation(
 
     class Meta:
         app_label = CODECOV_AUTH_APP_LABEL
+        unique_together = ("app_id", "installation_id")
 
     def is_configured(self) -> bool:
         """Returns whether this installation is properly configured and can be used"""
