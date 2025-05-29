@@ -139,6 +139,14 @@ a sibling directory to your `umbrella` project directory. If this is not the
 case, you will need to tweak the service's volume definition in
 `docker-compose.yml`.
 
+If you do make this change and want to prevent the change from showing up in
+`git status`, so you don't accidentally commit it (please don't), you can do
+so with
+
+```
+git update-index --assume-unchanged docker-compose.yml
+```
+
 ## Extras
 
 - You can browse your local MinIO (archive service) at http://localhost:9001/ with the username `codecov-default-key` and password `codecov-default-secret`
