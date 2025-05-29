@@ -130,3 +130,7 @@ dmypy.json
 
 *.pem
 junit.xml
+
+# git ignored bc of gazebo frontend comment. If you actually need to change,
+# feel free to - just `git add -f docker-compose.yml`
+docker-compose.yml
