@@ -1,4 +1,3 @@
-from unittest.mock import patch
 
 from shared.django_apps.codecov_auth.migrations.migration_helpers import (
     eliminate_dupes,
@@ -40,16 +39,36 @@ class Migration0068Test(TestMigrations):
         )
 
     def test_eliminate_dupes(self):
-        self.assertEqual(self.GithubAppInstallation.objects.filter(installation_id=201, app_id=12345).count(), 3)
+        self.assertEqual(
+            self.GithubAppInstallation.objects.filter(
+                installation_id=201, app_id=12345
+            ).count(),
+            3,
+        )
 
         eliminate_dupes(self.GithubAppInstallation)
 
         # removed duplicates, keeping the first one
-        self.assertEqual(self.GithubAppInstallation.objects.filter(installation_id=201, app_id=12345).count(), 1)
-        self.assertTrue(self.GithubAppInstallation.objects.filter(id=self.copy_1.id).exists())
-        self.assertFalse(self.GithubAppInstallation.objects.filter(id=self.copy_2.id).exists())
-        self.assertFalse(self.GithubAppInstallation.objects.filter(id=self.copy_3.id).exists())
+        self.assertEqual(
+            self.GithubAppInstallation.objects.filter(
+                installation_id=201, app_id=12345
+            ).count(),
+            1,
+        )
+        self.assertTrue(
+            self.GithubAppInstallation.objects.filter(id=self.copy_1.id).exists()
+        )
+        self.assertFalse(
+            self.GithubAppInstallation.objects.filter(id=self.copy_2.id).exists()
+        )
+        self.assertFalse(
+            self.GithubAppInstallation.objects.filter(id=self.copy_3.id).exists()
+        )
 
         # should be unchanged
-        self.assertEqual(self.GithubAppInstallation.objects.filter(installation_id=203, app_id=54321, name="test-default-app").count(), 1)
-
+        self.assertEqual(
+            self.GithubAppInstallation.objects.filter(
+                installation_id=203, app_id=54321, name="test-default-app"
+            ).count(),
+            1,
+        )
