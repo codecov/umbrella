@@ -533,7 +533,9 @@ def test_empty_upload_commit_yaml_org_token(
         repoid=repository.repoid, commitid=commit.commitid, empty_upload="fail"
     )
 
-    fetch_yaml_mock.assert_called_once_with(commit, repository.author)
+    fetch_yaml_mock.assert_called_once_with(
+        commit, repository.author, should_use_sentry_app=False
+    )
 
 
 @patch("services.yaml.fetch_commit_yaml")
@@ -581,4 +583,6 @@ def test_empty_upload_ommit_yaml_repo_token(
         repoid=repository.repoid, commitid=commit.commitid, empty_upload="fail"
     )
 
-    fetch_yaml_mock.assert_called_once_with(commit, repository.author)
+    fetch_yaml_mock.assert_called_once_with(
+        commit, repository.author, should_use_sentry_app=False
+    )

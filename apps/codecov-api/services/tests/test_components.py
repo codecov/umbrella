@@ -108,7 +108,43 @@ class ComponentServiceTest(TestCase):
             ),
         ]
 
-        mock_final_yaml.assert_called_once_with(self.commit, user)
+        mock_final_yaml.assert_called_once_with(
+            self.commit, user, should_use_sentry_app=False
+        )
+
+    @patch("services.components.final_commit_yaml")
+    def test_commit_components_use_sentry_app(self, mock_final_yaml):
+        mock_final_yaml.return_value = UserYaml(
+            {
+                "component_management": {
+                    "default_rules": {
+                        "paths": [r".*\.py"],
+                        "flag_regexes": [r"flag.*"],
+                    },
+                    "individual_components": [
+                        {"component_id": "go_files", "paths": [r".*\.go"]},
+                    ],
+                }
+            }
+        )
+
+        # This only works here because we are using a mock for final_commit_yaml
+        # Generally, the user would have to have the Sentry app installed
+        user = AnonymousUser()
+        components = commit_components(self.commit, user, should_use_sentry_app=True)
+        assert components == [
+            Component(
+                component_id="go_files",
+                paths=[r".*\.go"],
+                name="",
+                flag_regexes=[r"flag.*"],
+                statuses=[],
+            )
+        ]
+
+        mock_final_yaml.assert_called_once_with(
+            self.commit, user, should_use_sentry_app=True
+        )
 
     def test_component_filtered_report(self):
         report = sample_report()

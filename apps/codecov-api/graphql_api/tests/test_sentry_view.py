@@ -7,6 +7,7 @@ import pytest
 from django.conf import settings
 from django.test import TestCase
 
+from codecov_auth.models import Owner
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 
 
@@ -16,12 +17,12 @@ class TestSentryAriadneView(TestCase):
         self.mock_owner = self._create_mock_owner()
         self.valid_jwt_token = self._create_valid_jwt_token()
         self.query = """
-            query CurrentUser { me  {owner {username}} }   
+            query CurrentUser { me  {owner {username}} }
         """
 
     def _create_valid_jwt_token(self):
         payload = {
-            "g_u": "1234567890",
+            "g_o": "sentry_ariadne_check",
             "g_p": "github",
             "exp": int(time.time()) + 3600,  # Expires in 1 hour
             "iat": int(time.time()),  # Issued at current time
@@ -52,9 +53,7 @@ class TestSentryAriadneView(TestCase):
 
     def test_sentry_ariadne_view_valid_token(self):
         """Test sentry_ariadne_view with valid JWT token"""
-        with patch(
-            "codecov_auth.middleware.Owner.objects.get_or_create"
-        ) as mock_get_or_create:
+        with patch("codecov_auth.middleware.Owner.objects.get") as mock_get_or_create:
             mock_get_or_create.return_value = (self.mock_owner, False)
             response = self.do_query(query=self.query, token=self.valid_jwt_token)
 
@@ -63,7 +62,7 @@ class TestSentryAriadneView(TestCase):
                 "data": {"me": {"owner": {"username": str(self.mock_owner.username)}}}
             }
             mock_get_or_create.assert_called_once_with(
-                service_id="1234567890", service="github"
+                username="sentry_ariadne_check", service="github"
             )
 
     def test_sentry_ariadne_view_missing_token(self):
@@ -83,7 +82,7 @@ class TestSentryAriadneView(TestCase):
     def test_sentry_ariadne_view_expired_token(self):
         """Test sentry_ariadne_view with expired JWT token"""
         payload = {
-            "g_u": "1234567890",
+            "g_o": "sentry_ariadne_check",
             "g_p": "github",
             "exp": int(time.time()) - 3600,  # Expired 1 hour ago
             "iat": int(time.time()),  # Issued at current time
@@ -98,21 +97,19 @@ class TestSentryAriadneView(TestCase):
         assert response.content.decode() == "JWT token has expired"
 
     def test_sentry_ariadne_view_owner_creation_error(self):
-        """Test sentry_ariadne_view when owner creation fails"""
-        with patch(
-            "codecov_auth.middleware.Owner.objects.get_or_create"
-        ) as mock_get_or_create:
-            mock_get_or_create.side_effect = Exception("Database error")
+        """Test sentry_ariadne_view when owner does not exist"""
+        with patch("codecov_auth.middleware.Owner.objects.get") as mock_get_or_create:
+            mock_get_or_create.side_effect = Owner.DoesNotExist
 
             response = self.do_query(query=self.query, token=self.valid_jwt_token)
 
-            assert response.status_code == 403
-            assert response.content.decode() == "Invalid JWT token"
+            assert response.status_code == 404
+            assert response.content.decode() == "Account not found"
 
     def test_sentry_ariadne_view_missing_exp(self):
         """Test sentry_ariadne_view with JWT token missing expiration time"""
         payload = {
-            "g_u": "1234567890",
+            "g_o": "sentry_ariadne_check",
             "g_p": "github",
             "iat": int(time.time()),
             "iss": "https://sentry.io",

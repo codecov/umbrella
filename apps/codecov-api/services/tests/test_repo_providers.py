@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from codecov_auth.models import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
@@ -12,7 +12,14 @@ from codecov_auth.models import (
     Owner,
     Service,
 )
-from services.repo_providers import RepoProviderService, get_token_refresh_callback
+from services.repo_providers import (
+    RepoProviderService,
+    TorngitInitializationFailed,
+    get_token_refresh_callback,
+)
+from shared.bots.github_apps import (
+    GithubInstallationInfo,
+)
 from shared.django_apps.codecov_auth.tests.factories import GithubAppInstallationFactory
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from shared.torngit import Bitbucket, Github, Gitlab
@@ -79,14 +86,12 @@ def test__is_using_integration_ghapp_covers_some_repos(mock_get_config, db):
     other_repo_same_owner = RepositoryFactory.create(author=owner)
     repo_different_owner = RepositoryFactory.create()
     assert repo.author != repo_different_owner.author
-    ghapp_installation = GithubAppInstallation(
-        name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+    ghapp_installation = GithubAppInstallationFactory(
         owner=owner,
         repository_service_ids=[repo.service_id],
         installation_id=12345,
         app_id=12345,
     )
-    ghapp_installation.save()
     assert RepoProviderService()._is_using_integration(ghapp_installation, repo) == True
     assert (
         RepoProviderService()._is_using_integration(
@@ -117,6 +122,9 @@ def test_token_refresh_callback_none_cases(should_have_owner, service, db):
     assert get_token_refresh_callback(owner, service) is None
 
 
+SENTRY_APP_ID = 4321
+
+
 class TestRepoProviderService(TestCase):
     def setUp(self):
         self.repo_gh = RepositoryFactory.create(
@@ -128,6 +136,15 @@ class TestRepoProviderService(TestCase):
             author__unencrypted_oauth_token="testaaft3ituvli790m1yajovjv5eg0r4j0264iw",
             author__username="ThiagoCodecov",
             author__service="gitlab",
+        )
+
+    def _create_sentry_ghapp(self, owner: Owner):
+        return GithubAppInstallationFactory(
+            name="sentry_app",
+            app_id=SENTRY_APP_ID,
+            installation_id=4321,
+            owner=owner,
+            repository_service_ids=None,
         )
 
     @sync_to_async
@@ -212,6 +229,52 @@ class TestRepoProviderService(TestCase):
         )
         provider = RepoProviderService().get_adapter(some_other_user, repo)
         assert isinstance(Bitbucket(), type(provider))
+
+    @override_settings(SENTRY_APP_ID=SENTRY_APP_ID)
+    @patch(
+        "services.repo_providers.get_github_app_token",
+        return_value=("token", None),
+    )
+    def test_get_adapter_with_sentry_returns_adapter_for_github(
+        self,
+        mock_get_github_app_token,
+    ):
+        some_other_user = OwnerFactory(username="spidey", service="github")
+        sentry_ghapp = self._create_sentry_ghapp(some_other_user)
+        ghapp_info = GithubInstallationInfo(
+            id=sentry_ghapp.id,
+            installation_id=sentry_ghapp.installation_id,
+            app_id=sentry_ghapp.app_id,
+            pem_path=sentry_ghapp.pem_path,
+        )
+        repo = RepositoryFactory.create(
+            author__username="ThiagoCodecov", author__service="github"
+        )
+        provider = RepoProviderService().get_adapter(
+            some_other_user, repo, should_use_sentry_app=True
+        )
+        assert isinstance(Github(), type(provider))
+        mock_get_github_app_token.assert_called_once_with(
+            service=Service.GITHUB,
+            installation_info=ghapp_info,
+        )
+
+    def test_get_adapter_with_sentry_only_works_with_github(
+        self,
+    ):
+        some_other_user = OwnerFactory(service=Service.GITLAB.value)
+        self._create_sentry_ghapp(some_other_user)
+        repo = RepositoryFactory.create(
+            author__username="ThiagoCodecov", author__service="github"
+        )
+        with self.assertRaises(TorngitInitializationFailed) as excinfo:
+            RepoProviderService().get_adapter(
+                some_other_user, repo, should_use_sentry_app=True
+            )
+        self.assertIn(
+            "Using the Sentry Github App for authentication requires that it is installed.",
+            str(excinfo.exception),
+        )
 
     def test_get_by_name_returns_adapter_for_repo_owner_service(self):
         some_other_user = OwnerFactory(service="bitbucket")
@@ -360,7 +423,41 @@ class TestRepoProviderService(TestCase):
         fetched = await RepoProviderService().async_get_adapter(owner, self.repo_gh)
         assert fetched == "torngit_adapter"
         mock__get_adapter.assert_called_with(
-            owner, self.repo_gh, ghapp=ghapp_installation
+            owner,
+            self.repo_gh,
+            use_ssl=False,
+            ghapp=ghapp_installation,
+            token=None,
+            should_use_sentry_app=False,
+        )
+
+    @pytest.mark.asyncio
+    @override_settings(SENTRY_APP_ID=SENTRY_APP_ID)
+    @patch(
+        "services.repo_providers.RepoProviderService._get_adapter",
+        return_value="torngit_adapter",
+    )
+    async def test_async_get_adapter_with_sentry(self, mock__get_adapter):
+        owner = await self.get_owner_gh()
+        ghapp_installation = GithubAppInstallation(
+            name="sentry_app",
+            installation_id=4321,
+            owner=owner,
+            app_id=SENTRY_APP_ID,
+            repository_service_ids=None,
+        )
+        await ghapp_installation.asave()
+        fetched = await RepoProviderService().async_get_adapter(
+            owner, self.repo_gh, should_use_sentry_app=True
+        )
+        assert fetched == "torngit_adapter"
+        mock__get_adapter.assert_called_with(
+            owner,
+            self.repo_gh,
+            use_ssl=False,
+            ghapp=ghapp_installation,
+            token=None,
+            should_use_sentry_app=True,
         )
 
     @pytest.mark.asyncio
@@ -372,7 +469,14 @@ class TestRepoProviderService(TestCase):
         owner = await self.get_owner_gl()
         fetched = await RepoProviderService().async_get_adapter(owner, self.repo_gl)
         assert fetched == "torngit_adapter"
-        mock__get_adapter.assert_called_with(owner, self.repo_gl, ghapp=None)
+        mock__get_adapter.assert_called_with(
+            owner,
+            self.repo_gl,
+            use_ssl=False,
+            ghapp=None,
+            token=None,
+            should_use_sentry_app=False,
+        )
 
     @pytest.mark.asyncio
     @patch(
@@ -383,4 +487,11 @@ class TestRepoProviderService(TestCase):
         owner = await self.get_owner_gh()
         fetched = await RepoProviderService().async_get_adapter(owner, self.repo_gh)
         assert fetched == "torngit_adapter"
-        mock__get_adapter.assert_called_with(owner, self.repo_gh, ghapp=None)
+        mock__get_adapter.assert_called_with(
+            owner,
+            self.repo_gh,
+            use_ssl=False,
+            ghapp=None,
+            token=None,
+            should_use_sentry_app=False,
+        )
