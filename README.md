@@ -123,20 +123,21 @@ $ make devenv.upload.api
 $ make devenv.upload.shared
 ```
 
-## Using local Gazebo
+## Local Gazebo development
 
-If you're doing front-end development on Gazebo, there are situations where you
-may want to use your local Gazebo dev server running against your local
-api/worker/shared backend. This can be achieved by commenting out the default
-frontend service in `docker-compose.yml` and uncommenting the the below
-"Gazebo local development" frontend service.
+If you're doing frontend development on Gazebo, there are situations where you
+may want to use your local Gazebo dev server with your local api/worker/shared
+backend. This can be achieved by commenting out the default frontend service in
+`docker-compose.yml` and uncommenting the the below "Gazebo local development"
+frontend service.
 
-This alternative frontend container will run a yarn dev server inside the
-`codecov` docker network using your local Gazebo directory.
+This alternative frontend service will run a yarn dev server inside the
+`codecov` docker network using your local Gazebo working tree.
 
 Note that the default configuration assumes your `gazebo` project directory is
-a sibling directory to the `umbrella` directory. If this is not the case, you
-will need to tweak the service's volume definition in `docker-compose.yml`.
+a sibling directory to your `umbrella` project directory. If this is not the
+case, you will need to tweak the service's volume definition in
+`docker-compose.yml`.
 
 ## Extras
 

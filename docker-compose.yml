@@ -39,7 +39,7 @@ services:
   # # Use if you're doing front end development AND want to use your local
   # # api/shared/worker. If you're doing purely front end development, it's
   # # often easier to just point your gazebo dev server at the staging API.
-  # # If you do want to use this, comment out this service and uncomment the 
+  # # If you do want to use this, uncomment this service and comment out the 
   # # above frontend service.
   # # -------
   # frontend:
