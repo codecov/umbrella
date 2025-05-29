@@ -2,7 +2,6 @@ import sentry_sdk
 from lxml.etree import Element
 
 from services.report.report_builder import CoverageType, ReportBuilderSession
-from shared.reports.resources import ReportFile
 
 from .base import BaseLanguageProcessor
 from .helpers import child_text
