@@ -46,12 +46,16 @@ def test_uploads_get_not_allowed(client, db, mocker):
 @patch("upload.views.empty_upload.final_commit_yaml")
 @patch("services.repo_providers.RepoProviderService.get_adapter")
 def test_empty_upload_with_yaml_ignored_files(
-    mock_repo_provider_service, mock_final_yaml, notify_mock, db, mocker
+    mock_repo_provider_service,
+    mock_final_yaml,
+    notify_mock,
+    db,
+    mocker,
+    mock_prometheus_metrics,
 ):
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
-    mock_prometheus_metrics = mocker.patch("upload.metrics.API_UPLOAD_COUNTER.labels")
     mock_final_yaml.return_value = UserYaml(
         {
             "ignore": [
@@ -95,7 +99,7 @@ def test_empty_upload_with_yaml_ignored_files(
     )
     mock_prometheus_metrics.assert_called_with(
         **{
-            "agent": "cli",
+            "agent": "codecov-cli",
             "version": "0.4.7",
             "action": "coverage",
             "endpoint": "empty_upload",

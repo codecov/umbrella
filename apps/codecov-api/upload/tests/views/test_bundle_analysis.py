@@ -18,12 +18,18 @@ from shared.helpers.redis import get_redis_connection
 from timeseries.models import Dataset, MeasurementName
 
 
-@pytest.mark.django_db(databases={"default", "timeseries"})
-def test_upload_bundle_analysis_success(db, client, mocker, mock_redis):
-    upload = mocker.patch.object(TaskService, "upload")
-    mock_metrics = mocker.patch(
+@pytest.fixture
+def mock_bundle_analysis_metrics(mocker):
+    return mocker.patch(
         "upload.views.bundle_analysis.BUNDLE_ANALYSIS_UPLOAD_VIEWS_COUNTER.labels"
     )
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_upload_bundle_analysis_success(
+    db, client, mocker, mock_redis, mock_bundle_analysis_metrics
+):
+    upload = mocker.patch.object(TaskService, "upload")
     create_presigned_put = mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="test-presigned-put",
@@ -94,9 +100,9 @@ def test_upload_bundle_analysis_success(db, client, mocker, mock_redis):
         arguments=ANY,
         countdown=4,
     )
-    mock_metrics.assert_called_with(
+    mock_bundle_analysis_metrics.assert_called_with(
         **{
-            "agent": "cli",
+            "agent": "codecov-cli",
             "version": "0.4.7",
             "action": "bundle_analysis",
             "endpoint": "bundle_analysis",
@@ -122,11 +128,10 @@ def test_upload_bundle_analysis_success(db, client, mocker, mock_redis):
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
 @override_settings(SHELTER_SHARED_SECRET="shelter-shared-secret")
-def test_upload_bundle_analysis_success_shelter(db, client, mocker, mock_redis):
+def test_upload_bundle_analysis_success_shelter(
+    db, client, mocker, mock_redis, mock_bundle_analysis_metrics
+):
     upload = mocker.patch.object(TaskService, "upload")
-    mock_metrics = mocker.patch(
-        "upload.views.bundle_analysis.BUNDLE_ANALYSIS_UPLOAD_VIEWS_COUNTER.labels"
-    )
     create_presigned_put = mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="test-presigned-put",
@@ -196,9 +201,9 @@ def test_upload_bundle_analysis_success_shelter(db, client, mocker, mock_redis):
         arguments=ANY,
         countdown=4,
     )
-    mock_metrics.assert_called_with(
+    mock_bundle_analysis_metrics.assert_called_with(
         **{
-            "agent": "cli",
+            "agent": "codecov-cli",
             "version": "0.4.7",
             "action": "bundle_analysis",
             "endpoint": "bundle_analysis",
@@ -210,14 +215,13 @@ def test_upload_bundle_analysis_success_shelter(db, client, mocker, mock_redis):
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
-def test_upload_bundle_analysis_org_token(db, client, mocker, mock_redis):
+def test_upload_bundle_analysis_org_token(
+    db, client, mocker, mock_redis, mock_bundle_analysis_metrics
+):
     mocker.patch.object(TaskService, "upload")
     mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="test-presigned-put",
-    )
-    mock_metrics = mocker.patch(
-        "upload.views.bundle_analysis.BUNDLE_ANALYSIS_UPLOAD_VIEWS_COUNTER.labels"
     )
 
     repository = RepositoryFactory.create()
@@ -235,10 +239,10 @@ def test_upload_bundle_analysis_org_token(db, client, mocker, mock_redis):
         format="json",
     )
     assert res.status_code == 201
-    mock_metrics.assert_called_with(
+    mock_bundle_analysis_metrics.assert_called_with(
         **{
             "agent": "unknown-user-agent",
-            "version": "unknown-user-agent",
+            "version": "unknown-version",
             "action": "bundle_analysis",
             "endpoint": "bundle_analysis",
             "is_using_shelter": "no",
@@ -249,14 +253,13 @@ def test_upload_bundle_analysis_org_token(db, client, mocker, mock_redis):
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
-def test_upload_bundle_analysis_existing_commit(db, client, mocker, mock_redis):
+def test_upload_bundle_analysis_existing_commit(
+    db, client, mocker, mock_redis, mock_bundle_analysis_metrics
+):
     upload = mocker.patch.object(TaskService, "upload")
     mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="test-presigned-put",
-    )
-    mock_metrics = mocker.patch(
-        "upload.views.bundle_analysis.BUNDLE_ANALYSIS_UPLOAD_VIEWS_COUNTER.labels"
     )
 
     repository = RepositoryFactory.create()
@@ -282,10 +285,10 @@ def test_upload_bundle_analysis_existing_commit(db, client, mocker, mock_redis):
         arguments=ANY,
         countdown=4,
     )
-    mock_metrics.assert_called_with(
+    mock_bundle_analysis_metrics.assert_called_with(
         **{
             "agent": "unknown-user-agent",
-            "version": "unknown-user-agent",
+            "version": "unknown-version",
             "action": "bundle_analysis",
             "endpoint": "bundle_analysis",
             "is_using_shelter": "no",
@@ -295,14 +298,13 @@ def test_upload_bundle_analysis_existing_commit(db, client, mocker, mock_redis):
     )
 
 
-def test_upload_bundle_analysis_missing_args(db, client, mocker, mock_redis):
+def test_upload_bundle_analysis_missing_args(
+    db, client, mocker, mock_redis, mock_bundle_analysis_metrics
+):
     upload = mocker.patch.object(TaskService, "upload")
     mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="test-presigned-put",
-    )
-    mock_metrics = mocker.patch(
-        "upload.views.bundle_analysis.BUNDLE_ANALYSIS_UPLOAD_VIEWS_COUNTER.labels"
     )
 
     repository = RepositoryFactory.create()
@@ -332,10 +334,10 @@ def test_upload_bundle_analysis_missing_args(db, client, mocker, mock_redis):
     assert res.status_code == 400
     assert res.json() == {"commit": ["This field is required."]}
     assert not upload.called
-    mock_metrics.assert_called_with(
+    mock_bundle_analysis_metrics.assert_called_with(
         **{
             "agent": "unknown-user-agent",
-            "version": "unknown-user-agent",
+            "version": "unknown-version",
             "action": "bundle_analysis",
             "endpoint": "bundle_analysis",
             "is_using_shelter": "no",
@@ -374,15 +376,12 @@ def test_upload_bundle_analysis_invalid_token(db, client, mocker, mock_redis):
 @patch("upload.helpers.jwt.decode")
 @patch("upload.helpers.PyJWKClient")
 def test_upload_bundle_analysis_github_oidc_auth(
-    mock_jwks_client, mock_jwt_decode, db, mocker
+    mock_jwks_client, mock_jwt_decode, db, mocker, mock_bundle_analysis_metrics
 ):
     mocker.patch.object(TaskService, "upload")
     mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="test-presigned-put",
-    )
-    mock_metrics = mocker.patch(
-        "upload.views.bundle_analysis.BUNDLE_ANALYSIS_UPLOAD_VIEWS_COUNTER.labels"
     )
     repository = RepositoryFactory()
     mock_jwt_decode.return_value = {
@@ -404,10 +403,10 @@ def test_upload_bundle_analysis_github_oidc_auth(
         format="json",
     )
     assert res.status_code == 201
-    mock_metrics.assert_called_with(
+    mock_bundle_analysis_metrics.assert_called_with(
         **{
             "agent": "unknown-user-agent",
-            "version": "unknown-user-agent",
+            "version": "unknown-version",
             "action": "bundle_analysis",
             "endpoint": "bundle_analysis",
             "is_using_shelter": "no",
@@ -419,15 +418,12 @@ def test_upload_bundle_analysis_github_oidc_auth(
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
 def test_upload_bundle_analysis_measurement_datasets_created(
-    db, client, mocker, mock_redis
+    db, client, mocker, mock_redis, mock_bundle_analysis_metrics
 ):
     mocker.patch.object(TaskService, "upload")
     mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="test-presigned-put",
-    )
-    mock_metrics = mocker.patch(
-        "upload.views.bundle_analysis.BUNDLE_ANALYSIS_UPLOAD_VIEWS_COUNTER.labels"
     )
 
     repository = RepositoryFactory.create()
@@ -465,9 +461,9 @@ def test_upload_bundle_analysis_measurement_datasets_created(
             repository_id=repository.pk,
         ).exists()
 
-    mock_metrics.assert_called_with(
+    mock_bundle_analysis_metrics.assert_called_with(
         **{
-            "agent": "cli",
+            "agent": "codecov-cli",
             "version": "0.4.7",
             "action": "bundle_analysis",
             "endpoint": "bundle_analysis",
@@ -481,15 +477,12 @@ def test_upload_bundle_analysis_measurement_datasets_created(
 @override_settings(TIMESERIES_ENABLED=False)
 @pytest.mark.django_db(databases={"default", "timeseries"})
 def test_upload_bundle_analysis_measurement_timeseries_disabled(
-    db, client, mocker, mock_redis
+    db, client, mocker, mock_redis, mock_bundle_analysis_metrics
 ):
     mocker.patch.object(TaskService, "upload")
     mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="test-presigned-put",
-    )
-    mock_metrics = mocker.patch(
-        "upload.views.bundle_analysis.BUNDLE_ANALYSIS_UPLOAD_VIEWS_COUNTER.labels"
     )
 
     repository = RepositoryFactory.create()
@@ -527,9 +520,9 @@ def test_upload_bundle_analysis_measurement_timeseries_disabled(
             repository_id=repository.pk,
         ).exists()
 
-    mock_metrics.assert_called_with(
+    mock_bundle_analysis_metrics.assert_called_with(
         **{
-            "agent": "cli",
+            "agent": "codecov-cli",
             "version": "0.4.7",
             "action": "bundle_analysis",
             "endpoint": "bundle_analysis",
@@ -541,15 +534,14 @@ def test_upload_bundle_analysis_measurement_timeseries_disabled(
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
-def test_upload_bundle_analysis_no_repo(db, client, mocker, mock_redis):
+def test_upload_bundle_analysis_no_repo(
+    db, client, mocker, mock_redis, mock_bundle_analysis_metrics
+):
     upload = mocker.patch.object(TaskService, "upload")
     mocker.patch.object(TaskService, "upload")
     mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="test-presigned-put",
-    )
-    mock_metrics = mocker.patch(
-        "upload.views.bundle_analysis.BUNDLE_ANALYSIS_UPLOAD_VIEWS_COUNTER.labels"
     )
 
     repository = RepositoryFactory.create()
@@ -570,10 +562,10 @@ def test_upload_bundle_analysis_no_repo(db, client, mocker, mock_redis):
     assert res.json() == {"detail": "Repository not found."}
     assert not upload.called
 
-    mock_metrics.assert_called_with(
+    mock_bundle_analysis_metrics.assert_called_with(
         **{
             "agent": "unknown-user-agent",
-            "version": "unknown-user-agent",
+            "version": "unknown-version",
             "action": "bundle_analysis",
             "endpoint": "bundle_analysis",
             "is_using_shelter": "no",
@@ -584,11 +576,10 @@ def test_upload_bundle_analysis_no_repo(db, client, mocker, mock_redis):
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
-def test_upload_bundle_analysis_tokenless_success(db, client, mocker, mock_redis):
+def test_upload_bundle_analysis_tokenless_success(
+    db, client, mocker, mock_redis, mock_bundle_analysis_metrics
+):
     upload = mocker.patch.object(TaskService, "upload")
-    mock_metrics = mocker.patch(
-        "upload.views.bundle_analysis.BUNDLE_ANALYSIS_UPLOAD_VIEWS_COUNTER.labels"
-    )
 
     create_presigned_put = mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
@@ -625,9 +616,9 @@ def test_upload_bundle_analysis_tokenless_success(db, client, mocker, mock_redis
     assert upload.called
     create_presigned_put.assert_called_once_with("bundle-analysis", ANY, 30)
 
-    mock_metrics.assert_called_with(
+    mock_bundle_analysis_metrics.assert_called_with(
         **{
-            "agent": "cli",
+            "agent": "codecov-cli",
             "version": "0.4.7",
             "action": "bundle_analysis",
             "endpoint": "bundle_analysis",

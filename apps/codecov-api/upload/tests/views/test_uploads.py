@@ -712,7 +712,7 @@ def test_uploads_post_github_oidc_auth(
 
 
 @override_settings(SHELTER_SHARED_SECRET="shelter-shared-secret")
-def test_uploads_post_shelter(db, mocker, mock_redis):
+def test_uploads_post_shelter(db, mocker, mock_redis, mock_prometheus_metrics):
     mock_all_plans_and_tiers()
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
@@ -722,7 +722,6 @@ def test_uploads_post_shelter(db, mocker, mock_redis):
         return_value="presigned put",
     )
     mocker.patch("upload.views.uploads.trigger_upload_task", return_value=True)
-    mock_prometheus_metrics = mocker.patch("upload.metrics.API_UPLOAD_COUNTER.labels")
 
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
@@ -755,7 +754,7 @@ def test_uploads_post_shelter(db, mocker, mock_redis):
 
     mock_prometheus_metrics.assert_called_with(
         **{
-            "agent": "cli",
+            "agent": "codecov-cli",
             "version": "0.4.7",
             "action": "coverage",
             "endpoint": "create_upload",

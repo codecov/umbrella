@@ -19,9 +19,8 @@ from shared.events.amplitude import UNKNOWN_USER_OWNERID
 from shared.helpers.redis import get_redis_connection
 
 
-def test_upload_test_results(db, client, mocker, mock_redis):
+def test_upload_test_results(db, client, mocker, mock_redis, mock_prometheus_metrics):
     upload = mocker.patch.object(TaskService, "upload")
-    mock_prometheus_metrics = mocker.patch("upload.metrics.API_UPLOAD_COUNTER.labels")
     create_presigned_put = mocker.patch(
         "shared.storage.MinioStorageService.create_presigned_put",
         return_value="test-presigned-put",
@@ -106,7 +105,7 @@ def test_upload_test_results(db, client, mocker, mock_redis):
     )
     mock_prometheus_metrics.assert_called_with(
         **{
-            "agent": "cli",
+            "agent": "codecov-cli",
             "version": "0.4.7",
             "action": "test_results",
             "endpoint": "test_results",
