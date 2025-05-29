@@ -60,19 +60,6 @@ jobs:
       output_directory: apps/codecov-api
       make_target_prefix: api.
 
-  api-staging:
-    name: Push Staging Image (API)
-    needs: [api-build, api-test]
-    if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/staging' && github.repository_owner == 'codecov' }}
-    uses: ./.github/workflows/_push-env.yml
-    secrets: inherit
-    with:
-      environment: staging
-      repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
-      output_directory: apps/codecov-api
-      sentry_project: api
-      make_target_prefix: api.
-
   api-production:
     name: Push Production Image (API)
     needs: [api-build, api-test]

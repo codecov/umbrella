@@ -78,7 +78,7 @@ jobs:
     uses: ./.github/workflows/api-ci.yml
     secrets: inherit
     with:
-      skip: ${{ needs.change-detection.outputs.codecov-api == 'false' && github.event.ref != 'refs/heads/staging' }}
+      skip: ${{ needs.change-detection.outputs.codecov-api == 'false' }}
       event_name: ${{ github.event_name }}
 
   worker-ci:
@@ -87,7 +87,7 @@ jobs:
     uses: ./.github/workflows/worker-ci.yml
     secrets: inherit
     with:
-      skip: ${{ needs.change-detection.outputs.worker == 'false' && github.event.ref != 'refs/heads/staging' }}
+      skip: ${{ needs.change-detection.outputs.worker == 'false' }}
       event_name: ${{ github.event_name }}
 
   shared-ci:
@@ -96,5 +96,5 @@ jobs:
     uses: ./.github/workflows/shared-ci.yml
     secrets: inherit
     with:
-      skip: ${{ needs.change-detection.outputs.shared == 'false' && github.event.ref != 'refs/heads/staging' }}
+      skip: ${{ needs.change-detection.outputs.shared == 'false' }}
       event_name: ${{ github.event_name }}
