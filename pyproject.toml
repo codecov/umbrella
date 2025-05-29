@@ -10,7 +10,7 @@ required-version = ">=0.7.5"
 [tool.uv.sources]
 timestring = { git = "https://github.com/codecov/timestring", rev = "d37ceacc5954dff3b5bd2f887936a98a668dda42" }
 test-results-parser = { git = "https://github.com/codecov/test-results-parser", rev = "f4f44a3a144471c2b304ed1a6d03945a6d00bd84" }
-shared = { workspace = true } # TODO remove after repo-root migration
+shared = { workspace = true }                                                                                                      # TODO remove after repo-root migration
 
 [tool.uv.workspace]
 members = ["libs/shared"] # TODO remove after repo-root migration
@@ -43,7 +43,7 @@ shared = [
     "prometheus-client>=0.17.1",
     "psycopg2-binary>=2.9.10",
     "pydantic>=2.10.4",
-    "pyjwt>=2.8.0",
+    "pyjwt>=2.8.0,<2.10.0",
     "pyparsing>=2.4.7",
     "python-dateutil>=2.9.0.post0",
     "python-json-logger>=2.0.7",
@@ -53,7 +53,7 @@ shared = [
     "requests>=2.32.3",
     "sentry-sdk>=2.29.1",
     "sentry-sdk[celery]>=2.29.1",
-    "shared", # TODO: remove after repo-root migration
+    "shared",                                # TODO: remove after repo-root migration
     "sqlalchemy<2",
     "stripe>=11.4.1",
     "urllib3==1.26.20",
@@ -121,16 +121,10 @@ dev = [
     "respx>=0.22.0",
     "sqlalchemy-utils>=0.41.2",
     "types-mock>=5.2.0.20250516",
-    "types-requests<2.31.0.7", # this is pinned to an older version because of `urllib3` dependency
+    "types-requests<2.31.0.7",    # this is pinned to an older version because of `urllib3` dependency
     "vcrpy>=7.0.0",
 ]
 
-prod = [
-    { include-group = "codecov-api" },
-    { include-group = "worker" },
-]
+prod = [{ include-group = "codecov-api" }, { include-group = "worker" }]
 
-everything = [
-    { include-group = "prod" },
-    { include-group = "dev" },
-]
+everything = [{ include-group = "prod" }, { include-group = "dev" }]
