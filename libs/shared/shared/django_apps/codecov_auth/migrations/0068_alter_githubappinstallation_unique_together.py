@@ -13,9 +13,8 @@ def eliminate_dupes_helper(apps, schema):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('codecov_auth', '0067_alter_githubappinstallation_app_id'),
+        ("codecov_auth", "0067_alter_githubappinstallation_app_id"),
     ]
 
     operations = [
@@ -24,7 +23,7 @@ class Migration(migrations.Migration):
             reverse_code=migrations.RunPython.noop,
         ),
         migrations.AlterUniqueTogether(
-            name='githubappinstallation',
-            unique_together={('app_id', 'installation_id')},
+            name="githubappinstallation",
+            unique_together={("app_id", "installation_id")},
         ),
     ]
