@@ -39,4 +39,4 @@ jobs:
             --auth-token ${{ secrets.SENTRY_AUTH_TOKEN }} \
             --organization-slug codecov \
             python \
-            --python-path .venv/bin/python
+            --python-path "${{ github.workspace }}/.venv/bin/python"
