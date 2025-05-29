@@ -41,6 +41,11 @@ services:
   # # often easier to just point your gazebo dev server at the staging API.
   # # If you do want to use this, uncomment this service and comment out the 
   # # above frontend service.
+  # #
+  # # If you do this and want to prevent docker-compose.yml from showing up in
+  # # your `git status`, you can do so with:
+  # #
+  # # git update-index --assume-unchanged docker-compose.yml
   # # -------
   # frontend:
   #   image: node:22-alpine
