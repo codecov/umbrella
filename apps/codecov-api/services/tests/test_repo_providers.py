@@ -13,6 +13,7 @@ from codecov_auth.models import (
     Service,
 )
 from services.repo_providers import RepoProviderService, get_token_refresh_callback
+from shared.django_apps.codecov_auth.tests.factories import GithubAppInstallationFactory
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from shared.torngit import Bitbucket, Github, Gitlab
 from utils.encryption import encryptor
@@ -43,19 +44,18 @@ def test__is_using_integration_deprecated_flow(using_integration, db):
     assert RepoProviderService()._is_using_integration(None, repo) == using_integration
 
 
-def test__is_using_integration_ghapp_covers_all_repos(db):
+@patch("shared.django_apps.codecov_auth.models.get_config")
+def test__is_using_integration_ghapp_covers_all_repos(mock_get_config, db):
+    mock_get_config.return_value = 12345
+
     owner = OwnerFactory.create(service="github")
     repo = RepositoryFactory.create(author=owner)
     other_repo_same_owner = RepositoryFactory.create(author=owner)
     repo_different_owner = RepositoryFactory.create()
     assert repo.author != repo_different_owner.author
-    ghapp_installation = GithubAppInstallation(
-        name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-        owner=owner,
-        repository_service_ids=None,
-        installation_id=12345,
+    ghapp_installation = GithubAppInstallationFactory(
+        owner=owner, installation_id=12345, app_id=12345
     )
-    ghapp_installation.save()
     assert RepoProviderService()._is_using_integration(ghapp_installation, repo) == True
     assert (
         RepoProviderService()._is_using_integration(
@@ -71,7 +71,9 @@ def test__is_using_integration_ghapp_covers_all_repos(db):
     )
 
 
-def test__is_using_integration_ghapp_covers_some_repos(db):
+@patch("shared.django_apps.codecov_auth.models.get_config")
+def test__is_using_integration_ghapp_covers_some_repos(mock_get_config, db):
+    mock_get_config.return_value = 12345
     owner = OwnerFactory.create(service="github")
     repo = RepositoryFactory.create(author=owner)
     other_repo_same_owner = RepositoryFactory.create(author=owner)
@@ -82,6 +84,7 @@ def test__is_using_integration_ghapp_covers_some_repos(db):
         owner=owner,
         repository_service_ids=[repo.service_id],
         installation_id=12345,
+        app_id=12345,
     )
     ghapp_installation.save()
     assert RepoProviderService()._is_using_integration(ghapp_installation, repo) == True
@@ -336,16 +339,21 @@ class TestRepoProviderService(TestCase):
         assert adapter.data["owner"]["service_id"] == owner.service_id
 
     @pytest.mark.asyncio
+    @patch("shared.django_apps.codecov_auth.models.get_config")
     @patch(
         "services.repo_providers.RepoProviderService._get_adapter",
         return_value="torngit_adapter",
     )
-    async def test_async_get_adapter(self, mock__get_adapter):
+    async def test_async_get_adapter(self, mock__get_adapter, mock_get_config):
+        # Mock the default app ID to match what we're setting
+        mock_get_config.return_value = 1234
+
         owner = await self.get_owner_gh()
         ghapp_installation = GithubAppInstallation(
             name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
             installation_id=1234,
             owner=owner,
+            app_id=1234,
             repository_service_ids=None,
         )
         await ghapp_installation.asave()

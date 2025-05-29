@@ -8,8 +8,9 @@ from django.test import TestCase
 from rest_framework.exceptions import Throttled, ValidationError
 
 from billing.helpers import mock_all_plans_and_tiers
-from codecov_auth.models import GithubAppInstallation, Service
+from codecov_auth.models import Service
 from reports.tests.factories import CommitReportFactory, UploadFactory
+from shared.django_apps.codecov_auth.tests.factories import GithubAppInstallationFactory
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -37,12 +38,11 @@ class TestGithubAppInstallationUsage(TestCase):
         owner = OwnerFactory(service=Service.GITHUB.value, integration_id=None)
         covered_repo = RepositoryFactory(author=owner)
         not_covered_repo = RepositoryFactory(author=owner)
-        ghapp_installation = GithubAppInstallation(
+        GithubAppInstallationFactory(
             owner=owner,
             repository_service_ids=[covered_repo.service_id],
             installation_id=200,
         )
-        ghapp_installation.save()
         assert ghapp_installation_id_to_use(covered_repo) == 200
         assert ghapp_installation_id_to_use(not_covered_repo) is None
 

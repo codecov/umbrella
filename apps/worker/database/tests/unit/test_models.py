@@ -13,9 +13,7 @@ from database.models import (
     Repository,
 )
 from database.models.core import (
-    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
     AccountsUsers,
-    GithubAppInstallation,
 )
 from database.tests.factories import (
     BranchFactory,
@@ -26,7 +24,7 @@ from database.tests.factories import (
     PullFactory,
     RepositoryFactory,
 )
-from database.tests.factories.core import UserFactory
+from database.tests.factories.core import GithubAppInstallationFactory, UserFactory
 from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.storage.exceptions import FileNotInStorageError
 
@@ -401,12 +399,9 @@ class TestGithubAppInstallationModel:
         repo2 = RepositoryFactory.create(owner=owner)
         repo3 = RepositoryFactory.create(owner=owner)
         other_repo_different_owner = RepositoryFactory.create(owner=other_owner)
-        installation_obj = GithubAppInstallation(
+        installation_obj = GithubAppInstallationFactory(
             owner=owner,
-            repository_service_ids=None,
             installation_id=100,
-            # name would be set by the API
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
         )
         dbsession.add_all([owner, other_owner, repo1, repo2, repo3, installation_obj])
         dbsession.flush()
@@ -430,7 +425,7 @@ class TestGithubAppInstallationModel:
         repo = RepositoryFactory(owner=owner)
         same_owner_other_repo = RepositoryFactory(owner=owner)
         other_repo_different_owner = RepositoryFactory()
-        installation_obj = GithubAppInstallation(
+        installation_obj = GithubAppInstallationFactory(
             owner=owner,
             repository_service_ids=[repo.service_id],
             installation_id=100,
@@ -461,23 +456,19 @@ class TestGithubAppInstallationModel:
 
     def test_is_configured(self, dbsession: Session):
         owner = OwnerFactory()
-        installation_obj_default = GithubAppInstallation(
+        installation_obj_default = GithubAppInstallationFactory(
             owner=owner,
-            repository_service_ids=None,
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
             installation_id=100,
         )
-        installation_obj_configured = GithubAppInstallation(
+        installation_obj_configured = GithubAppInstallationFactory(
             owner=owner,
-            repository_service_ids=None,
             name="my_installation",
             installation_id=100,
             app_id=10,
             pem_path="some_path",
         )
-        installation_obj_not_configured = GithubAppInstallation(
+        installation_obj_not_configured = GithubAppInstallationFactory(
             owner=owner,
-            repository_service_ids=None,
             installation_id=100,
             name="my_installation",
         )

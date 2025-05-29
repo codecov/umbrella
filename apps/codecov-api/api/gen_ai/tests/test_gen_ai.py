@@ -6,7 +6,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from codecov_auth.models import GithubAppInstallation
+from shared.django_apps.codecov_auth.tests.factories import GithubAppInstallationFactory
 from shared.django_apps.core.tests.factories import OwnerFactory
 
 PAYLOAD_SECRET = b"testixik8qdauiab1yiffydimvi72ekq"
@@ -75,40 +75,48 @@ class GenAIAuthViewTests(APITestCase):
 
     @patch("api.gen_ai.views.get_config", return_value=PAYLOAD_SECRET)
     def test_authorized(self, mock_config):
-        owner = OwnerFactory(service="github", service_id="owner2", username="test2")
-        GithubAppInstallation.objects.create(
-            installation_id=12345,
-            owner=owner,
-            name="ai-features",
-            repository_service_ids=["101", "202"],
-        )
-        payload = b'{"external_owner_id":"owner2","repo_service_id":"101"}'
-        sig, data = sign_payload(payload)
-        response = self.client.post(
-            VIEW_URL,
-            data=data,
-            content_type="application/json",
-            HTTP_HTTP_X_GEN_AI_AUTH_SIGNATURE=sig,
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, {"is_valid": True})
+        with patch("api.gen_ai.views.AI_FEATURES_GH_APP_ID", 12345):
+            owner = OwnerFactory(
+                service="github", service_id="owner2", username="test2"
+            )
+            GithubAppInstallationFactory(
+                installation_id=12345,
+                owner=owner,
+                name="ai-features",
+                repository_service_ids=["101", "202"],
+                app_id=12345,
+            )
+            payload = b'{"external_owner_id":"owner2","repo_service_id":"101"}'
+            sig, data = sign_payload(payload)
+            response = self.client.post(
+                VIEW_URL,
+                data=data,
+                content_type="application/json",
+                HTTP_HTTP_X_GEN_AI_AUTH_SIGNATURE=sig,
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(response.data, {"is_valid": True})
 
     @patch("api.gen_ai.views.get_config", return_value=PAYLOAD_SECRET)
     def test_unauthorized(self, mock_config):
-        owner = OwnerFactory(service="github", service_id="owner3", username="test3")
-        GithubAppInstallation.objects.create(
-            installation_id=2,
-            owner=owner,
-            name="ai-features",
-            repository_service_ids=["303", "404"],
-        )
-        payload = b'{"external_owner_id":"owner3","repo_service_id":"101"}'
-        sig, data = sign_payload(payload)
-        response = self.client.post(
-            VIEW_URL,
-            data=data,
-            content_type="application/json",
-            HTTP_HTTP_X_GEN_AI_AUTH_SIGNATURE=sig,
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, {"is_valid": False})
+        with patch("api.gen_ai.views.AI_FEATURES_GH_APP_ID", 12345):
+            owner = OwnerFactory(
+                service="github", service_id="owner3", username="test3"
+            )
+            GithubAppInstallationFactory(
+                installation_id=2,
+                owner=owner,
+                name="ai-features",
+                repository_service_ids=["303", "404"],
+                app_id=12345,
+            )
+            payload = b'{"external_owner_id":"owner3","repo_service_id":"101"}'
+            sig, data = sign_payload(payload)
+            response = self.client.post(
+                VIEW_URL,
+                data=data,
+                content_type="application/json",
+                HTTP_HTTP_X_GEN_AI_AUTH_SIGNATURE=sig,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data, {"is_valid": False})

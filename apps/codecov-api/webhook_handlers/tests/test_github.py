@@ -17,6 +17,7 @@ from codecov_auth.models import (
     Owner,
     Service,
 )
+from shared.django_apps.codecov_auth.tests.factories import GithubAppInstallationFactory
 from shared.django_apps.core.tests.factories import (
     BranchFactory,
     CommitFactory,
@@ -61,7 +62,9 @@ class GithubWebhookHandlerTests(APITestCase):
 
     @pytest.fixture(autouse=True)
     def mock_ai_features_app_id(self, mocker):
-        mock_config_helper(mocker, configs={"github.ai_features_app_id": 9999})
+        mock_config_helper(
+            mocker, configs={"github.ai_features_app_id": AI_FEATURES_GH_APP_ID}
+        )
 
     @pytest.fixture(autouse=True)
     def mock_default_app_id(self, mocker):
@@ -772,13 +775,11 @@ class GithubWebhookHandlerTests(APITestCase):
     def test_installation_update_repos_existing_ghapp_installation(self):
         owner = OwnerFactory(service=Service.GITHUB.value)
         owner.save()
-        installation = GithubAppInstallation(
+        installation = GithubAppInstallationFactory(
             owner=owner,
             repository_service_ids=["repo1", "repo2"],
             installation_id=4,
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
         )
-        installation.save()
         assert owner.github_app_installations.count() == 1
 
         self._post_event_data(
@@ -788,7 +789,7 @@ class GithubWebhookHandlerTests(APITestCase):
                     "id": 4,
                     "repository_selection": "selected",
                     "account": {"id": owner.service_id, "login": owner.username},
-                    "app_id": 15,
+                    "app_id": installation.app_id,
                 },
                 "repositories": [
                     {"id": "repo1", "node_id": "R_node1"},
@@ -828,10 +829,11 @@ class GithubWebhookHandlerTests(APITestCase):
         repo1.save()
         repo2.save()
 
-        ghapp_installation = GithubAppInstallation(
+        ghapp_installation = GithubAppInstallationFactory(
             installation_id=25,
             repository_service_ids=[repo1.service_id, repo2.service_id],
             owner=owner,
+            app_id=DEFAULT_APP_ID,
         )
         ghapp_installation.save()
 
@@ -844,7 +846,7 @@ class GithubWebhookHandlerTests(APITestCase):
                     "id": 25,
                     "repository_selection": "selected",
                     "account": {"id": owner.service_id, "login": owner.username},
-                    "app_id": 15,
+                    "app_id": DEFAULT_APP_ID,
                 },
                 "repositories": [
                     {"id": "12321", "node_id": "R_kgDOG2tZYQ"},
@@ -884,18 +886,15 @@ class GithubWebhookHandlerTests(APITestCase):
         owner = OwnerFactory(service=Service.GITHUB.value)
         repo1 = RepositoryFactory(author=owner)
         repo2 = RepositoryFactory(author=owner)
-        installation = GithubAppInstallation(
+        installation = GithubAppInstallationFactory(
             owner=owner,
             repository_service_ids=[repo1.service_id],
             installation_id=12,
-            app_id=2500,
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
             pem_path="some_path",
         )
         owner.save()
         repo1.save()
         repo2.save()
-        installation.save()
 
         assert owner.github_app_installations.exists()
         assert installation.is_repo_covered_by_integration(repo2) is False
@@ -907,7 +906,7 @@ class GithubWebhookHandlerTests(APITestCase):
                     "id": installation.installation_id,
                     "repository_selection": "selected",
                     "account": {"id": owner.service_id, "login": owner.username},
-                    "app_id": 15,
+                    "app_id": installation.app_id,
                 },
                 "repositories_added": [
                     {"id": repo2.service_id, "node_id": "R_xDOGxCAT"}
@@ -940,8 +939,11 @@ class GithubWebhookHandlerTests(APITestCase):
         owner = OwnerFactory(service=Service.GITHUB.value)
         repo1 = RepositoryFactory(author=owner)
         repo2 = RepositoryFactory(author=owner)
-        installation = GithubAppInstallation(
-            owner=owner, repository_service_ids=[repo1.service_id], installation_id=12
+        installation = GithubAppInstallationFactory(
+            owner=owner,
+            repository_service_ids=[repo1.service_id],
+            installation_id=12,
+            app_id=DEFAULT_APP_ID,
         )
 
         owner.save()
@@ -958,7 +960,7 @@ class GithubWebhookHandlerTests(APITestCase):
                     "id": 12,
                     "repository_selection": "all",
                     "account": {"id": owner.service_id, "login": owner.username},
-                    "app_id": 15,
+                    "app_id": DEFAULT_APP_ID,
                 },
                 "repositories_added": [{"id": repo2.service_id}],
                 "repositories_removed": [],
@@ -1034,7 +1036,7 @@ class GithubWebhookHandlerTests(APITestCase):
         using_integration,
         repos_affected: None,
     )
-    def test_installation_repositories_with_other_actions_sets_owner_itegration_id_if_none(
+    def test_installation_repositories_with_other_actions_sets_owner_integration_id_if_none(
         self,
     ):
         installation_id = 44

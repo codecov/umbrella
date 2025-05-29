@@ -1,10 +1,10 @@
 import pytest
 
 from database.enums import Decoration, Notification, NotificationState
-from database.models.core import GithubAppInstallation
 from database.tests.factories import (
     CommitFactory,
     CommitNotificationFactory,
+    GithubAppInstallationFactory,
     PullFactory,
     RepositoryFactory,
 )
@@ -86,7 +86,9 @@ class TestCommitNotificationsServiceTestCase:
     ):
         comparison.enriched_pull = None
         commit = comparison.head.commit
-        app = GithubAppInstallation(owner=commit.repository.owner, installation_id=1234)
+        app = GithubAppInstallationFactory(
+            owner=commit.repository.owner, installation_id=1234
+        )
         dbsession.add(app)
         dbsession.flush()
         notifier = CommentNotifier(

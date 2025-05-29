@@ -9,9 +9,13 @@ from celery.exceptions import SoftTimeLimitExceeded
 from database.enums import Decoration, Notification, NotificationState
 from database.models.core import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-    GithubAppInstallation,
 )
-from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
+from database.tests.factories import (
+    CommitFactory,
+    GithubAppInstallationFactory,
+    PullFactory,
+    RepositoryFactory,
+)
 from services.comparison import ComparisonProxy
 from services.comparison.types import Comparison, EnrichedPull, FullCommit
 from services.notification import NotificationService
@@ -146,11 +150,9 @@ class TestNotificationService:
     @pytest.mark.django_db
     def test_should_use_checks_notifier_ghapp_all_repos_covered(self, dbsession):
         repository = RepositoryFactory.create(owner__service="github")
-        ghapp_installation = GithubAppInstallation(
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+        ghapp_installation = GithubAppInstallationFactory(
             installation_id=456789,
             owner=repository.owner,
-            repository_service_ids=None,
         )
         dbsession.add(ghapp_installation)
         dbsession.flush()
@@ -170,11 +172,9 @@ class TestNotificationService:
         repository = RepositoryFactory.create(
             owner__service="github", owner__plan=PlanName.TEAM_MONTHLY.value
         )
-        ghapp_installation = GithubAppInstallation(
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+        ghapp_installation = GithubAppInstallationFactory(
             installation_id=456789,
             owner=repository.owner,
-            repository_service_ids=None,
         )
         dbsession.add(ghapp_installation)
         dbsession.flush()
@@ -199,11 +199,9 @@ class TestNotificationService:
         repository = RepositoryFactory.create(
             owner__service="github", owner__plan=PlanName.TEAM_MONTHLY.value
         )
-        ghapp_installation = GithubAppInstallation(
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+        ghapp_installation = GithubAppInstallationFactory(
             installation_id=456789,
             owner=repository.owner,
-            repository_service_ids=None,
         )
         dbsession.add(ghapp_installation)
         dbsession.flush()
@@ -228,11 +226,9 @@ class TestNotificationService:
         repository = RepositoryFactory.create(
             owner__service="github", owner__plan=PlanName.CODECOV_PRO_MONTHLY.value
         )
-        ghapp_installation = GithubAppInstallation(
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+        ghapp_installation = GithubAppInstallationFactory(
             installation_id=456789,
             owner=repository.owner,
-            repository_service_ids=None,
         )
         dbsession.add(ghapp_installation)
         dbsession.flush()
@@ -262,7 +258,7 @@ class TestNotificationService:
     ):
         repository = RepositoryFactory.create(owner__service="github")
         other_repo_same_owner = RepositoryFactory.create(owner=repository.owner)
-        ghapp_installation = GithubAppInstallation(
+        ghapp_installation = GithubAppInstallationFactory(
             name=gh_installation_name,
             installation_id=456789,
             owner=repository.owner,

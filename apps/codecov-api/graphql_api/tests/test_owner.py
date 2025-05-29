@@ -12,13 +12,14 @@ from billing.helpers import mock_all_plans_and_tiers
 from codecov.commands.exceptions import (
     UnauthorizedGuestAccess,
 )
-from codecov_auth.models import GithubAppInstallation, OwnerProfile
+from codecov_auth.models import OwnerProfile
 from graphql_api.types.repository.repository import TOKEN_UNAVAILABLE
 from reports.tests.factories import CommitReportFactory, UploadFactory
 from shared.django_apps.codecov_auth.tests.factories import (
     AccountFactory,
     AccountsUsersFactory,
     GetAdminProviderAdapter,
+    GithubAppInstallationFactory,
     OktaSettingsFactory,
     UserFactory,
 )
@@ -949,107 +950,89 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         data = self.gql_request(query, owner=current_org, provider="bb")
         assert data["owner"]["isGithubRateLimited"] == False
 
-    @patch("services.self_hosted.get_config")
-    def test_ai_features_enabled(self, get_config_mock):
-        current_org = OwnerFactory(
-            username="random-plan-user",
-            service="github",
-        )
+    def test_ai_features_enabled(self):
+        # Mock the module-level constant directly
+        with patch("graphql_api.types.owner.owner.AI_FEATURES_GH_APP_ID", 12345):
+            current_org = OwnerFactory(
+                username="random-plan-user",
+                service="github",
+            )
+            GithubAppInstallationFactory(
+                name="ai-features",
+                owner=current_org,
+                installation_id=12345,
+                app_id=12345,
+            )
 
-        get_config_mock.return_value = [
-            {"service": "github", "ai_features_app_id": 12345},
-        ]
-
-        ai_app_installation = GithubAppInstallation(
-            name="ai-features",
-            owner=current_org,
-            repository_service_ids=None,
-            installation_id=12345,
-        )
-
-        ai_app_installation.save()
-
-        query = f"""{{
-            owner(username: "{current_org.username}") {{
-                aiFeaturesEnabled
+            query = f"""{{
+                owner(username: "{current_org.username}") {{
+                    aiFeaturesEnabled
+                }}
             }}
-        }}
 
-        """
+            """
 
-        data = self.gql_request(query, owner=current_org)
-        assert data["owner"]["aiFeaturesEnabled"] == True
+            data = self.gql_request(query, owner=current_org)
+            assert data["owner"]["aiFeaturesEnabled"] == True
 
-    @patch("services.self_hosted.get_config")
-    def test_fetch_repos_ai_features_enabled(self, get_config_mock):
-        get_config_mock.return_value = [
-            {"service": "github", "ai_features_app_id": 12345},
-        ]
+    def test_fetch_repos_ai_features_enabled(self):
+        # Mock the module-level constant directly
+        with patch("graphql_api.types.owner.owner.AI_FEATURES_GH_APP_ID", 12345):
+            GithubAppInstallationFactory(
+                name="ai-features",
+                owner=self.owner,
+                repository_service_ids=["repo-1"],
+                installation_id=12345,
+                app_id=12345,
+            )
 
-        ai_app_installation = GithubAppInstallation(
-            name="ai-features",
-            owner=self.owner,
-            repository_service_ids=["repo-1"],
-            installation_id=12345,
-        )
-
-        ai_app_installation.save()
-
-        query = f"""{{
-            owner(username: "{self.owner.username}") {{
-                aiEnabledRepos
+            query = f"""{{
+                owner(username: "{self.owner.username}") {{
+                    aiEnabledRepos
+                }}
             }}
-        }}
 
-        """
-        data = self.gql_request(query, owner=self.owner)
-        assert data["owner"]["aiEnabledRepos"] == ["a"]
+            """
+            data = self.gql_request(query, owner=self.owner)
+            assert data["owner"]["aiEnabledRepos"] == ["a"]
 
-    @patch("services.self_hosted.get_config")
-    def test_fetch_repos_ai_features_enabled_app_not_configured(self, get_config_mock):
-        current_org = OwnerFactory(
-            username="random-plan-user",
-            service="github",
-        )
+    def test_fetch_repos_ai_features_enabled_app_not_configured(self):
+        # Mock the module-level constant directly
+        with patch("graphql_api.types.owner.owner.AI_FEATURES_GH_APP_ID", 12345):
+            current_org = OwnerFactory(
+                username="random-plan-user",
+                service="github",
+            )
 
-        get_config_mock.return_value = [
-            {"service": "github", "ai_features_app_id": 12345},
-        ]
-
-        query = f"""{{
-            owner(username: "{current_org.username}") {{
-                aiEnabledRepos
+            query = f"""{{
+                owner(username: "{current_org.username}") {{
+                    aiEnabledRepos
+                }}
             }}
-        }}
 
-        """
-        data = self.gql_request(query, owner=current_org)
-        assert data["owner"]["aiEnabledRepos"] is None
+            """
+            data = self.gql_request(query, owner=current_org)
+            assert data["owner"]["aiEnabledRepos"] is None
 
-    @patch("services.self_hosted.get_config")
-    def test_fetch_repos_ai_features_enabled_all_repos(self, get_config_mock):
-        get_config_mock.return_value = [
-            {"service": "github", "ai_features_app_id": 12345},
-        ]
+    def test_fetch_repos_ai_features_enabled_all_repos(self):
+        # Mock the module-level constant directly
+        with patch("graphql_api.types.owner.owner.AI_FEATURES_GH_APP_ID", 12345):
+            GithubAppInstallationFactory(
+                name="ai-features",
+                owner=self.owner,
+                installation_id=12345,
+                app_id=12345,
+            )
 
-        ai_app_installation = GithubAppInstallation(
-            name="ai-features",
-            owner=self.owner,
-            repository_service_ids=None,
-            installation_id=12345,
-        )
-
-        ai_app_installation.save()
-
-        query = f"""{{
-            owner(username: "{self.owner.username}") {{
-                aiEnabledRepos
+            query = f"""{{
+                owner(username: "{self.owner.username}") {{
+                    aiEnabledRepos
+                }}
             }}
-        }}
 
-        """
-        data = self.gql_request(query, owner=self.owner)
-        assert data["owner"]["aiEnabledRepos"] == ["b", "a"]
+            """
+            data = self.gql_request(query, owner=self.owner)
+            assert data["owner"]["aiEnabledRepos"] == ["b", "a"]
 
     def test_fetch_upload_token_required(self):
         owner = OwnerFactory(
@@ -1237,30 +1220,39 @@ class TestOwnerType(GraphQLTestHelper, TestCase):
         assert data == {"data": {"owner": None}}
 
     def test_fetch_repositories_ai_features_enabled(self):
-        ai_app_installation = GithubAppInstallation(
-            name="ai-features",
-            owner=self.owner,
-            repository_service_ids=[],
-            installation_id=12345,
-        )
+        # Mock the module-level constant directly in both files
+        with (
+            patch("graphql_api.types.owner.owner.AI_FEATURES_GH_APP_ID", 12345),
+            patch("graphql_api.actions.repository.AI_FEATURES_GH_APP_ID", 12345),
+        ):
+            GithubAppInstallationFactory(
+                name="ai-features",
+                owner=self.owner,
+                installation_id=12345,
+                app_id=12345,
+            )
 
-        ai_app_installation.save()
-        query = query_repositories % (
-            self.owner.username,
-            "(filters: { aiEnabled: true })",
-            "",
-        )
+            query = query_repositories % (
+                self.owner.username,
+                "(filters: { aiEnabled: true })",
+                "",
+            )
 
-        data = self.gql_request(query, owner=self.owner)
-        repos = paginate_connection(data["owner"]["repositories"])
-        assert repos == [{"name": "a"}, {"name": "b"}]
+            data = self.gql_request(query, owner=self.owner)
+            repos = paginate_connection(data["owner"]["repositories"])
+            assert repos == [{"name": "a"}, {"name": "b"}]
 
     def test_fetch_repositories_ai_features_enabled_no_app_install(self):
-        query = query_repositories % (
-            self.owner.username,
-            "(filters: { aiEnabled: true })",
-            "",
-        )
-        data = self.gql_request(query, owner=self.owner)
-        repos = paginate_connection(data["owner"]["repositories"])
-        assert repos == []
+        # Mock the module-level constant directly in both files
+        with (
+            patch("graphql_api.types.owner.owner.AI_FEATURES_GH_APP_ID", 12345),
+            patch("graphql_api.actions.repository.AI_FEATURES_GH_APP_ID", 12345),
+        ):
+            query = query_repositories % (
+                self.owner.username,
+                "(filters: { aiEnabled: true })",
+                "",
+            )
+            data = self.gql_request(query, owner=self.owner)
+            repos = paginate_connection(data["owner"]["repositories"])
+            assert repos == []

@@ -3,11 +3,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from database.models.core import (
-    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-    GithubAppInstallation,
     Owner,
 )
-from database.tests.factories.core import OwnerFactory
+from database.tests.factories.core import GithubAppInstallationFactory, OwnerFactory
 from services.bundle_analysis.notify.helpers import (
     bytes_readable,
     get_github_app_used,
@@ -49,10 +47,8 @@ def github_owner_no_apps(dbsession) -> Owner:
 @pytest.fixture
 def github_owner_with_apps(dbsession) -> Owner:
     owner = OwnerFactory(service="github")
-    ghapp = GithubAppInstallation(
-        ownerid=owner.ownerid,
+    ghapp = GithubAppInstallationFactory(
         owner=owner,
-        name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
         installation_id=1234,
     )
     dbsession.add_all([owner, ghapp])

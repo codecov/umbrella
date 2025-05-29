@@ -4,9 +4,14 @@ from unittest.mock import PropertyMock
 
 import pytest
 
-from database.models.core import Commit, GithubAppInstallation, Pull, Repository
+from database.models.core import Commit, Pull, Repository
 from database.tests.factories import RepositoryFactory
-from database.tests.factories.core import CommitFactory, OwnerFactory, PullFactory
+from database.tests.factories.core import (
+    CommitFactory,
+    GithubAppInstallationFactory,
+    OwnerFactory,
+    PullFactory,
+)
 from services.comparison import ComparisonContext, ComparisonProxy
 from services.comparison.types import Comparison, FullCommit, ReportUploadedCount
 from services.decoration import Decoration
@@ -4923,7 +4928,9 @@ class TestMessagesToUserSection:
     ):
         if owner_has_apps:
             repo.owner.github_app_installations = [
-                GithubAppInstallation(owner=repo.owner, app_id=10, installation_id=1000)
+                GithubAppInstallationFactory(
+                    owner=repo.owner, app_id=10, installation_id=1000
+                )
             ]
         commit = CommitFactory(repository=repo)
         mock_head = mocker.MagicMock(commit=commit)

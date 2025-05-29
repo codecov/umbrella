@@ -1,10 +1,13 @@
 from sqlalchemy.orm.session import Session
 
 from database.models.core import (
-    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
     GithubAppInstallation,
 )
-from database.tests.factories.core import OwnerFactory, RepositoryFactory
+from database.tests.factories.core import (
+    GithubAppInstallationFactory,
+    OwnerFactory,
+    RepositoryFactory,
+)
 from tasks.backfill_existing_gh_app_installations import (
     BackfillExistingIndividualGHAppInstallationTask,
 )
@@ -32,11 +35,9 @@ class TestBackfillWithPreviousGHAppInstallation:
         self, mocker, mock_repo_provider, dbsession: Session
     ):
         owner = OwnerFactory(service="github", integration_id=12345)
-        gh_app_installation = GithubAppInstallation(
+        gh_app_installation = GithubAppInstallationFactory(
             owner=owner,
-            repository_service_ids=None,
             installation_id=owner.integration_id,
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
         )
 
         dbsession.add_all([owner, gh_app_installation])
@@ -71,19 +72,17 @@ class TestBackfillWithPreviousGHAppInstallation:
         self, mocker, mock_repo_provider, dbsession: Session
     ):
         owner = OwnerFactory(service="github", integration_id=123)
-        gh_app_installation = GithubAppInstallation(
+        gh_app_installation = GithubAppInstallationFactory(
             owner=owner,
             repository_service_ids=[237],
             installation_id=owner.integration_id,
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
         )
 
         owner_two = OwnerFactory(service="github", integration_id=456)
-        gh_app_installation_two = GithubAppInstallation(
+        gh_app_installation_two = GithubAppInstallationFactory(
             owner=owner_two,
             repository_service_ids=[748],
             installation_id=owner_two.integration_id,
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
         )
 
         dbsession.add_all(
@@ -132,11 +131,9 @@ class TestBackfillWithPreviousGHAppInstallation:
         self, mocker, mock_repo_provider, dbsession: Session
     ):
         owner = OwnerFactory(service="github", integration_id=12345)
-        gh_app_installation = GithubAppInstallation(
+        gh_app_installation = GithubAppInstallationFactory(
             owner=owner,
-            repository_service_ids=None,
             installation_id=owner.integration_id,
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
         )
 
         # Create repos for mock endpoint and for DB

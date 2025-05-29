@@ -479,14 +479,12 @@ class GithubWebhookHandler(APIView):
         )
 
         installation_id = request.data["installation"]["id"]
-
-        ghapp_installation, _ = GithubAppInstallation.objects.get_or_create(
-            installation_id=installation_id, owner=owner
-        )
         app_id = request.data["installation"]["app_id"]
+        ghapp_installation, _ = GithubAppInstallation.objects.get_or_create(
+            installation_id=installation_id, app_id=app_id, owner=owner
+        )
         # Either update or set
         # But this value shouldn't change for the installation, so doesn't matter
-        ghapp_installation.app_id = app_id
         ghapp_installation.name = self._decide_app_name(ghapp_installation)
 
         all_repos_affected = request.data.get("repository_selection") == "all"
@@ -527,9 +525,10 @@ class GithubWebhookHandler(APIView):
         # https://docs.github.com/en/webhooks/webhook-events-and-payloads#installation
         if action == "deleted":
             if event == GitHubWebhookEvents.INSTALLATION:
+                app_id = request.data["installation"]["app_id"]
                 ghapp_installation: GithubAppInstallation | None = (
                     owner.github_app_installations.filter(
-                        installation_id=installation_id
+                        installation_id=installation_id, app_id=app_id
                     ).first()
                 )
                 if ghapp_installation is not None:
@@ -547,9 +546,10 @@ class GithubWebhookHandler(APIView):
             # GithubWebhookEvents.INSTALLTION_REPOSITORIES also execute this code
             # because of deprecated flow. But the GithubAppInstallation shouldn't be changed
             if event == GitHubWebhookEvents.INSTALLATION:
+                app_id = request.data["installation"]["app_id"]
                 ghapp_installation, was_created = (
                     GithubAppInstallation.objects.get_or_create(
-                        installation_id=installation_id, owner=owner
+                        installation_id=installation_id, app_id=app_id, owner=owner
                     )
                 )
                 if was_created:
@@ -577,10 +577,8 @@ class GithubWebhookHandler(APIView):
                         },
                     )
 
-                app_id = request.data["installation"]["app_id"]
                 # Either update or set
                 # But this value shouldn't change for the installation, so doesn't matter
-                ghapp_installation.app_id = app_id
                 ghapp_installation.name = self._decide_app_name(ghapp_installation)
 
                 affects_all_repositories = (

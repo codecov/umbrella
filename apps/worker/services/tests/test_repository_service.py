@@ -8,13 +8,12 @@ from freezegun import freeze_time
 
 from database.models import Owner
 from database.models.core import (
-    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-    GithubAppInstallation,
     Pull,
     Repository,
 )
 from database.tests.factories import (
     CommitFactory,
+    GithubAppInstallationFactory,
     OwnerFactory,
     PullFactory,
     RepositoryFactory,
@@ -135,19 +134,16 @@ def test_get_repo_provider_service_github_with_installations(dbsession, mocker, 
         "shared.bots.github_apps.get_github_integration_token",
         return_value="installation_token",
     )
-    installation_0 = GithubAppInstallation(
-        name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+    installation_0 = GithubAppInstallationFactory(
         installation_id=1200,
         app_id=200,
-        repository_service_ids=None,
         owner=repo.owner,
     )
-    installation_1 = GithubAppInstallation(
+    installation_1 = GithubAppInstallationFactory(
         name="my_app",
         installation_id=1300,
         app_id=300,
         pem_path="path",
-        repository_service_ids=None,
         owner=repo.owner,
     )
     repo.owner.github_app_installations = [installation_0, installation_1]
@@ -1254,7 +1250,7 @@ class TestGetRepoProviderServiceForSpecificCommit:
         mock_redis,
     ):
         commit = CommitFactory(repository__owner__service="github")
-        app = GithubAppInstallation(
+        app = GithubAppInstallationFactory(
             owner=commit.repository.owner, app_id=12, installation_id=1200
         )
         dbsession.add_all([commit, app])

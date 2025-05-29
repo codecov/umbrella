@@ -257,23 +257,23 @@ class GithubAppInstallation(CodecovBaseModel, MixinBaseClass):
 
     # replacement for owner.integration_id
     # installation id GitHub sends us in the installation-related webhook events
-    installation_id = Column(types.Integer, server_default=FetchedValue())
+    installation_id = Column(types.Integer, nullable=False)
     name = Column(types.Text, default=GITHUB_APP_INSTALLATION_DEFAULT_NAME)
     # if null, all repos are covered by this installation
     # otherwise, it's a list of repo.id values
-    repository_service_ids = Column(
-        postgresql.ARRAY(types.Text), server_default=FetchedValue()
-    )
+    repository_service_ids = Column(postgresql.ARRAY(types.Text))
+
     # Data required to get a token from gh
-    app_id = Column(types.Text, server_default=FetchedValue())
-    pem_path = Column(types.Text, server_default=FetchedValue())
+    # app_id and pem_path for default apps are configured in the install YAML
+    app_id = Column(types.Integer, nullable=False)
+    pem_path = Column(types.Text)
+
+    is_suspended = Column(types.Boolean, default=False)
 
     ownerid = Column("owner_id", types.Integer, ForeignKey("owners.ownerid"))
     owner = relationship(
         Owner, foreign_keys=[ownerid], back_populates="github_app_installations"
     )
-
-    is_suspended = Column(types.Boolean, default=False)
 
     def repository_queryset(self, dbsession: Session):
         """Returns a query set of repositories covered by this installation"""

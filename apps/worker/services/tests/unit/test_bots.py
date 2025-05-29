@@ -4,10 +4,13 @@ from unittest.mock import patch
 import pytest
 
 from database.models.core import (
-    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
     GithubAppInstallation,
 )
-from database.tests.factories.core import OwnerFactory, RepositoryFactory
+from database.tests.factories.core import (
+    GithubAppInstallationFactory,
+    OwnerFactory,
+    RepositoryFactory,
+)
 from shared.bots import get_adapter_auth_information
 from shared.bots.types import AdapterAuthInformation
 from shared.rate_limits import gh_app_key_name, owner_key_name
@@ -103,10 +106,9 @@ class TestGettingAdapterAuthInformation:
         )
         def test_select_owner_single_installation(self, dbsession):
             installations = [
-                GithubAppInstallation(
+                GithubAppInstallationFactory(
                     repository_service_ids=None,
                     installation_id=1200,
-                    name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
                     created_at=datetime.datetime.now(datetime.UTC),
@@ -141,10 +143,9 @@ class TestGettingAdapterAuthInformation:
             self, dbsession
         ):
             installations = [
-                GithubAppInstallation(
+                GithubAppInstallationFactory(
                     repository_service_ids=None,
                     installation_id=1200,
-                    name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
                     created_at=datetime.datetime.now(datetime.UTC),
@@ -202,17 +203,14 @@ class TestGettingAdapterAuthInformation:
         )
         def test_select_owner_multiple_installations_default_name(self, dbsession):
             installations = [
-                GithubAppInstallation(
-                    repository_service_ids=None,
+                GithubAppInstallationFactory(
                     installation_id=1200,
-                    name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
                     created_at=datetime.datetime.now(datetime.UTC),
                 ),
                 # This should be ignored in the selection because of the name
-                GithubAppInstallation(
-                    repository_service_ids=None,
+                GithubAppInstallationFactory(
                     installation_id=1300,
                     name="my_dedicated_app",
                     app_id=300,
@@ -247,17 +245,14 @@ class TestGettingAdapterAuthInformation:
         )
         def test_select_owner_multiple_installations_custom_name(self, dbsession):
             installations = [
-                GithubAppInstallation(
-                    repository_service_ids=None,
+                GithubAppInstallationFactory(
                     installation_id=1200,
-                    name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
                     created_at=datetime.datetime.now(datetime.UTC),
                 ),
                 # This should be selected first
-                GithubAppInstallation(
-                    repository_service_ids=None,
+                GithubAppInstallationFactory(
                     installation_id=1300,
                     name="my_dedicated_app",
                     app_id=300,
@@ -454,10 +449,8 @@ class TestGettingAdapterAuthInformation:
         )
         def test_select_repo_single_installation(self, dbsession):
             installations = [
-                GithubAppInstallation(
-                    repository_service_ids=None,
+                GithubAppInstallationFactory(
                     installation_id=1200,
-                    name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
                     created_at=datetime.datetime.now(datetime.UTC),
@@ -521,17 +514,14 @@ class TestGettingAdapterAuthInformation:
         )
         def test_select_repo_multiple_installations_default_name(self, dbsession):
             installations = [
-                GithubAppInstallation(
-                    repository_service_ids=None,
+                GithubAppInstallationFactory(
                     installation_id=1200,
-                    name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
                     created_at=datetime.datetime.now(datetime.UTC),
                 ),
                 # This should be ignored in the selection because of the name
-                GithubAppInstallation(
-                    repository_service_ids=None,
+                GithubAppInstallationFactory(
                     installation_id=1300,
                     name="my_dedicated_app",
                     app_id=300,
@@ -569,17 +559,14 @@ class TestGettingAdapterAuthInformation:
         )
         def test_select_repo_multiple_installations_custom_name(self, dbsession):
             installations = [
-                GithubAppInstallation(
-                    repository_service_ids=None,
+                GithubAppInstallationFactory(
                     installation_id=1200,
-                    name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
                     created_at=datetime.datetime.now(datetime.UTC),
                 ),
                 # This should be selected first
-                GithubAppInstallation(
-                    repository_service_ids=None,
+                GithubAppInstallationFactory(
                     installation_id=1300,
                     name="my_dedicated_app",
                     app_id=300,

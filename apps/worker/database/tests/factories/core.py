@@ -318,3 +318,15 @@ class UploadErrorFactory(Factory):
     report_upload = factory.SubFactory(UploadFactory)
     error_code = "error"
     error_params = {"error_message": "error message"}
+
+
+class GithubAppInstallationFactory(Factory):
+    class Meta:
+        model = models.GithubAppInstallation
+
+    installation_id = factory.Sequence(lambda n: n + 1000)
+    name = models.GITHUB_APP_INSTALLATION_DEFAULT_NAME
+    repository_service_ids = None
+    app_id = factory.Sequence(lambda n: n + 100)
+    pem_path = None
+    owner = factory.SubFactory(OwnerFactory)

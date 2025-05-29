@@ -3,8 +3,12 @@ from unittest.mock import MagicMock
 import pytest
 from redis import RedisError
 
-from database.models.core import GithubAppInstallation, Owner
-from database.tests.factories.core import CommitFactory, RepositoryFactory
+from database.models.core import Owner
+from database.tests.factories.core import (
+    CommitFactory,
+    GithubAppInstallationFactory,
+    RepositoryFactory,
+)
 from services.github import get_github_app_for_commit, set_github_app_for_commit
 
 
@@ -16,7 +20,7 @@ class TestGetSetGithubAppsToCommits:
         return commit
 
     def _get_app(self, owner: Owner, dbsession):
-        app = GithubAppInstallation(
+        app = GithubAppInstallationFactory(
             owner=owner, installation_id=1250, app_id=250, pem_path="some_path"
         )
         dbsession.add(app)

@@ -1,8 +1,4 @@
-from database.models.core import (
-    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-    GithubAppInstallation,
-)
-from database.tests.factories import OwnerFactory
+from database.tests.factories import GithubAppInstallationFactory, OwnerFactory
 from services.owner import get_owner_provider_service
 from shared.rate_limits import gh_app_key_name, owner_key_name
 from shared.reports.types import UploadType
@@ -49,10 +45,8 @@ class TestOwnerServiceTestCase:
             bot=None,
         )
         dbsession.add(owner)
-        installation = GithubAppInstallation(
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+        installation = GithubAppInstallationFactory(
             installation_id=1500,
-            repository_service_ids=None,
             owner=owner,
         )
         dbsession.add(installation)
@@ -69,7 +63,7 @@ class TestOwnerServiceTestCase:
                 "id": installation.id,
                 "installation_id": 1500,
                 "pem_path": None,
-                "app_id": None,
+                "app_id": installation.app_id,
             },
             "fallback_installations": [],
             "additional_data": {},
@@ -80,7 +74,7 @@ class TestOwnerServiceTestCase:
             "key": "integration_token",
             "username": "installation_1500",
             "entity_name": gh_app_key_name(
-                installation_id=installation.installation_id, app_id=None
+                installation_id=installation.installation_id, app_id=installation.app_id
             ),
         }
 

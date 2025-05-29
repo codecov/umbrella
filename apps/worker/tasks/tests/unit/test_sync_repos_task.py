@@ -10,11 +10,11 @@ from freezegun import freeze_time
 from redis.exceptions import LockError
 
 from database.models import Owner, Repository
-from database.models.core import (
-    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-    GithubAppInstallation,
+from database.tests.factories import (
+    GithubAppInstallationFactory,
+    OwnerFactory,
+    RepositoryFactory,
 )
-from database.tests.factories import OwnerFactory, RepositoryFactory
 from shared.celery_config import (
     sync_repo_languages_gql_task_name,
     sync_repo_languages_task_name,
@@ -515,8 +515,7 @@ class TestSyncReposTaskUnit:
             return_value="installation_token",
         )
 
-        ghapp = GithubAppInstallation(
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+        ghapp = GithubAppInstallationFactory(
             installation_id=1822,
             # inaccurate because this integration should be able to list all repos in the test
             # but the sync_repos should fix this too

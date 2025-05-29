@@ -9,7 +9,7 @@ from celery.exceptions import MaxRetriesExceededError, Retry
 from freezegun import freeze_time
 
 from database.enums import Decoration, Notification, NotificationState
-from database.models.core import CommitNotification, GithubAppInstallation
+from database.models.core import CommitNotification
 from database.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -17,7 +17,11 @@ from database.tests.factories import (
     RepositoryFactory,
     UploadErrorFactory,
 )
-from database.tests.factories.core import ReportFactory, UploadFactory
+from database.tests.factories.core import (
+    GithubAppInstallationFactory,
+    ReportFactory,
+    UploadFactory,
+)
 from database.tests.factories.reports import TestResultReportTotalsFactory
 from helpers.checkpoint_logger import _kwargs_key
 from helpers.checkpoint_logger.flows import UploadFlow
@@ -276,10 +280,10 @@ class TestNotifyTaskHelpers:
         self, cached_id, app_to_save, mocker, dbsession
     ):
         commit = CommitFactory(repository__owner__service="github")
-        app = GithubAppInstallation(
+        app = GithubAppInstallationFactory(
             id_=12, owner=commit.repository.owner, installation_id=123
         )
-        other_app = GithubAppInstallation(
+        other_app = GithubAppInstallationFactory(
             id_=24, owner=commit.repository.owner, installation_id=123
         )
         commit_notifications = [

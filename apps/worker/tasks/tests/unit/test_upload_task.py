@@ -11,13 +11,9 @@ from redis.exceptions import LockError
 
 from database.enums import ReportType
 from database.models import Upload
-from database.models.core import (
-    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-    GithubAppInstallation,
-)
 from database.models.reports import CommitReport
 from database.tests.factories import CommitFactory, OwnerFactory, RepositoryFactory
-from database.tests.factories.core import ReportFactory
+from database.tests.factories.core import GithubAppInstallationFactory, ReportFactory
 from helpers.checkpoint_logger import _kwargs_key
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.exceptions import RepositoryWithoutValidBotError
@@ -1367,10 +1363,8 @@ class TestUploadTaskUnit:
         commit = CommitFactory.create(
             repository__using_integration=False, repository__hookid=None
         )
-        ghapp = GithubAppInstallation(
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+        ghapp = GithubAppInstallationFactory(
             installation_id=1234,
-            repository_service_ids=None,
             owner=commit.repository.owner,
         )
         dbsession.add(ghapp)
