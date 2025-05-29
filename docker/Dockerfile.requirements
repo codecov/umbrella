@@ -54,8 +54,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # RUNTIME STAGE
 FROM $PYTHON_IMAGE
 
-ARG APP_DIR
-
 RUN apt-get update
 RUN apt-get install -y \
     libxml2-dev \

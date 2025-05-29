@@ -53,11 +53,10 @@ export AR_REPO_PREFIX ?= codecov
 
 define api_rule_prefix
 .PHONY: $(1)
-$(1): export APP_DIR := apps/codecov-api
 $(1): export AR_REPO ?= ${AR_REPO_PREFIX}/api
 $(1): export DOCKERHUB_REPO ?= codecov/self-hosted-api
-$(1): export ENTRYPOINT ?= ./prod.sh
-$(1): export DJANGO_SETTINGS_PARENT ?= codecov
+$(1): export ENTRYPOINT ?= ./apps/codecov-api/prod.sh
+$(1): export DJANGO_SETTINGS_PARENT ?= apps.codecov_api.codecov
 endef
 
 # Any API target starting with `proxy` should be forwarded to
@@ -84,11 +83,10 @@ api.%:
 
 define worker_rule_prefix
 .PHONY: $(1)
-$(1): export APP_DIR := apps/worker
 $(1): export AR_REPO ?= ${AR_REPO_PREFIX}/worker
 $(1): export DOCKERHUB_REPO ?= codecov/self-hosted-worker
-$(1): export ENTRYPOINT ?= ./worker.sh
-$(1): export DJANGO_SETTINGS_PARENT ?= django_scaffold
+$(1): export ENTRYPOINT ?= ./apps/worker/worker.sh
+$(1): export DJANGO_SETTINGS_PARENT ?= apps.worker.django_scaffold
 endef
 
 # Any Worker target starting with `shell` should be forwarded to
@@ -109,12 +107,11 @@ worker.%:
 
 define shared_rule_prefix
 .PHONY: $(1)
-$(1): export APP_DIR := libs/shared
 $(1): export AR_REPO ?= ${AR_REPO_PREFIX}/dev-shared
 $(1): export DOCKERHUB_REPO ?= codecov/dev-hosted-shared
-$(1): export COV_SOURCE := ./shared
+$(1): export COV_SOURCE := ./libs/shared/shared
 $(1): export ENTRYPOINT ?= /bin/sh # Dummy value
-$(1): export DJANGO_SETTINGS_PARENT ?= shared.django_apps
+$(1): export DJANGO_SETTINGS_PARENT ?= libs.shared.shared.django_apps
 endef
 
 # All other Shared targets are implemented as generic targets above. Declare the

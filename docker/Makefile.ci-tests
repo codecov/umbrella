@@ -14,7 +14,6 @@ COV_SOURCE ?= "./"
 # - (Optional) COV_SOURCE: Directory where relevant source files are located (if sources and tests are separated)
 # - DOCKER_REPO: Name of the image to load and run tests inside of.
 # - DOCKER_VERSION: Image tag of the above image to load and run tests inside of.
-# - APP_DIR: Directory to bind-mount into the container before running tests.
 ######
 
 # Outside the Docker env: Start up the Docker env for tests.

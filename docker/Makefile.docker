@@ -21,10 +21,6 @@ export TEST_REQS_TAG := test-$(shell echo ${DOCKER_TEST_REQS_SHA} ${REQUIREMENTS
 # then it should not be wrapped.
 #
 # Assumes a number of Makefile variables have been populated:
-# - APP_DIR: the directory within umbrella that images should be "rooted" at.
-#   The requirements image is the same under the hood but each image still
-#   builds with a superficially different `docker/Dockerfile` inside of
-#   `APP_DIR`. Container images are also saved to/loaded from `APP_DIR`.
 # - AR_REPO: the container repository that images should be loaded from or
 #   published to.
 # - DOCKERHUB_REPO: the repository on Docker Hub that images will be published
@@ -55,7 +51,6 @@ _build.local:
 		-t ${AR_REPO}:latest \
 		-t ${AR_REPO}:${VERSION} \
 		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${TEST_REQS_TAG} \
-		--build-arg WORKDIR=/app/${APP_DIR} \
 		--build-arg ENTRYPOINT=${ENTRYPOINT} \
 		--build-arg DJANGO_SETTINGS_PARENT=${DJANGO_SETTINGS_PARENT} \
 		--build-arg BUILD_ENV=local
@@ -76,7 +71,6 @@ _build.app:
 		--label "org.opencontainers.image.revision"="$(full_sha)" \
 		--label "org.opencontainers.image.source"="github.com/codecov/umbrella" \
 		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
-		--build-arg WORKDIR=/app/${APP_DIR} \
 		--build-arg ENTRYPOINT=${ENTRYPOINT} \
 		--build-arg DJANGO_SETTINGS_PARENT=${DJANGO_SETTINGS_PARENT} \
 		--build-arg RELEASE_VERSION=${VERSION} \
@@ -107,7 +101,6 @@ _build.self-hosted-base:
 		-t ${DOCKERHUB_REPO}:latest-no-dependencies \
 		-t ${DOCKERHUB_REPO}:${VERSION}-no-dependencies \
 		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
-		--build-arg WORKDIR=/app/${APP_DIR} \
 		--build-arg ENTRYPOINT=${ENTRYPOINT} \
 		--build-arg DJANGO_SETTINGS_PARENT=${DJANGO_SETTINGS_PARENT} \
 		--build-arg RELEASE_VERSION=${VERSION} \
@@ -120,7 +113,6 @@ _build.self-hosted-runtime:
 		--label "org.label-schema.vendor"="Codecov" \
 		--label "org.label-schema.version"="${release_version}-${sha}" \
 		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
-		--build-arg WORKDIR=/app/${APP_DIR} \
 		--build-arg ENTRYPOINT=${ENTRYPOINT} \
 		--build-arg DJANGO_SETTINGS_PARENT=${DJANGO_SETTINGS_PARENT} \
 		--build-arg RELEASE_VERSION=${VERSION} \
@@ -159,12 +151,12 @@ load.test-requirements:
 
 # Load an exported self-hosted image (e.g. from GHA's cache)
 _load.self-hosted:
-	docker load --input ${APP_DIR}/self-hosted-runtime.tar
-	docker load --input ${APP_DIR}/self-hosted.tar
+	docker load --input self-hosted-runtime.tar
+	docker load --input self-hosted.tar
 
 # Export a production image.
 _save.app:
-	docker save -o ${APP_DIR}/app.tar ${AR_REPO}:${VERSION}
+	docker save -o app.tar ${AR_REPO}:${VERSION}
 
 # Export a production image with test dependencies.
 _save.test-app:
@@ -186,10 +178,10 @@ _save.self-hosted:
 	$(MAKE) _save.self-hosted-runtime
 
 _save.self-hosted-base:
-	docker save -o ${APP_DIR}/self-hosted.tar ${DOCKERHUB_REPO}:${VERSION}-no-dependencies
+	docker save -o self-hosted.tar ${DOCKERHUB_REPO}:${VERSION}-no-dependencies
 
 _save.self-hosted-runtime:
-	docker save -o ${APP_DIR}/self-hosted-runtime.tar ${DOCKERHUB_REPO}:${VERSION}
+	docker save -o self-hosted-runtime.tar ${DOCKERHUB_REPO}:${VERSION}
 
 _push.latest:
 	docker push ${AR_REPO}:latest
