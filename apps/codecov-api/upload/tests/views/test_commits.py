@@ -356,12 +356,13 @@ def test_commit_upload_token_required_auth_check(
 
 @patch("upload.helpers.jwt.decode")
 @patch("upload.helpers.PyJWKClient")
-def test_commit_github_oidc_auth(mock_jwks_client, mock_jwt_decode, db, mocker):
+def test_commit_github_oidc_auth(
+    mock_jwks_client, mock_jwt_decode, db, mocker, mock_prometheus_metrics
+):
     repository = RepositoryFactory.create(
         private=False, author__username="codecov", name="the_repo"
     )
     mocked_call = mocker.patch.object(TaskService, "update_commit")
-    mock_prometheus_metrics = mocker.patch("upload.metrics.API_UPLOAD_COUNTER.labels")
     mock_jwt_decode.return_value = {
         "repository": f"url/{repository.name}",
         "repository_owner": repository.author.username,
@@ -409,7 +410,7 @@ def test_commit_github_oidc_auth(mock_jwks_client, mock_jwt_decode, db, mocker):
     mocked_call.assert_called_with(commitid="commit_sha", repoid=repository.repoid)
     mock_prometheus_metrics.assert_called_with(
         **{
-            "agent": "cli",
+            "agent": "codecov-cli",
             "version": "0.4.7",
             "action": "coverage",
             "endpoint": "create_commit",

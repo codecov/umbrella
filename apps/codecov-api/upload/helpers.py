@@ -11,6 +11,7 @@ from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.http import HttpRequest
+from django.http.request import HttpHeaders
 from django.utils import timezone
 from jwt import PyJWKClient, PyJWTError
 from redis import Redis
@@ -764,30 +765,22 @@ def validate_activated_repo(repository: Repository) -> None:
 
 
 # headers["User-Agent"] should look something like this: codecov-cli/0.4.7 or codecov-uploader/0.7.1
-def get_agent_from_headers(headers: dict[str, Any]) -> str:
+def get_agent_and_version(headers: HttpHeaders) -> tuple[str, str]:
     try:
-        return headers["User-Agent"].split("/")[0].split("-")[1]
+        agent, version = headers["User-Agent"].split("/", 1)
+        if agent and version:
+            return agent, version
+        else:
+            return ("unknown-user-agent", "unknown-version")
     except Exception as e:
         log.warning(
-            "Error getting agent from user agent header",
+            "Error parsing agent and version from user agent header",
             extra={
                 "err": str(e),
+                "user_agent": headers.get("User-Agent", ""),
             },
         )
-        return "unknown-user-agent"
-
-
-def get_version_from_headers(headers: dict[str, Any]) -> str:
-    try:
-        return headers["User-Agent"].split("/")[1]
-    except Exception as e:
-        log.warning(
-            "Error getting version from user agent header",
-            extra={
-                "err": str(e),
-            },
-        )
-        return "unknown-user-agent"
+        return ("unknown-user-agent", "unknown-version")
 
 
 def generate_upload_prometheus_metrics_labels(
@@ -800,9 +793,10 @@ def generate_upload_prometheus_metrics_labels(
     upload_version: str | None = None,
     include_empty_labels: bool = True,
 ) -> dict[str, Any]:
+    agent, version = get_agent_and_version(request.headers)
     metrics_tags = {
-        "agent": get_agent_from_headers(request.headers),
-        "version": get_version_from_headers(request.headers),
+        "agent": agent,
+        "version": version,
         "action": action,
         "endpoint": endpoint,
         "is_using_shelter": "yes" if is_shelter_request else "no",
