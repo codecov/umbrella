@@ -59,19 +59,6 @@ jobs:
       output_directory: apps/worker
       make_target_prefix: worker.
 
-  worker-staging:
-    name: Push Staging Image (Worker)
-    needs: [worker-build, worker-test]
-    if: ${{ inputs.skip == false && github.event_name == 'push' && (github.event.ref == 'refs/heads/main' || github.event.ref == 'refs/heads/staging') && github.repository_owner == 'codecov' }}
-    uses: ./.github/workflows/_push-env.yml
-    secrets: inherit
-    with:
-      environment: staging
-      repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
-      output_directory: apps/worker
-      sentry_project: worker
-      make_target_prefix: worker.
-
   worker-production:
     name: Push Production Image (Worker)
     needs: [worker-build, worker-test]
