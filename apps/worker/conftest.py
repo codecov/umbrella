@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from unittest import mock
 
+import django
 import pytest
 import vcr
 from django.conf import settings
@@ -12,6 +13,9 @@ from sqlalchemy import event
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy_utils import database_exists
+
+os.environ["DJANGO_SETTINGS_MODULE"] = "django_scaffold.tests_settings"
+django.setup()
 
 from celery_config import initialize_logging
 from database.base import Base
@@ -31,6 +35,7 @@ def pytest_configure(config):
     This hook is called for every plugin and initial conftest
     file after command line options have been parsed.
     """
+
     os.environ["CURRENT_ENVIRONMENT"] = "local"
     os.environ["RUN_ENV"] = "DEV"
 

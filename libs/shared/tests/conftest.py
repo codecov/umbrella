@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,10 @@ from shared.config import ConfigHelper
 from shared.reports.resources import Report, ReportFile, Session
 from shared.reports.types import ReportLine
 from shared.storage.memory import MemoryStorageService
+
+
+def pytest_configure(config):
+    os.environ["DJANGO_SETTINGS_MODULE"] = "shared.django_apps.dummy_settings"
 
 
 @pytest.fixture

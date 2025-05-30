@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from unittest import mock
 
@@ -22,6 +23,7 @@ def pytest_configure(config):
     """
     pytest_configure is the canonical way to configure test server for entire testing suite
     """
+    os.environ["DJANGO_SETTINGS_MODULE"] = "codecov.settings_test"
     pass
 
 

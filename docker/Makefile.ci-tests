@@ -43,7 +43,7 @@ _test_env.run_unit:
 		    --cov-report=xml:unit.coverage.xml \
 		    --junitxml=unit.junit.xml \
 		    -o junit_family=legacy \
-		    -c pytest.ini \
+		    -c ../../pytest.ini \
 		    --rootdir=${PYTEST_ROOTDIR}"
 
 # Outside the Docker env: Run integration tests.
@@ -57,7 +57,7 @@ _test_env.run_integration:
 		    --cov-report=xml:integration.coverage.xml \
 		    --junitxml=integration.junit.xml \
 		    -o junit_family=legacy \
-		    -c pytest.ini \
+		    -c ../../pytest.ini \
 		    --rootdir=${PYTEST_ROOTDIR}"
 
 # Outside the Docker env: Start the Docker env and run unit + integration tests in one go.

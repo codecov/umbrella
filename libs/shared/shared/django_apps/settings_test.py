@@ -8,6 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent
 ALLOWED_HOSTS = []
 
 SECRET_KEY = "*"
+DEBUG = True
 
 # Install apps so that you can make migrations for them
 INSTALLED_APPS = [
