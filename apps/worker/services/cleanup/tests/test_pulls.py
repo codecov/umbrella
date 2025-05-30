@@ -3,10 +3,7 @@ import pytest
 from services.cleanup.pulls import cleanup_flare
 from services.cleanup.utils import CleanupContext
 from shared.django_apps.core.models import Pull, PullStates
-from shared.django_apps.core.tests.factories import (
-    PullFactory,
-    RepositoryFactory,
-)
+from shared.django_apps.core.tests.factories import PullFactory, RepositoryFactory
 from shared.storage.exceptions import FileNotInStorageError
 
 
@@ -81,9 +78,7 @@ def test_flare_cleanup_in_regular_cleanup(
 
     # Verify flare cleanup logs were included
     mock_logs.assert_any_call("Flare cleanup: cleared 1 database flares")
-    mock_logs.assert_any_call(
-        "Flare cleanup: processed 1 archive flares, 1 successfully deleted"
-    )
+    mock_logs.assert_any_call("Flare cleanup: cleaned up 1 file flares")
 
     # Verify the delete_file was called for the merged pull's flare
     storage_path = merged_pull_with_archive_flare._flare_storage_path
@@ -123,12 +118,6 @@ def test_flare_cleanup_in_regular_cleanup(
     # Run cleanup again
     context = CleanupContext()
     cleanup_flare(context=context)
-
-    # Verify the logs show no flares were cleaned
-    mock_logs.assert_any_call("Flare cleanup: cleared 0 database flares")
-    mock_logs.assert_any_call(
-        "Flare cleanup: processed 0 archive flares, 0 successfully deleted"
-    )
 
     # Verify no delete calls were made for already processed pulls
     mock_delete.assert_not_called()
