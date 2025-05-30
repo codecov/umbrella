@@ -13,6 +13,9 @@ services:
       - api
       - frontend
 
+  # -------
+  # Pre-built Gazebo image
+  # -------
   frontend:
     image: codecov/self-hosted-frontend:rolling
     environment:
@@ -27,6 +30,44 @@ services:
       - "3000:8080"
     networks:
       - codecov
+
+  # # -------
+  # # Gazebo local development
+  # #
+  # # This service will use your local Gazebo repo and run a yarn dev server 
+  # # in a container within the codecov docker network.
+  # # Use if you're doing front end development AND want to use your local
+  # # api/shared/worker. If you're doing purely front end development, it's
+  # # often easier to just point your gazebo dev server at the staging API.
+  # # If you do want to use this, uncomment this service and comment out the 
+  # # above frontend service.
+  # #
+  # # If you do this and want to prevent docker-compose.yml from showing up in
+  # # your `git status`, you can do so with:
+  # #
+  # # git update-index --assume-unchanged docker-compose.yml
+  # # -------
+  # frontend:
+  #   image: node:22-alpine
+  #   environment:
+  #     # Environment variables set here will override your gazebo .env files
+  #     - PROXY_TO=http://localhost:8080
+  #     - REACT_APP_API_URL=http://localhost:8080
+  #     - REACT_APP_BASE_URL=http://localhost:8080
+  #     # - REACT_APP_ENV=enterprise
+  #     # - REACT_APP_IS_SELF_HOSTED=true
+  #   volumes:
+  #     # Assumes gazebo is a sibling directory to umbrella.
+  #     # Change if that's not the case.
+  #     - ../gazebo:/gazebo
+  #   command: >
+  #     sh -c "cd /gazebo &&
+  #            yarn &&
+  #            yarn dev --port 8080"
+  #   ports:
+  #     - "8080"
+  #   networks:
+  #     - codecov
 
   api:
     image: ${AR_REPO_PREFIX-codecov}/api
