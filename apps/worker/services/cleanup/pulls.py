@@ -3,7 +3,7 @@ import logging
 import sentry_sdk
 
 from services.cleanup.models import DELETE_FILES_BATCHSIZE
-from services.cleanup.utils import CleanupContext, CleanupResult
+from services.cleanup.utils import CleanupContext
 from shared.django_apps.core.models import Pull, PullStates
 from shared.storage.exceptions import FileNotInStorageError
 
@@ -11,7 +11,12 @@ log = logging.getLogger(__name__)
 
 
 @sentry_sdk.trace
-def cleanup_flare(context: CleanupContext, batch_size: int = DELETE_FILES_BATCHSIZE):
+def cleanup_flare(
+    context: CleanupContext,
+    start_id: int = 5000,
+    max_id: int = 500000,
+    batch_size: int = DELETE_FILES_BATCHSIZE,
+):
     """
     Flare is a field on a Pull object.
     Flare is used to draw static graphs (see GraphHandler view in api) and can be large.
@@ -29,62 +34,43 @@ def cleanup_flare(context: CleanupContext, batch_size: int = DELETE_FILES_BATCHS
 
         # this method looks hacky, but sorting by updatestamp on a table this large is not possible,
         # so this is my approach to get the oldest pulls first - using the sequential pk id.
-        # going to hard-code limits here for initial runs: Pulls with id 0-5000 count is 786
-        # 453 are non-open (these are the ones we would clean)
-        # none of them have _flare or flare_storage_path (probably didn't have this column when these pulls were created)
-        # so this would be a true dry run to make sure that the queries are manageable and that we can loop through 100 times
-        max_id = 5000
+        # going to hard-code limits here for initial runs: Pulls with id 0-5000, batch_size=50 -> ran in under 1 sec
+        # start at 5.000, go to 500.000, increase batch_size to 500, so loop through 1000 times
 
         # Clear in db
+        cleaned_db_flares = 0
         # Process in ID ranges instead of sorting by updatestamp
-        for id_start in range(0, max_id, batch_size):
+        for id_start in range(start_id, max_id, 500):
             id_end = id_start + batch_size
 
             non_open_pulls_with_flare_in_db = Pull.objects.filter(
                 id__gt=id_start, id__lte=id_end, _flare__isnull=False
             ).exclude(state=PullStates.OPEN.value)
-            # with analyze=False, the db engine generates an execution plan without executing the query
-            log.info(
-                f"Flare cleanup: non_open_pulls_with_flare_in_db query {non_open_pulls_with_flare_in_db.explain(analyze=False)}"
-            )
 
-            # with analyze=True, the query is actually executed so cost and execution time are measured
-            # run this before the "real" query so measurements aren't impacted by cache
-            log.info(
-                f"Flare cleanup: batch ids query {non_open_pulls_with_flare_in_db.values_list('id', flat=True).explain(analyze=True, verbose=True)}"
-            )
             batch_ids = list(
                 non_open_pulls_with_flare_in_db.values_list("id", flat=True)
             )
 
             # Update directly with ID list
             if batch_ids:
-                n_updated = Pull.objects.filter(id__in=batch_ids).update(_flare=None)
-                context.add_progress(cleaned_models=n_updated, model=Pull)
+                cleaned_db_flares += Pull.objects.filter(id__in=batch_ids).update(
+                    _flare=None
+                )
 
-        log.info(
-            f"Flare cleanup: cleared {context.summary.summary.get('Pull', CleanupResult(0)).cleaned_models} database flares"
-        )
+        if cleaned_db_flares:
+            log.info(f"Flare cleanup: cleared {cleaned_db_flares} database flares")
 
         # Clear in Archive
-        total_files_processed = 0
+        cleaned_file_flares = 0
         # Process in ID ranges instead of sorting by updatestamp
-        for id_start in range(0, max_id, batch_size):
+        # keep small batch_size here since files are deleted 1 by 1
+        for id_start in range(start_id, max_id, batch_size):
             id_end = id_start + batch_size
 
             non_open_pulls_with_flare_in_archive = Pull.objects.filter(
                 id__gt=id_start, id__lte=id_end, _flare_storage_path__isnull=False
             ).exclude(state=PullStates.OPEN.value)
-            # with analyze=False, the db engine generates an execution plan without executing the query
-            log.info(
-                f"Flare cleanup: non_open_pulls_with_flare_in_archive query {non_open_pulls_with_flare_in_archive.explain(analyze=False)}"
-            )
 
-            # with analyze=True, the query is actually executed so cost and execution time are measured
-            # run this before the "real" query so measurements aren't impacted by cache
-            log.info(
-                f"Flare cleanup: batch_of_id_path_pairs query {non_open_pulls_with_flare_in_archive.values_list('id', '_flare_storage_path').explain(analyze=True, verbose=True)}"
-            )
             batch_of_id_path_pairs = list(
                 non_open_pulls_with_flare_in_archive.values_list(
                     "id", "_flare_storage_path"
@@ -112,12 +98,12 @@ def cleanup_flare(context: CleanupContext, batch_size: int = DELETE_FILES_BATCHS
                     _flare_storage_path=None
                 )
 
-            total_files_processed += len(batch_of_id_path_pairs)
-            context.add_progress(cleaned_files=len(successful_deletions), model=Pull)
+            cleaned_file_flares += len(successful_deletions)
+            context.add_progress(cleaned_files=cleaned_file_flares, model=Pull)
 
-        log.info(
-            f"Flare cleanup: processed {total_files_processed} archive flares, {context.summary.summary.get('Pull', CleanupResult(0)).cleaned_files} successfully deleted"
-        )
+        if cleaned_file_flares:
+            log.info(f"Flare cleanup: cleaned up {cleaned_file_flares} file flares")
+
     except Exception as e:
         log.error(f"Flare cleanup: unexpected error: {e}")
         sentry_sdk.capture_exception(e)
