@@ -702,7 +702,7 @@ class TestGithubAppInstallationModel(TestCase):
             GithubAppInstallationFactory(
                 owner=owner,
                 repository_service_ids=None,
-                installation_id=200,
+                installation_id=100,
                 app_id=121212,
                 name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                 pem_path="some_path",

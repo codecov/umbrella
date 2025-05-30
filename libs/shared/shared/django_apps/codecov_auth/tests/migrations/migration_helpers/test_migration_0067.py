@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
-from shared.django_apps.codecov_auth.migrations.migration_helpers import backfill_app_id
+from shared.django_apps.codecov_auth.migrations.migration_helpers.migration_0067 import (
+    backfill_app_id,
+)
 from shared.utils.test_utils.test_migrations_helper import TestMigrations
 
 

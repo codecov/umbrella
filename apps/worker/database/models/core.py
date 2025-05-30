@@ -275,14 +275,6 @@ class GithubAppInstallation(CodecovBaseModel, MixinBaseClass):
         Owner, foreign_keys=[ownerid], back_populates="github_app_installations"
     )
 
-    __table_args__ = (
-        UniqueConstraint(
-            "installation_id",
-            "app_id",
-            name="unique_app_install",
-        ),
-    )
-
     def repository_queryset(self, dbsession: Session):
         """Returns a query set of repositories covered by this installation"""
         if self.repository_service_ids is None:
