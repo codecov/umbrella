@@ -13,6 +13,7 @@ from celery_config import initialize_logging
 from database.base import Base
 from database.engine import json_dumps
 from helpers.environment import _get_cached_current_env
+from helpers.logging_config import get_logging_config_dict
 from shared.config import ConfigHelper
 from shared.storage.memory import MemoryStorageService
 from shared.torngit import Github as GithubHandler
@@ -27,7 +28,12 @@ def pytest_configure(config):
     """
     os.environ["CURRENT_ENVIRONMENT"] = "local"
     os.environ["RUN_ENV"] = "DEV"
+
+    _config_dict = get_logging_config_dict()
+    logging.config.dictConfig(_config_dict)
+
     _get_cached_current_env.cache_clear()
+
     initialize_logging()
 
 

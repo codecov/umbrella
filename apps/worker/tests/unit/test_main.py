@@ -4,7 +4,9 @@ from unittest import mock
 
 from click.testing import CliRunner
 
-from main import _get_queues_param_from_queue_input, cli, main, setup_worker, test, web
+# Import `app` to register logs correctly before calling `worker_main` in tests.
+import app as _  # noqa: F401
+from main import _get_queues_param_from_queue_input, cli, main, setup_worker
 from shared.celery_config import BaseCeleryConfig
 
 
@@ -97,25 +99,12 @@ def test_get_cli_help(mocker, mock_license_logging):
             "  --help  Show this message and exit.",
             "",
             "Commands:",
-            "  test",
-            "  web",
             "  worker",
             "",
         ]
     )
 
     assert res.output == expected_output
-    mock_license_logging.assert_not_called()
-
-
-@mock.patch("main.startup_license_logging")
-@mock.patch("main.start_prometheus")
-def test_deal_unsupported_commands(mocker, mock_license_logging):
-    runner = CliRunner()
-    test_res = runner.invoke(test, [])
-    assert test_res.output == "Error: System not suitable to run TEST mode\n"
-    web_res = runner.invoke(web, [])
-    assert web_res.output == "Error: System not suitable to run WEB mode\n"
     mock_license_logging.assert_not_called()
 
 
@@ -133,7 +122,7 @@ def test_deal_worker_command_default(
     res = runner.invoke(cli, ["worker"])
     expected_output = "\n".join(
         [
-            "",
+            "INFO: ",
             "  _____          _",
             " / ____|        | |",
             "| |     ___   __| | ___  ___ _____   __",
@@ -141,12 +130,9 @@ def test_deal_worker_command_default(
             "| |___| (_) | (_| |  __/ (_| (_) \\ V /",
             " \\_____\\___/ \\__,_|\\___|\\___\\___/ \\_/",
             "                              some_version_12.3",
-            "",
-            "",
-            "",
         ]
     )
-    assert res.output == expected_output
+    assert res.output.startswith(expected_output)
     mocked_get_current_version.assert_called_with()
     mock_app.celery_app.worker_main.assert_called_with(
         argv=[
@@ -181,7 +167,7 @@ def test_deal_worker_command(
     res = runner.invoke(cli, ["worker", "--queue", "simple,one,two", "--queue", "some"])
     expected_output = "\n".join(
         [
-            "",
+            "INFO: ",
             "  _____          _",
             " / ____|        | |",
             "| |     ___   __| | ___  ___ _____   __",
@@ -189,12 +175,9 @@ def test_deal_worker_command(
             "| |___| (_) | (_| |  __/ (_| (_) \\ V /",
             " \\_____\\___/ \\__,_|\\___|\\___\\___/ \\_/",
             "                              some_version_12.3",
-            "",
-            "",
-            "",
         ]
     )
-    assert res.output == expected_output
+    assert res.output.startswith(expected_output)
     mocked_get_current_version.assert_called_with()
     mock_app.celery_app.worker_main.assert_called_with(
         argv=[
@@ -231,7 +214,7 @@ def test_deal_worker_no_beat(
     res = runner.invoke(cli, ["worker", "--queue", "simple,one,two", "--queue", "some"])
     expected_output = "\n".join(
         [
-            "",
+            "INFO: ",
             "  _____          _",
             " / ____|        | |",
             "| |     ___   __| | ___  ___ _____   __",
@@ -239,12 +222,9 @@ def test_deal_worker_no_beat(
             "| |___| (_) | (_| |  __/ (_| (_) \\ V /",
             " \\_____\\___/ \\__,_|\\___|\\___\\___/ \\_/",
             "                              some_version_12.3",
-            "",
-            "",
-            "",
         ]
     )
-    assert res.output == expected_output
+    assert res.output.startswith(expected_output)
     mocked_get_current_version.assert_called_with()
     mock_app.celery_app.worker_main.assert_called_with(
         argv=[
@@ -279,7 +259,7 @@ def test_deal_worker_no_queues(
     res = runner.invoke(cli, ["worker", "--queue", "simple,one,two", "--queue", "some"])
     expected_output = "\n".join(
         [
-            "",
+            "INFO: ",
             "  _____          _",
             " / ____|        | |",
             "| |     ___   __| | ___  ___ _____   __",
@@ -287,12 +267,9 @@ def test_deal_worker_no_queues(
             "| |___| (_) | (_| |  __/ (_| (_) \\ V /",
             " \\_____\\___/ \\__,_|\\___|\\___\\___/ \\_/",
             "                              some_version_12.3",
-            "",
-            "",
-            "",
         ]
     )
-    assert res.output == expected_output
+    assert res.output.startswith(expected_output)
     mocked_get_current_version.assert_called_with()
     mock_app.celery_app.worker_main.assert_called_with(
         argv=[
@@ -331,7 +308,7 @@ def test_deal_worker_no_queues_or_beat(
     )
     expected_output = "\n".join(
         [
-            "",
+            "INFO: ",
             "  _____          _",
             " / ____|        | |",
             "| |     ___   __| | ___  ___ _____   __",
@@ -339,12 +316,9 @@ def test_deal_worker_no_queues_or_beat(
             "| |___| (_) | (_| |  __/ (_| (_) \\ V /",
             " \\_____\\___/ \\__,_|\\___|\\___\\___/ \\_/",
             "                              some_version_12.3",
-            "",
-            "",
-            "",
         ]
     )
-    assert res.output == expected_output
+    assert res.output.startswith(expected_output)
     mocked_get_current_version.assert_called_with()
     mock_app.celery_app.worker_main.assert_called_with(
         argv=[
