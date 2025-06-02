@@ -26,7 +26,7 @@ def read_table(
 
 
 @pytest.mark.django_db(databases=["ta_timeseries"], transaction=True)
-def test_cache_test_rollups(storage, snapshot):
+def test_cache_test_rollups(mock_storage, snapshot):
     TestrunSummary.objects.create(
         timestamp_bin=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
         repo_id=1,
@@ -89,7 +89,7 @@ def test_cache_test_rollups(storage, snapshot):
     )
     meta = {}
     table = read_table(
-        storage, "test_analytics/repo_rollups/1.arrow", meta_container=meta
+        mock_storage, "test_analytics/repo_rollups/1.arrow", meta_container=meta
     )
     assert meta["version"] == VERSION
     table_dict = table.to_dict(as_series=False)
@@ -99,7 +99,7 @@ def test_cache_test_rollups(storage, snapshot):
 
 
 @pytest.mark.django_db(databases=["ta_timeseries"], transaction=True)
-def test_cache_test_rollups_use_timeseries_main(storage, snapshot):
+def test_cache_test_rollups_use_timeseries_main(mock_storage, snapshot):
     TestrunBranchSummary.objects.create(
         timestamp_bin=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
         repo_id=1,
@@ -184,7 +184,7 @@ def test_cache_test_rollups_use_timeseries_main(storage, snapshot):
     )
     meta = {}
     table = read_table(
-        storage, "test_analytics/branch_rollups/1/main.arrow", meta_container=meta
+        mock_storage, "test_analytics/branch_rollups/1/main.arrow", meta_container=meta
     )
     assert meta["version"] == VERSION
     table_dict = table.to_dict(as_series=False)
@@ -194,7 +194,7 @@ def test_cache_test_rollups_use_timeseries_main(storage, snapshot):
 
 
 @pytest.mark.django_db(databases=["ta_timeseries"], transaction=True)
-def test_cache_test_rollups_use_timeseries_branch(storage, snapshot):
+def test_cache_test_rollups_use_timeseries_branch(mock_storage, snapshot):
     Testrun.objects.create(
         timestamp=dt.datetime.now(dt.UTC) - dt.timedelta(days=1),
         test_id=calc_test_id("name", "classname", "testsuite"),
@@ -278,7 +278,7 @@ def test_cache_test_rollups_use_timeseries_branch(storage, snapshot):
         impl_type="new",
     )
 
-    table = read_table(storage, "test_analytics/branch_rollups/1/feature.arrow")
+    table = read_table(mock_storage, "test_analytics/branch_rollups/1/feature.arrow")
     table_dict = table.to_dict(as_series=False)
     del table_dict["timestamp_bin"]
     del table_dict["updated_at"]

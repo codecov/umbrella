@@ -41,6 +41,9 @@ These instructions assume you're using macOS (or at least a POSIX-y platform) bu
 
 If you work here, you should have access to the "Codecov Engineering" 1Password vault; copy the contents of the "umbrella secrets" item to `tools/devenv/config/codecov.yml`. Otherwise, try copying [our example self-hosted configuration](https://github.com/codecov/self-hosted/blob/main/config/codecov.yml) or following our [self-hosted configuration guide](https://docs.codecov.com/docs/configuration).
 
+### `tools/devenv/config/test.yml`
+This is the version of the above file that we use by default for tests. Some tests may use local mocks or a `conftest.py` fixture and are unaffected by changes to this file, but in general the options in this file are in effect when tests are running.
+
 ### `.envrc.private`
 
 If you create `.envrc.private`, it will be loaded by this repository's `.envrc`. You can use this to customize your environment, override `Makefile` variables, or anything else you may want to do.

@@ -210,6 +210,11 @@ def mock_configuration(mocker):
                 "endpoint_override": "abcde",
             },
         },
+        "github": {
+            "integration": {
+                "id": 254,
+            },
+        },
     }
     mock_config.set_params(our_config)
     return mock_config

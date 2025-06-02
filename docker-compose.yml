@@ -77,8 +77,7 @@ services:
     volumes:
       - ./tools/devenv/config:/config:ro,cached
       - ./tools/devenv/scripts:/devenv-scripts:ro,cached
-      - ./apps/codecov-api:/app/apps/codecov-api:cached
-      - ./libs/shared:/app/libs/shared:cached
+      - ./:/app:cached
     ports:
       - "8000"
     networks:
@@ -100,8 +99,7 @@ services:
     volumes:
       - ./tools/devenv/config:/config:ro,cached
       - ./tools/devenv/scripts:/devenv-scripts:ro,cached
-      - ./apps/worker:/app/apps/worker:cached
-      - ./libs/shared:/app/libs/shared:cached
+      - ./:/app:cached
     networks:
       - codecov
     depends_on:

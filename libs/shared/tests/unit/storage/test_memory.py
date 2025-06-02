@@ -40,10 +40,13 @@ def test_write_then_read_file():
     data = "lorem ipsum dolor test_write_then_read_file á"
 
     ensure_bucket(storage)
-    writing_result = storage.write_file(BUCKET_NAME, path, data)
+    writing_result = storage.write_file(BUCKET_NAME, path, data, metadata={"foo": "bar"})
     assert writing_result
-    reading_result = storage.read_file(BUCKET_NAME, path)
+
+    meta = {}
+    reading_result = storage.read_file(BUCKET_NAME, path, metadata_container=meta)
     assert reading_result.decode() == data
+    assert meta == {"foo": "bar"}
 
 
 def test_write_then_read_file_obj():
@@ -57,14 +60,16 @@ def test_write_then_read_file_obj():
     with open(local_path, "w") as f:
         f.write(data)
     with open(local_path, "rb") as f:
-        writing_result = storage.write_file(BUCKET_NAME, path, f)
+        writing_result = storage.write_file(BUCKET_NAME, path, f, metadata={"foo": "bar"})
     assert writing_result
 
     _, local_path = tempfile.mkstemp()
+    meta = {}
     with open(local_path, "wb") as f:
-        storage.read_file(BUCKET_NAME, path, file_obj=f)
+        storage.read_file(BUCKET_NAME, path, file_obj=f, metadata_container=meta)
     with open(local_path, "rb") as f:
         assert f.read().decode() == data
+    assert meta == {"foo": "bar"}
 
 
 def test_read_file_does_not_exist():

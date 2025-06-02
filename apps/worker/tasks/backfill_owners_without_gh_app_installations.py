@@ -199,8 +199,8 @@ class BackfillOwnersWithoutGHAppInstallationIndividual(
                 extra={"ownerid": ownerid, "parent_id": self.request.parent_id},
             )
             return {"successful": True, "reason": "backfill task finished"}
-        except Exception:
-            log.info(
+        except Exception as e:
+            log.exception(
                 "Backfill unsuccessful for this owner",
                 extra={"ownerid": ownerid, "parent_id": self.request.parent_id},
             )
