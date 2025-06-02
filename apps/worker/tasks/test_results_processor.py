@@ -138,32 +138,32 @@ class DailyTotals(TypedDict):
 class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task_name):
     __test__ = False
 
-    def run_impl(
+    def _new_impl(
         self,
-        db_session,
-        previous_result: bool,
-        *args,
         repoid: int,
         commitid: str,
         commit_yaml,
         arguments_list: list[UploadArguments],
-        impl_type: Literal["old", "new", "both"] = "old",
-        **kwargs,
+        update_state: bool,
+    ) -> None:
+        for argument in arguments_list:
+            ta_processor_impl(
+                repoid=repoid,
+                commitid=commitid,
+                commit_yaml=commit_yaml,
+                argument=argument,
+                update_state=update_state,
+            )
+
+    def _old_impl(
+        self,
+        db_session,
+        previous_result: bool,
+        repoid: int,
+        commitid: str,
+        commit_yaml,
+        arguments_list: list[UploadArguments],
     ) -> bool:
-        if impl_type == "new" or impl_type == "both":
-            running_alone = impl_type == "new"
-            for argument in arguments_list:
-                ta_processor_impl(
-                    repoid=repoid,
-                    commitid=commitid,
-                    commit_yaml=commit_yaml,
-                    argument=argument,
-                    update_state=running_alone,
-                )
-
-            if running_alone:
-                return True
-
         commit_yaml = UserYaml(commit_yaml)
         repoid = int(repoid)
 
@@ -202,6 +202,45 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
             results.append(result)
 
         return previous_result or any(result.get("successful") for result in results)
+
+    def run_impl(
+        self,
+        db_session,
+        previous_result: bool,
+        *args,
+        repoid: int,
+        commitid: str,
+        commit_yaml,
+        arguments_list: list[UploadArguments],
+        impl_type: Literal["old", "new", "both"] = "old",
+        **kwargs,
+    ) -> bool:
+        match impl_type:
+            case "new":
+                self._new_impl(repoid, commitid, commit_yaml, arguments_list, True)
+                return True
+            case "both":
+                try:
+                    self._new_impl(repoid, commitid, commit_yaml, arguments_list, False)
+                except Exception as exc:
+                    sentry_sdk.capture_exception(exc)
+                return self._old_impl(
+                    db_session,
+                    previous_result,
+                    repoid,
+                    commitid,
+                    commit_yaml,
+                    arguments_list,
+                )
+            case "old":
+                return self._old_impl(
+                    db_session,
+                    previous_result,
+                    repoid,
+                    commitid,
+                    commit_yaml,
+                    arguments_list,
+                )
 
     @sentry_sdk.trace
     def _bulk_write_tests_to_db(
