@@ -133,7 +133,7 @@ class TestUploadFinisherTask:
         mock_storage,
         mock_checkpoint_submit,
         mock_repo_provider,
-        mock_redis
+        mock_redis,
     ):
         mock_redis.scard.return_value = 0
         mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])

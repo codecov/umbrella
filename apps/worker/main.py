@@ -1,29 +1,21 @@
+import logging
 import os
+import sys
 
+import click
 import django
+from celery.signals import worker_process_shutdown
+from prometheus_client import REGISTRY, CollectorRegistry, multiprocess
 
-# we're moving this before we create the Celery object
-# so that celery can detect Django is being used
-# using the Django fixup will help fix some database issues
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_scaffold.settings")
-django.setup()
-
-import logging  # noqa: E402
-import sys  # noqa: E402
-
-import click  # noqa: E402
-from celery.signals import worker_process_shutdown  # noqa: E402
-from prometheus_client import REGISTRY, CollectorRegistry, multiprocess  # noqa: E402
-
-import app  # noqa: E402
-import shared.storage  # noqa: E402
-from helpers.environment import get_external_dependencies_folder  # noqa: E402
-from helpers.version import get_current_version  # noqa: E402
-from shared.celery_config import BaseCeleryConfig  # noqa: E402
-from shared.config import get_config  # noqa: E402
-from shared.license import startup_license_logging  # noqa: E402
-from shared.metrics import start_prometheus  # noqa: E402
-from shared.storage.exceptions import BucketAlreadyExistsError  # noqa: E402
+import app
+import shared.storage
+from helpers.environment import get_external_dependencies_folder
+from helpers.version import get_current_version
+from shared.celery_config import BaseCeleryConfig
+from shared.config import get_config
+from shared.license import startup_license_logging
+from shared.metrics import start_prometheus
+from shared.storage.exceptions import BucketAlreadyExistsError
 
 log = logging.getLogger(__name__)
 
@@ -39,29 +31,26 @@ initialization_text = """
 """
 
 
+# Prometheus needs us to do this when running in multiprocess mode:
+# https://prometheus.github.io/client_python/multiprocess/
+@worker_process_shutdown.connect
+def mark_process_dead(pid, exitcode, **kwargs):
+    multiprocess.mark_process_dead(pid)
+
+
 @click.group()
 @click.pass_context
 def cli(ctx: click.Context):
     pass
 
 
-@cli.command()
-def test():
-    raise click.ClickException("System not suitable to run TEST mode")
-
-
-@cli.command()
-def web():
-    raise click.ClickException("System not suitable to run WEB mode")
-
-
-@worker_process_shutdown.connect
-def mark_process_dead(pid, exitcode, **kwargs):
-    multiprocess.mark_process_dead(pid)
-
-
 def setup_worker():
-    print(initialization_text.format(version=get_current_version()))  # noqa: T201
+    from helpers.logging_config import get_logging_config_dict
+
+    _config_dict = get_logging_config_dict()
+    logging.config.dictConfig(_config_dict)
+
+    log.info(initialization_text.format(version=get_current_version()))
 
     if getattr(sys, "frozen", False):
         # Only for enterprise builds
@@ -71,9 +60,13 @@ def setup_worker():
 
     registry = REGISTRY
     if "PROMETHEUS_MULTIPROC_DIR" in os.environ:
+        log.info(
+            f"Setting up Prometheus multiprocess collection in {os.environ['PROMETHEUS_MULTIPROC_DIR']}"
+        )
         registry = CollectorRegistry()
         multiprocess.MultiProcessCollector(registry)
 
+    log.info("Starting Prometheus collection")
     start_prometheus(9996, registry=registry)  # 9996 is an arbitrary port number
 
     minio_config = get_config("services", "minio", default={})
@@ -93,6 +86,12 @@ def setup_worker():
             storage_client.create_root_storage(bucket_name, region)
         except BucketAlreadyExistsError:
             pass
+
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_scaffold.settings")
+    log.info(
+        f"Configuring Django with settings in {os.environ['DJANGO_SETTINGS_MODULE']}"
+    )
+    django.setup()
 
     startup_license_logging()
 

@@ -176,7 +176,9 @@ def test_ta_processor_impl_warning(mock_storage, snapshot):
         "metadata": {},
     }
 
-    mock_storage.write_file("archive", "path/to/invalid.xml", json.dumps(sample_content))
+    mock_storage.write_file(
+        "archive", "path/to/invalid.xml", json.dumps(sample_content)
+    )
 
     result = ta_processor_impl(
         repository.repoid, commit.commitid, commit_yaml, argument, update_state=True

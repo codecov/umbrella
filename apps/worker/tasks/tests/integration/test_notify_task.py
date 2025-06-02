@@ -49,7 +49,6 @@ class TestNotifyTask:
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
         )
-        mocked_app = mocker.patch.object(NotifyTask, "app")
         repository = RepositoryFactory.create(
             owner__unencrypted_oauth_token=sample_token,
             owner__username="ThiagoCodecov",
