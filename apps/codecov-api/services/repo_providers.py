@@ -35,7 +35,7 @@ class TorngitInitializationFailed(Exception):
 
 def get_token_refresh_callback(
     owner: Owner | None, service: Service
-) -> Callable[[dict], None]:
+) -> Callable[[OauthConsumerToken], None] | None:
     """
     Produces a callback function that will encode and update the oauth token of an owner.
     This callback is passed to the TorngitAdapter for the service.

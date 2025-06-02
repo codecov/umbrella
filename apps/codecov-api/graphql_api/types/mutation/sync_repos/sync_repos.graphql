@@ -1,0 +1,6 @@
+union SyncReposError = UnauthenticatedError
+
+type SyncReposPayload {
+  isSyncing: Boolean
+  error: SyncReposError
+}

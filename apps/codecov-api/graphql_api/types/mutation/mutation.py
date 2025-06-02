@@ -49,6 +49,7 @@ from .set_upload_token_required import (
 from .set_yaml_on_owner import error_set_yaml_error, resolve_set_yaml_on_owner
 from .start_trial import error_start_trial, resolve_start_trial
 from .store_event_metrics import error_store_event_metrics, resolve_store_event_metrics
+from .sync_repos import error_sync_repos, resolve_sync_repos
 from .sync_with_git_provider import (
     error_sync_with_git_provider,
     resolve_sync_with_git_provider,
@@ -77,6 +78,7 @@ mutation_bindable.field("createUserToken")(resolve_create_user_token)
 mutation_bindable.field("revokeUserToken")(resolve_revoke_user_token)
 mutation_bindable.field("setYamlOnOwner")(resolve_set_yaml_on_owner)
 mutation_bindable.field("syncWithGitProvider")(resolve_sync_with_git_provider)
+mutation_bindable.field("syncRepos")(resolve_sync_repos)
 mutation_bindable.field("deleteSession")(resolve_delete_session)
 mutation_bindable.field("updateProfile")(resolve_update_profile)
 mutation_bindable.field("updateDefaultOrganization")(
@@ -118,6 +120,7 @@ mutation_resolvers = [
     error_revoke_user_token,
     error_set_yaml_error,
     error_sync_with_git_provider,
+    error_sync_repos,
     error_delete_session,
     error_update_profile,
     error_update_default_organization,

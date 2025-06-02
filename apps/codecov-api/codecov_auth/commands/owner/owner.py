@@ -58,8 +58,8 @@ class OwnerCommands(BaseCommand):
     def fetch_owner(self, username):
         return self.get_interactor(FetchOwnerInteractor).execute(username)
 
-    def trigger_sync(self):
-        return self.get_interactor(TriggerSyncInteractor).execute()
+    def trigger_sync(self, using_integration: bool = False):
+        return self.get_interactor(TriggerSyncInteractor).execute(using_integration)
 
     def is_syncing(self):
         return self.get_interactor(IsSyncingInteractor).execute()
