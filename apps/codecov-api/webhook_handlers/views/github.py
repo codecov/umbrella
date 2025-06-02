@@ -128,7 +128,8 @@ class GithubWebhookHandler(APIView):
             )
             try:
                 log.info(
-                    "Unable to find repository owner, fetching repo with service, service_id",
+                    "Unable to find repository owner,"
+                    " fetching repo with service, service_id",
                     extra={"repo_service_id": repo_service_id, "repo_slug": repo_slug},
                 )
                 return Repository.objects.get(
