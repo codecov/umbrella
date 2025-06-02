@@ -69,9 +69,8 @@ def test_deactivated_repo(db):
     ]
 
 
-def test_reports_post(client, db, mocker):
+def test_reports_post(client, db, mocker, mock_prometheus_metrics):
     mocked_call = mocker.patch.object(TaskService, "preprocess_upload")
-    mock_prometheus_metrics = mocker.patch("upload.metrics.API_UPLOAD_COUNTER.labels")
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
     )
@@ -97,7 +96,7 @@ def test_reports_post(client, db, mocker):
     mocked_call.assert_called_with(repository.repoid, commit.commitid)
     mock_prometheus_metrics.assert_called_with(
         **{
-            "agent": "cli",
+            "agent": "codecov-cli",
             "version": "0.4.7",
             "action": "coverage",
             "endpoint": "create_report",

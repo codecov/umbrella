@@ -47,11 +47,12 @@ def test_upload_completion_view_no_uploads(db, mocker):
 
 
 @patch("services.task.TaskService.manual_upload_completion_trigger")
-def test_upload_completion_view_processed_uploads(mocked_manual_trigger, db, mocker):
+def test_upload_completion_view_processed_uploads(
+    mocked_manual_trigger, db, mocker, mock_prometheus_metrics
+):
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
-    mock_prometheus_metrics = mocker.patch("upload.metrics.API_UPLOAD_COUNTER.labels")
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
     )
@@ -88,7 +89,7 @@ def test_upload_completion_view_processed_uploads(mocked_manual_trigger, db, moc
     mocked_manual_trigger.assert_called_once_with(repository.repoid, commit.commitid)
     mock_prometheus_metrics.assert_called_with(
         **{
-            "agent": "cli",
+            "agent": "codecov-cli",
             "version": "0.4.7",
             "action": "coverage",
             "endpoint": "upload_complete",
