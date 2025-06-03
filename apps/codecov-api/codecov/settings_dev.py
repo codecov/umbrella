@@ -28,7 +28,7 @@ CODECOV_DASHBOARD_URL = "http://localhost:3000"
 CORS_ALLOWED_ORIGINS = [
     CODECOV_DASHBOARD_URL,
     "http://localhost",
-    "http://localhost:9000",
+    "http://localhost:9002",
 ]
 
 COOKIES_DOMAIN = "localhost"

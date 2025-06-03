@@ -3,13 +3,13 @@ interactions:
     body: null
     headers:
       host:
-      - minio:9000
+      - minio:9002
       x-amz-content-sha256:
       - e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
       x-amz-date:
       - 20220622T121514Z
     method: GET
-    uri: http://minio:9000/archive?location=
+    uri: http://minio:9002/archive?location=
   response:
     body:
       string: '<?xml version="1.0" encoding="UTF-8"?>
@@ -43,7 +43,7 @@ interactions:
     body: null
     headers:
       host:
-      - minio:9000
+      - minio:9002
       user-agent:
       - MinIO (Linux; aarch64) minio-py/6.0.2
       x-amz-content-sha256:
@@ -51,7 +51,7 @@ interactions:
       x-amz-date:
       - 20220622T121514Z
     method: HEAD
-    uri: http://minio:9000/archive/
+    uri: http://minio:9002/archive/
   response:
     body:
       string: ''

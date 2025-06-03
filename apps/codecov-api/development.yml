@@ -47,11 +47,11 @@ site:
 
 
 services:
-  minio: 
+  minio:
     hash_key: testixik8qdauiab1yiffydimvi72ekq
     verify_ssl: false
     host: 'minio'
-    port: 9000
+    port: 9002
     # bucket: <bucket-name>
     # region: <bucket-region>
     access_key_id: codecov-default-key

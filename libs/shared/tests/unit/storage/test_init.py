@@ -6,7 +6,7 @@ minio_config = {
     "secret_access_key": "codecov-default-secret",
     "verify_ssl": False,
     "host": "minio",
-    "port": "9000",
+    "port": "9002",
     "iam_auth": False,
     "iam_endpoint": None,
 }

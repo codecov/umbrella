@@ -1,7 +1,7 @@
 setup:
   loglvl: DEBUG
-  codecov_url: "http://localhost:9000"
-  codecov_api_url: "http://localhost:9000"
+  codecov_url: "http://localhost:9002"
+  codecov_api_url: "http://localhost:9002"
   enterprise_license: ""
   http:
     cookie_secret: "secret"

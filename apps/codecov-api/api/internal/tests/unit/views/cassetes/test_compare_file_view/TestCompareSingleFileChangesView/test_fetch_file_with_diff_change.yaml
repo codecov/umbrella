@@ -97,12 +97,12 @@ interactions:
 - request:
     body: null
     headers:
-      Host: ['minio:9000']
+      Host: ['minio:9002']
       User-Agent: [Minio (Linux; x86_64) minio-py/4.0.8]
       X-Amz-Content-Sha256: [e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855]
       X-Amz-Date: [20190828T062703Z]
     method: PUT
-    uri: http://minio:9000/archive/
+    uri: http://minio:9002/archive/
   response:
     body: {string: '<?xml version="1.0" encoding="UTF-8"?>
 
@@ -122,11 +122,11 @@ interactions:
 - request:
     body: null
     headers:
-      Host: ['minio:9000']
+      Host: ['minio:9002']
       X-Amz-Content-Sha256: [e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855]
       X-Amz-Date: [20190828T062703Z]
     method: GET
-    uri: http://minio:9000/archive?location=
+    uri: http://minio:9002/archive?location=
   response:
     body: {string: '<?xml version="1.0" encoding="UTF-8"?>
 
@@ -145,12 +145,12 @@ interactions:
 - request:
     body: null
     headers:
-      host: ['minio:9000']
+      host: ['minio:9002']
       user-agent: [Minio (Linux; x86_64) minio-py/4.0.8]
       x-amz-content-sha256: [e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855]
       x-amz-date: [20190828T062703Z]
     method: GET
-    uri: http://minio:9000/archive/v4/repos/4A3A4B0C7B00EAEA3F77AA7EB90BE4AB/commits/791886122b02a2e52e5dd09e8be5f92e09e83f0b/chunks.txt
+    uri: http://minio:9002/archive/v4/repos/4A3A4B0C7B00EAEA3F77AA7EB90BE4AB/commits/791886122b02a2e52e5dd09e8be5f92e09e83f0b/chunks.txt
   response:
     body:
       string: !!binary |
@@ -174,12 +174,12 @@ interactions:
 - request:
     body: null
     headers:
-      Host: ['minio:9000']
+      Host: ['minio:9002']
       User-Agent: [Minio (Linux; x86_64) minio-py/4.0.8]
       X-Amz-Content-Sha256: [e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855]
       X-Amz-Date: [20190828T062703Z]
     method: PUT
-    uri: http://minio:9000/archive/
+    uri: http://minio:9002/archive/
   response:
     body: {string: '<?xml version="1.0" encoding="UTF-8"?>
 
@@ -199,11 +199,11 @@ interactions:
 - request:
     body: null
     headers:
-      Host: ['minio:9000']
+      Host: ['minio:9002']
       X-Amz-Content-Sha256: [e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855]
       X-Amz-Date: [20190828T062703Z]
     method: GET
-    uri: http://minio:9000/archive?location=
+    uri: http://minio:9002/archive?location=
   response:
     body: {string: '<?xml version="1.0" encoding="UTF-8"?>
 
@@ -222,12 +222,12 @@ interactions:
 - request:
     body: null
     headers:
-      host: ['minio:9000']
+      host: ['minio:9002']
       user-agent: [Minio (Linux; x86_64) minio-py/4.0.8]
       x-amz-content-sha256: [e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855]
       x-amz-date: [20190828T062703Z]
     method: GET
-    uri: http://minio:9000/archive/v4/repos/4A3A4B0C7B00EAEA3F77AA7EB90BE4AB/commits/48a4883890d71d777794ed998a1ad4d24a9ebab5/chunks.txt
+    uri: http://minio:9002/archive/v4/repos/4A3A4B0C7B00EAEA3F77AA7EB90BE4AB/commits/48a4883890d71d777794ed998a1ad4d24a9ebab5/chunks.txt
   response:
     body:
       string: !!binary |

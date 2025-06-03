@@ -57,7 +57,7 @@ def mock_config(mocker):
                 "hash_key": "test-key",
                 "secret_access_key": "codecov-default-secret",
                 "verify_ssl": False,
-                "port": "9000",
+                "port": "9002",
             },
         },
     }

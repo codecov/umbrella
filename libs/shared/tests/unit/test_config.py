@@ -299,7 +299,7 @@ class TestConfig:
                 "services:",
                 "  minio:",
                 "    host: s3.amazonaws.com",
-                "    port: 9000",
+                "    port: 9002",
                 "    bucket: cce-minio-update-test",
                 "    region: us-east-2",
                 "    verify_ssl: true",
@@ -311,7 +311,7 @@ class TestConfig:
         mocker.patch("shared.config._get_config_instance", return_value=this_config)
         assert get_config("services", "minio") == {
             "host": "s3.amazonaws.com",
-            "port": 9000,
+            "port": 9002,
             "access_key_id": "codecov-default-key",
             "secret_access_key": "codecov-default-secret",
             "verify_ssl": True,
@@ -379,7 +379,7 @@ class TestConfig:
                 "BITBUCKET__BOT__SECRET": "BITBUCKET__BOT__SECRET",
                 "SERVICES__STRIPE__API_KEY": "SERVICES__STRIPE__API_KEY",
                 "SERVICES__AWS__AWS_ACCESS_KEY_ID": "SERVICES__AWS__AWS_ACCESS_KEY_ID",
-                "SERVICES__MINIO__PORT": "9000",
+                "SERVICES__MINIO__PORT": "9002",
                 "SERVICES__AWS__AWS_SECRET_ACCESS_KEY": "1/SERVICES__AWS__AWS_SECRET_ACCESS_KEY",
                 "BITBUCKET__CLIENT_ID": "BITBUCKET__CLIENT_ID",
                 "BITBUCKET__CLIENT_SECRET": "BITBUCKET__CLIENT_SECRET",
@@ -407,7 +407,7 @@ class TestConfig:
                 "minio": {
                     "hash_key": "hash_key",
                     "host": "minio-proxy",
-                    "port": 9000,
+                    "port": 9002,
                     "access_key_id": "SERVICES__MINIO__ACCESS_KEY_ID",
                     "secret_access_key": "SERVICES__MINIO__SECRET_ACCESS_KEY",
                 },

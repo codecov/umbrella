@@ -3,7 +3,7 @@ import os
 from .settings_dev import *
 
 ALLOWED_HOSTS = ["localhost"]
-CORS_ALLOWED_ORIGINS = ["http://localhost:9000", "http://localhost"]
+CORS_ALLOWED_ORIGINS = ["http://localhost:9002", "http://localhost"]
 SHELTER_ENABLED = False
 SHELTER_PUBSUB_PROJECT_ID = "test-project-id"
 SHELTER_PUBSUB_SYNC_REPO_TOPIC_ID = "test-topic-id"

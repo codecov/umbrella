@@ -35,7 +35,7 @@ def make_storage() -> MinioStorageService:
             "secret_access_key": "codecov-default-secret",
             "verify_ssl": False,
             "host": "minio",
-            "port": "9000",
+            "port": "9002",
             "iam_auth": False,
             "iam_endpoint": None,
         }
@@ -306,7 +306,7 @@ def test_minio_with_ports():
         "secret_access_key": "haha",
         "verify_ssl": False,
         "host": "cute_url_no_ports",
-        "port": "9000",
+        "port": "9002",
         "iam_auth": True,
         "iam_endpoint": None,
     }
@@ -321,7 +321,7 @@ def test_minio_with_region():
         "secret_access_key": "haha",
         "verify_ssl": False,
         "host": "cute_url_no_ports",
-        "port": "9000",
+        "port": "9002",
         "iam_auth": True,
         "iam_endpoint": None,
         "region": "example",
