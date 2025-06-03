@@ -1,12 +1,6 @@
 # shared
-[![Shared CI](https://github.com/codecov/shared/actions/workflows/ci.yml/badge.svg)](https://github.com/codecov/shared/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/codecov/shared/graph/badge.svg?token=IL64imgbOu)](https://codecov.io/gh/codecov/shared)  
 
 Shared is a place for code that is common to multiple python repositories on `codecov`.
-
-> We believe that everyone should have access to quality software (like Sentry), that’s why we have always offered Codecov for free to open source maintainers.
->
-> By making our code public, we’re not only joining the community that’s supported us from the start — but also want to make sure that every developer can contribute to and build on the Codecov experience.
 
 ## How does shared get into production
 
@@ -83,4 +77,4 @@ Remember that multiple packages, on different contexts of their own requirements
 
 ## Contributing
 
-This repository, like all of Codecov's repositories, strives to follow our general [Contributing guidlines](https://github.com/codecov/contributing). If you're considering making a contribution to this repository, we encourage review of our Contributing guidelines first. 
+This repository, like all of Codecov's repositories, strives to follow our general [Contributing guidlines](https://github.com/codecov/contributing). If you're considering making a contribution to this repository, we encourage review of our Contributing guidelines first.
