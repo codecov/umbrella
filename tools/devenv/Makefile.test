@@ -23,7 +23,7 @@ devenv.upload.api:
 
 .PHONY: devenv.test.shared
 devenv.test.shared:
-	docker exec -e COVERAGE_CORE=sysmon -e RUN_ENV=TESTING -e CODECOV_YML=${TEST_YML} -e DJANGO_SETTINGS_MODULE=shared.django_apps.settings_test -it umbrella-shared-1 uv run pytest --cov ./shared --cov-report=xml:tests/coverage.xml --junitxml=tests/junit.xml -o junit_family=legacy --rootdir=/app -c pytest.ini
+	docker exec -e COVERAGE_CORE=sysmon -e RUN_ENV=TESTING -e CODECOV_YML=${TEST_YML} -e DJANGO_SETTINGS_MODULE=shared.django_apps.settings_test -it umbrella-shared-1 pytest --cov ./shared --cov-report=xml:tests/coverage.xml --junitxml=tests/junit.xml -o junit_family=legacy --rootdir=/app -c pytest.ini
 
 .PHONY: devenv.upload.shared
 devenv.upload.shared:

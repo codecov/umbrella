@@ -1,17 +1,22 @@
+.PHONY: devenv.build.requirements
+devenv.build.requirements:
+	$(MAKE) build.requirements
+	$(MAKE) build.test-requirements
+
 .PHONY: devenv.build.worker
-devenv.build.worker:
-	$(MAKE) worker.build
+devenv.build.worker: devenv.build.requirements
+	$(MAKE) worker.build.local
 
 .PHONY: devenv.build.api
-devenv.build.api:
-	$(MAKE) api.build
+devenv.build.api: devenv.build.requirements
+	$(MAKE) api.build.local
 
 .PHONY: devenv.build.shared
-devenv.build.shared:
-	$(MAKE) shared.build
+devenv.build.shared: devenv.build.requirements
+	$(MAKE) shared.build.local
 
 .PHONY: devenv.build
-devenv.build: devenv.build.api devenv.build.worker devenv.build.shared
+devenv.build: devenv.build.requirements devenv.build.api devenv.build.worker devenv.build.shared
 
 .PHONY: devenv.start.deps
 devenv.start.deps:
