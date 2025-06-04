@@ -196,7 +196,7 @@ def jwt_middleware(get_response):
             organization_slug = payload.get("g_o")
 
             if organization_slug and provider:
-                owner, _created = await sync_to_async(Owner.objects.get)(
+                owner = await sync_to_async(Owner.objects.get)(
                     username=organization_slug,
                     service=provider,
                 )

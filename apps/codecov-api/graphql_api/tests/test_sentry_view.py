@@ -53,15 +53,15 @@ class TestSentryAriadneView(TestCase):
 
     def test_sentry_ariadne_view_valid_token(self):
         """Test sentry_ariadne_view with valid JWT token"""
-        with patch("codecov_auth.middleware.Owner.objects.get") as mock_get_or_create:
-            mock_get_or_create.return_value = (self.mock_owner, False)
+        with patch("codecov_auth.middleware.Owner.objects.get") as mock_get:
+            mock_get.return_value = self.mock_owner
             response = self.do_query(query=self.query, token=self.valid_jwt_token)
 
             assert response.status_code == 200
             assert response.json() == {
                 "data": {"me": {"owner": {"username": str(self.mock_owner.username)}}}
             }
-            mock_get_or_create.assert_called_once_with(
+            mock_get.assert_called_once_with(
                 username="sentry_ariadne_check", service="github"
             )
 

@@ -194,15 +194,15 @@ async def test_sentry_jwt_valid_token_existing_owner(
     """Test middleware behavior with valid JWT token and existing owner"""
     request = request_factory.get("/", HTTP_AUTHORIZATION=f"Bearer {valid_jwt_token}")
 
-    with patch("codecov_auth.middleware.Owner.objects.get") as mock_get_or_create:
-        mock_get_or_create.return_value = (mock_owner, False)
+    with patch("codecov_auth.middleware.Owner.objects.get") as mock_get:
+        mock_get.return_value = mock_owner
 
         response = await sentry_jwt_middleware_instance(request)
 
         assert not isinstance(response, HttpResponseForbidden)
         assert not isinstance(response, HttpResponseNotFound)
         assert request.current_owner == mock_owner
-        mock_get_or_create.assert_called_once_with(
+        mock_get.assert_called_once_with(
             username="sentry_middleware_check", service="github"
         )
 
