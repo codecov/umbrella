@@ -119,7 +119,7 @@ def test_upload_test_results(db, client, mocker, mock_redis):
 
     # emits Amplitude event
     mock_amplitude.assert_called_with(
-        "Upload Received",
+        "Repository Activated",
         {
             "user_ownerid": UNKNOWN_USER_OWNERID,
             "ownerid": commit.repository.author.ownerid,

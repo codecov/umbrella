@@ -53,20 +53,6 @@ def create_upload(
     is_shelter_request: bool,
     analytics_token: str,
 ) -> ReportSession:
-    AmplitudeEventPublisher().publish(
-        "Upload Received",
-        {
-            "user_ownerid": commit.author.ownerid
-            if commit.author
-            else UNKNOWN_USER_OWNERID,
-            "ownerid": repository.author.ownerid,
-            "repoid": repository.repoid,
-            "commitid": commit.id,  # Not commit.commitid, we do not want a commit SHA here.
-            "pullid": commit.pullid,
-            "upload_type": "Coverage report",
-        },
-    )
-
     version = (
         serializer.validated_data["version"]
         if "version" in serializer.validated_data
@@ -106,7 +92,7 @@ def create_upload(
     )
 
     trigger_upload_task(repository, commit.commitid, instance, report)
-    activate_repo(repository)
+    activate_repo(repository, commit)
     send_analytics_data(commit, instance, version, analytics_token)
     return instance
 
@@ -128,7 +114,7 @@ def trigger_upload_task(
     dispatch_upload_task(redis, repository.repoid, task_arguments)
 
 
-def activate_repo(repository: Repository) -> None:
+def activate_repo(repository: Repository, commit: Commit) -> None:
     # Only update the fields if needed
     if (
         repository.activated
@@ -149,6 +135,19 @@ def activate_repo(repository: Repository) -> None:
             "coverage_enabled",
             "updatestamp",
         ]
+    )
+    AmplitudeEventPublisher().publish(
+        "Repository Activated",
+        {
+            "user_ownerid": commit.author.ownerid
+            if commit.author
+            else UNKNOWN_USER_OWNERID,
+            "ownerid": repository.author.ownerid,
+            "repoid": repository.repoid,
+            "commitid": commit.id,  # Not commit.commitid, we do not want a commit SHA here.
+            "pullid": commit.pullid,
+            "upload_type": "Coverage report",
+        },
     )
 
 

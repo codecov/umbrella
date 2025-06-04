@@ -109,19 +109,6 @@ class BundleAnalysisView(APIView, ShelterMixin):
         if repo is None:
             raise NotFound("Repository not found.")
 
-        update_fields = []
-        if not repo.active or not repo.activated:
-            repo.active = True
-            repo.activated = True
-            update_fields += ["active", "activated"]
-
-        if not repo.bundle_analysis_enabled:
-            repo.bundle_analysis_enabled = True
-            update_fields += ["bundle_analysis_enabled"]
-
-        if update_fields:
-            repo.save(update_fields=update_fields)
-
         commit, _ = Commit.objects.get_or_create(
             commitid=data["commit"],
             repository=repo,
@@ -133,19 +120,31 @@ class BundleAnalysisView(APIView, ShelterMixin):
             },
         )
 
-        AmplitudeEventPublisher().publish(
-            "Upload Received",
-            {
-                "user_ownerid": commit.author.ownerid
-                if commit.author
-                else UNKNOWN_USER_OWNERID,
-                "ownerid": repo.author.ownerid,
-                "repoid": repo.repoid,
-                "commitid": commit.id,  # Not commit.commitid, we do not want a commit SHA here!
-                "pullid": commit.pullid,
-                "upload_type": "Bundle",
-            },
-        )
+        update_fields = []
+        if not repo.active or not repo.activated:
+            repo.active = True
+            repo.activated = True
+            update_fields += ["active", "activated"]
+            AmplitudeEventPublisher().publish(
+                "Repository Activated",
+                {
+                    "user_ownerid": commit.author.ownerid
+                    if commit.author
+                    else UNKNOWN_USER_OWNERID,
+                    "ownerid": repo.author.ownerid,
+                    "repoid": repo.repoid,
+                    "commitid": commit.id,  # Not commit.commitid, we do not want a commit SHA here!
+                    "pullid": commit.pullid,
+                    "upload_type": "Bundle",
+                },
+            )
+
+        if not repo.bundle_analysis_enabled:
+            repo.bundle_analysis_enabled = True
+            update_fields += ["bundle_analysis_enabled"]
+
+        if update_fields:
+            repo.save(update_fields=update_fields)
 
         storage_path = data.get("storage_path", None)
         upload_external_id = data.get("upload_external_id", None)

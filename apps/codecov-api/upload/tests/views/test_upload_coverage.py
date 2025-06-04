@@ -153,7 +153,7 @@ def test_upload_coverage_post(db, mocker):
         == f"{settings.CODECOV_DASHBOARD_URL}/{repository.author.service}/{repository.author.username}/{repository.name}/commit/{commit.commitid}"
     )
     amplitude_mock.assert_called_with(
-        "Upload Received",
+        "Repository Activated",
         {
             "user_ownerid": commit.author.ownerid,
             "ownerid": commit.repository.author.ownerid,
