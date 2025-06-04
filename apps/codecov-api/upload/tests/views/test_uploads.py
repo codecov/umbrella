@@ -841,7 +841,8 @@ def test_activate_already_activated_repo(db):
     repo = RepositoryFactory(
         active=True, activated=True, deleted=False, coverage_enabled=True
     )
-    activate_repo(repo)
+    commit = CommitFactory.create()
+    activate_repo(repo, commit)
     assert repo.active
 
 
