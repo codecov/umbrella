@@ -3,6 +3,7 @@ from io import BytesIO
 from typing import cast
 
 import polars as pl
+from django.conf import settings
 
 import shared.storage
 from services.test_analytics.ta_metrics import (

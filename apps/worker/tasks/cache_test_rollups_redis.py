@@ -1,5 +1,6 @@
 import datetime as dt
 
+from django.conf import settings
 from redis.exceptions import LockError
 
 import shared.storage

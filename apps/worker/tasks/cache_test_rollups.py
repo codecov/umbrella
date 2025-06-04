@@ -2,6 +2,7 @@ import datetime as dt
 from typing import Literal
 
 import polars as pl
+from django.conf import settings
 from django.db import connections
 from redis.exceptions import LockError
 
