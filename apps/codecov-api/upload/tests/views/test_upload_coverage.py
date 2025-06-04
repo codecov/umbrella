@@ -5,7 +5,7 @@ from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from billing.helpers import mock_all_plans_and_tiers
+from billing.tests.mocks import mock_all_plans_and_tiers
 from reports.models import ReportSession, RepositoryFlag, UploadFlagMembership
 from shared.api_archive.archive import ArchiveService, MinioEndpoints
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
