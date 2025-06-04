@@ -32,9 +32,7 @@ RUN rm /app/apps/codecov-api/codecov/settings_dev.py && \
     rm /app/apps/codecov-api/dev.sh && \
     rm /app/apps/codecov-api/migrate.sh && \
     rm /app/apps/codecov-api/prod.sh && \
-    rm /app/apps/codecov-api/staging.sh && \
-    rm /app/apps/codecov-api/production.yml && \
-    rm /app/apps/codecov-api/development.yml
+    rm /app/apps/codecov-api/staging.sh
 # Remove unneeded folders
 RUN rm -rf /app/apps/codecov-api/.github
 RUN rm -rf /app/apps/codecov-api/.circleci
