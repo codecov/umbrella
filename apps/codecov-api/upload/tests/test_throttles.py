@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, Mock
 from django.test import override_settings
 from rest_framework.test import APITestCase
 
-from billing.helpers import mock_all_plans_and_tiers
+from billing.tests.mocks import mock_all_plans_and_tiers
 from reports.tests.factories import CommitReportFactory, UploadFactory
 from shared.django_apps.core.tests.factories import (
     CommitFactory,

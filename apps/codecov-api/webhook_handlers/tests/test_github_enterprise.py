@@ -10,7 +10,7 @@ from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
 
-from billing.helpers import mock_all_plans_and_tiers
+from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov_auth.models import GithubAppInstallation, Owner, Service
 from shared.django_apps.codecov_auth.tests.factories import GithubAppInstallationFactory
 from shared.django_apps.core.tests.factories import (

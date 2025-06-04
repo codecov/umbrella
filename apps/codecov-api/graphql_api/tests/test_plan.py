@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.utils import timezone
 from freezegun import freeze_time
 
-from billing.helpers import mock_all_plans_and_tiers
+from billing.tests.mocks import mock_all_plans_and_tiers
 from shared.django_apps.codecov_auth.tests.factories import AccountFactory
 from shared.django_apps.core.tests.factories import OwnerFactory
 from shared.license import LicenseInformation

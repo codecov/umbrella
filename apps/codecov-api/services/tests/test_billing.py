@@ -9,7 +9,7 @@ from freezegun import freeze_time
 from stripe import InvalidRequestError
 from stripe.api_resources import PaymentIntent, SetupIntent
 
-from billing.helpers import mock_all_plans_and_tiers
+from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov_auth.models import Plan, Service
 from services.billing import AbstractPaymentService, BillingService, StripeService
 from shared.django_apps.core.tests.factories import OwnerFactory

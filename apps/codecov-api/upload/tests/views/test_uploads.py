@@ -7,7 +7,7 @@ from django.urls import reverse
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient, APITestCase
 
-from billing.helpers import mock_all_plans_and_tiers
+from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov_auth.authentication.repo_auth import OrgLevelTokenRepositoryAuth
 from codecov_auth.services.org_level_token_service import OrgLevelTokenService
 from reports.models import (

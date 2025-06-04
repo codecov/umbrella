@@ -11,7 +11,7 @@ from rest_framework.test import APITestCase
 from stripe import StripeError
 
 from api.internal.tests.test_utils import GetAdminProviderAdapter
-from billing.helpers import mock_all_plans_and_tiers
+from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov_auth.models import Service
 from shared.django_apps.codecov_auth.tests.factories import (
     AccountFactory,
