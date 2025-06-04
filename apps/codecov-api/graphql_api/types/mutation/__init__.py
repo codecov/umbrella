@@ -23,6 +23,7 @@ from .set_upload_token_required import gql_set_upload_token_required
 from .set_yaml_on_owner import gql_set_yaml_on_owner
 from .start_trial import gql_start_trial
 from .store_event_metrics import gql_store_event_metrics
+from .sync_repos import gql_sync_repos
 from .sync_with_git_provider import gql_sync_with_git_provider
 from .update_bundle_cache_config import gql_update_bundle_cache_config
 from .update_default_organization import gql_update_default_organization
@@ -33,6 +34,7 @@ from .update_self_hosted_settings import gql_update_self_hosted_settings
 mutation = ariadne_load_local_graphql(__file__, "mutation.graphql")
 mutation = mutation + gql_create_api_token
 mutation = mutation + gql_create_stripe_setup_intent
+mutation = mutation + gql_sync_repos
 mutation = mutation + gql_sync_with_git_provider
 mutation = mutation + gql_delete_session
 mutation = mutation + gql_set_yaml_on_owner
