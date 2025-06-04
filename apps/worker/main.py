@@ -5,7 +5,7 @@ import django
 # we're moving this before we create the Celery object
 # so that celery can detect Django is being used
 # using the Django fixup will help fix some database issues
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_scaffold.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_scaffold.settings_prod")
 django.setup()
 
 import logging  # noqa: E402

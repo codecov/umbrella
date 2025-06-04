@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from shared.django_apps.dummy_settings import *
+from shared.django_apps.settings_test import *
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -23,5 +23,4 @@ TEMPLATES = [
     }
 ]
 
-DATABASES["default"]["TEST"] = {"NAME": "test_postgres_django"}
 IS_ENTERPRISE = False
