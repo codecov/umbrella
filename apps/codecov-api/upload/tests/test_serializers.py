@@ -1,7 +1,7 @@
 from django.conf import settings
 from rest_framework.exceptions import ErrorDetail
 
-from billing.helpers import mock_all_plans_and_tiers
+from billing.tests.mocks import mock_all_plans_and_tiers
 from reports.tests.factories import (
     CommitReportFactory,
     RepositoryFlagFactory,
