@@ -104,9 +104,7 @@ class MemoryStorageService(BaseStorageService):
         if file_obj is None:
             return data
         else:
-            chunks = [
-                data[i : i + CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)
-            ]
+            chunks = [data[i : i + CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)]
             for chunk in chunks:
                 file_obj.write(chunk)
 

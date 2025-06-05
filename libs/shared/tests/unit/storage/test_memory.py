@@ -40,7 +40,9 @@ def test_write_then_read_file():
     data = "lorem ipsum dolor test_write_then_read_file á"
 
     ensure_bucket(storage)
-    writing_result = storage.write_file(BUCKET_NAME, path, data, metadata={"foo": "bar"})
+    writing_result = storage.write_file(
+        BUCKET_NAME, path, data, metadata={"foo": "bar"}
+    )
     assert writing_result
 
     meta = {}
@@ -60,7 +62,9 @@ def test_write_then_read_file_obj():
     with open(local_path, "w") as f:
         f.write(data)
     with open(local_path, "rb") as f:
-        writing_result = storage.write_file(BUCKET_NAME, path, f, metadata={"foo": "bar"})
+        writing_result = storage.write_file(
+            BUCKET_NAME, path, f, metadata={"foo": "bar"}
+        )
     assert writing_result
 
     _, local_path = tempfile.mkstemp()
