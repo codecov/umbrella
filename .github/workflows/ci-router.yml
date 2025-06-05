@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - prod-*
+      - stage-*
     branches:
       - main
       - staging
@@ -98,3 +99,12 @@ jobs:
     with:
       skip: ${{ needs.change-detection.outputs.shared == 'false' }}
       event_name: ${{ github.event_name }}
+
+  push-staging:
+    name: Push to staging
+    # We want to push to staging after the images have been built. We use `always()`
+    # to run this job even if tests failed.
+    needs: [reqs, worker-ci, api-ci]
+    if: ${{ github.event_name == 'push' && github.event.ref == 'refs/heads/staging' && github.repository_owner == 'codecov' && always()}}
+    uses: ./.github/workflows/push-stage.yml
+    secrets: inherit

@@ -1,13 +1,7 @@
 name: Push to Stage
 
 on:
-  push:
-    tags:
-      - stage-*
-    branches:
-      - staging
-  pull_request:
-  merge_group:
+  workflow_call:
 
 permissions:
   contents: "read"
@@ -16,19 +10,8 @@ permissions:
   pull-requests: "write"
 
 jobs:
-
-    worker-build:
-      name: Build App (Worker)
-      uses: ./.github/workflows/_build-app.yml
-      secrets: inherit
-      with:
-        repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
-        output_directory: apps/worker
-        make_target_prefix: worker.
-
     worker:
         name: Push Staging Image (Worker)
-        needs: [worker-build]
         if: ${{ github.repository_owner == 'codecov' && github.event_name == 'push' && github.event.ref == 'refs/heads/staging' }}
         uses: ./.github/workflows/_push-env.yml
         secrets: inherit
@@ -45,18 +28,8 @@ jobs:
         if: ${{ !cancelled() && github.event_name == 'push' }}
         uses: ./.github/workflows/trigger-worker-deploy.yml
 
-    api-build:
-      name: Build App (API)
-      uses: ./.github/workflows/_build-app.yml
-      secrets: inherit
-      with:
-        repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
-        output_directory: apps/codecov-api
-        make_target_prefix: api.
-
     api:
         name: Push Staging Image (API)
-        needs: [api-build]
         if: ${{ github.repository_owner == 'codecov' && github.event_name == 'push' && github.event.ref == 'refs/heads/staging' }}
         uses: ./.github/workflows/_push-env.yml
         secrets: inherit
@@ -66,7 +39,7 @@ jobs:
             output_directory: apps/codecov-api
             sentry_project: api
             make_target_prefix: api.
-    
+
     trigger-api-deploy:
         name: Trigger codecov-api deployment
         needs: [api]
