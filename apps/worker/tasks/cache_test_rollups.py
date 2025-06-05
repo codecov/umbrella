@@ -2,12 +2,12 @@ import datetime as dt
 from typing import Literal
 
 import polars as pl
+from django.conf import settings
 from django.db import connections
 from redis.exceptions import LockError
 
 import shared.storage
 from app import celery_app
-from django_scaffold import settings
 from services.test_analytics.ta_cache_rollups import cache_rollups
 from services.test_analytics.ta_metrics import (
     read_rollups_from_db_summary,

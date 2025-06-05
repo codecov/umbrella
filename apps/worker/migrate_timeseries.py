@@ -6,7 +6,7 @@ from django.core.management import call_command
 from django.db import connections
 
 # Setup Django environment
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_scaffold.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_scaffold.settings_prod")
 django.setup()
 
 from django.conf import settings  # noqa: E402

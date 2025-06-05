@@ -1,6 +1,7 @@
 services:
   repo:
-    image: ${DOCKER_REPO}:${DOCKER_VERSION}
+    image: ${AR_REPO}:${VERSION}
+    tty: true
     depends_on:
       - minio
       - postgres
@@ -9,6 +10,8 @@ services:
     volumes:
       - ./:/app
       - ./tools/devenv/config/test.yml:/config/codecov.yml
+    networks:
+      - codecov
     environment:
       # Improves pytest-cov performance in python 3.12
       # https://github.com/nedbat/coveragepy/issues/1665#issuecomment-1937075835
@@ -16,9 +19,8 @@ services:
       - RUN_ENV=DEV
     env_file:
       - .testenv
-    command:
-      - sleep
-      - infinity
+    entrypoint:
+      - /bin/sh # We don't really need to start the service for tests
 
   postgres:
     image: postgres:14-alpine
@@ -31,6 +33,8 @@ services:
         target: /var/lib/postgresql/data
         tmpfs:
           size: 1024M
+    networks:
+      - codecov
 
   timescale:
     image: timescale/timescaledb-ha:pg14-latest
@@ -40,9 +44,13 @@ services:
       - POSTGRES_PASSWORD=password
     volumes:
       - ./docker/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    networks:
+      - codecov
 
   redis:
     image: redis:6-alpine
+    networks:
+      - codecov
 
   minio:
     image: minio/minio:latest
@@ -55,6 +63,14 @@ services:
         target: /export
         tmpfs:
           size: 256M
+    networks:
+      - codecov
 
   mailhog:
     image: mailhog/mailhog:latest
+    networks:
+      - codecov
+
+networks:
+  codecov:
+    driver: bridge
