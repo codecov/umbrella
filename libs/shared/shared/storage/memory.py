@@ -17,6 +17,7 @@ class MemoryStorageService(BaseStorageService):
         self.config = config
         self.root_storage_created = False
         self.storage = defaultdict(dict)
+        self.metadata = defaultdict(dict)
 
     def create_root_storage(self, bucket_name="archive", region="us-east-1"):
         """
@@ -43,6 +44,7 @@ class MemoryStorageService(BaseStorageService):
         reduced_redundancy=False,
         *,
         is_already_gzipped: bool = False,
+        metadata: dict[str, str] | None = None,
     ):
         """
             Writes a new file with the contents of `data`
@@ -67,9 +69,13 @@ class MemoryStorageService(BaseStorageService):
             # data is a file-like object
             data.seek(0)
             self.storage[bucket_name][path] = data.read()
+
+        if metadata:
+            self.metadata[bucket_name][path] = metadata
+
         return True
 
-    def read_file(self, bucket_name, path, file_obj=None):
+    def read_file(self, bucket_name, path, file_obj=None, metadata_container=None):
         """Reads the content of a file
 
         Args:
@@ -83,18 +89,26 @@ class MemoryStorageService(BaseStorageService):
         Returns:
             bytes : The contents of that file, still encoded as bytes
         """
-        try:
-            data = self.storage[bucket_name][path]
-            if file_obj is None:
-                return data
-            else:
-                chunks = [
-                    data[i : i + CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)
-                ]
-                for chunk in chunks:
-                    file_obj.write(chunk)
-        except KeyError:
+        if path not in self.storage[bucket_name]:
             raise FileNotInStorageError()
+
+        # Populate the metadata container if there is anything there
+        if metadata_container is not None:
+            try:
+                metadata = self.metadata[bucket_name][path]
+                metadata_container.update(metadata)
+            except KeyError:
+                pass
+
+        data = self.storage[bucket_name][path]
+        if file_obj is None:
+            return data
+        else:
+            chunks = [
+                data[i : i + CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)
+            ]
+            for chunk in chunks:
+                file_obj.write(chunk)
 
     def delete_file(self, bucket_name, path):
         """Deletes a single file from the storage
