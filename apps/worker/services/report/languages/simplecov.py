@@ -12,7 +12,14 @@ class SimplecovProcessor(BaseLanguageProcessor):
     """
 
     def matches_content(self, content: dict, first_line: str, name: str) -> bool:
-        return isinstance(content, dict) and content.get("command_name") == "RSpec"
+        return isinstance(content, dict) and (
+            content.get("command_name") == "RSpec"
+            or (
+                "meta" in content
+                and isinstance(content["meta"], dict)
+                and "simplecov_version" in content["meta"]
+            )
+        )
 
     @sentry_sdk.trace
     def process(
