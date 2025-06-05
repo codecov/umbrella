@@ -80,7 +80,7 @@ services:
       - ./apps/codecov-api:/app/apps/codecov-api:cached
       - ./libs/shared:/app/libs/shared:cached
     ports:
-      - "8000:8000"
+      - "8000"
     networks:
       - codecov
     depends_on:
