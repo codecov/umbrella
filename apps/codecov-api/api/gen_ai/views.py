@@ -47,7 +47,7 @@ class GenAIAuthView(APIView):
         is_authorized = True
 
         app_install = GithubAppInstallation.objects.filter(
-            owner_id=owner.ownerid, app_id=AI_FEATURES_GH_APP_ID
+            owner_id=owner.ownerid, app_id=AI_FEATURES_GH_APP_ID, service="github"
         ).first()
 
         if not app_install:
