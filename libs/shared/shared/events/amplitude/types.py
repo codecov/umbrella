@@ -24,7 +24,7 @@ type AmplitudeEventType = Literal[
     "User Created",
     "User Logged in",
     "App Installed",
-    "Upload Received",
+    "Repository Activated",
     "set_orgs",  # special event for setting a user's member orgs
 ]
 
@@ -69,5 +69,5 @@ AMPLITUDE_REQUIRED_PROPERTIES: dict[
     "User Created": [],
     "User Logged in": [],
     "App Installed": ["ownerid"],
-    "Upload Received": ["ownerid", "repoid", "commitid", "pullid", "upload_type"],
+    "Repository Activated": ["ownerid", "repoid", "commitid", "pullid", "upload_type"],
 }

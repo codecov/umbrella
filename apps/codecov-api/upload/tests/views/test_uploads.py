@@ -265,7 +265,7 @@ def test_uploads_post(db, mocker, mock_redis):
     )
 
     amplitude_mock.assert_called_with(
-        "Upload Received",
+        "Repository Activated",
         {
             "user_ownerid": commit.author.ownerid,
             "ownerid": repository.author.ownerid,
@@ -829,7 +829,8 @@ def test_activate_repo(db):
     repo = RepositoryFactory(
         active=False, deleted=True, activated=False, coverage_enabled=False
     )
-    activate_repo(repo)
+    commit = CommitFactory.create()
+    activate_repo(repo, commit)
     assert repo.active
     assert repo.activated
     assert not repo.deleted
@@ -840,7 +841,8 @@ def test_activate_already_activated_repo(db):
     repo = RepositoryFactory(
         active=True, activated=True, deleted=False, coverage_enabled=True
     )
-    activate_repo(repo)
+    commit = CommitFactory.create()
+    activate_repo(repo, commit)
     assert repo.active
 
 

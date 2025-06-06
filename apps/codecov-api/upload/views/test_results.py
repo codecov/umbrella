@@ -100,11 +100,35 @@ class TestResultsView(
         if repo is None:
             raise NotFound("Repository not found.")
 
+        commit, _ = Commit.objects.get_or_create(
+            commitid=data["commit"],
+            repository=repo,
+            defaults={
+                "branch": data.get("branch") or repo.branch,
+                "pullid": data.get("pr"),
+                "merged": False if data.get("pr") is not None else None,
+                "state": "pending",
+            },
+        )
+
         update_fields = []
         if not repo.active or not repo.activated:
             repo.active = True
             repo.activated = True
             update_fields += ["active", "activated"]
+            AmplitudeEventPublisher().publish(
+                "Repository Activated",
+                {
+                    "user_ownerid": commit.author.ownerid
+                    if commit.author
+                    else UNKNOWN_USER_OWNERID,
+                    "ownerid": repo.author.ownerid,
+                    "repoid": repo.repoid,
+                    "commitid": commit.id,  # Not commit.commitid, we do not want a commit SHA here!
+                    "pullid": commit.pullid,
+                    "upload_type": "Test results",
+                },
+            )
 
         if not repo.test_analytics_enabled:
             repo.test_analytics_enabled = True
@@ -123,31 +147,6 @@ class TestResultsView(
                 is_shelter_request=self.is_shelter_request(),
                 position="end",
             ),
-        )
-
-        commit, _ = Commit.objects.get_or_create(
-            commitid=data["commit"],
-            repository=repo,
-            defaults={
-                "branch": data.get("branch") or repo.branch,
-                "pullid": data.get("pr"),
-                "merged": False if data.get("pr") is not None else None,
-                "state": "pending",
-            },
-        )
-
-        AmplitudeEventPublisher().publish(
-            "Upload Received",
-            {
-                "user_ownerid": commit.author.ownerid
-                if commit.author
-                else UNKNOWN_USER_OWNERID,
-                "ownerid": repo.author.ownerid,
-                "repoid": repo.repoid,
-                "commitid": commit.id,  # Not commit.commitid, we do not want a commit SHA here!
-                "pullid": commit.pullid,
-                "upload_type": "Test results",
-            },
         )
 
         upload_external_id = str(uuid.uuid4())
