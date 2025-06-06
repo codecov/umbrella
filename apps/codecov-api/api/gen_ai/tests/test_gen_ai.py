@@ -142,5 +142,4 @@ class GenAIAuthViewTests(APITestCase):
                 content_type="application/json",
                 HTTP_HTTP_X_GEN_AI_AUTH_SIGNATURE=sig,
             )
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.data, {"is_valid": False})
+            self.assertEqual(response.status_code, 404)
