@@ -127,14 +127,12 @@ class GenAIAuthViewTests(APITestCase):
             owner = OwnerFactory(
                 service="gitlab", service_id="owner4", username="test4"
             )
-            # Create an installation with a non-github service
             GithubAppInstallationFactory(
                 installation_id=12345,
                 owner=owner,
                 name="ai-features",
                 repository_service_ids=["101", "202"],
                 app_id=12345,
-                service="gitlab",
             )
             payload = b'{"external_owner_id":"owner4","repo_service_id":"101"}'
             sig, data = sign_payload(payload)

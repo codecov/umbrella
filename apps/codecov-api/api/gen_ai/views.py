@@ -40,14 +40,14 @@ class GenAIAuthView(APIView):
         if not external_owner_id or not repo_service_id:
             return Response("Missing required parameters", status=400)
         try:
-            owner = Owner.objects.get(service_id=external_owner_id)
+            owner = Owner.objects.get(service_id=external_owner_id, service="github")
         except Owner.DoesNotExist:
             raise NotFound("Owner not found")
 
         is_authorized = True
 
         app_install = GithubAppInstallation.objects.filter(
-            owner_id=owner.ownerid, app_id=AI_FEATURES_GH_APP_ID, service="github"
+            owner_id=owner.ownerid, app_id=AI_FEATURES_GH_APP_ID
         ).first()
 
         if not app_install:
