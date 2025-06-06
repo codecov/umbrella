@@ -120,3 +120,26 @@ class GenAIAuthViewTests(APITestCase):
             )
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.data, {"is_valid": False})
+
+    @patch("api.gen_ai.views.get_config", return_value=PAYLOAD_SECRET)
+    def test_non_github_service(self, mock_config):
+        with patch("api.gen_ai.views.AI_FEATURES_GH_APP_ID", 12345):
+            owner = OwnerFactory(
+                service="gitlab", service_id="owner4", username="test4"
+            )
+            GithubAppInstallationFactory(
+                installation_id=12345,
+                owner=owner,
+                name="ai-features",
+                repository_service_ids=["101", "202"],
+                app_id=12345,
+            )
+            payload = b'{"external_owner_id":"owner4","repo_service_id":"101"}'
+            sig, data = sign_payload(payload)
+            response = self.client.post(
+                VIEW_URL,
+                data=data,
+                content_type="application/json",
+                HTTP_HTTP_X_GEN_AI_AUTH_SIGNATURE=sig,
+            )
+            self.assertEqual(response.status_code, 404)

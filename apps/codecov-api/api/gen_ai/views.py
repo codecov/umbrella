@@ -40,7 +40,7 @@ class GenAIAuthView(APIView):
         if not external_owner_id or not repo_service_id:
             return Response("Missing required parameters", status=400)
         try:
-            owner = Owner.objects.get(service_id=external_owner_id)
+            owner = Owner.objects.get(service_id=external_owner_id, service="github")
         except Owner.DoesNotExist:
             raise NotFound("Owner not found")
 
