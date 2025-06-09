@@ -2,27 +2,86 @@
 
 from django.db import migrations
 
-from shared.django_apps.codecov_auth.migrations.migration_helpers import (
-    eliminate_dupes,
-)
-
-
-def eliminate_dupes_helper(apps, schema):
-    GithubAppInstallation = apps.get_model("codecov_auth", "GithubAppInstallation")
-    eliminate_dupes(model=GithubAppInstallation)
+from shared.django_apps.migration_utils import RiskyAlterUniqueTogether, RiskyRunSQL
 
 
 class Migration(migrations.Migration):
+    """
+    There are no unique constraints on GithubAppInstallation so duplicates exist.
+    Eliminate them so we can add a unique_together on installation_id and app_id.
+    Need to handle CommitNotification fks (gh_app). Since the duplicates mean the same thing,
+    transfer any attached to a non-keeper to a keeper.
+
+    sql for unique constraint
+        ALTER TABLE codecov_auth_githubappinstallation
+        ADD CONSTRAINT unique_app_install
+        UNIQUE (app_id, installation_id);
+    """
+
     dependencies = [
         ("codecov_auth", "0067_alter_githubappinstallation_app_id"),
     ]
 
     operations = [
-        migrations.RunPython(
-            eliminate_dupes_helper,
-            reverse_code=migrations.RunPython.noop,
+        # WARNING: This deletes duplicate data permanently.
+        # reversing this migration will remove unique constraint but won't restore deleted duplicates
+        RiskyRunSQL(
+            sql="""
+                -- Count duplicates
+                DO $$
+                DECLARE
+                    duplicate_count INTEGER;
+                    notifications_updated INTEGER;
+                    deleted_count INTEGER;
+                BEGIN
+                    SELECT COUNT(*) INTO duplicate_count
+                    FROM codecov_auth_githubappinstallation
+                    WHERE id NOT IN (
+                        SELECT MIN(id)
+                        FROM codecov_auth_githubappinstallation
+                        GROUP BY installation_id, app_id
+                    );
+                    
+                    RAISE NOTICE 'Found % duplicate GithubAppInstallation records to delete', duplicate_count;
+                    
+                    IF duplicate_count = 0 THEN
+                        RAISE NOTICE 'No duplicates found, nothing to do';
+                        RETURN;
+                    END IF;
+                    
+                    -- Transfer CommitNotification FKs from duplicates to keepers
+                    UPDATE commit_notifications 
+                    SET gh_app_id = keepers.min_id
+                    FROM (
+                        SELECT MIN(id) as min_id, installation_id, app_id
+                        FROM codecov_auth_githubappinstallation
+                        GROUP BY installation_id, app_id
+                    ) AS keepers
+                    JOIN codecov_auth_githubappinstallation AS duplicates ON (
+                        duplicates.installation_id = keepers.installation_id 
+                        AND duplicates.app_id = keepers.app_id
+                        AND duplicates.id != keepers.min_id
+                    )
+                    WHERE commit_notifications.gh_app_id = duplicates.id;
+                    
+                    GET DIAGNOSTICS notifications_updated = ROW_COUNT;
+                    RAISE NOTICE 'Updated % CommitNotification records to point to keeper installations', notifications_updated;
+                    
+                    -- Delete the duplicates
+                    DELETE FROM codecov_auth_githubappinstallation
+                    WHERE id NOT IN (
+                        SELECT MIN(id)
+                        FROM codecov_auth_githubappinstallation
+                        GROUP BY installation_id, app_id
+                    );
+                    
+                    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+                    RAISE NOTICE 'Deleted % duplicate GithubAppInstallation records', deleted_count;
+                END $$;
+            """,
+            reverse_sql=migrations.RunSQL.noop,
         ),
-        migrations.AlterUniqueTogether(
+        RiskyAlterUniqueTogether(
             name="githubappinstallation",
             unique_together={("app_id", "installation_id")},
         ),
