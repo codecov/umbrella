@@ -491,6 +491,7 @@ class Pull(CodecovBaseModel):
     head = Column(types.Text)
     commentid = Column(types.Text)
     bundle_analysis_commentid = Column(types.Text)
+    sentry_commentid = Column(types.Text, nullable=True)
     diff = Column(postgresql.JSON)
     author_id = Column("author", types.Integer, ForeignKey("owners.ownerid"))
     behind_by = Column(types.Integer)
