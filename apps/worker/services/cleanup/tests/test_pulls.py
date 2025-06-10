@@ -10,7 +10,9 @@ from shared.django_apps.core.tests.factories import (
 from shared.storage.exceptions import FileNotInStorageError
 
 
-@pytest.mark.django_db(transaction=True)  # flakes when running in parallel
+@pytest.mark.django_db(
+    transaction=True, reset_sequences=True
+)  # flakes when running in parallel
 def test_flare_cleanup_in_regular_cleanup(
     transactional_db,
     mocker,
@@ -76,14 +78,19 @@ def test_flare_cleanup_in_regular_cleanup(
 
     # Run flare cleanup
     context = CleanupContext()
-    cleanup_flare(context=context, start_id=1, max_id=500)
+    cleanup_flare(context=context, start_id=1, max_id=5000)
 
     # Check that the non-open pulls have had their flare data cleaned
+    # Note: there is a cache for flare on the object (all ArchiveFields have this),
+    # so get a fresh copy of each object without the cached value
     closed_pull_with_local_flare = Pull.objects.get(id=closed_pull_with_local_flare.id)
     assert closed_pull_with_local_flare.flare == {}
     assert closed_pull_with_local_flare._flare is None
     assert closed_pull_with_local_flare._flare_storage_path is None
 
+    # Verify the delete_file was called for the merged pull's flare
+    storage_path = merged_pull_with_archive_flare._flare_storage_path
+    mock_delete.assert_called_with(mocker.ANY, storage_path)
     merged_pull_with_archive_flare = Pull.objects.get(
         id=merged_pull_with_archive_flare.id
     )
@@ -91,12 +98,6 @@ def test_flare_cleanup_in_regular_cleanup(
     assert merged_pull_with_archive_flare._flare is None
     assert merged_pull_with_archive_flare._flare_storage_path is None
 
-    # Verify the delete_file was called for the merged pull's flare
-    storage_path = merged_pull_with_archive_flare._flare_storage_path
-    mock_delete.assert_called_with(mocker.ANY, storage_path)
-
-    # There is a cache for flare on the object (all ArchiveFields have this),
-    # so get a fresh copy of each object without the cached value
     # Check that the open pulls still have their flare data
     open_pull_with_local_flare = Pull.objects.get(id=open_pull_with_local_flare.id)
     assert open_pull_with_local_flare.flare == local_value_for_flare
@@ -110,10 +111,8 @@ def test_flare_cleanup_in_regular_cleanup(
 
     # Verify that running cleanup again doesn't process the already cleaned pulls
     mock_delete.reset_mock()
-
-    # Run cleanup again
     context = CleanupContext()
-    cleanup_flare(context=context, start_id=1, max_id=500)
+    cleanup_flare(context=context, start_id=1, max_id=5000)
 
     # Verify no delete calls were made for already processed pulls
     mock_delete.assert_not_called()

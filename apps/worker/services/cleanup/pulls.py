@@ -64,6 +64,7 @@ def cleanup_flare(
         cleaned_file_flares = 0
         # Process in ID ranges instead of sorting by updatestamp
         # keep small batch_size here since files are deleted 1 by 1
+        # this will loop 9.900 times with the current defaults
         for id_start in range(start_id, max_id, batch_size):
             id_end = id_start + batch_size
 
@@ -99,7 +100,7 @@ def cleanup_flare(
                 )
 
             cleaned_file_flares += len(successful_deletions)
-            context.add_progress(cleaned_files=cleaned_file_flares, model=Pull)
+            context.add_progress(cleaned_files=len(successful_deletions), model=Pull)
 
         if cleaned_file_flares:
             log.info(f"Flare cleanup: cleaned up {cleaned_file_flares} file flares")
