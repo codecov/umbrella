@@ -203,8 +203,8 @@ class BaseCeleryConfig:
 
     task_annotations = {
         delete_owner_task_name: {
-            "soft_time_limit": 2 * task_soft_time_limit,
-            "time_limit": 2 * task_time_limit,
+            "soft_time_limit": 4 * task_soft_time_limit,
+            "time_limit": 4 * task_time_limit,
         },
         notify_task_name: {
             "soft_time_limit": notify_soft_time_limit,
