@@ -2,8 +2,6 @@
 
 from django.db import migrations
 
-from shared.django_apps import migration_utils
-
 
 class Migration(migrations.Migration):
     dependencies = [
@@ -11,7 +9,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migration_utils.RiskyRunSQL(
+        migrations.RunSQL(
             """
             DO $$
             DECLARE
@@ -30,7 +28,7 @@ class Migration(migrations.Migration):
             END $$;
             """
         ),
-        migration_utils.RiskyRunSQL(
+        migrations.RunSQL(
             """
             DO $$
             DECLARE
