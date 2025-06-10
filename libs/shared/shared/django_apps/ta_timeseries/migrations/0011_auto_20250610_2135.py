@@ -2,6 +2,8 @@
 
 from django.db import migrations
 
+from shared.django_apps.migration_utils import RiskyRunSQL
+
 
 class Migration(migrations.Migration):
     dependencies = [
@@ -9,29 +11,29 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
+        RiskyRunSQL(
             """
                 DROP INDEX IF EXISTS ta_ts__branch_i;
             """,
         ),
-        migrations.RunSQL(
+        RiskyRunSQL(
             """
                 DROP INDEX IF EXISTS ta_ts__test_i;
             """,
         ),
-        migrations.RunSQL(
+        RiskyRunSQL(
             """
                 CREATE INDEX IF NOT EXISTS ta_ts_upload_id_outcome_test_id_idx
                 ON ta_timeseries_testrun (upload_id, outcome, test_id);
             """,
         ),
-        migrations.RunSQL(
+        RiskyRunSQL(
             """
                 CREATE INDEX IF NOT EXISTS ta_ts_testrun_summary_repo_id_ts_bin_idx
                 ON ta_timeseries_testrun_summary_1day (repo_id, timestamp_bin DESC);
             """,
         ),
-        migrations.RunSQL(
+        RiskyRunSQL(
             """
                 CREATE INDEX IF NOT EXISTS ta_ts_testrun_branch_summary_repo_branch_ts_bin_idx
                 ON ta_timeseries_testrun_branch_summary_1day (repo_id, branch, timestamp_bin DESC);
