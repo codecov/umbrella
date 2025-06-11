@@ -25,9 +25,9 @@ jobs:
       - run: uv pip install mypy==1.15.0 ruff==0.11.8
         working-directory: ${{ matrix.project }}
 
-      - name: Install Overwatch CLI
+      - name: Install Overwatch CLI (test staging)
         run: |
-          curl -o overwatch-cli https://overwatch.codecov.io/linux/cli
+          curl -o overwatch-cli https://overwatch.codecov.dev/linux/cli
           chmod +x overwatch-cli
           # Move the CLI to a location accessible from working directories
           mv overwatch-cli /usr/local/bin/overwatch-cli
@@ -36,6 +36,7 @@ jobs:
         working-directory: ${{ matrix.project }}
         run: |
           overwatch-cli \
+            --url https://overwatch.codecov.dev \
             --auth-token ${{ secrets.SENTRY_AUTH_TOKEN }} \
             --organization-slug codecov \
             python \
