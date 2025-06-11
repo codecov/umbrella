@@ -441,6 +441,7 @@ class StripeWebhookHandler(APIView):
         incomplete_expired = subscription.status == "incomplete_expired"
 
         # Only update if there is not a scheduled subscription
+        # https://docs.stripe.com/billing/subscriptions/subscription-schedules
         if subscription_schedule_id:
             return
 
