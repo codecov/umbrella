@@ -11,11 +11,12 @@ class TriggerSyncInteractor(BaseInteractor):
             raise Unauthenticated()
 
     @sync_to_async
-    def execute(self) -> None:
-        self.validate()
+    def execute(self, using_integration: bool = False) -> None:
+        if not using_integration:
+            self.validate()
         RefreshService().trigger_refresh(
             self.current_owner.ownerid,
             self.current_owner.username,
-            using_integration=False,
+            using_integration=using_integration,
             manual_trigger=True,
         )
