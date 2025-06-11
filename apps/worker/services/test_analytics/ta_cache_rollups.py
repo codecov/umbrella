@@ -5,7 +5,6 @@ from typing import cast
 import polars as pl
 
 import shared.storage
-from django_scaffold import settings
 from services.test_analytics.ta_metrics import (
     read_rollups_from_db_summary,
     rollup_size_summary,
@@ -15,6 +14,7 @@ from services.test_analytics.ta_timeseries import (
     get_summary,
     get_testrun_branch_summary_via_testrun,
 )
+from shared.config import get_config
 
 
 def rollup_blob_path(repoid: int, branch: str | None = None) -> str:
@@ -106,7 +106,7 @@ def cache_rollups(repoid: int, branch: str | None = None):
 
     storage_service = shared.storage.get_appropriate_storage_service(repoid)
     storage_service.write_file(
-        cast(str, settings.GCS_BUCKET_NAME),
+        cast(str, get_config("services", "minio", "bucket", default="archive")),
         rollup_blob_path(repoid, branch),
         serialized_table,
         metadata={"version": VERSION},

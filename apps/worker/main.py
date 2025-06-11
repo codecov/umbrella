@@ -13,6 +13,7 @@ from helpers.environment import get_external_dependencies_folder
 from helpers.version import get_current_version
 from shared.celery_config import BaseCeleryConfig
 from shared.config import get_config
+from shared.django_apps.utils.config import get_settings_module
 from shared.license import startup_license_logging
 from shared.metrics import start_prometheus
 from shared.storage.exceptions import BucketAlreadyExistsError
@@ -87,7 +88,9 @@ def setup_worker():
         except BucketAlreadyExistsError:
             pass
 
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_scaffold.settings")
+    os.environ.setdefault(
+        "DJANGO_SETTINGS_MODULE", get_settings_module("django_scaffold")
+    )
     log.info(
         f"Configuring Django with settings in {os.environ['DJANGO_SETTINGS_MODULE']}"
     )

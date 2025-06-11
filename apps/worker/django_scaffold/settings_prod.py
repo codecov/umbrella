@@ -8,6 +8,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 ALLOWED_HOSTS = []
 
+SECRET_KEY = get_config("django", "secret_key", default="*")
+
 IS_DEV = os.getenv("RUN_ENV") == "DEV"
 IS_ENTERPRISE = os.getenv("RUN_ENV") == "ENTERPRISE"
 

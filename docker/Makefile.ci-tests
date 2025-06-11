@@ -38,6 +38,7 @@ _test_env.check_db:
 _test_env.run_unit:
 	docker-compose exec repo /bin/sh -c \
 		"COVERAGE_CORE=sysmon \
+		RUN_ENV=TESTING \
 		pytest --cov=${COV_SOURCE} \
 		    -m 'not integration' \
 		    --cov-report=xml:unit.coverage.xml \
@@ -50,6 +51,7 @@ _test_env.run_unit:
 _test_env.run_integration:
 	docker-compose exec repo /bin/sh -c \
 		"COVERAGE_CORE=sysmon \
+		RUN_ENV=TESTING \
 		pytest --cov=${COV_SOURCE} \
 		    -m 'integration' \
 		    --cov-report=xml:integration.coverage.xml \

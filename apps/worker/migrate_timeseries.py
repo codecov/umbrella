@@ -5,8 +5,10 @@ import django
 from django.core.management import call_command
 from django.db import connections
 
+from shared.django_apps.utils.config import get_settings_module
+
 # Setup Django environment
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_scaffold.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", get_settings_module("django_scaffold"))
 django.setup()
 
 from django.conf import settings  # noqa: E402
@@ -26,7 +28,7 @@ def run_migrate_commands():
                 "migrate",
                 database="ta_timeseries",
                 app_label="ta_timeseries",
-                settings="django_scaffold.settings",
+                settings=get_settings_module("django_scaffold"),
                 verbosity=1,
             )
             with connections["ta_timeseries"].cursor() as cursor:

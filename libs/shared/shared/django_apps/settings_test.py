@@ -7,6 +7,8 @@ BASE_DIR = Path(__file__).resolve().parent
 
 ALLOWED_HOSTS = []
 
+SECRET_KEY = "*"
+
 # Install apps so that you can make migrations for them
 INSTALLED_APPS = [
     "shared.django_apps.legacy_migrations",

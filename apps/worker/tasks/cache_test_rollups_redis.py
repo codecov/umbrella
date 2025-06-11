@@ -4,8 +4,8 @@ from redis.exceptions import LockError
 
 import shared.storage
 from app import celery_app
-from django_scaffold import settings
 from shared.celery_config import cache_test_rollups_redis_task_name
+from shared.config import get_config
 from shared.helpers.redis import get_redis_connection
 from shared.storage.exceptions import FileNotInStorageError
 from tasks.base import BaseCodecovTask
@@ -46,7 +46,8 @@ class CacheTestRollupsRedisTask(
             )
             try:
                 file: bytes = storage_service.read_file(
-                    settings.GCS_BUCKET_NAME, storage_key
+                    get_config("services", "minio", "bucket", default="archive"),
+                    storage_key,
                 )
             except FileNotInStorageError:
                 pass

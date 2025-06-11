@@ -4,10 +4,14 @@
 import os
 import sys
 
+from shared.django_apps.utils.config import get_settings_module
+
 
 def main():
     """Run administrative tasks."""
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_scaffold.settings")
+    os.environ.setdefault(
+        "DJANGO_SETTINGS_MODULE", get_settings_module("django_scaffold")
+    )
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

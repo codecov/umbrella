@@ -7,7 +7,6 @@ from redis.exceptions import LockError
 
 import shared.storage
 from app import celery_app
-from django_scaffold import settings
 from services.test_analytics.ta_cache_rollups import cache_rollups
 from services.test_analytics.ta_metrics import (
     read_rollups_from_db_summary,
@@ -206,7 +205,9 @@ class CacheTestRollupsTask(BaseCodecovTask, name=cache_test_rollups_task_name):
                     else f"test_results/rollups/{repo_id}/{branch}/{interval_start}_{interval_end}"
                 )
                 storage_service.write_file(
-                    settings.GCS_BUCKET_NAME, storage_key, serialized_table
+                    get_config("services", "minio", "bucket", default="archive"),
+                    storage_key,
+                    serialized_table,
                 )
                 rollup_size_summary.labels("old").observe(serialized_table.tell())
 
