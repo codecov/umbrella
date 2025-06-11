@@ -1,21 +1,13 @@
 sha ?= $(shell git rev-parse --short=7 HEAD)
-long_sha ?= $(shell git rev-parse HEAD)
-merge_sha ?= $(shell git merge-base HEAD^ origin/main)
 release_version ?= `cat ../../VERSION`
 build_date ?= $(shell git show -s --date=iso8601-strict --pretty=format:%cd $$sha)
-branch ?= $(shell git branch | grep \* | cut -f2 -d' ')
-epoch ?= $(shell date +"%s")
 AR_REPO ?= codecov/api
 DOCKERHUB_REPO ?= codecov/self-hosted-api
 REQUIREMENTS_TAG ?= requirements-v1-$(shell sha1sum ../../uv.lock | cut -d ' ' -f 1)-$(shell sha1sum docker/Dockerfile.requirements | cut -d ' ' -f 1)
 VERSION ?= release-${sha}
-CODECOV_UPLOAD_TOKEN ?= "notset"
-CODECOV_STATIC_TOKEN ?= "notset"
-CODECOV_URL ?= "https://api.codecov.io"
 export DOCKER_BUILDKIT=1
 export API_DOCKER_REPO=${AR_REPO}
 export API_DOCKER_VERSION=${VERSION}
-export CODECOV_TOKEN=${CODECOV_UPLOAD_TOKEN}
 API_DOMAIN ?= api
 PROXY_NETWORK ?= umbrella_codecov
 
@@ -38,7 +30,7 @@ test:
 
 shell:
 	docker compose exec api bash
-	
+
 test_env.check-for-migration-conflicts:
 	docker compose exec api python manage.py check_for_migration_conflicts
 
