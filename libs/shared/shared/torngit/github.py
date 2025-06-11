@@ -17,7 +17,6 @@ from shared.helpers.cache import cache
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Counter
 from shared.rate_limits import set_entity_to_rate_limited
-
 from shared.torngit.base import TokenType, TorngitBaseAdapter
 from shared.torngit.enums import Endpoints
 from shared.torngit.exceptions import (
@@ -613,7 +612,6 @@ class Github(TorngitBaseAdapter):
         upload_type = self.data.get("additional_data", {}).get("upload_type")
         if upload_type in [UploadType.BUNDLE_ANALYSIS, UploadType.TEST_RESULTS]:
             return body
-
 
         return body
 
