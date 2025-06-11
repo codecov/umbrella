@@ -99,9 +99,6 @@ class BundleAnalysisView(APIView, ShelterMixin):
             # using org token
             owner = request.user
             repo = get_repository_from_string(Service(owner.service), data["slug"])
-        elif isinstance(request.user, RepositoryAsUser):
-            # repository token
-            repo = request.user._repository
         else:
             raise NotAuthenticated()
 
