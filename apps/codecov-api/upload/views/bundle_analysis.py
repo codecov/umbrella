@@ -71,7 +71,6 @@ class UploadSerializer(serializers.Serializer):
     compareSha = serializers.CharField(required=False, allow_null=True)
     git_service = serializers.CharField(required=False, allow_null=True)
     storage_path = serializers.CharField(required=False, allow_null=True)
-    upload_external_id = serializers.CharField(required=False, allow_null=True)
 
 
 class BundleAnalysisView(APIView, ShelterMixin):
