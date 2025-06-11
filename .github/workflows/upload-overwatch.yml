@@ -27,7 +27,7 @@ jobs:
 
       - name: Install Overwatch CLI (test staging)
         run: |
-          curl -o overwatch-cli https://overwatch.codecov.dev/linux/cli
+          curl -o overwatch-cli https://overwatch.codecov.io/linux/cli
           chmod +x overwatch-cli
           # Move the CLI to a location accessible from working directories
           mv overwatch-cli /usr/local/bin/overwatch-cli
@@ -36,7 +36,7 @@ jobs:
         working-directory: ${{ matrix.project }}
         run: |
           overwatch-cli \
-            --url https://overwatch.codecov.dev \
+            --url https://overwatch.codecov.io \
             --auth-token ${{ secrets.SENTRY_AUTH_TOKEN }} \
             --organization-slug codecov \
             --upload-empty-on-error \
