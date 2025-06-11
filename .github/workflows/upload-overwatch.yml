@@ -40,4 +40,4 @@ jobs:
             --auth-token ${{ secrets.SENTRY_AUTH_TOKEN }} \
             --organization-slug codecov \
             python \
-            --python-path "${{ github.workspace }}/.venv/bin/python"
+            --python-path "broken"
