@@ -605,6 +605,26 @@ class Github(TorngitBaseAdapter):
         GITHUB_API_ENDPOINTS[url_name]["counter"].inc()
         return GITHUB_API_ENDPOINTS[url_name]["url_template"]
 
+    async def api(self, *args, token=None, **kwargs):
+        """
+        Makes a single http request to GitHub and returns the parsed response
+        """
+        token_to_use = token or self.token
+
+        log.info(
+            "Making Github API call",
+            extra={
+                "has_token": bool(token),
+                "has_self_token": bool(self.token),
+                "is_same_token": (token == self.token),
+            },
+        )
+
+        if not token_to_use:
+            raise TorngitMisconfiguredCredentials()
+        response = await self.make_http_call(*args, token_to_use=token_to_use, **kwargs)
+        return self._parse_response(response)
+
     async def paginated_api_generator(
         self, client, method, url_name, token=None, **kwargs
     ):
