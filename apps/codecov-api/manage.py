@@ -2,7 +2,7 @@
 import os
 import sys
 
-from utils.config import get_settings_module
+from shared.django_apps.utils.config import get_settings_module
 
 if __name__ == "__main__":
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", get_settings_module())

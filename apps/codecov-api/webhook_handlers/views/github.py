@@ -440,7 +440,9 @@ class GithubWebhookHandler(APIView):
             service_id=request.data["repository"]["owner"]["id"],
         )
 
-        auto_review_enabled = (org.yaml or {}).get("ai_pr_review", {}).get("auto_review", False)
+        auto_review_enabled = (
+            (org.yaml or {}).get("ai_pr_review", {}).get("auto_review", False)
+        )
         return Response(
             data={
                 "auto_review_enabled": auto_review_enabled,

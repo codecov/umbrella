@@ -11,7 +11,7 @@ from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 from shared.django_apps.db_settings import *
 from shared.helpers.redis import get_redis_url
 from shared.license import startup_license_logging
-from utils.config import SettingsModule, get_config, get_settings_module
+from utils.config import get_config
 
 SECRET_KEY = get_config("django", "secret_key", default="*")
 
@@ -120,6 +120,10 @@ DATABASE_ROUTERS = ["codecov.db.DatabaseRouter"]
 # GCS
 GCS_BUCKET_NAME = get_config("services", "minio", "bucket", default="codecov")
 
+RUN_ENV = os.environ.get("RUN_ENV", "PRODUCTION")
+
+IS_ENTERPRISE = RUN_ENV == "ENTERPRISE"
+IS_DEV = RUN_ENV == "DEV"
 
 # Password validation
 # https://docs.djangoproject.com/en/2.1/ref/settings/#auth-password-validators
@@ -232,11 +236,7 @@ LOGGING = {
     "handlers": {
         "default": {
             "level": "INFO",
-            "formatter": (
-                "standard"
-                if get_settings_module() == SettingsModule.DEV.value
-                else "json"
-            ),
+            "formatter": ("standard" if IS_DEV else "json"),
             "class": "logging.StreamHandler",
             "stream": "ext://sys.stdout",  # Default is stderr
         },
@@ -363,9 +363,6 @@ SKIP_RISKY_MIGRATION_STEPS = get_config("migrations", "skip_risky_steps", defaul
 
 DJANGO_ADMIN_URL = get_config("django", "admin_url", default="admin")
 
-IS_ENTERPRISE = get_settings_module() == SettingsModule.ENTERPRISE.value
-IS_DEV = get_settings_module() == SettingsModule.DEV.value
-
 DATA_UPLOAD_MAX_MEMORY_SIZE = int(
     get_config("setup", "http", "upload_max_memory_size", default=2621440)
 )
@@ -378,11 +375,7 @@ CORS_ALLOWED_ORIGIN_REGEXES = get_config(
 )
 CORS_ALLOWED_ORIGINS: list[str] = []
 
-GRAPHQL_PLAYGROUND = get_settings_module() in [
-    SettingsModule.DEV.value,
-    SettingsModule.STAGING.value,
-    SettingsModule.TESTING.value,
-]
+GRAPHQL_PLAYGROUND = RUN_ENV in ["DEV", "STAGING", "TESTING"]
 
 UPLOAD_THROTTLING_ENABLED = get_config(
     "setup", "upload_throttling_enabled", default=True

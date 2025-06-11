@@ -1,29 +1,34 @@
+import logging
 import os
-from enum import Enum
 
 from shared.config import get_config
 
+log = logging.getLogger(__name__)
 
-class SettingsModule(Enum):
-    DEV = "codecov.settings_dev"
-    STAGING = "codecov.settings_staging"
-    TESTING = "codecov.settings_test"
-    ENTERPRISE = "codecov.settings_enterprise"
-    PRODUCTION = "codecov.settings_prod"
+RUN_ENV: str = os.environ.get("RUN_ENV", "PRODUCTION")
+
+_settings_module: str | None = None
 
 
-RUN_ENV = os.environ.get("RUN_ENV", "PRODUCTION")
+def get_settings_module(parent_module: str = "codecov") -> str:
+    global _settings_module  # noqa: PLW0603
+    if not _settings_module:
+        match RUN_ENV:
+            case "DEV":
+                _settings_module = f"{parent_module}.settings_dev"
+            case "STAGING":
+                _settings_module = f"{parent_module}.settings_staging"
+            case "TESTING":
+                _settings_module = f"{parent_module}.settings_test"
+            case "ENTERPRISE":
+                _settings_module = f"{parent_module}.settings_enterprise"
+            case "PRODUCTION":
+                _settings_module = f"{parent_module}.settings_prod"
+            case _:
+                log.warning("Unknown value for RUN_ENV", extra={"RUN_ENV": RUN_ENV})
+                _settings_module = f"{parent_module}.settings_prod"
 
-if RUN_ENV == "DEV":
-    settings_module = SettingsModule.DEV.value
-elif RUN_ENV == "STAGING":
-    settings_module = SettingsModule.STAGING.value
-elif RUN_ENV == "TESTING":
-    settings_module = SettingsModule.TESTING.value
-elif RUN_ENV == "ENTERPRISE":
-    settings_module = SettingsModule.ENTERPRISE.value
-else:
-    settings_module = SettingsModule.PRODUCTION.value
+    return _settings_module
 
 
 def should_write_data_to_storage_config_check(
