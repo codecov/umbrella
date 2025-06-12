@@ -80,6 +80,7 @@ jobs:
           make save.requirements
 
       - name: Build app
+        if: ${{ steps.cache-app.outputs.cache-hit != 'true' }}
         run: |
           make ${{ inputs.make_target_prefix }}build.app
           make ${{ inputs.make_target_prefix }}save.app
