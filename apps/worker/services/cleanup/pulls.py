@@ -1,6 +1,7 @@
 import logging
 
 import sentry_sdk
+from django.db.models.aggregates import Max
 
 from services.cleanup.models import DELETE_FILES_BATCHSIZE
 from services.cleanup.utils import CleanupContext
@@ -13,9 +14,6 @@ log = logging.getLogger(__name__)
 @sentry_sdk.trace
 def cleanup_flare(
     context: CleanupContext,
-    start_id: int = 5000,
-    max_id: int = 500000,
-    batch_size: int = DELETE_FILES_BATCHSIZE,
 ):
     """
     Flare is a field on a Pull object.
@@ -25,23 +23,25 @@ def cleanup_flare(
     If the pull is not OPEN, we dump the flare to save space.
     If we need to generate a flare graph for a non-OPEN pull, we build_report_from_commit
     and generate fresh flare from that report (see GraphHandler view in api).
-    This will only update the _flare_storage_path field for pulls whose flare files were
-    successfully deleted from storage.
+
+    Note: through trial and error we learned that sorting by updatestamp on a table this large is not possible,
+    so use the sequential pk id to clean up from oldest to newest.
+
+    This task is low and slow - it runs overnight for maximum 10 minutes. It will eventually work through the whole
+    table, should be progressing through the backlog each night it runs until it is operating on current Pulls.
     """
+    # For any Pull that is not OPEN, clear the flare field(s), targeting older data
+
     try:
         log.info("Flare cleanup: starting task")
-        # For any Pull that is not OPEN, clear the flare field(s), targeting older data
+        # id is indexed, so this should be a fast call
+        max_id = Pull.objects.aggregate(max_id=Max("id"))["max_id"] or 0
+        start_id = 1
 
-        # this method looks hacky, but sorting by updatestamp on a table this large is not possible,
-        # so this is my approach to get the oldest pulls first - using the sequential pk id.
-        # going to hard-code limits here for initial runs: Pulls with id 0-5000, batch_size=50 -> ran in under 1 sec
-        # start at 5.000, go to 500.000, increase batch_size to 500, so loop through 1000 times
-
-        # Clear in db
+        # Clear in db, batch size is 500
         cleaned_db_flares = 0
-        # Process in ID ranges instead of sorting by updatestamp
         for id_start in range(start_id, max_id, 500):
-            id_end = id_start + batch_size
+            id_end = id_start + 500
 
             non_open_pulls_with_flare_in_db = Pull.objects.filter(
                 id__gt=id_start, id__lte=id_end, _flare__isnull=False
@@ -60,13 +60,11 @@ def cleanup_flare(
         if cleaned_db_flares:
             log.info(f"Flare cleanup: cleared {cleaned_db_flares} database flares")
 
-        # Clear in Archive
-        cleaned_file_flares = 0
-        # Process in ID ranges instead of sorting by updatestamp
+        # Clear in Archive, batch size is DELETE_FILES_BATCHSIZE
         # keep small batch_size here since files are deleted 1 by 1
-        # this will loop 9.900 times with the current defaults
-        for id_start in range(start_id, max_id, batch_size):
-            id_end = id_start + batch_size
+        cleaned_file_flares = 0
+        for id_start in range(start_id, max_id, DELETE_FILES_BATCHSIZE):
+            id_end = id_start + DELETE_FILES_BATCHSIZE
 
             non_open_pulls_with_flare_in_archive = Pull.objects.filter(
                 id__gt=id_start, id__lte=id_end, _flare_storage_path__isnull=False
@@ -81,7 +79,6 @@ def cleanup_flare(
             # Track which pulls had successful deletions
             successful_deletions = []
 
-            # Process all files in this batch
             for pull_id, path in batch_of_id_path_pairs:
                 try:
                     if context.storage.delete_file(context.default_bucket, path):

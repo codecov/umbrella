@@ -78,7 +78,7 @@ def test_flare_cleanup_in_regular_cleanup(
 
     # Run flare cleanup
     context = CleanupContext()
-    cleanup_flare(context=context, start_id=1, max_id=5000)
+    cleanup_flare(context=context)
 
     # Check that the non-open pulls have had their flare data cleaned
     # Note: there is a cache for flare on the object (all ArchiveFields have this),
@@ -112,7 +112,7 @@ def test_flare_cleanup_in_regular_cleanup(
     # Verify that running cleanup again doesn't process the already cleaned pulls
     mock_delete.reset_mock()
     context = CleanupContext()
-    cleanup_flare(context=context, start_id=1, max_id=5000)
+    cleanup_flare(context=context)
 
     # Verify no delete calls were made for already processed pulls
     mock_delete.assert_not_called()
@@ -146,7 +146,7 @@ def test_flare_cleanup_failed_deletion(transactional_db, mocker, mock_archive_st
 
     # Run cleanup
     context = CleanupContext()
-    cleanup_flare(context=context, start_id=1, max_id=500)
+    cleanup_flare(context=context)
 
     # Verify the delete_file was called
     storage_path = failed_deletion_pull._flare_storage_path
@@ -188,7 +188,7 @@ def test_flare_cleanup_file_not_in_storage(
 
     # Run cleanup
     context = CleanupContext()
-    cleanup_flare(context=context, start_id=1, max_id=500)
+    cleanup_flare(context=context)
 
     # Verify the delete_file was called
     storage_path = file_not_in_storage_pull._flare_storage_path
@@ -234,7 +234,7 @@ def test_flare_cleanup_general_exception(
 
     # Run cleanup
     context = CleanupContext()
-    cleanup_flare(context=context, start_id=1, max_id=500)
+    cleanup_flare(context=context)
 
     # Verify the delete_file was called
     storage_path = exception_pull._flare_storage_path
