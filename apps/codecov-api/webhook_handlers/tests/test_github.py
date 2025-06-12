@@ -582,7 +582,7 @@ class GithubWebhookHandlerTests(APITestCase):
         assert mock_refresh.call_count == 1
         _, kwargs = mock_refresh.call_args_list[0]
         # Because we throw these into a set we need to order them here
-        # In practive it doesn't matter, but for the test it does.
+        # In practice it doesn't matter, but for the test it does.
         kwargs["repos_affected"].sort()
         assert kwargs == {
             "ownerid": owner.ownerid,
@@ -737,7 +737,6 @@ class GithubWebhookHandlerTests(APITestCase):
             data={
                 "installation": {
                     "id": 4,
-                    "repository_selection": "all",
                     "account": {"id": service_id, "login": username},
                     "app_id": 15,
                 },
@@ -779,6 +778,7 @@ class GithubWebhookHandlerTests(APITestCase):
             owner=owner,
             repository_service_ids=["repo1", "repo2"],
             installation_id=4,
+            app_id=15,
         )
         assert owner.github_app_installations.count() == 1
 
@@ -789,7 +789,7 @@ class GithubWebhookHandlerTests(APITestCase):
                     "id": 4,
                     "repository_selection": "selected",
                     "account": {"id": owner.service_id, "login": owner.username},
-                    "app_id": installation.app_id,
+                    "app_id": 15,
                 },
                 "repositories": [
                     {"id": "repo1", "node_id": "R_node1"},
@@ -816,18 +816,9 @@ class GithubWebhookHandlerTests(APITestCase):
     def test_installation_with_deleted_action_nulls_values(self):
         # Should set integration_id to null for owner,
         # and set using_integration=False and bot=null for repos
-        owner = OwnerFactory(service=Service.GITHUB.value)
-        repo1 = RepositoryFactory(author=owner)
-        repo2 = RepositoryFactory(author=owner)
-
-        owner.integration_id = 12
-        owner.save()
-
-        repo1.using_integration, repo2.using_integration = True, True
-        repo1.bot, repo2.bot = owner, owner
-
-        repo1.save()
-        repo2.save()
+        owner = OwnerFactory(service=Service.GITHUB.value, integration_id=12)
+        repo1 = RepositoryFactory(author=owner, using_integration=True, bot=owner)
+        repo2 = RepositoryFactory(author=owner, using_integration=True, bot=owner)
 
         ghapp_installation = GithubAppInstallationFactory(
             installation_id=25,
@@ -881,8 +872,6 @@ class GithubWebhookHandlerTests(APITestCase):
         repos_affected: None,
     )
     def test_installation_repositories_update_existing_ghapp(self):
-        # Should set integration_id to null for owner,
-        # and set using_integration=False and bot=null for repos
         owner = OwnerFactory(service=Service.GITHUB.value)
         repo1 = RepositoryFactory(author=owner)
         repo2 = RepositoryFactory(author=owner)
@@ -923,19 +912,25 @@ class GithubWebhookHandlerTests(APITestCase):
         installation.refresh_from_db()
         assert installation.installation_id == 12
         # This app is not the default app, but it's configured
-        # So it should keep it's name
+        # So it should keep its name
         assert installation.app_id != DEFAULT_APP_ID
-        assert installation.name == GITHUB_APP_INSTALLATION_DEFAULT_NAME
+        assert (
+            installation.name == GITHUB_APP_INSTALLATION_DEFAULT_NAME
+        )  ### isn't this false?
         assert installation.repository_service_ids == [repo2.service_id]
         assert installation.is_repo_covered_by_integration(repo2) is True
 
     @patch(
         "services.task.TaskService.refresh",
-        lambda self, ownerid, username, sync_teams, sync_repos, using_integration: None,
+        lambda self,
+        ownerid,
+        username,
+        sync_teams,
+        sync_repos,
+        repos_affected,
+        using_integration: None,
     )
     def test_installation_repositories_update_existing_ghapp_all_repos(self):
-        # Should set integration_id to null for owner,
-        # and set using_integration=False and bot=null for repos
         owner = OwnerFactory(service=Service.GITHUB.value)
         repo1 = RepositoryFactory(author=owner)
         repo2 = RepositoryFactory(author=owner)
@@ -945,11 +940,6 @@ class GithubWebhookHandlerTests(APITestCase):
             installation_id=12,
             app_id=DEFAULT_APP_ID,
         )
-
-        owner.save()
-        repo1.save()
-        repo2.save()
-        installation.save()
 
         assert owner.github_app_installations.exists()
 
@@ -962,10 +952,12 @@ class GithubWebhookHandlerTests(APITestCase):
                     "account": {"id": owner.service_id, "login": owner.username},
                     "app_id": DEFAULT_APP_ID,
                 },
-                "repositories_added": [{"id": repo2.service_id}],
+                "repositories_added": [
+                    {"id": repo2.service_id, "node_id": "R_xCATxCAT"}
+                ],
                 "repositories_removed": [],
                 "repository_selection": "all",
-                "action": "deleted",
+                "action": "added",
                 "sender": {"type": "User"},
             },
         )
@@ -984,14 +976,11 @@ class GithubWebhookHandlerTests(APITestCase):
         using_integration,
         repos_affected: None,
     )
-    def test_installation_with_other_actions_sets_owner_integration_id_if_none(
+    def test_installation_with_other_actions_does_not_set_owner_integration_id_if_none(
         self,
     ):
         installation_id = 44
-        owner = OwnerFactory(service=Service.GITHUB.value)
-
-        owner.integration_id = None
-        owner.save()
+        owner = OwnerFactory(service=Service.GITHUB.value, integration_id=None)
 
         self._post_event_data(
             event=GitHubWebhookEvents.INSTALLATION,
@@ -1012,8 +1001,7 @@ class GithubWebhookHandlerTests(APITestCase):
         )
 
         owner.refresh_from_db()
-
-        assert owner.integration_id == installation_id
+        assert owner.integration_id is None  # no longer set this during install
 
         ghapp_installations_set = GithubAppInstallation.objects.filter(
             owner_id=owner.ownerid
@@ -1025,52 +1013,6 @@ class GithubWebhookHandlerTests(APITestCase):
         assert installation.name == GITHUB_APP_INSTALLATION_DEFAULT_NAME
         assert installation.is_suspended == True
         assert installation.repository_service_ids == ["12321", "12343"]
-
-    @patch(
-        "services.task.TaskService.refresh",
-        lambda self,
-        ownerid,
-        username,
-        sync_teams,
-        sync_repos,
-        using_integration,
-        repos_affected: None,
-    )
-    def test_installation_repositories_with_other_actions_sets_owner_integration_id_if_none(
-        self,
-    ):
-        installation_id = 44
-        owner = OwnerFactory(service=Service.GITHUB.value)
-
-        owner.integration_id = None
-        owner.save()
-
-        self._post_event_data(
-            event=GitHubWebhookEvents.INSTALLATION_REPOSITORIES,
-            data={
-                "installation": {
-                    "id": installation_id,
-                    "repository_selection": "all",
-                    "account": {"id": owner.service_id, "login": owner.username},
-                    "app_id": 15,
-                },
-                "repository_selection": "all",
-                "action": "added",
-                "sender": {"type": "User"},
-            },
-        )
-
-        owner.refresh_from_db()
-
-        assert owner.integration_id == installation_id
-
-        ghapp_installations_set = GithubAppInstallation.objects.filter(
-            owner_id=owner.ownerid
-        )
-        assert ghapp_installations_set.count() == 1
-        installation = ghapp_installations_set.first()
-        assert installation.installation_id == installation_id
-        assert installation.repository_service_ids is None
 
     @patch("services.task.TaskService.refresh")
     def test_installation_trigger_refresh_with_other_actions(self, refresh_mock):
@@ -1097,7 +1039,7 @@ class GithubWebhookHandlerTests(APITestCase):
         assert refresh_mock.call_count == 1
         _, kwargs = refresh_mock.call_args_list[0]
         # Because we throw these into a set we need to order them here
-        # In practive it doesn't matter, but for the test it does.
+        # In practice it doesn't matter, but for the test it does.
         kwargs["repos_affected"].sort()
         assert kwargs == {
             "ownerid": owner.ownerid,
@@ -1456,7 +1398,7 @@ class GithubWebhookHandlerTests(APITestCase):
                     },
                 },
             },
-            app_id=9999,
+            app_id=AI_FEATURES_GH_APP_ID,
         )
         assert response.data == {"auto_review_enabled": True}
 
@@ -1478,7 +1420,7 @@ class GithubWebhookHandlerTests(APITestCase):
                     "owner": {"id": org_with_ai_disabled.service_id},
                 },
             },
-            app_id=9999,
+            app_id=AI_FEATURES_GH_APP_ID,
         )
         assert response.data == {"auto_review_enabled": False}
 
@@ -1498,7 +1440,7 @@ class GithubWebhookHandlerTests(APITestCase):
                     "owner": {"id": org_with_no_config.service_id},
                 },
             },
-            app_id=9999,
+            app_id=AI_FEATURES_GH_APP_ID,
         )
         assert response.data == {"auto_review_enabled": False}
 
@@ -1520,6 +1462,6 @@ class GithubWebhookHandlerTests(APITestCase):
                     "owner": {"id": org_with_partial_config.service_id},
                 },
             },
-            app_id=9999,
+            app_id=AI_FEATURES_GH_APP_ID,
         )
         assert response.data == {"auto_review_enabled": False}
