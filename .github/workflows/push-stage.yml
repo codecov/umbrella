@@ -23,7 +23,7 @@ jobs:
           make_target_prefix: worker.
 
     trigger-worker-deploy:
-        name: Trigger codecov-worker deployment
+        name: Trigger worker deployment
         needs: [worker]
         if: ${{ !cancelled() && github.event_name == 'push' }}
         uses: ./.github/workflows/trigger-worker-deploy.yml
