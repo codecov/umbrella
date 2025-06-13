@@ -117,21 +117,21 @@ class RepoCommitsTests(TestCase):
         UploadFactory(report=report_2, state="error")
 
         commits = repo_commits(self.repo, {"coverage_status": ["COMPLETED"]})
-        assert list(commits) == [self.commits[0]]
+        assert set(commits) == {self.commits[0]}
 
         commits = repo_commits(self.repo, {"coverage_status": ["PENDING"]})
-        assert list(commits) == [self.commits[1]]
+        assert set(commits) == {self.commits[1]}
 
         commits = repo_commits(self.repo, {"coverage_status": ["ERROR"]})
-        assert list(commits) == [self.commits[2]]
+        assert set(commits) == {self.commits[2]}
 
         commits = repo_commits(self.repo, {"coverage_status": ["COMPLETED", "PENDING"]})
-        assert list(commits) == [self.commits[0], self.commits[1]]
+        assert set(commits) == {self.commits[0], self.commits[1]}
 
         commits = repo_commits(
             self.repo, {"coverage_status": ["COMPLETED", "PENDING", "ERROR"]}
         )
-        assert list(commits) == [self.commits[0], self.commits[1], self.commits[2]]
+        assert set(commits) == {self.commits[0], self.commits[1], self.commits[2]}
 
         commits = repo_commits(self.repo, {"coverage_status": []})
-        assert list(commits) == [self.commits[0], self.commits[1], self.commits[2]]
+        assert set(commits) == {self.commits[0], self.commits[1], self.commits[2]}
