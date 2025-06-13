@@ -3,6 +3,7 @@ import logging
 import re
 from contextlib import suppress
 from hashlib import sha1, sha256
+from typing import Literal
 
 from django.db.models import Q
 from django.utils import timezone
@@ -469,7 +470,14 @@ class GithubWebhookHandler(APIView):
         return "unconfigured_app"
 
     def _handle_installation_events(
-        self, request, *args, event=GitHubWebhookEvents.INSTALLATION, **kwargs
+        self,
+        request,
+        *args,
+        event: Literal[
+            GitHubWebhookEvents.INSTALLATION,
+            GitHubWebhookEvents.INSTALLATION_REPOSITORIES,
+        ],
+        **kwargs,
     ):
         service_id = request.data["installation"]["account"]["id"]
         username = request.data["installation"]["account"]["login"]
