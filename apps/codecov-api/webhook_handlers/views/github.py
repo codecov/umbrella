@@ -469,6 +469,29 @@ class GithubWebhookHandler(APIView):
         )
         return "unconfigured_app"
 
+    def _invalid_owner_on_existing_app_install(
+        self,
+        ghapp: GithubAppInstallation,
+        owner: Owner,
+        request,
+        app_id,
+        installation_id,
+    ):
+        log.error(
+            "Unexpected error in GitHub webhook: owner collision",
+            extra={
+                "payload": request.data,
+                "app_id": app_id,
+                "installation_id": installation_id,
+                "existing_owner_on_installation": ghapp.owner_id,
+                "incoming_owner_on_webhook": owner.ownerid,
+            },
+        )
+        return Response(
+            {"detail": "Internal error, event ignored."},
+            status=status.HTTP_200_OK,
+        )
+
     def _handle_installation_events(
         self,
         request,
@@ -504,6 +527,11 @@ class GithubWebhookHandler(APIView):
                 ).first()
             )
             if ghapp_installation is not None:
+                # edge case, do quick validation
+                if ghapp_installation.owner_id != owner.ownerid:
+                    return self._invalid_owner_on_existing_app_install(
+                        ghapp_installation, owner, request, app_id, installation_id
+                    )
                 ghapp_installation.delete()
 
             # Deprecated flow - BEGIN
@@ -548,6 +576,12 @@ class GithubWebhookHandler(APIView):
                         "ownerid": owner.ownerid,
                     },
                 )
+            else:
+                # edge case, do quick validation
+                if ghapp_installation.owner_id != owner.ownerid:
+                    return self._invalid_owner_on_existing_app_install(
+                        ghapp_installation, owner, request, app_id, installation_id
+                    )
 
             # Either update or set
             ghapp_installation.name = self._decide_app_name(ghapp_installation)
