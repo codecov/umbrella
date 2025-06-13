@@ -1,12 +1,13 @@
 services:
   gateway:
-    image: codecov/self-hosted-gateway:latest-calver
+    image: codecov/self-hosted-gateway:rolling
     volumes:
       - ./tools/devenv/config:/config:ro,cached
     ports:
       - "${CODECOV_PORT-8080}:8080"
     environment:
       - CODECOV_GATEWAY_MINIO_ENABLED=true
+      - CODECOV_MINIO_PORT=9002
     networks:
       - codecov
     depends_on:
@@ -32,12 +33,12 @@ services:
   # # -------
   # # Gazebo local development
   # #
-  # # This service will use your local Gazebo repo and run a yarn dev server 
+  # # This service will use your local Gazebo repo and run a yarn dev server
   # # in a container within the codecov docker network.
   # # Use if you're doing front end development AND want to use your local
   # # api/shared/worker. If you're doing purely front end development, it's
   # # often easier to just point your gazebo dev server at the staging API.
-  # # If you do want to use this, uncomment this service and comment out the 
+  # # If you do want to use this, uncomment this service and comment out the
   # # above frontend service.
   # #
   # # If you do this and want to prevent docker-compose.yml from showing up in
