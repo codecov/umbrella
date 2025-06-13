@@ -108,7 +108,7 @@ class PlanService:
             return license_seats()
         if self.has_account:
             return self.current_org.account.total_seat_count
-        return self.current_org.plan_user_count
+        return self.current_org.total_seat_count
 
     @property
     def plan_activated_users(self) -> list[int] | None:

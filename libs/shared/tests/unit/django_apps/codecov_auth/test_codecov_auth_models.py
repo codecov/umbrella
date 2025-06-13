@@ -566,6 +566,40 @@ class TestOwnerModel(TestCase):
         org.save()
         assert org.has_yaml is True
 
+    def test_total_seat_count_default_values(self):
+        """Test total_seat_count with default values"""
+        # Default values: plan_user_count=1, free=0
+        assert self.owner.total_seat_count == 1
+
+    def test_total_seat_count_custom_values(self):
+        """Test total_seat_count with custom values"""
+        self.owner.plan_user_count = 5
+        self.owner.free = 3
+        self.owner.save()
+        assert self.owner.total_seat_count == 8
+
+    def test_total_seat_count_saved_instance(self):
+        """Test total_seat_count on a saved instance"""
+        self.owner.plan_user_count = 10
+        self.owner.free = 5
+        self.owner.save()
+
+        # Fetch from database and verify
+        saved_owner = Owner.objects.get(ownerid=self.owner.ownerid)
+        assert saved_owner.total_seat_count == 15
+
+    def test_total_seat_count_null_plan_user_count(self):
+        """Test total_seat_count when plan_user_count is null"""
+        self.owner.plan_user_count = None
+        self.owner.free = 5
+        self.owner.save()
+        assert self.owner.total_seat_count == 5
+
+        # Test with free = 0
+        self.owner.free = 0
+        self.owner.save()
+        assert self.owner.total_seat_count == 0
+
 
 class TestOrganizationLevelTokenModel(TestCase):
     def test_can_save_org_token_for_org_basic_plan(self):
