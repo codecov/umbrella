@@ -7,6 +7,7 @@ from freezegun import freeze_time
 from shared.django_apps.codecov.commands.exceptions import ValidationError
 from shared.django_apps.codecov_auth.models import Plan, Service
 from shared.django_apps.codecov_auth.tests.factories import (
+    AccountFactory,
     OwnerFactory,
     PlanFactory,
     TierFactory,
@@ -382,6 +383,45 @@ class PlanServiceTests(TestCase):
         plan = PlanService(current_org=current_org)
 
         assert plan.has_seats_left == False
+
+    def test_plan_service_plan_user_count_includes_free_seats(self):
+        """Test that plan_user_count includes both plan_user_count and free seats"""
+        current_org = OwnerFactory(plan=DEFAULT_FREE_PLAN, plan_user_count=5, free=3)
+        plan_service = PlanService(current_org=current_org)
+        assert plan_service.plan_user_count == 8
+
+    def test_plan_service_plan_user_count_only_free_seats(self):
+        """Test plan_user_count when there are only free seats"""
+        current_org = OwnerFactory(plan=DEFAULT_FREE_PLAN, plan_user_count=0, free=5)
+        plan_service = PlanService(current_org=current_org)
+        assert plan_service.plan_user_count == 5
+
+    def test_plan_service_plan_user_count_only_plan_seats(self):
+        """Test plan_user_count when there are only plan seats"""
+        current_org = OwnerFactory(plan=DEFAULT_FREE_PLAN, plan_user_count=5, free=0)
+        plan_service = PlanService(current_org=current_org)
+        assert plan_service.plan_user_count == 5
+
+    def test_plan_service_plan_user_count_with_account(self):
+        """Test plan_user_count when owner has an account"""
+        account = AccountFactory(
+            plan=DEFAULT_FREE_PLAN, plan_seat_count=10, free_seat_count=5
+        )
+        current_org = OwnerFactory(plan=DEFAULT_FREE_PLAN, account=account)
+        plan_service = PlanService(current_org=current_org)
+        assert plan_service.plan_user_count == 15
+
+    def test_plan_service_plan_user_count_with_enterprise_license(self):
+        """Test plan_user_count when enterprise license is configured"""
+        with patch("shared.plan.service.get_config") as mock_get_config:
+            mock_get_config.return_value = True
+            with patch("shared.plan.service.license_seats") as mock_license_seats:
+                mock_license_seats.return_value = 20
+                current_org = OwnerFactory(
+                    plan=DEFAULT_FREE_PLAN, plan_user_count=5, free=3
+                )
+                plan_service = PlanService(current_org=current_org)
+                assert plan_service.plan_user_count == 20
 
 
 class AvailablePlansBeforeTrial(TestCase):

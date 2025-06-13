@@ -518,6 +518,12 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
             - self.activated_user_count
         )
 
+    @property
+    def total_seat_count(self) -> int:
+        if self.plan_user_count is None:
+            return self.free
+        return self.plan_user_count + self.free
+
     def is_admin(self, owner):
         return self.ownerid == owner.ownerid or (
             bool(self.admins) and owner.ownerid in self.admins
