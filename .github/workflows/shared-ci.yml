@@ -1,14 +1,14 @@
 name: Shared CI
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
-      skip:
-        type: boolean
-        default: false
       event_name:
         type: string
-        required: false
+        required: true
+      has_changes:
+        type: boolean
+        default: true
 
 permissions:
   contents: "read"
@@ -19,7 +19,7 @@ permissions:
 jobs:
   shared-build:
     name: Build App (Shared)
-    if: ${{ inputs.skip == false }}
+    if: ${{ inputs.has_changes == true }}
     uses: ./.github/workflows/_build-app.yml
     secrets: inherit
     with:
@@ -29,7 +29,7 @@ jobs:
 
   shared-test:
     name: Test (Shared)
-    if: ${{ inputs.skip == false }}
+    if: ${{ inputs.has_changes == true }}
     needs: [shared-build]
     uses: ./.github/workflows/_run-tests.yml
     secrets: inherit
@@ -44,7 +44,7 @@ jobs:
     name: Benchmarks (Shared)
     # Skip on merge_group because CodSpeed does not support it yet.
     # Ref: https://github.com/CodSpeedHQ/action/issues/126
-    if: ${{ inputs.skip == false && github.event_name != 'merge_group' }}
+    if: ${{ inputs.has_changes == true && inputs.event_name != 'merge_group' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -77,7 +77,7 @@ jobs:
   # have it figure out whether the jobs we actually care about failed.
   shared-required-checks:
     name: Required checks (Shared)
-    if: ${{ !cancelled() && inputs.skip == false }}
+    if: ${{ !cancelled() && inputs.has_changes == true }}
     runs-on: ubuntu-latest
     needs: [shared-test]
     steps:

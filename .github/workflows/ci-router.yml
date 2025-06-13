@@ -12,6 +12,7 @@ on:
   merge_group:
 
 permissions:
+  actions: "write"
   contents: "read"
   id-token: "write"
   issues: "write"
@@ -76,35 +77,54 @@ jobs:
   api-ci:
     name: API CI
     needs: [change-detection, reqs]
-    uses: ./.github/workflows/api-ci.yml
-    secrets: inherit
-    with:
-      skip: ${{ needs.change-detection.outputs.codecov-api == 'false' }}
-      event_name: ${{ github.event_name }}
+    runs-on: ubuntu-latest
+    steps:
+      # By using the `gh` cli to dispatch these workflows instead of a `uses:`-style
+      # job, we effectively reset GHA's limit of 20 workflow calls and give this workflow
+      # its own quota.
+      - name: Dispatch
+        run: |
+          gh workflow run api-ci.yml \
+            --repo ${{ github.repository }} \
+            --ref ${{ github.event.pull_request.head.ref || github.event.merge_group.head_ref || github.ref }} \
+            -f event_name='${{ github.event_name }}' \
+            -f has_changes='${{ needs.change-detection.outputs.codecov-api == 'true' }}'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   worker-ci:
     name: Worker CI
     needs: [change-detection, reqs]
-    uses: ./.github/workflows/worker-ci.yml
-    secrets: inherit
-    with:
-      skip: ${{ needs.change-detection.outputs.worker == 'false' }}
-      event_name: ${{ github.event_name }}
+    runs-on: ubuntu-latest
+    steps:
+      # By using the `gh` cli to dispatch these workflows instead of a `uses:`-style
+      # job, we effectively reset GHA's limit of 20 workflow calls and give this workflow
+      # its own quota.
+      - name: Dispatch
+        run: |
+          gh workflow run worker-ci.yml \
+            --repo ${{ github.repository }} \
+            --ref ${{ github.event.pull_request.head.ref || github.event.merge_group.head_ref || github.ref }} \
+            -f event_name='${{ github.event_name }}' \
+            -f has_changes='${{ needs.change-detection.outputs.worker == 'true' }}'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
   shared-ci:
     name: Shared CI
     needs: [change-detection, reqs]
-    uses: ./.github/workflows/shared-ci.yml
-    secrets: inherit
-    with:
-      skip: ${{ needs.change-detection.outputs.shared == 'false' }}
-      event_name: ${{ github.event_name }}
-
-  push-staging:
-    name: Push to staging
-    # We want to push to staging after the images have been built. We use `always()`
-    # to run this job even if tests failed.
-    needs: [reqs, worker-ci, api-ci]
-    if: ${{ github.event_name == 'push' && github.event.ref == 'refs/heads/staging' && github.repository_owner == 'codecov' && always()}}
-    uses: ./.github/workflows/push-stage.yml
-    secrets: inherit
+    runs-on: ubuntu-latest
+    steps:
+      # By using the `gh` cli to dispatch these workflows instead of a `uses:`-style
+      # job, we effectively reset GHA's limit of 20 workflow calls and give this workflow
+      # its own quota.
+      - name: Dispatch
+        run: |
+          gh workflow run shared-ci.yml \
+            --repo ${{ github.repository }} \
+            --ref ${{ github.event.pull_request.head.ref || github.event.merge_group.head_ref || github.ref }} \
+            -f event_name='${{ github.event_name }}' \
+            -f has_changes='${{ needs.change-detection.outputs.shared == 'true' }}'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
