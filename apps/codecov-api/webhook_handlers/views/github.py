@@ -531,7 +531,8 @@ class GithubWebhookHandler(APIView):
                 if ghapp_installation.owner_id != owner.ownerid:
                     return self._invalid_owner_on_existing_app_install(
                         ghapp_installation, owner, request, app_id, installation_id
-                    )ghapp_installation.delete()
+                    )
+                ghapp_installation.delete()
             # Deprecated flow - BEGIN
             # these fields are no longer used, but if they have been set, clean them out
             if owner.integration_id:
