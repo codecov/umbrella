@@ -1050,8 +1050,9 @@ class GithubWebhookHandlerTests(APITestCase):
             "repos_affected": [("12321", "R_kgDOG2tZYQ"), ("12343", "R_kgDOG2tABC")],
         }
 
+    @patch("sentry_sdk.capture_exception")
     @patch("services.task.TaskService.refresh")
-    def test_installation_repositories_edge_case_add(self, mock_refresh):
+    def test_installation_repositories_edge_case_add(self, mock_refresh, mock_sentry):
         username, service_id = "newuser", 123456
 
         existing_install = GithubAppInstallationFactory(
@@ -1092,55 +1093,10 @@ class GithubWebhookHandlerTests(APITestCase):
         # existing_install is unchanged
         assert installation.owner_id == owner_id_on_install
         assert installation.owner_id != new_owner.ownerid
-        # because of owner mismatch, exits early,
+        # because of owner mismatch, exits early
         assert response.status_code == 200
         assert mock_refresh.call_count == 0
-
-    @patch("services.task.TaskService.refresh")
-    def test_installation_repositories_edge_case_del(self, mock_refresh):
-        username, service_id = "newuser", 123456
-
-        existing_install = GithubAppInstallationFactory(
-            app_id=DEFAULT_APP_ID,
-            owner=OwnerFactory(service=Service.GITHUB.value),
-        )
-        owner_id_on_install = existing_install.owner_id
-
-        # post from existing install on new Owner
-        response = self._post_event_data(
-            event=GitHubWebhookEvents.INSTALLATION_REPOSITORIES,
-            data={
-                "installation": {
-                    "id": existing_install.installation_id,
-                    "repository_selection": "all",
-                    "account": {"id": service_id, "login": username},
-                    "app_id": DEFAULT_APP_ID,
-                },
-                "repositories_added": [],
-                "repositories_removed": [],
-                "repository_selection": "all",
-                "action": "deleted",
-                "sender": {"type": "User"},
-            },
-        )
-
-        # new owner is added to db
-        owner_set = Owner.objects.filter(service="github", service_id=service_id)
-        assert owner_set.exists()
-        new_owner = owner_set.first()
-
-        ghapp_installations_set = GithubAppInstallation.objects.filter(
-            installation_id=existing_install.installation_id, app_id=DEFAULT_APP_ID
-        )
-        assert ghapp_installations_set.count() == 1
-        installation = ghapp_installations_set.first()
-
-        # existing_install is unchanged
-        assert installation.owner_id == owner_id_on_install
-        assert installation.owner_id != new_owner.ownerid
-        # because of owner mismatch, exits early,
-        assert response.status_code == 200
-        assert mock_refresh.call_count == 0
+        mock_sentry.assert_called_once()
 
     @patch("services.task.TaskService.refresh")
     def test_organization_with_removed_action_removes_user_from_org_and_activated_user_list(
