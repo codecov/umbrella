@@ -5,6 +5,7 @@ from contextlib import suppress
 from hashlib import sha1, sha256
 from typing import Literal
 
+import sentry_sdk
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
@@ -477,16 +478,20 @@ class GithubWebhookHandler(APIView):
         app_id,
         installation_id,
     ):
-        log.error(
-            "Unexpected error in GitHub webhook: owner collision",
-            extra={
-                "payload": request.data,
-                "app_id": app_id,
-                "installation_id": installation_id,
-                "existing_owner_on_installation": ghapp.owner_id,
-                "incoming_owner_on_webhook": owner.ownerid,
-            },
-        )
+        try:
+            raise ValueError("Unexpected error in GitHub webhook: owner collision")
+        except ValueError as e:
+            with sentry_sdk.new_scope() as scope:
+                scope.set_context(
+                    "github_webhook_owner_collision",
+                    {
+                        "app_id": app_id,
+                        "installation_id": installation_id,
+                        "existing_owner_on_installation": ghapp.owner_id,
+                        "incoming_owner_on_webhook": owner.ownerid,
+                    },
+                )
+                sentry_sdk.capture_exception(e)
         return Response(
             {"detail": "Internal error, event ignored."},
             status=status.HTTP_200_OK,
@@ -505,6 +510,7 @@ class GithubWebhookHandler(APIView):
         service_id = request.data["installation"]["account"]["id"]
         username = request.data["installation"]["account"]["login"]
         app_id = request.data["installation"]["app_id"]
+        installation_id = request.data["installation"]["id"]
         action = request.data.get("action")
 
         owner, _ = Owner.objects.get_or_create(
@@ -516,8 +522,6 @@ class GithubWebhookHandler(APIView):
             },
         )
 
-        installation_id = request.data["installation"]["id"]
-
         # https://docs.github.com/en/webhooks/webhook-events-and-payloads#installation
         # this action only comes from GitHubWebhookEvents.INSTALLATION
         if action == "deleted":
@@ -527,12 +531,8 @@ class GithubWebhookHandler(APIView):
                 ).first()
             )
             if ghapp_installation is not None:
-                # edge case, do quick validation
-                if ghapp_installation.owner_id != owner.ownerid:
-                    return self._invalid_owner_on_existing_app_install(
-                        ghapp_installation, owner, request, app_id, installation_id
-                    )
                 ghapp_installation.delete()
+
             # Deprecated flow - BEGIN
             # these fields are no longer used, but if they have been set, clean them out
             if owner.integration_id:
