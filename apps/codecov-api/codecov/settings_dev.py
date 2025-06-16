@@ -27,8 +27,7 @@ CODECOV_DASHBOARD_URL = get_config(
 
 CORS_ALLOWED_ORIGINS = [
     CODECOV_DASHBOARD_URL,
-    "http://localhost",
-    "http://localhost:9002",
+    "http://localhost:9002",  # Minio port when not using gateway
 ]
 
 COOKIES_DOMAIN = "localhost"
