@@ -17,7 +17,6 @@ STRIPE_API_KEY = os.environ.get("SERVICES__STRIPE__API_KEY", None)
 STRIPE_ENDPOINT_SECRET = os.environ.get("SERVICES__STRIPE__ENDPOINT_SECRET", None)
 
 CORS_ALLOW_HEADERS += ["sentry-trace", "baggage"]
-CORS_ALLOW_CREDENTIALS = True
 CODECOV_URL = get_config("setup", "codecov_url", default="https://codecov.io")
 CODECOV_API_URL = get_config("setup", "codecov_api_url", default=CODECOV_URL)
 CODECOV_DASHBOARD_URL = get_config(

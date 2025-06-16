@@ -29,7 +29,6 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^(https:\/\/)?\w+--gazebo\.netlify\.app$",
     r"^(https:\/\/)?preview-[\w\d\-]+\.codecov\.dev$",
 ]
-CORS_ALLOW_CREDENTIALS = True
 
 CODECOV_URL = get_config(
     "setup", "codecov_url", default="https://stage-web.codecov.dev"

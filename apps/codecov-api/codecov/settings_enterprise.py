@@ -9,7 +9,6 @@ THIS_POD_IP = os.environ.get("THIS_POD_IP")
 ALLOWED_HOSTS = get_config("setup", "api_allowed_hosts", default=["*"])
 if THIS_POD_IP:
     ALLOWED_HOSTS.append(THIS_POD_IP)
-CORS_ALLOW_CREDENTIALS = True
 # Setting default to localhost to avoid errors when running compilation steps.
 # This is "fine" because the app surely won't be in a working state without a valid url.
 CODECOV_URL = get_config("setup", "codecov_url", default="http://localhost")

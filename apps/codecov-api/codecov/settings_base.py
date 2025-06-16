@@ -370,6 +370,7 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = int(
     get_config("setup", "http", "file_upload_max_memory_size", default=2621440)
 )
 
+CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGIN_REGEXES = get_config(
     "setup", "api_cors_allowed_origin_regexes", default=[]
 )

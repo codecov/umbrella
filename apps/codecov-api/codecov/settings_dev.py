@@ -19,7 +19,6 @@ STRIPE_ENDPOINT_SECRET = get_config(
     "services", "stripe", "endpoint_secret", default="default"
 )
 
-CORS_ALLOW_CREDENTIALS = True
 
 CODECOV_URL = "localhost"
 CODECOV_API_URL = get_config("setup", "codecov_api_url", default=CODECOV_URL)
