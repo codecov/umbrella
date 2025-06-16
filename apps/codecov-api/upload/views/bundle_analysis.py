@@ -63,15 +63,14 @@ class UploadSerializer(serializers.Serializer):
     commit = serializers.CharField(required=True)
     slug = serializers.CharField(required=True)
     build = serializers.CharField(required=False, allow_null=True)
-    buildURL = serializers.CharField(required=False, allow_null=True)
-    job = serializers.CharField(required=False, allow_null=True)
+    buildUrl = serializers.CharField(required=False, allow_null=True)
+    code = serializers.CharField(required=False, allow_null=True)
     pr = serializers.CharField(required=False, allow_null=True)
     service = serializers.CharField(required=False, allow_null=True)
     branch = serializers.CharField(required=False, allow_null=True)
     compareSha = serializers.CharField(required=False, allow_null=True)
     git_service = serializers.CharField(required=False, allow_null=True)
     storage_path = serializers.CharField(required=False, allow_null=True)
-    upload_external_id = serializers.CharField(required=False, allow_null=True)
 
 
 class BundleAnalysisView(APIView, ShelterMixin):
@@ -100,9 +99,6 @@ class BundleAnalysisView(APIView, ShelterMixin):
             # using org token
             owner = request.user
             repo = get_repository_from_string(Service(owner.service), data["slug"])
-        elif isinstance(request.user, RepositoryAsUser):
-            # repository token
-            repo = request.user._repository
         else:
             raise NotAuthenticated()
 
