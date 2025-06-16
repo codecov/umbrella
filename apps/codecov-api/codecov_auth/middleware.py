@@ -1,14 +1,12 @@
 import logging
-from urllib.parse import urlparse
 
 import jwt
 from asgiref.sync import sync_to_async
-from corsheaders.conf import conf as corsconf
 from corsheaders.middleware import (
-    ACCESS_CONTROL_ALLOW_CREDENTIALS,
     ACCESS_CONTROL_ALLOW_ORIGIN,
 )
 from corsheaders.middleware import CorsMiddleware as BaseCorsMiddleware
+from django.conf import settings
 from django.http import HttpRequest, HttpResponseForbidden, HttpResponseNotFound
 from django.urls import resolve
 from rest_framework import exceptions
@@ -148,29 +146,23 @@ def impersonation_middleware(get_response):
 def cors_middleware(get_response):
     base_cors = BaseCorsMiddleware(get_response)
 
-    def middleware(request):
+    def middleware(request: HttpRequest):
+        # Generate base CORS response
         response = base_cors(request)
-        if not base_cors.is_enabled(request):
+
+        # Perform some of the same checks as the base CORS middleware
+        if not base_cors.is_enabled(request) or not request.headers.get("origin"):
             return response
 
-        origin = request.META.get("HTTP_ORIGIN")
-        if not origin:
-            return response
-
-        # we only allow credentials with CORS requests if the request
-        # is coming from one of our explicitly whitelisted domains
-        # (other domains will only be able to access public resources)
-        allow_credentials = False
-        if corsconf.CORS_ALLOW_CREDENTIALS:
-            url = urlparse(origin)
-            if base_cors.origin_found_in_white_lists(origin, url):
-                allow_credentials = True
-
-        response.headers[ACCESS_CONTROL_ALLOW_ORIGIN] = origin
-        if allow_credentials:
-            response.headers[ACCESS_CONTROL_ALLOW_CREDENTIALS] = "true"
-        else:
-            del response.headers[ACCESS_CONTROL_ALLOW_CREDENTIALS]
+        # We rely on the CORS middleware to verify that the origin is
+        # valid and allowed for credentialed requests. Otherwise, we
+        # set the access control headers to allow all origins based on
+        # our custom setting.
+        if (
+            settings.EXTERNAL_CORS_ALLOW_ALL_ORIGINS
+            and ACCESS_CONTROL_ALLOW_ORIGIN not in response.headers
+        ):
+            response.headers[ACCESS_CONTROL_ALLOW_ORIGIN] = "*"
 
         return response
 

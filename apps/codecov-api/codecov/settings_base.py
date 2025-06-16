@@ -353,12 +353,6 @@ GITLAB_ENTERPRISE_TOKENLESS_BOT_KEY = get_config(
 GITLAB_ENTERPRISE_URL = get_config("gitlab_enterprise", "url")
 GITLAB_ENTERPRISE_API_URL = get_config("gitlab_enterprise", "api_url")
 
-CORS_ALLOW_HEADERS = (
-    list(default_headers)
-    + ["token-type"]
-    + get_config("setup", "api_cors_extra_headers", default=["baggage"])
-)
-
 SKIP_RISKY_MIGRATION_STEPS = get_config("migrations", "skip_risky_steps", default=False)
 
 DJANGO_ADMIN_URL = get_config("django", "admin_url", default="admin")
@@ -370,7 +364,19 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = int(
     get_config("setup", "http", "file_upload_max_memory_size", default=2621440)
 )
 
+# This is read by our custom CORS middleware and will set the allowed origins header to
+# "*" for all origins other than the ones explicitly allowed in CORS_ALLOWED_ORIGINS
+# and CORS_ALLOWED_ORIGIN_REGEXES, in which case it will rely on the default CORS
+# middleware behavior. This ensures that CORS_ALLOW_CREDENTIALS can never be enabled
+# on a request that does not come from an explicitly allowed origin.
+EXTERNAL_CORS_ALLOW_ALL_ORIGINS = True
+
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = (
+    list(default_headers)
+    + ["token-type"]
+    + get_config("setup", "api_cors_extra_headers", default=["baggage"])
+)
 CORS_ALLOWED_ORIGIN_REGEXES = get_config(
     "setup", "api_cors_allowed_origin_regexes", default=[]
 )
