@@ -481,17 +481,16 @@ class GithubWebhookHandler(APIView):
         try:
             raise ValueError("Unexpected error in GitHub webhook: owner collision")
         except ValueError as e:
-            with sentry_sdk.new_scope() as scope:
-                scope.set_context(
-                    "github_webhook_owner_collision",
-                    {
-                        "app_id": app_id,
-                        "installation_id": installation_id,
-                        "existing_owner_on_installation": ghapp.owner_id,
-                        "incoming_owner_on_webhook": owner.ownerid,
-                    },
-                )
-                sentry_sdk.capture_exception(e)
+            sentry_sdk.capture_exception(
+                e,
+                tags={
+                    "event": "github_webhook_owner_collision",
+                    "app_id": app_id,
+                    "installation_id": installation_id,
+                    "existing_owner_on_installation": ghapp.owner_id,
+                    "incoming_owner_on_webhook": owner.ownerid,
+                },
+            )
         return Response(
             {"detail": "Internal error, event ignored."},
             status=status.HTTP_200_OK,
