@@ -93,11 +93,13 @@ base_gql_query = """
 """
 
 
-rows = [RowFactory()(datetime.datetime(2024, 1, 1 + i)) for i in range(5)]
+now = datetime.datetime.now()
+first_of_month = datetime.datetime(now.year, now.month, 1)
 
+rows = [RowFactory()(first_of_month + datetime.timedelta(days=i)) for i in range(5)]
 
 rows_with_duplicate_names = [
-    RowFactory()(datetime.datetime(2024, 1, 1 + i)) for i in range(5)
+    RowFactory()(first_of_month + datetime.timedelta(days=i)) for i in range(5)
 ]
 for i in range(0, len(rows_with_duplicate_names) - 1, 2):
     rows_with_duplicate_names[i]["name"] = rows_with_duplicate_names[i + 1]["name"]
