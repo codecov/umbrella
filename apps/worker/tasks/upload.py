@@ -3,7 +3,7 @@ import logging
 import time
 import uuid
 from copy import deepcopy
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TypedDict
 
 import orjson
@@ -11,7 +11,6 @@ import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery import chain, chord
 from django.conf import settings
-from django.utils import timezone
 from redis import Redis
 from redis.exceptions import LockError
 from sqlalchemy.orm import Session
@@ -57,6 +56,9 @@ from tasks.upload_finisher import upload_finisher_task
 from tasks.upload_processor import UPLOAD_PROCESSING_LOCK_NAME, upload_processor_task
 
 log = logging.getLogger(__name__)
+
+# Date after which commits are considered for new TA tasks implementation
+NEW_TA_TASKS_CUTOFF_DATE = datetime(2025, 6, 20, tzinfo=UTC)
 
 CHUNK_SIZE = 3
 
@@ -541,7 +543,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
         # List to track possible measurements to insert later
         measurements_list: list[UserMeasurement] = []
-        created_at = timezone.now()
+        created_at = datetime.now(UTC)
 
         # List + helper mapping to track possible upload + flags to insert later
         upload_flag_map: dict[Upload, list | str | None] = {}
@@ -758,7 +760,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 db_session.query(Commit)
                 .filter(
                     Commit.repoid == commit.repoid,
-                    Commit.timestamp > datetime(2025, 6, 16, tzinfo=timezone.utc),
+                    Commit.timestamp > NEW_TA_TASKS_CUTOFF_DATE,
                 )
                 .order_by(Commit.timestamp)
                 .limit(1)

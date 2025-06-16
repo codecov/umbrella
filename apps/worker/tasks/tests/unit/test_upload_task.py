@@ -29,7 +29,7 @@ from tasks.bundle_analysis_notify import bundle_analysis_notify_task
 from tasks.bundle_analysis_processor import bundle_analysis_processor_task
 from tasks.test_results_finisher import test_results_finisher_task
 from tasks.test_results_processor import test_results_processor_task
-from tasks.upload import UploadContext, UploadTask
+from tasks.upload import NEW_TA_TASKS_CUTOFF_DATE, UploadContext, UploadTask
 from tasks.upload_finisher import upload_finisher_task
 from tasks.upload_processor import upload_processor_task
 
@@ -582,16 +582,18 @@ class TestUploadTaskIntegration:
         dbsession.add(commit)
         dbsession.flush()
         dbsession.refresh(commit)
-        commit.timestamp = datetime(2025, 6, 1, tzinfo=UTC)
+        commit.timestamp = NEW_TA_TASKS_CUTOFF_DATE.replace(
+            day=21
+        )  # One day after cutoff
         dbsession.flush()
 
         mock_redis.lists[f"uploads/{commit.repoid}/{commit.commitid}/test_results"] = (
             jsonified_redis_queue
         )
 
-        mock_repo_provider_service.get_commit.return_value["timestamp"] = datetime(
-            2025, 6, 1, tzinfo=UTC
-        )
+        mock_repo_provider_service.get_commit.return_value["timestamp"] = (
+            NEW_TA_TASKS_CUTOFF_DATE.replace(day=21)
+        )  # One day after cutoff
 
         UploadTask().run_impl(
             dbsession,
