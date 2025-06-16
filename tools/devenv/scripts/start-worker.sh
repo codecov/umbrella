@@ -6,6 +6,7 @@ pip install -e /app/libs/shared
 
 # Install a hot-reload utility
 pip install watchdog[watchmedo]
+PATH="~/.local/bin:$PATH"
 
 # TODO: Deduplicate this logic with worker's actual startup script
 if [ -n "$PROMETHEUS_MULTIPROC_DIR" ]; then

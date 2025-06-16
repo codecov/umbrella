@@ -70,7 +70,3 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=./uv.lock,target=./uv.lock \
     --mount=type=bind,source=libs/shared,target=libs/shared \
     uv pip install --no-deps --no-index --find-links=/wheels /wheels/* --system
-
-RUN addgroup --system application \
-    && adduser --system codecov --ingroup application --home /home/codecov
-

@@ -39,11 +39,13 @@ build.requirements:
 
 # Build an image for local development.
 _build.local:
-	cd ${APP_DIR} && \
 	docker build -f docker/Dockerfile . \
 		-t ${AR_REPO}:latest \
 		-t ${AR_REPO}:${VERSION} \
 		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
+		--build-arg WORKDIR=/app/${APP_DIR} \
+		--build-arg ENTRYPOINT=${ENTRYPOINT} \
+		--build-arg DJANGO_SETTINGS_PARENT=${DJANGO_SETTINGS_PARENT} \
 		--build-arg BUILD_ENV=local
 
 # Build an image (+ its reqs base) for local development.
@@ -53,7 +55,6 @@ _build:
 
 # Build a production image.
 _build.app:
-	cd ${APP_DIR} && \
 	docker build -f docker/Dockerfile . \
 		-t ${AR_REPO}:latest \
 		-t ${AR_REPO}:${VERSION} \
@@ -62,6 +63,9 @@ _build.app:
 		--label "org.opencontainers.image.revision"="$(full_sha)" \
 		--label "org.opencontainers.image.source"="github.com/codecov/umbrella" \
 		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
+		--build-arg WORKDIR=/app/${APP_DIR} \
+		--build-arg ENTRYPOINT=${ENTRYPOINT} \
+		--build-arg DJANGO_SETTINGS_PARENT=${DJANGO_SETTINGS_PARENT} \
 		--build-arg RELEASE_VERSION=${VERSION} \
 		--build-arg BUILD_ENV=cloud
 
@@ -71,24 +75,28 @@ _build.self-hosted:
 	$(MAKE) _build.self-hosted-runtime
 
 _build.self-hosted-base:
-	cd ${APP_DIR} && \
 	docker build -f docker/Dockerfile . \
 		-t ${DOCKERHUB_REPO}:latest-no-dependencies \
 		-t ${DOCKERHUB_REPO}:${VERSION}-no-dependencies \
 		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
+		--build-arg WORKDIR=/app/${APP_DIR} \
+		--build-arg ENTRYPOINT=${ENTRYPOINT} \
+		--build-arg DJANGO_SETTINGS_PARENT=${DJANGO_SETTINGS_PARENT} \
 		--build-arg RELEASE_VERSION=${VERSION} \
 		--build-arg BUILD_ENV=self-hosted
 
 _build.self-hosted-runtime:
-	cd ${APP_DIR} && \
 	docker build -f docker/Dockerfile . \
 		-t ${DOCKERHUB_REPO}:latest \
 		-t ${DOCKERHUB_REPO}:${VERSION} \
 		--label "org.label-schema.vendor"="Codecov" \
 		--label "org.label-schema.version"="${release_version}-${sha}" \
 		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
-        --build-arg RELEASE_VERSION=${VERSION} \
-        --build-arg BUILD_ENV=self-hosted-runtime
+		--build-arg WORKDIR=/app/${APP_DIR} \
+		--build-arg ENTRYPOINT=${ENTRYPOINT} \
+		--build-arg DJANGO_SETTINGS_PARENT=${DJANGO_SETTINGS_PARENT} \
+		--build-arg RELEASE_VERSION=${VERSION} \
+		--build-arg BUILD_ENV=self-hosted-runtime
 
 _tag.latest:
 	docker tag ${AR_REPO}:${VERSION} ${AR_REPO}:latest

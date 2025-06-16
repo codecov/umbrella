@@ -24,7 +24,7 @@
 #
 # If you run `make worker.build`, the wrapper target will set worker-specific
 # values and then run `$(MAKE) _build` to run the generic `_build` target with
-# worker's propagated through. 
+# worker's propagated through.
 #
 # We are interested in making `umbrella` more of a monolith instead of a
 # collection of subprojects. If and when we do, the goal is not to need the
@@ -56,6 +56,8 @@ define api_rule_prefix
 $(1): export APP_DIR := apps/codecov-api
 $(1): export AR_REPO ?= ${AR_REPO_PREFIX}/api
 $(1): export DOCKERHUB_REPO ?= codecov/self-hosted-api
+$(1): export ENTRYPOINT ?= ./prod.sh
+$(1): export DJANGO_SETTINGS_PARENT ?= codecov
 endef
 
 # Any API target starting with `proxy` should be forwarded to
@@ -85,6 +87,8 @@ define worker_rule_prefix
 $(1): export APP_DIR := apps/worker
 $(1): export AR_REPO ?= ${AR_REPO_PREFIX}/worker
 $(1): export DOCKERHUB_REPO ?= codecov/self-hosted-worker
+$(1): export ENTRYPOINT ?= ./worker.sh
+$(1): export DJANGO_SETTINGS_PARENT ?= django_scaffold
 endef
 
 # Any Worker target starting with `shell` should be forwarded to
@@ -109,6 +113,8 @@ $(1): export APP_DIR := libs/shared
 $(1): export AR_REPO ?= ${AR_REPO_PREFIX}/dev-shared
 $(1): export DOCKERHUB_REPO ?= codecov/dev-hosted-shared
 $(1): export COV_SOURCE := ./shared
+$(1): export ENTRYPOINT ?= /bin/sh # Dummy value
+$(1): export DJANGO_SETTINGS_PARENT ?= shared.django_apps
 endef
 
 # All other Shared targets are implemented as generic targets above. Declare the

@@ -20,12 +20,12 @@ COV_SOURCE ?= "./"
 # Outside the Docker env: Start up the Docker env for tests.
 _test_env.up:
 	env | grep GITHUB > .testenv; true
-	DOCKER_REPO=${AR_REPO} DOCKER_VERSION=${VERSION} APP_DIR=${APP_DIR} docker-compose -f ci-tests.docker-compose.yml up -d
+	docker compose -f ci-tests.docker-compose.yml up -d
 
 # Outside the Docker env: Install some runtime dependencies inside the running Docker env.
 _test_env.prepare:
-	docker-compose -f ci-tests.docker-compose.yml exec repo apt-get update
-	docker-compose -f ci-tests.docker-compose.yml exec repo apt-get install -y git build-essential netcat-traditional
+	docker-compose -f ci-tests.docker-compose.yml exec -u root repo apt-get update
+	docker-compose -f ci-tests.docker-compose.yml exec -u root repo apt-get install -y git build-essential netcat-traditional
 	docker-compose -f ci-tests.docker-compose.yml exec repo git config --global --add safe.directory /app || true
 	docker-compose -f ci-tests.docker-compose.yml exec repo pip install -e ../../libs/shared
 
@@ -39,6 +39,7 @@ _test_env.run_unit:
 	docker-compose exec repo /bin/sh -c \
 		"COVERAGE_CORE=sysmon \
 		RUN_ENV=TESTING \
+		DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_PARENT}.settings_test \
 		pytest --cov=${COV_SOURCE} \
 		    -m 'not integration' \
 		    --cov-report=xml:unit.coverage.xml \
@@ -52,6 +53,7 @@ _test_env.run_integration:
 	docker-compose exec repo /bin/sh -c \
 		"COVERAGE_CORE=sysmon \
 		RUN_ENV=TESTING \
+		DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_PARENT}.settings_test \
 		pytest --cov=${COV_SOURCE} \
 		    -m 'integration' \
 		    --cov-report=xml:integration.coverage.xml \

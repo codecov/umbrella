@@ -60,7 +60,7 @@ jobs:
 
       - uses: CodSpeedHQ/action@v3
         with:
-          run: uv run --project libs/shared pytest --rootdir=libs/shared libs/shared/tests/benchmarks/ --codspeed
+          run: DJANGO_SETTINGS_MODULE=shared.django_apps.settings_test uv run --project libs/shared pytest --rootdir=libs/shared libs/shared/tests/benchmarks/ --codspeed
           token: ${{ secrets.CODSPEED_TOKEN }}
 
   # This job works around a strange interaction between reusable workflows and

@@ -3,59 +3,57 @@ ARG REQUIREMENTS_IMAGE
 ARG BUILD_ENV=self-hosted
 ARG BERGLAS_VERSION=2.0.6
 
+ARG WORKDIR=/app
+ARG ENTRYPOINT
+
 FROM us-docker.pkg.dev/berglas/berglas/berglas:$BERGLAS_VERSION as berglas
 
 FROM $REQUIREMENTS_IMAGE as app
-COPY . /app
-WORKDIR /app
-RUN python codecov-api/manage.py collectstatic --no-input
 
-FROM app as local
 
-FROM app as cloud
+# Add a non-root user to run as. Generally refer to it via its UID to avoid
+# weird name/UID mismatch quirks.
+RUN adduser --system codecov --uid 1001 --home /home/codecov
+COPY --chown=1001:1001 --chmod=744 . /app
+USER 1001
+
+# Generate static assets for Django
+WORKDIR /app/apps/codecov-api
+RUN python manage.py collectstatic --no-input
+
 ARG RELEASE_VERSION
 ENV RELEASE_VERSION=$RELEASE_VERSION
+
+ARG WORKDIR
+WORKDIR $WORKDIR
+
+ARG ENTRYPOINT
+ENV ENTRYPOINT=$ENTRYPOINT
+ENTRYPOINT $ENTRYPOINT
+
+### Local development image
+FROM app as local
+ENV RUN_ENV="DEV"
+
+### Production image
+FROM app as cloud
+ENV RUN_ENV="PRODUCTION"
 COPY --chmod=755 --from=berglas /bin/berglas /usr/local/bin/berglas
 
+### Self-hosted image
 FROM app as self-hosted
 
-RUN pip uninstall -y typing
-# set settings module
-ENV DJANGO_SETTINGS_MODULE="codecov.settings_enterprise"
-# Remove the settings dev and enterprise files.
-# These should *never* make it to enterprise.
-RUN rm /app/codecov-api/codecov/settings_dev.py && \
-    rm /app/codecov-api/codecov/settings_prod.py && \
-    rm /app/codecov-api/codecov/settings_test.py && \
-    rm /app/codecov-api/codecov/settings_staging.py && \
-    rm /app/codecov-api/dev.sh && \
-    rm /app/codecov-api/migrate.sh && \
-    rm /app/codecov-api/prod.sh && \
-    rm /app/codecov-api/staging.sh
-# Remove unneeded folders
-RUN rm -rf /app/.github
-RUN rm -rf /app/.circleci
-# Create the codecov user to run the container as
-RUN addgroup --system application \
-    && adduser --system codecov --ingroup application --home /home/codecov
-RUN mkdir -p /config && chown codecov:application /config
-# copy the enterprise settings module.
-WORKDIR /app
-RUN chmod +x enterprise.sh && \
-    chown codecov:application /app
-ARG RELEASE_VERSION
 ENV RUN_ENV="ENTERPRISE"
-ENV RELEASE_VERSION=$RELEASE_VERSION
-ENV DJANGO_SETTINGS_MODULE="codecov.settings_enterprise"
 ENV CODECOV_API_PORT=8000
-ENTRYPOINT ["./enterprise.sh"]
 
+### Self-hosted runtime image
 FROM self-hosted as self-hosted-runtime
 USER root
 ARG EXTERNAL_DEPS_FOLDER=./external_deps
 RUN mkdir $EXTERNAL_DEPS_FOLDER
 RUN pip install --target $EXTERNAL_DEPS_FOLDER psycopg2-binary tlslite-ng
-RUN chown codecov:application $EXTERNAL_DEPS_FOLDER
-USER codecov
+RUN chown 1001:1001 $EXTERNAL_DEPS_FOLDER
+USER 1001
 
+# "Output" image
 FROM ${BUILD_ENV}
