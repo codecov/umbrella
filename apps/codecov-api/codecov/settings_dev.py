@@ -19,10 +19,11 @@ STRIPE_ENDPOINT_SECRET = get_config(
     "services", "stripe", "endpoint_secret", default="default"
 )
 
-
-CODECOV_URL = "localhost"
+CODECOV_URL = get_config("setup", "codecov_url", default="http://localhost:8080")
 CODECOV_API_URL = get_config("setup", "codecov_api_url", default=CODECOV_URL)
-CODECOV_DASHBOARD_URL = "http://localhost:3000"
+CODECOV_DASHBOARD_URL = get_config(
+    "setup", "codecov_dashboard_url", default=CODECOV_URL
+)
 
 CORS_ALLOWED_ORIGINS = [
     CODECOV_DASHBOARD_URL,

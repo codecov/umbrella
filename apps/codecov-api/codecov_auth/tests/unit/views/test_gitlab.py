@@ -119,6 +119,7 @@ def test_get_gitlab_already_with_code_no_session(
     )
     settings.COOKIES_DOMAIN = ".simple.site"
     settings.COOKIE_SECRET = "cookie-secret"
+    settings.CODECOV_DASHBOARD_URL = "http://localhost:3000"
 
     access_token = "testp2twc8gxedplfn91tm4zn4r4ak2xgyr4ug96q86r2gr0re0143f20nuftka8"
     refresh_token = "testqyuk6z4s086jcvwoncxz8owl57o30qx1mhxlw3lgqliisujsiakh3ejq91tt"

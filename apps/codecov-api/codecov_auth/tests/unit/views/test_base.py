@@ -29,6 +29,9 @@ def set_up_mixin(to=None):
     return mixin
 
 
+@override_settings(
+    CODECOV_DASHBOARD_URL="http://localhost:3000",
+)
 def test_generate_state_without_redirection_url(mock_redis):
     mixin = set_up_mixin()
     state = mixin.generate_state()
@@ -54,8 +57,10 @@ def test_generate_state_with_safe_domain_redirection_url(mock_redis):
     )
 
 
-@override_settings(CORS_ALLOWED_ORIGINS=[])
-@override_settings(CORS_ALLOWED_ORIGIN_REGEXES=[r"^(https:\/\/)?(.+)\.codecov\.io$"])
+@override_settings(
+    CORS_ALLOWED_ORIGINS=[],
+    CORS_ALLOWED_ORIGIN_REGEXES=[r"^(https:\/\/)?(.+)\.codecov\.io$"],
+)
 def test_generate_state_with_safe_domain_regex_redirection_url(mock_redis):
     mixin = set_up_mixin("https://app.codecov.io/gh/codecov")
     state = mixin.generate_state()
@@ -65,8 +70,11 @@ def test_generate_state_with_safe_domain_regex_redirection_url(mock_redis):
     )
 
 
-@override_settings(CORS_ALLOWED_ORIGINS=[])
-@override_settings(CORS_ALLOWED_ORIGIN_REGEXES=[])
+@override_settings(
+    CORS_ALLOWED_ORIGINS=[],
+    CORS_ALLOWED_ORIGIN_REGEXES=[],
+    CODECOV_DASHBOARD_URL="http://localhost:3000",
+)
 def test_generate_state_with_unsafe_domain(mock_redis):
     mixin = set_up_mixin("http://hacker.com/i-steal-cookie")
     state = mixin.generate_state()
@@ -77,8 +85,11 @@ def test_generate_state_with_unsafe_domain(mock_redis):
     )
 
 
-@override_settings(CORS_ALLOWED_ORIGINS=[])
-@override_settings(CORS_ALLOWED_ORIGIN_REGEXES=[])
+@override_settings(
+    CORS_ALLOWED_ORIGINS=[],
+    CORS_ALLOWED_ORIGIN_REGEXES=[],
+    CODECOV_DASHBOARD_URL="http://localhost:3000",
+)
 def test_generate_state_when_wrong_url(mock_redis):
     mixin = set_up_mixin("http://localhost:]/")
     state = mixin.generate_state()
@@ -89,6 +100,7 @@ def test_generate_state_when_wrong_url(mock_redis):
     )
 
 
+@override_settings(CODECOV_DASHBOARD_URL="http://localhost:3000")
 def test_get_redirection_url_from_state_without_redis_state(mock_redis):
     mixin = set_up_mixin()
     assert mixin.get_redirection_url_from_state("not exist") == (
@@ -97,6 +109,7 @@ def test_get_redirection_url_from_state_without_redis_state(mock_redis):
     )
 
 
+@override_settings(CODECOV_DASHBOARD_URL="http://localhost:3000")
 def test_get_redirection_url_from_state_without_session_state(mock_redis):
     mixin = set_up_mixin()
     state = "abc"
@@ -107,6 +120,7 @@ def test_get_redirection_url_from_state_without_session_state(mock_redis):
     )
 
 
+@override_settings(CODECOV_DASHBOARD_URL="http://localhost:3000")
 def test_get_redirection_url_from_state_with_session_state_mismatch(mock_redis):
     mixin = set_up_mixin()
     state = "abc"

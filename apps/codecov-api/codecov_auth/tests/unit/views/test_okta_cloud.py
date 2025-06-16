@@ -141,6 +141,9 @@ def test_okta_login_no_okta_settings(
     assert res.status_code == 404
 
 
+@override_settings(
+    CODECOV_DASHBOARD_URL="http://localhost:3000",
+)
 @pytest.mark.django_db
 def test_okta_login_already_signed_into_okta(
     signed_in_client: TestClient,
@@ -177,6 +180,9 @@ def test_okta_login_redirect_to_okta_issuer(
     )
 
 
+@override_settings(
+    CODECOV_DASHBOARD_URL="http://localhost:3000",
+)
 @pytest.mark.django_db
 def test_okta_callback_login_success(
     signed_in_client: TestClient,
@@ -214,6 +220,9 @@ def test_okta_callback_login_success(
     mocked_validate_id_token.assert_called_with("https://foo-bar.okta.com", ANY, ANY)
 
 
+@override_settings(
+    CODECOV_DASHBOARD_URL="http://localhost:3000",
+)
 @pytest.mark.django_db
 def test_okta_callback_login_success_multiple_accounts(
     signed_in_client: TestClient,
@@ -384,6 +393,9 @@ def test_okta_callback_no_code(
     assert updated_session.get(OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY) is None
 
 
+@override_settings(
+    CODECOV_DASHBOARD_URL="http://localhost:3000",
+)
 @pytest.mark.django_db
 def test_okta_callback_perform_login_invalid_state(
     signed_in_client: TestClient,
@@ -420,6 +432,9 @@ def test_okta_callback_perform_login_invalid_state(
     assert updated_session.get(OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY) is None
 
 
+@override_settings(
+    CODECOV_DASHBOARD_URL="http://localhost:3000",
+)
 @pytest.mark.django_db
 def test_okta_callback_perform_login_no_user_data(
     mocker: MockerFixture,
@@ -465,6 +480,9 @@ def test_okta_callback_perform_login_no_user_data(
     assert updated_session.get(OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY) is None
 
 
+@override_settings(
+    CODECOV_DASHBOARD_URL="http://localhost:3000",
+)
 @pytest.mark.django_db
 def test_okta_callback_perform_login_invalid_id_token(
     mocker: MockerFixture,
@@ -513,6 +531,9 @@ def test_okta_callback_perform_login_invalid_id_token(
     assert updated_session.get(OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY) is None
 
 
+@override_settings(
+    CODECOV_DASHBOARD_URL="http://localhost:3000",
+)
 @pytest.mark.django_db
 def test_okta_callback_perform_login_access_denied(
     mocker: MockerFixture,
