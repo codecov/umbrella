@@ -56,10 +56,10 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "core.middleware.AppMetricsBeforeMiddlewareWithUA",
+    "codecov_auth.middleware.cors_middleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "codecov_auth.middleware.cors_middleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -68,8 +68,8 @@ MIDDLEWARE = [
     "core.middleware.ServiceMiddleware",
     "codecov_auth.middleware.current_owner_middleware",
     "codecov_auth.middleware.impersonation_middleware",
-    "core.middleware.AppMetricsAfterMiddlewareWithUA",
     "csp.middleware.CSPMiddleware",
+    "core.middleware.AppMetricsAfterMiddlewareWithUA",
 ]
 
 ROOT_URLCONF = "codecov.urls"
