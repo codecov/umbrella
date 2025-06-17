@@ -4,14 +4,10 @@
 import os
 import sys
 
-from shared.django_apps.utils.config import get_settings_module
-
 
 def main():
     """Run administrative tasks."""
-    os.environ.setdefault(
-        "DJANGO_SETTINGS_MODULE", get_settings_module("shared.django_apps")
-    )
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "shared.django_apps.settings_test")
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
