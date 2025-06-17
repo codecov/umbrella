@@ -25,8 +25,12 @@ ignore = [
     "F405",    # `{name}` may be undefined, or defined from star imports
     "F841",    # Local variable `{name}` is assigned to but never used
     "PLW2901", # Outer {outer_kind} variable {name} overwritten by inner {inner_kind} target
+    "PLC0415", # import-outside-top-level
+    "PLW1641", # Object does not implement `__hash__` method
     "PERF203", # `try`-`except` within a loop incurs performance overhead
     # Trailing whitespace, and blank lines which we use in test assertions:
     "W291",
     "W293",
+    "UP047",   # Generic functions should use type parameters
+    "UP046",   # Generic classes uses `Generic` subclass instead of type parameters
 ]
