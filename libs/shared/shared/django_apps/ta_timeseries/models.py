@@ -1,8 +1,30 @@
+import mmh3
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django_prometheus.models import ExportModelOperationsMixin
 
 TA_TIMESERIES_APP_LABEL = "ta_timeseries"
+
+
+def calc_test_id(name: str, classname: str, testsuite: str) -> bytes:
+    """
+    Calculate a test ID hash from test name, classname, and testsuite.
+
+    Args:
+        name: Test name
+        classname: Test class name
+        testsuite: Test suite name
+
+    Returns:
+        bytes: Hash digest as bytes
+    """
+    h = mmh3.mmh3_x64_128()  # assumes we're running on x64 machines
+    h.update(testsuite.encode("utf-8"))
+    h.update(classname.encode("utf-8"))
+    h.update(name.encode("utf-8"))
+    test_id_hash = h.digest()
+
+    return test_id_hash
 
 
 class Testrun(ExportModelOperationsMixin("ta_timeseries.testrun"), models.Model):

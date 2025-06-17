@@ -6,7 +6,6 @@ from django.db import connections
 from freezegun import freeze_time
 
 from services.test_analytics.ta_timeseries import (
-    calc_test_id,
     get_pr_comment_agg,
     get_pr_comment_failures,
     get_summary,
@@ -15,7 +14,7 @@ from services.test_analytics.ta_timeseries import (
     insert_testrun,
     update_testrun_to_flaky,
 )
-from shared.django_apps.ta_timeseries.models import Testrun
+from shared.django_apps.ta_timeseries.models import Testrun, calc_test_id
 
 
 @pytest.mark.django_db(databases=["ta_timeseries"])
