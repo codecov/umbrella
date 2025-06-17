@@ -716,7 +716,7 @@ class GithubWebhookHandler(APIView):
 
             try:
                 if org.plan_activated_users:
-                    org.plan_activated_users.remove(member.ownerid)
+                    org.deactivate_user(member)
                     org.save(update_fields=["plan_activated_users"])
             except ValueError:
                 pass

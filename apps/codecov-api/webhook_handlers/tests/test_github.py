@@ -17,7 +17,10 @@ from codecov_auth.models import (
     Owner,
     Service,
 )
-from shared.django_apps.codecov_auth.tests.factories import GithubAppInstallationFactory
+from shared.django_apps.codecov_auth.tests.factories import (
+    AccountFactory,
+    GithubAppInstallationFactory,
+)
 from shared.django_apps.core.tests.factories import (
     BranchFactory,
     CommitFactory,
@@ -1130,6 +1133,46 @@ class GithubWebhookHandlerTests(APITestCase):
             using_integration=False,
         )
         assert user.ownerid not in org.plan_activated_users
+
+    @patch("services.task.TaskService.refresh")
+    def test_organization_with_removed_action_removes_user_from_account(
+        self,
+        mock_refresh,
+    ):
+        org = OwnerFactory(service_id="4321", service=Service.GITHUB.value)
+        account = AccountFactory(name="testaccount")
+        org.account = account
+        org.save()
+
+        user = OwnerFactory(
+            organizations=[org.ownerid], service_id="12", service=Service.GITHUB.value
+        )
+        org.plan_activated_users = [user.ownerid]
+        org.save()
+
+        account.activate_owner_user_onto_account(user)
+
+        self._post_event_data(
+            event=GitHubWebhookEvents.ORGANIZATION,
+            data={
+                "action": "member_removed",
+                "membership": {"user": {"id": user.service_id}},
+                "organization": {"id": org.service_id},
+            },
+        )
+
+        user.refresh_from_db()
+        org.refresh_from_db()
+
+        mock_refresh.assert_called_with(
+            ownerid=user.ownerid,
+            username=user.username,
+            sync_teams=True,
+            sync_repos=True,
+            using_integration=False,
+        )
+        assert user.ownerid not in org.plan_activated_users
+        assert user.user not in account.users.all()
 
     def test_organization_member_removed_with_nonexistent_org_doesnt_crash(self):
         user = OwnerFactory(service_id="12", service=Service.GITHUB.value)
