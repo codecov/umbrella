@@ -4,11 +4,11 @@ import polars as pl
 import pytest
 
 from services.test_analytics.ta_cache_rollups import VERSION
-from services.test_analytics.utils import calc_test_id
 from shared.django_apps.ta_timeseries.models import (
     Testrun,
     TestrunBranchSummary,
     TestrunSummary,
+    calc_test_id,
 )
 from shared.storage.minio import MinioStorageService
 from tasks.cache_test_rollups import CacheTestRollupsTask
