@@ -1,6 +1,7 @@
 import logging
 
 from django.conf import settings
+from django.db.models import Field, Lookup
 
 log = logging.getLogger(__name__)
 
@@ -61,3 +62,14 @@ class MultiDatabaseRouter:
             return obj1_app == obj2_app
         else:
             return True
+
+
+@Field.register_lookup
+class IsNot(Lookup):
+    lookup_name = "isnot"
+
+    def as_sql(self, compiler, connection):
+        lhs, lhs_params = self.process_lhs(compiler, connection)
+        rhs, rhs_params = self.process_rhs(compiler, connection)
+        params = tuple(lhs_params) + tuple(rhs_params)
+        return f"{lhs} is not {rhs}", params
