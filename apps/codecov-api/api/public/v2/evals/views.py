@@ -1,3 +1,5 @@
+from typing import TypedDict
+
 import django_filters
 from django.http import JsonResponse
 from django_filters.rest_framework import DjangoFilterBackend
@@ -12,6 +14,15 @@ from api.shared.permissions import RepositoryArtifactPermissions
 from rollouts import READ_NEW_EVALS
 from shared.django_apps.db_settings import TA_TIMESERIES_ENABLED
 from shared.django_apps.ta_timeseries.models import Testrun
+
+
+class EvalsSummary(TypedDict):
+    avgDuration: float
+    avgCost: float
+    totalItems: int
+    passedItems: int
+    failedItems: int
+    scores: dict[str, float]
 
 
 class EvalsFilters(django_filters.FilterSet):
@@ -60,11 +71,15 @@ class EvalsViewSet(viewsets.GenericViewSet, RepoPropertyMixin):
             repo_id=self.repo.repoid, properties__isnull=False
         )
 
-    def _aggregate_testruns(self, testruns):
+    def _aggregate_testruns(self, testruns) -> EvalsSummary:
         """
         Aggregate metrics from a list of testruns.
         Returns a dict with aggregated metrics and scores.
         """
+        # TODO: This function loads all testruns into memory.
+        # If possible we should offload the calculation to postgres.
+        # (although if it ever get's out of the POC I'd expect the rollup to exist in a separate table)
+
         total_items = len(testruns)
         passed_items = sum(1 for t in testruns if t.outcome == "pass")
         failed_items = total_items - passed_items
@@ -76,8 +91,7 @@ class EvalsViewSet(viewsets.GenericViewSet, RepoPropertyMixin):
         )
 
         # Calculate score averages for passed items
-        score_avgs = {}
-        score_counts = {}
+        score_avgs_counts: dict[str, tuple[float, int]] = {}
         cost_acc = 0
         items_with_cost = 0
 
@@ -96,16 +110,19 @@ class EvalsViewSet(viewsets.GenericViewSet, RepoPropertyMixin):
                     if name:
                         score_value = score.get("value") or score.get("score")
                         if isinstance(score_value, int | float):
-                            if name not in score_avgs:
-                                score_avgs[name] = 0
-                                score_counts[name] = 0
-                            score_avgs[name] += score_value
-                            score_counts[name] += 1
+                            if name not in score_avgs_counts:
+                                score_avgs_counts[name] = (0, 0)
+                            score_avgs_counts[name] = (
+                                score_avgs_counts[name][0] + score_value,
+                                score_avgs_counts[name][1] + 1,
+                            )
 
         # Calculate averages
         score_avgs = {
-            name: score_avgs[name] / score_counts[name] if score_counts[name] > 0 else 0
-            for name in score_avgs
+            name: score_avgs_counts[name][0] / score_avgs_counts[name][1]
+            if score_avgs_counts[name][1] > 0
+            else 0
+            for name in score_avgs_counts
         }
 
         return {

@@ -12,4 +12,8 @@
     "apps/worker",
     "libs/shared",
   ],
+  "cSpell.words": [
+    "Testrun",
+    "testruns"
+  ],
 }
