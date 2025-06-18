@@ -1,6 +1,6 @@
 from enum import Enum, auto
 from functools import cached_property
-from typing import Generic, Literal, Self, TypeVar
+from typing import Literal, Self, TypeVar
 
 import sentry_sdk
 
@@ -37,7 +37,7 @@ class CommitStatusLevel(Enum):
         return "success"
 
 
-class NotificationContextField(Generic[T]):
+class NotificationContextField[T]:
     """NotificationContextField is a descriptor akin to a Django model field.
     If you create one as a class member named `foo`, it will define the behavior to get and set an instance member named `foo`.
     It is also similar to @property

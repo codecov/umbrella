@@ -427,7 +427,7 @@ def subflows(*args: tuple[str, str, str]) -> TClassDecorator:
     return class_decorator
 
 
-def reliability_counters(klass: type[T]) -> type[T]:
+def reliability_counters[T: "BaseFlow"](klass: type[T]) -> type[T]:
     """
     Class decorator that enables computing success/failure rates for a flow. It
     is expected that you invoke this **after** @success_events and/or
@@ -478,11 +478,11 @@ def _get_milli_timestamp() -> int:
     return time.time_ns() // 1000000
 
 
-def _kwargs_key(cls: type[T]) -> str:
+def _kwargs_key[T: "BaseFlow"](cls: type[T]) -> str:
     return f"checkpoints_{cls.__name__}"
 
 
-def from_kwargs(
+def from_kwargs[T: "BaseFlow"](
     flows: list[type[T]], kwargs: MutableMapping[str, Any], strict: bool = False
 ):
     checkpoints_data = {}

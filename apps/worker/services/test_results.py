@@ -3,7 +3,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Generic, Literal, TypedDict, TypeVar
+from typing import Literal, TypedDict, TypeVar
 
 import sentry_sdk
 from sqlalchemy import desc, func
@@ -130,7 +130,7 @@ T = TypeVar("T", str, bytes)
 
 
 @dataclass
-class TestResultsNotificationFailure(Generic[T]):
+class TestResultsNotificationFailure[T: (str, bytes)]:
     failure_message: str
     display_name: str
     envs: list[str]
@@ -146,13 +146,13 @@ class FlakeInfo:
 
 
 @dataclass
-class TACommentInDepthInfo(Generic[T]):
+class TACommentInDepthInfo[T: (str, bytes)]:
     failures: list[TestResultsNotificationFailure[T]]
     flaky_tests: dict[T, FlakeInfo]
 
 
 @dataclass
-class TestResultsNotificationPayload(Generic[T]):
+class TestResultsNotificationPayload[T: (str, bytes)]:
     failed: int
     passed: int
     skipped: int
@@ -190,7 +190,7 @@ def display_duration(f: float) -> str:
         return f"{f:.3g}"
 
 
-def generate_failure_info(
+def generate_failure_info[T: (str, bytes)](
     fail: TestResultsNotificationFailure[T],
 ):
     if fail.failure_message is not None:
@@ -211,7 +211,7 @@ def generate_view_test_analytics_line(commit: Commit) -> str:
     return f"\nTo view more test analytics, go to the [Test Analytics Dashboard]({test_analytics_url})\n<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/BpocVj23nhr2Y45G7) to help us improve Test Analytics.</sub>"
 
 
-def messagify_failure(
+def messagify_failure[T: (str, bytes)](
     failure: TestResultsNotificationFailure[T],
 ) -> str:
     test_name = wrap_in_code(failure.display_name.replace("\x1f", " "))
@@ -224,7 +224,7 @@ def messagify_failure(
     return make_quoted(f"{test_name}\n{stack_trace}")
 
 
-def messagify_flake(
+def messagify_flake[T: (str, bytes)](
     flaky_failure: TestResultsNotificationFailure[T],
     flake_info: FlakeInfo,
 ) -> str:
@@ -287,7 +287,7 @@ def specific_error_message(error: ErrorPayload) -> str:
 
 
 @dataclass
-class TestResultsNotifier(BaseNotifier, Generic[T]):
+class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
     payload: TestResultsNotificationPayload[T] | None = None
     error: ErrorPayload | None = None
 
