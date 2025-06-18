@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/ruff-action@v3
+      - uses: pre-commit/action@v3.0.1
 
   change-detection:
     runs-on: ubuntu-latest
