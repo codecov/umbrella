@@ -1,4 +1,5 @@
 enum TestResultsOrderingParameter {
+  TOTAL_DURATION
   LAST_DURATION
   AVG_DURATION
   FAILURE_RATE

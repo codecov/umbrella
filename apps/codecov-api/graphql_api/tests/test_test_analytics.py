@@ -41,6 +41,7 @@ class RowFactory:
             "flake_rate": 0.0,
             "updated_at": updated_at,
             "avg_duration": 100.0,
+            "total_duration": 200.0,
             "total_fail_count": 1,
             "total_flaky_fail_count": 1 if RowFactory.idx == 1 else 0,
             "total_pass_count": 1,
@@ -139,6 +140,9 @@ def dedup(rows: list[dict]) -> list[dict]:
             "updated_at": max(r["updated_at"] for r in group),
             "avg_duration": sum(r["avg_duration"] * w for r, w in zip(group, weights))
             / total_weight,
+            "total_duration": sum(
+                r["avg_duration"] * w for r, w in zip(group, weights)
+            ),
             "total_fail_count": sum(r["total_fail_count"] for r in group),
             "total_flaky_fail_count": sum(r["total_flaky_fail_count"] for r in group),
             "total_pass_count": sum(r["total_pass_count"] for r in group),
@@ -619,6 +623,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
                         flakeRate
                         updatedAt
                         avgDuration
+                        totalDuration
                         totalFailCount
                         totalFlakyFailCount
                         totalPassCount
@@ -664,6 +669,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
                         flakeRate
                         updatedAt
                         avgDuration
+                        totalDuration
                         totalFailCount
                         totalFlakyFailCount
                         totalPassCount
@@ -772,7 +778,8 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             "testsuite1",
         ]
 
-    def test_gql_query_with_new_ta_v1(self, mocker, repository, snapshot):
+    @pytest.mark.parametrize("ordering", ["FAILURE_RATE", "TOTAL_DURATION"])
+    def test_gql_query_with_new_ta_v1(self, mocker, repository, snapshot, ordering):
         # set the feature flag
         mocker.patch("rollouts.READ_NEW_TA.check_value", return_value=True)
 
@@ -793,37 +800,38 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
         query = base_gql_query % (
             repository.author.username,
             repository.name,
-            """
-            testResults(ordering: { parameter: FAILURE_RATE, direction: DESC } ) {
+            f"""
+            testResults(ordering: {{ parameter: {ordering}, direction: DESC }} ) {{
                 totalCount
-                edges {
+                edges {{
                     cursor
-                    node {
+                    node {{
                         name
                         failureRate
                         flakeRate
                         updatedAt
                         avgDuration
+                        totalDuration
                         totalFailCount
                         totalFlakyFailCount
                         totalPassCount
                         totalSkipCount
                         commitsFailed
                         lastDuration
-                    }
-                }
-            }
-            flakeAggregates {
+                    }}
+                }}
+            }}
+            flakeAggregates {{
                 flakeRate
                 flakeCount
-            }
-            testResultsAggregates {
+            }}
+            testResultsAggregates {{
                 totalDuration
                 slowestTestsDuration
                 totalFails
                 totalSkips
                 totalSlowTests
-            }
+            }}
             testSuites
             """,
         )

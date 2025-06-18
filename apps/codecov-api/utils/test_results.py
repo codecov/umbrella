@@ -56,6 +56,11 @@ def dedup_table(table: pl.DataFrame) -> pl.DataFrame:
         * (pl.col("total_pass_count") + pl.col("total_fail_count"))
     ).sum() / (pl.col("total_pass_count") + pl.col("total_fail_count")).sum()
 
+    total_duration_expr = (
+        pl.col("avg_duration")
+        * (pl.col("total_pass_count") + pl.col("total_fail_count"))
+    ).sum()
+
     # dedup
     table = (
         table.group_by("name")
@@ -65,6 +70,7 @@ def dedup_table(table: pl.DataFrame) -> pl.DataFrame:
             failure_rate_expr.fill_nan(0).alias("failure_rate"),
             flake_rate_expr.fill_nan(0).alias("flake_rate"),
             pl.col("updated_at").max().alias("updated_at"),
+            total_duration_expr.alias("total_duration"),
             avg_duration_expr.fill_nan(0).alias("avg_duration"),
             pl.col("total_fail_count").sum().alias("total_fail_count"),
             pl.col("total_flaky_fail_count").sum().alias("total_flaky_fail_count"),
@@ -165,6 +171,10 @@ def no_version_agg_table(table: pl.LazyFrame) -> pl.LazyFrame:
         pl.col("avg_duration") * (pl.col("pass_count") + pl.col("fail_count"))
     ).sum() / (pl.col("pass_count") + pl.col("fail_count")).sum()
 
+    total_duration_expr = (
+        pl.col("avg_duration") * (pl.col("pass_count") + pl.col("fail_count"))
+    ).sum()
+
     table = table.group_by(pl.col("computed_name").alias("name")).agg(
         pl.col("flags")
         .explode()
@@ -175,6 +185,7 @@ def no_version_agg_table(table: pl.LazyFrame) -> pl.LazyFrame:
         failure_rate_expr.alias("failure_rate"),
         flake_rate_expr.alias("flake_rate"),
         avg_duration_expr.alias("avg_duration"),
+        total_duration_expr.alias("total_duration"),
         pl.col("pass_count").sum().alias("total_pass_count"),
         pl.col("fail_count").sum().alias("total_fail_count"),
         pl.col("flaky_fail_count").sum().alias("total_flaky_fail_count"),
@@ -198,6 +209,10 @@ def v1_agg_table(table: pl.LazyFrame) -> pl.LazyFrame:
         pl.col("avg_duration") * (pl.col("pass_count") + pl.col("fail_count"))
     ).sum() / (pl.col("pass_count") + pl.col("fail_count")).sum()
 
+    total_duration_expr = (
+        pl.col("avg_duration") * (pl.col("pass_count") + pl.col("fail_count"))
+    ).sum()
+
     table = table.group_by(pl.col("computed_name").alias("name")).agg(
         pl.col("testsuite").alias(
             "testsuite"
@@ -211,6 +226,7 @@ def v1_agg_table(table: pl.LazyFrame) -> pl.LazyFrame:
         failure_rate_expr.alias("failure_rate"),
         flake_rate_expr.alias("flake_rate"),
         avg_duration_expr.alias("avg_duration"),
+        total_duration_expr.alias("total_duration"),
         pl.col("pass_count").sum().alias("total_pass_count"),
         pl.col("fail_count").sum().alias("total_fail_count"),
         pl.col("flaky_fail_count").sum().alias("total_flaky_fail_count"),

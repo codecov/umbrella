@@ -43,6 +43,7 @@ class TestResultsRow:
         flake_rate: float,
         updated_at: dt.datetime,
         avg_duration: float,
+        total_duration: float,
         total_fail_count: int,
         total_flaky_fail_count: int,
         total_pass_count: int,
@@ -59,6 +60,7 @@ class TestResultsRow:
         self.flake_rate = flake_rate
         self.updated_at = updated_at
         self.avg_duration = avg_duration
+        self.total_duration = total_duration
         self.total_fail_count = total_fail_count
         self.total_flaky_fail_count = total_flaky_fail_count
         self.total_pass_count = total_pass_count
@@ -115,6 +117,7 @@ def decode_cursor(
             | TestResultsOrderingParameter.FLAKE_RATE
             | TestResultsOrderingParameter.FAILURE_RATE
             | TestResultsOrderingParameter.LAST_DURATION
+            | TestResultsOrderingParameter.TOTAL_DURATION
         ):
             return CursorValue(ordered_value=float(ordered_value), name=name)
         case TestResultsOrderingParameter.COMMITS_WHERE_FAIL:
