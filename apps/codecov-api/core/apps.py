@@ -13,7 +13,7 @@ class CoreConfig(AppConfig):
     name = "core"
 
     def ready(self):
-        import core.signals  # noqa: F401
+        import core.signals  # noqa: F401, PLC0415
 
         if settings.RUN_ENV not in ["DEV", "TESTING"]:
             cache_backend = RedisBackend(get_redis_connection())

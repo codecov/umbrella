@@ -274,7 +274,9 @@ class Commit(ExportModelOperationsMixin("core.commit"), models.Model):
         # TODO: we should probably remove use of this method since it inverts the
         # dependency tree (services should be importing models and not the other
         # way around).  The caching should be preserved somehow though.
-        from shared.reports.api_report_service import build_report_from_commit
+        from shared.reports.api_report_service import (  # noqa: PLC0415
+            build_report_from_commit,
+        )
 
         return build_report_from_commit(self)
 

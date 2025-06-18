@@ -3,7 +3,10 @@ from unittest.mock import patch
 from django.utils import timezone
 from rest_framework.reverse import reverse
 
-from api.internal.commit.serializers import CommitTotalsSerializer
+from api.internal.commit.serializers import (
+    CommitTotalsSerializer,
+    CommitWithFileLevelReportSerializer,
+)
 from api.internal.tests.test_utils import GetAdminProviderAdapter
 from codecov.tests.base_test import InternalAPITest
 from core.models import Repository
@@ -750,8 +753,6 @@ class TestRepositoryViewSetDetailActions(RepositoryViewSetTestSuite):
                 "sessions": {},
             },
         )
-
-        from api.internal.commit.serializers import CommitWithFileLevelReportSerializer
 
         expected_commit_payload = CommitWithFileLevelReportSerializer(commit).data
 

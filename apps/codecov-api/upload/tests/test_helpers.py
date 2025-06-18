@@ -17,6 +17,7 @@ from shared.django_apps.core.tests.factories import (
     RepositoryFactory,
 )
 from shared.django_apps.reports.models import ReportType
+from shared.github import InvalidInstallationError
 from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.upload.utils import UploaderType, insert_coverage_measurement
 from upload.helpers import (
@@ -107,8 +108,6 @@ def test_try_to_get_best_possible_bot_token_using_integration(
 def test_try_to_get_best_possible_bot_token_using_invalid_integration(
     get_github_integration_token,
 ):
-    from shared.github import InvalidInstallationError  # circular imports
-
     get_github_integration_token.side_effect = InvalidInstallationError(
         error_cause="installation_not_found"
     )

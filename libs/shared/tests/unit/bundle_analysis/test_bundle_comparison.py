@@ -13,7 +13,7 @@ from shared.bundle_analysis import (
     MissingHeadReportError,
     RouteChange,
 )
-from shared.bundle_analysis.models import Bundle, get_db_session
+from shared.bundle_analysis.models import Asset, Bundle, get_db_session
 
 here = Path(__file__)
 base_report_bundle_stats_path = (
@@ -400,8 +400,6 @@ def test_bundle_asset_comparison_using_uuid(mock_storage):
 
     # Update the UUIDs
     with get_db_session(comparison.base_report.db_path) as db_session:
-        from shared.bundle_analysis.models import Asset
-
         db_session.query(Asset).filter(Asset.name == "assets/index-666d2e09.js").update(
             {Asset.uuid: "123"}, synchronize_session="fetch"
         )
@@ -411,8 +409,6 @@ def test_bundle_asset_comparison_using_uuid(mock_storage):
         db_session.commit()
 
     with get_db_session(comparison.head_report.db_path) as db_session:
-        from shared.bundle_analysis.models import Asset
-
         db_session.query(Asset).filter(Asset.name == "assets/index-666d2e09.js").update(
             {Asset.uuid: "456"}, synchronize_session="fetch"
         )

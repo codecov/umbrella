@@ -44,8 +44,8 @@ def determine_entity_redis_key(
 
     It should only be used for github git instances
     """
-    from shared.bots import get_adapter_auth_information
-    from shared.bots.types import AdapterAuthInformation
+    from shared.bots import get_adapter_auth_information  # noqa: PLC0415
+    from shared.bots.types import AdapterAuthInformation  # noqa: PLC0415
 
     if not owner:
         return default_bot_key_name()

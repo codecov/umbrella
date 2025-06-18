@@ -5,7 +5,11 @@ from unittest import mock
 
 import pytest
 import vcr
+from django.conf import settings
+from django.db import connections
+from django.test.utils import setup_databases, teardown_databases
 from sqlalchemy import event
+from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy_utils import database_exists
 
@@ -15,6 +19,7 @@ from database.engine import json_dumps
 from helpers.environment import _get_cached_current_env
 from helpers.logging_config import get_logging_config_dict
 from shared.config import ConfigHelper
+from shared.rollouts import Feature
 from shared.storage.memory import MemoryStorageService
 from shared.torngit import Github as GithubHandler
 
@@ -54,8 +59,6 @@ def engine(request, sqlalchemy_db, sqlalchemy_connect_url):
     :returns: Engine instance
     """
     if sqlalchemy_connect_url:
-        from sqlalchemy.engine import create_engine
-
         engine = create_engine(sqlalchemy_connect_url, json_serializer=json_dumps)
     else:
         raise RuntimeError("Can not establish a connection to the database")
@@ -91,9 +94,6 @@ def engine(request, sqlalchemy_db, sqlalchemy_connect_url):
 @pytest.fixture(scope="session")
 def sqlalchemy_db(request: pytest.FixtureRequest, django_db_blocker, django_db_setup):
     # Bootstrap the DB by running the Django bootstrap version.
-    from django.conf import settings
-    from django.db import connections
-    from django.test.utils import setup_databases, teardown_databases
 
     keepdb = request.config.getvalue("reuse_db", False) and not request.config.getvalue(
         "create_db", False
@@ -403,8 +403,6 @@ def mock_checkpoint_submit(mocker, request):
 def mock_feature(mocker, request):
     if request.node.get_closest_marker("real_feature"):
         return
-
-    from shared.rollouts import Feature
 
     def check_value(self, identifier, default=False):
         return default

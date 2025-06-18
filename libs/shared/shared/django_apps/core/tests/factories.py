@@ -109,7 +109,7 @@ class CommitWithReportFactory(CommitFactory):
         # The following replaces the old `commits.report` JSON column
         # TODO: we may want to find another way to create this since the imports below
         # create a cyclic dependency
-        from shared.django_apps.reports.tests.factories import (
+        from shared.django_apps.reports.tests.factories import (  # noqa: PLC0415
             CommitReportFactory,
             ReportLevelTotalsFactory,
             UploadFactory,

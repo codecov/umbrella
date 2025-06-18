@@ -120,7 +120,7 @@ class BaseCommand:
         if not self.executor:
             # local import to avoid circular import; I'm not too happy about
             # this pattern yet
-            from .executor import get_executor_from_command
+            from .executor import get_executor_from_command  # noqa: PLC0415
 
             self.executor = get_executor_from_command(self)
         return self.executor.get_command(namespace)

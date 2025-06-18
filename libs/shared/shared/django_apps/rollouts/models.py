@@ -22,7 +22,9 @@ class RolloutUniverse(models.TextChoices):
 
 def default_random_salt():
     # to resolve circular dependency
-    from shared.django_apps.utils.rollout_utils import default_random_salt
+    from shared.django_apps.utils.rollout_utils import (  # noqa: PLC0415
+        default_random_salt,
+    )
 
     return default_random_salt()
 

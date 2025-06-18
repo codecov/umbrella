@@ -66,7 +66,7 @@ class RepositoryQuerySet(QuerySet):
         are not changing as the most recent commit is uploading coverage
         reports.
         """
-        from shared.django_apps.core.models import Commit
+        from shared.django_apps.core.models import Commit  # noqa: PLC0415
 
         timestamp = timezone.now() - timezone.timedelta(hours=1)
 
@@ -114,7 +114,7 @@ class RepositoryQuerySet(QuerySet):
         """
         Annotates queryset with coverage of latest commit totals before cerain date.
         """
-        from shared.django_apps.core.models import Commit
+        from shared.django_apps.core.models import Commit  # noqa: PLC0415
 
         # Parsing the date given in parameters so we receive a datetime rather than a string
         timestamp = parser.parse(before_date)
@@ -165,7 +165,7 @@ class RepositoryQuerySet(QuerySet):
         - latest_commit_at as the true_coverage except NULL are transformed to 1/1/1900
         This make sure when we order the repo with no commit appears last.
         """
-        from shared.django_apps.core.models import Commit
+        from shared.django_apps.core.models import Commit  # noqa: PLC0415
 
         latest_commit_at = Subquery(
             Commit.objects.filter(repository_id=OuterRef("pk"))
@@ -183,7 +183,7 @@ class RepositoryQuerySet(QuerySet):
         """
         Annotates the queryset with the oldest commit timestamp.
         """
-        from shared.django_apps.core.models import Commit
+        from shared.django_apps.core.models import Commit  # noqa: PLC0415
 
         commits = Commit.objects.filter(repository_id=OuterRef("pk")).order_by(
             "timestamp"
@@ -193,7 +193,7 @@ class RepositoryQuerySet(QuerySet):
         )
 
     def get_or_create_from_git_repo(self, git_repo, owner):
-        from shared.django_apps.codecov_auth.models import Owner
+        from shared.django_apps.codecov_auth.models import Owner  # noqa: PLC0415
 
         service_id = git_repo.get("service_id") or git_repo.get("id")
         name = git_repo["name"]

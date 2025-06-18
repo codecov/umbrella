@@ -153,7 +153,7 @@ class ArchiveField:
 def get_ownerid_if_member(
     service: str, owner_username: str, owner_id: int
 ) -> int | None:
-    from shared.django_apps.codecov_auth.models import Owner
+    from shared.django_apps.codecov_auth.models import Owner  # noqa: PLC0415
 
     """
     This is a Python representation of the get_ownerid_if_member DB function.

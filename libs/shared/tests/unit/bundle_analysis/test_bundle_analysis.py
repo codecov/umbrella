@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
@@ -1125,8 +1126,6 @@ def test_bundle_report_cleans_bad_chunks(version):
             content = f.read().replace("__VERSION__", version)
 
         # Create a temporary file with the modified content
-        import tempfile
-
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".json", delete=False
         ) as temp:

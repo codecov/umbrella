@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import pytest
@@ -75,8 +76,6 @@ class TestSyncTeamsTaskUnit:
     def test_gitlab_subgroups(
         self, mocker, mock_configuration, dbsession, codecov_vcr, caplog
     ):
-        import logging
-
         caplog.set_level(logging.DEBUG)
         token = "testenll80qbqhofao65"
         user = OwnerFactory.create(

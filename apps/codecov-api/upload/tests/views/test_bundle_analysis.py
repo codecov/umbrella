@@ -1,5 +1,6 @@
 import json
 import re
+from json import JSONDecodeError
 from unittest.mock import ANY, patch
 
 import pytest
@@ -741,8 +742,6 @@ def test_upload_bundle_analysis_tokenless_bad_json(db, client, mocker, mock_redi
 
     repository = RepositoryFactory.create(private=False)
     commit_sha = "6fd5b89357fc8cdf34d6197549ac7c6d7e5977ef"
-
-    from json import JSONDecodeError
 
     with patch(
         "codecov_auth.authentication.repo_auth.json.loads",

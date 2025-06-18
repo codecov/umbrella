@@ -10,6 +10,9 @@ import pytest
 import pytz
 from django.test import TestCase
 
+from api.internal.tests.views.test_compare_viewset import (
+    MockedComparisonAdapter,
+)
 from compare.models import CommitComparison
 from compare.tests.factories import CommitComparisonFactory
 from core.models import Commit
@@ -801,10 +804,6 @@ class ComparisonTests(TestCase):
         head_report_mock,
         git_comparison_mock,
     ):
-        from api.internal.tests.views.test_compare_viewset import (
-            MockedComparisonAdapter,
-        )
-
         src = b"two\nlines"
         git_comparison_mock.return_value = {"diff": {"files": {}}}
         mocked_comparison_adapter.return_value = MockedComparisonAdapter(
@@ -828,10 +827,6 @@ class ComparisonTests(TestCase):
         head_report_mock,
         git_comparison_mock,
     ):
-        from api.internal.tests.views.test_compare_viewset import (
-            MockedComparisonAdapter,
-        )
-
         src = "two\nlines"
         git_comparison_mock.return_value = {"diff": {"files": {}}}
         mocked_comparison_adapter.return_value = MockedComparisonAdapter(

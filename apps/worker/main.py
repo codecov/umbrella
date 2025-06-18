@@ -10,6 +10,7 @@ from prometheus_client import REGISTRY, CollectorRegistry, multiprocess
 import app
 import shared.storage
 from helpers.environment import get_external_dependencies_folder
+from helpers.logging_config import get_logging_config_dict
 from helpers.version import get_current_version
 from shared.celery_config import BaseCeleryConfig
 from shared.config import get_config
@@ -46,8 +47,6 @@ def cli(ctx: click.Context):
 
 
 def setup_worker():
-    from helpers.logging_config import get_logging_config_dict
-
     _config_dict = get_logging_config_dict()
     logging.config.dictConfig(_config_dict)
 
