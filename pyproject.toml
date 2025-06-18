@@ -4,7 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.13"
 
 [tool.uv]
-default-groups = ["everything"] # TODO: Switch to "prod" when we can
+default-groups = ["prod"]
 required-version = ">=0.7.5"
 
 [tool.uv.sources]
@@ -126,5 +126,3 @@ dev = [
 ]
 
 prod = [{ include-group = "codecov-api" }, { include-group = "worker" }]
-
-everything = [{ include-group = "prod" }, { include-group = "dev" }]

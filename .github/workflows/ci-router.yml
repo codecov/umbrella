@@ -53,6 +53,7 @@ jobs:
               - 'docker/Makefile.docker'
               - 'docker/Makefile.ci-tests'
               - 'docker/Dockerfile.requirements'
+              - 'docker/Dockerfile.test-requirements'
               - 'docker/Dockerfile'
               - 'uv.lock'
               - 'ci-tests.docker-compose.yml'

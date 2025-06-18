@@ -1,6 +1,6 @@
 services:
   repo:
-    image: ${AR_REPO}:${VERSION}
+    image: ${AR_REPO}:test-${VERSION}
     tty: true
     depends_on:
       - minio

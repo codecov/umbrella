@@ -10,6 +10,9 @@ DOCKER_REQS_SHA := $(shell sha1sum docker/Dockerfile.requirements | head -c 40)
 UV_LOCK_SHA := $(shell sha1sum ./uv.lock | head -c 40)
 export REQUIREMENTS_TAG := reqs-${UV_LOCK_SHA}-${DOCKER_REQS_SHA}-${SHARED_SHA}
 
+DOCKER_TEST_REQS_SHA := $(shell sha1sum docker/Dockerfile.test-requirements | head -c 40)
+export TEST_REQS_TAG := test-$(shell echo ${DOCKER_TEST_REQS_SHA} ${REQUIREMENTS_TAG} | sha1sum | head -c 40)
+
 ######
 # Generic targets for building images.
 #
@@ -37,12 +40,21 @@ build.requirements:
                -t ${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
 	       -t ${CI_REQS_REPO}:${REQUIREMENTS_TAG}
 
+# Build a test requirements image. Requires that the base reqs image exist.
+build.test-requirements:
+	docker pull ${AR_REQS_REPO}:${TEST_REQS_TAG} || docker build \
+			   --network host \
+	       -f docker/Dockerfile.test-requirements . \
+	       -t ${AR_REQS_REPO}:${TEST_REQS_TAG} \
+	       -t ${CI_REQS_REPO}:${TEST_REQS_TAG} \
+	       --build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG}
+
 # Build an image for local development.
 _build.local:
 	docker build -f docker/Dockerfile . \
 		-t ${AR_REPO}:latest \
 		-t ${AR_REPO}:${VERSION} \
-		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG} \
+		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${TEST_REQS_TAG} \
 		--build-arg WORKDIR=/app/${APP_DIR} \
 		--build-arg ENTRYPOINT=${ENTRYPOINT} \
 		--build-arg DJANGO_SETTINGS_PARENT=${DJANGO_SETTINGS_PARENT} \
@@ -51,6 +63,7 @@ _build.local:
 # Build an image (+ its reqs base) for local development.
 _build:
 	$(MAKE) build.requirements
+	$(MAKE) build.test-requirements
 	$(MAKE) _build.local
 
 # Build a production image.
@@ -66,6 +79,21 @@ _build.app:
 		--build-arg WORKDIR=/app/${APP_DIR} \
 		--build-arg ENTRYPOINT=${ENTRYPOINT} \
 		--build-arg DJANGO_SETTINGS_PARENT=${DJANGO_SETTINGS_PARENT} \
+		--build-arg RELEASE_VERSION=${VERSION} \
+		--build-arg BUILD_ENV=cloud
+
+# Build a production image based on the test requirements image.
+_build.test-app:
+	docker build -f docker/Dockerfile . \
+		-t ${AR_REPO}:test-latest \
+		-t ${AR_REPO}:test-${VERSION} \
+		--label "org.label-schema.vendor"="Codecov" \
+		--label "org.label-schema.version"="${release_version}-${sha}" \
+		--label "org.opencontainers.image.revision"="$(full_sha)" \
+		--label "org.opencontainers.image.source"="github.com/codecov/umbrella" \
+		--build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${TEST_REQS_TAG} \
+		--build-arg WORKDIR=/app/${APP_DIR} \
+		--build-arg ENTRYPOINT=${ENTRYPOINT} \
 		--build-arg RELEASE_VERSION=${VERSION} \
 		--build-arg BUILD_ENV=cloud
 
@@ -124,6 +152,11 @@ load.requirements:
 	docker load --input requirements.tar
 	docker tag ${CI_REQS_REPO}:${REQUIREMENTS_TAG} ${AR_REQS_REPO}:${REQUIREMENTS_TAG}
 
+# Load an exported test requirements image (e.g. from GHA's cache)
+load.test-requirements:
+	docker load --input test-requirements.tar
+	docker tag ${CI_REQS_REPO}:${TEST_REQS_TAG} ${AR_REQS_REPO}:${TEST_REQS_TAG}
+
 # Load an exported self-hosted image (e.g. from GHA's cache)
 _load.self-hosted:
 	docker load --input ${APP_DIR}/self-hosted-runtime.tar
@@ -133,10 +166,19 @@ _load.self-hosted:
 _save.app:
 	docker save -o ${APP_DIR}/app.tar ${AR_REPO}:${VERSION}
 
+# Export a production image with test dependencies.
+_save.test-app:
+	docker save -o ${APP_DIR}/test-app.tar ${AR_REPO}:test-${VERSION}
+
 # Export a requirements image.
 save.requirements:
 	docker tag ${AR_REQS_REPO}:${REQUIREMENTS_TAG} ${CI_REQS_REPO}:${REQUIREMENTS_TAG}
 	docker save -o requirements.tar ${CI_REQS_REPO}:${REQUIREMENTS_TAG}
+
+# Export a test requirements image.
+save.test-requirements:
+	docker tag ${AR_REQS_REPO}:${TEST_REQS_TAG} ${CI_REQS_REPO}:${TEST_REQS_TAG}
+	docker save -o test-requirements.tar ${CI_REQS_REPO}:${TEST_REQS_TAG}
 
 # Export a self-hosted image pair (base and runtime)
 _save.self-hosted:
@@ -158,8 +200,14 @@ _push.staging:
 _push.production:
 	docker push ${AR_REPO}:production-${VERSION}
 
+_push.test-app:
+	docker push ${AR_REPO}:test-${VERSION}
+
 push.requirements:
 	docker push ${AR_REQS_REPO}:${REQUIREMENTS_TAG}
+
+push.test-requirements:
+	docker push ${AR_REQS_REPO}:${TEST_REQS_TAG}
 
 _push.self-hosted-release:
 	docker push ${DOCKERHUB_REPO}:${release_version}_no_dependencies

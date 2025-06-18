@@ -30,6 +30,7 @@ jobs:
         with:
           fetch-depth: 2
           submodules: 'recursive'
+
       - id: "auth"
         if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
         name: "Authenticate to Google Cloud"
@@ -84,3 +85,64 @@ jobs:
           make ${{ inputs.make_target_prefix }}build.app
           make ${{ inputs.make_target_prefix }}save.app
 
+  build-test-app:
+    name: Build Test App
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          submodules: 'recursive'
+
+      - id: "auth"
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v2.1.2"
+        with:
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
+          service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
+
+      - name: Docker configuration
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |-
+          echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
+
+      - name: Cache Test Requirements
+        id: cache-test-requirements
+        uses: actions/cache@v4
+        env:
+          cache-name: umbrella-test-requirements
+        with:
+          path: |
+            ./test-requirements.tar
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('./uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('docker/Dockerfile.test-requirements') }}-${{ hashFiles('libs/shared/**') }}
+
+      - name: Cache Test App
+        id: cache-test-app
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ inputs.repo }}-test-app
+        with:
+          path: |
+            ${{ inputs.output_directory }}/test-app.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+
+      - name: Load test requirements from cache
+        if: ${{ steps.cache-test-requirements.outputs.cache-hit == 'true' }}
+        run: |
+          make load.test-requirements
+
+      # This shouldn't happen; the _build-requirements.yml job should have run.
+      - name: Build/pull test requirements
+        if: ${{ steps.cache-test-requirements.outputs.cache-hit != 'true' }}
+        run: |
+          echo "Warning: test requirements image not in cache, building a new one"
+          make build.test-requirements
+          make save.test-requirements
+
+      - name: Build Test App
+        run: |
+          make ${{ inputs.make_target_prefix }}build.test-app
+          make ${{ inputs.make_target_prefix }}save.test-app

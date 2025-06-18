@@ -29,6 +29,7 @@ ENV UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/app
 
 # Export a requirements.txt
+# See pyproject.toml's default-groups attribute for contents
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=./pyproject.toml,target=./pyproject.toml \
     --mount=type=bind,source=./uv.lock,target=./uv.lock \
