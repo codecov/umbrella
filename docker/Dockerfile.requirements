@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=./pyproject.toml,target=./pyproject.toml \
     --mount=type=bind,source=./uv.lock,target=./uv.lock \
     --mount=type=bind,source=libs/shared,target=libs/shared \
-    uv export --no-hashes --frozen --format requirements-txt > requirements.txt
+    uv export --no-group dev --no-hashes --frozen --format requirements-txt > requirements.txt
 
 # The resulting requirements.txt includes ourselves as a dependency we should install
 # "editably". Filter that out, leaving only external dependencies.
