@@ -2,18 +2,19 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
-from django.test import TestCase, override_settings
+from django.test import override_settings
 from django.urls import reverse
 from django.utils.http import urlencode
-from rest_framework.test import APIClient
+from rest_framework.test import APITestCase
 
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from shared.django_apps.ta_timeseries.models import Testrun
+from utils.test_utils import APIClient
 
 FAKE_SUPER_TOKEN = "testaxs3o76rdcdpfzexuccx3uatui2nw73r"
 
 
-class EvalsViewSetTestCase(TestCase):
+class EvalsViewSetTestCase(APITestCase):
     databases = {"default", "ta_timeseries"}
 
     def setUp(self):
