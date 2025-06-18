@@ -47,26 +47,34 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          # As long as worker/api/shared are submodules, we should include
-          # patterns that match the submodule placeholder to be sure submodule
-          # updates will trigger the right workflows.
           filters: |
-            worker:
-              - 'apps/worker'
-              - 'apps/worker/**'
-              - 'libs/shared'
-              - 'libs/shared/**'
-              - '.github/workflows/worker-ci.yml'
-            codecov-api:
-              - 'apps/codecov-api'
-              - 'apps/codecov-api/**'
-              - 'libs/shared'
-              - 'libs/shared/**'
-              - '.github/workflows/api-ci.yml'
-            shared:
-              - 'libs/shared'
+            build-glue: &build-glue
+              - 'Makefile'
+              - 'docker/Makefile.docker'
+              - 'docker/Makefile.ci-tests'
+              - 'docker/Dockerfile.requirements'
+              - 'docker/Dockerfile'
+              - 'uv.lock'
+              - 'ci-tests.docker-compose.yml'
+              - '.github/workflows/ci-router.yml'
+              - '.github/workflows/_build-requirements.yml'
+              - '.github/workflows/_build-app.yml'
+              - '.github/workflows/_self-hosted.yml'
+              - '.github/workflows/_run-tests.yml'
+            shared: &shared
+              - *build-glue
               - 'libs/shared/**'
               - '.github/workflows/shared-ci.yml'
+            worker:
+              - *build-glue
+              - *shared
+              - 'apps/worker/**'
+              - '.github/workflows/worker-ci.yml'
+            codecov-api:
+              - *build-glue
+              - *shared
+              - 'apps/codecov-api/**'
+              - '.github/workflows/api-ci.yml'
 
   reqs:
     name: Build Requirements
