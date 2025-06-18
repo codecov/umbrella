@@ -779,7 +779,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
         ]
 
     @pytest.mark.parametrize("ordering", ["FAILURE_RATE", "TOTAL_DURATION"])
-    def test_gql_query_with_new_ta_v1(self, mocker, repository, snapshot, ordering):
+    def test_gql_query_with_new_ta_format(self, mocker, repository, snapshot, ordering):
         # set the feature flag
         mocker.patch("rollouts.READ_NEW_TA.check_value", return_value=True)
 
