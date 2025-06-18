@@ -189,3 +189,41 @@ def test_fetch_most_relevant_status_per_context():
         {"context": "other", "state": "pending", "time": None, "url": None},
     ]
     assert expected_res == res
+
+
+def test_eq_hash():
+    status1 = Status(
+        [
+            {
+                "url": None,
+                "state": "success",
+                "context": "ci",
+                "time": "2023-10-01T12:00:00Z",
+            }
+        ]
+    )
+    status2 = Status(
+        [
+            {
+                "url": None,
+                "state": "success",
+                "context": "ci",
+                "time": "2023-10-01T12:00:00Z",
+            }
+        ]
+    )
+    status3 = Status(
+        [
+            {
+                "url": None,
+                "state": "failure",
+                "context": "ci",
+                "time": "2023-10-01T12:00:00Z",
+            }
+        ]
+    )
+
+    assert status1 == status2
+    assert hash(status1) == hash(status2)
+    assert status1 != status3
+    assert hash(status1) != hash(status3)

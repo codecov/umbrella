@@ -55,6 +55,9 @@ class Status:
         assert other in ("success", "failure", "pending")
         return self._state == other
 
+    def __hash__(self):
+        return hash(self._state)
+
     def __str__(self):
         """Returns the current ci status"""
         return self._state

@@ -65,17 +65,19 @@ class TestUserYaml:
         assert d == {"value": "sample"}
         assert dicted == {"value": "sample", "l": "banana"}
 
-    def test_eq(self):
+    def test_eq_hash(self):
         d1 = {
             "key_one": "value",
             "key_two": {"sub": "p"},
             "key_three": "super",
             "key_four": "pro",
         }
-        d2 = {"key_two": "textnow", "key_three": "super", "key_four": "mega"}
+        d2 = {"key_two": "textnow", "key_three": "super", "key_four": ["mega"]}
         assert UserYaml(d1) == UserYaml(d1)
+        assert hash(UserYaml(d1)) == hash(UserYaml(d1))
         assert UserYaml(d1) != UserYaml(d2)
         assert UserYaml(d1) != d1
+        assert hash(UserYaml(d1)) != hash(UserYaml(d2))
 
     def test_read_yaml_field(self):
         my_dict = {

@@ -108,6 +108,16 @@ class UserYaml:
             return False
         return self.to_dict() == other.to_dict()
 
+    def __hash__(self):
+        return hash(self.__freeze(self.inner_dict))
+
+    def __freeze(self, d):
+        if isinstance(d, dict):
+            return frozenset((key, self.__freeze(value)) for key, value in d.items())
+        elif isinstance(d, list):
+            return tuple(self.__freeze(value) for value in d)
+        return d
+
     def __str__(self):
         return f"UserYaml<{self.inner_dict}>"
 

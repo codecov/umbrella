@@ -133,3 +133,46 @@ def test_parse_session_then_encode():
     }
     sess = Session.parse_session(**encoded_session)
     assert sess._encode() == reencoded_session
+
+
+def test_eq_hash():
+    encoded_session = {
+        "t": ReportTotals(files=1, lines=3, hits=5, misses=6),
+        "d": "time",
+        "a": "archive",
+        "f": "flags",
+        "c": "provider",
+        "n": "build",
+        "N": "name",
+        "j": "job",
+        "u": "url",
+        "p": "state",
+        "e": "env",
+        "st": "uploaded",
+        "se": {},
+    }
+    encoded_session_diff = {
+        "t": [1, 3, 5, 6],
+        "d": "time",
+        "a": "archive",
+        "f": "flags",
+        "c": "provider",
+        "n": "build",
+        "N": "name2",
+        "j": "job",
+        "u": "url",
+        "p": "state",
+        "e": "env",
+        "st": "uploaded",
+        "se": {},
+    }
+    sess = Session.parse_session(**encoded_session)
+    sess2 = Session.parse_session(**encoded_session)
+    sess_diff = Session.parse_session(**encoded_session_diff)
+    assert sess == sess2
+    assert hash(sess) == hash(sess2)
+    assert repr(sess) == repr(sess2)
+
+    assert sess != sess_diff
+    assert hash(sess) != hash(sess_diff)
+    assert repr(sess) != repr(sess_diff)

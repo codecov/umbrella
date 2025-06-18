@@ -68,6 +68,28 @@ class Session:
             and self.session_extras == other.session_extras
         )
 
+    def __hash__(self):
+        return hash(
+            (
+                self.id,
+                self.totals.astuple()
+                if isinstance(self.totals, ReportTotals)
+                else frozenset(self.totals or ()),
+                self.time,
+                self.archive,
+                self.flags,
+                self.provider,
+                self.build,
+                self.job,
+                self.url,
+                self.state,
+                self.env,
+                self.name,
+                self.session_type,
+                repr(self.session_extras),
+            )
+        )
+
     def __repr__(self):
         return f"Session<{self._encode()}>"
 
