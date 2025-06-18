@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "shared.django_apps.user_measurements",
     "shared.django_apps.codecov_metrics",
     "shared.django_apps.bundle_analysis",
+    "shared.django_apps.ta_timeseries",
 ]
 
 MIDDLEWARE = [
@@ -115,7 +116,7 @@ GRAPHQL_MAX_ALIASES = get_config("setup", "graphql", "max_aliases", default=10)
 # Database
 # https://docs.djangoproject.com/en/2.1/ref/settings/#databases
 
-DATABASE_ROUTERS = ["codecov.db.DatabaseRouter"]
+DATABASE_ROUTERS = ["shared.django_apps.db_routers.MultiDatabaseRouter"]
 
 # GCS
 GCS_BUCKET_NAME = get_config("services", "minio", "bucket", default="codecov")

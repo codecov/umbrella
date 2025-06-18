@@ -121,8 +121,10 @@ dev = [
     "respx>=0.22.0",
     "sqlalchemy-utils>=0.41.2",
     "types-mock>=5.2.0.20250516",
-    "types-requests<2.31.0.7",    # this is pinned to an older version because of `urllib3` dependency
+    "types-requests<2.31.0.7", # this is pinned to an older version because of `urllib3` dependency
     "vcrpy>=7.0.0",
+    "django-stubs>=5.2.1",
+    "djangorestframework-stubs>=3.16.0",
 ]
 
 prod = [{ include-group = "codecov-api" }, { include-group = "worker" }]

@@ -6,3 +6,5 @@ __all__ = ["Feature"]
 #    { "enabled": FeatureVariant(True, 1.0) }
 
 READ_NEW_TA = Feature("read_new_ta")
+
+READ_NEW_EVALS = Feature("read_new_evals")
