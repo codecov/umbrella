@@ -17,12 +17,12 @@ from shared.django_apps.ta_timeseries.models import Testrun
 
 
 class EvalsSummary(TypedDict):
-    avgDuration: float
+    avgDurationSeconds: float
     avgCost: float
     totalItems: int
     passedItems: int
     failedItems: int
-    scores: dict[str, float]
+    scores: dict[str, dict[str, float]]
 
 
 class EvalsFilters(django_filters.FilterSet):
@@ -90,8 +90,8 @@ class EvalsViewSet(viewsets.GenericViewSet, RepoPropertyMixin):
             else 0
         )
 
-        # Calculate score averages for passed items
-        score_avgs_counts: dict[str, tuple[float, int]] = {}
+        # Calculate score sums and averages for all items with scores
+        score_agg_data: dict[str, tuple[float, int]] = {}
         cost_acc = 0
         items_with_cost = 0
 
@@ -103,35 +103,32 @@ class EvalsViewSet(viewsets.GenericViewSet, RepoPropertyMixin):
                 cost_acc += cost
                 items_with_cost += 1
 
-            # Only consider scores from passed items
-            if testrun.outcome == "pass":
-                for score in scores:
-                    name = score.get("name")
-                    if name:
-                        score_value = score.get("value") or score.get("score")
-                        if isinstance(score_value, int | float):
-                            if name not in score_avgs_counts:
-                                score_avgs_counts[name] = (0, 0)
-                            score_avgs_counts[name] = (
-                                score_avgs_counts[name][0] + score_value,
-                                score_avgs_counts[name][1] + 1,
-                            )
+            # Consider scores from all items (not just passed ones)
+            for score in scores:
+                name = score.get("name")
+                if name:
+                    score_value = score.get("value") or score.get("score")
+                    if isinstance(score_value, int | float):
+                        if name not in score_agg_data:
+                            score_agg_data[name] = (0, 0)
+                        score_agg_data[name] = (
+                            score_agg_data[name][0] + score_value,
+                            score_agg_data[name][1] + 1,
+                        )
 
-        # Calculate averages
-        score_avgs = {
-            name: score_avgs_counts[name][0] / score_avgs_counts[name][1]
-            if score_avgs_counts[name][1] > 0
-            else 0
-            for name in score_avgs_counts
+        # Create score aggregation dicts with both sum and avg
+        scores = {
+            name: {"sum": _sum, "avg": _sum / count if count > 0 else 0}
+            for name, (_sum, count) in score_agg_data.items()
         }
 
         return {
-            "avgDuration": avg_duration,
+            "avgDurationSeconds": avg_duration,
             "avgCost": cost_acc / items_with_cost if items_with_cost > 0 else 0,
             "totalItems": total_items,
             "passedItems": passed_items,
             "failedItems": failed_items,
-            "scores": score_avgs,
+            "scores": scores,
         }
 
     @extend_schema(
@@ -143,11 +140,14 @@ class EvalsViewSet(viewsets.GenericViewSet, RepoPropertyMixin):
                 OpenApiParameter.QUERY,
                 description="commit SHA for which to return evaluation summary",
             ),
+            # "classname" is a terrible name but that's the name of the field in the testrun model
+            # it is the name of the class that the test belongs to, or `describe` block in vitest
+            # for langfuse it is the name of the run
             OpenApiParameter(
                 "classname",
                 OpenApiTypes.STR,
                 OpenApiParameter.QUERY,
-                description="class name to filter evaluations by",
+                description="class name the test belongs to, or `describe` block in vitest, or run name in langfuse",
             ),
         ],
     )
@@ -209,17 +209,21 @@ class EvalsViewSet(viewsets.GenericViewSet, RepoPropertyMixin):
             head_data["scores"].keys()
         )
         for score_name in all_score_names:
-            base_score = base_data["scores"].get(score_name, 0)
-            head_score = head_data["scores"].get(score_name, 0)
-            score_diffs[score_name] = calculate_diff(base_score, head_score)
+            base_score_data = base_data["scores"].get(score_name, {"sum": 0, "avg": 0})
+            head_score_data = head_data["scores"].get(score_name, {"sum": 0, "avg": 0})
+
+            score_diffs[score_name] = {
+                "sum": calculate_diff(base_score_data["sum"], head_score_data["sum"]),
+                "avg": calculate_diff(base_score_data["avg"], head_score_data["avg"]),
+            }
 
         return JsonResponse(
             {
                 "base": base_data,
                 "head": head_data,
                 "diff": {
-                    "avgDuration": calculate_diff(
-                        base_data["avgDuration"], head_data["avgDuration"]
+                    "avgDurationSeconds": calculate_diff(
+                        base_data["avgDurationSeconds"], head_data["avgDurationSeconds"]
                     ),
                     "avgCost": calculate_diff(
                         base_data["avgCost"], head_data["avgCost"]

@@ -209,9 +209,12 @@ class EvalsViewSetTestCase(APITestCase):
         assert data["totalItems"] == 3
         assert data["passedItems"] == 2
         assert data["failedItems"] == 1
-        assert data["avgDuration"] == (10.0 + 20.0 + 30.0) / 3
+        assert data["avgDurationSeconds"] == (10.0 + 20.0 + 30.0) / 3
         assert data["avgCost"] == (5.0 + 7.0 + 3.0) / 3
-        assert data["scores"] == {"accuracy": (0.9 + 0.7) / 2, "f1": (0.8 + 0.6) / 2}
+        assert data["scores"]["accuracy"]["sum"] == pytest.approx(0.9 + 0.7 + 0.1)
+        assert data["scores"]["accuracy"]["avg"] == pytest.approx((0.9 + 0.7 + 0.1) / 3)
+        assert data["scores"]["f1"]["sum"] == pytest.approx(0.8 + 0.6 + 0.2)
+        assert data["scores"]["f1"]["avg"] == pytest.approx((0.8 + 0.6 + 0.2) / 3)
 
     @patch("rollouts.READ_NEW_EVALS.check_value", return_value=True)
     def test_summary_aggregation_and_filtering_filter_classA(self, mock_feature_flag):
@@ -223,9 +226,12 @@ class EvalsViewSetTestCase(APITestCase):
         assert data["totalItems"] == 2
         assert data["passedItems"] == 2
         assert data["failedItems"] == 0
-        assert data["avgDuration"] == (10.0 + 20.0) / 2
+        assert data["avgDurationSeconds"] == (10.0 + 20.0) / 2
         assert data["avgCost"] == (5.0 + 7.0) / 2
-        assert data["scores"] == {"accuracy": (0.9 + 0.7) / 2, "f1": (0.8 + 0.6) / 2}
+        assert data["scores"] == {
+            "accuracy": {"sum": (0.9 + 0.7), "avg": (0.9 + 0.7) / 2},
+            "f1": {"sum": (0.8 + 0.6), "avg": (0.8 + 0.6) / 2},
+        }
 
     @patch("rollouts.READ_NEW_EVALS.check_value", return_value=True)
     def test_summary_aggregation_and_filtering_filter_classB(self, mock_feature_flag):
@@ -237,9 +243,12 @@ class EvalsViewSetTestCase(APITestCase):
         assert data["totalItems"] == 1
         assert data["passedItems"] == 0
         assert data["failedItems"] == 1
-        assert data["avgDuration"] == 30.0
+        assert data["avgDurationSeconds"] == 30.0
         assert data["avgCost"] == 3.0
-        assert data["scores"] == {}
+        assert data["scores"] == {
+            "accuracy": {"sum": 0.1, "avg": 0.1},
+            "f1": {"sum": 0.2, "avg": 0.2},
+        }
 
     @patch("rollouts.READ_NEW_EVALS.check_value", return_value=True)
     def test_compare_missing_parameters(self, mock_feature_flag):
@@ -268,7 +277,7 @@ class EvalsViewSetTestCase(APITestCase):
             assert commit_data["totalItems"] == 0
             assert commit_data["passedItems"] == 0
             assert commit_data["failedItems"] == 0
-            assert commit_data["avgDuration"] == 0
+            assert commit_data["avgDurationSeconds"] == 0
             assert commit_data["avgCost"] == 0
             assert commit_data["scores"] == {}
 
@@ -276,7 +285,7 @@ class EvalsViewSetTestCase(APITestCase):
         assert data["diff"]["totalItems"] == 0
         assert data["diff"]["passedItems"] == 0
         assert data["diff"]["failedItems"] == 0
-        assert data["diff"]["avgDuration"] == 0
+        assert data["diff"]["avgDurationSeconds"] == 0
         assert data["diff"]["avgCost"] == 0
         assert data["diff"]["scores"] == {}
 
@@ -336,30 +345,34 @@ class EvalsViewSetTestCase(APITestCase):
         assert data["base"]["totalItems"] == 1
         assert data["base"]["passedItems"] == 1
         assert data["base"]["failedItems"] == 0
-        assert data["base"]["avgDuration"] == 10.0
+        assert data["base"]["avgDurationSeconds"] == 10.0
         assert data["base"]["avgCost"] == 5.0
-        assert data["base"]["scores"]["accuracy"] == 0.9
-        assert data["base"]["scores"]["f1"] == 0.8
+        assert data["base"]["scores"]["accuracy"] == {"sum": 0.9, "avg": 0.9}
+        assert data["base"]["scores"]["f1"] == {"sum": 0.8, "avg": 0.8}
 
         # Check head data
         assert data["head"]["totalItems"] == 1
         assert data["head"]["passedItems"] == 1
         assert data["head"]["failedItems"] == 0
-        assert data["head"]["avgDuration"] == 8.0
+        assert data["head"]["avgDurationSeconds"] == 8.0
         assert data["head"]["avgCost"] == 4.0
-        assert data["head"]["scores"]["accuracy"] == 0.95
-        assert data["head"]["scores"]["f1"] == 0.85
+        assert data["head"]["scores"]["accuracy"] == {"sum": 0.95, "avg": 0.95}
+        assert data["head"]["scores"]["f1"] == {"sum": 0.85, "avg": 0.85}
 
         # Check diffs
         assert data["diff"]["totalItems"] == 0  # Same number of tests
         assert data["diff"]["passedItems"] == 0  # Same number of passes
         assert data["diff"]["failedItems"] == 0  # Same number of failures
-        assert data["diff"]["avgDuration"] == -20.0  # 20% faster
+        assert data["diff"]["avgDurationSeconds"] == -20.0  # 20% faster
         assert data["diff"]["avgCost"] == -20.0  # 20% cheaper
-        assert data["diff"]["scores"]["accuracy"] == pytest.approx(
-            5.555555555555
-        )  # ~5.56% better
-        assert data["diff"]["scores"]["f1"] == pytest.approx(6.25)  # 6.25% better
+        assert data["diff"]["scores"]["accuracy"] == {
+            "sum": pytest.approx(5.555555555555),
+            "avg": pytest.approx(5.555555555555),
+        }  # ~5.56% better
+        assert data["diff"]["scores"]["f1"] == {
+            "sum": pytest.approx(6.25),
+            "avg": pytest.approx(6.25),
+        }  # 6.25% better
 
     @patch("rollouts.READ_NEW_EVALS.check_value", return_value=True)
     def test_compare_with_mixed_outcomes(self, mock_feature_flag):
@@ -438,28 +451,27 @@ class EvalsViewSetTestCase(APITestCase):
         assert data["base"]["totalItems"] == 2
         assert data["base"]["passedItems"] == 1
         assert data["base"]["failedItems"] == 1
-        assert data["base"]["avgDuration"] == 7.5  # (10 + 5) / 2
+        assert data["base"]["avgDurationSeconds"] == 7.5  # (10 + 5) / 2
         assert data["base"]["avgCost"] == 3.5  # (5 + 2) / 2
-        assert data["base"]["scores"]["accuracy"] == 0.9  # Only from passed test
+        assert data["base"]["scores"]["accuracy"]["sum"] == pytest.approx(0.9)
+        assert data["base"]["scores"]["accuracy"]["avg"] == pytest.approx(0.9)
 
         # Check head data
         assert data["head"]["totalItems"] == 2
         assert data["head"]["passedItems"] == 2
         assert data["head"]["failedItems"] == 0
-        assert data["head"]["avgDuration"] == 6.0  # (8 + 4) / 2
+        assert data["head"]["avgDurationSeconds"] == 6.0  # (8 + 4) / 2
         assert data["head"]["avgCost"] == 2.75  # (4 + 1.5) / 2
-        assert data["head"]["scores"]["accuracy"] == pytest.approx(
-            0.89999999999
-        )  # (0.95 + 0.85) / 2
+        assert data["head"]["scores"]["accuracy"]["sum"] == pytest.approx(1.8)
+        assert data["head"]["scores"]["accuracy"]["avg"] == pytest.approx(0.9)
 
         # Check diffs
         assert data["diff"]["totalItems"] == 0  # Same number of tests
         assert data["diff"]["passedItems"] == 1  # One more pass
         assert data["diff"]["failedItems"] == -1  # One less failure
-        assert data["diff"]["avgDuration"] == -20.0  # 20% faster
+        assert data["diff"]["avgDurationSeconds"] == -20.0  # 20% faster
         assert data["diff"]["avgCost"] == pytest.approx(
             -21.428571428571427
         )  # ~21.43% cheaper
-        assert data["diff"]["scores"]["accuracy"] == pytest.approx(
-            0.0
-        )  # Same average score
+        assert data["diff"]["scores"]["accuracy"]["sum"] == pytest.approx(99.999999999)
+        assert data["diff"]["scores"]["accuracy"]["avg"] == pytest.approx(0.0)
