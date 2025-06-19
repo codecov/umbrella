@@ -1,12 +1,14 @@
 import logging
+from urllib.parse import urlsplit
 
 import jwt
 from asgiref.sync import sync_to_async
+from corsheaders.conf import conf
 from corsheaders.middleware import (
+    ACCESS_CONTROL_ALLOW_CREDENTIALS,
     ACCESS_CONTROL_ALLOW_ORIGIN,
 )
 from corsheaders.middleware import CorsMiddleware as BaseCorsMiddleware
-from django.conf import settings
 from django.http import HttpRequest, HttpResponseForbidden, HttpResponseNotFound
 from django.urls import resolve
 from rest_framework import exceptions
@@ -150,19 +152,21 @@ def cors_middleware(get_response):
         # Generate base CORS response
         response = base_cors(request)
 
-        # Perform some of the same checks as the base CORS middleware
-        if not base_cors.is_enabled(request) or not request.headers.get("origin"):
+        # If not present, it means CORS is disabled for this request.
+        if ACCESS_CONTROL_ALLOW_ORIGIN not in response:
             return response
 
         # We rely on the CORS middleware to verify that the origin is
-        # valid and allowed for credentialed requests. Otherwise, we
-        # set the access control headers to allow all origins based on
-        # our custom setting.
-        if (
-            settings.EXTERNAL_CORS_ALLOW_ALL_ORIGINS
-            and ACCESS_CONTROL_ALLOW_ORIGIN not in response.headers
-        ):
-            response.headers[ACCESS_CONTROL_ALLOW_ORIGIN] = "*"
+        # valid and to add necessary headers. We manage overriding the
+        # allow origin header and removing the allow credentials header
+        # if the origin is not whitelisted.
+        if conf.CORS_ALLOW_ALL_ORIGINS and conf.CORS_ALLOW_CREDENTIALS:
+            origin = response[ACCESS_CONTROL_ALLOW_ORIGIN]
+            url = urlsplit(origin)
+
+            if not base_cors.origin_found_in_white_lists(origin, url):
+                response[ACCESS_CONTROL_ALLOW_ORIGIN] = "*"
+                del response[ACCESS_CONTROL_ALLOW_CREDENTIALS]
 
         return response
 

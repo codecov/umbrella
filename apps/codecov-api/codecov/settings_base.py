@@ -368,9 +368,10 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = int(
 # This is read by our custom CORS middleware and will set the allowed origins header to
 # "*" for all origins other than the ones explicitly allowed in CORS_ALLOWED_ORIGINS
 # and CORS_ALLOWED_ORIGIN_REGEXES, in which case it will rely on the default CORS
-# middleware behavior. This ensures that CORS_ALLOW_CREDENTIALS can never be enabled
-# on a request that does not come from an explicitly allowed origin.
-EXTERNAL_CORS_ALLOW_ALL_ORIGINS = True
+# middleware (which also reads this value) behavior. This ensures that
+# CORS_ALLOW_CREDENTIALS can never be enabled on a request that does not come from an
+# explicitly allowed origin.
+CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = (
