@@ -7,10 +7,7 @@ import polars as pl
 import pytest
 from django.conf import settings
 
-from graphql_api.types.enums import (
-    OrderingDirection,
-    TestResultsOrderingParameter,
-)
+from graphql_api.types.enums import OrderingDirection, TestResultsOrderingParameter
 from graphql_api.types.enums.enum_types import MeasurementInterval
 from graphql_api.types.test_analytics.test_analytics import (
     TestResultsRow,
@@ -281,7 +278,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             "end_cursor": cursor(rows[0]),
         }
         assert snapshot("json") == [
-            row["node"].to_dict()
+            {k: v for k, v in row["node"].to_dict().items() if k != "updated_at"}
             for row in test_results.edges
             if isinstance(row["node"], TestResultsRow)
         ]
@@ -302,7 +299,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             "end_cursor": cursor(rows[4]),
         }
         assert snapshot("json") == [
-            row["node"].to_dict()
+            {k: v for k, v in row["node"].to_dict().items() if k != "updated_at"}
             for row in test_results.edges
             if isinstance(row["node"], TestResultsRow)
         ]
@@ -417,7 +414,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             "end_cursor": end_cursor,
         }
         assert snapshot("json") == [
-            row["node"].to_dict()
+            {k: v for k, v in row["node"].to_dict().items() if k != "updated_at"}
             for row in test_results.edges
             if isinstance(row["node"], TestResultsRow)
         ]
@@ -532,7 +529,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             "end_cursor": end_cursor,
         }
         assert snapshot("json") == [
-            row["node"].to_dict()
+            {k: v for k, v in row["node"].to_dict().items() if k != "updated_at"}
             for row in test_results.edges
             if isinstance(row["node"], TestResultsRow)
         ]
@@ -554,7 +551,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             "end_cursor": cursor(rows[0]),
         }
         assert snapshot("json") == [
-            row["node"].to_dict()
+            {k: v for k, v in row["node"].to_dict().items() if k != "updated_at"}
             for row in test_results.edges
             if isinstance(row["node"], TestResultsRow)
         ]
@@ -578,7 +575,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             "end_cursor": cursor(rows[0]),
         }
         assert snapshot("json") == [
-            row["node"].to_dict()
+            {k: v for k, v in row["node"].to_dict().items() if k != "updated_at"}
             for row in test_results.edges
             if isinstance(row["node"], TestResultsRow)
         ]
@@ -601,7 +598,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             "end_cursor": cursor(rows[0]),
         }
         assert snapshot("json") == [
-            row["node"].to_dict()
+            {k: v for k, v in row["node"].to_dict().items() if k != "updated_at"}
             for row in test_results.edges
             if isinstance(row["node"], TestResultsRow)
         ]

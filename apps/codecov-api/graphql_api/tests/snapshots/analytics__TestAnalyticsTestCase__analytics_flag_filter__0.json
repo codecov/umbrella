@@ -1,12 +1,8 @@
 [
   {
     "name": "test1",
-    "testsuite": [
-      "testsuite1"
-    ],
-    "flags": [
-      "flag1"
-    ],
+    "testsuite": ["testsuite1"],
+    "flags": ["flag1"],
     "failure_rate": 0.1,
     "flake_rate": 0.0,
     "avg_duration": 100.0,
