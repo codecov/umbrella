@@ -240,7 +240,9 @@ def messagify_flake[T: (str, bytes)](
     return make_quoted(f"{test_name}\n{flake_rate_section}\n{stack_trace}")
 
 
-def specific_error_message(error: ErrorPayload) -> str:
+def specific_error_message(
+    payload: TestResultsNotificationPayload, error: ErrorPayload
+) -> str:
     if error.error_code == "unsupported_file_format":
         title = "### :x: Unsupported file format"
 
@@ -252,7 +254,7 @@ def specific_error_message(error: ErrorPayload) -> str:
             "For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).",
         ]
         description = "\n".join(message)
-    elif error.error_code == "file_not_in_storage":
+    elif error.error_code == "file_not_in_storage" and payload.info is None:
         title = "### :x: File not in storage"
         description = "\n".join(
             [
@@ -298,7 +300,7 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
         message = []
 
         if self.error:
-            message.append(specific_error_message(self.error))
+            message.append(specific_error_message(self.payload, self.error))
 
         if self.error and self.payload.info:
             message.append("---")
