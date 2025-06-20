@@ -4,6 +4,7 @@ type TestResult {
   commitsFailed: Int!
   failureRate: Float!
   flakeRate: Float!
+  totalDuration: Float!
   avgDuration: Float!
   lastDuration: Float!
   totalFailCount: Int!

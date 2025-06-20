@@ -21,6 +21,7 @@ class TestResultsFilterParameter(enum.Enum):
 
 
 class TestResultsOrderingParameter(enum.Enum):
+    TOTAL_DURATION = "total_duration"
     LAST_DURATION = "last_duration"
     AVG_DURATION = "avg_duration"
     FAILURE_RATE = "failure_rate"

@@ -38,6 +38,11 @@ def resolve_avg_duration(test: TestResultsRow, _: GraphQLResolveInfo) -> float:
     return test.avg_duration
 
 
+@test_result_bindable.field("totalDuration")
+def resolve_total_duration(test: TestResultsRow, _: GraphQLResolveInfo) -> float:
+    return test.total_duration
+
+
 @test_result_bindable.field("lastDuration")
 def resolve_last_duration(test: TestResultsRow, _: GraphQLResolveInfo) -> float:
     return test.last_duration

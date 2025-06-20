@@ -1,0 +1,82 @@
+[
+  {
+    "cursor": "MjUwMC4wfHRlc3Q0",
+    "node": {
+      "name": "test4",
+      "failureRate": 0.8,
+      "flakeRate": 0.0,
+      "avgDuration": 100.0,
+      "totalDuration": 2500.0,
+      "totalFailCount": 20,
+      "totalFlakyFailCount": 0,
+      "totalPassCount": 5,
+      "totalSkipCount": 5,
+      "commitsFailed": 5,
+      "lastDuration": 100.0
+    }
+  },
+  {
+    "cursor": "MjAwMC4wfHRlc3Qz",
+    "node": {
+      "name": "test3",
+      "failureRate": 0.75,
+      "flakeRate": 0.0,
+      "avgDuration": 100.0,
+      "totalDuration": 2000.0,
+      "totalFailCount": 15,
+      "totalFlakyFailCount": 0,
+      "totalPassCount": 5,
+      "totalSkipCount": 5,
+      "commitsFailed": 5,
+      "lastDuration": 100.0
+    }
+  },
+  {
+    "cursor": "MTUwMC4wfHRlc3Qy",
+    "node": {
+      "name": "test2",
+      "failureRate": 0.6666666666666666,
+      "flakeRate": 0.0,
+      "avgDuration": 100.0,
+      "totalDuration": 1500.0,
+      "totalFailCount": 10,
+      "totalFlakyFailCount": 0,
+      "totalPassCount": 5,
+      "totalSkipCount": 5,
+      "commitsFailed": 5,
+      "lastDuration": 100.0
+    }
+  },
+  {
+    "cursor": "MTAwMC4wfHRlc3Qx",
+    "node": {
+      "name": "test1",
+      "failureRate": 0.5,
+      "flakeRate": 0.5,
+      "avgDuration": 100.0,
+      "totalDuration": 1000.0,
+      "totalFailCount": 5,
+      "totalFlakyFailCount": 5,
+      "totalPassCount": 5,
+      "totalSkipCount": 5,
+      "commitsFailed": 5,
+      "lastDuration": 100.0
+    }
+  },
+  {
+    "cursor": "NTAwLjB8dGVzdDA=",
+    "node": {
+      "name": "test0",
+      "failureRate": 0.0,
+      "flakeRate": 0.0,
+      "avgDuration": 100.0,
+      "totalDuration": 500.0,
+      "totalFailCount": 0,
+      "totalFlakyFailCount": 0,
+      "totalPassCount": 5,
+      "totalSkipCount": 5,
+      "commitsFailed": 5,
+      "lastDuration": 100.0
+    }
+  }
+]
