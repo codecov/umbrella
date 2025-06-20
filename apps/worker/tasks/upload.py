@@ -760,14 +760,13 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 db_session.query(Commit)
                 .filter(
                     Commit.repoid == commit.repoid,
-                    Commit.timestamp > NEW_TA_TASKS_CUTOFF_DATE,
+                    Commit.timestamp < NEW_TA_TASKS_CUTOFF_DATE,
                 )
-                .order_by(Commit.timestamp)
                 .limit(1)
                 .first()
             )
 
-            if earliest_commit:
+            if earliest_commit is None:
                 new_ta_tasks = "new"
                 new_ta_tasks_repo_summary.inc()
 

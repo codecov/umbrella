@@ -507,6 +507,18 @@ class TestUploadTaskIntegration:
         dbsession.flush()
         dbsession.refresh(commit)
 
+        mock_repo_provider_service.get_commit.return_value = {
+            "author": {
+                "id": "123",
+                "username": "456",
+                "email": "789",
+                "name": "101",
+            },
+            "message": "hello world",
+            "parents": [],
+            "timestamp": str(NEW_TA_TASKS_CUTOFF_DATE - timedelta(days=10)),
+        }
+
         mock_redis.lists[f"uploads/{commit.repoid}/{commit.commitid}/test_results"] = (
             jsonified_redis_queue
         )
