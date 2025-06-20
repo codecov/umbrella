@@ -247,8 +247,11 @@ def specific_error_message(error: ErrorPayload) -> str:
         assert error.error_message is not None
 
         message = [
-            "Upload processing failed due to unsupported file format. Please review the parser error message:",
-            wrap_in_code(error.error_message),
+            wrap_in_details(
+                "Upload processing failed due to unsupported file format. Please review the parser error message:",
+                wrap_in_code(error.error_message),
+            ),
+            "",
             "For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).",
         ]
         description = "\n".join(message)
@@ -268,8 +271,12 @@ def specific_error_message(error: ErrorPayload) -> str:
         assert error.error_message is not None
 
         message = [
-            "The parser emitted a warning. Please review your JUnit XML file:",
-            wrap_in_code(error.error_message),
+            wrap_in_details(
+                "The parser emitted a warning. Please review your JUnit XML file:",
+                wrap_in_code(error.error_message),
+            ),
+            "",
+            "For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).",
         ]
         description = "\n".join(message)
     else:
@@ -281,7 +288,7 @@ def specific_error_message(error: ErrorPayload) -> str:
 
     message = [
         title,
-        make_quoted(description),
+        description,
     ]
     return "\n".join(message)
 
@@ -301,7 +308,7 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
             message.append(specific_error_message(self.error))
 
         if self.error and self.payload.info:
-            message.append("---")
+            message += ["", "---", ""]
 
         if self.payload.info:
             message.append(f"### :x: {self.payload.failed} Tests Failed:")
