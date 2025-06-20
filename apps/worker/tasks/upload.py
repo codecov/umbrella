@@ -756,7 +756,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             new_ta_tasks = "old"
         else:
             db_session: Session = commit.get_db_session()  # type: ignore
-            earliest_commit = (
+            commit_before_cutoff = (
                 db_session.query(Commit)
                 .filter(
                     Commit.repoid == commit.repoid,
@@ -766,7 +766,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 .first()
             )
 
-            if earliest_commit is None:
+            if commit_before_cutoff is None:
                 new_ta_tasks = "new"
                 new_ta_tasks_repo_summary.inc()
 
