@@ -1,0 +1,223 @@
+name: Build Images
+
+on:
+  workflow_call:
+    inputs:
+      # A stringified JSON object containing a list of projects
+      # (worker, codecov-api, shared) for which CI should run.
+      changes:
+        type: string
+        required: true
+
+      # Whether to build production images + test images
+      build-prod:
+        type: boolean
+        default: true
+
+      # Whether to build self-hosted images
+      build-self-hosted:
+        type: boolean
+        default: false
+
+env:
+  AR_REQS_REPO: ${{ vars.CODECOV_UMBRELLA_REQS_IMAGE || 'codecov/umbrella-reqs-fallback' }}
+
+jobs:
+  build:
+    name: Build App
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: worker
+            enabled: ${{ contains(fromJSON(inputs.changes), 'worker') }}
+            repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
+            output_directory: apps/worker
+            make_target_prefix: worker.
+
+          - project: codecov-api
+            enabled: ${{ contains(fromJSON(inputs.changes), 'codecov-api') }}
+            repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
+            output_directory: apps/codecov-api
+            make_target_prefix: api.
+
+          - project: shared
+            enabled: ${{ contains(fromJSON(inputs.changes), 'shared') }}
+            repo: codecov/dev-shared
+            output_directory: libs/shared
+            make_target_prefix: shared.
+
+    env:
+      AR_REPO: ${{ matrix.repo }}
+    steps:
+      - name: Checkout
+        if: ${{ matrix.enabled }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: "auth"
+        if: ${{ matrix.enabled && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v2.1.2"
+        with:
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
+          service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
+
+      - name: Docker configuration
+        if: ${{ matrix.enabled && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |-
+          echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
+
+      - name: Cache Requirements
+        id: cache-requirements
+        if: ${{ matrix.enabled }}
+        uses: actions/cache@v4
+        env:
+          # Forks can't access the variable containing our actual image repository. We want to
+          # use a separate cache to make sure they don't interfere with reqs images being pushed.
+          cache-name: ${{ !github.event.pull_request.repo.fork && 'umbrella-requirements' || 'umbrella-requirements-fork' }}
+        with:
+          path: |
+            ./requirements.tar
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
+
+      - name: Cache App
+        id: cache-app
+        if: ${{ matrix.enabled && inputs.build-prod }}
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ matrix.repo }}-app
+        with:
+          path: |
+            ${{ matrix.output_directory }}/app.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+
+      - name: Cache Self-Hosted
+        id: cache-self-hosted
+        if: ${{ matrix.enabled && inputs.build-self-hosted }}
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ matrix.repo }}-self-hosted
+        with:
+          path: |
+            ${{ matrix.output_directory }}/self-hosted-runtime.tar
+            ${{ matrix.output_directory }}/self-hosted.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+
+      - name: Load requirements from cache
+        if: ${{ matrix.enabled && steps.cache-requirements.outputs.cache-hit == 'true' }}
+        run: |
+          make load.requirements
+
+      # This shouldn't happen; the _build-requirements.yml job should have run.
+      - name: Build/pull requirements
+        if: ${{ matrix.enabled && steps.cache-requirements.outputs.cache-hit != 'true' }}
+        run: |
+          echo "Warning: requirements image not in cache, building a new one"
+          make build.requirements
+          make save.requirements
+
+      - name: Build Prod
+        if: ${{ matrix.enabled && inputs.build-prod }}
+        run: |
+          make ${{ matrix.make_target_prefix }}build.app
+          make ${{ matrix.make_target_prefix }}save.app
+
+      - name: Build Self-Hosted
+        if: ${{ matrix.enabled && inputs.build-self-hosted }}
+        run: |
+          make ${{ matrix.make_target_prefix }}build.self-hosted
+          make ${{ matrix.make_target_prefix }}save.self-hosted
+
+  build-test:
+    name: Build Test App
+    if: ${{ inputs.build-prod }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: worker
+            enabled: ${{ contains(fromJSON(inputs.changes), 'worker') }}
+            repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
+            output_directory: apps/worker
+            make_target_prefix: worker.
+
+          - project: codecov-api
+            enabled: ${{ contains(fromJSON(inputs.changes), 'codecov-api') }}
+            repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
+            output_directory: apps/codecov-api
+            make_target_prefix: api.
+
+          - project: shared
+            enabled: ${{ contains(fromJSON(inputs.changes), 'shared') }}
+            repo: codecov/dev-shared
+            output_directory: libs/shared
+            make_target_prefix: shared.
+
+    env:
+      AR_REPO: ${{ matrix.repo }}
+    steps:
+      - name: Checkout
+        if: ${{ matrix.enabled }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: "auth"
+        if: ${{ matrix.enabled && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v2.1.2"
+        with:
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
+          service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
+
+      - name: Docker configuration
+        if: ${{ matrix.enabled && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |-
+          echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
+
+      - name: Cache Test Requirements
+        id: cache-test-requirements
+        if: ${{ matrix.enabled }}
+        uses: actions/cache@v4
+        env:
+          cache-name: umbrella-test-requirements
+        with:
+          path: |
+            ./test-requirements.tar
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('./uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('docker/Dockerfile.test-requirements') }}-${{ hashFiles('libs/shared/**') }}
+
+      - name: Cache Test App
+        id: cache-test-app
+        if: ${{ matrix.enabled }}
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ matrix.repo }}-test-app
+        with:
+          path: |
+            ${{ matrix.output_directory }}/test-app.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+
+      - name: Load test requirements from cache
+        if: ${{ matrix.enabled && steps.cache-test-requirements.outputs.cache-hit == 'true' }}
+        run: |
+          make load.test-requirements
+
+      # This shouldn't happen; the _build-requirements.yml job should have run.
+      - name: Build/pull test requirements
+        if: ${{ matrix.enabled && steps.cache-test-requirements.outputs.cache-hit != 'true' }}
+        run: |
+          echo "Warning: test requirements image not in cache, building a new one"
+          make build.test-requirements
+          make save.test-requirements
+
+      - name: Build Test App
+        if: ${{ matrix.enabled }}
+        run: |
+          make ${{ matrix.make_target_prefix }}build.test-app
+          make ${{ matrix.make_target_prefix }}save.test-app
