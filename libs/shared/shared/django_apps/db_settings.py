@@ -201,10 +201,8 @@ if TA_TIMESERIES_ENABLED:
 # See https://django-postgres-extra.readthedocs.io/en/main/settings.html
 POSTGRES_EXTRA_DB_BACKEND_BASE: "django_prometheus.db.backends.postgresql"  # type: ignore
 
-# Allows to use the pgpartition command
-PSQLEXTRA_PARTITIONING_MANAGER = (
-    "shared.django_apps.user_measurements.partitioning.manager"
-)
+# Allows use of the pgpartition command
+PSQLEXTRA_PARTITIONING_MANAGER = "shared.django_apps.utils.partitioning.manager"
 
 DATABASE_ROUTERS = [
     "shared.django_apps.db_routers.MultiDatabaseRouter",
