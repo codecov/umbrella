@@ -26,7 +26,7 @@ devenv.start.deps:
 devenv.start.backend:
 	# No-op if they have not already been started
 	docker compose down worker api
-	docker compose up worker api shared gateway --detach
+	docker compose up worker api shared frontend gateway --detach
 
 .PHONY: devenv.start
 devenv.start: devenv.start.deps devenv.start.backend
@@ -46,14 +46,14 @@ devenv.refresh:
 .PHONY: devenv.migrate
 devenv.migrate:
 	$(MAKE) devenv.start.deps
-	docker compose run --entrypoint python api manage.py migrate
-	docker compose run --entrypoint python api manage.py pgpartition --yes
-	docker compose run --entrypoint python worker manage.py migrate
-	docker compose run --entrypoint python worker migrate_timeseries.py
-	docker compose run --entrypoint python worker manage.py pgpartition --yes
+	docker compose run --entrypoint python --rm api manage.py migrate
+	docker compose run --entrypoint python --rm api manage.py pgpartition --yes
+	docker compose run --entrypoint python --rm worker manage.py migrate
+	docker compose run --entrypoint python --rm worker migrate_timeseries.py
+	docker compose run --entrypoint python --rm worker manage.py pgpartition --yes
 
 .PHONY: devenv.stop
 devenv.stop:
-	docker compose down
+	docker compose down --remove-orphans
 
 include tools/devenv/Makefile.test
