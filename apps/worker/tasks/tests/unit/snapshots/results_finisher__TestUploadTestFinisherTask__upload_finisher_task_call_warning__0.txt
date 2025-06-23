@@ -1,4 +1,6 @@
 ### :warning: Parser warning
+<details><summary>The parser emitted a warning. Please review your JUnit XML file:</summary>
+<pre><code class="language-python">parser warning message</code></pre>
+</details>
 
-> The parser emitted a warning. Please review your JUnit XML file:
-> <pre><code class="language-python">parser warning message</code></pre>
+For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).

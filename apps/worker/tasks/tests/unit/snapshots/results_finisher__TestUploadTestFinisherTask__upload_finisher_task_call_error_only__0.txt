@@ -1,5 +1,6 @@
 ### :x: Unsupported file format
+<details><summary>Upload processing failed due to unsupported file format. Please review the parser error message:</summary>
+<pre><code class="language-python">parser error message</code></pre>
+</details>
 
-> Upload processing failed due to unsupported file format. Please review the parser error message:
-> <pre><code class="language-python">parser error message</code></pre>
-> For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).
+For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).
