@@ -26,6 +26,13 @@ WHERE "bundle_analysis_cacheconfig"."repo_id" IN (%s);
 -- [123]
 
 
+-- UploadBreadcrumb
+DELETE
+FROM "upload_breadcrumbs_uploadbreadcrumb"
+WHERE "upload_breadcrumbs_uploadbreadcrumb"."repo_id" IN (%s);
+-- [123]
+
+
 -- RepositoryToken
 DELETE
 FROM "codecov_auth_repositorytoken"

@@ -47,12 +47,13 @@ INSTALLED_APPS = [
     "django_prometheus",
     "psqlextra",
     "django_better_admin_arrayfield",
-    # New Shared Models
+    # Shared Models
     "shared.django_apps.rollouts",
     "shared.django_apps.user_measurements",
     "shared.django_apps.codecov_metrics",
     "shared.django_apps.bundle_analysis",
     "shared.django_apps.ta_timeseries",
+    "shared.django_apps.upload_breadcrumbs",
 ]
 
 MIDDLEWARE = [
@@ -475,6 +476,7 @@ MIGRATION_MODULES = {
     "reports": "shared.django_apps.reports.migrations",
     "staticanalysis": "shared.django_apps.staticanalysis.migrations",
     "timeseries": "shared.django_apps.timeseries.migrations",
+    "upload_breadcrumbs": "shared.django_apps.upload_breadcrumbs.migrations",
 }
 
 # to aid in debugging, print out this info on startup. If no license, prints nothing

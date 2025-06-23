@@ -8,10 +8,12 @@ from django.db.models.fields import Field
 from django.db.models.lookups import Exact, In
 from django.db.models.query import QuerySet
 
+from database.models import Upload
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.codecov_auth.models import Owner, OwnerProfile
 from shared.django_apps.core.models import Commit, Pull, Repository
 from shared.django_apps.reports.models import DailyTestRollup, TestInstance
+from shared.django_apps.upload_breadcrumbs.models import UploadBreadcrumb
 from shared.django_apps.user_measurements.models import UserMeasurement
 
 # Relations referencing 0 through field 1 of model 2:
@@ -31,9 +33,10 @@ UNDOCUMENTED_RELATIONS: list[tuple[type[Model], str, type[Model]]] = [
     (Commit, "commit_id", UserMeasurement),
     (Owner, "owner_id", UserMeasurement),
     (Repository, "repo_id", UserMeasurement),
+    (Upload, "upload_id", UserMeasurement),
     (Repository, "repo_id", CacheConfig),
-    # TODO: `UserMeasurement` also has `upload_id`, should we register that as well?
-    # TODO: should we also include `SimpleMetric` here?
+    (Commit, "commit_sha", UploadBreadcrumb),
+    (Repository, "repo_id", UploadBreadcrumb),
 ]
 
 
