@@ -1,7 +1,6 @@
-# http://docs.celeryq.org/en/latest/configuration.html#configuration
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html
 import gc
 import logging
-import logging.config
 from datetime import timedelta
 
 from celery import signals
@@ -16,6 +15,7 @@ from shared.celery_config import (
     brolly_stats_rollup_task_name,
     gh_app_webhook_check_task_name,
     health_check_task_name,
+    partition_management_task_name,
 )
 from shared.config import get_config
 from shared.helpers.cache import RedisBackend, cache
@@ -93,6 +93,13 @@ def _beat_schedule():
         "regular_cleanup": {
             "task": regular_cleanup_cron_task_name,
             "schedule": crontab(minute="0", hour="4"),
+            "kwargs": {
+                "cron_task_generation_time_iso": BeatLazyFunc(get_utc_now_as_iso_format)
+            },
+        },
+        "partition_management": {
+            "task": partition_management_task_name,
+            "schedule": crontab(minute="0", hour="5"),  # 5 AM UTC
             "kwargs": {
                 "cron_task_generation_time_iso": BeatLazyFunc(get_utc_now_as_iso_format)
             },

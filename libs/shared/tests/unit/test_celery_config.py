@@ -81,6 +81,10 @@ def test_celery_config():
             TaskConfigGroup.new_user_activated.value,
         ),
         ("app.tasks.notify.Notify", TaskConfigGroup.notify.value),
+        (
+            "app.tasks.partition_management.PartitionManagementTask",
+            TaskConfigGroup.partition_management.value,
+        ),
         ("app.tasks.profiling.collection", TaskConfigGroup.profiling.value),
         ("app.tasks.profiling.normalizer", TaskConfigGroup.profiling.value),
         ("app.tasks.profiling.summarization", TaskConfigGroup.profiling.value),

@@ -53,6 +53,10 @@ cache_test_rollups_redis_task_name = (
     f"app.tasks.{TaskConfigGroup.cache_rollup.value}.CacheTestRollupsRedisTask"
 )
 
+partition_management_task_name = (
+    f"app.tasks.{TaskConfigGroup.partition_management.value}.PartitionManagementTask"
+)
+
 process_flakes_task_name = f"app.tasks.{TaskConfigGroup.flakes.value}.ProcessFlakesTask"
 
 manual_upload_completion_trigger_task_name = (

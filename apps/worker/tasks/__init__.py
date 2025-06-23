@@ -33,6 +33,7 @@ from tasks.manual_trigger import manual_trigger_task
 from tasks.new_user_activated import new_user_activated_task
 from tasks.notify import notify_task
 from tasks.notify_error import notify_error_task
+from tasks.partition_management import partition_management_task
 from tasks.plan_manager_task import daily_plan_manager_task_name
 from tasks.preprocess_upload import preprocess_upload_task
 from tasks.process_flakes import process_flakes_task

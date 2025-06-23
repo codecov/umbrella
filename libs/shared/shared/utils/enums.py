@@ -32,6 +32,7 @@ class TaskConfigGroup(Enum):
     healthcheck = "healthcheck"
     new_user_activated = "new_user_activated"
     notify = "notify"
+    partition_management = "partition_management"
     profiling = "profiling"
     pulls = "pulls"
     send_email = "send_email"
