@@ -23,6 +23,7 @@ fi
 python manage.py migrate
 python manage.py migrate --database "timeseries"
 python migrate_timeseries.py
+python manage.py pgpartition --yes
 
 # Auto-restart worker when Python files change.
 watchmedo auto-restart \
