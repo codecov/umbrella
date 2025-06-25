@@ -109,6 +109,7 @@ services:
     image: ${AR_REPO_PREFIX-codecov}/dev-shared
     tty: true
     environment:
+      - SETUP__TIMESERIES__ENABLED=true
       - SETUP__TA_TIMESERIES__ENABLED=true
     volumes:
       - ./libs/shared/shared:/app/libs/shared/shared
