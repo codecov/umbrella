@@ -1,15 +1,19 @@
 import tempfile
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import polars as pl
 from django.conf import settings
 
+from core.models import Commit
 from rollouts import READ_NEW_TA
 from services.task import TaskService
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Summary
 from shared.storage import get_appropriate_storage_service
 from shared.storage.exceptions import FileNotInStorageError
+
+# Date after which commits are considered for new TA tasks implementation
+NEW_TA_TASKS_CUTOFF_DATE = datetime(2025, 6, 20, tzinfo=UTC)
 
 get_results_summary = Summary(
     "test_results_get_results", "Time it takes to download results from GCS", ["impl"]
@@ -79,6 +83,16 @@ def dedup_table(table: pl.DataFrame) -> pl.DataFrame:
     return table
 
 
+def _has_commits_before_cutoff(repoid: int) -> bool:
+    """
+    Check if the repository has any commits before the NEW_TA_TASKS_CUTOFF_DATE.
+    Returns True if there are commits before the cutoff date, False otherwise.
+    """
+    return Commit.objects.filter(
+        repository_id=repoid, timestamp__lt=NEW_TA_TASKS_CUTOFF_DATE
+    ).exists()
+
+
 def get_results(
     repoid: int,
     branch: str,
@@ -95,8 +109,15 @@ def get_results(
             cache to redis
     deserialize
     """
-    # try redis
-    if READ_NEW_TA.check_value(repoid):
+    # Check if we should use the new implementation
+    # Use new implementation if:
+    # 1. READ_NEW_TA rollout is enabled for this repo, OR
+    # 2. The repo has no commits before the cutoff date
+    use_new_impl = READ_NEW_TA.check_value(repoid) or not _has_commits_before_cutoff(
+        repoid
+    )
+
+    if use_new_impl:
         func = new_get_results
         label = "new"
     else:
@@ -115,7 +136,7 @@ def old_get_results(
 ) -> pl.DataFrame | None:
     redis_conn = get_redis_connection()
     key = redis_key(repoid, branch, interval_start, interval_end)
-    result: bytes | None = redis_conn.get(key)
+    result = redis_conn.get(key)
 
     if result is None:
         # try storage
@@ -131,8 +152,12 @@ def old_get_results(
             # give up
             return None
 
-    # deserialize
-    table = pl.read_ipc(result)
+    # deserialize - result should be bytes at this point
+    if isinstance(result, bytes):
+        table = pl.read_ipc(result)
+    else:
+        # Handle case where result is not bytes (shouldn't happen but for type safety)
+        return None
 
     if table.height == 0:
         return None
