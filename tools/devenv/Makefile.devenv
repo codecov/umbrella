@@ -47,8 +47,10 @@ devenv.refresh:
 devenv.migrate:
 	$(MAKE) devenv.start.deps
 	docker compose run --entrypoint python api manage.py migrate
+	docker compose run --entrypoint python api manage.py pgpartition --yes
 	docker compose run --entrypoint python worker manage.py migrate
 	docker compose run --entrypoint python worker migrate_timeseries.py
+	docker compose run --entrypoint python worker manage.py pgpartition --yes
 
 .PHONY: devenv.stop
 devenv.stop:

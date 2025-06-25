@@ -30,6 +30,7 @@ then
   # Migrate
   python manage.py migrate
   python manage.py migrate --database "timeseries" timeseries
+  python pgpartition.py --yes --skip-delete
   # Start api
   ${SUB}$prefix gunicorn codecov.wsgi:application --workers=$GUNICORN_WORKERS --threads=${GUNICORN_THREADS:-1} --worker-connections=${GUNICORN_WORKER_CONNECTIONS:-1000} --bind ${CODECOV_API_BIND:-0.0.0.0}:${CODECOV_API_PORT:-8000} --access-logfile '-' ${statsd}--timeout "${GUNICORN_TIMEOUT:-600}"${POST}
 elif [[ "$1" = "rti" ]];
@@ -40,6 +41,7 @@ elif [[ "$1" = "migrate" ]];
 then
   python manage.py migrate
   python manage.py migrate --database "timeseries" timeseries
+  python pgpartition.py --yes --skip-delete
 else
   exec "$@"
 fi
