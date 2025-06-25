@@ -16,11 +16,15 @@ from graphql_api.types.test_analytics.test_analytics import (
     get_results,
 )
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
-from shared.django_apps.core.tests.factories import RepositoryFactory
+from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.helpers.redis import get_redis_connection
 from shared.storage import get_appropriate_storage_service
 from shared.storage.exceptions import BucketAlreadyExistsError
-from utils.test_results import dedup_table
+from utils.test_results import (
+    NEW_TA_TASKS_CUTOFF_DATE,
+    _has_commits_before_cutoff,
+    dedup_table,
+)
 
 from .helper import GraphQLTestHelper
 
@@ -878,3 +882,101 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             settings.GCS_BUCKET_NAME,
             f"test_analytics/branch_rollups/{repository.repoid}/{repository.branch}.arrow",
         )
+
+    def test_get_results_uses_new_impl_when_no_old_commits(
+        self, mocker, repository, store_in_redis
+    ):
+        """Test that get_results uses new implementation when no commits exist before cutoff date"""
+        # Create only new commits (after cutoff date)
+        CommitFactory(
+            repository=repository,
+            timestamp=NEW_TA_TASKS_CUTOFF_DATE + datetime.timedelta(days=1),
+        )
+
+        # Mock READ_NEW_TA to return False so we test only the commit date logic
+        mock_rollout = mocker.patch("utils.test_results.READ_NEW_TA")
+        mock_rollout.check_value.return_value = False
+        # Mock the new implementation to track if it's called
+        mock_new_get_results = mocker.patch(
+            "utils.test_results.new_get_results", return_value=None
+        )
+
+        get_results(repository.repoid, repository.branch, 30)
+
+        mock_new_get_results.assert_called_once_with(
+            repository.repoid, repository.branch, 30, None
+        )
+
+    def test_get_results_uses_old_impl_when_old_commits_exist(
+        self, mocker, repository, store_in_redis
+    ):
+        """Test that get_results uses old implementation when commits exist before cutoff date"""
+        # Create a commit before the cutoff date
+        CommitFactory(
+            repository=repository,
+            timestamp=NEW_TA_TASKS_CUTOFF_DATE - datetime.timedelta(days=1),
+        )
+
+        # Mock READ_NEW_TA to return False so we test only the commit date logic
+        mock_rollout = mocker.patch("utils.test_results.READ_NEW_TA")
+        mock_rollout.check_value.return_value = False
+        # Mock the old implementation to track if it's called
+        mock_old_get_results = mocker.patch(
+            "utils.test_results.old_get_results", return_value=None
+        )
+
+        get_results(repository.repoid, repository.branch, 30)
+
+        mock_old_get_results.assert_called_once_with(
+            repository.repoid, repository.branch, 30, None
+        )
+
+    def test_get_results_uses_new_impl_when_rollout_enabled(
+        self, mocker, repository, store_in_redis
+    ):
+        """Test that get_results uses new implementation when READ_NEW_TA rollout is enabled"""
+        # Mock READ_NEW_TA to return True
+        mock_rollout = mocker.patch("utils.test_results.READ_NEW_TA")
+        mock_rollout.check_value.return_value = True
+        # Mock the new implementation to track if it's called
+        mock_new_get_results = mocker.patch(
+            "utils.test_results.new_get_results", return_value=None
+        )
+
+        get_results(repository.repoid, repository.branch, 30)
+
+        mock_new_get_results.assert_called_once_with(
+            repository.repoid, repository.branch, 30, None
+        )
+
+    def test_has_commits_before_cutoff_with_old_commits(self, db):
+        """Test _has_commits_before_cutoff returns True when old commits exist"""
+        # Create a repository with a commit before the cutoff date
+        repository = RepositoryFactory()
+        CommitFactory(
+            repository=repository,
+            timestamp=NEW_TA_TASKS_CUTOFF_DATE - datetime.timedelta(days=1),
+        )
+
+        result = _has_commits_before_cutoff(repository.repoid)
+        assert result is True
+
+    def test_has_commits_before_cutoff_with_only_new_commits(self, db):
+        """Test _has_commits_before_cutoff returns False when only new commits exist"""
+        # Create a repository with a commit after the cutoff date
+        repository = RepositoryFactory()
+        CommitFactory(
+            repository=repository,
+            timestamp=NEW_TA_TASKS_CUTOFF_DATE + datetime.timedelta(days=1),
+        )
+
+        result = _has_commits_before_cutoff(repository.repoid)
+        assert result is False
+
+    def test_has_commits_before_cutoff_with_no_commits(self, db):
+        """Test _has_commits_before_cutoff returns False when no commits exist"""
+        # Create a repository with no commits
+        repository = RepositoryFactory()
+
+        result = _has_commits_before_cutoff(repository.repoid)
+        assert result is False
