@@ -147,7 +147,6 @@ def test_upload_serializer_create_with_ci_service(db, mocker):
             "version": None,
             "ci_service": "github-actions",
             "external_id": UUID("00000000-0000-0000-0000-000000000000"),
-            # "storage_path": "v4/raw/2025-06-26/8D8CB4C2D3EBE16B1D9301F97EF7F0DA/f5f93db2b96385165b6c525d8e0990ba0fe11deb/108f85cb-59d5-4195-a883-86fd87f667b9/09c822d9-d7cd-415d-b9eb-a361a50d45a7.txt",
             "storage_path": None,
             "repo_id": repo.repoid,
             "report_id": report.id,
