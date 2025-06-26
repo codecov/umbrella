@@ -75,7 +75,9 @@ class UploadSerializer(serializers.ModelSerializer):
         # default is necessary here, or else if the key is not in the dict
         # the below will throw a KeyError
         validated_data.pop("version", None)
-        validated_data.pop("ci_service", None)
+        # ReportSession uses provider but the input from CLI is ci_service, so
+        # we rename that field before creating.
+        validated_data["provider"] = validated_data.pop("ci_service", None)
 
         upload = ReportSession.objects.create(**validated_data)
         flags = []
