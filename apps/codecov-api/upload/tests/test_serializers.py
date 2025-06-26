@@ -1,7 +1,7 @@
 from uuid import UUID
+
 from django.conf import settings
 from rest_framework.exceptions import ErrorDetail
-from shared.django_apps.reports.models import ReportSession
 
 from billing.tests.mocks import mock_all_plans_and_tiers
 from reports.tests.factories import (
@@ -14,6 +14,7 @@ from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
+from shared.django_apps.reports.models import ReportSession
 from upload.serializers import (
     CommitReportSerializer,
     CommitSerializer,
