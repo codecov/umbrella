@@ -152,12 +152,7 @@ def old_get_results(
             # give up
             return None
 
-    # deserialize - result should be bytes at this point
-    if isinstance(result, bytes):
-        table = pl.read_ipc(result)
-    else:
-        # Handle case where result is not bytes (shouldn't happen but for type safety)
-        return None
+    table = pl.read_ipc(result)
 
     if table.height == 0:
         return None
