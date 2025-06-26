@@ -151,6 +151,9 @@ class Account(BaseModel):
     free_seat_count = models.SmallIntegerField(default=0, null=False, blank=True)
     plan_auto_activate = models.BooleanField(default=True, null=False, blank=True)
     is_delinquent = models.BooleanField(default=False, null=False, blank=True)
+    sentry_org_id = models.BigIntegerField(
+        null=True, blank=True
+    )  # Sentry Organization IDs are 64-bit integers
     users = models.ManyToManyField(
         User, through="AccountsUsers", related_name="accounts"
     )

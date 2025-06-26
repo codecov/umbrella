@@ -43,6 +43,7 @@ class PlanName(enum.Enum):
     ENTERPRISE_CLOUD_MONTHLY = "users-enterprisem"
     ENTERPRISE_CLOUD_YEARLY = "users-enterprisey"
     USERS_DEVELOPER = "users-developer"
+    SENTRY_MERGE_PLAN = "sentry-merge"  # This plan is only used for the Account Model
 
     @classmethod
     def choices(cls):
