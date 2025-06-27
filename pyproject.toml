@@ -9,7 +9,7 @@ required-version = ">=0.7.5"
 
 [tool.uv.sources]
 timestring = { git = "https://github.com/codecov/timestring", rev = "d37ceacc5954dff3b5bd2f887936a98a668dda42" }
-test-results-parser = { git = "https://github.com/codecov/test-results-parser", rev = "f4f44a3a144471c2b304ed1a6d03945a6d00bd84" }
+test-results-parser = { git = "https://github.com/codecov/test-results-parser", rev = "accbb7f63cc973ee9809b181a5cf67f1f8f13ecd" }
 shared = { workspace = true }                                                                                                      # TODO remove after repo-root migration
 
 [tool.uv.workspace]

@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
@@ -148,13 +149,8 @@ class EvalsViewSetTestCase(APITestCase):
             repo_id=self.repo.repoid,
             commit_sha="abc123",
             properties={
-                "eval": {
-                    "cost": 5.0,
-                    "scores": [
-                        {"name": "accuracy", "score": 0.9},
-                        {"name": "f1", "score": 0.8},
-                    ],
-                }
+                "cost": 5.0,
+                "scores": {"accuracy": {"value": 0.9}, "f1": {"value": 0.8}},
             },
         )
         Testrun.objects.using("ta_timeseries").create(
@@ -166,15 +162,17 @@ class EvalsViewSetTestCase(APITestCase):
             duration_seconds=20.0,
             repo_id=self.repo.repoid,
             commit_sha="abc123",
-            properties={
-                "eval": {
-                    "cost": 7.0,
-                    "scores": [
-                        {"name": "accuracy", "score": 0.7},
-                        {"name": "f1", "score": 0.6},
-                    ],
+            properties=json.dumps(
+                {
+                    "eval": {
+                        "cost": 7.0,
+                        "scores": [
+                            {"name": "accuracy", "score": 0.7},
+                            {"name": "f1", "score": 0.6},
+                        ],
+                    }
                 }
-            },
+            ),
         )
         Testrun.objects.using("ta_timeseries").create(
             timestamp=base_time + timedelta(seconds=2),
