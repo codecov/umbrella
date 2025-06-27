@@ -123,17 +123,10 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
 
     @property
     def default_org(self):
-        org: Owner = self.owners.first()
-
-        if not org:
+        try:
+            return self.owners.first().default_org.username
+        except AttributeError:
             return None
-
-        default_org = org.default_org
-
-        if not default_org:
-            return None
-
-        return default_org.username
 
     def has_perm(self, perm, obj=None):
         # Required to implement django's user-model interface
