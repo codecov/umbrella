@@ -1,3 +1,4 @@
+import json
 from typing import TypedDict
 
 import django_filters
@@ -92,29 +93,45 @@ class EvalsViewSet(viewsets.GenericViewSet, RepoPropertyMixin):
 
         # Calculate score sums and averages for all items with scores
         score_agg_data: dict[str, tuple[float, int]] = {}
-        cost_acc = 0
+        cost_acc = 0.0
         items_with_cost = 0
 
         for testrun in testruns:
-            eval_data = testrun.properties.get("eval", {})
+            # Sadly the exact format of the properties field is not well defined. Ideally we'd use Pydantic to validate
+            # but for now we will try to be flexible and handle the different formats.
+            # Check tests for examples of the different formats.
+            if isinstance(testrun.properties, str):
+                eval_data = json.loads(testrun.properties)
+            else:
+                eval_data = testrun.properties
+            if "eval" in eval_data:
+                eval_data = eval_data["eval"]
+            elif "evals" in eval_data:
+                eval_data = eval_data["evals"]
+
             scores = eval_data.get("scores", [])
             cost = eval_data.get("cost")
             if cost:
-                cost_acc += cost
+                cost_acc += float(cost)
                 items_with_cost += 1
 
+            if isinstance(scores, list):
+                scores = {
+                    score["name"]: {
+                        "value": score.get("value") or score.get("score", 0)
+                    }
+                    for score in scores
+                }
+
             # Consider scores from all items (not just passed ones)
-            for score in scores:
-                name = score.get("name")
-                if name:
-                    score_value = score.get("value") or score.get("score")
-                    if isinstance(score_value, int | float):
-                        if name not in score_agg_data:
-                            score_agg_data[name] = (0, 0)
-                        score_agg_data[name] = (
-                            score_agg_data[name][0] + score_value,
-                            score_agg_data[name][1] + 1,
-                        )
+            for score_name, score in scores.items():
+                if score_name not in score_agg_data:
+                    score_agg_data[score_name] = (0, 0)
+                score_agg_data[score_name] = (
+                    score_agg_data[score_name][0]
+                    + float(score.get("value") or score.get("score", 0)),
+                    score_agg_data[score_name][1] + 1,
+                )
 
         # Create score aggregation dicts with both sum and avg
         scores = {
@@ -158,7 +175,13 @@ class EvalsViewSet(viewsets.GenericViewSet, RepoPropertyMixin):
         """
         queryset = self.filter_queryset(self.get_queryset())
         testruns = list(queryset)
-        return JsonResponse(self._aggregate_testruns(testruns))
+        try:
+            return JsonResponse(self._aggregate_testruns(testruns))
+        except (json.JSONDecodeError, KeyError):
+            return JsonResponse(
+                {"error": "Error aggregating data"},
+                status=500,
+            )
 
     @extend_schema(
         summary="Evaluation compare",
@@ -194,8 +217,14 @@ class EvalsViewSet(viewsets.GenericViewSet, RepoPropertyMixin):
         base_testruns = list(self.get_queryset().filter(commit_sha=base_sha))
         head_testruns = list(self.get_queryset().filter(commit_sha=head_sha))
 
-        base_data = self._aggregate_testruns(base_testruns)
-        head_data = self._aggregate_testruns(head_testruns)
+        try:
+            base_data = self._aggregate_testruns(base_testruns)
+            head_data = self._aggregate_testruns(head_testruns)
+        except (json.JSONDecodeError, KeyError):
+            return JsonResponse(
+                {"error": "Error aggregating data"},
+                status=500,
+            )
 
         # Calculate differences
         def calculate_diff(base, head):

@@ -2351,7 +2351,7 @@ wheels = [
 [[package]]
 name = "test-results-parser"
 version = "0.5.4"
-source = { git = "https://github.com/codecov/test-results-parser?rev=f4f44a3a144471c2b304ed1a6d03945a6d00bd84#f4f44a3a144471c2b304ed1a6d03945a6d00bd84" }
+source = { git = "https://github.com/codecov/test-results-parser?rev=accbb7f63cc973ee9809b181a5cf67f1f8f13ecd#accbb7f63cc973ee9809b181a5cf67f1f8f13ecd" }
 
 [[package]]
 name = "timestring"
@@ -2849,7 +2849,7 @@ prod = [
     { name = "starlette", specifier = ">=0.40.0" },
     { name = "statsd", specifier = ">=3.3.0" },
     { name = "stripe", specifier = ">=11.4.1" },
-    { name = "test-results-parser", git = "https://github.com/codecov/test-results-parser?rev=f4f44a3a144471c2b304ed1a6d03945a6d00bd84" },
+    { name = "test-results-parser", git = "https://github.com/codecov/test-results-parser?rev=accbb7f63cc973ee9809b181a5cf67f1f8f13ecd" },
     { name = "timestring", git = "https://github.com/codecov/timestring?rev=d37ceacc5954dff3b5bd2f887936a98a668dda42" },
     { name = "urllib3", specifier = "==1.26.20" },
     { name = "whitenoise", specifier = ">=5.2.0" },
@@ -2945,7 +2945,7 @@ worker = [
     { name = "sqlparse", specifier = ">=0.5.0" },
     { name = "statsd", specifier = ">=3.3.0" },
     { name = "stripe", specifier = ">=11.4.1" },
-    { name = "test-results-parser", git = "https://github.com/codecov/test-results-parser?rev=f4f44a3a144471c2b304ed1a6d03945a6d00bd84" },
+    { name = "test-results-parser", git = "https://github.com/codecov/test-results-parser?rev=accbb7f63cc973ee9809b181a5cf67f1f8f13ecd" },
     { name = "timestring", git = "https://github.com/codecov/timestring?rev=d37ceacc5954dff3b5bd2f887936a98a668dda42" },
     { name = "urllib3", specifier = "==1.26.20" },
     { name = "zstandard", specifier = ">=0.23.0" },
