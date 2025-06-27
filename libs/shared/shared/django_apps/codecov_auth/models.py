@@ -121,6 +121,13 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
             return False
         return github_owner.student
 
+    @property
+    def default_org(self):
+        try:
+            return self.owners.first().default_org.username
+        except AttributeError:
+            return None
+
     def has_perm(self, perm, obj=None):
         # Required to implement django's user-model interface
         return self.is_staff
