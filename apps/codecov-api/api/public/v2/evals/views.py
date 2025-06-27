@@ -177,9 +177,9 @@ class EvalsViewSet(viewsets.GenericViewSet, RepoPropertyMixin):
         testruns = list(queryset)
         try:
             return JsonResponse(self._aggregate_testruns(testruns))
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError):
             return JsonResponse(
-                {"error": f"Error aggregating data: {e}"},
+                {"error": "Error aggregating data"},
                 status=500,
             )
 
@@ -220,9 +220,9 @@ class EvalsViewSet(viewsets.GenericViewSet, RepoPropertyMixin):
         try:
             base_data = self._aggregate_testruns(base_testruns)
             head_data = self._aggregate_testruns(head_testruns)
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError):
             return JsonResponse(
-                {"error": f"Error aggregating data: {e}"},
+                {"error": "Error aggregating data"},
                 status=500,
             )
 
