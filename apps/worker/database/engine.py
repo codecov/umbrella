@@ -42,12 +42,14 @@ class SessionFactory:
         self.main_engine = create_engine(
             self.database_url,
             json_serializer=json_dumps,
+            pool_pre_ping=True,
         )
 
         if is_timeseries_enabled():
             self.timeseries_engine = create_engine(
                 self.timeseries_database_url,
                 json_serializer=json_dumps,
+                pool_pre_ping=True,
             )
 
             main_engine = self.main_engine
