@@ -95,17 +95,6 @@ class TaskService:
                 )
             group(signatures).apply_async()
 
-    def status_set_pending(self, repoid, commitid, branch, on_a_pull_request):
-        self._create_signature(
-            celery_config.status_set_pending_task_name,
-            kwargs={
-                "repoid": repoid,
-                "commitid": commitid,
-                "branch": branch,
-                "on_a_pull_request": on_a_pull_request,
-            },
-        ).apply_async()
-
     def upload_signature(
         self,
         repoid,
@@ -211,7 +200,6 @@ class TaskService:
                     kwargs={
                         "ownerid": ownerid,
                         "username": username,
-                        "using_integration": using_integration,
                     },
                 )
             )
