@@ -97,11 +97,10 @@ worker = [
 ]
 
 dev = [
-    # workspace dev-dependencies
+    # Workspace dev-dependencies
     "mypy>=1.15.0",
     "pre-commit>=4.2.0",
     "ruff>=0.12.0",
-
     # Test runtime dependencies
     "coverage>=7.8.0",
     "factory-boy>=3.3.3",
@@ -114,7 +113,6 @@ dev = [
     "pytest-codspeed>=3.2.0",
     "pytest-cov>=6.1.1",
     "pytest-django>=4.11.1",
-    "pytest-freezegun>=0.4.2",
     "pytest-insta>=0.3.0",
     "pytest-mock>=3.14.0",
     "pytest-sqlalchemy>=0.3.0",
@@ -125,6 +123,7 @@ dev = [
     "vcrpy>=7.0.0",
     "django-stubs>=5.2.1",
     "djangorestframework-stubs>=3.16.0",
+    "pytest-freezer>=0.4.9",
 ]
 
 prod = [{ include-group = "codecov-api" }, { include-group = "worker" }]

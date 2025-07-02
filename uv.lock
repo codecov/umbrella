@@ -1812,16 +1812,16 @@ wheels = [
 ]
 
 [[package]]
-name = "pytest-freezegun"
-version = "0.4.2"
+name = "pytest-freezer"
+version = "0.4.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "freezegun" },
     { name = "pytest" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/e3/c39d7c3d3afef5652f19323f3483267d7e6b0d9911c3867e10d6e2d3c9ae/pytest-freezegun-0.4.2.zip", hash = "sha256:19c82d5633751bf3ec92caa481fb5cffaac1787bd485f0df6436fd6242176949", size = 9059, upload-time = "2020-07-19T17:50:03.678Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/81/f0/98dcbc5324064360b19850b14c84cea9ca50785d921741dbfc442346e925/pytest_freezer-0.4.9.tar.gz", hash = "sha256:21bf16bc9cc46bf98f94382c4b5c3c389be7056ff0be33029111ae11b3f1c82a", size = 3177, upload-time = "2024-12-12T08:53:08.684Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9e/09/0bdd7d24b9d21453ad3364ae1efbd65082045bb6081b5fd5eade91a9b644/pytest_freezegun-0.4.2-py2.py3-none-any.whl", hash = "sha256:5318a6bfb8ba4b709c8471c94d0033113877b3ee02da5bfcd917c1889cde99a7", size = 4590, upload-time = "2020-07-19T17:50:02.191Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/e9/30252bc05bcf67200a17f4f0b4cc7598f0a68df4fa9fa356193aa899f145/pytest_freezer-0.4.9-py3-none-any.whl", hash = "sha256:8b6c50523b7d4aec4590b52bfa5ff766d772ce506e2bf4846c88041ea9ccae59", size = 3192, upload-time = "2024-12-12T08:53:07.641Z" },
 ]
 
 [[package]]
@@ -2522,7 +2522,7 @@ dev = [
     { name = "pytest-codspeed" },
     { name = "pytest-cov" },
     { name = "pytest-django" },
-    { name = "pytest-freezegun" },
+    { name = "pytest-freezer" },
     { name = "pytest-insta" },
     { name = "pytest-mock" },
     { name = "pytest-sqlalchemy" },
@@ -2774,7 +2774,7 @@ dev = [
     { name = "pytest-codspeed", specifier = ">=3.2.0" },
     { name = "pytest-cov", specifier = ">=6.1.1" },
     { name = "pytest-django", specifier = ">=4.11.1" },
-    { name = "pytest-freezegun", specifier = ">=0.4.2" },
+    { name = "pytest-freezer", specifier = ">=0.4.9" },
     { name = "pytest-insta", specifier = ">=0.3.0" },
     { name = "pytest-mock", specifier = ">=3.14.0" },
     { name = "pytest-sqlalchemy", specifier = ">=0.3.0" },
