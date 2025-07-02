@@ -29,4 +29,3 @@ devenv.test.shared:
 devenv.upload.shared:
 	./tools/devenv/scripts/codecovcli-helper.sh upload-process -f libs/shared/tests/coverage.xml --disable-search -F sharedunit --recurse-submodules --plugin noop
 	./tools/devenv/scripts/codecovcli-helper.sh upload-process --report-type test_results -f libs/shared/tests/junit.xml --disable-search -F sharedunit --recurse-submodules --plugin noop
-
