@@ -205,9 +205,9 @@ def v1_agg_table(table: pl.LazyFrame) -> pl.LazyFrame:
         .alias("flags"),  # TODO: filter by this before we aggregate
         pl.col("failing_commits").sum().alias("commits_where_fail"),
         pl.col("last_duration").max().alias("last_duration"),
-        failure_rate_expr.alias("failure_rate"),
-        flake_rate_expr.alias("flake_rate"),
-        avg_duration_expr.alias("avg_duration"),
+        failure_rate_expr.fill_nan(0).alias("failure_rate"),
+        flake_rate_expr.fill_nan(0).alias("flake_rate"),
+        avg_duration_expr.fill_nan(0).alias("avg_duration"),
         total_duration_expr.alias("total_duration"),
         pl.col("pass_count").sum().alias("total_pass_count"),
         pl.col("fail_count").sum().alias("total_fail_count"),
