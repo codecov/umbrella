@@ -1,7 +1,6 @@
 import logging
 from datetime import datetime
 
-import psycopg2
 import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
@@ -192,6 +191,8 @@ class BaseCodecovTask(celery_app.Task):
 
     def _analyse_error(self, exception: SQLAlchemyError, *args, **kwargs):
         try:
+            import psycopg2  # noqa: PLC0415
+
             if hasattr(exception, "orig") and isinstance(
                 exception.orig, psycopg2.errors.DeadlockDetected
             ):
