@@ -44,7 +44,7 @@ activate_account_user_task_name = (
 notify_task_name = f"app.tasks.{TaskConfigGroup.notify.value}.Notify"
 pulls_task_name = f"app.tasks.{TaskConfigGroup.pulls.value}.Sync"
 status_set_error_task_name = f"app.tasks.{TaskConfigGroup.status.value}.SetError"
-status_set_pending_task_name = f"app.tasks.{TaskConfigGroup.status.value}.SetPending"
+
 
 # Upload tasks
 upload_breadcrumb_task_name = (
