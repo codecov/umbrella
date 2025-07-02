@@ -159,3 +159,7 @@ git update-index --assume-unchanged docker-compose.yml
 - You can browse your local Redis by pointing the [Redis CLI](https://redis.io/docs/latest/develop/tools/cli/) or [Redis Insight GUI](https://redis.io/insight/) at 127.0.0.1:6380
 - You can browse your local Postgres database with the connection string `postgres://postgres@localhost:5434/postgres` in your preferred database browser
 - You can browse your local Timescale database with the connection string `postgres://postgres@localhost:5433/postgres` in your preferred database browser
+
+## Contributing
+
+This repository, like all of Codecov's repositories, strives to follow our general [Contributing guidlines](https://github.com/codecov/contributing). If you're considering making a contribution to this repository, we encourage review of our Contributing guidelines first.
