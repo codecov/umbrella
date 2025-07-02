@@ -136,7 +136,7 @@ def old_get_results(
 ) -> pl.DataFrame | None:
     redis_conn = get_redis_connection()
     key = redis_key(repoid, branch, interval_start, interval_end)
-    result = redis_conn.get(key)
+    result: bytes | None = redis_conn.get(key)  # type: ignore
 
     if result is None:
         # try storage
