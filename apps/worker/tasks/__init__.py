@@ -41,7 +41,6 @@ from tasks.regular_cleanup import regular_cleanup_task
 from tasks.save_commit_measurements import save_commit_measurements_task
 from tasks.send_email import send_email
 from tasks.status_set_error import status_set_error_task
-from tasks.status_set_pending import status_set_pending_task
 from tasks.sync_pull import pull_sync_task
 from tasks.sync_repo_languages import sync_repo_language_task
 from tasks.sync_repo_languages_gql import sync_repo_languages_gql_task
