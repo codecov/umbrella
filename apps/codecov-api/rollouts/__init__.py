@@ -8,3 +8,5 @@ __all__ = ["Feature"]
 READ_NEW_TA = Feature("read_new_ta")
 
 READ_NEW_EVALS = Feature("read_new_evals")
+
+ROLLBACK_SENTRY_WEBHOOK = Feature("dry_run_sentry_webhook")
