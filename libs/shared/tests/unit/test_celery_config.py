@@ -7,7 +7,7 @@ from shared.utils.enums import TaskConfigGroup
 def test_celery_config():
     # NOTE: This test is fairly limited
     # Since all the fields get determined at import time (because they are class attributes),
-    # it's not possibe to mock `get_config` in order to see their results here.
+    # it's not possible to mock `get_config` in order to see their results here.
     # The only way to do so would to be to make each field a @classmethod
     # and hold the logic inside it.
     # It's not a terrible idea, but I am not sure of the impact of reloading those things every time
@@ -82,8 +82,8 @@ def test_celery_config():
         ),
         ("app.tasks.notify.Notify", TaskConfigGroup.notify.value),
         (
-            "app.tasks.partition_management.PartitionManagementTask",
-            TaskConfigGroup.partition_management.value,
+            "app.cron.daily.PartitionManagementTask",
+            TaskConfigGroup.daily.value,
         ),
         ("app.tasks.profiling.collection", TaskConfigGroup.profiling.value),
         ("app.tasks.profiling.normalizer", TaskConfigGroup.profiling.value),

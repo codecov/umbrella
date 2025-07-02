@@ -53,10 +53,6 @@ cache_test_rollups_redis_task_name = (
     f"app.tasks.{TaskConfigGroup.cache_rollup.value}.CacheTestRollupsRedisTask"
 )
 
-partition_management_task_name = (
-    f"app.tasks.{TaskConfigGroup.partition_management.value}.PartitionManagementTask"
-)
-
 process_flakes_task_name = f"app.tasks.{TaskConfigGroup.flakes.value}.ProcessFlakesTask"
 
 manual_upload_completion_trigger_task_name = (
@@ -103,11 +99,16 @@ timeseries_save_commit_measurements_task_name = (
 )
 
 health_check_task_name = f"app.cron.{TaskConfigGroup.healthcheck.value}.HealthCheckTask"
+
+# Daily cron tasks
 gh_app_webhook_check_task_name = (
     f"app.cron.{TaskConfigGroup.daily.value}.GitHubAppWebhooksCheckTask"
 )
 brolly_stats_rollup_task_name = (
     f"app.cron.{TaskConfigGroup.daily.value}.BrollyStatsRollupTask"
+)
+partition_management_task_name = (
+    f"app.cron.{TaskConfigGroup.daily.value}.PartitionManagementTask"
 )
 
 
