@@ -3,10 +3,11 @@ import logging
 import os
 import time
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
+import sentry_sdk
 import sqlalchemy.orm
 from asgiref.sync import async_to_sync
 from redis.exceptions import LockError
@@ -16,7 +17,6 @@ from database.models import Commit, Pull, Repository
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.metrics import metrics
-from rollouts import SYNC_PULL_USE_MERGE_COMMIT_SHA
 from services.comparison.changes import get_changes
 from services.report import Report, ReportService
 from services.repository import (
@@ -32,7 +32,6 @@ from shared.celery_config import (
     pulls_task_name,
 )
 from shared.helpers.redis import get_redis_connection
-from shared.metrics import Counter, inc_counter
 from shared.reports.types import Change
 from shared.torngit.exceptions import TorngitClientError
 from shared.yaml import UserYaml
@@ -41,12 +40,6 @@ from tasks.base import BaseCodecovTask
 from tasks.process_flakes import process_flakes_task_name
 
 log = logging.getLogger(__name__)
-
-SYNC_PULL_MERGE_COMMIT_SHA_COUNTER = Counter(
-    "sync_pull_merge_commit_sha",
-    "Number of sync pull using merge commit SHA",
-    ["success"],
-)
 
 
 class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
@@ -372,10 +365,9 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         if commits_on_pr:
             if pull.state == "merged":
                 is_squash_merge = self.was_pr_merged_with_squash(
-                    repoid,
                     pullid,
-                    pull_dict,
                     repository_service,
+                    pull_dict,
                     commits_on_pr,
                     ancestors_tree_on_base,
                 )
@@ -427,28 +419,18 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             )
         return {"soft_deleted_count": deleted_count, "merged_count": merged_count}
 
-    def was_squash_via_merge_commit(
-        self, repoid, pullid, repository_service, pull_dict
-    ):
+    def was_squash_via_merge_commit(self, repository_service, pull_dict):
         # if the merge commit exists for this PR, and that commit
         # has multiple parents, then it's a regular merge commit
         # otherwise it's a squash
 
         merge_commit_sha = pull_dict.get("merge_commit_sha")
-        log.info(
-            "Sync Pull using merge commit sha experiment running",
-            extra={
-                "repoid": repoid,
-                "pullid": pullid,
-                "merge_commit_sha": merge_commit_sha,
-            },
-        )
 
         if merge_commit_sha is None:
             return None
 
         merge_commit = repository_service.get_commit(merge_commit_sha)
-        return len(merge_commit["parents"] <= 1)
+        return len(merge_commit["parents"]) <= 1
 
     def was_squash_via_ancestor_tree(self, commits_on_pr, base_ancestors_tree):
         """
@@ -500,40 +482,44 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
 
     def was_pr_merged_with_squash(
         self,
-        repoid: int,
         pullid: int,
         repository_service,
-        pull_dict: dict[str, Any],
+        pull_dict: Mapping[str, Any],
         commits_on_pr: Sequence[str],
         base_ancestors_tree: dict[str, Any],
     ) -> bool:
-        experiment_was_squash = None
-        if SYNC_PULL_USE_MERGE_COMMIT_SHA.check_value(repoid):
+        try:
             experiment_was_squash = self.was_squash_via_merge_commit(
-                repoid, pullid, repository_service, pull_dict
+                repository_service, pull_dict
             )
+        except Exception as e:
+            log.warning(
+                "was_pr_merged_with_squash: error running merge commit sha check",
+                extra={
+                    "pullid": pullid,
+                    "pull_dict": pull_dict,
+                    "merge_commit_sha": pull_dict.get("merge_commit_sha"),
+                },
+                exc_info=e,
+            )
+            sentry_sdk.capture_exception(e)
+            experiment_was_squash = None
 
         regular_was_squash = self.was_squash_via_ancestor_tree(
             commits_on_pr, base_ancestors_tree
         )
 
-        if regular_was_squash == experiment_was_squash:
-            inc_counter(
-                SYNC_PULL_MERGE_COMMIT_SHA_COUNTER,
-                labels={"success": "true"},
-            )
+        if experiment_was_squash != regular_was_squash:
             log.info(
-                "Sync Pull merge commit sha experiment succeeded",
-                extra={"repoid": repoid, "pullid": pullid},
-            )
-        else:
-            inc_counter(
-                SYNC_PULL_MERGE_COMMIT_SHA_COUNTER,
-                labels={"success": "false"},
-            )
-            log.info(
-                "Sync Pull merge commit sha experiment failed",
-                extra={"repoid": repoid, "pullid": pullid},
+                "was_pr_merged_with_squash: merge commit sha check failed",
+                extra={
+                    "pullid": pullid,
+                    "pull_dict": pull_dict,
+                    "merge_commit_sha": pull_dict.get("merge_commit_sha"),
+                    "regular_was_squash": regular_was_squash,
+                    "experiment_was_squash": experiment_was_squash,
+                    "success": experiment_was_squash == regular_was_squash,
+                },
             )
 
         return regular_was_squash

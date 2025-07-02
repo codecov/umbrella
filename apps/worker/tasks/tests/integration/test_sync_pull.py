@@ -8,9 +8,13 @@ here = Path(__file__)
 
 
 class TestPullSyncTask:
-    def test_call_task(self, dbsession, codecov_vcr, mock_storage, mocker, mock_redis):
+    def test_call_task(self, mocker, dbsession, codecov_vcr, mock_storage, mock_redis):
         mocker.patch.object(PullSyncTask, "app")
+        mocker.patch.object(
+            PullSyncTask, "was_squash_via_merge_commit", return_value=True
+        )
         task = PullSyncTask()
+
         repository = RepositoryFactory.create(
             owner__username="ThiagoCodecov",
             owner__service="github",
