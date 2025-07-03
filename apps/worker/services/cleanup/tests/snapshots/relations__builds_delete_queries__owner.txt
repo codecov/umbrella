@@ -5,17 +5,6 @@ WHERE "user_measurements"."owner_id" IN (%s);
 -- [123]
 
 
--- YamlHistory
-DELETE
-FROM "yaml_history"
-WHERE "yaml_history"."ownerid" IN (%s);
--- [123]
-DELETE
-FROM "yaml_history"
-WHERE "yaml_history"."author" IN (%s);
--- [123]
-
-
 -- CommitNotification
 DELETE
 FROM "commit_notifications"
