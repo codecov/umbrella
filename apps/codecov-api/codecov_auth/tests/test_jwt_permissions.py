@@ -1,12 +1,11 @@
 import time
-from unittest.mock import patch
 
 import jwt
 import pytest
 from django.conf import settings
 from rest_framework.test import APIRequestFactory
 
-from webhook_handlers.permissions import JWTAuthenticationPermission
+from codecov_auth.permissions import JWTAuthenticationPermission
 
 
 @pytest.fixture
@@ -78,19 +77,3 @@ def test_missing_required_claims(request_factory):
     request = request_factory.get("/", HTTP_AUTHORIZATION=f"Bearer {token}")
     permission = JWTAuthenticationPermission()
     assert permission.has_permission(request, None) is False
-
-
-def test_error_tracking(request_factory):
-    """Test that errors are tracked with metrics"""
-    request = request_factory.get("/")
-    permission = JWTAuthenticationPermission()
-
-    with patch("webhook_handlers.permissions.WEBHOOKS_ERRORED") as mock_metrics:
-        permission.has_permission(request, None)
-        mock_metrics.labels.assert_called_once_with(
-            service="sentry",
-            event="webhook",
-            action="",
-            error_reason="missing_or_invalid_auth_header",
-        )
-        mock_metrics.labels.return_value.inc.assert_called_once()
