@@ -2,6 +2,8 @@
 
 from django.db import migrations
 
+from shared.django_apps.migration_utils import RiskyRunSQL
+
 
 class Migration(migrations.Migration):
     dependencies = [
@@ -9,7 +11,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
+        RiskyRunSQL(
             "ALTER TYPE plans ADD VALUE 'sentry-merge';",
             reverse_sql=migrations.RunSQL.noop,
         ),
