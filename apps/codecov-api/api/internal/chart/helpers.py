@@ -15,11 +15,16 @@ from core.models import Repository
 
 
 class ChartParamValidator(Validator):
-    # Custom validation rule to require "agg_value" and "agg_function" fields only when not grouping by commit.
-    # When grouping by commit, we return commits directly without applying any aggregation, so those fields aren't needed.
     def _validate_check_aggregation_fields(
         self, check_aggregation_fields, field, value
     ):
+        """
+        Custom validation rule to require "agg_value" and "agg_function" fields only when not grouping by commit.
+        When grouping by commit, we return commits directly without applying any aggregation, so those fields aren't needed.
+
+        The rule's arguments are validated against this schema:
+        {'type': 'boolean'}
+        """
         agg_fields_present = self.document.get("agg_value") and self.document.get(
             "agg_function"
         )
