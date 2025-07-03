@@ -745,7 +745,9 @@ class StripeService(AbstractPaymentService):
                 )
                 # Still update the customer address even if there's no payment method
                 stripe.Customer.modify(
-                    owner.stripe_customer_id, address=billing_address
+                    owner.stripe_customer_id,
+                    address=billing_address,
+                    name=name,
                 )
                 log.info(
                     "Stripe successfully updated customer address",
