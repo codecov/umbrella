@@ -1,5 +1,6 @@
 import tempfile
 from datetime import UTC, date, datetime, timedelta
+from functools import lru_cache
 
 import polars as pl
 from django.conf import settings
@@ -49,11 +50,15 @@ def dedup_table(table: pl.DataFrame) -> pl.DataFrame:
     total_tests = pl.col("total_fail_count") + pl.col("total_pass_count")
     total_time = pl.col("avg_duration") * total_tests
 
-    failure_rate_expr = (pl.col("failure_rate") * total_tests).sum() / total_tests.sum()
+    failure_rate_expr = (
+        (pl.col("failure_rate") * total_tests).sum() / total_tests.sum()
+    ).fill_nan(0)
 
-    flake_rate_expr = (pl.col("flake_rate") * total_tests).sum() / total_tests.sum()
+    flake_rate_expr = (
+        (pl.col("flake_rate") * total_tests).sum() / total_tests.sum()
+    ).fill_nan(0)
 
-    avg_duration_expr = total_time.sum() / total_tests.sum()
+    avg_duration_expr = (total_time.sum() / total_tests.sum()).fill_nan(0)
 
     total_duration_expr = total_time.sum()
 
@@ -63,11 +68,11 @@ def dedup_table(table: pl.DataFrame) -> pl.DataFrame:
         .agg(
             pl.col("testsuite").alias("testsuite"),
             pl.col("flags").explode().unique().alias("flags"),
-            failure_rate_expr.fill_nan(0).alias("failure_rate"),
-            flake_rate_expr.fill_nan(0).alias("flake_rate"),
+            failure_rate_expr.alias("failure_rate"),
+            flake_rate_expr.alias("flake_rate"),
             pl.col("updated_at").max().alias("updated_at"),
             total_duration_expr.alias("total_duration"),
-            avg_duration_expr.fill_nan(0).alias("avg_duration"),
+            avg_duration_expr.alias("avg_duration"),
             pl.col("total_fail_count").sum().alias("total_fail_count"),
             pl.col("total_flaky_fail_count").sum().alias("total_flaky_fail_count"),
             pl.col("total_pass_count").sum().alias("total_pass_count"),
@@ -93,6 +98,17 @@ def _has_commits_before_cutoff(repoid: int) -> bool:
     ).exists()
 
 
+@lru_cache(maxsize=1000)
+def use_new_impl(repoid: int) -> bool:
+    """
+    Check if we should use the new implementation
+    Use new implementation if:
+    1. READ_NEW_TA rollout is enabled for this repo, OR
+    2. The repo has no commits before the cutoff date
+    """
+    return READ_NEW_TA.check_value(repoid) or not _has_commits_before_cutoff(repoid)
+
+
 def get_results(
     repoid: int,
     branch: str,
@@ -109,15 +125,8 @@ def get_results(
             cache to redis
     deserialize
     """
-    # Check if we should use the new implementation
-    # Use new implementation if:
-    # 1. READ_NEW_TA rollout is enabled for this repo, OR
-    # 2. The repo has no commits before the cutoff date
-    use_new_impl = READ_NEW_TA.check_value(repoid) or not _has_commits_before_cutoff(
-        repoid
-    )
 
-    if use_new_impl:
+    if use_new_impl(repoid):
         func = new_get_results
         label = "new"
     else:
@@ -170,18 +179,22 @@ def rollup_blob_path(repoid: int, branch: str | None = None) -> str:
     )
 
 
+total_tests = pl.col("fail_count") + pl.col("pass_count") + pl.col("flaky_fail_count")
+
+total_time = pl.col("avg_duration") * total_tests
+
+failure_rate_expr = (
+    (pl.col("fail_count") + pl.col("flaky_fail_count")).sum() / total_tests.sum()
+).fill_nan(0)
+
+flake_rate_expr = (pl.col("flaky_fail_count").sum() / total_tests.sum()).fill_nan(0)
+
+avg_duration_expr = (total_time.sum() / total_tests.sum()).fill_nan(0)
+
+total_duration_expr = total_time.sum()
+
+
 def no_version_agg_table(table: pl.LazyFrame) -> pl.LazyFrame:
-    total_tests = pl.col("fail_count") + pl.col("pass_count")
-    total_time = pl.col("avg_duration") * total_tests
-
-    failure_rate_expr = (pl.col("fail_count")).sum() / total_tests.sum()
-
-    flake_rate_expr = (pl.col("flaky_fail_count")).sum() / total_tests.sum()
-
-    avg_duration_expr = total_time.sum() / total_tests.sum()
-
-    total_duration_expr = total_time.sum()
-
     table = table.group_by(pl.col("computed_name").alias("name")).agg(
         pl.col("flags")
         .explode()
@@ -204,17 +217,6 @@ def no_version_agg_table(table: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def v1_agg_table(table: pl.LazyFrame) -> pl.LazyFrame:
-    total_tests = pl.col("fail_count") + pl.col("pass_count")
-    total_time = pl.col("avg_duration") * total_tests
-
-    failure_rate_expr = (pl.col("fail_count")).sum() / total_tests.sum()
-
-    flake_rate_expr = (pl.col("flaky_fail_count")).sum() / total_tests.sum()
-
-    avg_duration_expr = total_time.sum() / total_tests.sum()
-
-    total_duration_expr = total_time.sum()
-
     table = table.group_by(pl.col("computed_name").alias("name")).agg(
         pl.col("testsuite").alias(
             "testsuite"
@@ -225,9 +227,9 @@ def v1_agg_table(table: pl.LazyFrame) -> pl.LazyFrame:
         .alias("flags"),  # TODO: filter by this before we aggregate
         pl.col("failing_commits").sum().alias("commits_where_fail"),
         pl.col("last_duration").max().alias("last_duration"),
-        failure_rate_expr.fill_nan(0).alias("failure_rate"),
-        flake_rate_expr.fill_nan(0).alias("flake_rate"),
-        avg_duration_expr.fill_nan(0).alias("avg_duration"),
+        failure_rate_expr.alias("failure_rate"),
+        flake_rate_expr.alias("flake_rate"),
+        avg_duration_expr.alias("avg_duration"),
         total_duration_expr.alias("total_duration"),
         pl.col("pass_count").sum().alias("total_pass_count"),
         pl.col("fail_count").sum().alias("total_fail_count"),
