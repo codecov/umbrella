@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from functools import cached_property
 
 from django.conf import settings
+from django.utils import timezone
 
 from shared.config import get_config
 from shared.django_apps.codecov.commands.exceptions import ValidationError
@@ -191,7 +192,7 @@ class PlanService:
         is_extension: bool = False,
     ) -> None:
         """Helper method to start or extend a trial for the organization."""
-        start_date = datetime.now()
+        start_date = timezone.now()
 
         if not is_extension:
             self.current_org.trial_start_date = start_date
@@ -250,7 +251,7 @@ class PlanService:
         """Cancels the ongoing trial for the organization."""
         if not self.is_org_trialing:
             raise ValidationError("Cannot cancel a trial that is not ongoing")
-        now = datetime.now()
+        now = timezone.now()
         self.current_org.trial_status = TrialStatus.EXPIRED.value
         self.current_org.trial_end_date = now
         self.set_default_plan_data()
@@ -273,7 +274,7 @@ class PlanService:
             self.current_org.plan_user_count = (
                 self.current_org.pretrial_users_count or 1
             )
-            self.current_org.trial_end_date = datetime.now()
+            self.current_org.trial_end_date = timezone.now()
 
             self.current_org.save()
 

@@ -1,7 +1,6 @@
-from datetime import datetime
-
 import factory
 import factory.fuzzy
+from django.utils import timezone
 from factory.django import DjangoModelFactory
 
 from shared.django_apps.ta_timeseries import models
@@ -11,7 +10,7 @@ class TestrunFactory(DjangoModelFactory):
     class Meta:
         model = models.Testrun
 
-    timestamp = datetime.now()
+    timestamp = timezone.now()
     test_id = factory.Sequence(lambda n: f"test_{n}".encode())
     name = factory.Sequence(lambda n: f"test_{n}")
     classname = factory.Sequence(lambda n: f"class_{n}")
