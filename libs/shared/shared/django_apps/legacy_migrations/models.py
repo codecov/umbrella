@@ -27,4 +27,8 @@ class YamlHistory(
     class Meta:
         db_table = "yaml_history"
         app_label = LEGACY_MIGRATIONS_APP_LABEL
-        indexes = [models.Index(fields=["ownerid", "timestamp"])]
+        indexes = [
+            models.Index(
+                fields=["ownerid", "timestamp"], name="yaml_history_ownerid_timestamp"
+            )
+        ]
