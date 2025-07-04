@@ -3,6 +3,8 @@ from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django_prometheus.models import ExportModelOperationsMixin
 
+from shared.django_apps.db import sane_repr
+
 TA_TIMESERIES_APP_LABEL = "ta_timeseries"
 
 
@@ -28,6 +30,7 @@ def calc_test_id(name: str, classname: str, testsuite: str) -> bytes:
 
 
 class Testrun(ExportModelOperationsMixin("ta_timeseries.testrun"), models.Model):
+    __test__ = False
     timestamp = models.DateTimeField(null=False, primary_key=True)
 
     test_id = models.BinaryField(null=False)
@@ -52,6 +55,8 @@ class Testrun(ExportModelOperationsMixin("ta_timeseries.testrun"), models.Model)
     upload_id = models.BigIntegerField(null=True)
 
     properties = models.JSONField(null=True)
+
+    __repr__ = sane_repr("timestamp", "test_id", "name", "outcome", "flags")  # type: ignore
 
     class Meta:
         app_label = TA_TIMESERIES_APP_LABEL
@@ -79,6 +84,7 @@ class TestrunBranchSummary(
     ExportModelOperationsMixin("ta_timeseries.testrun_branch_summary"),
     models.Model,
 ):
+    __test__ = False
     timestamp_bin = models.DateTimeField(primary_key=True)
     repo_id = models.IntegerField()
     branch = models.TextField()
@@ -96,6 +102,17 @@ class TestrunBranchSummary(
     updated_at = models.DateTimeField()
     flags = ArrayField(models.TextField(), null=True)
 
+    __repr__ = sane_repr(
+        "timestamp_bin",
+        "branch",
+        "computed_name",
+        "pass_count",
+        "fail_count",
+        "skip_count",
+        "flaky_fail_count",
+        "flags",
+    )  # type: ignore
+
     class Meta:
         app_label = TA_TIMESERIES_APP_LABEL
         db_table = "ta_timeseries_testrun_branch_summary_1day"
@@ -106,6 +123,7 @@ class TestrunSummary(
     ExportModelOperationsMixin("ta_timeseries.testrun_summary"),
     models.Model,
 ):
+    __test__ = False
     timestamp_bin = models.DateTimeField(primary_key=True)
     repo_id = models.IntegerField()
     name = models.TextField()
@@ -121,6 +139,16 @@ class TestrunSummary(
     flaky_fail_count = models.IntegerField()
     updated_at = models.DateTimeField()
     flags = ArrayField(models.TextField(), null=True)
+
+    __repr__ = sane_repr(
+        "timestamp_bin",
+        "computed_name",
+        "pass_count",
+        "fail_count",
+        "skip_count",
+        "flaky_fail_count",
+        "flags",
+    )  # type: ignore
 
     class Meta:
         app_label = TA_TIMESERIES_APP_LABEL
