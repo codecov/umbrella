@@ -1,58 +1,27 @@
 name: Shared CI
 
 on:
-  workflow_call:
-    inputs:
-      skip:
-        type: boolean
-        default: false
-      event_name:
-        type: string
-        required: false
+  push:
+    branches:
+      - main
+      - staging
+    paths:
+      - 'libs/shared/**'
+      - '.github/workflows/shared-ci.yml'
+  pull_request:
 
 permissions:
-  contents: "read"
-  id-token: "write"
-  issues: "write"
-  pull-requests: "write"
+    contents: read
 
 jobs:
-  shared-build:
-    name: Build App (Shared)
-    if: ${{ inputs.skip == false }}
-    uses: ./.github/workflows/_build-app.yml
-    secrets: inherit
-    with:
-      repo: codecov/dev-shared
-      output_directory: libs/shared
-      make_target_prefix: shared.
-
-  shared-test:
-    name: Test (Shared)
-    if: ${{ inputs.skip == false }}
-    needs: [shared-build]
-    uses: ./.github/workflows/_run-tests.yml
-    secrets: inherit
-    with:
-      repo: codecov/dev-shared
-      output_directory: libs/shared
-      flag_prefix: shared
-      pytest_rootdir: /app
-      make_target_prefix: shared.
-
   shared-benchmark:
     name: Benchmarks (Shared)
-    # Skip on merge_group because CodSpeed does not support it yet.
-    # Ref: https://github.com/CodSpeedHQ/action/issues/126
-    if: ${{ inputs.skip == false && github.event_name != 'merge_group' }}
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: libs/shared
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
 
       - uses: astral-sh/setup-uv@v5
       - uses: actions/setup-python@v5
@@ -62,25 +31,3 @@ jobs:
         with:
           run: DJANGO_SETTINGS_MODULE=shared.django_apps.settings_test uv run --project libs/shared pytest --rootdir=libs/shared libs/shared/tests/benchmarks/ --codspeed
           token: ${{ secrets.CODSPEED_TOKEN }}
-
-  # This job works around a strange interaction between reusable workflows and
-  # path filters.
-  #
-  # When a job that uses a reusable workflow is skipped, a single check shows up
-  # for it (e.g. `API CI / Test`). If the job is _not_ skipped, that check does
-  # not appear and instead you see checks for all of the jobs nested in the
-  # reusable workflow (`API CI / Test / Run tests`). There's no single check
-  # that's consistently there which you can mark as required.
-  #
-  # Because this job does not use a reusable workflow, it will produce the same
-  # check whether or not it is skipped. So, we can make this check required and
-  # have it figure out whether the jobs we actually care about failed.
-  shared-required-checks:
-    name: Required checks (Shared)
-    if: ${{ !cancelled() && inputs.skip == false }}
-    runs-on: ubuntu-latest
-    needs: [shared-test]
-    steps:
-      - name: Fail tests
-        if: ${{ needs.shared-test.result == 'failure' }}
-        run: exit 1
