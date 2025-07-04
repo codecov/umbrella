@@ -5,6 +5,12 @@ import fakeredis
 import pytest
 import vcr
 from django.conf import settings
+from django.db import connections
+from django.test.utils import setup_databases, teardown_databases
+from pytest_django.fixtures import (
+    _disable_migrations,
+    _get_databases_for_setup,
+)
 
 from shared.reports.resources import Report, ReportFile
 from shared.reports.types import ReportLine
@@ -91,3 +97,62 @@ def sample_report(request):
     report.add_session(Session(flags=["flag1", "flag2"]))
 
     request.cls.sample_report = report
+
+
+@pytest.fixture(scope="session")
+def django_db_setup(
+    request: pytest.FixtureRequest,
+    django_test_environment: None,
+    django_db_blocker,
+    django_db_use_migrations: bool,
+    django_db_keepdb: bool,
+    django_db_createdb: bool,
+    django_db_modify_db_settings: None,
+):
+    """Top level fixture to ensure test databases are available"""
+
+    setup_databases_args = {}
+
+    if not django_db_use_migrations:
+        _disable_migrations()
+
+    if django_db_keepdb and not django_db_createdb:
+        setup_databases_args["keepdb"] = True
+
+    aliases, serialized_aliases = _get_databases_for_setup(request.session.items)
+
+    with django_db_blocker.unblock():
+        for connection in connections:
+            if "timeseries" in connection:
+                with connections[connection].cursor() as cursor:
+                    cursor.execute(
+                        "SELECT _timescaledb_internal.stop_background_workers();"
+                    )
+
+        db_cfg = setup_databases(
+            verbosity=request.config.option.verbose,
+            interactive=False,
+            aliases=aliases,
+            serialized_aliases=serialized_aliases,
+            **setup_databases_args,
+        )
+
+        for connection in connections:
+            if "timeseries" in connection:
+                with connections[connection].cursor() as cursor:
+                    cursor.execute(
+                        "SELECT _timescaledb_internal.start_background_workers();"
+                    )
+
+    yield
+
+    if not django_db_keepdb:
+        with django_db_blocker.unblock():
+            try:
+                teardown_databases(db_cfg, verbosity=request.config.option.verbose)
+            except Exception as exc:  # noqa: BLE001
+                request.node.warn(
+                    pytest.PytestWarning(
+                        f"Error when trying to teardown test databases: {exc!r}"
+                    )
+                )
