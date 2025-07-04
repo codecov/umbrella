@@ -88,6 +88,8 @@ class TestFactory(factory.django.DjangoModelFactory):
 
 
 class TestInstanceFactory(factory.django.DjangoModelFactory):
+    __test__ = False
+
     class Meta:
         model = models.TestInstance
 

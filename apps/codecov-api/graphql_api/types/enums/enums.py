@@ -14,6 +14,8 @@ class OrderingParameter(enum.Enum):
 
 
 class TestResultsFilterParameter(enum.Enum):
+    __test__ = False
+
     FLAKY_TESTS = "flaky_tests"
     FAILED_TESTS = "failed_tests"
     SLOWEST_TESTS = "slowest_tests"
@@ -21,6 +23,8 @@ class TestResultsFilterParameter(enum.Enum):
 
 
 class TestResultsOrderingParameter(enum.Enum):
+    __test__ = False
+
     TOTAL_DURATION = "total_duration"
     LAST_DURATION = "last_duration"
     AVG_DURATION = "avg_duration"

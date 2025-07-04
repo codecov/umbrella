@@ -17,14 +17,13 @@ from graphql_api.types.enums import (
 )
 from graphql_api.types.enums.enum_types import MeasurementInterval
 from graphql_api.types.flake_aggregates.flake_aggregates import (
-    FlakeAggregates,
     generate_flake_aggregates,
 )
 from graphql_api.types.test_results_aggregates.test_results_aggregates import (
-    TestResultsAggregates,
     generate_test_results_aggregates,
 )
 from shared.django_apps.core.models import Repository
+from utils.ta_types import FlakeAggregates, TestResultsAggregates, TestResultsRow
 from utils.test_results import get_results
 
 log = logging.getLogger(__name__)
@@ -34,60 +33,10 @@ INTERVAL_7_DAY = 7
 INTERVAL_1_DAY = 1
 
 
-class TestResultsRow:
-    # the order here must match the order of the fields in the query
-    def __init__(
-        self,
-        name: str,
-        failure_rate: float,
-        flake_rate: float,
-        updated_at: dt.datetime,
-        avg_duration: float,
-        total_duration: float,
-        total_fail_count: int,
-        total_flaky_fail_count: int,
-        total_pass_count: int,
-        total_skip_count: int,
-        commits_where_fail: int,
-        last_duration: float,
-        testsuite: str | None = None,
-        flags: list[str] | None = None,
-    ):
-        self.name = name
-        self.testsuite = testsuite
-        self.flags = flags or []
-        self.failure_rate = failure_rate
-        self.flake_rate = flake_rate
-        self.updated_at = updated_at
-        self.avg_duration = avg_duration
-        self.total_duration = total_duration
-        self.total_fail_count = total_fail_count
-        self.total_flaky_fail_count = total_flaky_fail_count
-        self.total_pass_count = total_pass_count
-        self.total_skip_count = total_skip_count
-        self.commits_where_fail = commits_where_fail
-        self.last_duration = last_duration
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "testsuite": self.testsuite,
-            "flags": self.flags,
-            "failure_rate": self.failure_rate,
-            "flake_rate": self.flake_rate,
-            "updated_at": self.updated_at.isoformat(),
-            "avg_duration": self.avg_duration,
-            "total_fail_count": self.total_fail_count,
-            "total_flaky_fail_count": self.total_flaky_fail_count,
-            "total_pass_count": self.total_pass_count,
-            "total_skip_count": self.total_skip_count,
-            "commits_where_fail": self.commits_where_fail,
-            "last_duration": self.last_duration,
-        }
-
-
 @dataclass
 class TestResultConnection:
+    __test__ = False
+
     edges: list[dict[str, str | TestResultsRow]]
     page_info: dict
     total_count: int
@@ -338,12 +287,12 @@ def get_flags(repoid: int, term: str | None = None, interval: int = 30) -> list[
     return flags.to_series().drop_nulls().to_list() or []
 
 
-class TestResultsOrdering(TypedDict):
+class GQLTestResultsOrdering(TypedDict):
     parameter: TestResultsOrderingParameter
     direction: OrderingDirection
 
 
-class TestResultsFilters(TypedDict):
+class GQLTestResultsFilters(TypedDict):
     parameter: TestResultsFilterParameter | None
     interval: MeasurementInterval
     branch: str | None
@@ -360,8 +309,8 @@ test_analytics_bindable: ObjectType = ObjectType("TestAnalytics")
 async def resolve_test_results(
     repository: Repository,
     info: GraphQLResolveInfo,
-    ordering: TestResultsOrdering | None = None,
-    filters: TestResultsFilters | None = None,
+    ordering: GQLTestResultsOrdering | None = None,
+    filters: GQLTestResultsFilters | None = None,
     first: int | None = None,
     after: str | None = None,
     last: int | None = None,
@@ -403,6 +352,7 @@ async def resolve_test_results_aggregates(
 ) -> TestResultsAggregates | None:
     return await sync_to_async(generate_test_results_aggregates)(
         repoid=repository.repoid,
+        branch=repository.branch,
         interval=interval if interval else MeasurementInterval.INTERVAL_30_DAY,
     )
 
@@ -416,6 +366,7 @@ async def resolve_flake_aggregates(
 ) -> FlakeAggregates | None:
     return await sync_to_async(generate_flake_aggregates)(
         repoid=repository.repoid,
+        branch=repository.branch,
         interval=interval if interval else MeasurementInterval.INTERVAL_30_DAY,
     )
 
