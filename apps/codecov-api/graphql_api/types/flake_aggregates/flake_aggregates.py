@@ -1,20 +1,10 @@
-from dataclasses import dataclass
-
 import polars as pl
 from ariadne import ObjectType
 from graphql import GraphQLResolveInfo
 
 from graphql_api.types.enums.enum_types import MeasurementInterval
-from shared.django_apps.core.models import Repository
+from utils.ta_types import FlakeAggregates
 from utils.test_results import get_results
-
-
-@dataclass
-class FlakeAggregates:
-    flake_count: int
-    flake_rate: float
-    flake_count_percent_change: float | None = None
-    flake_rate_percent_change: float | None = None
 
 
 def calculate_flake_aggregates(table: pl.DataFrame) -> pl.DataFrame:
@@ -54,16 +44,12 @@ def flake_aggregates_with_percentage(
 
 
 def generate_flake_aggregates(
-    repoid: int, interval: MeasurementInterval
+    repoid: int, branch: str, interval: MeasurementInterval
 ) -> FlakeAggregates | None:
-    repo = Repository.objects.get(repoid=repoid)
-
-    curr_results = get_results(repo.repoid, repo.branch, interval.value)
+    curr_results = get_results(repoid, branch, interval.value)
     if curr_results is None:
         return None
-    past_results = get_results(
-        repo.repoid, repo.branch, interval.value * 2, interval.value
-    )
+    past_results = get_results(repoid, branch, interval.value * 2, interval.value)
     if past_results is None:
         return flake_aggregates_from_table(curr_results)
     else:
