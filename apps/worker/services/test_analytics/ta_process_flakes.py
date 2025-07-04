@@ -60,13 +60,12 @@ def handle_failure(
     curr_flakes: dict[bytes, Flake], test_id: bytes, testrun: Testrun, repo_id: int
 ):
     existing_flake = curr_flakes.get(test_id)
+
     if existing_flake:
         existing_flake.fail_count += 1
         existing_flake.count += 1
         existing_flake.recent_passes_count = 0
     else:
-        if testrun.outcome != "flaky_failure":
-            testrun.outcome = "flaky_failure"
         new_flake = Flake(
             repoid=repo_id,
             test_id=test_id,
@@ -76,6 +75,9 @@ def handle_failure(
             start_date=datetime.now(),
         )
         curr_flakes[test_id] = new_flake
+
+    if testrun.outcome != "flaky_failure":
+        testrun.outcome = "flaky_failure"
 
 
 def process_flakes_for_commit(repo_id: int, commit_id: str):
