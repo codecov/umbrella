@@ -428,8 +428,7 @@ class PlanServiceTests(TestCase):
         plan_service = PlanService(current_org=current_org)
         assert plan_service.free_seat_count == 5
 
-    def test_plan_service_free_seat_count_with_account(self):
-        """Test plan_user_count when owner has an account"""
+        """Test free_seat_count when owner has an account"""
         account = AccountFactory(
             plan=DEFAULT_FREE_PLAN, plan_seat_count=10, free_seat_count=5
         )
