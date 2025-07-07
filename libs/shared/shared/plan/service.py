@@ -179,9 +179,8 @@ class PlanService:
 
         if (
             not self.plan_activated_users
-            or len(self.plan_activated_users)
-            # Add the free seats if user has any because we want to allow them to purchase up to TEAM_PLAN_MAX_USERS regardless
-            <= (TEAM_PLAN_MAX_USERS + self.free_seat_count)
+            # Allow team plan purchase up to TEAM_PLAN_MAX_USERS + free seats
+            or len(self.plan_activated_users) <= (TEAM_PLAN_MAX_USERS + self.free_seat_count)
         ):
             available_tiers.append(TierName.TEAM.value)
 
