@@ -6,7 +6,7 @@ from datetime import datetime
 from hashlib import md5
 from typing import Optional, Self
 
-from django.contrib.postgres.fields import ArrayField, CITextField
+from django.contrib.postgres.fields import ArrayField
 from django.contrib.sessions.models import Session as DjangoSession
 from django.db import models
 from django.db.models import Case, QuerySet, Sum, When
@@ -79,7 +79,7 @@ class User(ExportModelOperationsMixin("codecov_auth.user"), BaseCodecovModel):
         BUSINESS = "BUSINESS"
         PERSONAL = "PERSONAL"
 
-    email = CITextField(null=True)
+    email = models.TextField(null=True, db_collation="case_insensitive")
     name = models.TextField(null=True)
     is_staff = models.BooleanField(null=True, default=False)
     is_superuser = models.BooleanField(null=True, default=False)
@@ -319,8 +319,8 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
 
     ownerid = models.AutoField(primary_key=True)
     service = models.TextField(choices=Service.choices)  # Really an ENUM in db
-    username = CITextField(
-        unique=True, null=True
+    username = models.TextField(
+        unique=True, null=True, db_collation="case_insensitive"
     )  # No actual unique constraint on this in the DB
     email = models.TextField(null=True)
     business_email = models.TextField(null=True)

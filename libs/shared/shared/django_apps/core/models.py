@@ -4,7 +4,7 @@ import string
 import uuid
 from datetime import datetime
 
-from django.contrib.postgres.fields import ArrayField, CITextField
+from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.db import models
 from django.db.models.functions import Lower, Substr, Upper
@@ -96,7 +96,7 @@ class Repository(ExportModelOperationsMixin("core.repository"), models.Model):
         F_SHARP = "f#"
 
     repoid = models.AutoField(primary_key=True)
-    name = CITextField()
+    name = models.TextField(db_collation="case_insensitive")
     author = models.ForeignKey(
         "codecov_auth.Owner", db_column="ownerid", on_delete=models.CASCADE
     )

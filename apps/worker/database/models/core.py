@@ -205,7 +205,7 @@ class Repository(CodecovBaseModel):
     ownerid = Column(types.Integer, ForeignKey("owners.ownerid"))
     bot_id = Column("bot", types.Integer, ForeignKey("owners.ownerid"))
     service_id = Column(types.Text)
-    name = Column(types.Text)
+    name = Column(types.Text(collation="case_insensitive"))
     private = Column(types.Boolean)
     updatestamp = Column(types.DateTime)
     yaml = Column(postgresql.JSON)

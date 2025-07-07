@@ -111,7 +111,7 @@ class TestSyncRepoLanguagesGQL:
 
         all_repos = (
             dbsession.query(Repository)
-            .filter(Repository.name.startswith("test-"))
+            .filter(Repository.name.collate("C").ilike("test-%"))
             .all()
         )
 
