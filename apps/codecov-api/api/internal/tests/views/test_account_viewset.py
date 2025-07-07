@@ -1476,7 +1476,9 @@ class AccountViewSetTests(APITestCase):
         retrieve_customer_mock.assert_called_once()
         modify_payment_mock.assert_called_once()
         modify_customer_mock.assert_called_once_with(
-            self.current_owner.stripe_customer_id, address=formatted_address
+            self.current_owner.stripe_customer_id,
+            address=formatted_address,
+            name="John Doe",
         )
 
     @patch("api.shared.permissions.get_provider")

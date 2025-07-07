@@ -1920,7 +1920,9 @@ class StripeServiceTests(TestCase):
         retrieve_customer_mock.assert_called_once()
         modify_payment_mock.assert_called_once()
         modify_customer_mock.assert_called_once_with(
-            customer_id, address=billing_address
+            customer_id,
+            address=billing_address,
+            name="John Doe",
         )
 
     @patch("services.billing.stripe.Invoice.retrieve")

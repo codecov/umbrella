@@ -771,7 +771,11 @@ class StripeService(AbstractPaymentService):
                 "Modifying customer address",
                 extra={"stripe_customer_id": owner.stripe_customer_id},
             )
-            stripe.Customer.modify(owner.stripe_customer_id, address=billing_address)
+            stripe.Customer.modify(
+                owner.stripe_customer_id,
+                address=billing_address,
+                name=name,
+            )
             log.info(
                 "Stripe successfully updated billing address",
                 extra={
