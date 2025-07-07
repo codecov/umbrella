@@ -3,17 +3,17 @@ from unittest.mock import MagicMock, call, patch
 
 import requests
 import stripe
+from billing.tests.mocks import mock_all_plans_and_tiers
+from codecov_auth.models import Plan, Service
 from django.conf import settings
 from django.test import TestCase
 from freezegun import freeze_time
-from stripe import InvalidRequestError
-from stripe.api_resources import PaymentIntent, SetupIntent
-
-from billing.tests.mocks import mock_all_plans_and_tiers
-from codecov_auth.models import Plan, Service
-from services.billing import AbstractPaymentService, BillingService, StripeService
+from services.billing import (AbstractPaymentService, BillingService,
+                              StripeService)
 from shared.django_apps.core.tests.factories import OwnerFactory
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
+from stripe import InvalidRequestError
+from stripe.api_resources import PaymentIntent, SetupIntent
 
 SCHEDULE_RELEASE_OFFSET = 10
 
@@ -1925,6 +1925,49 @@ class StripeServiceTests(TestCase):
             name="John Doe",
         )
 
+    @patch("services.billing.stripe.Customer.retrieve")
+    @patch("services.billing.stripe.PaymentMethod.modify")
+    @patch("services.billing.stripe.Customer.modify")
+    def test_update_billing_address_with_error(
+        self, modify_customer_mock, modify_payment_mock, retrieve_customer_mock
+    ):
+        subscription_id = "sub_abc"
+        customer_id = "cus_abc"
+        owner = OwnerFactory(
+            stripe_subscription_id=subscription_id, stripe_customer_id=customer_id
+        )
+        billing_address = {
+            "line1": "45 Fremont St.",
+            "line2": "",
+            "city": "San Francisco",
+            "state": "CA",
+            "country": "US",
+            "postal_code": "94105",
+        }
+        retrieve_customer_mock.return_value = MagicMock(
+            invoice_settings=MagicMock(default_payment_method="pm_123")
+        )
+        modify_payment_mock.side_effect = stripe.error.CardError(
+            message="Your card was declined.",
+            param="number",
+            code="card_declined"
+        )
+        
+        with self.assertRaises(stripe.error.CardError):
+            self.stripe.update_billing_address(
+                owner,
+                name="John Doe",
+                billing_address=billing_address,
+            )
+
+        retrieve_customer_mock.assert_called_once()
+        modify_payment_mock.assert_called_once()
+        modify_customer_mock.assert_called_once_with(
+            customer_id,
+            address=billing_address,
+            name="John Doe",
+        )
+        
     @patch("services.billing.stripe.Invoice.retrieve")
     def test_get_invoice_not_found(self, retrieve_invoice_mock):
         invoice_id = "abc"
