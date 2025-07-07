@@ -115,7 +115,7 @@ class PlanService:
         """Returns the number of free seats for the organization."""
         if self.has_account:
             return self.current_org.account.free_seat_count
-        return self.current_org.free
+        return self.current_org.free or 0
 
     @property
     def plan_activated_users(self) -> list[int] | None:
@@ -180,7 +180,8 @@ class PlanService:
         if (
             not self.plan_activated_users
             # Allow team plan purchase up to TEAM_PLAN_MAX_USERS + free seats
-            or len(self.plan_activated_users) <= (TEAM_PLAN_MAX_USERS + self.free_seat_count)
+            or len(self.plan_activated_users)
+            <= (TEAM_PLAN_MAX_USERS + self.free_seat_count)
         ):
             available_tiers.append(TierName.TEAM.value)
 
