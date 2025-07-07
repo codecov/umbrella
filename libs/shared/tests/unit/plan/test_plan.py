@@ -656,6 +656,7 @@ class AvailablePlansExpiredTrialLessThanTenUsers(TestCase):
             trial_end_date=datetime.utcnow() + timedelta(days=-3),
             trial_status=TrialStatus.EXPIRED.value,
             plan_user_count=3,
+            free=5,  # confirm that free seats don't mess with available plans
         )
         self.owner = OwnerFactory()
 
