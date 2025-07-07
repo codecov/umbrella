@@ -4,11 +4,10 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 
 import stripe
-from dateutil.relativedelta import relativedelta
-from django.conf import settings
-
 from billing.constants import REMOVED_INVOICE_STATUSES
 from codecov_auth.models import Owner, Plan
+from dateutil.relativedelta import relativedelta
+from django.conf import settings
 from shared.plan.constants import PlanBillingRate, TierName
 from shared.plan.service import PlanService
 
@@ -793,6 +792,7 @@ class StripeService(AbstractPaymentService):
                     "error_type": type(e).__name__,
                 },
             )
+            raise e
 
     @_log_stripe_error
     def apply_cancellation_discount(self, owner: Owner):
