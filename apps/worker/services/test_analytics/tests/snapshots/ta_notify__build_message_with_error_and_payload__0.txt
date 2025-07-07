@@ -1,0 +1,29 @@
+### :warning: Parser warning
+<details><summary>The parser emitted a warning. Please review your JUnit XML file:</summary>
+<pre><code class="language-python">Parser warning: some issue</code></pre>
+</details>
+
+For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).
+
+---
+
+### :x: 1 Tests Failed:
+| Tests completed | Failed | Passed | Skipped |
+|---|---|---|---|
+| 1 | 1 | 0 | 0 |
+<details><summary>View the top 1 failed test(s) by shortest run time</summary>
+
+
+> <pre><code class="language-python">test_with_error</code></pre>
+> <details><summary>Stack Traces | 0.5s run time</summary>
+>
+> > <pre><code class="language-python">Test failed</code></pre>
+>
+>
+> </details>
+
+</details>
+
+
+To view more test analytics, go to the [Test Analytics Dashboard](https://codecov.io/test-analytics)
+<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/BpocVj23nhr2Y45G7) to help us improve Test Analytics.</sub>

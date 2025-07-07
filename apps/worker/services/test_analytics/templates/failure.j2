@@ -1,0 +1,9 @@
+> <pre><code class="language-python">{{ failure.display_name | replace('\x1f', ' ') | e }}</code></pre>
+> <details><summary>Stack Traces | {{ formatted_durations[failure.test_id] }}s run time</summary>
+>
+> > <pre><code class="language-python">{{ failure.failure_message | default("No failure message available", true) | e }}</code></pre>
+> {%- if failure.build_url %}
+> > [View]({{ failure.build_url }}) the CI Build
+> {%- endif %}
+>
+> </details>

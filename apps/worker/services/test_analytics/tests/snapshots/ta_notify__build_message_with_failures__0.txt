@@ -1,0 +1,22 @@
+### :x: 1 Tests Failed:
+| Tests completed | Failed | Passed | Skipped |
+|---|---|---|---|
+| 5 | 1 | 4 | 0 |
+<details><summary>View the top 1 failed test(s) by shortest run time</summary>
+
+
+> <pre><code class="language-python">test_example</code></pre>
+> <details><summary>Stack Traces | 1.5s run time</summary>
+>
+> > <pre><code class="language-python">Test failed with assertion error</code></pre>
+>
+> > [View](https://example.com/build/123) the CI Build
+>
+>
+> </details>
+
+</details>
+
+
+To view more test analytics, go to the [Test Analytics Dashboard](https://codecov.io/test-analytics)
+<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/BpocVj23nhr2Y45G7) to help us improve Test Analytics.</sub>

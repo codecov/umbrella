@@ -1,0 +1,10 @@
+> <pre><code class="language-python">{{ flaky_failure.display_name | replace('\x1f', ' ') | e }}</code></pre>
+> **Flake rate in main:** {{ "%.2f" | format(flake_info.failed / flake_info.count * 100) }}% (Passed {{ flake_info.count - flake_info.failed }} times, Failed {{ flake_info.failed }} times)
+> <details><summary>Stack Traces | {{ formatted_durations[flaky_failure.test_id] }}s run time</summary>
+>
+> > <pre><code class="language-python">{{ flaky_failure.failure_message | default("No failure message available", true) | e }}</code></pre>
+> {%- if flaky_failure.build_url %}
+> > [View]({{ flaky_failure.build_url }}) the CI Build
+> {%- endif %}
+>
+> </details>

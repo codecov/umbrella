@@ -30,13 +30,15 @@ from services.test_analytics.ta_metrics import (
     read_tests_totals_summary,
 )
 from services.test_analytics.ta_process_flakes import KEY_NAME
-from services.test_results import (
+from services.test_analytics.ta_types import (
     ErrorPayload,
-    FinisherResult,
     FlakeInfo,
     TACommentInDepthInfo,
     TestResultsNotificationFailure,
     TestResultsNotificationPayload,
+)
+from services.test_results import (
+    FinisherResult,
     TestResultsNotifier,
     get_test_summary_for_commit,
     latest_failures_for_commit,

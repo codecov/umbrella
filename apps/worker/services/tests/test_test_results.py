@@ -8,12 +8,14 @@ from database.tests.factories import (
     RepositoryFactory,
 )
 from helpers.notifier import NotifierResult
-from services.test_results import (
+from services.test_analytics.ta_types import (
     ErrorPayload,
     FlakeInfo,
     TACommentInDepthInfo,
     TestResultsNotificationFailure,
     TestResultsNotificationPayload,
+)
+from services.test_results import (
     TestResultsNotifier,
     generate_failure_info,
     generate_flags_hash,

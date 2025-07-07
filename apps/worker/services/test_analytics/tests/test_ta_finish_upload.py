@@ -39,6 +39,7 @@ def mock_repo_provider_comments(mocker):
         "services.test_analytics.ta_finish_upload.get_repo_provider_service",
         return_value=m,
     )
+    _ = mocker.patch("services.comment.get_repo_provider_service", return_value=m)
     return m
 
 
@@ -83,6 +84,7 @@ def prepopulate(dbsession):
         report__commit__repository__name="test-repo",
         report__commit__repository__owner__service="github",
         report__commit__repository__owner__username="test-user",
+        report__commit__repository__owner__oauth_token="LNp3BAWXPOV/Tivsjds8XZMKGbx0cHrykIAhcY6kl0A=",  # encryptor.decrypt_token("LNp3BAWXPOV/Tivsjds8XZMKGbx0cHrykIAhcY6kl0A=") == "hello"
     )
     dbsession.add(sql_alc_upload)
     dbsession.commit()
@@ -117,6 +119,10 @@ def test_ta_finish_upload(
     def mock_pull(pull: mocker.Mock | None):
         mocker.patch(
             "services.test_analytics.ta_finish_upload.fetch_and_update_pull_request_information_from_commit",
+            return_value=pull,
+        )
+        mocker.patch(
+            "services.comment.fetch_and_update_pull_request_information_from_commit",
             return_value=pull,
         )
 
