@@ -328,7 +328,10 @@ class AccountDetailsSerializer(serializers.ModelSerializer):
 
     def get_uses_invoice(self, owner: Owner) -> bool:
         if owner.account:
-            return owner.account.invoice_billing.filter(is_active=True).exists()
+            return (
+                hasattr(owner.account, "invoice_billing")
+                and owner.account.invoice_billing.is_active
+            )
         return owner.uses_invoice
 
     def update(self, instance: Owner, validated_data: dict[str, Any]) -> object:

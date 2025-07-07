@@ -985,8 +985,8 @@ class OktaSettings(BaseModel):
 
 
 class StripeBilling(BaseModel):
-    account = models.ForeignKey(
-        Account, on_delete=models.CASCADE, related_name="stripe_billing", unique=True
+    account = models.OneToOneField(
+        Account, on_delete=models.CASCADE, related_name="stripe_billing"
     )
     customer_id = models.CharField(max_length=255, unique=True)
     subscription_id = models.CharField(max_length=255, null=True, blank=True)
@@ -1008,8 +1008,8 @@ class StripeBilling(BaseModel):
 
 
 class InvoiceBilling(BaseModel):
-    account = models.ForeignKey(
-        Account, on_delete=models.CASCADE, related_name="invoice_billing", unique=True
+    account = models.OneToOneField(
+        Account, on_delete=models.CASCADE, related_name="invoice_billing"
     )
     account_manager = models.CharField(max_length=255, null=True, blank=True)
     invoice_notes = models.TextField(null=True, blank=True)
