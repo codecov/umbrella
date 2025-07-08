@@ -29,6 +29,18 @@ def default_random_salt():
     return default_random_salt()
 
 
+def ff_value_default() -> bool:
+    """
+    Default value for the FeatureFlagVariant.value field.
+
+    This resolves the fields.E010 warning which occurs when the default value
+    is not a callable.
+
+    :return: Always returns False, indicating that the feature is off by default.
+    """
+    return False
+
+
 class FeatureFlag(models.Model):
     """
     Represents a feature and its rollout parameters (see shared/rollouts/__init__.py). A
@@ -90,7 +102,7 @@ class FeatureFlagVariant(models.Model):
         help_text="Values are between 0 and 1. Eg: 0.5 means 50% of users. The sum of all variants' proportions for a feature should equal to 1.",
     )
     value = models.JSONField(
-        default=False,
+        default=ff_value_default,
         help_text="Accepts JSON values. Eg: `true`, `false`, `10`, `['abc', 'def']`, `{'k': 'v'}`",
     )
 

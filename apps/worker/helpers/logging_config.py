@@ -1,7 +1,7 @@
 import json
 from copy import deepcopy
 
-from pythonjsonlogger.jsonlogger import JsonFormatter
+from pythonjsonlogger.json import JsonFormatter
 
 from helpers.environment import Environment, get_current_env
 from helpers.log_context import get_log_context

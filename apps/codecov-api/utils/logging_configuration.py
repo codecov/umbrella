@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from logging import Filter
 
-from pythonjsonlogger.jsonlogger import JsonFormatter
+from pythonjsonlogger.json import JsonFormatter
 from sentry_sdk import get_current_span
 
 
