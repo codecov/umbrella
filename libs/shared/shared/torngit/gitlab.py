@@ -439,7 +439,7 @@ class Gitlab(TorngitBaseAdapter):
 
             try:
                 res = await client.request(
-                    method.upper(), url, headers=headers, data=body
+                    method.upper(), url, headers=headers, content=body
                 )
                 if current_retry > 1:
                     # count retries without getting a url
@@ -513,7 +513,7 @@ class Gitlab(TorngitBaseAdapter):
         )
         url = self.count_and_get_url_template("refresh_token").substitute()
         res = await client.request(
-            "POST", self.service_url + url, data=params, params=params
+            "POST", self.service_url + url, content=params, params=params
         )
         if res.status_code >= 300:
             raise TorngitRefreshTokenFailedError(res)
