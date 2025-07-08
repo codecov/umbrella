@@ -96,7 +96,7 @@ $ make devenv.test.shared
 ```
 
 Including the extra parameter "EXTRA_PYTEST_ARGS" allows you to add additional options to the pytest run. For example, if you wanted to run tests in the shared foo directory you could
-run the command `make devenv.test.shared EXTRA_PYTEST_ARGS foo`
+run the command `make devenv.test.shared EXTRA_PYTEST_ARGS=foo`
 
 ### Submitting coverage and test results locally
 
