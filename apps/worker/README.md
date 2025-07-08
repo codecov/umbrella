@@ -58,7 +58,7 @@ make build.base
 make build
 ```
 
-To run this as part of the whole infrasctructure, you will be better served by getting the main codebase and running `docker-compose up` from there
+To run this as part of the whole infrastructure, you will be better served by getting the main codebase and running `docker-compose up` from there
 
 ### Getting into enterprise mode
 
@@ -74,7 +74,7 @@ The source of truth on which version we use is in the file `VERSION`. Every scri
 
 That file is manually updated. We use semantic versioning.
 
-If you are unsure whether you need to change that version at a given moment, the answer is that you probaby don't then. We have multiple deploys on the same version, and only change it when we want to cut a version to enterprise.
+If you are unsure whether you need to change that version at a given moment, the answer is that you probably don't then. We have multiple deploys on the same version, and only change it when we want to cut a version to enterprise.
 
 ## Upgrading Dependencies
 
@@ -100,9 +100,9 @@ As the deployer, it is your responsibility to make sure the system is working as
 
 Before getting into changing the code, try to use the following structure (feel free to suggest changes.Some bits of it are based on our experience)
 
-- `helpers` - Those are the "low" level pieces of code, that don't depend on database models or any other heavy business logic. Those shouldn't depend on anything else on the codebase, preferrably
+- `helpers` - Those are the "low" level pieces of code, that don't depend on database models or any other heavy business logic. Those shouldn't depend on anything else on the codebase, preferably
 - `database` - Those contain database models. They can use logic from `helpers` and other models, but nothing else. Try to avoid any heavy logic in this code.
 - `services` - Those are heavier pieces of logic, that don't talk to the external world. They can use `helpers` and `database` logic, and among themselves. But make sure that if a service _bravo_ depends on service _alpha_, then _alpha_ should not depend on any part of _bravo_
 - `tasks` - Those are the parts of the code that talk to the external world: it has the tasks that are triggered by external containers. They can depend on `helpers`, `models` and `services`, but NEVER depend on another task (except to schedule them). If some code is common to two tasks, try to put it in a `service` or somewhere else.
 
-You will also notice some usage of the package https://github.com/codecov/shared for various things. The logic that is there is used by both here and `codecov/api` codebase. So feel free to make changes there, but dont do anything that will break compatibility too hard.
+You will also notice some usage of the package https://github.com/codecov/shared for various things. The logic that is there is used by both here and `codecov/api` codebase. So feel free to make changes there, but don't do anything that will break compatibility too hard.
