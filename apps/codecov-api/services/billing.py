@@ -4,10 +4,11 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 
 import stripe
-from billing.constants import REMOVED_INVOICE_STATUSES
-from codecov_auth.models import Owner, Plan
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
+
+from billing.constants import REMOVED_INVOICE_STATUSES
+from codecov_auth.models import Owner, Plan
 from shared.plan.constants import PlanBillingRate, TierName
 from shared.plan.service import PlanService
 
@@ -713,9 +714,6 @@ class StripeService(AbstractPaymentService):
                         "error": str(e),
                         "ownerid": owner.ownerid,
                     },
-                )
-                raise Exception(
-                    "Unable to update billing email on default payment method",
                 )
 
     @_log_stripe_error

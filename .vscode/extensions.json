@@ -2,6 +2,7 @@
   "recommendations": [
     "ms-python.python",
     "ms-python.mypy-type-checker",
+    "elagil.pre-commit-helper",
     "charliermarsh.ruff"
   ]
 }

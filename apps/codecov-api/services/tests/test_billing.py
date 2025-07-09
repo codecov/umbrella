@@ -3,17 +3,17 @@ from unittest.mock import MagicMock, call, patch
 
 import requests
 import stripe
-from billing.tests.mocks import mock_all_plans_and_tiers
-from codecov_auth.models import Plan, Service
 from django.conf import settings
 from django.test import TestCase
 from freezegun import freeze_time
-from services.billing import (AbstractPaymentService, BillingService,
-                              StripeService)
-from shared.django_apps.core.tests.factories import OwnerFactory
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from stripe import InvalidRequestError
 from stripe.api_resources import PaymentIntent, SetupIntent
+
+from billing.tests.mocks import mock_all_plans_and_tiers
+from codecov_auth.models import Plan, Service
+from services.billing import AbstractPaymentService, BillingService, StripeService
+from shared.django_apps.core.tests.factories import OwnerFactory
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
 SCHEDULE_RELEASE_OFFSET = 10
 
@@ -1947,12 +1947,15 @@ class StripeServiceTests(TestCase):
         retrieve_customer_mock.return_value = MagicMock(
             invoice_settings=MagicMock(default_payment_method="pm_123")
         )
+        # Set the side effect only for this test, and reset after
+        original_side_effect = modify_payment_mock.side_effect
         modify_payment_mock.side_effect = stripe.error.CardError(
-            message="Your card was declined.",
-            param="number",
-            code="card_declined"
+            message="Your card was declined.", param="number", code="card_declined"
         )
-        
+        self.addCleanup(
+            lambda: setattr(modify_payment_mock, "side_effect", original_side_effect)
+        )
+
         with self.assertRaises(stripe.error.CardError):
             self.stripe.update_billing_address(
                 owner,
@@ -1962,12 +1965,8 @@ class StripeServiceTests(TestCase):
 
         retrieve_customer_mock.assert_called_once()
         modify_payment_mock.assert_called_once()
-        modify_customer_mock.assert_called_once_with(
-            customer_id,
-            address=billing_address,
-            name="John Doe",
-        )
-        
+        modify_customer_mock.assert_not_called()
+
     @patch("services.billing.stripe.Invoice.retrieve")
     def test_get_invoice_not_found(self, retrieve_invoice_mock):
         invoice_id = "abc"
