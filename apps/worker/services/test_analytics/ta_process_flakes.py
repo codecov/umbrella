@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.db.models import Q, QuerySet
 from redis.exceptions import LockError
@@ -38,8 +38,12 @@ def get_testruns(
 ) -> QuerySet[Testrun]:
     upload_filter = Q(upload_id=upload.id)
     flaky_pass_filter = Q(outcome="pass") & Q(test_id__in=curr_flakes.keys())
+
+    # we won't process flakes for testruns older than 1 day
     return Testrun.objects.filter(
-        upload_filter & (FAIL_FILTER | flaky_pass_filter)
+        Q(timestamp__gte=datetime.now() - timedelta(days=1))
+        & upload_filter
+        & (FAIL_FILTER | flaky_pass_filter)
     ).order_by("timestamp")
 
 
