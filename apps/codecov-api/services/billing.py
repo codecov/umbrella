@@ -714,6 +714,9 @@ class StripeService(AbstractPaymentService):
                         "ownerid": owner.ownerid,
                     },
                 )
+                raise Exception(
+                    "Unable to update billing email on default payment method",
+                )
 
     @_log_stripe_error
     def update_billing_address(self, owner: Owner, name, billing_address):
