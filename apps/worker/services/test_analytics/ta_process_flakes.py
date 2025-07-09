@@ -13,8 +13,6 @@ from shared.helpers.redis import get_redis_connection
 
 log = logging.getLogger(__name__)
 
-FAIL_FILTER = Q(outcome="failure") | Q(outcome="flaky_failure") | Q(outcome="error")
-
 LOCK_NAME = "ta_flake_lock:{}"
 KEY_NAME = "ta_flake_key:{}"
 
@@ -38,13 +36,10 @@ def get_testruns(
     upload: ReportSession, curr_flakes: dict[bytes, Flake]
 ) -> QuerySet[Testrun]:
     upload_filter = Q(upload_id=upload.id)
-    flaky_pass_filter = Q(outcome="pass") & Q(test_id__in=curr_flakes.keys())
 
     # we won't process flakes for testruns older than 1 day
     return Testrun.objects.filter(
-        Q(timestamp__gte=timezone.now() - timedelta(days=1))
-        & upload_filter
-        & (FAIL_FILTER | flaky_pass_filter)
+        Q(timestamp__gte=timezone.now() - timedelta(days=1)) & upload_filter
     ).order_by("timestamp")
 
 
@@ -95,6 +90,9 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
             test_id = bytes(testrun.test_id)
             match testrun.outcome:
                 case "pass":
+                    if test_id not in curr_flakes:
+                        continue
+
                     handle_pass(curr_flakes, test_id)
                 case "failure" | "flaky_failure" | "error":
                     handle_failure(curr_flakes, test_id, testrun, repo_id)
