@@ -1,7 +1,7 @@
-import datetime as dt
 import enum
 
 import factory
+from django.utils import timezone
 from factory.django import DjangoModelFactory
 
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
@@ -149,7 +149,7 @@ class FlakeFactory(DjangoModelFactory):
     recent_passes_count = 0
     count = 0
     fail_count = 0
-    start_date = dt.datetime.now()
+    start_date = timezone.now()
 
 
 class DailyTestRollupFactory(DjangoModelFactory):
@@ -157,7 +157,7 @@ class DailyTestRollupFactory(DjangoModelFactory):
         model = DailyTestRollup
 
     test = factory.SubFactory(TestFactory)
-    date = dt.date.today()
+    date = timezone.now().date()
     repoid = factory.SelfAttribute("test.repository.repoid")
     branch = "main"
 
@@ -168,7 +168,7 @@ class DailyTestRollupFactory(DjangoModelFactory):
 
     last_duration_seconds = 0.0
     avg_duration_seconds = 0.0
-    latest_run = dt.datetime.now()
+    latest_run = timezone.now()
     commits_where_fail: list[str] = []
 
 
@@ -186,4 +186,4 @@ class LastCacheRollupDateFactory(DjangoModelFactory):
 
     repository = factory.SubFactory(RepositoryFactory)
     branch = "main"
-    last_rollup_date = dt.date.today()
+    last_rollup_date = timezone.now().date()

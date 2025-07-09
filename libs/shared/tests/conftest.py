@@ -7,6 +7,7 @@ from shared.config import ConfigHelper
 from shared.reports.resources import Report, ReportFile, Session
 from shared.reports.types import ReportLine
 from shared.storage.memory import MemoryStorageService
+from shared.testutils import django_setup_test_db
 
 
 @pytest.fixture
@@ -91,3 +92,24 @@ def sample_report():
     report.add_session(Session(id=3, flags=[]))
     # TODO manually fix Session totals because the defautl logic doesn't
     return report
+
+
+@pytest.fixture(scope="session")
+def django_db_setup(
+    request: pytest.FixtureRequest,
+    django_test_environment: None,
+    django_db_blocker,
+    django_db_use_migrations: bool,
+    django_db_keepdb: bool,
+    django_db_createdb: bool,
+    django_db_modify_db_settings: None,
+):
+    yield from django_setup_test_db(
+        request,
+        django_test_environment,
+        django_db_blocker,
+        django_db_use_migrations,
+        django_db_keepdb,
+        django_db_createdb,
+        django_db_modify_db_settings,
+    )

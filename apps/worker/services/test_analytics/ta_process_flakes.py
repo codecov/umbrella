@@ -1,7 +1,8 @@
 import logging
-from datetime import datetime
+from datetime import timedelta
 
 from django.db.models import Q, QuerySet
+from django.utils import timezone
 from redis.exceptions import LockError
 
 from services.test_analytics.ta_metrics import process_flakes_summary
@@ -11,8 +12,6 @@ from shared.django_apps.test_analytics.models import Flake
 from shared.helpers.redis import get_redis_connection
 
 log = logging.getLogger(__name__)
-
-FAIL_FILTER = Q(outcome="failure") | Q(outcome="flaky_failure") | Q(outcome="error")
 
 LOCK_NAME = "ta_flake_lock:{}"
 KEY_NAME = "ta_flake_key:{}"
@@ -37,9 +36,10 @@ def get_testruns(
     upload: ReportSession, curr_flakes: dict[bytes, Flake]
 ) -> QuerySet[Testrun]:
     upload_filter = Q(upload_id=upload.id)
-    flaky_pass_filter = Q(outcome="pass") & Q(test_id__in=curr_flakes.keys())
+
+    # we won't process flakes for testruns older than 1 day
     return Testrun.objects.filter(
-        upload_filter & (FAIL_FILTER | flaky_pass_filter)
+        Q(timestamp__gte=timezone.now() - timedelta(days=1)) & upload_filter
     ).order_by("timestamp")
 
 
@@ -51,7 +51,7 @@ def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
     curr_flakes[test_id].recent_passes_count += 1
     curr_flakes[test_id].count += 1
     if curr_flakes[test_id].recent_passes_count == 30:
-        curr_flakes[test_id].end_date = datetime.now()
+        curr_flakes[test_id].end_date = timezone.now()
         curr_flakes[test_id].save()
         del curr_flakes[test_id]
 
@@ -60,22 +60,24 @@ def handle_failure(
     curr_flakes: dict[bytes, Flake], test_id: bytes, testrun: Testrun, repo_id: int
 ):
     existing_flake = curr_flakes.get(test_id)
+
     if existing_flake:
         existing_flake.fail_count += 1
         existing_flake.count += 1
         existing_flake.recent_passes_count = 0
     else:
-        if testrun.outcome != "flaky_failure":
-            testrun.outcome = "flaky_failure"
         new_flake = Flake(
             repoid=repo_id,
             test_id=test_id,
             count=1,
             fail_count=1,
             recent_passes_count=0,
-            start_date=datetime.now(),
+            start_date=timezone.now(),
         )
         curr_flakes[test_id] = new_flake
+
+    if testrun.outcome != "flaky_failure":
+        testrun.outcome = "flaky_failure"
 
 
 def process_flakes_for_commit(repo_id: int, commit_id: str):
@@ -90,6 +92,9 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
             test_id = bytes(testrun.test_id)
             match testrun.outcome:
                 case "pass":
+                    if test_id not in curr_flakes:
+                        continue
+
                     handle_pass(curr_flakes, test_id)
                 case "failure" | "flaky_failure" | "error":
                     handle_failure(curr_flakes, test_id, testrun, repo_id)

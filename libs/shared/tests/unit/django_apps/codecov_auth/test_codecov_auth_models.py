@@ -1014,8 +1014,8 @@ class TestAccountModel(TransactionTestCase):
         self.assertTrue(
             AccountsUsers.objects.filter(account=enterprise_account).count(), 3
         )
-        self.assertFalse(enterprise_account.stripe_billing.first().is_active)
-        self.assertTrue(enterprise_account.invoice_billing.first().is_active)
+        self.assertFalse(enterprise_account.stripe_billing.is_active)
+        self.assertTrue(enterprise_account.invoice_billing.is_active)
         self.assertEqual(enterprise_account.all_user_count, 3)
         self.assertEqual(enterprise_account.organizations_count, 2)
         self.assertEqual(enterprise_account.activated_student_count, 0)

@@ -1,7 +1,7 @@
 import random
-from datetime import datetime
 
 import factory
+from django.utils import timezone
 from factory.django import DjangoModelFactory
 
 from shared.django_apps.timeseries import models
@@ -16,7 +16,7 @@ class MeasurementFactory(DjangoModelFactory):
     name = "testing"
     branch = "master"
     value = factory.LazyAttribute(lambda _: random.random() * 1000)
-    timestamp = factory.LazyAttribute(lambda _: datetime.now())
+    timestamp = factory.LazyAttribute(lambda _: timezone.now())
 
 
 class DatasetFactory(DjangoModelFactory):

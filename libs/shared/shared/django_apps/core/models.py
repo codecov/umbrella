@@ -409,6 +409,7 @@ class Pull(ExportModelOperationsMixin("core.pull"), models.Model):
                 fields=["repository", "id"],
                 name="pulls_repoid_id",
             ),
+            models.Index(fields=["-pullid"], name="pulls_pullid_desc"),
         ]
 
     def get_repository(self):

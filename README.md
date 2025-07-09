@@ -95,7 +95,8 @@ $ make devenv.test.api
 $ make devenv.test.shared
 ```
 
-These `make` targets capture a few magic incantations involved in running our tests but they don't allow you to specify specific test files you want to run. A shell function or custom script may be nicer.
+Including the extra parameter "EXTRA_PYTEST_ARGS" allows you to add additional options to the pytest run. For example, if you wanted to run tests in the shared foo directory you could
+run the command `make devenv.test.shared EXTRA_PYTEST_ARGS=foo`
 
 ### Submitting coverage and test results locally
 

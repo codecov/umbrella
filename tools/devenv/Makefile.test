@@ -1,11 +1,14 @@
 TEST_YML := ../../tools/devenv/config/test.yml
 
+# Optional EXTRA_PYTEST_ARGS variable to specify pytest path
+EXTRA_PYTEST_ARGS ?=
+
 .PHONY: devenv.test
 devenv.test: devenv.test.worker devenv.test.api devenv.test.shared
 
 .PHONY: devenv.test.worker
 devenv.test.worker:
-	docker exec -e COVERAGE_CORE=sysmon -e RUN_ENV=TESTING -e CODECOV_YML=${TEST_YML} -e DJANGO_SETTINGS_MODULE=django_scaffold.settings_test -it umbrella-worker-1 pytest --cov=./ --cov-report=xml:coverage.xml --junitxml=junit.xml -o junit_family=legacy --rootdir=/app -c pytest.ini
+	docker exec -e COVERAGE_CORE=sysmon -e RUN_ENV=TESTING -e CODECOV_YML=${TEST_YML} -e DJANGO_SETTINGS_MODULE=django_scaffold.settings_test -it umbrella-worker-1 pytest --cov=./ --cov-report=xml:coverage.xml --junitxml=junit.xml -o junit_family=legacy --rootdir=/app -c pytest.ini $(EXTRA_PYTEST_ARGS)
 
 .PHONY: devenv.upload.worker
 devenv.upload.worker:
@@ -14,7 +17,7 @@ devenv.upload.worker:
 
 .PHONY: devenv.test.api
 devenv.test.api:
-	docker exec -e COVERAGE_CORE=sysmon -e RUN_ENV=TESTING -e CODECOV_YML=${TEST_YML} -e DJANGO_SETTINGS_MODULE=codecov.settings_test -it umbrella-api-1 pytest --cov=./ --cov-report=xml:coverage.xml --junitxml=junit.xml -o junit_family=legacy --rootdir=/app -c pytest.ini
+	docker exec -e COVERAGE_CORE=sysmon -e RUN_ENV=TESTING -e CODECOV_YML=${TEST_YML} -e DJANGO_SETTINGS_MODULE=codecov.settings_test -it umbrella-api-1 pytest --cov=./ --cov-report=xml:coverage.xml --junitxml=junit.xml -o junit_family=legacy --rootdir=/app -c pytest.ini $(EXTRA_PYTEST_ARGS)
 
 .PHONY: devenv.upload.api
 devenv.upload.api:
@@ -23,7 +26,7 @@ devenv.upload.api:
 
 .PHONY: devenv.test.shared
 devenv.test.shared:
-	docker exec -e COVERAGE_CORE=sysmon -e RUN_ENV=TESTING -e CODECOV_YML=${TEST_YML} -e DJANGO_SETTINGS_MODULE=shared.django_apps.settings_test -it umbrella-shared-1 pytest --cov ./shared --cov-report=xml:tests/coverage.xml --junitxml=tests/junit.xml -o junit_family=legacy --rootdir=/app -c pytest.ini
+	docker exec -e COVERAGE_CORE=sysmon -e RUN_ENV=TESTING -e CODECOV_YML=${TEST_YML} -e DJANGO_SETTINGS_MODULE=shared.django_apps.settings_test -it umbrella-shared-1 pytest --cov ./shared --cov-report=xml:tests/coverage.xml --junitxml=tests/junit.xml -o junit_family=legacy --rootdir=/app -c pytest.ini $(EXTRA_PYTEST_ARGS)
 
 .PHONY: devenv.upload.shared
 devenv.upload.shared:

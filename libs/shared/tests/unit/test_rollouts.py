@@ -8,11 +8,19 @@ from shared.django_apps.rollouts.models import (
     FeatureFlag,
     FeatureFlagVariant,
     RolloutUniverse,
+    ff_value_default,
 )
 from shared.rollouts import Feature
 
 
 class TestFeature(TestCase):
+    def test_default_value(self):
+        assert ff_value_default() is False
+
+        ff = FeatureFlag.objects.create(name="basic")
+        basic = FeatureFlagVariant.objects.create(feature_flag=ff)
+        assert basic.value is False
+
     def test_buckets(self):
         complex = FeatureFlag.objects.create(
             name="complex", proportion=0.5, salt="random_salt"

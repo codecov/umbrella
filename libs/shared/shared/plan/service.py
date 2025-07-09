@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from functools import cached_property
 
 from django.conf import settings
+from django.utils import timezone
 
 from shared.config import get_config
 from shared.django_apps.codecov.commands.exceptions import ValidationError
@@ -111,6 +112,13 @@ class PlanService:
         return self.current_org.total_seat_count
 
     @property
+    def free_seat_count(self) -> int:
+        """Returns the number of free seats for the organization."""
+        if self.has_account:
+            return self.current_org.account.free_seat_count
+        return self.current_org.free or 0
+
+    @property
     def plan_activated_users(self) -> list[int] | None:
         """Returns the list of activated users for the plan."""
         return self.current_org.plan_activated_users
@@ -172,7 +180,9 @@ class PlanService:
 
         if (
             not self.plan_activated_users
-            or len(self.plan_activated_users) <= TEAM_PLAN_MAX_USERS
+            # Allow team plan purchase up to TEAM_PLAN_MAX_USERS + free seats
+            or len(self.plan_activated_users)
+            <= (TEAM_PLAN_MAX_USERS + self.free_seat_count)
         ):
             available_tiers.append(TierName.TEAM.value)
 
@@ -191,7 +201,7 @@ class PlanService:
         is_extension: bool = False,
     ) -> None:
         """Helper method to start or extend a trial for the organization."""
-        start_date = datetime.now()
+        start_date = timezone.now()
 
         if not is_extension:
             self.current_org.trial_start_date = start_date
@@ -250,7 +260,7 @@ class PlanService:
         """Cancels the ongoing trial for the organization."""
         if not self.is_org_trialing:
             raise ValidationError("Cannot cancel a trial that is not ongoing")
-        now = datetime.now()
+        now = timezone.now()
         self.current_org.trial_status = TrialStatus.EXPIRED.value
         self.current_org.trial_end_date = now
         self.set_default_plan_data()
@@ -273,7 +283,7 @@ class PlanService:
             self.current_org.plan_user_count = (
                 self.current_org.pretrial_users_count or 1
             )
-            self.current_org.trial_end_date = datetime.now()
+            self.current_org.trial_end_date = timezone.now()
 
             self.current_org.save()
 
