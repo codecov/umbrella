@@ -44,13 +44,13 @@ def test_measurement_agg_1day():
 
 def test_measurement_agg_7day():
     # Week 1: Monday, Tuesday, Sunday
-    MeasurementFactory(timestamp=datetime(2022, 1, 3), value=1)
-    MeasurementFactory(timestamp=datetime(2022, 1, 4), value=2)
-    MeasurementFactory(timestamp=datetime(2022, 1, 9), value=3)
+    MeasurementFactory(timestamp=datetime(2022, 1, 3, tzinfo=UTC), value=1)
+    MeasurementFactory(timestamp=datetime(2022, 1, 4, tzinfo=UTC), value=2)
+    MeasurementFactory(timestamp=datetime(2022, 1, 9, tzinfo=UTC), value=3)
 
     # Week 2: Monday, Sunday
-    MeasurementFactory(timestamp=datetime(2022, 1, 10), value=4)
-    MeasurementFactory(timestamp=datetime(2022, 1, 16), value=5)
+    MeasurementFactory(timestamp=datetime(2022, 1, 10, tzinfo=UTC), value=4)
+    MeasurementFactory(timestamp=datetime(2022, 1, 16, tzinfo=UTC), value=5)
 
     with connections["timeseries"].cursor() as cursor:
         cursor.execute(
@@ -74,12 +74,12 @@ def test_measurement_agg_30day():
     # Timescale's origin for time buckets is 2000-01-03
     # 30 day offsets will be aligned on that origin
 
-    MeasurementFactory(timestamp=datetime(2000, 1, 3), value=1)
-    MeasurementFactory(timestamp=datetime(2000, 1, 4), value=2)
-    MeasurementFactory(timestamp=datetime(2000, 2, 1), value=3)
+    MeasurementFactory(timestamp=datetime(2000, 1, 3, tzinfo=UTC), value=1)
+    MeasurementFactory(timestamp=datetime(2000, 1, 4, tzinfo=UTC), value=2)
+    MeasurementFactory(timestamp=datetime(2000, 2, 1, tzinfo=UTC), value=3)
 
-    MeasurementFactory(timestamp=datetime(2000, 2, 2), value=4)
-    MeasurementFactory(timestamp=datetime(2000, 2, 11), value=5)
+    MeasurementFactory(timestamp=datetime(2000, 2, 2, tzinfo=UTC), value=4)
+    MeasurementFactory(timestamp=datetime(2000, 2, 11, tzinfo=UTC), value=5)
 
     with connections["timeseries"].cursor() as cursor:
         cursor.execute(
@@ -109,7 +109,7 @@ def test_is_backfilled_true():
     dataset = DatasetFactory()
 
     Dataset.objects.filter(pk=dataset.pk).update(
-        created_at=datetime(2022, 1, 1, 0, 0, 0)
+        created_at=datetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC),
     )
 
     dataset.refresh_from_db()
@@ -121,7 +121,7 @@ def test_is_backfilled_false():
     dataset = DatasetFactory()
 
     Dataset.objects.filter(pk=dataset.pk).update(
-        created_at=datetime(2022, 1, 1, 0, 0, 0)
+        created_at=datetime(2022, 1, 1, 0, 0, 0, tzinfo=UTC),
     )
 
     dataset.refresh_from_db()

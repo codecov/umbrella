@@ -24,7 +24,6 @@ class TestMarketo:
         this_config = ConfigHelper()
         mocker.patch("shared.config._get_config_instance", return_value=this_config)
 
-    @pytest.mark.asyncio
     def test_make_rest_request(self, mocker, mock_setup):
         with respx.mock:
             respx.get(
@@ -81,7 +80,6 @@ class TestMarketo:
                 ],
             }
 
-    @pytest.mark.asyncio
     def test_track_event(self, mocker, mock_setup):
         class uuid:
             bytes = b"\x00\x01\x02"
@@ -147,7 +145,6 @@ class TestMarketo:
                 ],
             }
 
-    @pytest.mark.asyncio
     def test_make_failed_rest_request(self, mocker, mock_setup):
         with respx.mock:
             respx.get(
@@ -184,7 +181,6 @@ class TestMarketo:
             assert exc.value.code == "601"
             assert exc.value.message == "Unauthorized"
 
-    @pytest.mark.asyncio
     def test_make_rest_request_failed_record_level(self, mocker, mock_setup):
         with respx.mock:
             respx.get(

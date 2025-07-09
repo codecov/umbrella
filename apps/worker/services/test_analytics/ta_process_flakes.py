@@ -1,7 +1,8 @@
 import logging
-from datetime import datetime
+from datetime import timedelta
 
 from django.db.models import Q, QuerySet
+from django.utils import timezone
 from redis.exceptions import LockError
 
 from services.test_analytics.ta_metrics import process_flakes_summary
@@ -38,8 +39,12 @@ def get_testruns(
 ) -> QuerySet[Testrun]:
     upload_filter = Q(upload_id=upload.id)
     flaky_pass_filter = Q(outcome="pass") & Q(test_id__in=curr_flakes.keys())
+
+    # we won't process flakes for testruns older than 1 day
     return Testrun.objects.filter(
-        upload_filter & (FAIL_FILTER | flaky_pass_filter)
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & upload_filter
+        & (FAIL_FILTER | flaky_pass_filter)
     ).order_by("timestamp")
 
 
@@ -51,7 +56,7 @@ def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
     curr_flakes[test_id].recent_passes_count += 1
     curr_flakes[test_id].count += 1
     if curr_flakes[test_id].recent_passes_count == 30:
-        curr_flakes[test_id].end_date = datetime.now()
+        curr_flakes[test_id].end_date = timezone.now()
         curr_flakes[test_id].save()
         del curr_flakes[test_id]
 
@@ -73,7 +78,7 @@ def handle_failure(
             count=1,
             fail_count=1,
             recent_passes_count=0,
-            start_date=datetime.now(),
+            start_date=timezone.now(),
         )
         curr_flakes[test_id] = new_flake
 

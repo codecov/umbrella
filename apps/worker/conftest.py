@@ -21,7 +21,29 @@ from helpers.logging_config import get_logging_config_dict
 from shared.config import ConfigHelper
 from shared.rollouts import Feature
 from shared.storage.memory import MemoryStorageService
+from shared.testutils import django_setup_test_db
 from shared.torngit import Github as GithubHandler
+
+
+@pytest.fixture(scope="session")
+def django_db_setup(
+    request: pytest.FixtureRequest,
+    django_test_environment,
+    django_db_blocker,
+    django_db_use_migrations,
+    django_db_keepdb,
+    django_db_createdb,
+    django_db_modify_db_settings,
+):
+    yield from django_setup_test_db(
+        request,
+        django_test_environment,
+        django_db_blocker,
+        django_db_use_migrations,
+        django_db_keepdb,
+        django_db_createdb,
+        django_db_modify_db_settings,
+    )
 
 
 # @pytest.hookimpl(tryfirst=True)
@@ -105,23 +127,16 @@ def sqlalchemy_db(request: pytest.FixtureRequest, django_db_blocker, django_db_s
         original_test_name = settings.DATABASES["default"]["TEST"]["NAME"]
         settings.DATABASES["default"]["NAME"] = "sqlalchemy"
         settings.DATABASES["default"]["TEST"]["NAME"] = "test_postgres_sqlalchemy"
-        for connection in connections:
-            if "timeseries" in connection:
-                with connections[connection].cursor() as cursor:
-                    cursor.execute(
-                        "SELECT _timescaledb_internal.stop_background_workers();"
-                    )
+
+        aliases = {"default"}
+
         db_cfg = setup_databases(
             verbosity=request.config.option.verbose,
             interactive=False,
+            aliases=aliases,
             keepdb=keepdb,
         )
-        for connection in connections:
-            if "timeseries" in connection:
-                with connections[connection].cursor() as cursor:
-                    cursor.execute(
-                        "SELECT _timescaledb_internal.start_background_workers();"
-                    )
+
         settings.DATABASES["default"]["NAME"] = original_db_name
         settings.DATABASES["default"]["TEST"]["NAME"] = original_test_name
 

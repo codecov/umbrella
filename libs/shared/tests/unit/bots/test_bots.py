@@ -1,7 +1,7 @@
-import datetime
 from unittest.mock import patch
 
 import pytest
+from django.utils import timezone
 
 from shared.bots import get_adapter_auth_information
 from shared.bots.types import AdapterAuthInformation
@@ -109,7 +109,7 @@ class TestGettingAdapterAuthInformation:
                     name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
-                    created_at=datetime.datetime.now(datetime.UTC),
+                    created_at=timezone.now(),
                 )
             ]
             owner = self._generate_test_owner(
@@ -148,7 +148,7 @@ class TestGettingAdapterAuthInformation:
                     name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
-                    created_at=datetime.datetime.now(datetime.UTC),
+                    created_at=timezone.now(),
                 )
             ]
             owner = self._generate_test_owner(
@@ -211,7 +211,7 @@ class TestGettingAdapterAuthInformation:
                     name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
-                    created_at=datetime.datetime.now(datetime.UTC),
+                    created_at=timezone.now(),
                 ),
                 # This should be ignored in the selection because of the name
                 GithubAppInstallation(
@@ -220,7 +220,7 @@ class TestGettingAdapterAuthInformation:
                     name="my_dedicated_app",
                     app_id=300,
                     pem_path="pem_path",
-                    created_at=datetime.datetime.now(datetime.UTC),
+                    created_at=timezone.now(),
                 ),
             ]
             owner = self._generate_test_owner(
@@ -259,7 +259,7 @@ class TestGettingAdapterAuthInformation:
                     name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
-                    created_at=datetime.datetime.now(),
+                    created_at=timezone.now(),
                 ),
                 # This should be selected first
                 GithubAppInstallation(
@@ -268,7 +268,7 @@ class TestGettingAdapterAuthInformation:
                     name="my_dedicated_app",
                     app_id=300,
                     pem_path="pem_path",
-                    created_at=datetime.datetime.now(datetime.UTC),
+                    created_at=timezone.now(),
                 ),
             ]
             owner = self._generate_test_owner(
@@ -464,7 +464,7 @@ class TestGettingAdapterAuthInformation:
                     name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
-                    created_at=datetime.datetime.now(datetime.UTC),
+                    created_at=timezone.now(),
                 )
             ]
             repo = self._generate_test_repo(
@@ -534,7 +534,7 @@ class TestGettingAdapterAuthInformation:
                     name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
-                    created_at=datetime.datetime.now(datetime.UTC),
+                    created_at=timezone.now(),
                 ),
                 # This should be ignored in the selection because of the name
                 GithubAppInstallation(
@@ -543,7 +543,7 @@ class TestGettingAdapterAuthInformation:
                     name="my_dedicated_app",
                     app_id=300,
                     pem_path="pem_path",
-                    created_at=datetime.datetime.now(datetime.UTC),
+                    created_at=timezone.now(),
                 ),
             ]
             repo = self._generate_test_repo(
@@ -584,7 +584,7 @@ class TestGettingAdapterAuthInformation:
                     name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
                     app_id=200,
                     pem_path="pem_path",
-                    created_at=datetime.datetime.now(datetime.UTC),
+                    created_at=timezone.now(),
                 ),
                 # This should be selected first
                 GithubAppInstallation(
@@ -593,7 +593,7 @@ class TestGettingAdapterAuthInformation:
                     name="my_dedicated_app",
                     app_id=300,
                     pem_path="pem_path",
-                    created_at=datetime.datetime.now(datetime.UTC),
+                    created_at=timezone.now(),
                 ),
             ]
             repo = self._generate_test_repo(
