@@ -57,7 +57,7 @@ def insert_testrun(
             outcome = "failure"
 
         if outcome == "failure" and flaky_test_ids and test_id in flaky_test_ids:
-            outcome = "flaky_failure"
+            outcome = "flaky_fail"
 
         testruns_to_create.append(
             Testrun(
@@ -103,7 +103,7 @@ def get_pr_comment_failures(repo_id: int, commit_sha: str) -> list[TestInstance]
                 LAST(upload_id, timestamp) as upload_id,
                 LAST(duration_seconds, timestamp) as duration_seconds
             FROM ta_timeseries_testrun
-            WHERE repo_id = %s AND commit_sha = %s AND outcome IN ('failure', 'flaky_failure')
+            WHERE repo_id = %s AND commit_sha = %s AND outcome IN ('failure', 'flaky_fail')
             GROUP BY test_id
             """,
             [repo_id, commit_sha],
@@ -147,7 +147,7 @@ def get_pr_comment_agg(repo_id: int, commit_sha: str) -> PRCommentAgg:
         return {
             "passed": outcome_dict.get("pass", 0),
             "failed": outcome_dict.get("failure", 0)
-            + outcome_dict.get("flaky_failure", 0),
+            + outcome_dict.get("flaky_fail", 0),
             "skipped": outcome_dict.get("skip", 0),
         }
 
@@ -161,7 +161,7 @@ def get_testruns_for_flake_detection(
             Q(upload_id=upload_id)
             & (
                 Q(outcome="failure")
-                | Q(outcome="flaky_failure")
+                | Q(outcome="flaky_fail")
                 | (Q(outcome="pass") & Q(test_id__in=flaky_test_ids))
             )
         )
@@ -172,7 +172,7 @@ def update_testrun_to_flaky(timestamp: datetime, test_id: bytes):
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(
             "UPDATE ta_timeseries_testrun SET outcome = %s WHERE timestamp = %s AND test_id = %s",
-            ["flaky_failure", timestamp, test_id],
+            ["flaky_fail", timestamp, test_id],
         )
 
 
@@ -227,13 +227,13 @@ def get_testrun_branch_summary_via_testrun(
                 time_bucket(interval '1 days', timestamp) as timestamp_bin,
 
                 min(computed_name) as computed_name,
-                COUNT(DISTINCT CASE WHEN outcome = 'failure' OR outcome = 'flaky_failure' THEN commit_sha ELSE NULL END) AS failing_commits,
+                COUNT(DISTINCT CASE WHEN outcome = 'failure' OR outcome = 'flaky_fail' THEN commit_sha ELSE NULL END) AS failing_commits,
                 last(duration_seconds, timestamp) as last_duration_seconds,
                 avg(duration_seconds) as avg_duration_seconds,
                 COUNT(*) FILTER (WHERE outcome = 'pass') AS pass_count,
                 COUNT(*) FILTER (WHERE outcome = 'failure') AS fail_count,
                 COUNT(*) FILTER (WHERE outcome = 'skip') AS skip_count,
-                COUNT(*) FILTER (WHERE outcome = 'flaky_failure') AS flaky_fail_count,
+                COUNT(*) FILTER (WHERE outcome = 'flaky_fail') AS flaky_fail_count,
                 MAX(timestamp) AS updated_at,
                 array_merge_dedup_agg(flags) as flags
             from ta_timeseries_testrun

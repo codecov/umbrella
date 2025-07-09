@@ -76,8 +76,8 @@ def handle_failure(
         )
         curr_flakes[test_id] = new_flake
 
-    if testrun.outcome != "flaky_failure":
-        testrun.outcome = "flaky_failure"
+    if testrun.outcome != "flaky_fail":
+        testrun.outcome = "flaky_fail"
 
 
 def process_flakes_for_commit(repo_id: int, commit_id: str):
@@ -96,7 +96,7 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
                         continue
 
                     handle_pass(curr_flakes, test_id)
-                case "failure" | "flaky_failure" | "error":
+                case "failure" | "flaky_fail" | "error":
                     handle_failure(curr_flakes, test_id, testrun, repo_id)
                 case _:
                     continue

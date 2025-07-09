@@ -131,7 +131,7 @@ def test_testrun_filters(setup_test_data, snapshot):
                     {"test_id": "test1", "outcome": "pass"},
                     {"test_id": "test2", "outcome": "pass"},
                     {"test_id": "test3", "outcome": "failure"},
-                    {"test_id": "test4", "outcome": "flaky_failure"},
+                    {"test_id": "test4", "outcome": "flaky_fail"},
                     {"test_id": "test5", "outcome": "error"},
                     {"test_id": "test6", "outcome": "skip"},
                 ],
@@ -192,7 +192,7 @@ def test_create_new_flakes(setup_test_data):
                 "state": "processed",
                 "testruns": [
                     {"test_id": "test1", "outcome": "failure"},
-                    {"test_id": "test2", "outcome": "flaky_failure"},
+                    {"test_id": "test2", "outcome": "flaky_fail"},
                     {"test_id": "test3", "outcome": "error"},
                 ],
             }
@@ -289,7 +289,7 @@ def test_testrun_outcome_updates(setup_test_data):
                 "testruns": [
                     {"test_id": "test1", "outcome": "failure"},
                     {"test_id": "test2", "outcome": "error"},
-                    {"test_id": "test3", "outcome": "flaky_failure"},
+                    {"test_id": "test3", "outcome": "flaky_fail"},
                 ],
             }
         ],
@@ -304,7 +304,7 @@ def test_testrun_outcome_updates(setup_test_data):
     }
 
     assert testruns == {
-        "test1": "flaky_failure",  # Updated from failure
-        "test2": "flaky_failure",  # Updated from error
-        "test3": "flaky_failure",  # Already flaky_failure, unchanged
+        "test1": "flaky_fail",  # Updated from failure
+        "test2": "flaky_fail",  # Updated from error
+        "test3": "flaky_fail",  # Already flaky_fail, unchanged
     }

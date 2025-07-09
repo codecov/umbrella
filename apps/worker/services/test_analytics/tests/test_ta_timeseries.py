@@ -195,7 +195,7 @@ def test_get_testruns_for_flake_detection(db):
     assert testruns[0].outcome == "failure"
     assert testruns[0].failure_message == "failure_message"
     assert testruns[0].name == "test_name"
-    assert testruns[1].outcome == "flaky_failure"
+    assert testruns[1].outcome == "flaky_fail"
     assert testruns[1].failure_message == "failure_message"
     assert testruns[1].name == "flaky_test_name"
     assert testruns[2].outcome == "pass"
@@ -239,7 +239,7 @@ def test_update_testrun_to_flaky():
         classname="test_classname",
         testsuite="test_suite",
     )
-    assert testrun.outcome == "flaky_failure"
+    assert testrun.outcome == "flaky_fail"
 
 
 @pytest.fixture
