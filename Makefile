@@ -56,7 +56,7 @@ define api_rule_prefix
 $(1): export APP_DIR := apps/codecov-api
 $(1): export AR_REPO ?= ${AR_REPO_PREFIX}/api
 $(1): export DOCKERHUB_REPO ?= codecov/self-hosted-api
-$(1): export ENTRYPOINT ?= ./prod.sh
+$(1): export ENTRYPOINT ?= ./api.sh
 $(1): export DJANGO_SETTINGS_PARENT ?= codecov
 endef
 
