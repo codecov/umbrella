@@ -1645,8 +1645,8 @@ class TestProjectChecksNotifier:
                 "text": "\n".join(
                     [
                         f"## [Codecov](test.example.br/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-                        "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-                        f"> Project coverage is 60.00%. Comparing base [(`{base_commit.commitid[:7]}`)](test.example.br/gh/test_build_default_payload/{repo.name}/commit/{base_commit.commitid}?dropdown=coverage&el=desc) to head [(`{head_commit.commitid[:7]}`)](test.example.br/gh/test_build_default_payload/{repo.name}/commit/{head_commit.commitid}?dropdown=coverage&el=desc)."
+                        ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+                        f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{base_commit.commitid[:7]}`](test.example.br/gh/test_build_default_payload/{repo.name}/commit/{base_commit.commitid}?dropdown=coverage&el=desc)) to head ([`{head_commit.commitid[:7]}`](test.example.br/gh/test_build_default_payload/{repo.name}/commit/{head_commit.commitid}?dropdown=coverage&el=desc))."
                         f"",
                         "",
                         f"| [Files with missing lines](test.example.br/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
@@ -1696,8 +1696,8 @@ class TestProjectChecksNotifier:
                 "text": "\n".join(
                     [
                         f"## [Codecov](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-                        "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-                        f"> Project coverage is 60.00%. Comparing base [(`{base_commit.commitid[:7]}`)](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/commit/{base_commit.commitid}?dropdown=coverage&el=desc) to head [(`{head_commit.commitid[:7]}`)](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/commit/{head_commit.commitid}?dropdown=coverage&el=desc)."
+                        ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+                        f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{base_commit.commitid[:7]}`](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/commit/{base_commit.commitid}?dropdown=coverage&el=desc)) to head ([`{head_commit.commitid[:7]}`](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/commit/{head_commit.commitid}?dropdown=coverage&el=desc))."
                         f"",
                         "",
                         f"| [Files with missing lines](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
@@ -1748,8 +1748,8 @@ class TestProjectChecksNotifier:
                 "text": "\n".join(
                     [
                         f"## [Codecov](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-                        "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-                        f"> Project coverage is 60.00%. Comparing base [(`{base_commit.commitid[:7]}`)](test.example.br/gh/{test_name}/{repo.name}/commit/{base_commit.commitid}?dropdown=coverage&el=desc) to head [(`{head_commit.commitid[:7]}`)](test.example.br/gh/{test_name}/{repo.name}/commit/{head_commit.commitid}?dropdown=coverage&el=desc).",
+                        ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+                        f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{base_commit.commitid[:7]}`](test.example.br/gh/{test_name}/{repo.name}/commit/{base_commit.commitid}?dropdown=coverage&el=desc)) to head ([`{head_commit.commitid[:7]}`](test.example.br/gh/{test_name}/{repo.name}/commit/{head_commit.commitid}?dropdown=coverage&el=desc)).",
                         "",
                         f"| [Files with missing lines](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
                         "|---|---|---|",

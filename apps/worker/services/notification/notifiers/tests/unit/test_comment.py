@@ -627,8 +627,8 @@ class TestCommentNotifier:
         repository = sample_comparison.head.commit.repository
         expected_result = [
             f"## [Codecov](https://app.codecov.io/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 60.00%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](https://app.codecov.io/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](https://app.codecov.io/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{sample_comparison.project_coverage_base.commit.commitid[:7]}`](https://app.codecov.io/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{sample_comparison.head.commit.commitid[:7]}`](https://app.codecov.io/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"| [Files with missing lines](https://app.codecov.io/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=tree) | Coverage Δ | Complexity Δ | |",
             "|---|---|---|---|",
@@ -686,8 +686,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Project coverage is 60.00%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{sample_comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{sample_comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"| [Files with missing lines](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -765,8 +765,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 100.00%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
+            f":white_check_mark: Project coverage is 100.00%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"| [Flag](test.example.br/gh/{repository.slug}/pull/{pull.pullid}/flags?src=pr&el=flags) | Coverage Δ | |",
             "|---|---|---|",
@@ -817,8 +817,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Project coverage is 60.00%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"| [Files with missing lines](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -1117,8 +1117,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Project coverage is 60.00%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{sample_comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{sample_comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"| [Files with missing lines](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -1196,8 +1196,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Please [upload](https://docs.codecov.com/docs/codecov-uploader) report for BASE (`master@{comparison.project_coverage_base.commit.commitid[:7]}`). [Learn more](https://docs.codecov.io/docs/error-reference#section-missing-base-commit) about missing BASE report.",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":warning: Please [upload](https://docs.codecov.com/docs/codecov-uploader) report for BASE (`master@{comparison.project_coverage_base.commit.commitid[:7]}`). [Learn more](https://docs.codecov.io/docs/error-reference#section-missing-base-commit) about missing BASE report.",
             "",
             f"| [Files with missing lines](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -1272,8 +1272,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            "> Please [upload](https://docs.codecov.com/docs/codecov-uploader) report for BASE (`master@cdf9aa4`). [Learn more](https://docs.codecov.io/docs/error-reference#section-missing-base-commit) about missing BASE report.",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            ":warning: Please [upload](https://docs.codecov.com/docs/codecov-uploader) report for BASE (`master@cdf9aa4`). [Learn more](https://docs.codecov.io/docs/error-reference#section-missing-base-commit) about missing BASE report.",
             "",
             f"| [Files with missing lines](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -1350,8 +1350,8 @@ class TestCommentNotifier:
 
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Project coverage is 60.00%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"| [Files with missing lines](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -1428,8 +1428,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 50.00%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
+            f":white_check_mark: Project coverage is 50.00%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"[![Impacted file tree graph](test.example.br/gh/{repository.slug}/pull/{pull.pullid}/graphs/tree.svg?width=650&height=150&src=pr&token={repository.image_token})](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?src=pr&el=tree)",
             "",
@@ -1525,8 +1525,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 88.54%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
+            f":white_check_mark: Project coverage is 88.54%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             "```diff",
             "@@            Coverage Diff             @@",
@@ -1593,8 +1593,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 88.54%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
+            f":white_check_mark: Project coverage is 88.54%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
         ]
         li = 0
@@ -1625,8 +1625,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Project coverage is 60.00%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{sample_comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{sample_comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"| [Files with missing lines](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -1706,8 +1706,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 65.38%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
+            f":white_check_mark: Project coverage is 65.38%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"[![Impacted file tree graph](test.example.br/gh/{repository.slug}/pull/{pull.pullid}/graphs/tree.svg?width=650&height=150&src=pr&token={repository.image_token})](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?src=pr&el=tree)",
             "",
@@ -1762,8 +1762,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 65.38%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
+            f":white_check_mark: Project coverage is 65.38%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"[![Impacted file tree graph](test.example.br/gh/{repository.slug}/pull/{pull.pullid}/graphs/tree.svg?width=650&height=150&src=pr&token={repository.image_token})](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?src=pr&el=tree)",
             "",
@@ -1836,8 +1836,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 65.38%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
+            f":white_check_mark: Project coverage is 65.38%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"[![Impacted file tree graph](test.example.br/gh/{repository.slug}/pull/{pull.pullid}/graphs/tree.svg?width=650&height=150&src=pr&token={repository.image_token})](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?src=pr&el=tree)",
             "",
@@ -1910,8 +1910,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 65.38%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
+            f":white_check_mark: Project coverage is 65.38%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"[![Impacted file tree graph](test.example.br/gh/{repository.slug}/pull/{pull.pullid}/graphs/tree.svg?width=650&height=150&src=pr&token={repository.image_token})](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?src=pr&el=tree)",
             "",
@@ -1980,8 +1980,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Project coverage is 60.00%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{sample_comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{sample_comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
         ]
         for exp, res in zip(expected_result, result):
@@ -2042,8 +2042,8 @@ class TestCommentNotifier:
         result = notifier.build_message(sample_comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Project coverage is 60.00%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{sample_comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{sample_comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"| [Files with missing lines](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -2871,8 +2871,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Project coverage is 60.00%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{sample_comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{sample_comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             "<details><summary>Additional details and impacted files</summary>\n",
             "",
@@ -2906,8 +2906,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Project coverage is 60.00%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{sample_comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{sample_comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             ":mega: message",
             "",
@@ -2944,8 +2944,8 @@ class TestCommentNotifier:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Project coverage is 60.00%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{sample_comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{sample_comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{sample_comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"[![Impacted file tree graph](test.example.br/gh/{repository.slug}/pull/{pull.pullid}/graphs/tree.svg?width=650&height=150&src=pr&token={repository.image_token})](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?src=pr&el=tree)",
             "",
@@ -3326,7 +3326,7 @@ class TestFileSectionWriter:
 
 
 class TestNewHeaderSectionWriter:
-    def test_new_header_section_writer(self, mocker, sample_comparison):
+    def test_new_header_section_writer(self, mocker, sample_comparison, snapshot):
         writer = HeaderSectionWriter(
             mocker.MagicMock(),
             mocker.MagicMock(),
@@ -3346,12 +3346,11 @@ class TestNewHeaderSectionWriter:
                 links={"pull": "urlurl", "base": "urlurl", "head": "headurl"},
             )
         )
-        assert res == [
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 0%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](urlurl?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](headurl?dropdown=coverage&el=desc).",
-        ]
+        assert snapshot("json") == res
 
-    def test_new_header_section_writer_with_behind_by(self, mocker, sample_comparison):
+    def test_new_header_section_writer_with_behind_by(
+        self, mocker, sample_comparison, snapshot
+    ):
         writer = HeaderSectionWriter(
             mocker.MagicMock(),
             mocker.MagicMock(),
@@ -3372,14 +3371,10 @@ class TestNewHeaderSectionWriter:
                 behind_by=3,
             )
         )
-        assert res == [
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 0%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](urlurl?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](headurl?dropdown=coverage&el=desc).",
-            "> Report is 3 commits behind head on master.",
-        ]
+        assert snapshot("json") == res
 
     def test_new_header_section_writer_test_results_setup(
-        self, mocker, sample_comparison
+        self, mocker, sample_comparison, snapshot
     ):
         sample_comparison.context = ComparisonContext(all_tests_passed=True)
         writer = HeaderSectionWriter(
@@ -3401,19 +3396,14 @@ class TestNewHeaderSectionWriter:
                 links={"pull": "urlurl", "base": "urlurl", "head": "headurl"},
             )
         )
-        assert res == [
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 0%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](urlurl?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](headurl?dropdown=coverage&el=desc).",
-            "",
-            ":white_check_mark: All tests successful. No failed tests found.",
-        ]
+        assert snapshot("json") == res
 
     def test_new_header_section_writer_test_results_error(
-        self, mocker, sample_comparison
+        self, mocker, sample_comparison, snapshot
     ):
         sample_comparison.context = ComparisonContext(
             all_tests_passed=False,
-            test_results_error=":x: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format.",
+            test_results_error=":warning: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format.",
         )
         writer = HeaderSectionWriter(
             mocker.MagicMock(),
@@ -3434,15 +3424,10 @@ class TestNewHeaderSectionWriter:
                 links={"pull": "urlurl", "base": "urlurl", "head": "headurl"},
             )
         )
-        assert res == [
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 0%. Comparing base [(`{sample_comparison.project_coverage_base.commit.commitid[:7]}`)](urlurl?dropdown=coverage&el=desc) to head [(`{sample_comparison.head.commit.commitid[:7]}`)](headurl?dropdown=coverage&el=desc).",
-            "",
-            ":x: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format.",
-        ]
+        assert snapshot("json") == res
 
     def test_new_header_section_writer_no_project_coverage(
-        self, mocker, sample_comparison
+        self, mocker, sample_comparison, snapshot
     ):
         writer = HeaderSectionWriter(
             mocker.MagicMock(),
@@ -3463,12 +3448,10 @@ class TestNewHeaderSectionWriter:
                 links={"pull": "urlurl", "base": "urlurl", "head": "headurl"},
             )
         )
-        assert res == [
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-        ]
+        assert snapshot("json") == res
 
     def test_new_header_section_writer_no_project_coverage_test_results_setup(
-        self, mocker, sample_comparison
+        self, mocker, sample_comparison, snapshot
     ):
         sample_comparison.context = ComparisonContext(all_tests_passed=True)
         writer = HeaderSectionWriter(
@@ -3490,18 +3473,14 @@ class TestNewHeaderSectionWriter:
                 links={"pull": "urlurl", "base": "urlurl", "head": "headurl"},
             )
         )
-        assert res == [
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            "",
-            ":white_check_mark: All tests successful. No failed tests found.",
-        ]
+        assert snapshot("json") == res
 
     def test_new_header_section_writer_no_project_coverage_test_results_error(
-        self, mocker, sample_comparison
+        self, mocker, sample_comparison, snapshot
     ):
         sample_comparison.context = ComparisonContext(
             all_tests_passed=False,
-            test_results_error=":x: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format.",
+            test_results_error=":warning: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format.",
         )
         writer = HeaderSectionWriter(
             mocker.MagicMock(),
@@ -3522,11 +3501,7 @@ class TestNewHeaderSectionWriter:
                 links={"pull": "urlurl", "base": "urlurl", "head": "headurl"},
             )
         )
-        assert res == [
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            "",
-            ":x: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format.",
-        ]
+        assert snapshot("json") == res
 
 
 class TestAnnouncementsSectionWriter:
@@ -3658,8 +3633,8 @@ class TestCommentNotifierInNewLayout:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            "> Please [upload](https://docs.codecov.com/docs/codecov-uploader) report for BASE (`master@cdf9aa4`). [Learn more](https://docs.codecov.io/docs/error-reference#section-missing-base-commit) about missing BASE report.",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            ":warning: Please [upload](https://docs.codecov.com/docs/codecov-uploader) report for BASE (`master@cdf9aa4`). [Learn more](https://docs.codecov.io/docs/error-reference#section-missing-base-commit) about missing BASE report.",
             "",
             f"| [Files with missing lines](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -3729,8 +3704,8 @@ class TestCommentNotifierInNewLayout:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Please [upload](https://docs.codecov.com/docs/codecov-uploader) report for BASE (`master@{comparison.project_coverage_base.commit.commitid[:7]}`). [Learn more](https://docs.codecov.io/docs/error-reference#section-missing-base-commit) about missing BASE report.",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":warning: Please [upload](https://docs.codecov.com/docs/codecov-uploader) report for BASE (`master@{comparison.project_coverage_base.commit.commitid[:7]}`). [Learn more](https://docs.codecov.io/docs/error-reference#section-missing-base-commit) about missing BASE report.",
             "",
             f"| [Files with missing lines](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -3804,7 +3779,7 @@ class TestCommentNotifierInNewLayout:
         pull_url = f"test.example.br/gh/{repository.slug}/pull/{pull.pullid}"
         expected_result = [
             f"## [Codecov]({pull_url}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
             "",
             f"| [Files with missing lines]({pull_url}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -3846,7 +3821,7 @@ class TestCommentNotifierInNewLayout:
         pull_url = f"test.example.br/gh/{repository.slug}/pull/{pull.pullid}"
         expected_result = [
             f"## [Codecov]({pull_url}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
             "",
             f"| [Files with missing lines]({pull_url}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -3894,7 +3869,7 @@ class TestCommentNotifierInNewLayout:
         pull_url = f"test.example.br/gh/{repository.slug}/pull/{pull.pullid}"
         expected_result = [
             f"## [Codecov]({pull_url}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
             "",
             f"| [Files with missing lines]({pull_url}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
@@ -3935,12 +3910,12 @@ class TestCommentNotifierInNewLayout:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Project coverage is 60.00%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
-            f"> :exclamation: **Current head {comparison.head.commit.commitid[:7]} differs from pull request most recent head {comparison.enriched_pull.provider_pull['head']['commitid'][:7]}**",
-            "> ",
-            f"> Please [upload](https://docs.codecov.com/docs/codecov-uploader) reports for the commit {comparison.enriched_pull.provider_pull['head']['commitid'][:7]} to get more accurate results.",
+            f":warning: **Current head {comparison.head.commit.commitid[:7]} differs from pull request most recent head {comparison.enriched_pull.provider_pull['head']['commitid'][:7]}**",
+            "",
+            f"Please [upload](https://docs.codecov.com/docs/codecov-uploader) reports for the commit {comparison.enriched_pull.provider_pull['head']['commitid'][:7]} to get more accurate results.",
             "",
             "<details><summary>Additional details and impacted files</summary>\n",
             "",
@@ -4013,12 +3988,12 @@ class TestCommentNotifierInNewLayout:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-            f"> Project coverage is 60.00%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            f":white_check_mark: Project coverage is 60.00%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
-            f"> :exclamation: **Current head {comparison.head.commit.commitid[:7]} differs from pull request most recent head {comparison.enriched_pull.provider_pull['head']['commitid'][:7]}**",
-            "> ",
-            f"> Please [upload](https://docs.codecov.com/docs/codecov-uploader) reports for the commit {comparison.enriched_pull.provider_pull['head']['commitid'][:7]} to get more accurate results.",
+            f":warning: **Current head {comparison.head.commit.commitid[:7]} differs from pull request most recent head {comparison.enriched_pull.provider_pull['head']['commitid'][:7]}**",
+            "",
+            f"Please [upload](https://docs.codecov.com/docs/codecov-uploader) reports for the commit {comparison.enriched_pull.provider_pull['head']['commitid'][:7]} to get more accurate results.",
             "",
             "<details><summary>Additional details and impacted files</summary>\n",
             "",
@@ -4101,7 +4076,7 @@ class TestCommentNotifierInNewLayout:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
+            ":x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
             f"| [Files with missing lines](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
             "|---|---|---|",
             f"| [file\\_1.go](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?src=pr&el=tree#diff-ZmlsZV8xLmdv) | 66.67% | [1 Missing :warning: ](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?src=pr&el=tree) |",
@@ -4144,7 +4119,7 @@ class TestCommentNotifierInNewLayout:
 
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
             "",
             ":white_check_mark: All tests successful. No failed tests found.",
             "",
@@ -4163,7 +4138,7 @@ class TestCommentNotifierInNewLayout:
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         sample_comparison_coverage_carriedforward.context = ComparisonContext(
             all_tests_passed=False,
-            test_results_error=":x: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format.",
+            test_results_error=":warning: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format.",
         )
         comparison = sample_comparison_coverage_carriedforward
         comparison.repository_service.service = "github"
@@ -4187,9 +4162,9 @@ class TestCommentNotifierInNewLayout:
 
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
             "",
-            ":x: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format.",
+            ":warning: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format.",
             "",
             ":loudspeaker: Thoughts on this report? [Let us know!](https://github.com/codecov/feedback/issues/255)",
         ]
@@ -4230,7 +4205,7 @@ class TestCommentNotifierInNewLayout:
 
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
             "",
             ":loudspeaker: Thoughts on this report? [Let us know!](https://github.com/codecov/feedback/issues/255)",
         ]
@@ -4261,8 +4236,8 @@ class TestCommentNotifierInNewLayout:
         result = notifier.build_message(comparison)
         expected_result = [
             f"## [Codecov](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-            "All modified and coverable lines are covered by tests :white_check_mark:",
-            f"> Project coverage is 65.38%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc).",
+            ":white_check_mark: All modified and coverable lines are covered by tests",
+            f":white_check_mark: Project coverage is 65.38%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.project_coverage_base.commit.commitid}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`](test.example.br/gh/{repository.slug}/commit/{comparison.head.commit.commitid}?dropdown=coverage&el=desc)).",
             "",
             f"[![Impacted file tree graph](test.example.br/gh/{repository.slug}/pull/{pull.pullid}/graphs/tree.svg?width=650&height=150&src=pr&token={repository.image_token})](test.example.br/gh/{repository.slug}/pull/{pull.pullid}?src=pr&el=tree)",
             "",

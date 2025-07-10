@@ -242,7 +242,7 @@ def messagify_flake[T: (str, bytes)](
 
 def specific_error_message(error: ErrorPayload) -> str:
     if error.error_code == "unsupported_file_format":
-        title = "### :x: Unsupported file format"
+        title = "### :warning: Unsupported file format"
 
         assert error.error_message is not None
 
@@ -256,7 +256,7 @@ def specific_error_message(error: ErrorPayload) -> str:
         ]
         description = "\n".join(message)
     elif error.error_code == "file_not_in_storage":
-        title = "### :x: File not in storage"
+        title = "### :warning: File not in storage"
         description = "\n".join(
             [
                 "No result to display due to the CLI not being able to find the file.",

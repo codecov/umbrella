@@ -41,11 +41,11 @@ class TeamPlanWriter:
         if misses_and_partials:
             ln_text = "lines" if misses_and_partials > 1 else "line"
             lines.append(
-                f"Attention: Patch coverage is `{patch_coverage}%` with `{misses_and_partials} {ln_text}` in your changes missing coverage. Please review."
+                f":x: Patch coverage is `{patch_coverage}%` with `{misses_and_partials} {ln_text}` in your changes missing coverage. Please review."
             )
         else:
             lines.append(
-                "All modified and coverable lines are covered by tests :white_check_mark:"
+                ":white_check_mark: All modified and coverable lines are covered by tests"
             )
 
         hide_project_coverage = settings.get("hide_project_coverage", False)

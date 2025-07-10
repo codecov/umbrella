@@ -169,10 +169,10 @@ class HeaderSectionWriter(BaseSectionWriter):
         if misses_and_partials:
             ln_text = "lines" if misses_and_partials > 1 else "line"
             yield (
-                f"Attention: Patch coverage is `{patch_coverage}%` with `{misses_and_partials} {ln_text}` in your changes missing coverage. Please review."
+                f":x: Patch coverage is `{patch_coverage}%` with `{misses_and_partials} {ln_text}` in your changes missing coverage. Please review."
             )
         else:
-            yield "All modified and coverable lines are covered by tests :white_check_mark:"
+            yield ":white_check_mark: All modified and coverable lines are covered by tests"
 
         hide_project_coverage = self.settings.get("hide_project_coverage", False)
         if hide_project_coverage:
@@ -184,7 +184,7 @@ class HeaderSectionWriter(BaseSectionWriter):
 
         if base_report and head_report:
             yield (
-                f"> Project coverage is {round_number(yaml, Decimal(head_report.totals.coverage))}%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)]({links['base']}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)]({links['head']}?dropdown=coverage&el=desc)."
+                f":white_check_mark: Project coverage is {round_number(yaml, Decimal(head_report.totals.coverage))}%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`]({links['base']}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`]({links['head']}?dropdown=coverage&el=desc))."
             )
         else:
             # This doesn't actually emit a message if the _head_ report is missing
@@ -195,12 +195,12 @@ class HeaderSectionWriter(BaseSectionWriter):
             branch = pull_dict["base" if not base_report else "head"]["branch"]
             commit = pull_dict["base" if not base_report else "head"]["commitid"][:7]
             yield (
-                f"> Please [upload](https://docs.codecov.com/docs/codecov-uploader) report for {what} (`{branch}@{commit}`). [Learn more](https://docs.codecov.io/docs/error-reference#section-missing-{what.lower()}-commit) about missing {what} report."
+                f":warning: Please [upload](https://docs.codecov.com/docs/codecov-uploader) report for {what} (`{branch}@{commit}`). [Learn more](https://docs.codecov.io/docs/error-reference#section-missing-{what.lower()}-commit) about missing {what} report."
             )
 
         if behind_by:
             yield (
-                f"> Report is {behind_by} commits behind head on {pull_dict['base']['branch']}."
+                f":warning: Report is {behind_by} commits behind head on {pull_dict['base']['branch']}."
             )
         if (
             comparison.enriched_pull.provider_pull is not None
@@ -222,10 +222,10 @@ class HeaderSectionWriter(BaseSectionWriter):
             pull_head = comparison.enriched_pull.provider_pull["head"]["commitid"][:7]
             current_head = comparison.head.commit.commitid[:7]
             yield (
-                f"> :exclamation: **Current head {current_head} differs from pull request most recent head {pull_head}**"
+                f":warning: **Current head {current_head} differs from pull request most recent head {pull_head}**"
             )
-            yield "> "
-            yield f"> Please [upload](https://docs.codecov.com/docs/codecov-uploader) reports for the commit {pull_head} to get more accurate results."
+            yield ""
+            yield f"Please [upload](https://docs.codecov.com/docs/codecov-uploader) reports for the commit {pull_head} to get more accurate results."
 
         for msg in self._possibly_include_test_result_setup_confirmation(comparison):
             yield msg
