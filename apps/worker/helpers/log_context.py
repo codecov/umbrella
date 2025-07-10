@@ -3,10 +3,10 @@ import logging
 from dataclasses import asdict, dataclass, field, replace
 
 import sentry_sdk
-from sentry_sdk import get_current_span
 
 from database.models.core import Owner, Repository
 from shared.config import get_config
+from shared.utils.sentry import current_sentry_trace_id
 
 log = logging.getLogger("log_context")
 
@@ -39,9 +39,7 @@ class LogContext:
 
     @property
     def sentry_trace_id(self):
-        if span := get_current_span():
-            return span.trace_id
-        return None
+        return current_sentry_trace_id()
 
     def as_dict(self):
         d = asdict(self)

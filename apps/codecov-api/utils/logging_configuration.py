@@ -3,7 +3,8 @@ from datetime import datetime
 from logging import Filter
 
 from pythonjsonlogger.json import JsonFormatter
-from sentry_sdk import get_current_span
+
+from shared.utils.sentry import current_sentry_trace_id
 
 
 class BaseLogger(JsonFormatter):
@@ -48,9 +49,9 @@ class CustomDatadogJsonFormatter(BaseLogger):
         else:
             log_record["level"] = record.levelname
 
-        span = get_current_span()
-        if span and span.trace_id:
-            log_record["sentry_trace_id"] = span.trace_id
+        trace_id = current_sentry_trace_id()
+        if trace_id:
+            log_record["sentry_trace_id"] = trace_id
 
 
 class CustomGunicornLogFormatter(JsonFormatter):

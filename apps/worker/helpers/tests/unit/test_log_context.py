@@ -132,9 +132,10 @@ def test_as_dict(dbsession, mocker):
     )
     log_context.populate_from_sqlalchemy(dbsession)
 
-    mock_span = mocker.Mock()
-    mock_span.trace_id = 123
-    mocker.patch("helpers.log_context.get_current_span", return_value=mock_span)
+    mock_trace_id = 123
+    mocker.patch(
+        "helpers.log_context.current_sentry_trace_id", return_value=mock_trace_id
+    )
 
     # `_populated_from_db` is a dataclass field that we want to strip
     # `sentry_trace_id` is a property that we want to include
