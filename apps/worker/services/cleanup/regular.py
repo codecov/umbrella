@@ -28,7 +28,8 @@ def run_regular_cleanup() -> CleanupSummary:
             partial(cleanup_queryset, CommitReport.objects.filter(code__isnull=False)),
         ),
         ("old `Upload`s", cleanup_old_uploads),
-        ("Stale pull flare", cleanup_flare),
+        # TODO: re-institute this job with https://linear.app/getsentry/issue/CCMRG-1355
+        # ("Stale pull flare", cleanup_flare),
     ]
 
     # TODO:
