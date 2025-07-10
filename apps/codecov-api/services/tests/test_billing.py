@@ -1859,20 +1859,29 @@ class StripeServiceTests(TestCase):
         self.stripe.update_email_address(owner, "test@gmail.com")
         modify_customer_mock.assert_called_once_with(customer_id, email=email)
 
-    @patch("logging.Logger.error")
-    def test_update_billing_address_with_invalid_address(self, log_error_mock):
+    @patch("services.billing.stripe.Customer.retrieve")
+    @patch("services.billing.stripe.PaymentMethod.modify")
+    @patch("services.billing.stripe.Customer.modify")
+    def test_update_billing_address_with_invalid_address(
+        self,
+        modify_customer_mock,
+        modify_payment_mock,
+        retrieve_customer_mock,
+    ):
         owner = OwnerFactory(stripe_customer_id="123", stripe_subscription_id="123")
-        assert self.stripe.update_billing_address(owner, "John Doe", "gabagool") is None
+        # save a copy of the original and set it back after this test
+        original_side_effect = modify_customer_mock.side_effect
+        modify_customer_mock.side_effect = Exception("Invalid billing address")
+        self.addCleanup(
+            setattr, modify_customer_mock, "side_effect", original_side_effect
+        )
 
-        # TODO: Logically we expect an error about an invalid billing address, but
-        # CI is getting an error about a missing API key and local envs are getting
-        # an error about the customer not existing. Needs to be fixed.
-        msg, log_args = log_error_mock.call_args
-        assert msg[0] == "Unable to update billing address for customer"
-        assert log_args["extra"]["customer_id"] == "123"
-        assert log_args["extra"]["subscription_id"] == "123"
-        # assert extra["error"] == "Some error about an invalid address"
-        # assert extra["error_type"] == "AppropriateExceptionType"
+        with self.assertRaises(Exception):
+            self.stripe.update_billing_address(owner, "John Doe", "gabagool")
+
+        retrieve_customer_mock.assert_called_once()
+        modify_payment_mock.assert_called_once()
+        modify_customer_mock.assert_called_once()
 
     def test_update_billing_address_when_no_customer_id(self):
         owner = OwnerFactory(stripe_customer_id=None)
@@ -1944,9 +1953,6 @@ class StripeServiceTests(TestCase):
             "country": "US",
             "postal_code": "94105",
         }
-        retrieve_customer_mock.return_value = MagicMock(
-            invoice_settings=MagicMock(default_payment_method="pm_123")
-        )
         # Set the side effect only for this test, and reset after
         original_side_effect = modify_payment_mock.side_effect
         modify_payment_mock.side_effect = stripe.error.CardError(
