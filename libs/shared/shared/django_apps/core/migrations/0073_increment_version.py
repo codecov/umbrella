@@ -12,7 +12,7 @@ def update_version(apps, schema):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("core", "0071_pull_sentry_commentid"),
+        ("core", "0072_pull_pulls_pullid_desc"),
     ]
 
     operations = [migrations.RunPython(update_version)]

@@ -130,3 +130,5 @@ dmypy.json
 
 *.pem
 junit.xml
+
+.DS_Store
