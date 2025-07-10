@@ -6,13 +6,7 @@ case $proj in
     "shared")
         cd $(git rev-parse --show-toplevel)/libs/shared
         ;;
-    "worker")
-        cd $(git rev-parse --show-toplevel)/apps/worker
-        ;;
-    "codecov-api")
-        cd $(git rev-parse --show-toplevel)/apps/codecov-api
-        ;;
-    "umbrella")
+    "umbrella" | "worker" | "codecov-api")
         cd $(git rev-parse --show-toplevel)
         ;;
     *)
