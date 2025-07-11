@@ -1,0 +1,9 @@
+{
+  "state": "failure",
+  "output": {
+    "title": "50.00% (-10.00%) compared to 1234567",
+    "summary": "[View this Pull Request on Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1)\n\n50.00% (-10.00%) compared to 1234567",
+    "annotations": []
+  },
+  "included_helper_text": {}
+}

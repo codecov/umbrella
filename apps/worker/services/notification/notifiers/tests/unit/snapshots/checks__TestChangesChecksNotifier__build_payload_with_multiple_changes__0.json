@@ -1,0 +1,9 @@
+{
+  "state": "failure",
+  "output": {
+    "title": "3 files have indirect coverage changes not visible in diff",
+    "summary": "[View this Pull Request on Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1)\n\n3 files have indirect coverage changes not visible in diff",
+    "annotations": []
+  },
+  "included_helper_text": {}
+}

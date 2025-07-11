@@ -1,0 +1,44 @@
+## [Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1) Report
+:x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.
+:white_check_mark: Project coverage is 60.00%. Comparing base ([`1234567`](test.example.br/gh/test-owner/test-repo/commit/1234567?dropdown=coverage&el=desc)) to head ([`2345678`](test.example.br/gh/test-owner/test-repo/commit/2345678?dropdown=coverage&el=desc)).
+
+| [Files with missing lines](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |
+|---|---|---|
+| [file\_1.go](test.example.br/gh/test-owner/test-repo/pull/1?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | 66.67% | [1 Missing :warning: ](test.example.br/gh/test-owner/test-repo/pull/1?src=pr&el=tree) |
+
+[![Impacted file tree graph](test.example.br/gh/test-owner/test-repo/pull/1/graphs/tree.svg?width=650&height=150&src=pr&token=test-image-token)](test.example.br/gh/test-owner/test-repo/pull/1?src=pr&el=tree)
+
+```diff
+@@              Coverage Diff              @@
+##             master       #1       +/-   ##
+=============================================
++ Coverage     50.00%   60.00%   +10.00%     
++ Complexity       11       10        -1     
+=============================================
+  Files             2        2               
+  Lines             6       10        +4     
+  Branches          0        1        +1     
+=============================================
++ Hits              3        6        +3     
+  Misses            3        3               
+- Partials          0        1        +1     
+```
+
+| [Flag](test.example.br/gh/test-owner/test-repo/pull/1/flags?src=pr&el=flags) | Coverage Δ | Complexity Δ | |
+|---|---|---|---|
+| [integration](test.example.br/gh/test-owner/test-repo/pull/1/flags?src=pr&el=flag) | `?` | `?` | |
+
+Flags with carried forward coverage won't be shown. [Click here](https://docs.codecov.io/docs/carryforward-flags#carryforward-flags-in-the-pull-request-comment) to find out more.
+
+| [Files with missing lines](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=tree) | Coverage Δ | Complexity Δ | |
+|---|---|---|---|
+| [file\_1.go](test.example.br/gh/test-owner/test-repo/pull/1?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | `62.50% <66.67%> (+12.50%)` | `10.00 <0.00> (-1.00)` | :arrow_up: |
+
+... and [1 file with indirect coverage changes](test.example.br/gh/test-owner/test-repo/pull/1/indirect-changes?src=pr&el=tree-more)
+
+------
+
+[Continue to review full report in Codecov by Sentry](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=continue).
+> **Legend** - [Click here to learn more](https://docs.codecov.io/docs/codecov-delta)
+> `Δ = absolute <relative> (impact)`, `ø = not affected`, `? = missing data`
+> Powered by [Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=footer). Last update [1234567...2345678](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=lastupdated). Read the [comment docs](https://docs.codecov.io/docs/pull-request-comments).

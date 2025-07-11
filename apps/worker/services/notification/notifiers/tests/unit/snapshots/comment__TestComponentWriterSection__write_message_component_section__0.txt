@@ -1,0 +1,4 @@
+| [Components](urlurl/components?src=pr&el=components) | Coverage Δ | |
+|---|---|---|
+| [go_files](urlurl/components?src=pr&el=component) | `62.50% <66.67%> (+12.50%)` | :arrow_up: |
+| [py_files](urlurl/components?src=pr&el=component) | `50.00% <ø> (ø)` | |

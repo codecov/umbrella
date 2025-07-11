@@ -1,0 +1,4 @@
+The author of this PR, codecov-test-user, is not activated in your Codecov Self-Hosted installation.
+Please [activate this user](https://codecov.mysite.com/account/gh/codecov-test-user) to display this PR comment.
+Coverage data is still being uploaded to Codecov Self-Hosted for the purposes of overall coverage calculations.
+Please contact your Codecov On-Premises installation administrator with any questions.

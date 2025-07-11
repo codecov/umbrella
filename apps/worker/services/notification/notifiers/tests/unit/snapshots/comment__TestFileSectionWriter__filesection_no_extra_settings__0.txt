@@ -1,0 +1,5 @@
+| [Files with missing lines](pull.link?dropdown=coverage&src=pr&el=tree) | Coverage Δ | |
+|---|---|---|
+| [file\_1.go](pull.link?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | `62.50% <66.66%> (+12.50%)` | :arrow_up: |
+
+... and [3 files with indirect coverage changes](pull.link/indirect-changes?src=pr&el=tree-more)

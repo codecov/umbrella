@@ -1,0 +1,15 @@
+## [Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1) Report
+:x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.
+
+| [Files with missing lines](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |
+|---|---|---|
+| [file\_1.go](test.example.br/gh/test-owner/test-repo/pull/1?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | 66.67% | [1 Missing :warning: ](test.example.br/gh/test-owner/test-repo/pull/1?src=pr&el=tree) |
+
+| [Files with missing lines](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=tree) | Coverage Δ | Complexity Δ | |
+|---|---|---|---|
+| [file\_1.go](test.example.br/gh/test-owner/test-repo/pull/1?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | `62.50% <66.67%> (+12.50%)` | `10.00 <0.00> (-1.00)` | :arrow_up: |
+
+... and [1 file with indirect coverage changes](test.example.br/gh/test-owner/test-repo/pull/1/indirect-changes?src=pr&el=tree-more)
+
+
+:loudspeaker: Thoughts on this report? [Let us know!](https://about.codecov.io/pull-request-comment-report/)

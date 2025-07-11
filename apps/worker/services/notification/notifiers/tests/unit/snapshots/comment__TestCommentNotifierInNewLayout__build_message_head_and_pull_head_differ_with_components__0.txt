@@ -1,0 +1,45 @@
+## [Codecov](test.example.br/gh/ThiagoCodecov/example-python/pull/1?dropdown=coverage&src=pr&el=h1) Report
+:x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.
+:white_check_mark: Project coverage is 60.00%. Comparing base ([`1234567`](test.example.br/gh/ThiagoCodecov/example-python/commit/1234567?dropdown=coverage&el=desc)) to head ([`2345678`](test.example.br/gh/ThiagoCodecov/example-python/commit/2345678?dropdown=coverage&el=desc)).
+
+:warning: **Current head 2345678 differs from pull request most recent head 3456789**
+
+Please [upload](https://docs.codecov.com/docs/codecov-uploader) reports for the commit 3456789 to get more accurate results.
+
+<details><summary>Additional details and impacted files</summary>
+
+
+[![Impacted file tree graph](test.example.br/gh/ThiagoCodecov/example-python/pull/1/graphs/tree.svg?width=650&height=150&src=pr&token=abcdefghij)](test.example.br/gh/ThiagoCodecov/example-python/pull/1?src=pr&el=tree)
+
+```diff
+@@              Coverage Diff              @@
+##             master       #1       +/-   ##
+=============================================
++ Coverage     50.00%   60.00%   +10.00%     
++ Complexity       11       10        -1     
+=============================================
+  Files             2        2               
+  Lines             6       10        +4     
+  Branches          0        1        +1     
+=============================================
++ Hits              3        6        +3     
+  Misses            3        3               
+- Partials          0        1        +1     
+```
+
+| [Flag](test.example.br/gh/ThiagoCodecov/example-python/pull/1/flags?src=pr&el=flags) | Coverage Δ | Complexity Δ | |
+|---|---|---|---|
+| [integration](test.example.br/gh/ThiagoCodecov/example-python/pull/1/flags?src=pr&el=flag) | `?` | `?` | |
+| [unit](test.example.br/gh/ThiagoCodecov/example-python/pull/1/flags?src=pr&el=flag) | `100.00% <100.00%> (?)` | `0.00 <0.00> (?)` | |
+
+Flags with carried forward coverage won't be shown. [Click here](https://docs.codecov.io/docs/carryforward-flags#carryforward-flags-in-the-pull-request-comment) to find out more.
+
+| [Components](test.example.br/gh/ThiagoCodecov/example-python/pull/1/components?src=pr&el=components) | Coverage Δ | |
+|---|---|---|
+| [go_files](test.example.br/gh/ThiagoCodecov/example-python/pull/1/components?src=pr&el=component) | `62.50% <66.67%> (+12.50%)` | :arrow_up: |
+| [unit_flags](test.example.br/gh/ThiagoCodecov/example-python/pull/1/components?src=pr&el=component) | `100.00% <100.00%> (∅)` | |
+
+</details>
+
+[:umbrella: View full report in Codecov by Sentry](test.example.br/gh/ThiagoCodecov/example-python/pull/1?dropdown=coverage&src=pr&el=continue).   
+:loudspeaker: Have feedback on the report? [Share it here](https://about.codecov.io/codecov-pr-comment-feedback/).

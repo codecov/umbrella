@@ -1,0 +1,10 @@
+{
+  "state": "success",
+  "output": {
+    "title": "Coverage not affected when comparing 1234567...2345678",
+    "summary": "[View this Pull Request on Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1)\n\nCoverage not affected when comparing 1234567...2345678",
+    "annotations": []
+  },
+  "included_helper_text": {},
+  "url": "test.example.br/gh/test-owner/test-repo/pull/1"
+}

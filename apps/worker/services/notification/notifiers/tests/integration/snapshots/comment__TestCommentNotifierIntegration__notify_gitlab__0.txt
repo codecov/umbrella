@@ -1,0 +1,37 @@
+## [Codecov](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5?dropdown=coverage&src=pr&el=h1) Report
+:white_check_mark: All modified and coverable lines are covered by tests
+:white_check_mark: Project coverage is 60.00%. Comparing base ([`0fc784a`](https://app.codecov.io/gl/joseph-sentry/example-python/commit/0fc784af11c401449e56b24a174bae7b9af86c98?dropdown=coverage&el=desc)) to head ([`0b6a213`](https://app.codecov.io/gl/joseph-sentry/example-python/commit/0b6a213fc300cd328c0625f38f30432ee6e066e5?dropdown=coverage&el=desc)).
+
+[![Impacted file tree graph](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5/graphs/tree.svg?width=650&height=150&src=pr&token=abcdefghij)](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5?src=pr&el=tree)
+
+```diff
+@@              Coverage Diff              @@
+##               main       #5       +/-   ##
+=============================================
++ Coverage     50.00%   60.00%   +10.00%     
++ Complexity       11       10        -1     
+=============================================
+  Files             2        2               
+  Lines             6       10        +4     
+  Branches          0        1        +1     
+=============================================
++ Hits              3        6        +3     
+  Misses            3        3               
+- Partials          0        1        +1     
+```
+
+| [Flag](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5/flags?src=pr&el=flags) | Coverage Δ | Complexity Δ | |
+|---|---|---|---|
+| [integration](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5/flags?src=pr&el=flag) | `?` | `?` | |
+| [unit](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5/flags?src=pr&el=flag) | `100.00% <ø> (?)` | `0.00 <ø> (?)` | |
+
+Flags with carried forward coverage won't be shown. [Click here](https://docs.codecov.io/docs/carryforward-flags#carryforward-flags-in-the-pull-request-comment) to find out more.
+
+[see 2 files with indirect coverage changes](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5/indirect-changes?src=pr&el=tree-more)
+
+------
+
+[Continue to review full report in Codecov by Sentry](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5?dropdown=coverage&src=pr&el=continue).
+> **Legend** - [Click here to learn more](https://docs.codecov.io/docs/codecov-delta)
+> `Δ = absolute <relative> (impact)`, `ø = not affected`, `? = missing data`
+> Powered by [Codecov](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5?dropdown=coverage&src=pr&el=footer). Last update [0fc784a...0b6a213](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5?dropdown=coverage&src=pr&el=lastupdated). Read the [comment docs](https://docs.codecov.io/docs/pull-request-comments).
