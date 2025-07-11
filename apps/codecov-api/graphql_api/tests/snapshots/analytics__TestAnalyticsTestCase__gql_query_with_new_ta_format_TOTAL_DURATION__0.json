@@ -32,6 +32,22 @@
     }
   },
   {
+    "cursor": "MTUwMC4wfHRlc3Qx",
+    "node": {
+      "name": "test1",
+      "failureRate": 0.6666666666666666,
+      "flakeRate": 0.3333333333333333,
+      "avgDuration": 100.0,
+      "totalDuration": 1500.0,
+      "totalFailCount": 5,
+      "totalFlakyFailCount": 5,
+      "totalPassCount": 5,
+      "totalSkipCount": 5,
+      "commitsFailed": 5,
+      "lastDuration": 100.0
+    }
+  },
+  {
     "cursor": "MTUwMC4wfHRlc3Qy",
     "node": {
       "name": "test2",
@@ -41,22 +57,6 @@
       "totalDuration": 1500.0,
       "totalFailCount": 10,
       "totalFlakyFailCount": 0,
-      "totalPassCount": 5,
-      "totalSkipCount": 5,
-      "commitsFailed": 5,
-      "lastDuration": 100.0
-    }
-  },
-  {
-    "cursor": "MTAwMC4wfHRlc3Qx",
-    "node": {
-      "name": "test1",
-      "failureRate": 0.5,
-      "flakeRate": 0.5,
-      "avgDuration": 100.0,
-      "totalDuration": 1000.0,
-      "totalFailCount": 5,
-      "totalFlakyFailCount": 5,
       "totalPassCount": 5,
       "totalSkipCount": 5,
       "commitsFailed": 5,

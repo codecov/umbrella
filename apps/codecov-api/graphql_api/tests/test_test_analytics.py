@@ -846,7 +846,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
     @pytest.mark.parametrize("ordering", ["FAILURE_RATE", "TOTAL_DURATION"])
     def test_gql_query_with_new_ta_format(self, mocker, repository, snapshot, ordering):
         # set the feature flag
-        mocker.patch("rollouts.READ_NEW_TA.check_value", return_value=True)
+        mocker.patch("utils.test_results.use_new_impl", return_value=True)
 
         # read file from samples
         storage = get_appropriate_storage_service()
@@ -934,7 +934,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
         assert result["owner"]["repository"]["testAnalytics"][
             "testResultsAggregates"
         ] == {
-            "totalDuration": 7500.0,
+            "totalDuration": 8000.0,
             "slowestTestsDuration": 2500.0,
             "totalFails": 50,
             "totalSkips": 25,
