@@ -1,5 +1,5 @@
 ## [Codecov](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5?dropdown=coverage&src=pr&el=h1) Report
-:white_check_mark: All modified and coverable lines are covered by tests
+:white_check_mark: All modified and coverable lines are covered by tests.
 :white_check_mark: Project coverage is 60.00%. Comparing base ([`0fc784a`](https://app.codecov.io/gl/joseph-sentry/example-python/commit/0fc784af11c401449e56b24a174bae7b9af86c98?dropdown=coverage&el=desc)) to head ([`0b6a213`](https://app.codecov.io/gl/joseph-sentry/example-python/commit/0b6a213fc300cd328c0625f38f30432ee6e066e5?dropdown=coverage&el=desc)).
 
 [![Impacted file tree graph](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5/graphs/tree.svg?width=650&height=150&src=pr&token=abcdefghij)](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5?src=pr&el=tree)

@@ -45,7 +45,7 @@ class TeamPlanWriter:
             )
         else:
             lines.append(
-                ":white_check_mark: All modified and coverable lines are covered by tests"
+                ":white_check_mark: All modified and coverable lines are covered by tests."
             )
 
         hide_project_coverage = settings.get("hide_project_coverage", False)

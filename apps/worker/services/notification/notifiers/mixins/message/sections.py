@@ -169,7 +169,7 @@ class HeaderSectionWriter(BaseSectionWriter):
                 f":x: Patch coverage is `{patch_coverage}%` with `{misses_and_partials} {ln_text}` in your changes missing coverage. Please review."
             )
         else:
-            yield ":white_check_mark: All modified and coverable lines are covered by tests"
+            yield ":white_check_mark: All modified and coverable lines are covered by tests."
 
         hide_project_coverage = self.settings.get("hide_project_coverage", False)
         if hide_project_coverage:
