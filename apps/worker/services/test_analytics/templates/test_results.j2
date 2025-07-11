@@ -1,0 +1,22 @@
+### :x: {{ payload.failed }} Tests Failed:
+| Tests completed | Failed | Passed | Skipped |
+|---|---|---|---|
+| {{ payload.failed + payload.passed }} | {{ payload.failed }} | {{ payload.passed }} | {{ payload.skipped }} |
+{%- if failures %}
+<details><summary>View the top {{ [3, failures | length] | min }} failed test(s) by shortest run time</summary>
+
+{% for failure in failures %}
+{% include 'failure.j2' %}
+{% endfor %}
+</details>
+{% endif %}
+{%- if flaky_failures %}
+<details><summary>View the full list of {{ flaky_failures | length }} :snowflake: flaky tests</summary>
+
+{% for flaky_failure in flaky_failures %}
+{% set flake_info = flaky_tests[flaky_failure.test_id] %}
+{% include 'flake.j2' %}
+{% endfor %}
+</details>
+{% endif %}
+{{ view_test_analytics_line }}
