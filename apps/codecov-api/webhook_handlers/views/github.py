@@ -113,7 +113,7 @@ class GithubWebhookHandler(APIView):
         Attempts to fetch the repo first via the index on (ownerid, service_id),
         then naively on service, service_id if that fails.
         """
-        repo_data = self.request.data.get("repository", {})
+        repo_data = request.data.get("repository", {})
         repo_service_id = repo_data.get("id")
         owner_service_id = repo_data.get("owner", {}).get("id")
         repo_slug = repo_data.get("full_name")
@@ -174,7 +174,7 @@ class GithubWebhookHandler(APIView):
         return Response(data="pong")
 
     def repository(self, request, *args, **kwargs):
-        action, repo = self.request.data.get("action"), self._get_repo(request)
+        action, repo = request.data.get("action"), self._get_repo(request)
         if action == "publicized":
             repo.private, repo.activated = False, False
             repo.save()
@@ -215,7 +215,7 @@ class GithubWebhookHandler(APIView):
                 extra={"repoid": repo.repoid, "github_webhook_event": self.event},
             )
             return Response("Unsupported ref type")
-        branch_name = self.request.data.get("ref")[11:]
+        branch_name = request.data.get("ref")[11:]
         Branch.objects.filter(
             repository=self._get_repo(request), name=branch_name
         ).delete()
@@ -266,8 +266,8 @@ class GithubWebhookHandler(APIView):
             )
             return Response(data=WebhookHandlerErrorMessages.SKIP_WEBHOOK_IGNORED)
 
-        pushed_to_branch_name = self.request.data.get("ref")[11:]
-        commits = self.request.data.get("commits", [])
+        pushed_to_branch_name = request.data.get("ref")[11:]
+        commits = request.data.get("commits", [])
 
         if not commits:
             log.debug(
@@ -803,12 +803,12 @@ class GithubWebhookHandler(APIView):
         return Response()
 
     def post(self, request, *args, **kwargs):
-        self.event = self.request.META.get(GitHubHTTPHeaders.EVENT)
+        self.event = request.META.get(GitHubHTTPHeaders.EVENT)
         log.info(
             "GitHub Webhook Handler invoked",
             extra={
                 "github_webhook_event": self.event,
-                "delivery": self.request.META.get(GitHubHTTPHeaders.DELIVERY_TOKEN),
+                "delivery": request.META.get(GitHubHTTPHeaders.DELIVERY_TOKEN),
             },
         )
         self.validate_signature(request)
