@@ -22,14 +22,14 @@ devenv.build: devenv.build.requirements devenv.build.api devenv.build.worker dev
 devenv.start.deps:
 	docker compose up minio redis postgres timescale mailhog --detach
 
-.PHONY: devenv.start.backend
-devenv.start.backend:
+.PHONY: devenv.start.apps
+devenv.start.apps:
 	# No-op if they have not already been started
 	docker compose down worker api
 	docker compose up worker api shared frontend gateway --detach
 
 .PHONY: devenv.start
-devenv.start: devenv.start.deps devenv.start.backend
+devenv.start: devenv.start.deps devenv.start.apps
 
 .PHONY: devenv
 devenv:
@@ -41,12 +41,13 @@ devenv:
 devenv.refresh:
 	$(MAKE) devenv.build
 	$(MAKE) devenv.migrate
-	$(MAKE) devenv.start.backend
+	$(MAKE) devenv.start.apps
 
 .PHONY: devenv.migrate
 devenv.migrate:
 	$(MAKE) devenv.start.deps
 	docker compose run --entrypoint python --rm api manage.py migrate
+	docker compose run --entrypoint python --rm api migrate_timeseries.py
 	docker compose run --entrypoint python --rm api manage.py pgpartition --yes
 	docker compose run --entrypoint python --rm worker manage.py migrate
 	docker compose run --entrypoint python --rm worker migrate_timeseries.py

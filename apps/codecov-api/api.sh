@@ -43,7 +43,7 @@ fi
 if [[ "${RUN_ENV:-}" = "ENTERPRISE" ]] || [[ "${RUN_ENV:-}" = "DEV" ]]; then
   echo "Running migrations"
   $pre_migrate $berglas python manage.py migrate $post_migrate
-  $pre_migrate $berglas python manage.py migrate --database "timeseries" $post_migrate
+  $pre_migrate $berglas python migrate_timeseries.py $post_migrate
   $pre_migrate $berglas python manage.py pgpartition --yes --skip-delete $post_migrate
 fi
 
