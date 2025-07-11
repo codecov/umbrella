@@ -2,14 +2,15 @@ import datetime as dt
 import logging
 from base64 import b64decode, b64encode
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any, TypedDict
 
 import polars as pl
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
+from django.core.exceptions import ValidationError
 from graphql.type.definition import GraphQLResolveInfo
 
-from codecov.commands.exceptions import ValidationError
 from graphql_api.types.enums import (
     OrderingDirection,
     TestResultsFilterParameter,
@@ -17,15 +18,20 @@ from graphql_api.types.enums import (
 )
 from graphql_api.types.enums.enum_types import MeasurementInterval
 from graphql_api.types.flake_aggregates.flake_aggregates import (
-    FlakeAggregates,
     generate_flake_aggregates,
 )
 from graphql_api.types.test_results_aggregates.test_results_aggregates import (
-    TestResultsAggregates,
     generate_test_results_aggregates,
 )
+from rollouts import READ_NEW_TA
 from shared.django_apps.core.models import Repository
+from utils.ta_types import FlakeAggregates, TestResultsAggregates, TestResultsRow
 from utils.test_results import get_results
+from utils.timescale_test_results import (
+    get_flake_aggregates_from_timescale,
+    get_test_results_aggregates_from_timescale,
+    get_test_results_queryset,
+)
 
 log = logging.getLogger(__name__)
 
@@ -34,60 +40,10 @@ INTERVAL_7_DAY = 7
 INTERVAL_1_DAY = 1
 
 
-class TestResultsRow:
-    # the order here must match the order of the fields in the query
-    def __init__(
-        self,
-        name: str,
-        failure_rate: float,
-        flake_rate: float,
-        updated_at: dt.datetime,
-        avg_duration: float,
-        total_duration: float,
-        total_fail_count: int,
-        total_flaky_fail_count: int,
-        total_pass_count: int,
-        total_skip_count: int,
-        commits_where_fail: int,
-        last_duration: float,
-        testsuite: str | None = None,
-        flags: list[str] | None = None,
-    ):
-        self.name = name
-        self.testsuite = testsuite
-        self.flags = flags or []
-        self.failure_rate = failure_rate
-        self.flake_rate = flake_rate
-        self.updated_at = updated_at
-        self.avg_duration = avg_duration
-        self.total_duration = total_duration
-        self.total_fail_count = total_fail_count
-        self.total_flaky_fail_count = total_flaky_fail_count
-        self.total_pass_count = total_pass_count
-        self.total_skip_count = total_skip_count
-        self.commits_where_fail = commits_where_fail
-        self.last_duration = last_duration
-
-    def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "testsuite": self.testsuite,
-            "flags": self.flags,
-            "failure_rate": self.failure_rate,
-            "flake_rate": self.flake_rate,
-            "updated_at": self.updated_at.isoformat(),
-            "avg_duration": self.avg_duration,
-            "total_fail_count": self.total_fail_count,
-            "total_flaky_fail_count": self.total_flaky_fail_count,
-            "total_pass_count": self.total_pass_count,
-            "total_skip_count": self.total_skip_count,
-            "commits_where_fail": self.commits_where_fail,
-            "last_duration": self.last_duration,
-        }
-
-
 @dataclass
 class TestResultConnection:
+    __test__ = False
+
     edges: list[dict[str, str | TestResultsRow]]
     page_info: dict
     total_count: int
@@ -194,23 +150,7 @@ def generate_test_results(
     testsuites: list[str] | None = None,
     flags: list[str] | None = None,
     term: str | None = None,
-) -> TestResultConnection:
-    """
-    Function that retrieves aggregated information about all tests in a given repository, for a given time range, optionally filtered by branch name.
-    The fields it calculates are: the test failure rate, commits where this test failed, last duration and average duration of the test.
-
-    :param repoid: repoid of the repository we want to calculate aggregates for
-    :param branch: optional name of the branch we want to filter on, if this is provided the aggregates calculated will only take into account
-        test instances generated on that branch. By default branches will not be filtered and test instances on all branches wil be taken into
-        account.
-    :param interval: timedelta for filtering test instances used to calculate the aggregates by time, the test instances used will be
-        those with a created at larger than now - interval.
-    :param testsuites: optional list of testsuite names to filter by, this is done via a union
-    :param flags: optional list of flag names to filter by, this is done via a union so if a user specifies multiple flags, we get all tests with any
-        of the flags, not tests that have all of the flags
-    :returns: queryset object containing list of dictionaries of results
-
-    """
+):
     repo = Repository.objects.get(repoid=repoid)
     if branch is None:
         branch = repo.branch
@@ -338,12 +278,12 @@ def get_flags(repoid: int, term: str | None = None, interval: int = 30) -> list[
     return flags.to_series().drop_nulls().to_list() or []
 
 
-class TestResultsOrdering(TypedDict):
+class GQLTestResultsOrdering(TypedDict):
     parameter: TestResultsOrderingParameter
     direction: OrderingDirection
 
 
-class TestResultsFilters(TypedDict):
+class GQLTestResultsFilters(TypedDict):
     parameter: TestResultsFilterParameter | None
     interval: MeasurementInterval
     branch: str | None
@@ -360,38 +300,76 @@ test_analytics_bindable: ObjectType = ObjectType("TestAnalytics")
 async def resolve_test_results(
     repository: Repository,
     info: GraphQLResolveInfo,
-    ordering: TestResultsOrdering | None = None,
-    filters: TestResultsFilters | None = None,
+    ordering: GQLTestResultsOrdering | None = None,
+    filters: GQLTestResultsFilters | None = None,
     first: int | None = None,
     after: str | None = None,
     last: int | None = None,
     before: str | None = None,
 ) -> TestResultConnection:
-    queryset = await sync_to_async(generate_test_results)(
-        ordering=ordering.get("parameter", TestResultsOrderingParameter.AVG_DURATION)
-        if ordering
-        else TestResultsOrderingParameter.AVG_DURATION,
-        ordering_direction=ordering.get("direction", OrderingDirection.DESC)
-        if ordering
-        else OrderingDirection.DESC,
-        repoid=repository.repoid,
-        measurement_interval=filters.get(
-            "interval", MeasurementInterval.INTERVAL_30_DAY
+    if READ_NEW_TA.check_value(repository.repoid):
+        measurement_interval = (
+            filters.get("interval", MeasurementInterval.INTERVAL_30_DAY)
+            if filters
+            else MeasurementInterval.INTERVAL_30_DAY
         )
-        if filters
-        else MeasurementInterval.INTERVAL_30_DAY,
-        first=first,
-        after=after,
-        last=last,
-        before=before,
-        branch=filters.get("branch") if filters else None,
-        parameter=filters.get("parameter") if filters else None,
-        testsuites=filters.get("test_suites") if filters else None,
-        flags=filters.get("flags") if filters else None,
-        term=filters.get("term") if filters else None,
-    )
+        end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_date = end_date - timedelta(days=measurement_interval.value)
+        ordering_param = (
+            ordering.get("parameter", TestResultsOrderingParameter.AVG_DURATION)
+            if ordering
+            else TestResultsOrderingParameter.AVG_DURATION
+        )
+        ordering_direction = (
+            ordering.get("direction", OrderingDirection.DESC)
+            if ordering
+            else OrderingDirection.DESC
+        )
 
-    return queryset
+        return await sync_to_async(get_test_results_queryset)(
+            repoid=repository.repoid,
+            start_date=start_date,
+            end_date=end_date,
+            branch=filters.get("branch") if filters else repository.branch,
+            parameter=filters.get("parameter") if filters else None,
+            testsuites=filters.get("test_suites") if filters else None,
+            flags=filters.get("flags") if filters else None,
+            term=filters.get("term") if filters else None,
+            ordering_param=ordering_param,
+            ordering_direction=ordering_direction,
+            first=first,
+            after=after,
+            last=last,
+            before=before,
+        )
+
+    else:
+        queryset = await sync_to_async(generate_test_results)(
+            ordering=ordering.get(
+                "parameter", TestResultsOrderingParameter.AVG_DURATION
+            )
+            if ordering
+            else TestResultsOrderingParameter.AVG_DURATION,
+            ordering_direction=ordering.get("direction", OrderingDirection.DESC)
+            if ordering
+            else OrderingDirection.DESC,
+            repoid=repository.repoid,
+            measurement_interval=filters.get(
+                "interval", MeasurementInterval.INTERVAL_30_DAY
+            )
+            if filters
+            else MeasurementInterval.INTERVAL_30_DAY,
+            first=first,
+            after=after,
+            last=last,
+            before=before,
+            branch=filters.get("branch") if filters else None,
+            parameter=filters.get("parameter") if filters else None,
+            testsuites=filters.get("test_suites") if filters else None,
+            flags=filters.get("flags") if filters else None,
+            term=filters.get("term") if filters else None,
+        )
+        return queryset
 
 
 @test_analytics_bindable.field("testResultsAggregates")
@@ -401,8 +379,21 @@ async def resolve_test_results_aggregates(
     interval: MeasurementInterval | None = None,
     **_: Any,
 ) -> TestResultsAggregates | None:
+    if READ_NEW_TA.check_value(repository.repoid):
+        measurement_interval = (
+            interval if interval else MeasurementInterval.INTERVAL_30_DAY
+        )
+        end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_date = end_date - timedelta(days=measurement_interval.value)
+        return await sync_to_async(get_test_results_aggregates_from_timescale)(
+            repoid=repository.repoid,
+            branch=repository.branch,
+            start_date=start_date,
+            end_date=end_date,
+        )
     return await sync_to_async(generate_test_results_aggregates)(
         repoid=repository.repoid,
+        branch=repository.branch,
         interval=interval if interval else MeasurementInterval.INTERVAL_30_DAY,
     )
 
@@ -414,8 +405,21 @@ async def resolve_flake_aggregates(
     interval: MeasurementInterval | None = None,
     **_: Any,
 ) -> FlakeAggregates | None:
+    if READ_NEW_TA.check_value(repository.repoid):
+        measurement_interval = (
+            interval if interval else MeasurementInterval.INTERVAL_30_DAY
+        )
+        end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_date = end_date - timedelta(days=measurement_interval.value)
+        return await sync_to_async(get_flake_aggregates_from_timescale)(
+            repoid=repository.repoid,
+            branch=repository.branch,
+            start_date=start_date,
+            end_date=end_date,
+        )
     return await sync_to_async(generate_flake_aggregates)(
         repoid=repository.repoid,
+        branch=repository.branch,
         interval=interval if interval else MeasurementInterval.INTERVAL_30_DAY,
     )
 

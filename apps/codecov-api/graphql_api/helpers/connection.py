@@ -1,5 +1,6 @@
 import enum
 from base64 import b64decode
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Any
@@ -239,8 +240,8 @@ class DictCursorPaginator(CursorPaginator):
 def queryset_to_connection_sync(
     data: QuerySet | list,
     *,
-    ordering=None,
-    ordering_direction=None,
+    ordering: Iterable[str] = (),
+    ordering_direction: OrderingDirection | Iterable[OrderingDirection] | None = None,
     first=None,
     after=None,
     last=None,
@@ -260,7 +261,16 @@ def queryset_to_connection_sync(
         return ArrayConnection(array_paginator)
 
     else:
-        ordering = tuple(field_order(field, ordering_direction) for field in ordering)
+        if isinstance(ordering_direction, OrderingDirection):
+            ordering = tuple(
+                field_order(field, ordering_direction) for field in ordering
+            )
+        elif ordering_direction is not None:
+            ordering = tuple(
+                field_order(field, direction)
+                for (field, direction) in zip(ordering, ordering_direction)
+            )
+
         paginator = DictCursorPaginator(data, ordering=ordering)
         page = paginator.page(first=first, after=after, last=last, before=before)
         return Connection(data, paginator, page)
