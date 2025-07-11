@@ -1,0 +1,62 @@
+[
+  {
+    "name": "name3",
+    "failureRate": 1.0,
+    "flakeRate": 0.0,
+    "avgDuration": 3.0,
+    "totalFailCount": 1,
+    "totalFlakyFailCount": 0,
+    "totalPassCount": 0,
+    "totalSkipCount": 0,
+    "commitsFailed": 1,
+    "lastDuration": 3.0
+  },
+  {
+    "name": "name1",
+    "failureRate": 1.0,
+    "flakeRate": 0.0,
+    "avgDuration": 1.0,
+    "totalFailCount": 1,
+    "totalFlakyFailCount": 0,
+    "totalPassCount": 0,
+    "totalSkipCount": 0,
+    "commitsFailed": 1,
+    "lastDuration": 1.0
+  },
+  {
+    "name": "name4",
+    "failureRate": 0.0,
+    "flakeRate": 0.0,
+    "avgDuration": 4.0,
+    "totalFailCount": 0,
+    "totalFlakyFailCount": 0,
+    "totalPassCount": 1,
+    "totalSkipCount": 0,
+    "commitsFailed": 0,
+    "lastDuration": 4.0
+  },
+  {
+    "name": "name2",
+    "failureRate": 0.0,
+    "flakeRate": 0.0,
+    "avgDuration": 2.0,
+    "totalFailCount": 0,
+    "totalFlakyFailCount": 0,
+    "totalPassCount": 1,
+    "totalSkipCount": 0,
+    "commitsFailed": 0,
+    "lastDuration": 2.0
+  },
+  {
+    "name": "name0",
+    "failureRate": 0.0,
+    "flakeRate": 0.0,
+    "avgDuration": 0.0,
+    "totalFailCount": 0,
+    "totalFlakyFailCount": 0,
+    "totalPassCount": 1,
+    "totalSkipCount": 0,
+    "commitsFailed": 0,
+    "lastDuration": 0.0
+  }
+]

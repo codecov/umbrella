@@ -1,10 +1,14 @@
+from datetime import UTC, datetime, timedelta
+
 import polars as pl
 from ariadne import ObjectType
 from graphql import GraphQLResolveInfo
 
 from graphql_api.types.enums.enum_types import MeasurementInterval
+from rollouts import READ_NEW_TA
 from utils.ta_types import FlakeAggregates
 from utils.test_results import get_results
+from utils.timescale_test_results import get_flake_aggregates_from_timescale
 
 
 def calculate_flake_aggregates(table: pl.DataFrame) -> pl.DataFrame:
@@ -46,14 +50,24 @@ def flake_aggregates_with_percentage(
 def generate_flake_aggregates(
     repoid: int, branch: str, interval: MeasurementInterval
 ) -> FlakeAggregates | None:
-    curr_results = get_results(repoid, branch, interval.value)
-    if curr_results is None:
-        return None
-    past_results = get_results(repoid, branch, interval.value * 2, interval.value)
-    if past_results is None:
-        return flake_aggregates_from_table(curr_results)
+    if READ_NEW_TA.check_value(repoid):
+        end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_date = end_date - timedelta(days=interval.value)
+        return get_flake_aggregates_from_timescale(
+            repoid,
+            branch,
+            start_date,
+            end_date,
+        )
     else:
-        return flake_aggregates_with_percentage(curr_results, past_results)
+        curr_results = get_results(repoid, branch, interval.value)
+        if curr_results is None:
+            return None
+        past_results = get_results(repoid, branch, interval.value * 2, interval.value)
+        if past_results is None:
+            return flake_aggregates_from_table(curr_results)
+        else:
+            return flake_aggregates_with_percentage(curr_results, past_results)
 
 
 flake_aggregates_bindable = ObjectType("FlakeAggregates")
