@@ -1167,10 +1167,9 @@ class TestNotifyTask:
                         data_sent={
                             "message": [
                                 "## [Codecov](https://myexamplewebsite.io/gh/joseph-sentry/codecov-demo/pull/9?dropdown=coverage&src=pr&el=h1) Report",
-                                "All modified and coverable lines are covered by tests :white_check_mark:",
-                                "> Project coverage is 85.00%. Comparing base [(`5b174c2`)](https://myexamplewebsite.io/gh/joseph-sentry/codecov-demo/commit/5b174c2b40d501a70c479e91025d5109b1ad5c1b?dropdown=coverage&el=desc) to head [(`5601846`)](https://myexamplewebsite.io/gh/joseph-sentry/codecov-demo/commit/5601846871b8142ab0df1e0b8774756c658bcc7d?dropdown=coverage&el=desc).",
-                                "> Report is 2 commits behind head on main.",
-                                "",
+                                ":white_check_mark: All modified and coverable lines are covered by tests.",
+                                ":white_check_mark: Project coverage is 85.00%. Comparing base ([`5b174c2`](https://myexamplewebsite.io/gh/joseph-sentry/codecov-demo/commit/5b174c2b40d501a70c479e91025d5109b1ad5c1b?dropdown=coverage&el=desc)) to head ([`5601846`](https://myexamplewebsite.io/gh/joseph-sentry/codecov-demo/commit/5601846871b8142ab0df1e0b8774756c658bcc7d?dropdown=coverage&el=desc)).",
+                                ":warning: Report is 2 commits behind head on main.",
                                 ":exclamation: Your organization needs to install the [Codecov GitHub app](https://github.com/apps/codecov/installations/select_target) to enable full functionality.",
                                 "",
                                 "[![Impacted file tree graph](https://myexamplewebsite.io/gh/joseph-sentry/codecov-demo/pull/9/graphs/tree.svg?width=650&height=150&src=pr&token=abcdefghij)](https://myexamplewebsite.io/gh/joseph-sentry/codecov-demo/pull/9?src=pr&el=tree)",
@@ -1201,7 +1200,6 @@ class TestNotifyTask:
                                 "> **Legend** - [Click here to learn more](https://docs.codecov.io/docs/codecov-delta)",
                                 "> `Δ = absolute <relative> (impact)`, `ø = not affected`, `? = missing data`",
                                 "> Powered by [Codecov](https://myexamplewebsite.io/gh/joseph-sentry/codecov-demo/pull/9?dropdown=coverage&src=pr&el=footer). Last update [5b174c2...5601846](https://myexamplewebsite.io/gh/joseph-sentry/codecov-demo/pull/9?dropdown=coverage&src=pr&el=lastupdated). Read the [comment docs](https://docs.codecov.io/docs/pull-request-comments).",
-                                "",
                             ],
                             "commentid": None,
                             "pullid": 9,

@@ -115,6 +115,7 @@ class MessageMixin:
                 comparison, settings
             )
             if is_compact_message:
+                write("")
                 write(
                     "<details><summary>Additional details and impacted files</summary>\n"
                 )
@@ -195,14 +196,10 @@ class MessageMixin:
     def write_section_to_msg(
         self, comparison, changes, diff, links, write, section_writer, behind_by=None
     ):
-        wrote_something = False
         for line in section_writer.write_section(
             comparison, diff, changes, links, behind_by=behind_by
         ):
-            wrote_something |= line is not None
             write(line)
-        if wrote_something:
-            write("")
 
     def write_cross_pollination_message(self, write: Callable):
         extra_message = []

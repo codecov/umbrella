@@ -1,0 +1,17 @@
+{
+  "notification_attempted": true,
+  "notification_successful": true,
+  "explanation": null,
+  "data_sent": {
+    "state": "success",
+    "output": {
+      "title": "25.00% (+0.00%) compared to 2345678",
+      "summary": "[View this Pull Request on Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1)\n\n25.00% (+0.00%) compared to 2345678 [Auto passed due to carriedforward or missing coverage]",
+      "annotations": []
+    },
+    "included_helper_text": {},
+    "url": "test.example.br/gh/test-owner/test-repo/pull/1"
+  },
+  "data_received": null,
+  "github_app_used": null
+}

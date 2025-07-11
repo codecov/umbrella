@@ -1,0 +1,10 @@
+## [Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1) Report
+:x: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.
+:white_check_mark: Project coverage is 60.00%. Comparing base ([`1234567`](test.example.br/gh/test-owner/test-repo/commit/1234567?dropdown=coverage&el=desc)) to head ([`2345678`](test.example.br/gh/test-owner/test-repo/commit/2345678?dropdown=coverage&el=desc)).
+
+<details><summary>Additional details and impacted files</summary>
+
+
+
+[![Impacted file tree graph](test.example.br/gh/test-owner/test-repo/pull/1/graphs/tree.svg?width=650&height=150&src=pr&token=test-image-token)](test.example.br/gh/test-owner/test-repo/pull/1?src=pr&el=tree)
+</details>

@@ -1,0 +1,16 @@
+## [Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1) Report
+:white_check_mark: All modified and coverable lines are covered by tests.
+:white_check_mark: Project coverage is 88.54%. Comparing base ([`1234567`](test.example.br/gh/test-owner/test-repo/commit/1234567?dropdown=coverage&el=desc)) to head ([`2345678`](test.example.br/gh/test-owner/test-repo/commit/2345678?dropdown=coverage&el=desc)).
+
+```diff
+@@            Coverage Diff             @@
+##           master       #1      +/-   ##
+==========================================
+- Coverage   88.58%   88.54%   -0.04%     
+==========================================
+  Files           1        1              
+  Lines        7630     7631       +1     
+==========================================
+- Hits         6759     6757       -2     
+- Misses        871      874       +3     
+```

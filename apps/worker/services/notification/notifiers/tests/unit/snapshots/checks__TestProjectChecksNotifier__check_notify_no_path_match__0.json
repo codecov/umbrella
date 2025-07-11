@@ -1,0 +1,17 @@
+{
+  "notification_attempted": true,
+  "notification_successful": true,
+  "explanation": null,
+  "data_sent": {
+    "state": "success",
+    "output": {
+      "title": "No coverage information found on head",
+      "summary": "[View this Pull Request on Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1)\n\nNo coverage information found on head",
+      "annotations": []
+    },
+    "included_helper_text": {},
+    "url": "test.example.br/gh/test-owner/test-repo/pull/1"
+  },
+  "data_received": null,
+  "github_app_used": null
+}

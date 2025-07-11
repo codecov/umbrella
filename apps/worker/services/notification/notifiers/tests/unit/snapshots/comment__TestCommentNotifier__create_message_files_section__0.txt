@@ -1,0 +1,8 @@
+## [Codecov](https://app.codecov.io/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1) Report
+:white_check_mark: All modified and coverable lines are covered by tests.
+:white_check_mark: Project coverage is 60.00%. Comparing base ([`1234567`](https://app.codecov.io/gh/test-owner/test-repo/commit/1234567?dropdown=coverage&el=desc)) to head ([`2345678`](https://app.codecov.io/gh/test-owner/test-repo/commit/2345678?dropdown=coverage&el=desc)).
+
+| [Files with missing lines](https://app.codecov.io/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=tree) | Coverage Δ | Complexity Δ | |
+|---|---|---|---|
+| [file\_1.go](https://app.codecov.io/gh/test-owner/test-repo/pull/1?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | `62.50% <ø> (+12.50%)` | `10.00 <0.00> (-1.00)` | :arrow_up: |
+| [file\_2.py](https://app.codecov.io/gh/test-owner/test-repo/pull/1?src=pr&el=tree&filepath=file_2.py#diff-ZmlsZV8yLnB5) | `50.00% <ø> (ø)` | `0.00 <0.00> (ø)` | |

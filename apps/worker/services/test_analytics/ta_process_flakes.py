@@ -1,6 +1,7 @@
 import logging
 from datetime import timedelta
 
+import sentry_sdk
 from django.db.models import Q, QuerySet
 from django.utils import timezone
 from redis.exceptions import LockError
@@ -32,9 +33,7 @@ def fetch_current_flakes(repo_id: int) -> dict[bytes, Flake]:
     }
 
 
-def get_testruns(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake]
-) -> QuerySet[Testrun]:
+def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
     upload_filter = Q(upload_id=upload.id)
 
     # we won't process flakes for testruns older than 1 day
@@ -80,28 +79,36 @@ def handle_failure(
         testrun.outcome = "flaky_fail"
 
 
+@sentry_sdk.trace
+def process_single_upload(
+    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
+):
+    testruns = get_testruns(upload)
+
+    for testrun in testruns:
+        test_id = bytes(testrun.test_id)
+        match testrun.outcome:
+            case "pass":
+                if test_id not in curr_flakes:
+                    continue
+
+                handle_pass(curr_flakes, test_id)
+            case "failure" | "flaky_fail" | "error":
+                handle_failure(curr_flakes, test_id, testrun, repo_id)
+            case _:
+                continue
+
+    Testrun.objects.bulk_update(testruns, ["outcome"])
+
+
+@sentry_sdk.trace
 def process_flakes_for_commit(repo_id: int, commit_id: str):
     uploads = get_relevant_uploads(repo_id, commit_id)
 
     curr_flakes = fetch_current_flakes(repo_id)
 
     for upload in uploads:
-        testruns = get_testruns(upload, curr_flakes)
-
-        for testrun in testruns:
-            test_id = bytes(testrun.test_id)
-            match testrun.outcome:
-                case "pass":
-                    if test_id not in curr_flakes:
-                        continue
-
-                    handle_pass(curr_flakes, test_id)
-                case "failure" | "flaky_fail" | "error":
-                    handle_failure(curr_flakes, test_id, testrun, repo_id)
-                case _:
-                    continue
-
-        Testrun.objects.bulk_update(testruns, ["outcome"])
+        process_single_upload(upload, curr_flakes, repo_id)
 
     Flake.objects.bulk_create(
         curr_flakes.values(),
@@ -111,6 +118,7 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     )
 
 
+@sentry_sdk.trace
 def process_flakes_for_repo(repo_id: int):
     redis_client = get_redis_connection()
     lock_name = LOCK_NAME.format(repo_id)
