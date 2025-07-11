@@ -43,7 +43,6 @@ Flags with carried forward coverage won't be shown. [Click here](https://docs.co
 > **Legend** - [Click here to learn more](https://docs.codecov.io/docs/codecov-delta)
 > `Δ = absolute <relative> (impact)`, `ø = not affected`, `? = missing data`
 > Powered by [Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=footer). Last update [1234567...2345678](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=lastupdated). Read the [comment docs](https://docs.codecov.io/docs/pull-request-comments).
-
 <details><summary> :rocket: New features to boost your workflow: </summary>
 
 - :package: [JS Bundle Analysis](https://docs.codecov.com/docs/javascript-bundle-analysis): Save yourself from yourself by tracking and limiting bundle sizes in JS merges.

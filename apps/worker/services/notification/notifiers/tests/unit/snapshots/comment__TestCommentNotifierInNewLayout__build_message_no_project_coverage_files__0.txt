@@ -11,5 +11,4 @@
 
 ... and [1 file with indirect coverage changes](test.example.br/gh/test-owner/test-repo/pull/1/indirect-changes?src=pr&el=tree-more)
 
-
 :loudspeaker: Thoughts on this report? [Let us know!](https://about.codecov.io/pull-request-comment-report/)

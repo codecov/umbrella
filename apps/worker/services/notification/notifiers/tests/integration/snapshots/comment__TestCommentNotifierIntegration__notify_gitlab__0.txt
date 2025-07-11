@@ -26,7 +26,6 @@
 | [unit](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5/flags?src=pr&el=flag) | `100.00% <ø> (?)` | `0.00 <ø> (?)` | |
 
 Flags with carried forward coverage won't be shown. [Click here](https://docs.codecov.io/docs/carryforward-flags#carryforward-flags-in-the-pull-request-comment) to find out more.
-
 [see 2 files with indirect coverage changes](https://app.codecov.io/gl/joseph-sentry/example-python/pull/5/indirect-changes?src=pr&el=tree-more)
 
 ------

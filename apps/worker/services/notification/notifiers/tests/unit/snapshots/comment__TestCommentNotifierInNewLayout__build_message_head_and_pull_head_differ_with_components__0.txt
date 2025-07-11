@@ -9,6 +9,7 @@ Please [upload](https://docs.codecov.com/docs/codecov-uploader) reports for the 
 <details><summary>Additional details and impacted files</summary>
 
 
+
 [![Impacted file tree graph](test.example.br/gh/ThiagoCodecov/example-python/pull/1/graphs/tree.svg?width=650&height=150&src=pr&token=abcdefghij)](test.example.br/gh/ThiagoCodecov/example-python/pull/1?src=pr&el=tree)
 
 ```diff
@@ -38,7 +39,6 @@ Flags with carried forward coverage won't be shown. [Click here](https://docs.co
 |---|---|---|
 | [go_files](test.example.br/gh/ThiagoCodecov/example-python/pull/1/components?src=pr&el=component) | `62.50% <66.67%> (+12.50%)` | :arrow_up: |
 | [unit_flags](test.example.br/gh/ThiagoCodecov/example-python/pull/1/components?src=pr&el=component) | `100.00% <100.00%> (∅)` | |
-
 </details>
 
 [:umbrella: View full report in Codecov by Sentry](test.example.br/gh/ThiagoCodecov/example-python/pull/1?dropdown=coverage&src=pr&el=continue).   

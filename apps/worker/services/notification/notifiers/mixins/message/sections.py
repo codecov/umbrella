@@ -93,7 +93,6 @@ def get_message_layout(
     if status_or_checks_helper_text:
         upper.append(("status_or_checks_helper_text", HelperTextSectionWriter))
     upper.append(("messages_to_user", MessagesToUserSectionWriter))
-
     return MessageLayout(upper, middle, lower)
 
 
@@ -147,10 +146,8 @@ class NewFooterSectionWriter(BaseSectionWriter):
 class HeaderSectionWriter(BaseSectionWriter):
     def _possibly_include_test_result_setup_confirmation(self, comparison):
         if ta_error_msg := comparison.test_results_error():
-            yield ""
-            yield ta_error_msg
+            yield f":warning: {ta_error_msg}"
         elif comparison.all_tests_passed():
-            yield ""
             yield ALL_TESTS_PASSED_MSG
 
     def do_write_section(self, comparison, diff, changes, links, behind_by=None):
@@ -249,6 +246,7 @@ class AnnouncementSectionWriter(BaseSectionWriter):
 class FooterSectionWriter(BaseSectionWriter):
     def do_write_section(self, comparison, diff, changes, links, behind_by=None):
         pull_dict = comparison.enriched_pull.provider_pull
+        yield ""
         yield "------"
         yield ""
         yield (
@@ -272,6 +270,7 @@ class FooterSectionWriter(BaseSectionWriter):
 class ReachSectionWriter(BaseSectionWriter):
     def do_write_section(self, comparison, diff, changes, links, behind_by=None):
         pull = comparison.enriched_pull.database_pull
+        yield ""
         yield (
             "[![Impacted file tree graph]({})]({}?src=pr&el=tree)".format(
                 get_pull_graph_url(
@@ -295,6 +294,7 @@ class DiffSectionWriter(BaseSectionWriter):
             base_report = Report()
         pull_dict = comparison.enriched_pull.provider_pull
         pull = comparison.enriched_pull.database_pull
+        yield ""
         yield "```diff"
         lines = diff_to_string(
             self.current_yaml,
@@ -375,6 +375,7 @@ class NewFilesSectionWriter(BaseSectionWriter):
             )
             changed_files_with_missing_lines = [f for f in changed_files if f[3] > 0]
             if changed_files_with_missing_lines:
+                yield ""
                 yield (
                     "| [Files with missing lines]({}?dropdown=coverage&src=pr&el=tree) {}".format(
                         links["pull"], table_header
@@ -444,6 +445,7 @@ class FileSectionWriter(BaseSectionWriter):
                         is_critical=path in files_in_critical,
                     )
 
+            yield ""
             yield (
                 "| [Files with missing lines]({}?dropdown=coverage&src=pr&el=tree) {}".format(
                     links["pull"], table_header
@@ -551,6 +553,7 @@ class FlagSectionWriter(BaseSectionWriter):
                 + ("---|" if has_carriedforward_flags else "")
             )
 
+            yield ""
             yield (
                 "| [Flag]({href}/flags?src=pr&el=flags) ".format(href=links["pull"])
                 + table_header
@@ -651,6 +654,7 @@ class ComponentsSectionWriter(BaseSectionWriter):
             all_components, comparison
         )
 
+        yield ""
         # Table header and layout
         yield "| [Components]({href}/components?src=pr&el=components) | Coverage \u0394 | |".format(
             href=links["pull"],
@@ -679,6 +683,8 @@ class HelperTextSectionWriter(BaseSectionWriter):
     def do_write_section(self, comparison: ComparisonProxy, *args, **kwargs):
         helper_template = ":x: {helper_text}"
         sorted_helper_text_keys = sorted(self.status_or_checks_helper_text.keys())
+        if sorted_helper_text_keys:
+            yield ""
         for helper_text_key in sorted_helper_text_keys:
             yield helper_template.format(
                 helper_text=self.status_or_checks_helper_text[helper_text_key]

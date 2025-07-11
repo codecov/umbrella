@@ -9,6 +9,7 @@ Please [upload](https://docs.codecov.com/docs/codecov-uploader) reports for the 
 <details><summary>Additional details and impacted files</summary>
 
 
+
 [![Impacted file tree graph](test.example.br/gh/ThiagoCodecov/example-python/pull/1/graphs/tree.svg?width=650&height=150&src=pr&token=abcdefghij)](test.example.br/gh/ThiagoCodecov/example-python/pull/1?src=pr&el=tree)
 
 ```diff
@@ -33,7 +34,6 @@ Please [upload](https://docs.codecov.com/docs/codecov-uploader) reports for the 
 | [unit](test.example.br/gh/ThiagoCodecov/example-python/pull/1/flags?src=pr&el=flag) | `100.00% <100.00%> (?)` | `0.00 <0.00> (?)` | |
 
 Flags with carried forward coverage won't be shown. [Click here](https://docs.codecov.io/docs/carryforward-flags#carryforward-flags-in-the-pull-request-comment) to find out more.
-
 </details>
 
 [:umbrella: View full report in Codecov by Sentry](test.example.br/gh/ThiagoCodecov/example-python/pull/1?dropdown=coverage&src=pr&el=continue).   

@@ -51,10 +51,8 @@ class TeamPlanWriter:
         hide_project_coverage = settings.get("hide_project_coverage", False)
         if hide_project_coverage:
             if ta_error_msg := comparison.test_results_error():
-                lines.append("")
                 lines.append(ta_error_msg)
             elif comparison.all_tests_passed():
-                lines.append("")
                 lines.append(ALL_TESTS_PASSED_MSG)
         return lines
 

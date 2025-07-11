@@ -34,6 +34,5 @@ Flags with carried forward coverage won't be shown. [Click here](https://docs.co
 |---|---|---|---|
 | [file\_1.go](test.example.br/gh/test-owner/test-repo/pull/1?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | `62.50% <66.67%> (ø)` | `10.00 <0.00> (?)` | |
 
-
 [:umbrella: View full report in Codecov by Sentry](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=continue).   
 :loudspeaker: Have feedback on the report? [Share it here](https://about.codecov.io/codecov-pr-comment-feedback/).

@@ -240,6 +240,15 @@ def messagify_flake[T: (str, bytes)](
     return make_quoted(f"{test_name}\n{flake_rate_section}\n{stack_trace}")
 
 
+def short_error_message(error: ErrorPayload) -> str | None:
+    if error.error_code == "unsupported_file_format":
+        return "Test Analytics upload error: Unsupported file format"
+    elif error.error_code == "file_not_in_storage":
+        return "Test Analytics upload error: File not in storage"
+
+    return None
+
+
 def specific_error_message(error: ErrorPayload) -> str:
     if error.error_code == "unsupported_file_format":
         title = "### :warning: Unsupported file format"
@@ -369,7 +378,7 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
         message: str
 
         if self.error is None:
-            message = ":x: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format."
+            message = "Test Analytics upload error: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format."
         else:
             message = specific_error_message(self.error)
 

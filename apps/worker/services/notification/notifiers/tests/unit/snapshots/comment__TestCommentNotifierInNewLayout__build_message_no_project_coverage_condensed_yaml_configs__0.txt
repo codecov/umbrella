@@ -5,5 +5,4 @@
 |---|---|---|
 | [file\_1.go](test.example.br/gh/test-owner/test-repo/pull/1?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | 66.67% | [1 Missing :warning: ](test.example.br/gh/test-owner/test-repo/pull/1?src=pr&el=tree) |
 
-
 :loudspeaker: Thoughts on this report? [Let us know!](https://about.codecov.io/pull-request-comment-report/)
