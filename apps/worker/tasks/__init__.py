@@ -58,6 +58,7 @@ from tasks.transplant_report import transplant_report_task
 from tasks.trial_expiration import trial_expiration_task
 from tasks.trial_expiration_cron import trial_expiration_cron_task
 from tasks.upload import upload_task
+from tasks.upload_breadcrumb import upload_breadcrumb_task
 from tasks.upload_finisher import upload_finisher_task
 from tasks.upload_processor import upload_processor_task
 from tasks.upsert_component import upsert_component_task
