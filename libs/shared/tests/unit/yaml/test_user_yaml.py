@@ -405,7 +405,6 @@ class TestUserYaml:
                 "show_carryforward_flags": False,
             },
             "slack_app": True,
-            "github_checks": {"annotations": True},
         }
         patch_centric_default = UserYaml.get_final_yaml(
             owner_yaml=None,
@@ -435,7 +434,6 @@ class TestUserYaml:
                 "hide_project_coverage": True,
             },
             "slack_app": True,
-            "github_checks": {"annotations": True},
         }
 
     def test_get_possible_additional_user_yaml_empty(self, mock_configuration):

@@ -64,7 +64,6 @@ class TestYamlService:
                 "behavior": "default",
                 "show_carryforward_flags": False,
             },
-            "github_checks": {"annotations": True},
             "slack_app": True,
         }
         result = UserYaml.get_final_yaml(owner_yaml={}, repo_yaml={}, commit_yaml={})

@@ -1030,7 +1030,6 @@ class TestValidationConfig:
                 "behavior": "default",
                 "show_carryforward_flags": False,
             },
-            "github_checks": {"annotations": True},
             "slack_app": True,
         }
         res = validate_yaml(
