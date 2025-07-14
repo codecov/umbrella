@@ -18,15 +18,15 @@ class Milestones(models.TextChoices):
 
     These milestones represent the various stages of the upload process.
 
-    FETCHING_COMMIT_DETAILS: Creating a commit database entry and fetching commit details.
-    COMMIT_PROCESSED: Commit has been processed and is ready for report preparation.
-    PREPARING_FOR_REPORT: Creating a report database entry.
-    READY_FOR_REPORT: Carry-forwarding flags from previous uploads is complete.
-    WAITING_FOR_COVERAGE_UPLOAD: Create a pre-signed URL for the upload and wait for the coverage upload.
-    COMPILING_UPLOADS: Scheduling upload processing task(s) and initializing any missing database entries.
-    PROCESSING_UPLOAD: Processing the uploaded file(s).
-    UPLOAD_COMPLETE: Processing and compilation of the upload is complete.
-    NOTIFICATIONS_SENT: Notifications (e.g. pull request comments) have been sent.
+    * FETCHING_COMMIT_DETAILS: Creating a commit database entry and fetching commit details.
+    * COMMIT_PROCESSED: Commit has been processed and is ready for report preparation.
+    * PREPARING_FOR_REPORT: Creating a report database entry.
+    * READY_FOR_REPORT: Carry-forwarding flags from previous uploads is complete.
+    * WAITING_FOR_COVERAGE_UPLOAD: Create a pre-signed URL for the upload and wait for the coverage upload.
+    * COMPILING_UPLOADS: Scheduling upload processing task(s) and initializing any missing database entries.
+    * PROCESSING_UPLOAD: Processing the uploaded file(s).
+    * UPLOAD_COMPLETE: Processing and compilation of the upload is complete.
+    * NOTIFICATIONS_SENT: Notifications (e.g. pull request comments) have been sent.
     """
 
     FETCHING_COMMIT_DETAILS = "fcd", _("Fetching commit details")
