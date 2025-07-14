@@ -6,7 +6,6 @@ import polars as pl
 from django.conf import settings
 
 from core.models import Commit
-from rollouts import READ_NEW_TA
 from services.task import TaskService
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Summary
@@ -98,11 +97,9 @@ def _has_commits_before_cutoff(repoid: int) -> bool:
 def use_new_impl(repoid: int) -> bool:
     """
     Check if we should use the new implementation
-    Use new implementation if:
-    1. READ_NEW_TA rollout is enabled for this repo, OR
-    2. The repo has no commits before the cutoff date
+    Use new implementation if the repo has no commits before the cutoff date
     """
-    return READ_NEW_TA.check_value(repoid) or not _has_commits_before_cutoff(repoid)
+    return not _has_commits_before_cutoff(repoid)
 
 
 def get_results(
@@ -121,7 +118,6 @@ def get_results(
             cache to redis
     deserialize
     """
-
     if use_new_impl(repoid):
         func = new_get_results
         label = "new"

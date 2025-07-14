@@ -19,6 +19,14 @@ def repository():
 
 
 @pytest.fixture
+def new_ta_enabled(mocker):
+    mocker.patch(
+        "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
+        return_value=True,
+    )
+
+
+@pytest.fixture
 def populate_timescale_test_results_aggregates(repository):
     # Create testruns with different flaky behavior patterns
     now_utc = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -77,6 +85,7 @@ def populate_timescale_test_results_aggregates(repository):
         )
 
 
+@pytest.mark.usefixtures("new_ta_enabled")
 @pytest.mark.django_db(databases=["default", "ta_timeseries"], transaction=True)
 class TestTestResultsAggregatesTimescale(GraphQLTestHelper):
     def test_test_results_aggregates_timescale(
@@ -101,3 +110,35 @@ class TestTestResultsAggregatesTimescale(GraphQLTestHelper):
         assert result.fails_percent_change == 0.0
         assert result.skips_percent_change == -1.0
         assert result.total_slow_tests_percent_change == 0.0
+
+    def test_gql_query_test_results_aggregates_timescale(
+        self, repository, populate_timescale_test_results_aggregates, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                testResultsAggregates {{
+                                    totalDuration
+                                    slowestTestsDuration
+                                    totalFails
+                                    totalSkips
+                                    totalSlowTests
+                                    totalDurationPercentChange
+                                    slowestTestsDurationPercentChange
+                                    totalFailsPercentChange
+                                    totalSkipsPercentChange
+                                    totalSlowTestsPercentChange
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result

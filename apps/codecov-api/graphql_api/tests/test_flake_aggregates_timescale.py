@@ -94,3 +94,29 @@ class TestFlakeAggregatesTimescale(GraphQLTestHelper):
         assert result.flake_count == 1
         assert result.flake_rate_percent_change == -0.5
         assert result.flake_count_percent_change == -0.6666666666666666
+
+    def test_gql_query_flake_aggregates_timescale(
+        self, repository, populate_timescale_flake_aggregates, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                flakeAggregates {{
+                                    flakeRate
+                                    flakeCount
+                                    flakeRatePercentChange
+                                    flakeCountPercentChange
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result

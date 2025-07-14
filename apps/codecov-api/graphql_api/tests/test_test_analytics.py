@@ -227,7 +227,11 @@ def repository_with_new_commit(db):
 def store_in_redis(repository_with_old_commit, mocker):
     """Store data in Redis and ensure old implementation is used"""
     # Mock the rollout to return False to ensure old implementation
-    mocker.patch("utils.test_results.READ_NEW_TA.check_value", return_value=False)
+    mocker.patch("utils.test_results.use_new_impl", return_value=False)
+    mocker.patch(
+        "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
+        return_value=False,
+    )
 
     redis = get_redis_connection()
     redis.set(
@@ -246,7 +250,11 @@ def store_in_redis(repository_with_old_commit, mocker):
 def store_in_storage(repository_with_old_commit, mocker):
     """Store data in storage and ensure old implementation is used"""
     # Mock the rollout to return False to ensure old implementation
-    mocker.patch("utils.test_results.READ_NEW_TA.check_value", return_value=False)
+    mocker.patch("utils.test_results.use_new_impl", return_value=False)
+    mocker.patch(
+        "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
+        return_value=False,
+    )
 
     storage = get_appropriate_storage_service()
 
@@ -273,7 +281,11 @@ def store_in_storage(repository_with_old_commit, mocker):
 def store_in_redis_with_duplicate_names(repository_with_old_commit, mocker):
     """Store duplicate names data in Redis and ensure old implementation is used"""
     # Mock the rollout to return False to ensure old implementation
-    mocker.patch("utils.test_results.READ_NEW_TA.check_value", return_value=False)
+    mocker.patch("utils.test_results.use_new_impl", return_value=False)
+    mocker.patch(
+        "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
+        return_value=False,
+    )
 
     redis = get_redis_connection()
     redis.set(

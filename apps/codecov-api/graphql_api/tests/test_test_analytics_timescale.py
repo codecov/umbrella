@@ -20,6 +20,14 @@ def repository():
 
 
 @pytest.fixture
+def new_ta_enabled(mocker):
+    mocker.patch(
+        "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
+        return_value=True,
+    )
+
+
+@pytest.fixture
 def populate_timescale(repository):
     Testrun.objects.bulk_create(
         [
@@ -50,9 +58,10 @@ def populate_timescale(repository):
         )
 
 
+@pytest.mark.usefixtures("new_ta_enabled")
+@pytest.mark.django_db(databases=["default", "ta_timeseries"], transaction=True)
 class TestAnalyticsTestCaseNew(GraphQLTestHelper):
-    @pytest.mark.django_db(databases=["default", "ta_timeseries"], transaction=True)
-    def test_gql_query(self, repository, populate_timescale, snapshot):
+    def test_gql_query(self, repository, populate_timescale, new_ta_enabled, snapshot):
         result = get_test_results_queryset(
             repository.repoid,
             datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -65,3 +74,42 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
         assert snapshot("json") == [
             {k: v for k, v in row.items() if k != "updated_at"} for row in result
         ]
+
+    def test_gql_query_test_results_timescale(
+        self, repository, populate_timescale, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                testResults {{
+                                    totalCount
+                                    edges {{
+                                        cursor
+                                        node {{
+                                            name
+                                            failureRate
+                                            flakeRate
+                                            avgDuration
+                                            totalDuration
+                                            totalFailCount
+                                            totalFlakyFailCount
+                                            totalPassCount
+                                            totalSkipCount
+                                            commitsFailed
+                                            lastDuration
+                                        }}
+                                    }}
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
