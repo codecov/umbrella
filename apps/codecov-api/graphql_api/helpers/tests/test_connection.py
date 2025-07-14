@@ -53,6 +53,36 @@ class RepositoryQuerySetTests(TestCase):
 
         self.assertEqual(repos, [repo_1, repo_2, repo_3])
 
+    def test_queryset_to_connection_accepts_none_for_ordering_direction(self):
+        repo_1 = RepositoryFactory(name="a")
+        repo_2 = RepositoryFactory(name="b")
+        repo_3 = RepositoryFactory(name="c")
+
+        connection = async_to_sync(queryset_to_connection)(
+            Repository.objects.all(),
+            ordering=(RepositoryOrdering.NAME,),
+            ordering_direction=None,
+        )
+        repos = [edge["node"] for edge in connection.edges]
+
+        self.assertEqual(repos, [repo_1, repo_2, repo_3])
+
+    def test_queryset_to_connection_accepts_iterable_ordering_direction(
+        self,
+    ):
+        repo_1 = RepositoryFactory(name="a", repoid=2)
+        repo_2 = RepositoryFactory(name="a", repoid=1)
+        repo_3 = RepositoryFactory(name="b", repoid=3)
+
+        connection = async_to_sync(queryset_to_connection)(
+            Repository.objects.all(),
+            ordering=(RepositoryOrdering.NAME, RepositoryOrdering.ID),
+            ordering_direction=(OrderingDirection.DESC, OrderingDirection.ASC),
+        )
+        repos = [edge["node"] for edge in connection.edges]
+
+        self.assertEqual(repos, [repo_3, repo_2, repo_1])
+
     def test_queryset_to_connection_defers_count(self):
         RepositoryFactory(name="a")
         RepositoryFactory(name="b")
