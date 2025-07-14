@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "shared.django_apps.staticanalysis",
     "shared.django_apps.ta_timeseries",
     "shared.django_apps.test_analytics",
+    "shared.django_apps.timeseries",
     "shared.django_apps.upload_breadcrumbs",
 ]
 
