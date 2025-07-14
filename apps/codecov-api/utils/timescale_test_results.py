@@ -14,7 +14,6 @@ from django.db.models import (
     Value,
     When,
 )
-from django.db.models.functions import Coalesce
 
 from shared.django_apps.ta_timeseries.models import (
     TestrunBranchSummary,
@@ -65,42 +64,37 @@ def get_test_results_queryset(
         total_flaky_fail_count=Sum("flaky_fail_count"),
         total_skip_count=Sum("skip_count"),
         commits_where_fail=Sum("failing_commits"),
-        failure_rate=Coalesce(
-            (
-                Sum("fail_count", output_field=FloatField())
-                + Sum("flaky_fail_count", output_field=FloatField())
-            )
-            / (
-                Sum("pass_count", output_field=FloatField())
-                + Sum("fail_count", output_field=FloatField())
-                + Sum("flaky_fail_count", output_field=FloatField())
-            ),
-            Value(0.0),
+        total_count=Sum(
+            F("pass_count") + F("fail_count") + F("flaky_fail_count"),
+            output_field=FloatField(),
         ),
-        flake_rate=Coalesce(
-            Sum("flaky_fail_count", output_field=FloatField())
-            / (
-                Sum("pass_count", output_field=FloatField())
-                + Sum("fail_count", output_field=FloatField())
-                + Sum("flaky_fail_count", output_field=FloatField())
+        failure_rate=Case(
+            When(
+                Q(total_count=0),
+                then=Value(0.0),
             ),
-            Value(0.0),
+            default=Sum("fail_count") + Sum("flaky_fail_count") / F("total_count"),
+            output_field=FloatField(),
         ),
-        avg_duration=Coalesce(
-            Sum(
-                F("avg_duration_seconds")
-                * (F("pass_count") + F("fail_count") + F("flaky_fail_count")),
-                output_field=FloatField(),
-            )
-            / Sum(
-                F("pass_count") + F("fail_count") + F("flaky_fail_count"),
-                output_field=FloatField(),
+        flake_rate=Case(
+            When(
+                Q(total_count=0),
+                then=Value(0.0),
             ),
-            Value(0.0),
+            default=Sum("flaky_fail_count") / F("total_count"),
+            output_field=FloatField(),
         ),
         total_duration=Sum(
             F("avg_duration_seconds")
             * (F("pass_count") + F("fail_count") + F("flaky_fail_count")),
+            output_field=FloatField(),
+        ),
+        avg_duration=Case(
+            When(
+                Q(total_count=0),
+                then=Value(0.0),
+            ),
+            default=F("total_duration") / F("total_count"),
             output_field=FloatField(),
         ),
         last_duration=Max("last_duration_seconds"),

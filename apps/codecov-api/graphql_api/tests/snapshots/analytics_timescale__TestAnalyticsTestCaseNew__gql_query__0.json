@@ -7,15 +7,13 @@
     "total_flaky_fail_count": 0,
     "total_skip_count": 0,
     "commits_where_fail": 0,
+    "total_count": 1,
     "failure_rate": 0.0,
     "flake_rate": 0.0,
-    "avg_duration": 0.0,
     "total_duration": 0.0,
+    "avg_duration": 0.0,
     "last_duration": 0.0,
-    "flags": [
-      "flag1",
-      "flag2"
-    ],
+    "flags": ["flag1", "flag2"],
     "name": "name0"
   },
   {
@@ -26,14 +24,13 @@
     "total_flaky_fail_count": 0,
     "total_skip_count": 0,
     "commits_where_fail": 1,
+    "total_count": 1,
     "failure_rate": 1.0,
     "flake_rate": 0.0,
-    "avg_duration": 1.0,
     "total_duration": 1.0,
+    "avg_duration": 1.0,
     "last_duration": 1.0,
-    "flags": [
-      "flag3"
-    ],
+    "flags": ["flag3"],
     "name": "name1"
   },
   {
@@ -44,15 +41,13 @@
     "total_flaky_fail_count": 0,
     "total_skip_count": 0,
     "commits_where_fail": 0,
+    "total_count": 1,
     "failure_rate": 0.0,
     "flake_rate": 0.0,
-    "avg_duration": 2.0,
     "total_duration": 2.0,
+    "avg_duration": 2.0,
     "last_duration": 2.0,
-    "flags": [
-      "flag1",
-      "flag2"
-    ],
+    "flags": ["flag1", "flag2"],
     "name": "name2"
   },
   {
@@ -63,14 +58,13 @@
     "total_flaky_fail_count": 0,
     "total_skip_count": 0,
     "commits_where_fail": 1,
+    "total_count": 1,
     "failure_rate": 1.0,
     "flake_rate": 0.0,
-    "avg_duration": 3.0,
     "total_duration": 3.0,
+    "avg_duration": 3.0,
     "last_duration": 3.0,
-    "flags": [
-      "flag3"
-    ],
+    "flags": ["flag3"],
     "name": "name3"
   },
   {
@@ -81,15 +75,13 @@
     "total_flaky_fail_count": 0,
     "total_skip_count": 0,
     "commits_where_fail": 0,
+    "total_count": 1,
     "failure_rate": 0.0,
     "flake_rate": 0.0,
-    "avg_duration": 4.0,
     "total_duration": 4.0,
+    "avg_duration": 4.0,
     "last_duration": 4.0,
-    "flags": [
-      "flag1",
-      "flag2"
-    ],
+    "flags": ["flag1", "flag2"],
     "name": "name4"
   }
 ]
