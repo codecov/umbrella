@@ -1,5 +1,6 @@
 import tempfile
 from datetime import UTC, date, datetime, timedelta
+from functools import lru_cache
 
 import polars as pl
 from django.conf import settings
@@ -93,6 +94,17 @@ def _has_commits_before_cutoff(repoid: int) -> bool:
     ).exists()
 
 
+@lru_cache
+def use_new_impl(repoid: int) -> bool:
+    """
+    Check if we should use the new implementation
+    Use new implementation if:
+    1. READ_NEW_TA rollout is enabled for this repo, OR
+    2. The repo has no commits before the cutoff date
+    """
+    return READ_NEW_TA.check_value(repoid) or not _has_commits_before_cutoff(repoid)
+
+
 def get_results(
     repoid: int,
     branch: str,
@@ -109,15 +121,8 @@ def get_results(
             cache to redis
     deserialize
     """
-    # Check if we should use the new implementation
-    # Use new implementation if:
-    # 1. READ_NEW_TA rollout is enabled for this repo, OR
-    # 2. The repo has no commits before the cutoff date
-    use_new_impl = READ_NEW_TA.check_value(repoid) or not _has_commits_before_cutoff(
-        repoid
-    )
 
-    if use_new_impl:
+    if use_new_impl(repoid):
         func = new_get_results
         label = "new"
     else:

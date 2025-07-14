@@ -4,56 +4,59 @@ from graphql import GraphQLResolveInfo
 
 from graphql_api.types.enums.enum_types import MeasurementInterval
 from utils.ta_types import TestResultsAggregates
-from utils.test_results import get_results
+from utils.test_results import get_results, use_new_impl
 
 
-def calculate_aggregates(table: pl.DataFrame) -> pl.DataFrame:
-    return table.with_columns(pl.col("avg_duration").fill_nan(0)).select(
-        (
-            pl.col("avg_duration")
-            * (pl.col("total_pass_count") + pl.col("total_fail_count"))
+def calculate_aggregates(repoid: int, table: pl.DataFrame) -> pl.DataFrame:
+    if use_new_impl(repoid):
+        total_tests = (
+            pl.col("total_pass_count")
+            + pl.col("total_fail_count")
+            + pl.col("total_flaky_fail_count")
         )
+    else:
+        total_tests = pl.col("total_pass_count") + pl.col("total_fail_count")
+
+    total_duration = (
+        (pl.col("avg_duration") * total_tests).sum().alias("total_duration")
+    )
+
+    num_slow_tests = min(100, max(table.height // 20, 1))
+
+    slowest_tests_duration = (
+        (pl.col("avg_duration") * total_tests)
+        .top_k(num_slow_tests)
         .sum()
-        .alias("total_duration"),
-        (
-            pl.when(pl.col("avg_duration") >= pl.col("avg_duration").quantile(0.95))
-            .then(
-                pl.col("avg_duration")
-                * (pl.col("total_pass_count") + pl.col("total_fail_count"))
-            )
-            .otherwise(0)
-            .top_k(min(100, max(table.height // 20, 1)))
-            .sum()
-            .alias("slowest_tests_duration")
-        ),
+        .alias("slowest_tests_duration")
+    )
+
+    return table.with_columns(pl.col("avg_duration")).select(
+        total_duration,
+        slowest_tests_duration,
         (pl.col("total_skip_count").sum()).alias("skips"),
         (pl.col("total_fail_count").sum()).alias("fails"),
-        (
-            (pl.col("avg_duration") >= pl.col("avg_duration").quantile(0.95))
-            .top_k(min(100, max(table.height // 20, 1)))
-            .sum()
-        ).alias("total_slow_tests"),
+        pl.lit(num_slow_tests).alias("total_slow_tests"),
     )
 
 
 def test_results_aggregates_from_table(
+    repoid: int,
     table: pl.DataFrame,
 ) -> TestResultsAggregates:
-    aggregates = calculate_aggregates(table).row(0, named=True)
+    aggregates = calculate_aggregates(repoid, table).row(0, named=True)
     return TestResultsAggregates(**aggregates)
 
 
 def test_results_aggregates_with_percentage(
+    repoid: int,
     curr_results: pl.DataFrame,
     past_results: pl.DataFrame,
 ) -> TestResultsAggregates:
-    curr_aggregates = calculate_aggregates(curr_results)
-    past_aggregates = calculate_aggregates(past_results)
+    curr_aggregates = calculate_aggregates(repoid, curr_results)
+    past_aggregates = calculate_aggregates(repoid, past_results)
 
     merged_results: pl.DataFrame = pl.concat([past_aggregates, curr_aggregates])
 
-    # with_columns upserts the new columns, so if the name already exists it get overwritten
-    # otherwise it's just added
     merged_results = merged_results.with_columns(
         pl.all()
         .pct_change()
@@ -74,9 +77,11 @@ def generate_test_results_aggregates(
         return None
     past_results = get_results(repoid, branch, interval.value * 2, interval.value)
     if past_results is None:
-        return test_results_aggregates_from_table(curr_results)
+        return test_results_aggregates_from_table(repoid, curr_results)
     else:
-        return test_results_aggregates_with_percentage(curr_results, past_results)
+        return test_results_aggregates_with_percentage(
+            repoid, curr_results, past_results
+        )
 
 
 test_results_aggregates_bindable = ObjectType("TestResultsAggregates")
