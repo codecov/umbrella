@@ -3,13 +3,16 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta
 
 from celery import Celery, chain, group, signature
+from pydantic import BaseModel
 from sentry_sdk import set_tag
 
 from core.models import Repository
 from services.task.task_router import route_task
 from shared import celery_config
+from shared.utils.pydantic_serializer import PydanticModelDump, register_preserializer
 from timeseries.models import Dataset, MeasurementName
 
+register_preserializer(PydanticModelDump)(BaseModel)
 celery_app = Celery("tasks")
 celery_app.config_from_object("shared.celery_config:BaseCeleryConfig")
 
