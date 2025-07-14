@@ -261,11 +261,14 @@ def queryset_to_connection_sync(
         return ArrayConnection(array_paginator)
 
     else:
+        if ordering_direction is None:
+            ordering_direction = OrderingDirection.ASC
+
         if isinstance(ordering_direction, OrderingDirection):
             ordering = tuple(
                 field_order(field, ordering_direction) for field in ordering
             )
-        elif ordering_direction is not None:
+        else:
             ordering = tuple(
                 field_order(field, direction)
                 for (field, direction) in zip(ordering, ordering_direction)
