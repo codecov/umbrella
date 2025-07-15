@@ -356,7 +356,7 @@ class Commit(CodecovBaseModel):
     repository = relationship(Repository, backref=backref("commits", cascade="delete"))
     notifications = relationship(
         "CommitNotification",
-        backref=backref("commits"),
+        back_populates="commit",
         cascade="all, delete",
         passive_deletes=True,
     )
@@ -613,7 +613,9 @@ class CommitNotification(CodecovBaseModel):
         )
     )
 
-    commit = relationship(Commit, foreign_keys=[commit_id])
+    commit = relationship(
+        Commit, foreign_keys=[commit_id], back_populates="notifications"
+    )
 
     __table_args__ = (
         Index("notifications_commit_id", "commit_id"),
