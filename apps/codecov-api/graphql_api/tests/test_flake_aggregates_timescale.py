@@ -19,6 +19,14 @@ def repository():
 
 
 @pytest.fixture
+def new_ta_enabled(mocker):
+    mocker.patch(
+        "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
+        return_value=True,
+    )
+
+
+@pytest.fixture
 def populate_timescale_flake_aggregates(repository):
     # Create testruns with different flaky behavior patterns
     today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -77,6 +85,7 @@ def populate_timescale_flake_aggregates(repository):
         )
 
 
+@pytest.mark.usefixtures("new_ta_enabled")
 @pytest.mark.django_db(databases=["default", "ta_timeseries"], transaction=True)
 class TestFlakeAggregatesTimescale(GraphQLTestHelper):
     def test_gql_query_flake_aggregates(
