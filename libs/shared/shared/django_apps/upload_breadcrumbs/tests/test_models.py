@@ -31,6 +31,7 @@ class TestBreadcrumbData:
     def test_valid_some_fields(self):
         data = BreadcrumbData(
             milestone=Milestones.FETCHING_COMMIT_DETAILS,
+            error=None,
         )
         assert data.milestone == Milestones.FETCHING_COMMIT_DETAILS
         assert data.endpoint is None
@@ -49,7 +50,7 @@ class TestBreadcrumbData:
                 {
                     "milestone": None,
                 },
-                "field must not be None or empty.",
+                "at least one field must be provided.",
             ),
             (
                 {
@@ -60,37 +61,16 @@ class TestBreadcrumbData:
             ),
             (
                 {
-                    "milestone": Milestones.UPLOAD_COMPLETE,
-                    "endpoint": None,
-                },
-                "field must not be None or empty.",
-            ),
-            (
-                {
-                    "milestone": Milestones.PREPARING_FOR_REPORT,
-                    "endpoint": Endpoints.CREATE_REPORT,
-                    "error": None,
-                },
-                "field must not be None or empty.",
-            ),
-            (
-                {
-                    "error": Errors.UNRECOGNIZED_FORMAT,
-                    "error_text": None,
-                },
-                "field must not be None or empty.",
-            ),
-            (
-                {
                     "error": Errors.MISSING_TOKEN,
                     "error_text": "",
                 },
-                "field must not be None or empty.",
+                "field must not be empty.",
             ),
             (
                 {
                     "milestone": Milestones.FETCHING_COMMIT_DETAILS,
                     "endpoint": Endpoints.CREATE_COMMIT,
+                    "error": None,
                     "error_text": "Error text without an error",
                 },
                 "'error_text' is provided, but 'error' is missing.",
@@ -138,6 +118,7 @@ class TestBreadcrumbData:
     def test_some_fields_dump(self):
         data = BreadcrumbData(
             milestone=Milestones.FETCHING_COMMIT_DETAILS,
+            endpoint=None,
         )
         dumped_data = data.model_dump()
         expected_data = {

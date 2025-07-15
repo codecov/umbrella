@@ -80,7 +80,8 @@ class BreadcrumbData(
     Represents the data structure for the `breadcrumb_data` field which contains
     information about the milestone, endpoint, error, and error text.
 
-    Each field is optional and cannot be set to `None` or an empty string.
+    Each field is optional and cannot be set to an empty string. Note that any
+    field not set or set to `None` will be excluded from the model dump.
     Additionally, if `error_text` is provided, `error` must also be provided.
 
     :param milestone: The milestone of the upload process.
@@ -92,7 +93,8 @@ class BreadcrumbData(
     :param error_text: Additional text describing the error.
     :type error_text: str, optional
 
-    :raises ValidationError: If any field is explicitly set to None or empty.
+    :raises ValidationError: If no non-empty fields are provided.
+    :raises ValidationError: If any field is explicitly set to an empty string.
     :raises ValidationError: If `error_text` is provided without an `error`.
     :raises ValidationError: If `error` is set to UNKNOWN without an `error_text`.
     """
@@ -105,8 +107,8 @@ class BreadcrumbData(
     @field_validator("*", mode="after")
     @classmethod
     def validate_initialized(cls, value):
-        if value is None or value == "":
-            raise ValueError("field must not be None or empty.")
+        if value == "":
+            raise ValueError("field must not be empty.")
         return value
 
     @model_validator(mode="after")
