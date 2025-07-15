@@ -154,3 +154,131 @@ class TestrunSummary(
         app_label = TA_TIMESERIES_APP_LABEL
         db_table = "ta_timeseries_testrun_summary_1day"
         managed = False
+
+
+class AggregateHourly(
+    ExportModelOperationsMixin("ta_timeseries.aggregate_hourly"),
+    models.Model,
+):
+    __test__ = False
+
+    bucket_hourly = models.DateTimeField(primary_key=True)
+    repo_id = models.IntegerField()
+
+    total_duration_seconds = models.FloatField()
+    pass_count = models.IntegerField()
+    fail_count = models.IntegerField()
+    skip_count = models.IntegerField()
+    flaky_fail_count = models.IntegerField()
+
+    __repr__ = sane_repr(
+        "bucket_hourly",
+        "repo_id",
+        "total_duration_seconds",
+        "pass_count",
+        "fail_count",
+        "skip_count",
+        "flaky_fail_count",
+    )  # type: ignore
+
+    class Meta:
+        app_label = TA_TIMESERIES_APP_LABEL
+        db_table = "ta_timeseries_aggregate_hourly"
+        managed = False
+
+
+class AggregateDaily(
+    ExportModelOperationsMixin("ta_timeseries.aggregate_daily"),
+    models.Model,
+):
+    __test__ = False
+
+    bucket_daily = models.DateTimeField(primary_key=True)
+    repo_id = models.IntegerField()
+
+    total_duration_seconds = models.FloatField()
+    pass_count = models.IntegerField()
+    fail_count = models.IntegerField()
+    skip_count = models.IntegerField()
+    flaky_fail_count = models.IntegerField()
+
+    __repr__ = sane_repr(
+        "bucket_daily",
+        "repo_id",
+        "total_duration_seconds",
+        "pass_count",
+        "fail_count",
+        "skip_count",
+        "flaky_fail_count",
+    )  # type: ignore
+
+    class Meta:
+        app_label = TA_TIMESERIES_APP_LABEL
+        db_table = "ta_timeseries_aggregate_daily"
+        managed = False
+
+
+class BranchAggregateHourly(
+    ExportModelOperationsMixin("ta_timeseries.branch_aggregate_hourly"),
+    models.Model,
+):
+    __test__ = False
+
+    bucket_hourly = models.DateTimeField(primary_key=True)
+    repo_id = models.IntegerField()
+    branch = models.TextField()
+
+    total_duration_seconds = models.FloatField()
+    pass_count = models.IntegerField()
+    fail_count = models.IntegerField()
+    skip_count = models.IntegerField()
+    flaky_fail_count = models.IntegerField()
+
+    __repr__ = sane_repr(
+        "bucket_hourly",
+        "repo_id",
+        "branch",
+        "total_duration_seconds",
+        "pass_count",
+        "fail_count",
+        "skip_count",
+        "flaky_fail_count",
+    )  # type: ignore
+
+    class Meta:
+        app_label = TA_TIMESERIES_APP_LABEL
+        db_table = "ta_timeseries_branch_aggregate_hourly"
+        managed = False
+
+
+class BranchAggregateDaily(
+    ExportModelOperationsMixin("ta_timeseries.branch_aggregate_daily"),
+    models.Model,
+):
+    __test__ = False
+
+    bucket_daily = models.DateTimeField(primary_key=True)
+    repo_id = models.IntegerField()
+    branch = models.TextField()
+
+    total_duration_seconds = models.FloatField()
+    pass_count = models.IntegerField()
+    fail_count = models.IntegerField()
+    skip_count = models.IntegerField()
+    flaky_fail_count = models.IntegerField()
+
+    __repr__ = sane_repr(
+        "bucket_daily",
+        "repo_id",
+        "branch",
+        "total_duration_seconds",
+        "pass_count",
+        "fail_count",
+        "skip_count",
+        "flaky_fail_count",
+    )  # type: ignore
+
+    class Meta:
+        app_label = TA_TIMESERIES_APP_LABEL
+        db_table = "ta_timeseries_branch_aggregate_daily"
+        managed = False
