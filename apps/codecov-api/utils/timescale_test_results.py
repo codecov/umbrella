@@ -16,6 +16,7 @@ from django.db.models import (
 )
 
 from shared.django_apps.ta_timeseries.models import (
+    BranchAggregateDaily,
     TestrunBranchSummary,
 )
 from shared.metrics import Histogram
@@ -177,32 +178,38 @@ def get_test_results_aggregates_from_timescale(
     def get_aggregates(
         repoid: int, branch: str, start_date: datetime, end_date: datetime
     ):
-        return TestrunBranchSummary.objects.filter(
+        daily_aggregates = BranchAggregateDaily.objects.filter(
+            repo_id=repoid,
+            branch=branch,
+            bucket_daily__gte=start_date,
+            bucket_daily__lt=end_date,
+        ).aggregate(
+            total_duration=Sum("total_duration_seconds", output_field=FloatField()),
+            fails=Sum(F("fail_count") + F("flaky_fail_count")),
+            skips=Sum("skip_count"),
+        )
+
+        unique_test_count = TestrunBranchSummary.objects.filter(
             repo_id=repoid,
             branch=branch,
             timestamp_bin__gte=start_date,
             timestamp_bin__lt=end_date,
-        ).aggregate(
-            total_duration=Sum(
-                F("avg_duration_seconds")
-                * (F("pass_count") + F("fail_count") + F("flaky_fail_count")),
-                output_field=FloatField(),
-            ),
-            fails=Sum(F("fail_count") + F("flaky_fail_count")),
-            skips=Sum("skip_count"),
-            unique_test_count=Count("computed_name", distinct=True),
-        )
+        ).aggregate(unique_test_count=Count("computed_name", distinct=True))
 
-    curr_aggregates = get_aggregates(repoid, branch, start_date, end_date)
+        return daily_aggregates, unique_test_count["unique_test_count"] or 0
+
+    curr_aggregates, curr_unique_test_count = get_aggregates(
+        repoid, branch, start_date, end_date
+    )
 
     if curr_aggregates["total_duration"] is None:
         return None
 
     curr_slow_test_duration, curr_slow_test_num = get_slowest_tests_duration(
-        repoid, branch, start_date, end_date, curr_aggregates["unique_test_count"]
+        repoid, branch, start_date, end_date, curr_unique_test_count
     )
 
-    past_aggregates = get_aggregates(
+    past_aggregates, past_unique_test_count = get_aggregates(
         repoid, branch, comparison_start_date, comparison_end_date
     )
 
@@ -211,7 +218,7 @@ def get_test_results_aggregates_from_timescale(
         branch,
         comparison_start_date,
         comparison_end_date,
-        past_aggregates["unique_test_count"],
+        past_unique_test_count,
     )
 
     return TestResultsAggregates(
@@ -250,20 +257,15 @@ def get_flake_aggregates_from_timescale(
         start: datetime,
         end: datetime,
     ):
-        return TestrunBranchSummary.objects.filter(
+        daily_aggregates = BranchAggregateDaily.objects.filter(
             repo_id=repoid,
             branch=branch,
-            timestamp_bin__gte=start,
-            timestamp_bin__lt=end,
+            bucket_daily__gte=start,
+            bucket_daily__lt=end,
         ).aggregate(
             total_count=Sum(
-                "pass_count",
+                F("pass_count") + F("fail_count") + F("flaky_fail_count"),
                 output_field=FloatField(),
-            )
-            + Sum("fail_count", output_field=FloatField())
-            + Sum("flaky_fail_count", output_field=FloatField()),
-            flake_count=Count(
-                "computed_name", distinct=True, filter=Q(flaky_fail_count__gt=0)
             ),
             flake_rate=Case(
                 When(
@@ -275,7 +277,23 @@ def get_flake_aggregates_from_timescale(
             ),
         )
 
+        flake_count = TestrunBranchSummary.objects.filter(
+            repo_id=repoid,
+            branch=branch,
+            timestamp_bin__gte=start,
+            timestamp_bin__lt=end,
+            flaky_fail_count__gt=0,
+        ).aggregate(
+            flake_count=Count("computed_name", distinct=True),
+        )
+
+        return {
+            **daily_aggregates,
+            "flake_count": flake_count["flake_count"] or 0,
+        }
+
     curr_aggregates = get_branch_aggregates(start_date, end_date)
+
     if curr_aggregates["flake_count"] is None:
         return None
 
