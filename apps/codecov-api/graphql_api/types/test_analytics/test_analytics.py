@@ -348,7 +348,7 @@ async def resolve_test_results(
             start_date=start_date,
             end_date=end_date,
             branch=filters.get("branch") if filters else repository.branch,  # type: ignore
-            parameter=filters.get("parameter") if filters else None,  # type: ignore
+            parameter=filters.get("parameter").value if filters else None,  # type: ignore
             testsuites=filters.get("test_suites") if filters else None,
             flags=filters.get("flags") if filters else None,
             term=filters.get("term") if filters else None,
