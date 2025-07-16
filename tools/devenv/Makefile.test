@@ -1,6 +1,6 @@
 TEST_YML := ../../tools/devenv/config/test.yml
 
-# Optional EXTRA_PYTEST_ARGS variable to specify pytest path
+# Optional environment variable to pass extra arguments to pytest
 EXTRA_PYTEST_ARGS ?=
 
 .PHONY: devenv.test
