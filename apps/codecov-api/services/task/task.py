@@ -9,7 +9,9 @@ from sentry_sdk import set_tag
 from core.models import Repository
 from services.task.task_router import route_task
 from shared import celery_config
+from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData
 from shared.utils.pydantic_serializer import PydanticModelDump, register_preserializer
+from shared.utils.sentry import current_sentry_trace_id
 from timeseries.models import Dataset, MeasurementName
 
 register_preserializer(PydanticModelDump)(BaseModel)
@@ -145,6 +147,24 @@ class TaskService:
             debug=debug,
             rebuild=rebuild,
         ).apply_async(countdown=countdown)
+
+    def upload_breadcrumb(
+        self,
+        commit_sha: str,
+        repo_id: int,
+        breadcrumb_data: BreadcrumbData,
+        upload_ids: list[str] = [],
+    ):
+        return self._create_signature(
+            celery_config.upload_breadcrumb_task_name,
+            kwargs={
+                "commit_sha": commit_sha,
+                "repo_id": repo_id,
+                "breadcrumb_data": breadcrumb_data,
+                "upload_ids": upload_ids,
+                "sentry_trace_id": current_sentry_trace_id(),
+            },
+        ).apply_async()
 
     def notify_signature(self, repoid, commitid, current_yaml=None, empty_upload=None):
         return self._create_signature(
