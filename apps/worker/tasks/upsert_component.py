@@ -7,16 +7,14 @@ from database.models import Commit
 from services.report import ReportService
 from services.timeseries import ComponentForMeasurement, upsert_components_measurements
 from services.yaml import get_repo_yaml
+from shared.celery_config import timeseries_upsert_component_task_name
 from shared.reports.readonly import ReadOnlyReport
-from shared.utils.enums import TaskConfigGroup
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
-task_name = f"app.tasks.{TaskConfigGroup.timeseries.value}.UpsertComponentTask"
 
-
-class UpsertComponentTask(BaseCodecovTask, name=task_name):
+class UpsertComponentTask(BaseCodecovTask, name=timeseries_upsert_component_task_name):
     def run_impl(
         self,
         db_session: Session,

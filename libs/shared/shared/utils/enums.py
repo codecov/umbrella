@@ -20,7 +20,9 @@ class TaskConfigGroup(Enum):
     Marks the config key in the install yaml that affects a given task.
     """
 
+    ai_pr_review = "ai_pr_review"
     archive = "archive"
+    bundle_analysis = "bundle_analysis"
     cache_rollup = "cache_rollup"
     comment = "comment"
     commit_update = "commit_update"
@@ -30,10 +32,12 @@ class TaskConfigGroup(Enum):
     flakes = "flakes"
     flush_repo = "flush_repo"
     healthcheck = "healthcheck"
+    http_request = "http_request"
     new_user_activated = "new_user_activated"
     notify = "notify"
     profiling = "profiling"
     pulls = "pulls"
+    reports = "reports"
     send_email = "send_email"
     status = "status"
     sync_account = "sync_account"

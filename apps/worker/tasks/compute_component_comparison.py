@@ -10,16 +10,12 @@ from services.comparison import ComparisonProxy, FilteredComparison
 from services.comparison_utils import get_comparison_proxy
 from services.report import ReportService
 from services.yaml import get_current_yaml, get_repo_yaml
+from shared.celery_config import compute_component_comparison_task_name
 from shared.components import Component
-from shared.utils.enums import TaskConfigGroup
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
-
-task_name = (
-    f"app.tasks.{TaskConfigGroup.compute_comparison.value}.ComputeComponentComparison"
-)
 
 
 def compute_component_comparison(
@@ -64,7 +60,9 @@ def compute_component_comparison(
     db_session.flush()
 
 
-class ComputeComponentComparisonTask(BaseCodecovTask, name=task_name):
+class ComputeComponentComparisonTask(
+    BaseCodecovTask, name=compute_component_comparison_task_name
+):
     def run_impl(
         self,
         db_session: Session,

@@ -12,6 +12,7 @@ from services.bundle_analysis.report import (
 )
 from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.types import UploadArguments
+from shared.celery_config import bundle_analysis_processor_task_name
 from shared.reports.enums import UploadState
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
@@ -20,10 +21,6 @@ from tasks.bundle_analysis_save_measurements import (
 )
 
 log = logging.getLogger(__name__)
-
-bundle_analysis_processor_task_name = (
-    "app.tasks.bundle_analysis.BundleAnalysisProcessor"
-)
 
 
 class BundleAnalysisProcessorTask(

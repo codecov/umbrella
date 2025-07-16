@@ -3,13 +3,14 @@ import logging
 import httpx
 
 from app import celery_app
+from shared.celery_config import http_request_task_name
 from shared.config import get_config
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
 
-class HTTPRequestTask(BaseCodecovTask, name="app.tasks.http_request.HTTPRequest"):
+class HTTPRequestTask(BaseCodecovTask, name=http_request_task_name):
     """
     Task for making generic HTTP requests.
     """

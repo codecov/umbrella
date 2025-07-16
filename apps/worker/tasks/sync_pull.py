@@ -26,7 +26,11 @@ from services.repository import (
 )
 from services.test_results import should_do_flaky_detection
 from services.yaml.reader import read_yaml_field
-from shared.celery_config import notify_task_name, pulls_task_name
+from shared.celery_config import (
+    ai_pr_review_task_name,
+    notify_task_name,
+    pulls_task_name,
+)
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Counter, inc_counter
 from shared.reports.types import Change
@@ -573,7 +577,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                         "pull_labels": pull_labels,
                     },
                 )
-                self.app.tasks["app.tasks.ai_pr_review.AiPrReview"].apply_async(
+                self.app.tasks[ai_pr_review_task_name].apply_async(
                     kwargs={"repoid": pull.repoid, "pullid": pull.pullid}
                 )
 

@@ -8,6 +8,26 @@ from shared.utils.enums import TaskConfigGroup
 # <type> can be "tasks" or "cron"
 # <config_group> is the task's TaskConfigGroup
 # <identifier> is the task name (usually same as task class)
+
+# Miscellaneous tasks
+http_request_task_name = f"app.tasks.{TaskConfigGroup.http_request.value}.HTTPRequest"
+ai_pr_review_task_name = f"app.tasks.{TaskConfigGroup.ai_pr_review.value}.AiPrReview"
+transplant_report_task_name = (
+    f"app.tasks.{TaskConfigGroup.reports.value}.transplant_report"
+)
+
+# Bundle analysis tasks
+bundle_analysis_notify_task_name = (
+    f"app.tasks.{TaskConfigGroup.bundle_analysis.value}.BundleAnalysisNotify"
+)
+bundle_analysis_processor_task_name = (
+    f"app.tasks.{TaskConfigGroup.bundle_analysis.value}.BundleAnalysisProcessor"
+)
+bundle_analysis_save_measurements_task_name = (
+    f"app.tasks.{TaskConfigGroup.bundle_analysis.value}.BundleAnalysisSaveMeasurements"
+)
+
+# Sync tasks
 sync_teams_task_name = f"app.tasks.{TaskConfigGroup.sync_teams.value}.SyncTeams"
 sync_repos_task_name = f"app.tasks.{TaskConfigGroup.sync_repos.value}.SyncRepos"
 sync_repo_languages_task_name = (
@@ -16,6 +36,7 @@ sync_repo_languages_task_name = (
 sync_repo_languages_gql_task_name = (
     f"app.tasks.{TaskConfigGroup.sync_repo_languages_gql.value}.SyncLanguagesGQL"
 )
+
 delete_owner_task_name = f"app.tasks.{TaskConfigGroup.delete_owner.value}.DeleteOwner"
 activate_account_user_task_name = (
     f"app.tasks.{TaskConfigGroup.sync_account.value}.ActivateAccountUser"
@@ -38,6 +59,8 @@ upload_finisher_task_name = f"app.tasks.{TaskConfigGroup.upload.value}.UploadFin
 parallel_verification_task_name = (
     f"app.tasks.{TaskConfigGroup.upload.value}.ParallelVerification"
 )
+
+# Test results tasks
 test_results_processor_task_name = (
     f"app.tasks.{TaskConfigGroup.test_results.value}.TestResultsProcessor"
 )
@@ -50,6 +73,7 @@ sync_test_results_task_name = (
     f"app.tasks.{TaskConfigGroup.test_results.value}.SyncTestResultsTask"
 )
 
+# Cache rollup tasks
 cache_test_rollups_task_name = (
     f"app.tasks.{TaskConfigGroup.cache_rollup.value}.CacheTestRollupsTask"
 )
@@ -70,13 +94,20 @@ send_email_task_name = f"app.tasks.{TaskConfigGroup.send_email.value}.SendEmail"
 new_user_activated_task_name = (
     f"app.tasks.{TaskConfigGroup.new_user_activated.value}.NewUserActivated"
 )
+
+# Compute comparison tasks
 compute_comparison_task_name = (
     f"app.tasks.{TaskConfigGroup.compute_comparison.value}.ComputeComparison"
 )
+compute_component_comparison_task_name = (
+    f"app.tasks.{TaskConfigGroup.compute_comparison.value}.ComputeComponentComparison"
+)
+
 commit_update_task_name = (
     f"app.tasks.{TaskConfigGroup.commit_update.value}.CommitUpdate"
 )
 
+# Profiling tasks
 profiling_finding_task_name = (
     f"app.cron.{TaskConfigGroup.profiling.value}.findinguncollected"
 )
@@ -101,6 +132,9 @@ timeseries_backfill_commits_task_name = (
 timeseries_delete_task_name = f"app.tasks.{TaskConfigGroup.timeseries.value}.delete"
 timeseries_save_commit_measurements_task_name = (
     f"app.tasks.{TaskConfigGroup.timeseries.value}.save_commit_measurements"
+)
+timeseries_upsert_component_task_name = (
+    f"app.tasks.{TaskConfigGroup.timeseries.value}.UpsertComponentTask"
 )
 
 health_check_task_name = f"app.cron.{TaskConfigGroup.healthcheck.value}.HealthCheckTask"

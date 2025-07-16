@@ -95,7 +95,7 @@ class TaskService:
 
     def status_set_pending(self, repoid, commitid, branch, on_a_pull_request):
         self._create_signature(
-            "app.tasks.status.SetPending",
+            celery_config.status_set_pending_task_name,
             kwargs={
                 "repoid": repoid,
                 "commitid": commitid,
@@ -115,7 +115,7 @@ class TaskService:
         immutable=False,
     ):
         return self._create_signature(
-            "app.tasks.upload.Upload",
+            celery_config.upload_task_name,
             kwargs={
                 "repoid": repoid,
                 "commitid": commitid,
@@ -148,7 +148,7 @@ class TaskService:
 
     def notify_signature(self, repoid, commitid, current_yaml=None, empty_upload=None):
         return self._create_signature(
-            "app.tasks.notify.Notify",
+            celery_config.notify_task_name,
             kwargs={
                 "repoid": repoid,
                 "commitid": commitid,
@@ -164,7 +164,7 @@ class TaskService:
 
     def pulls_sync(self, repoid, pullid):
         self._create_signature(
-            "app.tasks.pulls.Sync", kwargs={"repoid": repoid, "pullid": pullid}
+            celery_config.pulls_task_name, kwargs={"repoid": repoid, "pullid": pullid}
         ).apply_async()
 
     def refresh(
@@ -187,7 +187,7 @@ class TaskService:
         if sync_teams:
             chain_to_call.append(
                 self._create_signature(
-                    "app.tasks.sync_teams.SyncTeams",
+                    celery_config.sync_teams_task_name,
                     kwargs={
                         "ownerid": ownerid,
                         "username": username,
@@ -199,7 +199,7 @@ class TaskService:
         if sync_repos:
             chain_to_call.append(
                 self._create_signature(
-                    "app.tasks.sync_repos.SyncRepos",
+                    celery_config.sync_repos_task_name,
                     kwargs={
                         "ownerid": ownerid,
                         "username": username,
@@ -221,7 +221,7 @@ class TaskService:
     def delete_owner(self, ownerid):
         log.info(f"Triggering delete_owner task for owner: {ownerid}")
         self._create_signature(
-            "app.tasks.delete_owner.DeleteOwner", kwargs={"ownerid": ownerid}
+            celery_config.delete_owner_task_name, kwargs={"ownerid": ownerid}
         ).apply_async()
 
     def backfill_repo(
@@ -229,7 +229,7 @@ class TaskService:
         repository: Repository,
         start_date: datetime,
         end_date: datetime,
-        dataset_names: Iterable[str] = None,
+        dataset_names: Iterable[str] | None = None,
     ):
         log.info(
             "Triggering timeseries backfill tasks for repo",
@@ -290,7 +290,7 @@ class TaskService:
         )
 
         self._create_signature(
-            "app.tasks.timeseries.backfill_dataset",
+            celery_config.timeseries_backfill_dataset_task_name,
             kwargs={
                 "dataset_id": dataset.pk,
                 "start_date": start_date.isoformat(),
@@ -300,19 +300,19 @@ class TaskService:
 
     def transplant_report(self, repo_id: int, from_sha: str, to_sha: str) -> None:
         self._create_signature(
-            "app.tasks.reports.transplant_report",
+            celery_config.transplant_report_task_name,
             kwargs={"repo_id": repo_id, "from_sha": from_sha, "to_sha": to_sha},
         ).apply_async()
 
     def update_commit(self, commitid, repoid):
         self._create_signature(
-            "app.tasks.commit_update.CommitUpdate",
+            celery_config.commit_update_task_name,
             kwargs={"commitid": commitid, "repoid": repoid},
         ).apply_async()
 
     def http_request(self, url, method="POST", headers=None, data=None, timeout=None):
         self._create_signature(
-            "app.tasks.http_request.HTTPRequest",
+            celery_config.http_request_task_name,
             kwargs={
                 "url": url,
                 "method": method,
@@ -324,13 +324,13 @@ class TaskService:
 
     def flush_repo(self, repository_id: int):
         self._create_signature(
-            "app.tasks.flush_repo.FlushRepo",
+            celery_config.flush_repo_task_name,
             kwargs={"repoid": repository_id},
         ).apply_async()
 
     def manual_upload_completion_trigger(self, repoid, commitid, current_yaml=None):
         self._create_signature(
-            "app.tasks.upload.ManualUploadCompletionTrigger",
+            celery_config.manual_upload_completion_trigger_task_name,
             kwargs={
                 "commitid": commitid,
                 "repoid": repoid,
@@ -340,7 +340,7 @@ class TaskService:
 
     def preprocess_upload(self, repoid, commitid):
         self._create_signature(
-            "app.tasks.upload.PreProcessUpload",
+            celery_config.pre_process_upload_task_name,
             kwargs={"repoid": repoid, "commitid": commitid},
         ).apply_async()
 
@@ -354,7 +354,7 @@ class TaskService:
     ):
         # Templates can be found in worker/templates
         self._create_signature(
-            "app.tasks.send_email.SendEmail",
+            celery_config.send_email_task_name,
             kwargs=dict(
                 to_addr=to_addr,
                 subject=subject,

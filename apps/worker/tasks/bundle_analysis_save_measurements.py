@@ -9,14 +9,11 @@ from services.bundle_analysis.report import (
     BundleAnalysisReportService,
     ProcessingResult,
 )
+from shared.celery_config import bundle_analysis_save_measurements_task_name
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
-
-bundle_analysis_save_measurements_task_name = (
-    "app.tasks.bundle_analysis.BundleAnalysisSaveMeasurements"
-)
 
 
 class BundleAnalysisSaveMeasurementsTask(

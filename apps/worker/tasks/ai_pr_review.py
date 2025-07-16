@@ -8,12 +8,13 @@ from app import celery_app
 from database.models import Repository
 from helpers.exceptions import RepositoryWithoutValidBotError
 from services.ai_pr_review import perform_review
+from shared.celery_config import ai_pr_review_task_name
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
 
-class AiPrReviewTask(BaseCodecovTask, name="app.tasks.ai_pr_review.AiPrReview"):
+class AiPrReviewTask(BaseCodecovTask, name=ai_pr_review_task_name):
     throws = (SoftTimeLimitExceeded,)
 
     def run_impl(

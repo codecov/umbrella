@@ -42,6 +42,7 @@ from services.test_results import (
     latest_failures_for_commit,
     should_do_flaky_detection,
 )
+from shared.celery_config import test_results_finisher_task_name
 from shared.helpers.redis import get_redis_connection
 from shared.reports.types import UploadType
 from shared.typings.torngit import AdditionalData
@@ -52,8 +53,6 @@ from tasks.notify import notify_task_name
 from tasks.process_flakes import NEW_KEY, process_flakes_task_name
 
 log = logging.getLogger(__name__)
-
-test_results_finisher_task_name = "app.tasks.test_results.TestResultsFinisherTask"
 
 ESCAPE_FAILURE_MESSAGE_DEFN = [
     Replacement(["\r"], "", EscapeEnum.REPLACE),

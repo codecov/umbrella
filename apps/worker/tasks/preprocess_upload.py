@@ -14,6 +14,7 @@ from services.repository import (
     get_repo_provider_service,
     possibly_update_commit_from_provider_info,
 )
+from shared.celery_config import pre_process_upload_task_name
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter
 from tasks.base import BaseCodecovTask
@@ -21,7 +22,7 @@ from tasks.base import BaseCodecovTask
 log = logging.getLogger(__name__)
 
 
-class PreProcessUpload(BaseCodecovTask, name="app.tasks.upload.PreProcessUpload"):
+class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
     """
     The main goal for this task is to carry forward flags from previous uploads
     and save the new carry-forwarded upload in the db, as a pre-step for
