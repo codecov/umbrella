@@ -12,4 +12,4 @@ key=$(git remote get-url $origin \
 
 token=$(cat ~/.local-codecov-tokens 2> /dev/null | grep "$key=" | cut -d '=' -f 2-)
 
-CODECOV_TOKEN=$token codecovcli --enterprise-url=http://localhost:8000 "$@"
+CODECOV_TOKEN=$token codecovcli --enterprise-url=http://localhost:8080 "$@"
