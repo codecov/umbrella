@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 from django.conf import settings
@@ -9,7 +9,18 @@ from rest_framework.test import APIClient
 from core.models import Commit
 from services.task import TaskService
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from upload.views.commits import CommitViews
+
+COMMIT_UPLOAD_BREADCRUMB_DATA = BreadcrumbData(
+    milestone=Milestones.FETCHING_COMMIT_DETAILS,
+    endpoint=Endpoints.CREATE_COMMIT,
+)
 
 
 def test_get_repo(db):
@@ -43,7 +54,8 @@ def test_get_repo_not_found(db):
     assert exp.match("Repository not found")
 
 
-def test_deactivated_repo(db):
+def test_deactivated_repo(db, mocker):
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repo = RepositoryFactory(
         name="the_repo",
         author__username="codecov",
@@ -70,6 +82,24 @@ def test_deactivated_repo(db):
     assert response_json == [
         f"This repository is deactivated. To resume uploading to it, please activate the repository in the codecov UI: {settings.CODECOV_DASHBOARD_URL}/github/codecov/the_repo/config/general"
     ]
+    mock_upload_breadcrumb.assert_has_calls(
+        [
+            call(
+                commit_sha="commit_sha",
+                repo_id=repo.repoid,
+                breadcrumb_data=COMMIT_UPLOAD_BREADCRUMB_DATA,
+            ),
+            call(
+                commit_sha="commit_sha",
+                repo_id=repo.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                    endpoint=Endpoints.CREATE_COMMIT,
+                    error=Errors.REPO_DEACTIVATED,
+                ),
+            ),
+        ]
+    )
 
 
 def test_get_queryset(db):
@@ -151,6 +181,7 @@ def test_commits_get_no_auth(client, db, repo_privacy, status_code, detail):
 
 def test_commit_post_empty(db, client, mocker):
     mocked_call = mocker.patch.object(TaskService, "update_commit")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory.create()
 
     client = APIClient()
@@ -188,10 +219,16 @@ def test_commit_post_empty(db, client, mocker):
     assert response.status_code == 201
     assert expected_response == response_json
     mocked_call.assert_called_with(commitid="commit_sha", repoid=repository.repoid)
+    mock_upload_breadcrumb.assert_called_with(
+        commit_sha="commit_sha",
+        repo_id=repository.repoid,
+        breadcrumb_data=COMMIT_UPLOAD_BREADCRUMB_DATA,
+    )
 
 
 def test_create_commit_already_exists(db, client, mocker):
     mocked_call = mocker.patch.object(TaskService, "update_commit")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory.create()
     commit = CommitFactory(repository=repository, author=None)
     client = APIClient()
@@ -228,6 +265,22 @@ def test_create_commit_already_exists(db, client, mocker):
     assert response.status_code == 201
     assert expected_response == response_json
     mocked_call.assert_not_called()
+    mock_upload_breadcrumb.assert_has_calls(
+        [
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=COMMIT_UPLOAD_BREADCRUMB_DATA,
+            ),
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED,
+                ),
+            ),
+        ]
+    )
 
 
 @pytest.mark.parametrize("branch", ["main", "someone:main", "someone/fork:main"])
@@ -240,6 +293,7 @@ def test_commit_tokenless(db, client, mocker, branch, private):
         author__upload_token_required_for_public_repos=True,
     )
     mocked_call = mocker.patch.object(TaskService, "update_commit")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
 
     client = APIClient()
     repo_slug = f"{repository.author.username}::::{repository.name}"
@@ -281,6 +335,11 @@ def test_commit_tokenless(db, client, mocker, branch, private):
         }
         assert expected_response == response_json
         mocked_call.assert_called_with(commitid="commit_sha", repoid=repository.repoid)
+        mock_upload_breadcrumb.assert_called_with(
+            commit_sha="commit_sha",
+            repo_id=repository.repoid,
+            breadcrumb_data=COMMIT_UPLOAD_BREADCRUMB_DATA,
+        )
     else:
         assert response.status_code == 401
         commit = Commit.objects.filter(commitid="commit_sha").first()
@@ -300,6 +359,7 @@ def test_commit_upload_token_required_auth_check(
         author__upload_token_required_for_public_repos=upload_token_required_for_public_repos,
     )
     mocked_call = mocker.patch.object(TaskService, "update_commit")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
 
     client = APIClient()
     repo_slug = f"{repository.author.username}::::{repository.name}"
@@ -348,6 +408,11 @@ def test_commit_upload_token_required_auth_check(
         }
         assert expected_response == response_json
         mocked_call.assert_called_with(commitid="commit_sha", repoid=repository.repoid)
+        mock_upload_breadcrumb.assert_called_with(
+            commit_sha="commit_sha",
+            repo_id=repository.repoid,
+            breadcrumb_data=COMMIT_UPLOAD_BREADCRUMB_DATA,
+        )
     else:
         assert response.status_code == 401
         commit = Commit.objects.filter(commitid="commit_sha").first()
@@ -363,6 +428,7 @@ def test_commit_github_oidc_auth(
         private=False, author__username="codecov", name="the_repo"
     )
     mocked_call = mocker.patch.object(TaskService, "update_commit")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     mock_jwt_decode.return_value = {
         "repository": f"url/{repository.name}",
         "repository_owner": repository.author.username,
@@ -408,6 +474,11 @@ def test_commit_github_oidc_auth(
     }
     assert expected_response == response_json
     mocked_call.assert_called_with(commitid="commit_sha", repoid=repository.repoid)
+    mock_upload_breadcrumb.assert_called_with(
+        commit_sha="commit_sha",
+        repo_id=repository.repoid,
+        breadcrumb_data=COMMIT_UPLOAD_BREADCRUMB_DATA,
+    )
     mock_prometheus_metrics.assert_called_with(
         **{
             "agent": "codecov-cli",

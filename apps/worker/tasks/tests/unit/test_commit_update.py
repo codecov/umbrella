@@ -5,6 +5,12 @@ import pytest
 from database.models import Branch
 from database.tests.factories import BranchFactory, CommitFactory, PullFactory
 from helpers.exceptions import RepositoryWithoutValidBotError
+from shared.celery_config import upload_breadcrumb_task_name
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Errors,
+    Milestones,
+)
 from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitObjectNotFoundError,
@@ -13,7 +19,19 @@ from shared.torngit.exceptions import (
 from tasks.commit_update import CommitUpdateTask
 
 
+@pytest.fixture
+def mock_self_app(mocker):
+    return mocker.patch.object(
+        CommitUpdateTask,
+        "app",
+        tasks={
+            upload_breadcrumb_task_name: mocker.MagicMock(),
+        },
+    )
+
+
 @pytest.mark.integration
+@pytest.mark.django_db
 class TestCommitUpdate:
     def test_update_commit(
         self,
@@ -22,10 +40,8 @@ class TestCommitUpdate:
         dbsession,
         codecov_vcr,
         mock_redis,
-        celery_app,
+        mock_self_app,
     ):
-        mocker.patch.object(CommitUpdateTask, "app", celery_app)
-
         commit = CommitFactory.create(
             message="",
             commitid="a2d3e3c30547a000f026daa47610bb3f7b63aece",
@@ -46,6 +62,18 @@ class TestCommitUpdate:
         assert commit.parent_commit_id is None
         assert commit.branch == "featureA"
         assert commit.pullid == 1
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED,
+                ),
+                "sentry_trace_id": None,
+            }
+        )
 
     def test_update_commit_bot_unauthorized(
         self,
@@ -55,6 +83,7 @@ class TestCommitUpdate:
         mock_redis,
         mock_repo_provider,
         mock_storage,
+        mock_self_app,
     ):
         mock_repo_provider.get_commit.side_effect = TorngitClientError(
             401, "response", "message"
@@ -76,6 +105,18 @@ class TestCommitUpdate:
         assert {"was_updated": False} == result
         assert commit.message == ""
         assert commit.parent_commit_id is None
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED, error=Errors.GIT_CLIENT_ERROR
+                ),
+                "sentry_trace_id": None,
+            }
+        )
 
     def test_update_commit_no_bot(
         self,
@@ -85,6 +126,7 @@ class TestCommitUpdate:
         mock_redis,
         mock_repo_provider,
         mock_storage,
+        mock_self_app,
     ):
         mock_get_repo_service = mocker.patch(
             "tasks.commit_update.get_repo_provider_service"
@@ -106,6 +148,19 @@ class TestCommitUpdate:
         assert expected_result == result
         assert commit.message == ""
         assert commit.parent_commit_id is None
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED,
+                    error=Errors.REPO_MISSING_VALID_BOT,
+                ),
+                "sentry_trace_id": None,
+            }
+        )
 
     def test_update_commit_repo_not_found(
         self,
@@ -115,6 +170,7 @@ class TestCommitUpdate:
         mock_redis,
         mock_repo_provider,
         mock_storage,
+        mock_self_app,
     ):
         mock_get_repo_service = mocker.patch(
             "tasks.commit_update.get_repo_provider_service"
@@ -138,6 +194,18 @@ class TestCommitUpdate:
         assert expected_result == result
         assert commit.message == ""
         assert commit.parent_commit_id is None
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED, error=Errors.REPO_NOT_FOUND
+                ),
+                "sentry_trace_id": None,
+            }
+        )
 
     def test_update_commit_not_found(
         self,
@@ -147,6 +215,7 @@ class TestCommitUpdate:
         mock_redis,
         mock_repo_provider,
         mock_storage,
+        mock_self_app,
     ):
         mock_update_commit_from_provider = mocker.patch(
             "tasks.commit_update.possibly_update_commit_from_provider_info"
@@ -170,6 +239,18 @@ class TestCommitUpdate:
         assert expected_result == result
         assert commit.message == ""
         assert commit.parent_commit_id is None
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED, error=Errors.GIT_CLIENT_ERROR
+                ),
+                "sentry_trace_id": None,
+            }
+        )
 
     @pytest.mark.parametrize("branch_authors", [None, False, True])
     @pytest.mark.parametrize("prev_head", ["old_head", "new_head"])
@@ -182,6 +263,7 @@ class TestCommitUpdate:
         mock_redis,
         mock_repo_provider,
         mock_storage,
+        mock_self_app,
         branch_authors,
         prev_head,
         deleted,
@@ -261,3 +343,16 @@ class TestCommitUpdate:
 
         dbsession.refresh(branch)
         assert branch.head == commit.commitid
+
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED
+                ),
+                "sentry_trace_id": None,
+            }
+        )

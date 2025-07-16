@@ -1,5 +1,5 @@
 from contextlib import nullcontext
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import jwt
 import pytest
@@ -10,6 +10,7 @@ from rest_framework.exceptions import Throttled, ValidationError
 from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov_auth.models import Service
 from reports.tests.factories import CommitReportFactory, UploadFactory
+from services.task.task import TaskService
 from shared.django_apps.codecov_auth.tests.factories import GithubAppInstallationFactory
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
@@ -17,6 +18,12 @@ from shared.django_apps.core.tests.factories import (
     RepositoryFactory,
 )
 from shared.django_apps.reports.models import ReportType
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from shared.github import InvalidInstallationError
 from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.upload.utils import UploaderType, insert_coverage_measurement
@@ -25,6 +32,7 @@ from upload.helpers import (
     determine_repo_for_upload,
     ghapp_installation_id_to_use,
     try_to_get_best_possible_bot_token,
+    upload_breadcrumb_context,
     validate_activated_repo,
     validate_upload,
 )
@@ -242,6 +250,7 @@ def test_validate_upload_too_many_uploads_for_commit(
     db, totals_column_count, rows_count, should_raise, mocker
 ):
     redis = mocker.MagicMock(sismember=mocker.MagicMock(return_value=False))
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     owner = OwnerFactory.create(plan="users-free")
     repo = RepositoryFactory.create(author=owner)
     commit = CommitFactory.create(totals={"s": totals_column_count}, repository=repo)
@@ -249,7 +258,33 @@ def test_validate_upload_too_many_uploads_for_commit(
     for i in range(rows_count):
         UploadFactory.create(report=report)
     with pytest.raises(ValidationError) if should_raise else nullcontext():
-        validate_upload({"commit": commit.commitid}, repo, redis)
+        validate_upload(
+            {"commit": commit.commitid}, repo, redis, Endpoints.LEGACY_UPLOAD_COVERAGE
+        )
+
+    calls = [
+        call(
+            commit_sha=commit.commitid,
+            repo_id=repo.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+            ),
+        )
+    ]
+    if should_raise:
+        calls.append(
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repo.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                    endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                    error=Errors.COMMIT_UPLOAD_LIMIT,
+                ),
+            )
+        )
+    mock_upload_breadcrumb.assert_has_calls(calls)
 
 
 def test_deactivated_repo(db, mocker):
@@ -344,4 +379,68 @@ def test_determine_repo_for_upload_github_actions(codecov_vcr):
     assert (
         determine_repo_for_upload({"token": token, "service": "github-actions"})
         == repository
+    )
+
+
+@pytest.mark.django_db
+def test_upload_breadcrumb_context_no_op(mocker):
+    repository = RepositoryFactory.create()
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
+    with upload_breadcrumb_context(
+        initial_breadcrumb=False,
+        commit_sha="abc123",
+        repo_id=repository.repoid,
+        milestone=Milestones.FETCHING_COMMIT_DETAILS,
+    ):
+        validate_activated_repo(repository)
+    mock_upload_breadcrumb.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_upload_breadcrumb_context_with_initial_breadcrumb(mocker):
+    repository = RepositoryFactory.create()
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
+    with upload_breadcrumb_context(
+        initial_breadcrumb=True,
+        commit_sha="abc123",
+        repo_id=repository.repoid,
+        milestone=Milestones.FETCHING_COMMIT_DETAILS,
+        endpoint=Endpoints.CREATE_COMMIT,
+    ):
+        validate_activated_repo(repository)
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha="abc123",
+        repo_id=repository.repoid,
+        breadcrumb_data=BreadcrumbData(
+            milestone=Milestones.FETCHING_COMMIT_DETAILS,
+            endpoint=Endpoints.CREATE_COMMIT,
+        ),
+    )
+
+
+@pytest.mark.django_db
+def test_upload_breadcrumb_context_with_exception(mocker):
+    repository = RepositoryFactory.create(active=True, activated=False)
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
+
+    with (
+        pytest.raises(ValidationError) as exc,
+        upload_breadcrumb_context(
+            initial_breadcrumb=False,
+            commit_sha="abc123",
+            repo_id=repository.repoid,
+            milestone=Milestones.FETCHING_COMMIT_DETAILS,
+        ),
+    ):
+        validate_activated_repo(repository)
+
+    assert "This repository is deactivated" in str(exc.value)
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha="abc123",
+        repo_id=repository.repoid,
+        breadcrumb_data=BreadcrumbData(
+            milestone=Milestones.FETCHING_COMMIT_DETAILS,
+            error=Errors.UNKNOWN,
+            error_text=str(exc.value),
+        ),
     )
