@@ -14,7 +14,9 @@ from .helper import GraphQLTestHelper
 @pytest.fixture(autouse=True)
 def repository():
     owner = OwnerFactory(username="codecov-user")
-    repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
+    repo = RepositoryFactory(
+        author=owner, name="testRepoName", active=True, branch="main"
+    )
 
     return repo
 
@@ -148,6 +150,48 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
                 }}
             }}
         """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
+
+    def test_gql_query_test_results_timescale_slowest_tests(
+        self, repository, populate_timescale, snapshot
+    ):
+        query = f"""
+                query {{
+                    owner(username: "{repository.author.username}") {{
+                        repository(name: "{repository.name}") {{
+                            ... on Repository {{
+                                testAnalytics {{
+                                    testResults(filters: {{
+                                        branch: "main"
+                                        parameter: SLOWEST_TESTS
+                                    }}) {{
+                                        totalCount
+                                        edges {{
+                                            cursor
+                                            node {{
+                                                name
+                                                failureRate
+                                                flakeRate
+                                                avgDuration
+                                                totalDuration
+                                                totalFailCount
+                                                totalFlakyFailCount
+                                                totalPassCount
+                                                totalSkipCount
+                                                commitsFailed
+                                                lastDuration
+                                            }}
+                                        }}
+                                    }}
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            """
 
         result = self.gql_request(query, owner=repository.author)
 

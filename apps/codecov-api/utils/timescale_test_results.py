@@ -13,7 +13,9 @@ from django.db.models import (
     Sum,
     Value,
     When,
+    Window,
 )
+from django.db.models.functions import RowNumber
 
 from shared.django_apps.ta_timeseries.models import (
     TestrunBranchSummary,
@@ -114,6 +116,17 @@ def get_test_results_queryset(
             aggregated_queryset = aggregated_queryset.filter(
                 total_skip_count__gt=0, total_pass_count=0
             )
+        case "slowest_tests":
+            # Use window function to rank the aggregated results by total_duration
+            # and filter to top N tests in a single query
+            unique_test_count = aggregated_queryset.count()
+            slow_test_threshold = min(100, max(unique_test_count // 20, 1))
+
+            aggregated_queryset = aggregated_queryset.annotate(
+                duration_rank=Window(
+                    expression=RowNumber(), order_by=F("total_duration").desc()
+                )
+            ).filter(duration_rank__lte=slow_test_threshold)
 
     if term:
         aggregated_queryset = aggregated_queryset.filter(computed_name__icontains=term)
