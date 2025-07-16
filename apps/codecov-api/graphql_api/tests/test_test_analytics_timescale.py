@@ -113,3 +113,42 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
         result = self.gql_request(query, owner=repository.author)
 
         assert snapshot("json") == result
+
+    def test_gql_query_test_results_timescale_empty_parameter(
+        self, repository, populate_timescale, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                testResults(filters: {{branch: "main"}}) {{
+                                    totalCount
+                                    edges {{
+                                        cursor
+                                        node {{
+                                            name
+                                            failureRate
+                                            flakeRate
+                                            avgDuration
+                                            totalDuration
+                                            totalFailCount
+                                            totalFlakyFailCount
+                                            totalPassCount
+                                            totalSkipCount
+                                            commitsFailed
+                                            lastDuration
+                                        }}
+                                    }}
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result

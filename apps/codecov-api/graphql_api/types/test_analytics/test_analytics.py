@@ -342,16 +342,22 @@ async def resolve_test_results(
             if ordering
             else OrderingDirection.DESC
         )
+        branch = filters.get("branch") if filters else repository.branch
+        parameter_enum = filters.get("parameter") if filters else None
+        parameter = parameter_enum.value if parameter_enum else None
+        testsuites = filters.get("test_suites") if filters else None
+        flags = filters.get("flags") if filters else None
+        term = filters.get("term") if filters else None
 
         aggregated_queryset = await sync_to_async(get_test_results_queryset)(
             repoid=repository.repoid,
             start_date=start_date,
             end_date=end_date,
-            branch=filters.get("branch") if filters else repository.branch,  # type: ignore
-            parameter=filters.get("parameter").value if filters else None,  # type: ignore
-            testsuites=filters.get("test_suites") if filters else None,
-            flags=filters.get("flags") if filters else None,
-            term=filters.get("term") if filters else None,
+            branch=branch,  # type: ignore
+            parameter=parameter,
+            testsuites=testsuites,
+            flags=flags,
+            term=term,
         )
 
         return await queryset_to_connection(
