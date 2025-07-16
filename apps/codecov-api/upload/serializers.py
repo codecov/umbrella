@@ -9,6 +9,7 @@ from core.models import Commit, Repository
 from reports.models import CommitReport, ReportSession, RepositoryFlag
 from services.task import TaskService
 from shared.api_archive.archive import ArchiveService
+from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Milestones
 
 
 class FlagListField(serializers.ListField):
@@ -148,6 +149,14 @@ class CommitSerializer(serializers.ModelSerializer):
         if created:
             TaskService().update_commit(
                 commitid=commit.commitid, repoid=commit.repository.repoid
+            )
+        else:
+            TaskService().upload_breadcrumb(
+                commit_sha=commit.commitid,
+                repo_id=repo.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED,
+                ),
             )
 
         return commit

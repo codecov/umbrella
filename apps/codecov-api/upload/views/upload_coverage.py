@@ -16,6 +16,7 @@ from codecov_auth.authentication.repo_auth import (
     repo_auth_custom_exception_handler,
 )
 from shared.api_archive.archive import ArchiveService
+from shared.django_apps.upload_breadcrumbs.models import Endpoints
 from shared.metrics import inc_counter
 from upload.helpers import generate_upload_prometheus_metrics_labels
 from upload.metrics import API_UPLOAD_COUNTER
@@ -66,6 +67,7 @@ class UploadCoverageView(APIView, GetterMixin):
 
     def post(self, request: HttpRequest, *args, **kwargs) -> Response:
         self.emit_metrics(position="start")
+        endpoint = Endpoints.UPLOAD_COVERAGE
 
         # Create commit
         create_commit_data = {
@@ -82,7 +84,7 @@ class UploadCoverageView(APIView, GetterMixin):
 
         repository = self.get_repo()
         self.emit_metrics(position="create_commit")
-        commit = create_commit(commit_serializer, repository)
+        commit = create_commit(commit_serializer, repository, endpoint)
 
         log.info(
             "Request to create new coverage upload",

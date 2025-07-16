@@ -19,9 +19,15 @@ from codecov_auth.authentication.repo_auth import (
     repo_auth_custom_exception_handler,
 )
 from core.models import Commit, Repository
+from shared.django_apps.upload_breadcrumbs.models import (
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from shared.metrics import inc_counter
 from upload.helpers import (
     generate_upload_prometheus_metrics_labels,
+    upload_breadcrumb_context,
     validate_activated_repo,
 )
 from upload.metrics import API_UPLOAD_COUNTER
@@ -33,11 +39,19 @@ log = logging.getLogger(__name__)
 
 
 def create_commit(
-    serializer: serializers.ModelSerializer, repository: Repository
+    serializer: serializers.ModelSerializer, repository: Repository, endpoint: Endpoints
 ) -> Commit:
-    validate_activated_repo(repository)
-    commit = serializer.save(repository=repository)
-    return commit
+    with upload_breadcrumb_context(
+        initial_breadcrumb=True,
+        commit_sha=serializer.validated_data.get("commitid"),
+        repo_id=repository.repoid,
+        milestone=Milestones.FETCHING_COMMIT_DETAILS,
+        endpoint=endpoint,
+        error=Errors.REPO_DEACTIVATED,
+    ):
+        validate_activated_repo(repository)
+
+    return serializer.save(repository=repository)
 
 
 class CommitViews(ListCreateAPIView, GetterMixin):
@@ -82,7 +96,7 @@ class CommitViews(ListCreateAPIView, GetterMixin):
             ),
         )
         repository = self.get_repo()
-        commit = create_commit(serializer, repository)
+        commit = create_commit(serializer, repository, Endpoints.CREATE_COMMIT)
 
         log.info(
             "Request to create new commit",
