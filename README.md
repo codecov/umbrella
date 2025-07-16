@@ -29,7 +29,7 @@ These instructions assume you're using macOS (or at least a POSIX-y platform) bu
 - Docker, either through [Docker Desktop](https://docs.docker.com/desktop/) or [Sentry's development environment](https://develop.sentry.dev/development-infrastructure/environment/).
   - If using Docker Desktop on macOS, enable `General > Use Rosetta for x86/amd64 emulation on Apple Silicon` if containers fail to start
 - `make`
-- (Optional) `codecovcli` (install with `pip install codecov-cli`)
+- (Optional) `codecovcli` (install with `brew install codecov-cli`)
 - (Optional) `direnv` (install with `brew install direnv`, run `direnv allow` in this directory)
 - (Optional) `gcloud` (install with `brew install --cask google-cloud-sdk`, run `gcloud auth login` and `gcloud auth configure-docker`)
 
@@ -76,6 +76,12 @@ $ make devenv.stop
 
 # Start everything, skipping the build step.
 $ make devenv.start
+
+# Stop and start all Codecov applications
+$ make devenv.start.apps
+
+# Restart gateway if it thinks api is down when it's not
+$ docker compose restart gateway
 ```
 
 Access your local instance of Codecov at http://localhost:8080.
