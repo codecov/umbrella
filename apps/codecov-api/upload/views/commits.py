@@ -3,10 +3,10 @@ from collections.abc import Callable
 from typing import Any
 
 from django.db.models import QuerySet
-from django.http import HttpRequest
 from rest_framework import serializers
 from rest_framework.exceptions import NotAuthenticated
 from rest_framework.generics import ListCreateAPIView
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from codecov_auth.authentication.repo_auth import (
@@ -66,14 +66,16 @@ class CommitViews(ListCreateAPIView, GetterMixin):
         TokenlessAuthentication,
     ]
 
-    def get_exception_handler(self) -> Callable[[Exception, dict[str, Any]], Response]:
+    def get_exception_handler(
+        self,
+    ) -> Callable[[Exception, dict[str, Any]], Response | None]:
         return repo_auth_custom_exception_handler
 
     def get_queryset(self) -> QuerySet:
         repository = self.get_repo()
         return Commit.objects.filter(repository=repository)
 
-    def list(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Response:
+    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         repository = self.get_repo()
         if repository.private and isinstance(
             self.request.auth, TokenlessAuthentication
@@ -81,10 +83,10 @@ class CommitViews(ListCreateAPIView, GetterMixin):
             raise NotAuthenticated()
         return super().list(request, *args, **kwargs)
 
-    def create(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Response:
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return super().create(request, *args, **kwargs)
 
-    def perform_create(self, serializer: CommitSerializer) -> Commit:
+    def perform_create(self, serializer) -> None:
         inc_counter(
             API_UPLOAD_COUNTER,
             labels=generate_upload_prometheus_metrics_labels(
@@ -114,5 +116,3 @@ class CommitViews(ListCreateAPIView, GetterMixin):
                 position="end",
             ),
         )
-
-        return commit

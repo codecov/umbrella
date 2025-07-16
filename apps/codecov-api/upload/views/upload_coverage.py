@@ -1,8 +1,8 @@
 import logging
 
 from django.conf import settings
-from django.http import HttpRequest
 from rest_framework import status
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -65,7 +65,7 @@ class UploadCoverageView(APIView, GetterMixin):
             ),
         )
 
-    def post(self, request: HttpRequest, *args, **kwargs) -> Response:
+    def post(self, request: Request, *args, **kwargs) -> Response:
         self.emit_metrics(position="start")
         endpoint = Endpoints.UPLOAD_COVERAGE
 
