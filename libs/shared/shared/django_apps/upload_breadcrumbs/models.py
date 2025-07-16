@@ -60,10 +60,15 @@ class Endpoints(models.TextChoices):
 class Errors(models.TextChoices):
     """
     Possible errors for an upload breadcrumb.
-
-    TODO: add more and give better descriptions
     """
 
+    REPO_DEACTIVATED = "rd", _("Repository is deactivated within Codecov")
+    REPO_MISSING_VALID_BOT = "rmb", _("Repository is missing a valid bot")
+    REPO_NOT_FOUND = "rnf", _("Repository not found by the configured bot")
+    REPO_BLACKLISTED = "rb", _("Repository is blacklisted by Codecov")
+    COMMIT_UPLOAD_LIMIT = "cul", _("Upload limit exceeded for this commit")
+    OWNER_UPLOAD_LIMIT = "oul", _("Owner (user or team) upload limit exceeded")
+    GIT_CLIENT_ERROR = "gce", _("Git client returned a 4xx error")
     MISSING_TOKEN = "mt", _("Missing authorization token")
     MALFORMED_INPUT = "mi", _("Malformed coverage report input")
     UNRECOGNIZED_FORMAT = "uf", _("Unrecognized coverage report format")
