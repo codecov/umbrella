@@ -77,6 +77,14 @@ class Testrun(ExportModelOperationsMixin("ta_timeseries.testrun"), models.Model)
                 name="ta_ts_upload_outcome_test_idx",
                 fields=["upload_id", "outcome", "test_id"],
             ),
+            models.Index(
+                name="ta_ts__repo_timestamp_idx",
+                fields=["repo_id", "timestamp"],
+            ),
+            models.Index(
+                name="ta_ts__repo_branch_time_idx",
+                fields=["repo_id", "branch", "timestamp"],
+            ),
         ]
 
 
