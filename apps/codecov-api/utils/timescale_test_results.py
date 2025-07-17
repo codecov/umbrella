@@ -13,7 +13,9 @@ from django.db.models import (
     Sum,
     Value,
     When,
+    Window,
 )
+from django.db.models.functions import RowNumber
 
 from shared.django_apps.ta_timeseries.models import (
     TestrunBranchSummary,
@@ -38,6 +40,16 @@ get_flake_aggregates_histogram = Histogram(
 class ArrayMergeDedupe(Aggregate):
     function = "array_merge_dedup_agg"
     template = "%(function)s(%(expressions)s)"
+
+
+def calculate_slow_test_count(unique_test_count: int) -> int:
+    MAX_SLOW_TESTS = 100
+    SLOW_TEST_RATIO = 20
+    MIN_SLOW_TESTS = 1
+
+    return min(
+        MAX_SLOW_TESTS, max(unique_test_count // SLOW_TEST_RATIO, MIN_SLOW_TESTS)
+    )
 
 
 def get_test_results_queryset(
@@ -114,6 +126,15 @@ def get_test_results_queryset(
             aggregated_queryset = aggregated_queryset.filter(
                 total_skip_count__gt=0, total_pass_count=0
             )
+        case "slowest_tests":
+            unique_test_count = aggregated_queryset.count()
+            slow_test_threshold = calculate_slow_test_count(unique_test_count)
+
+            aggregated_queryset = aggregated_queryset.annotate(
+                duration_rank=Window(
+                    expression=RowNumber(), order_by=F("total_duration").desc()
+                )
+            ).filter(duration_rank__lte=slow_test_threshold)
 
     if term:
         aggregated_queryset = aggregated_queryset.filter(computed_name__icontains=term)
@@ -141,7 +162,7 @@ def get_slowest_tests_duration(
     end_date: datetime,
     unique_test_count: int,
 ) -> tuple[float, int]:
-    slow_test_num = min(100, max(unique_test_count // 20, 1))
+    slow_test_num = calculate_slow_test_count(unique_test_count)
 
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(
