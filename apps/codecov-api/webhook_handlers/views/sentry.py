@@ -6,10 +6,10 @@ from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from codecov_auth.permissions import JWTAuthenticationPermission
 from rollouts import ROLLBACK_SENTRY_WEBHOOK
 from shared.metrics import Counter
 from webhook_handlers.constants import GitHubHTTPHeaders
-from webhook_handlers.permissions import JWTAuthenticationPermission
 from webhook_handlers.views.github import GithubWebhookHandler
 
 sentry_webhook = Counter(
@@ -36,6 +36,7 @@ class SentryWebhookHandler(APIView):
 
     def handle_installation(self, request):
         github_webhook_handler = GithubWebhookHandler()
+        github_webhook_handler.dry_run = True
         action = request.META.get(GitHubHTTPHeaders.EVENT)
 
         sentry_webhook.labels(event=action).inc()

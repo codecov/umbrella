@@ -10,10 +10,10 @@ from rest_framework.test import APIClient
 
 from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov_auth.models import GithubAppInstallation, Owner
+from codecov_auth.permissions import JWTAuthenticationPermission
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.django_apps.core.tests.factories import RepositoryFactory
 from webhook_handlers.constants import GitHubHTTPHeaders
-from webhook_handlers.permissions import JWTAuthenticationPermission
 
 
 @pytest.fixture(autouse=True)
@@ -453,3 +453,153 @@ class TestSentryWebhook:
         )
 
         assert response.status_code == status.HTTP_200_OK
+
+    def test_dry_run_prevents_task_service_calls_on_installation(
+        self,
+        client,
+        url,
+        installation_webhook_payload,
+        create_valid_jwt_token,
+        mock_task_service,
+    ):
+        data = installation_webhook_payload
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_task_service.return_value.refresh.assert_not_called()
+
+    def test_dry_run_prevents_task_service_calls_on_push(
+        self,
+        client,
+        url,
+        push_webhook_payload,
+        create_valid_jwt_token,
+        mock_task_service,
+    ):
+        data = push_webhook_payload
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "push"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_task_service.return_value.status_set_pending.assert_not_called()
+
+    def test_dry_run_prevents_task_service_calls_on_pull_request(
+        self,
+        client,
+        url,
+        owner,
+        repo,
+        create_valid_jwt_token,
+        mock_task_service,
+    ):
+        data = {
+            "action": "opened",
+            "number": 123,
+            "repository": {
+                "id": repo.service_id,
+                "full_name": f"{owner.username}/{repo.name}",
+                "owner": {"id": owner.service_id},
+            },
+            "pull_request": {"title": "Test PR"},
+        }
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "pull_request"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_task_service.return_value.pulls_sync.assert_not_called()
+
+    def test_dry_run_prevents_task_service_calls_on_status(
+        self,
+        client,
+        url,
+        owner,
+        repo,
+        create_valid_jwt_token,
+        mock_task_service,
+    ):
+        data = {
+            "sha": "abc123",
+            "state": "success",
+            "context": "ci/tests",
+            "repository": {
+                "id": repo.service_id,
+                "full_name": f"{owner.username}/{repo.name}",
+                "owner": {"id": owner.service_id},
+            },
+        }
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "status"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_task_service.return_value.notify.assert_not_called()
+
+    @patch("webhook_handlers.views.github.AmplitudeEventPublisher")
+    def test_dry_run_prevents_amplitude_events_on_installation(
+        self,
+        mock_amplitude,
+        client,
+        url,
+        installation_webhook_payload,
+        create_valid_jwt_token,
+        mock_task_service,
+    ):
+        data = installation_webhook_payload
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_amplitude.return_value.publish.assert_not_called()
+
+    def test_dry_run_prevents_task_service_calls_on_marketplace_purchase(
+        self,
+        client,
+        url,
+        owner,
+        create_valid_jwt_token,
+        mock_task_service,
+    ):
+        data = {
+            "action": "purchased",
+            "sender": {"login": "test-user"},
+            "marketplace_purchase": {
+                "account": {"login": owner.username},
+                "unit_count": 5,
+                "plan": {"name": "pro"},
+            },
+        }
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "marketplace_purchase"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_task_service.return_value.sync_plans.assert_not_called()
