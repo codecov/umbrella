@@ -42,6 +42,16 @@ class ArrayMergeDedupe(Aggregate):
     template = "%(function)s(%(expressions)s)"
 
 
+def calculate_slow_test_count(unique_test_count: int) -> int:
+    MAX_SLOW_TESTS = 100
+    SLOW_TEST_RATIO = 20
+    MIN_SLOW_TESTS = 1
+
+    return min(
+        MAX_SLOW_TESTS, max(unique_test_count // SLOW_TEST_RATIO, MIN_SLOW_TESTS)
+    )
+
+
 def get_test_results_queryset(
     repoid: int,
     start_date: datetime,
@@ -117,10 +127,8 @@ def get_test_results_queryset(
                 total_skip_count__gt=0, total_pass_count=0
             )
         case "slowest_tests":
-            # Use window function to rank the aggregated results by total_duration
-            # and filter to top N tests in a single query
             unique_test_count = aggregated_queryset.count()
-            slow_test_threshold = min(100, max(unique_test_count // 20, 1))
+            slow_test_threshold = calculate_slow_test_count(unique_test_count)
 
             aggregated_queryset = aggregated_queryset.annotate(
                 duration_rank=Window(
@@ -154,7 +162,7 @@ def get_slowest_tests_duration(
     end_date: datetime,
     unique_test_count: int,
 ) -> tuple[float, int]:
-    slow_test_num = min(100, max(unique_test_count // 20, 1))
+    slow_test_num = calculate_slow_test_count(unique_test_count)
 
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(

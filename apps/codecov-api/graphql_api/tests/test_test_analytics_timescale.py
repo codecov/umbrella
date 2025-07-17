@@ -35,18 +35,19 @@ def populate_timescale(repository):
         [
             Testrun(
                 repo_id=repository.repoid,
-                timestamp=datetime.now(UTC) - timedelta(days=5 - i),
-                testsuite=f"testsuite{i}",
+                timestamp=datetime.now(UTC) - timedelta(days=day),
+                testsuite=f"testsuite{test}",
                 classname="",
-                name=f"name{i}",
-                computed_name=f"name{i}",
-                outcome="pass" if i % 2 == 0 else "failure",
-                duration_seconds=i,
-                commit_sha=f"test_commit {i}",
-                flags=["flag1", "flag2"] if i % 2 == 0 else ["flag3"],
+                name=f"name{test}",
+                computed_name=f"name{test}",
+                outcome="pass" if test % 2 == 0 else "failure",
+                duration_seconds=test,
+                commit_sha=f"test_commit {test}",
+                flags=["flag1", "flag2"] if test % 2 == 0 else ["flag3"],
                 branch="main",
             )
-            for i in range(5)
+            for day in range(5)
+            for test in range(5)
         ]
     )
 

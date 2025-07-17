@@ -12,10 +12,10 @@
                 "failureRate": 0.0,
                 "flakeRate": 0.0,
                 "avgDuration": 4.0,
-                "totalDuration": 4.0,
+                "totalDuration": 16.0,
                 "totalFailCount": 0,
                 "totalFlakyFailCount": 0,
-                "totalPassCount": 1,
+                "totalPassCount": 4,
                 "totalSkipCount": 0,
                 "commitsFailed": 0,
                 "lastDuration": 4.0
