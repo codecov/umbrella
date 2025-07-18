@@ -14,7 +14,12 @@ from .helper import GraphQLTestHelper
 @pytest.fixture(autouse=True)
 def repository():
     owner = OwnerFactory(username="codecov-user")
-    repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
+    repo = RepositoryFactory(
+        author=owner,
+        name="testRepoName",
+        active=True,
+        branch="main",
+    )
     return repo
 
 
@@ -141,12 +146,51 @@ class TestFlakeAggregatesTimescale(GraphQLTestHelper):
     def test_flake_aggregates_timescale_non_precomputed_branch(
         self, repository, populate_timescale_flake_aggregates, snapshot
     ):
-        result = get_flake_aggregates_from_timescale(
-            repository.repoid,
-            "feature-branch",
-            datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-            - timedelta(days=30),
-            datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0),
-        )
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                flakeAggregates(branch: "feature-branch") {{
+                                    flakeRate
+                                    flakeCount
+                                    flakeRatePercentChange
+                                    flakeCountPercentChange
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
 
-        assert result is None
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
+
+    def test_gql_query_flake_aggregates_timescale_branch(
+        self, repository, populate_timescale_flake_aggregates, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                flakeAggregates(branch: "main") {{
+                                    flakeRate
+                                    flakeCount
+                                    flakeRatePercentChange
+                                    flakeCountPercentChange
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
