@@ -1,9 +1,14 @@
 from unittest.mock import patch
 
+import pytest
+
 from shared.django_apps.codecov_auth.migrations.migration_helpers import backfill_app_id
 from shared.utils.test_utils.test_migrations_helper import TestMigrations
 
 
+@pytest.mark.filterwarnings(
+    "ignore:DateTimeField Owner.updatestamp received a naive datetime"
+)
 class Migration0067Test(TestMigrations):
     app = "codecov_auth"
     migrate_from = "0066_add_pro_plan"

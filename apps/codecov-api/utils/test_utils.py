@@ -25,6 +25,7 @@ class ClientMixin:
 
 
 class Client(ClientMixin, DjangoClient):
+    __test__ = False
     pass
 
 
