@@ -35,7 +35,7 @@ log = logging.getLogger(__name__)
 
 def repo_auth_custom_exception_handler(
     exc: Exception, context: dict[str, Any]
-) -> Response:
+) -> Response | None:
     """
     User arrives here if they have correctly supplied a Token or the Tokenless Headers,
     but their Token has not matched with any of our Authentication methods. The goal is to
@@ -141,16 +141,16 @@ class RepositoryLegacyQueryTokenAuthentication(authentication.BaseAuthentication
         if not token:
             return None
         try:
-            token = UUID(token)
+            token_uuid = UUID(token)
         except ValueError:
             return None
         try:
-            repository = Repository.objects.get(upload_token=token)
+            repository = Repository.objects.get(upload_token=token_uuid)
         except Repository.DoesNotExist:
             return None
         return (
             RepositoryAsUser(repository),
-            LegacyTokenRepositoryAuth(repository, {"token": token}),
+            LegacyTokenRepositoryAuth(repository, {"token": token_uuid}),
         )
 
 

@@ -2,7 +2,7 @@ import json
 import time
 from datetime import datetime, timedelta
 from json import loads
-from unittest.mock import ANY, PropertyMock, patch
+from unittest.mock import ANY, PropertyMock, call, patch
 from urllib.parse import urlencode
 
 import pytest
@@ -27,6 +27,12 @@ from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from shared.helpers.redis import get_redis_connection
 from shared.plan.constants import TierName
 from shared.torngit.exceptions import (
@@ -48,6 +54,16 @@ from upload.helpers import (
 )
 from upload.tokenless.tokenless import TokenlessUploadHandler
 from utils.encryption import encryptor
+
+FETCHING_COMMIT_BREADCRUMB_DATA = BreadcrumbData(
+    milestone=Milestones.FETCHING_COMMIT_DETAILS,
+    endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+)
+
+COMMIT_PROCESSED_BREADCRUMB_DATA = BreadcrumbData(
+    milestone=Milestones.COMMIT_PROCESSED,
+    endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+)
 
 
 def mock_get_config_global_upload_tokens(*args):
@@ -694,33 +710,66 @@ class UploadHandlerHelpersTest(TestCase):
                 {"version": "v4"},
             ) == {"content_type": "text/plain", "reduced_redundancy": True}
 
-    def test_validate_upload_repository_moved(self):
+    @patch("services.task.TaskService.upload_breadcrumb")
+    def test_validate_upload_repository_moved(self, mock_upload_breadcrumb):
         redis = MockRedis()
         owner = OwnerFactory(plan="users-free")
         repo = RepositoryFactory(author=owner, name="")
         commit = CommitFactory()
 
         with self.assertRaises(ValidationError) as err:
-            validate_upload({"commit": commit.commitid}, repo, redis)
+            validate_upload(
+                {"commit": commit.commitid},
+                repo,
+                redis,
+                Endpoints.LEGACY_UPLOAD_COVERAGE,
+            )
 
         assert (
             err.exception.detail[0]
             == "This repository has moved or was deleted. Please login to Codecov to retrieve a new upload token."
         )
+        mock_upload_breadcrumb.assert_has_calls(
+            [
+                call(
+                    commit_sha=commit.commitid,
+                    repo_id=repo.repoid,
+                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=commit.commitid,
+                    repo_id=repo.repoid,
+                    breadcrumb_data=BreadcrumbData(
+                        milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                        endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                        error=Errors.REPO_NOT_FOUND,
+                    ),
+                ),
+            ]
+        )
 
-    def test_validate_upload_empty_totals(self):
+    @patch("services.task.TaskService.upload_breadcrumb")
+    def test_validate_upload_empty_totals(self, mock_upload_breadcrumb):
         redis = MockRedis()
         owner = OwnerFactory(plan="5m")
         repo = RepositoryFactory(author=owner)
         commit = CommitFactory(totals=None, repository=repo)
 
-        validate_upload({"commit": commit.commitid}, repo, redis)
+        validate_upload(
+            {"commit": commit.commitid}, repo, redis, Endpoints.LEGACY_UPLOAD_COVERAGE
+        )
         repo.refresh_from_db()
         assert repo.activated == True
         assert repo.active == True
         assert repo.deleted == False
+        mock_upload_breadcrumb.assert_called_once_with(
+            commit_sha=commit.commitid,
+            repo_id=repo.repoid,
+            breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+        )
 
-    def test_validate_upload_too_many_uploads_for_commit(self):
+    @patch("services.task.TaskService.upload_breadcrumb")
+    def test_validate_upload_too_many_uploads_for_commit(self, mock_upload_breadcrumb):
         redis = MockRedis()
         owner = OwnerFactory(plan="users-free")
         repo = RepositoryFactory(author=owner)
@@ -730,23 +779,71 @@ class UploadHandlerHelpersTest(TestCase):
             UploadFactory.create(report=report)
 
         with self.assertRaises(ValidationError) as err:
-            validate_upload({"commit": commit.commitid}, repo, redis)
+            validate_upload(
+                {"commit": commit.commitid},
+                repo,
+                redis,
+                Endpoints.LEGACY_UPLOAD_COVERAGE,
+            )
         assert err.exception.detail[0] == "Too many uploads to this commit."
+        mock_upload_breadcrumb.assert_has_calls(
+            [
+                call(
+                    commit_sha=commit.commitid,
+                    repo_id=repo.repoid,
+                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=commit.commitid,
+                    repo_id=repo.repoid,
+                    breadcrumb_data=BreadcrumbData(
+                        milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                        endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                        error=Errors.COMMIT_UPLOAD_LIMIT,
+                    ),
+                ),
+            ]
+        )
 
-    def test_validate_upload_repository_blacklisted(self):
+    @patch("services.task.TaskService.upload_breadcrumb")
+    def test_validate_upload_repository_blacklisted(self, mock_upload_breadcrumb):
         redis = MockRedis(blacklisted=True)
         owner = OwnerFactory(plan="users-free")
         repo = RepositoryFactory(author=owner)
         commit = CommitFactory()
 
         with self.assertRaises(ValidationError) as err:
-            validate_upload({"commit": commit.commitid}, repo, redis)
+            validate_upload(
+                {"commit": commit.commitid},
+                repo,
+                redis,
+                Endpoints.LEGACY_UPLOAD_COVERAGE,
+            )
         assert (
             err.exception.detail[0]
             == "Uploads rejected for this project. Please contact Codecov staff for more details. Sorry for the inconvenience."
         )
+        mock_upload_breadcrumb.assert_has_calls(
+            [
+                call(
+                    commit_sha=commit.commitid,
+                    repo_id=repo.repoid,
+                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=commit.commitid,
+                    repo_id=repo.repoid,
+                    breadcrumb_data=BreadcrumbData(
+                        milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                        endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                        error=Errors.REPO_BLACKLISTED,
+                    ),
+                ),
+            ]
+        )
 
-    def test_validate_upload_per_repo_billing_invalid(self):
+    @patch("services.task.TaskService.upload_breadcrumb")
+    def test_validate_upload_per_repo_billing_invalid(self, mock_upload_breadcrumb):
         redis = MockRedis()
         owner = OwnerFactory(plan="1m")
         RepositoryFactory(author=owner, private=True, activated=True, active=True)
@@ -756,13 +853,37 @@ class UploadHandlerHelpersTest(TestCase):
         commit = CommitFactory()
 
         with self.assertRaises(ValidationError) as err:
-            validate_upload({"commit": commit.commitid}, repo, redis)
+            validate_upload(
+                {"commit": commit.commitid},
+                repo,
+                redis,
+                Endpoints.LEGACY_UPLOAD_COVERAGE,
+            )
         assert (
             err.exception.detail[0]
             == "Sorry, but this team has no private repository credits left."
         )
+        mock_upload_breadcrumb.assert_has_calls(
+            [
+                call(
+                    commit_sha=commit.commitid,
+                    repo_id=repo.repoid,
+                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=commit.commitid,
+                    repo_id=repo.repoid,
+                    breadcrumb_data=BreadcrumbData(
+                        milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                        endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                        error=Errors.OWNER_UPLOAD_LIMIT,
+                    ),
+                ),
+            ]
+        )
 
-    def test_validate_upload_gitlab_subgroups(self):
+    @patch("services.task.TaskService.upload_breadcrumb")
+    def test_validate_upload_gitlab_subgroups(self, mock_upload_breadcrumb):
         redis = MockRedis()
         parent_group = OwnerFactory(plan="1m", parent_service_id=None, service="gitlab")
         top_subgroup = OwnerFactory(
@@ -782,13 +903,39 @@ class UploadHandlerHelpersTest(TestCase):
         commit = CommitFactory()
 
         with self.assertRaises(ValidationError) as err:
-            validate_upload({"commit": commit.commitid}, repo, redis)
+            validate_upload(
+                {"commit": commit.commitid},
+                repo,
+                redis,
+                Endpoints.LEGACY_UPLOAD_COVERAGE,
+            )
         assert (
             err.exception.detail[0]
             == "Sorry, but this team has no private repository credits left."
         )
+        mock_upload_breadcrumb.assert_has_calls(
+            [
+                call(
+                    commit_sha=commit.commitid,
+                    repo_id=repo.repoid,
+                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=commit.commitid,
+                    repo_id=repo.repoid,
+                    breadcrumb_data=BreadcrumbData(
+                        milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                        endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                        error=Errors.OWNER_UPLOAD_LIMIT,
+                    ),
+                ),
+            ]
+        )
 
-    def test_validate_upload_valid_upload_repo_not_activated(self):
+    @patch("services.task.TaskService.upload_breadcrumb")
+    def test_validate_upload_valid_upload_repo_not_activated(
+        self, mock_upload_breadcrumb
+    ):
         redis = MockRedis()
         owner = OwnerFactory(plan="users-free")
         repo = RepositoryFactory(
@@ -803,15 +950,26 @@ class UploadHandlerHelpersTest(TestCase):
         with patch(
             "services.analytics.AnalyticsService.account_activated_repository_on_upload"
         ) as mock_segment_event:
-            validate_upload({"commit": commit.commitid}, repo, redis)
+            validate_upload(
+                {"commit": commit.commitid},
+                repo,
+                redis,
+                Endpoints.LEGACY_UPLOAD_COVERAGE,
+            )
             assert mock_segment_event.called
 
         repo.refresh_from_db()
         assert repo.activated == True
         assert repo.active == True
         assert repo.deleted == False
+        mock_upload_breadcrumb.assert_called_once_with(
+            commit_sha=commit.commitid,
+            repo_id=repo.repoid,
+            breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+        )
 
-    def test_validate_upload_valid_upload_repo_activated(self):
+    @patch("services.task.TaskService.upload_breadcrumb")
+    def test_validate_upload_valid_upload_repo_activated(self, mock_upload_breadcrumb):
         redis = MockRedis()
         owner = OwnerFactory(plan="5m")
         repo = RepositoryFactory(author=owner, private=True, activated=True)
@@ -820,13 +978,23 @@ class UploadHandlerHelpersTest(TestCase):
         with patch(
             "services.analytics.AnalyticsService.account_activated_repository_on_upload"
         ) as mock_segment_event:
-            validate_upload({"commit": commit.commitid}, repo, redis)
+            validate_upload(
+                {"commit": commit.commitid},
+                repo,
+                redis,
+                Endpoints.LEGACY_UPLOAD_COVERAGE,
+            )
             assert not mock_segment_event.called
 
         repo.refresh_from_db()
         assert repo.activated == True
         assert repo.active == True
         assert repo.deleted == False
+        mock_upload_breadcrumb.assert_called_once_with(
+            commit_sha=commit.commitid,
+            repo_id=repo.repoid,
+            breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+        )
 
     @freeze_time("2023-01-01T00:00:00")
     @patch("services.task.TaskService.upload")
@@ -945,9 +1113,11 @@ class UploadHandlerRouteTest(APITestCase):
     @patch("upload.views.legacy.uuid4")
     @patch("upload.views.legacy.dispatch_upload_task")
     @patch("services.repo_providers.RepoProviderService.get_adapter")
+    @patch("services.task.TaskService.upload_breadcrumb")
     @override_settings(CODECOV_DASHBOARD_URL="https://app.codecov.io")
     def test_successful_upload_v2(
         self,
+        mock_upload_breadcrumb,
         mock_repo_provider_service,
         mock_dispatch_upload,
         mock_uuid4,
@@ -1022,14 +1192,31 @@ class UploadHandlerRouteTest(APITestCase):
             == "https://app.codecov.io/github/codecovtest/upload-test-repo/commit/b521e55aef79b101f48e2544837ca99a7fa3bf6b"
         )
 
+        mock_upload_breadcrumb.assert_has_calls(
+            [
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA,
+                ),
+            ]
+        )
+
     @patch("shared.api_archive.archive.ArchiveService.write_file")
     @patch("upload.views.legacy.get_redis_connection")
     @patch("upload.views.legacy.uuid4")
     @patch("upload.views.legacy.dispatch_upload_task")
     @patch("services.repo_providers.RepoProviderService.get_adapter")
+    @patch("services.task.TaskService.upload_breadcrumb")
     @override_settings(CODECOV_DASHBOARD_URL="https://app.codecov.io")
     def test_successful_upload_v2_slash(
         self,
+        mock_upload_breadcrumb,
         mock_repo_provider_service,
         mock_dispatch_upload,
         mock_uuid4,
@@ -1104,13 +1291,30 @@ class UploadHandlerRouteTest(APITestCase):
             == "https://app.codecov.io/github/codecovtest/upload-test-repo/commit/b521e55aef79b101f48e2544837ca99a7fa3bf6b"
         )
 
+        mock_upload_breadcrumb.assert_has_calls(
+            [
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA,
+                ),
+            ]
+        )
+
     @patch("upload.views.legacy.get_redis_connection")
     @patch("upload.views.legacy.uuid4")
     @patch("upload.views.legacy.determine_repo_for_upload")
     @patch("services.repo_providers.RepoProviderService.get_adapter")
+    @patch("services.task.TaskService.upload_breadcrumb")
     @override_settings(CODECOV_DASHBOARD_URL="https://app.codecov.io")
     def test_repo_validation_error_v2(
         self,
+        mock_upload_breadcrumb,
         mock_repo_provider_service,
         mock_determine_repo_for_upload,
         mock_uuid4,
@@ -1156,13 +1360,17 @@ class UploadHandlerRouteTest(APITestCase):
 
         assert response.content == b"Could not determine repo and owner"
 
+        mock_upload_breadcrumb.assert_not_called()
+
     @patch("upload.views.legacy.get_redis_connection")
     @patch("upload.views.legacy.uuid4")
     @patch("upload.views.legacy.determine_repo_for_upload")
     @patch("services.repo_providers.RepoProviderService.get_adapter")
+    @patch("services.task.TaskService.upload_breadcrumb")
     @override_settings(CODECOV_DASHBOARD_URL="https://app.codecov.io")
     def test_too_many_repos_found_v2(
         self,
+        mock_upload_breadcrumb,
         mock_repo_provider_service,
         mock_determine_repo_for_upload,
         mock_uuid4,
@@ -1208,14 +1416,18 @@ class UploadHandlerRouteTest(APITestCase):
 
         assert response.content == b"Found too many repos"
 
+        mock_upload_breadcrumb.assert_not_called()
+
     @patch("shared.api_archive.archive.ArchiveService.create_presigned_put")
     @patch("shared.api_archive.archive.ArchiveService.get_archive_hash")
     @patch("upload.views.legacy.get_redis_connection")
     @patch("upload.views.legacy.uuid4")
     @patch("upload.views.legacy.dispatch_upload_task")
     @patch("services.repo_providers.RepoProviderService.get_adapter")
+    @patch("services.task.TaskService.upload_breadcrumb")
     def test_upload_v4(
         self,
+        mock_upload_breadcrumb,
         mock_repo_provider_service,
         mock_dispatch_upload,
         mock_uuid4,
@@ -1259,14 +1471,31 @@ class UploadHandlerRouteTest(APITestCase):
 
         assert response.status_code == 200
 
+        mock_upload_breadcrumb.assert_has_calls(
+            [
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA,
+                ),
+            ]
+        )
+
     @patch("shared.api_archive.archive.ArchiveService.create_presigned_put")
     @patch("shared.api_archive.archive.ArchiveService.get_archive_hash")
     @patch("upload.views.legacy.get_redis_connection")
     @patch("upload.views.legacy.uuid4")
     @patch("upload.views.legacy.dispatch_upload_task")
     @patch("services.repo_providers.RepoProviderService.get_adapter")
+    @patch("services.task.TaskService.upload_breadcrumb")
     def test_upload_v4_with_upload_token_header(
         self,
+        mock_upload_breadcrumb,
         mock_repo_provider_service,
         mock_dispatch_upload,
         mock_uuid4,
@@ -1312,6 +1541,21 @@ class UploadHandlerRouteTest(APITestCase):
 
         assert response.status_code == 200
 
+        mock_upload_breadcrumb.assert_has_calls(
+            [
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA,
+                ),
+            ]
+        )
+
     @patch("shared.api_archive.archive.ArchiveService.create_presigned_put")
     @patch("shared.api_archive.archive.ArchiveService.get_archive_hash")
     @patch("upload.views.legacy.get_redis_connection")
@@ -1319,8 +1563,10 @@ class UploadHandlerRouteTest(APITestCase):
     @patch("upload.views.legacy.dispatch_upload_task")
     @patch("services.repo_providers.RepoProviderService.get_adapter")
     @patch("upload.views.legacy.determine_repo_for_upload")
+    @patch("services.task.TaskService.upload_breadcrumb")
     def test_repo_validation_error_v4(
         self,
+        mock_upload_breadcrumb,
         mock_determine_repo_for_upload,
         mock_repo_provider_service,
         mock_dispatch_upload,
@@ -1380,6 +1626,8 @@ class UploadHandlerRouteTest(APITestCase):
 
         assert response.content == b"Could not determine repo and owner"
 
+        mock_upload_breadcrumb.assert_not_called()
+
     @patch("shared.api_archive.archive.ArchiveService.create_presigned_put")
     @patch("shared.api_archive.archive.ArchiveService.get_archive_hash")
     @patch("upload.views.legacy.get_redis_connection")
@@ -1387,8 +1635,10 @@ class UploadHandlerRouteTest(APITestCase):
     @patch("upload.views.legacy.dispatch_upload_task")
     @patch("services.repo_providers.RepoProviderService.get_adapter")
     @patch("upload.views.legacy.determine_repo_for_upload")
+    @patch("services.task.TaskService.upload_breadcrumb")
     def test_too_many_repos_found_v4(
         self,
+        mock_upload_breadcrumb,
         mock_determine_repo_for_upload,
         mock_repo_provider_service,
         mock_dispatch_upload,
@@ -1447,6 +1697,8 @@ class UploadHandlerRouteTest(APITestCase):
         assert headers["content-type"] != "text/plain"
 
         assert response.content == b"Found too many repos"
+
+        mock_upload_breadcrumb.assert_not_called()
 
 
 class UploadHandlerTravisTokenlessTest(TestCase):

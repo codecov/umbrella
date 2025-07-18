@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from django.conf import settings
 from django.test import override_settings
@@ -7,8 +7,15 @@ from rest_framework.test import APIClient
 
 from billing.tests.mocks import mock_all_plans_and_tiers
 from reports.models import ReportSession, RepositoryFlag, UploadFlagMembership
+from services.task import TaskService
 from shared.api_archive.archive import ArchiveService, MinioEndpoints
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from upload.views.upload_coverage import CanDoCoverageUploadsPermission
 
 
@@ -46,7 +53,8 @@ def test_get_repo_not_found(upload, db):
     assert not upload.called
 
 
-def test_deactivated_repo(db):
+def test_deactivated_repo(db, mocker):
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the_repo",
         author__username="codecov",
@@ -65,6 +73,27 @@ def test_deactivated_repo(db):
     response = client.post(url, {"commitid": "abc123"}, format="json")
     assert response.status_code == 400
     assert "This repository is deactivated" in str(response.json())
+    mock_upload_breadcrumb.assert_has_calls(
+        [
+            call(
+                commit_sha="abc123",
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                    endpoint=Endpoints.UPLOAD_COVERAGE,
+                ),
+            ),
+            call(
+                commit_sha="abc123",
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                    endpoint=Endpoints.UPLOAD_COVERAGE,
+                    error=Errors.REPO_DEACTIVATED,
+                ),
+            ),
+        ]
+    )
 
 
 def test_upload_coverage_with_errors(db):

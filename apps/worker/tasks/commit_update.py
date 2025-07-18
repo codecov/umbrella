@@ -9,8 +9,14 @@ from services.repository import (
     get_repo_provider_service,
     possibly_update_commit_from_provider_info,
 )
-from shared.celery_config import commit_update_task_name
+from shared.celery_config import commit_update_task_name, upload_breadcrumb_task_name
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Errors,
+    Milestones,
+)
 from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.utils.sentry import current_sentry_trace_id
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -33,6 +39,7 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
         repository = commit.repository
         repository_service = None
         was_updated = False
+        error = None
         try:
             installation_name_to_use = get_installation_name_for_owner_for_task(
                 self.name, repository.owner
@@ -123,22 +130,37 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
                 "Unable to reach git provider because repo doesn't have a valid bot",
                 extra={"repoid": repoid, "commit": commitid},
             )
+            error = Errors.REPO_MISSING_VALID_BOT
         except TorngitRepoNotFoundError:
             log.warning(
                 "Unable to reach git provider because this specific bot/integration can't see that repository",
                 extra={"repoid": repoid, "commit": commitid},
             )
+            error = Errors.REPO_NOT_FOUND
         except TorngitClientError:
             log.warning(
                 "Unable to reach git provider because there was a 4xx error",
                 extra={"repoid": repoid, "commit": commitid},
                 exc_info=True,
             )
+            error = Errors.GIT_CLIENT_ERROR
         if was_updated:
             log.info(
                 "Commit updated successfully",
                 extra={"commitid": commitid, "repoid": repoid},
             )
+
+        self.app.tasks[upload_breadcrumb_task_name].apply_async(
+            kwargs={
+                "commit_sha": commitid,
+                "repo_id": repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED,
+                    error=error,
+                ),
+                "sentry_trace_id": current_sentry_trace_id(),
+            }
+        )
         return {"was_updated": was_updated}
 
 

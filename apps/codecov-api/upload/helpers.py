@@ -1,5 +1,7 @@
 import logging
 import re
+from collections.abc import Generator
+from contextlib import contextmanager
 from json import dumps
 from typing import Any
 from urllib.parse import urlparse
@@ -30,6 +32,12 @@ from reports.models import CommitReport, ReportSession
 from services.analytics import AnalyticsService
 from services.repo_providers import RepoProviderService
 from services.task import TaskService
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from shared.github import InvalidInstallationError, get_github_integration_token
 from shared.helpers.redis import get_redis_connection
 from shared.plan.service import PlanService
@@ -569,88 +577,122 @@ def check_commit_upload_constraints(commit: Commit) -> None:
 
 
 def validate_upload(
-    upload_params: dict[str, Any], repository: Repository, redis: Redis
+    upload_params: dict[str, Any],
+    repository: Repository,
+    redis: Redis,
+    endpoint: Endpoints,
 ) -> None:
     """
     Make sure the upload can proceed and, if so, activate the repository if needed.
     """
+    commitid = upload_params.get("commit")
+    upload_breadcrumb_kwargs = {
+        "commit_sha": commitid,
+        "repo_id": repository.repoid,
+        "milestone": Milestones.FETCHING_COMMIT_DETAILS,
+        "endpoint": endpoint,
+    }
 
-    validate_activated_repo(repository)
-    # Make sure repo hasn't moved
-    if not repository.name:
-        raise ValidationError(
-            "This repository has moved or was deleted. Please login to Codecov to retrieve a new upload token."
-        )
+    with upload_breadcrumb_context(
+        initial_breadcrumb=True,
+        **upload_breadcrumb_kwargs,
+        error=Errors.REPO_DEACTIVATED,
+    ):
+        validate_activated_repo(repository)
 
-    # Check if there are already too many sessions associated with this commit
-    try:
-        commit = Commit.objects.get(
-            commitid=upload_params.get("commit"), repository=repository
-        )
-        new_session_count = ReportSession.objects.filter(
-            ~Q(state="error"),
-            ~Q(upload_type=UploadType.CARRIEDFORWARD.db_name),
-            report__commit=commit,
-        ).count()
-        session_count = (commit.totals.get("s") if commit.totals else 0) or 0
-        current_upload_limit = get_config("setup", "max_sessions") or 150
-        if new_session_count > current_upload_limit:
-            if session_count <= current_upload_limit:
-                log.info(
-                    "Old session count would not have blocked this upload",
+    with upload_breadcrumb_context(
+        initial_breadcrumb=False,
+        **upload_breadcrumb_kwargs,
+        error=Errors.REPO_NOT_FOUND,
+    ):
+        # Make sure repo hasn't moved
+        if not repository.name:
+            raise ValidationError(
+                "This repository has moved or was deleted. Please login to Codecov to retrieve a new upload token."
+            )
+
+    with upload_breadcrumb_context(
+        initial_breadcrumb=False,
+        **upload_breadcrumb_kwargs,
+        error=Errors.COMMIT_UPLOAD_LIMIT,
+    ):
+        # Check if there are already too many sessions associated with this commit
+        try:
+            commit = Commit.objects.get(commitid=commitid, repository=repository)
+            new_session_count = ReportSession.objects.filter(
+                ~Q(state="error"),
+                ~Q(upload_type=UploadType.CARRIEDFORWARD.db_name),
+                report__commit=commit,
+            ).count()
+            session_count = (commit.totals.get("s") if commit.totals else 0) or 0
+            current_upload_limit = get_config("setup", "max_sessions") or 150
+            if new_session_count > current_upload_limit:
+                if session_count <= current_upload_limit:
+                    log.info(
+                        "Old session count would not have blocked this upload",
+                        extra={
+                            "commit": commitid,
+                            "session_count": session_count,
+                            "repoid": repository.repoid,
+                            "old_session_count": session_count,
+                            "new_session_count": new_session_count,
+                        },
+                    )
+                log.warning(
+                    "Too many uploads to this commit",
                     extra={
-                        "commit": upload_params.get("commit"),
+                        "commit": commitid,
+                        "session_count": session_count,
+                        "repoid": repository.repoid,
+                    },
+                )
+                raise ValidationError("Too many uploads to this commit.")
+            elif session_count > current_upload_limit:
+                log.info(
+                    "Old session count would block this upload",
+                    extra={
+                        "commit": commitid,
                         "session_count": session_count,
                         "repoid": repository.repoid,
                         "old_session_count": session_count,
                         "new_session_count": new_session_count,
                     },
                 )
-            log.warning(
-                "Too many uploads to this commit",
-                extra={
-                    "commit": upload_params.get("commit"),
-                    "session_count": session_count,
-                    "repoid": repository.repoid,
-                },
-            )
-            raise ValidationError("Too many uploads to this commit.")
-        elif session_count > current_upload_limit:
-            log.info(
-                "Old session count would block this upload",
-                extra={
-                    "commit": upload_params.get("commit"),
-                    "session_count": session_count,
-                    "repoid": repository.repoid,
-                    "old_session_count": session_count,
-                    "new_session_count": new_session_count,
-                },
-            )
-    except Commit.DoesNotExist:
-        pass
+        except Commit.DoesNotExist:
+            pass
 
-    # Check if this repository is blacklisted and not allowed to upload
-    if redis.sismember("flags.disable_tasks", repository.repoid):
-        raise ValidationError(
-            "Uploads rejected for this project. Please contact Codecov staff for more details. Sorry for the inconvenience."
-        )
-
-    # Make sure the repository author has enough repo credits to upload reports
-    if (
-        repository.private
-        and not repository.activated
-        and not bool(get_config("setup", "enterprise_license", default=False))
+    with upload_breadcrumb_context(
+        initial_breadcrumb=False,
+        **upload_breadcrumb_kwargs,
+        error=Errors.REPO_BLACKLISTED,
     ):
-        owner = _determine_responsible_owner(repository)
-
-        # If author is on per repo billing, check their repo credits
-        if (
-            owner.plan not in Plan.objects.values_list("name", flat=True)
-            and owner.repo_credits <= 0
-        ):
+        # Check if this repository is blacklisted and not allowed to upload
+        if redis.sismember("flags.disable_tasks", repository.repoid):
             raise ValidationError(
-                "Sorry, but this team has no private repository credits left."
+                "Uploads rejected for this project. Please contact Codecov staff for more details. Sorry for the inconvenience."
             )
+
+    with upload_breadcrumb_context(
+        initial_breadcrumb=False,
+        **upload_breadcrumb_kwargs,
+        error=Errors.OWNER_UPLOAD_LIMIT,
+    ):
+        # Make sure the repository author has enough repo credits to upload reports
+        if (
+            repository.private
+            and not repository.activated
+            and not bool(get_config("setup", "enterprise_license", default=False))
+        ):
+            owner = _determine_responsible_owner(repository)
+
+            # If author is on per repo billing, check their repo credits
+            if (
+                owner.plan not in Plan.objects.values_list("name", flat=True)
+                and owner.repo_credits <= 0
+            ):
+                raise ValidationError(
+                    "Sorry, but this team has no private repository credits left."
+                )
 
     if not repository.activated:
         AnalyticsService().account_activated_repository_on_upload(
@@ -757,6 +799,13 @@ def dispatch_upload_task(
 
 
 def validate_activated_repo(repository: Repository) -> None:
+    """
+    Validate that the repository is activated and active. If not, raise a
+    `ValidationError` with a link to the Codecov UI for activation.
+
+    :param repository: The repository to validate.
+    :raises ValidationError: If the repository is not activated or active.
+    """
     if repository.active and not repository.activated:
         config_url = f"{settings.CODECOV_DASHBOARD_URL}/{repository.author.service}/{repository.author.username}/{repository.name}/config/general"
         raise ValidationError(
@@ -821,3 +870,58 @@ def generate_upload_prometheus_metrics_labels(
     )
 
     return metrics_tags
+
+
+@contextmanager
+def upload_breadcrumb_context(
+    initial_breadcrumb: bool,
+    commit_sha: str | None,
+    repo_id: int | None,
+    milestone: Milestones | None = None,
+    endpoint: Endpoints | None = None,
+    error: Errors | None = None,
+) -> Generator[None]:
+    """
+    A context manager to handle exceptions by creating an upload breadcrumb
+    before re-raising the exception. It also optionally creates an initial
+    upload breadcrumb at the start of the context.
+
+    If `commit_sha` or `repo_id` are `None`, no breadcrumbs will be created.
+
+    :param initial_breadcrumb: If `True`, an additional breadcrumb will be
+        created at the start of the context with no error.
+    :param commit_sha: The commit SHA for the upload breadcrumb.
+    :param repo_id: The repository ID for the upload breadcrumb.
+    :param milestone: Optional milestone for the upload breadcrumb.
+    :param endpoint: Optional endpoint for the upload breadcrumb.
+    :param error: Optional error for the upload breadcrumb. If not provided,
+        the error will be set to Errors.UNKNOWN and details will be provided in
+        the error_text field.
+    :raises: The original exception raised within the context.
+    """
+    try:
+        if initial_breadcrumb and commit_sha and repo_id:
+            TaskService().upload_breadcrumb(
+                commit_sha=commit_sha,
+                repo_id=repo_id,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=milestone,
+                    endpoint=endpoint,
+                ),
+            )
+
+        yield
+
+    except Exception as e:
+        if commit_sha and repo_id:
+            TaskService().upload_breadcrumb(
+                commit_sha=commit_sha,
+                repo_id=repo_id,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=milestone,
+                    endpoint=endpoint,
+                    error=error if error else Errors.UNKNOWN,
+                    error_text=str(e) if not error else None,
+                ),
+            )
+        raise

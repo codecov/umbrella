@@ -22,6 +22,11 @@ from codecov_auth.commands.owner import OwnerCommands
 from core.commands.repository import RepositoryCommands
 from services.analytics import AnalyticsService
 from shared.api_archive.archive import ArchiveService
+from shared.django_apps.upload_breadcrumbs.models import (
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import inc_counter
 from upload.helpers import (
@@ -35,6 +40,7 @@ from upload.helpers import (
     insert_commit,
     parse_headers,
     parse_params,
+    upload_breadcrumb_context,
     validate_upload,
 )
 from upload.metrics import API_UPLOAD_COUNTER
@@ -74,6 +80,7 @@ class UploadHandler(APIView, ShelterMixin):
     def post(self, request, *args, **kwargs):
         # Extract the version
         version = self.kwargs["version"]
+        endpoint = Endpoints.LEGACY_UPLOAD_COVERAGE
         inc_counter(
             API_UPLOAD_COUNTER,
             labels=generate_upload_prometheus_metrics_labels(
@@ -171,7 +178,7 @@ class UploadHandler(APIView, ShelterMixin):
 
         # Validate the upload to make sure the org has enough repo credits and is allowed to upload for this commit
         redis = get_redis_connection()
-        validate_upload(upload_params, repository, redis)
+        validate_upload(upload_params, repository, redis, endpoint)
         log.info(
             "Upload was determined to be valid", extra={"repoid": repository.repoid}
         )
@@ -195,7 +202,15 @@ class UploadHandler(APIView, ShelterMixin):
         commit = insert_commit(
             commitid, branch, pr, repository, owner, upload_params.get("parent")
         )
-        check_commit_upload_constraints(commit)
+        with upload_breadcrumb_context(
+            initial_breadcrumb=True,
+            commit_sha=commitid,
+            repo_id=repository.repoid,
+            milestone=Milestones.COMMIT_PROCESSED,
+            endpoint=endpoint,
+            error=Errors.OWNER_UPLOAD_LIMIT,
+        ):
+            check_commit_upload_constraints(commit)
 
         # --------- Handle the actual upload
 
