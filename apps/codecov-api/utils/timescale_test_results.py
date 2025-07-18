@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal, TypeGuard
+from typing import Literal, TypeIs
 
 from django.db.models import (
     Aggregate,
@@ -17,6 +17,7 @@ from django.db.models import (
 from shared.django_apps.ta_timeseries.models import (
     AggregateDaily,
     BranchAggregateDaily,
+    Testrun,
     TestrunBranchSummary,
     TestrunSummary,
 )
@@ -31,7 +32,7 @@ PRECOMPUTED_BRANCHES = ("main", "master", "develop")
 
 def _should_use_precomputed_aggregates(
     branch: str | None,
-) -> TypeGuard[Literal["main", "master", "develop"] | None]:
+) -> TypeIs[Literal["main", "master", "develop"] | None]:
     return branch in PRECOMPUTED_BRANCHES or branch is None
 
 
@@ -51,11 +52,23 @@ class ArrayMergeDedupe(Aggregate):
     template = "%(function)s(%(expressions)s)"
 
 
+class Last(Aggregate):
+    """
+    Custom aggregate for TimescaleDB's last() function.
+
+    Requires two arguments: value column and time column.
+    Usage: Last('value_column', 'time_column', output_field=FloatField())
+    """
+
+    function = "last"
+    template = "%(function)s(%(expressions)s)"
+
+
 def get_test_data_queryset_via_ca(
     repoid: int,
+    branch: Literal["main", "master", "develop"] | None,
     start_date: datetime,
     end_date: datetime,
-    branch: str | None,
 ):
     if branch:
         test_data = TestrunBranchSummary.objects.filter(
@@ -110,8 +123,80 @@ def get_test_data_queryset_via_ca(
             default=F("total_duration") / F("total_count"),
             output_field=FloatField(),
         ),
-        last_duration=Max("last_duration_seconds"),
+        last_duration=Last(
+            "last_duration_seconds", "updated_at", output_field=FloatField()
+        ),
         updated_at=Max("updated_at"),
+        flags=ArrayMergeDedupe("flags"),
+        name=F("computed_name"),
+    )
+
+
+def get_test_data_queryset_via_testrun(
+    repoid: int,
+    branch: str,
+    start_date: datetime,
+    end_date: datetime,
+):
+    raw_queryset = Testrun.objects.filter(
+        repo_id=repoid,
+        branch=branch,
+        timestamp__gte=start_date,
+        timestamp__lt=end_date,
+    )
+
+    return raw_queryset.values("computed_name", "testsuite").annotate(
+        total_pass_count=Sum(
+            Case(When(outcome="pass", then=Value(1)), default=Value(0))
+        ),
+        total_fail_count=Sum(
+            Case(When(outcome="failure", then=Value(1)), default=Value(0))
+        ),
+        total_skip_count=Sum(
+            Case(When(outcome="skip", then=Value(1)), default=Value(0))
+        ),
+        total_flaky_fail_count=Sum(
+            Case(When(outcome="flaky_fail", then=Value(1)), default=Value(0))
+        ),
+        commits_where_fail=Count(
+            "commit_sha",
+            filter=Q(outcome__in=["failure", "flaky_fail"]),
+            distinct=True,
+        ),
+        total_count=(
+            F("total_pass_count")
+            + F("total_fail_count")
+            + F("total_skip_count")
+            + F("total_flaky_fail_count")
+        ),
+        failure_rate=Case(
+            When(
+                Q(total_count=0),
+                then=Value(0.0),
+            ),
+            default=(F("total_fail_count") + F("total_flaky_fail_count"))
+            / F("total_count"),
+            output_field=FloatField(),
+        ),
+        flake_rate=Case(
+            When(
+                Q(total_count=0),
+                then=Value(0.0),
+            ),
+            default=F("total_flaky_fail_count") / F("total_count"),
+            output_field=FloatField(),
+        ),
+        total_duration=Sum(F("duration_seconds"), output_field=FloatField()),
+        avg_duration=Case(
+            When(
+                Q(total_count=0),
+                then=Value(0.0),
+            ),
+            default=F("total_duration") / F("total_count"),
+            output_field=FloatField(),
+        ),
+        last_duration=Last("duration_seconds", "timestamp", output_field=FloatField()),
+        updated_at=Max("timestamp"),
         flags=ArrayMergeDedupe("flags"),
         name=F("computed_name"),
     )
@@ -128,7 +213,12 @@ def get_test_results_queryset(
     flags: list[str] | None = None,
     term: str | None = None,
 ):
-    test_data = get_test_data_queryset_via_ca(repoid, start_date, end_date, branch)
+    if _should_use_precomputed_aggregates(branch):
+        test_data = get_test_data_queryset_via_ca(repoid, branch, start_date, end_date)
+    else:
+        test_data = get_test_data_queryset_via_testrun(
+            repoid, branch, start_date, end_date
+        )
 
     match parameter:
         case "failed_tests":
@@ -137,6 +227,8 @@ def get_test_results_queryset(
             test_data = test_data.filter(total_flaky_fail_count__gt=0)
         case "skipped_tests":
             test_data = test_data.filter(total_skip_count__gt=0, total_pass_count=0)
+        case _:
+            pass
 
     if term:
         test_data = test_data.filter(computed_name__icontains=term)
@@ -174,7 +266,7 @@ def get_repo_aggregates_via_ca(
             bucket_daily__gte=start_date,
             bucket_daily__lt=end_date,
         )
-    else:
+    elif branch in PRECOMPUTED_BRANCHES:
         test_data = TestrunBranchSummary.objects.filter(
             repo_id=repoid,
             branch=branch,
@@ -241,11 +333,10 @@ def get_test_results_aggregates_from_timescale(
             repoid, branch, comparison_start_date, comparison_end_date
         )
     )
-
     return TestResultsAggregates(
         total_duration=curr_aggregates["total_duration"] or 0,
-        fails=curr_aggregates["fails"] or 0,
-        skips=curr_aggregates["skips"] or 0,
+        fails=int(curr_aggregates["fails"] or 0),
+        skips=int(curr_aggregates["skips"] or 0),
         total_slow_tests=curr_slow_test_num,
         slowest_tests_duration=curr_slow_test_duration or 0.0,
         total_duration_percent_change=_pct_change(
@@ -343,7 +434,7 @@ def get_flake_aggregates_from_timescale(
     )
 
     return FlakeAggregates(
-        flake_count=curr_aggregates["flake_count"] or 0,
+        flake_count=int(curr_aggregates["flake_count"] or 0),
         flake_rate=curr_aggregates["flake_rate"] or 0,
         flake_count_percent_change=_pct_change(
             curr_aggregates["flake_count"], past_aggregates["flake_count"]

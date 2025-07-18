@@ -15,7 +15,7 @@ from .helper import GraphQLTestHelper
 def repository():
     owner = OwnerFactory(username="codecov-user")
     repo = RepositoryFactory(
-        author=owner, name="testRepoName", active=True, branch="main"
+        repoid=1, author=owner, name="testRepoName", active=True, branch="main"
     )
 
     return repo
@@ -142,7 +142,7 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
 
         assert snapshot("json") == result
 
-    def test_gql_query_test_results_timescale_empty_parameter(
+    def test_gql_query_test_results_timescale_branch(
         self, repository, populate_timescale, snapshot
     ):
         query = f"""
@@ -152,6 +152,45 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
                         ... on Repository {{
                             testAnalytics {{
                                 testResults(filters: {{branch: "main"}}) {{
+                                    totalCount
+                                    edges {{
+                                        cursor
+                                        node {{
+                                            name
+                                            failureRate
+                                            flakeRate
+                                            avgDuration
+                                            totalDuration
+                                            totalFailCount
+                                            totalFlakyFailCount
+                                            totalPassCount
+                                            totalSkipCount
+                                            commitsFailed
+                                            lastDuration
+                                        }}
+                                    }}
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
+
+    def test_gql_query_test_results_timescale_non_precomputed_branch(
+        self, repository, populate_timescale, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                testResults(filters: {{branch: "feature"}}) {{
                                     totalCount
                                     edges {{
                                         cursor
