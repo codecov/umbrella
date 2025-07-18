@@ -14,7 +14,9 @@ from .helper import GraphQLTestHelper
 @pytest.fixture(autouse=True)
 def repository():
     owner = OwnerFactory(username="codecov-user")
-    repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
+    repo = RepositoryFactory(
+        author=owner, name="testRepoName", active=True, branch="main"
+    )
     return repo
 
 
@@ -129,6 +131,38 @@ class TestTestResultsAggregatesTimescale(GraphQLTestHelper):
                         ... on Repository {{
                             testAnalytics {{
                                 testResultsAggregates {{
+                                    totalDuration
+                                    slowestTestsDuration
+                                    totalFails
+                                    totalSkips
+                                    totalSlowTests
+                                    totalDurationPercentChange
+                                    slowestTestsDurationPercentChange
+                                    totalFailsPercentChange
+                                    totalSkipsPercentChange
+                                    totalSlowTestsPercentChange
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
+
+    def test_gql_query_test_results_aggregates_timescale_branch(
+        self, repository, populate_timescale_test_results_aggregates, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                testResultsAggregates(branch: "main") {{
                                     totalDuration
                                     slowestTestsDuration
                                     totalFails

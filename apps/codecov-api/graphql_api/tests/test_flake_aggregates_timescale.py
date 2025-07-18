@@ -14,7 +14,12 @@ from .helper import GraphQLTestHelper
 @pytest.fixture(autouse=True)
 def repository():
     owner = OwnerFactory(username="codecov-user")
-    repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
+    repo = RepositoryFactory(
+        author=owner,
+        name="testRepoName",
+        active=True,
+        branch="main",
+    )
     return repo
 
 
@@ -122,6 +127,32 @@ class TestFlakeAggregatesTimescale(GraphQLTestHelper):
                         ... on Repository {{
                             testAnalytics {{
                                 flakeAggregates {{
+                                    flakeRate
+                                    flakeCount
+                                    flakeRatePercentChange
+                                    flakeCountPercentChange
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
+
+    def test_gql_query_flake_aggregates_timescale_branch(
+        self, repository, populate_timescale_flake_aggregates, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                flakeAggregates(branch: "main") {{
                                     flakeRate
                                     flakeCount
                                     flakeRatePercentChange
