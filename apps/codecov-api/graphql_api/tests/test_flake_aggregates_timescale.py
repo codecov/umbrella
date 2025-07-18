@@ -14,7 +14,12 @@ from .helper import GraphQLTestHelper
 @pytest.fixture(autouse=True)
 def repository():
     owner = OwnerFactory(username="codecov-user")
-    repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
+    repo = RepositoryFactory(
+        author=owner,
+        name="testRepoName",
+        active=True,
+        branch="main",
+    )
     return repo
 
 
@@ -65,7 +70,7 @@ def populate_timescale_flake_aggregates(repository):
             duration_seconds=15.0 + (i),
             commit_sha=f"commit {i}",
             flags=[f"flag{i}"],
-            branch="main",
+            branch="feature-branch",
         )
         for i in range(2, 5)
     ]
@@ -84,11 +89,23 @@ def populate_timescale_flake_aggregates(repository):
             [min_timestamp, max_timestamp],
         )
         cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_summary_1day', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
+        cursor.execute(
             "CALL refresh_continuous_aggregate('ta_timeseries_branch_aggregate_hourly', %s, %s)",
             [min_timestamp, max_timestamp],
         )
         cursor.execute(
             "CALL refresh_continuous_aggregate('ta_timeseries_branch_aggregate_daily', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_aggregate_hourly', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_aggregate_daily', %s, %s)",
             [min_timestamp, max_timestamp],
         )
 
@@ -109,8 +126,8 @@ class TestFlakeAggregatesTimescale(GraphQLTestHelper):
         assert result is not None
         assert result.flake_rate == 0.5
         assert result.flake_count == 1
-        assert result.flake_rate_percent_change == -0.5
-        assert result.flake_count_percent_change == -0.6666666666666666
+        assert result.flake_rate_percent_change == 0.0
+        assert result.flake_count_percent_change == 0.0
 
     def test_gql_query_flake_aggregates_timescale(
         self, repository, populate_timescale_flake_aggregates, snapshot
@@ -122,6 +139,32 @@ class TestFlakeAggregatesTimescale(GraphQLTestHelper):
                         ... on Repository {{
                             testAnalytics {{
                                 flakeAggregates {{
+                                    flakeRate
+                                    flakeCount
+                                    flakeRatePercentChange
+                                    flakeCountPercentChange
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
+
+    def test_gql_query_flake_aggregates_timescale_branch(
+        self, repository, populate_timescale_flake_aggregates, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                flakeAggregates(branch: "main") {{
                                     flakeRate
                                     flakeCount
                                     flakeRatePercentChange

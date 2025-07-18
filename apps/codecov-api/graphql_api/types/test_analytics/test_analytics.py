@@ -342,7 +342,7 @@ async def resolve_test_results(
             if ordering
             else OrderingDirection.DESC
         )
-        branch = filters.get("branch") if filters else repository.branch
+        branch = filters.get("branch") if filters else None
         parameter_enum = filters.get("parameter") if filters else None
         parameter = parameter_enum.value if parameter_enum else None
         testsuites = filters.get("test_suites") if filters else None
@@ -353,7 +353,7 @@ async def resolve_test_results(
             repoid=repository.repoid,
             start_date=start_date,
             end_date=end_date,
-            branch=branch,  # type: ignore
+            branch=branch,
             parameter=parameter,
             testsuites=testsuites,
             flags=flags,
@@ -403,6 +403,7 @@ async def resolve_test_results(
 async def resolve_test_results_aggregates(
     repository: Repository,
     info: GraphQLResolveInfo,
+    branch: str | None = None,
     interval: MeasurementInterval | None = None,
     **_: Any,
 ) -> TestResultsAggregates | None:
@@ -414,7 +415,7 @@ async def resolve_test_results_aggregates(
         start_date = end_date - timedelta(days=measurement_interval.value)
         return await sync_to_async(get_test_results_aggregates_from_timescale)(
             repoid=repository.repoid,
-            branch=repository.branch,
+            branch=branch,
             start_date=start_date,
             end_date=end_date,
         )
@@ -429,6 +430,7 @@ async def resolve_test_results_aggregates(
 async def resolve_flake_aggregates(
     repository: Repository,
     info: GraphQLResolveInfo,
+    branch: str | None = None,
     interval: MeasurementInterval | None = None,
     **_: Any,
 ) -> FlakeAggregates | None:
@@ -440,10 +442,11 @@ async def resolve_flake_aggregates(
         start_date = end_date - timedelta(days=measurement_interval.value)
         return await sync_to_async(get_flake_aggregates_from_timescale)(
             repoid=repository.repoid,
-            branch=repository.branch,
+            branch=branch,
             start_date=start_date,
             end_date=end_date,
         )
+
     return await sync_to_async(generate_flake_aggregates)(
         repoid=repository.repoid,
         branch=repository.branch,
