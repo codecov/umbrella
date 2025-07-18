@@ -1,0 +1,22 @@
+{% if error.error_code == "unsupported_file_format" -%}
+### :x: Unsupported file format
+<details><summary>Upload processing failed due to unsupported file format. Please review the parser error message:</summary>
+<pre><code class="language-python">{{ error.error_message | e }}</code></pre>
+</details>
+
+For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).
+{%- elif error.error_code == "file_not_in_storage" -%}
+### :x: File not in storage
+No result to display due to the CLI not being able to find the file.
+Please ensure the file contains `junit` in the name and automated file search is enabled,
+or the desired file specified by the `file` and `search_dir` arguments of the CLI.
+{%- elif error.error_code == "warning" -%}
+### :warning: Parser warning
+<details><summary>The parser emitted a warning. Please review your JUnit XML file:</summary>
+<pre><code class="language-python">{{ error.error_message | e }}</code></pre>
+</details>
+
+For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).
+{%- else -%}
+Error processing test results
+{%- endif %}
