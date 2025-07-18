@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
+from django.db import connections
 from django.db.models import (
     Aggregate,
     Case,
@@ -15,10 +16,7 @@ from django.db.models import (
 )
 
 from shared.django_apps.ta_timeseries.models import (
-    AggregateDaily,
-    BranchAggregateDaily,
     TestrunBranchSummary,
-    TestrunSummary,
 )
 from shared.metrics import Histogram
 from utils.ta_types import (
@@ -42,53 +40,22 @@ class ArrayMergeDedupe(Aggregate):
     template = "%(function)s(%(expressions)s)"
 
 
-def get_base_and_aggregate_querysets(
-    repoid: int,
-    start_date: datetime,
-    end_date: datetime,
-    branch: str | None,
-):
-    if branch is None:
-        base_queryset = TestrunSummary.objects.filter(
-            repo_id=repoid,
-            timestamp_bin__gte=start_date,
-            timestamp_bin__lt=end_date,
-        )
-        aggregate_queryset = AggregateDaily.objects.filter(
-            repo_id=repoid,
-            bucket_daily__gte=start_date,
-            bucket_daily__lt=end_date,
-        )
-    else:
-        base_queryset = TestrunBranchSummary.objects.filter(
-            repo_id=repoid,
-            branch=branch,
-            timestamp_bin__gte=start_date,
-            timestamp_bin__lt=end_date,
-        )
-        aggregate_queryset = BranchAggregateDaily.objects.filter(
-            repo_id=repoid,
-            branch=branch,
-            bucket_daily__gte=start_date,
-            bucket_daily__lt=end_date,
-        )
-
-    return base_queryset, aggregate_queryset
-
-
 def get_test_results_queryset(
     repoid: int,
     start_date: datetime,
     end_date: datetime,
-    branch: str | None,
+    branch: str,
     parameter: Literal["flaky_tests", "failed_tests", "slowest_tests", "skipped_tests"]
     | None = None,
     testsuites: list[str] | None = None,
     flags: list[str] | None = None,
     term: str | None = None,
 ):
-    base_queryset, _ = get_base_and_aggregate_querysets(
-        repoid, start_date, end_date, branch
+    base_queryset = TestrunBranchSummary.objects.filter(
+        repo_id=repoid,
+        branch=branch,
+        timestamp_bin__gte=start_date,
+        timestamp_bin__lt=end_date,
     )
 
     aggregated_queryset = base_queryset.values("computed_name", "testsuite").annotate(
@@ -169,74 +136,73 @@ def _pct_change(current: int | float | None, past: int | float | None) -> float:
 
 def get_slowest_tests_duration(
     repoid: int,
-    branch: str | None,
+    branch: str,
     start_date: datetime,
     end_date: datetime,
     unique_test_count: int,
 ) -> tuple[float, int]:
     slow_test_num = min(100, max(unique_test_count // 20, 1))
 
-    base_queryset, _ = get_base_and_aggregate_querysets(
-        repoid, start_date, end_date, branch
-    )
-
-    slow_tests = (
-        base_queryset.values("computed_name", "testsuite")
-        .annotate(
-            total_duration=Sum(
-                F("avg_duration_seconds")
-                * (F("pass_count") + F("fail_count") + F("flaky_fail_count")),
-                output_field=FloatField(),
-            )
+    with connections["ta_timeseries"].cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT SUM(total_duration) as slowest_tests_duration FROM (
+                SELECT SUM(avg_duration_seconds * (pass_count + fail_count + flaky_fail_count)) as total_duration
+                FROM ta_timeseries_testrun_branch_summary_1day
+                WHERE repo_id = %s
+                    AND branch = %s
+                    AND timestamp_bin >= %s
+                    AND timestamp_bin < %s
+                GROUP BY computed_name, testsuite
+                ORDER BY total_duration DESC
+                LIMIT %s
+            ) as slow_tests
+            """,
+            (repoid, branch, start_date, end_date, slow_test_num),
         )
-        .order_by("-total_duration")[:slow_test_num]
-    )
-
-    result = slow_tests.aggregate(slowest_tests_duration=Sum("total_duration"))
-
-    slowest_tests_duration = result["slowest_tests_duration"] or 0.0
-    return slowest_tests_duration, slow_test_num
+        if result := cursor.fetchone():
+            return result[0] or 0.0, slow_test_num
+        else:
+            return 0.0, 0
 
 
 @get_test_result_aggregates_histogram.time()
 def get_test_results_aggregates_from_timescale(
-    repoid: int, branch: str | None, start_date: datetime, end_date: datetime
+    repoid: int, branch: str, start_date: datetime, end_date: datetime
 ) -> TestResultsAggregates | None:
     interval_duration = end_date - start_date
     comparison_start_date = start_date - interval_duration
     comparison_end_date = start_date
 
     def get_aggregates(
-        repoid: int, branch: str | None, start_date: datetime, end_date: datetime
+        repoid: int, branch: str, start_date: datetime, end_date: datetime
     ):
-        base_queryset, aggregate_queryset = get_base_and_aggregate_querysets(
-            repoid, start_date, end_date, branch
-        )
-
-        daily_aggregates = aggregate_queryset.aggregate(
-            total_duration=Sum("total_duration_seconds", output_field=FloatField()),
+        return TestrunBranchSummary.objects.filter(
+            repo_id=repoid,
+            branch=branch,
+            timestamp_bin__gte=start_date,
+            timestamp_bin__lt=end_date,
+        ).aggregate(
+            total_duration=Sum(
+                F("avg_duration_seconds")
+                * (F("pass_count") + F("fail_count") + F("flaky_fail_count")),
+                output_field=FloatField(),
+            ),
             fails=Sum(F("fail_count") + F("flaky_fail_count")),
             skips=Sum("skip_count"),
+            unique_test_count=Count("computed_name", distinct=True),
         )
 
-        unique_test_count = base_queryset.aggregate(
-            unique_test_count=Count("computed_name", distinct=True)
-        )
-
-        return daily_aggregates, unique_test_count["unique_test_count"] or 0
-
-    curr_aggregates, curr_unique_test_count = get_aggregates(
-        repoid, branch, start_date, end_date
-    )
+    curr_aggregates = get_aggregates(repoid, branch, start_date, end_date)
 
     if curr_aggregates["total_duration"] is None:
         return None
 
     curr_slow_test_duration, curr_slow_test_num = get_slowest_tests_duration(
-        repoid, branch, start_date, end_date, curr_unique_test_count
+        repoid, branch, start_date, end_date, curr_aggregates["unique_test_count"]
     )
 
-    past_aggregates, past_unique_test_count = get_aggregates(
+    past_aggregates = get_aggregates(
         repoid, branch, comparison_start_date, comparison_end_date
     )
 
@@ -245,7 +211,7 @@ def get_test_results_aggregates_from_timescale(
         branch,
         comparison_start_date,
         comparison_end_date,
-        past_unique_test_count,
+        past_aggregates["unique_test_count"],
     )
 
     return TestResultsAggregates(
@@ -274,7 +240,7 @@ def get_test_results_aggregates_from_timescale(
 
 @get_flake_aggregates_histogram.time()
 def get_flake_aggregates_from_timescale(
-    repoid: int, branch: str | None, start_date: datetime, end_date: datetime
+    repoid: int, branch: str, start_date: datetime, end_date: datetime
 ) -> FlakeAggregates | None:
     interval_duration = end_date - start_date
     comparison_start_date = start_date - interval_duration
@@ -284,14 +250,20 @@ def get_flake_aggregates_from_timescale(
         start: datetime,
         end: datetime,
     ):
-        base_queryset, aggregate_queryset = get_base_and_aggregate_querysets(
-            repoid, start, end, branch
-        )
-
-        daily_aggregates = aggregate_queryset.aggregate(
+        return TestrunBranchSummary.objects.filter(
+            repo_id=repoid,
+            branch=branch,
+            timestamp_bin__gte=start,
+            timestamp_bin__lt=end,
+        ).aggregate(
             total_count=Sum(
-                F("pass_count") + F("fail_count") + F("flaky_fail_count"),
+                "pass_count",
                 output_field=FloatField(),
+            )
+            + Sum("fail_count", output_field=FloatField())
+            + Sum("flaky_fail_count", output_field=FloatField()),
+            flake_count=Count(
+                "computed_name", distinct=True, filter=Q(flaky_fail_count__gt=0)
             ),
             flake_rate=Case(
                 When(
@@ -303,17 +275,7 @@ def get_flake_aggregates_from_timescale(
             ),
         )
 
-        flake_count = base_queryset.filter(flaky_fail_count__gt=0).aggregate(
-            flake_count=Count("computed_name", distinct=True),
-        )
-
-        return {
-            **daily_aggregates,
-            "flake_count": flake_count["flake_count"] or 0,
-        }
-
     curr_aggregates = get_branch_aggregates(start_date, end_date)
-
     if curr_aggregates["flake_count"] is None:
         return None
 

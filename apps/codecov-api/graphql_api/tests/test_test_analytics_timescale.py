@@ -14,9 +14,7 @@ from .helper import GraphQLTestHelper
 @pytest.fixture(autouse=True)
 def repository():
     owner = OwnerFactory(username="codecov-user")
-    repo = RepositoryFactory(
-        author=owner, name="testRepoName", active=True, branch="main"
-    )
+    repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
 
     return repo
 
