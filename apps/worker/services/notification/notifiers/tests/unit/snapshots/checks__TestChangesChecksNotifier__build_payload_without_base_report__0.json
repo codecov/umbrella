@@ -1,0 +1,9 @@
+{
+  "state": "success",
+  "output": {
+    "title": "Unable to determine changes, no report found at pull request base",
+    "summary": "[View this Pull Request on Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1)\n\nUnable to determine changes, no report found at pull request base",
+    "annotations": []
+  },
+  "included_helper_text": {}
+}

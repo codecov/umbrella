@@ -240,9 +240,13 @@ def sample_commit_with_report_already_carriedforward(dbsession, mock_storage):
     }
     commit = CommitFactory.create(
         _report_json={"sessions": sessions_dict, "files": file_headers},
+        repository__name="test-repo",
+        repository__image_token="test-image-token",
+        repository__owner__username="test-owner",
         repository__owner__service="github",
         repository__owner__integration_id="10000",
         repository__using_integration=True,
+        commitid="1234567",
     )
     dbsession.add(commit)
     dbsession.flush()
@@ -300,24 +304,35 @@ def sample_comparison(dbsession, request, sample_report, mocker):
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username=request.node.name,
+        owner__username="test-owner",
+        owner__name="test-owner-name",
         owner__service="github",
         owner__integration_id="10000",
+        name="test-repo",
+        image_token="test-image-token",
         # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
         owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         using_integration=True,
     )
     dbsession.add(repository)
     dbsession.flush()
-    base_commit = CommitFactory.create(repository=repository, author__service="github")
+    base_commit = CommitFactory.create(
+        repository=repository,
+        author__service="github",
+        commitid="1234567",
+    )
     head_commit = CommitFactory.create(
-        repository=repository, branch="new_branch", author__service="github"
+        repository=repository,
+        branch="new_branch",
+        author__service="github",
+        commitid="2345678",
     )
     pull = PullFactory.create(
         repository=repository,
         base=base_commit.commitid,
         head=head_commit.commitid,
         author=OwnerFactory(username="codecov-test-user"),
+        pullid=1,
     )
     dbsession.add(base_commit)
     dbsession.add(head_commit)
@@ -362,13 +377,18 @@ def sample_comparison_coverage_carriedforward(
         return_value="github-integration-token",
     )
     head_commit = sample_commit_with_report_already_carriedforward
-    base_commit = CommitFactory.create(repository=head_commit.repository)
+    base_commit = CommitFactory.create(
+        repository=head_commit.repository, commitid="2345678"
+    )
 
     repository = head_commit.repository
     dbsession.add(repository)
     dbsession.flush()
     pull = PullFactory.create(
-        repository=repository, base=base_commit.commitid, head=head_commit.commitid
+        repository=repository,
+        base=base_commit.commitid,
+        head=head_commit.commitid,
+        pullid=1,
     )
     dbsession.add(base_commit)
     dbsession.add(head_commit)
@@ -418,17 +438,24 @@ def sample_comparison_negative_change(dbsession, request, sample_report, mocker)
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username=request.node.name,
+        owner__username="test-owner",
+        name="test-repo",
+        image_token="test-image-token",
         owner__service="github",
         owner__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)
     dbsession.flush()
-    base_commit = CommitFactory.create(repository=repository)
-    head_commit = CommitFactory.create(repository=repository, branch="new_branch")
+    base_commit = CommitFactory.create(repository=repository, commitid="1234567")
+    head_commit = CommitFactory.create(
+        repository=repository, branch="new_branch", commitid="2345678"
+    )
     pull = PullFactory.create(
-        repository=repository, base=base_commit.commitid, head=head_commit.commitid
+        repository=repository,
+        base=base_commit.commitid,
+        head=head_commit.commitid,
+        pullid=1,
     )
     dbsession.add(base_commit)
     dbsession.add(head_commit)
@@ -472,17 +499,24 @@ def sample_comparison_no_change(dbsession, request, sample_report, mocker):
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username=request.node.name,
+        owner__username="test-owner",
+        name="test-repo",
+        image_token="test-image-token",
         owner__service="github",
         owner__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)
     dbsession.flush()
-    base_commit = CommitFactory.create(repository=repository)
-    head_commit = CommitFactory.create(repository=repository, branch="new_branch")
+    base_commit = CommitFactory.create(repository=repository, commitid="1234567")
+    head_commit = CommitFactory.create(
+        repository=repository, branch="new_branch", commitid="2345678"
+    )
     pull = PullFactory.create(
-        repository=repository, base=base_commit.commitid, head=head_commit.commitid
+        repository=repository,
+        base=base_commit.commitid,
+        head=head_commit.commitid,
+        pullid=1,
     )
     dbsession.add(base_commit)
     dbsession.add(head_commit)
@@ -526,16 +560,23 @@ def sample_comparison_without_pull(dbsession, request, sample_report, mocker):
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username=request.node.name,
+        owner__username="test-owner",
+        name="test-repo",
+        image_token="test-image-token",
         owner__service="github",
         owner__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)
     dbsession.flush()
-    base_commit = CommitFactory.create(repository=repository, author__service="github")
+    base_commit = CommitFactory.create(
+        repository=repository, author__service="github", commitid="1234567"
+    )
     head_commit = CommitFactory.create(
-        repository=repository, branch="new_branch", author__service="github"
+        repository=repository,
+        branch="new_branch",
+        author__service="github",
+        commitid="2345678",
     )
     dbsession.add(base_commit)
     dbsession.add(head_commit)
@@ -566,16 +607,23 @@ def sample_comparison_database_pull_without_provider(
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username=request.node.name,
+        owner__username="test-owner",
+        name="test-repo",
+        image_token="test-image-token",
         owner__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)
     dbsession.flush()
-    base_commit = CommitFactory.create(repository=repository)
-    head_commit = CommitFactory.create(repository=repository, branch="new_branch")
+    base_commit = CommitFactory.create(repository=repository, commitid="1234567")
+    head_commit = CommitFactory.create(
+        repository=repository, branch="new_branch", commitid="2345678"
+    )
     pull = PullFactory.create(
-        repository=repository, base=base_commit.commitid, head=head_commit.commitid
+        repository=repository,
+        base=base_commit.commitid,
+        head=head_commit.commitid,
+        pullid=1,
     )
     dbsession.add(base_commit)
     dbsession.add(head_commit)
@@ -604,15 +652,25 @@ def generate_sample_comparison(username, dbsession, base_report, head_report):
         owner__service="github",
         owner__integration_id="10000",
         using_integration=True,
+        name="test-repo",
+        image_token="test-image-token",
     )
     dbsession.add(repository)
     dbsession.flush()
-    base_commit = CommitFactory.create(repository=repository, author__service="github")
+    base_commit = CommitFactory.create(
+        repository=repository, author__service="github", commitid="1234567"
+    )
     head_commit = CommitFactory.create(
-        repository=repository, branch="new_branch", author__service="github"
+        repository=repository,
+        branch="new_branch",
+        author__service="github",
+        commitid="2345678",
     )
     pull = PullFactory.create(
-        repository=repository, base=base_commit.commitid, head=head_commit.commitid
+        repository=repository,
+        base=base_commit.commitid,
+        head=head_commit.commitid,
+        pullid=1,
     )
     dbsession.add(base_commit)
     dbsession.add(head_commit)
@@ -652,19 +710,29 @@ def sample_comparison_without_base_report(dbsession, request, sample_report, moc
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username=request.node.name,
+        owner__username="test-owner",
+        name="test-repo",
+        image_token="test-image-token",
         owner__service="github",
         owner__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)
     dbsession.flush()
-    base_commit = CommitFactory.create(repository=repository, author__service="github")
+    base_commit = CommitFactory.create(
+        repository=repository, author__service="github", commitid="1234567"
+    )
     head_commit = CommitFactory.create(
-        repository=repository, branch="new_branch", author__service="github"
+        repository=repository,
+        branch="new_branch",
+        author__service="github",
+        commitid="2345678",
     )
     pull = PullFactory.create(
-        repository=repository, base=base_commit.commitid, head=head_commit.commitid
+        repository=repository,
+        base=base_commit.commitid,
+        head=head_commit.commitid,
+        pullid=1,
     )
     dbsession.add(head_commit)
     dbsession.add(base_commit)
@@ -714,16 +782,23 @@ def sample_comparison_without_base_with_pull(dbsession, request, sample_report, 
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username=request.node.name,
+        owner__username="test-owner",
+        name="test-repo",
+        image_token="test-image-token",
         owner__service="github",
         owner__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)
     dbsession.flush()
-    head_commit = CommitFactory.create(repository=repository, branch="new_branch")
+    head_commit = CommitFactory.create(
+        repository=repository, branch="new_branch", commitid="1234567"
+    )
     pull = PullFactory.create(
-        repository=repository, base="base_commitid", head=head_commit.commitid
+        repository=repository,
+        base="base_commitid",
+        head=head_commit.commitid,
+        pullid=1,
     )
     dbsession.add(head_commit)
     dbsession.add(pull)
@@ -778,15 +853,23 @@ def sample_comparison_head_and_pull_head_differ(
     )
     dbsession.add(repository)
     dbsession.flush()
-    base_commit = CommitFactory.create(repository=repository, author__service="github")
+    base_commit = CommitFactory.create(
+        repository=repository, author__service="github", commitid="1234567"
+    )
     head_commit = CommitFactory.create(
-        repository=repository, branch="new_branch", author__service="github"
+        repository=repository,
+        branch="new_branch",
+        author__service="github",
+        commitid="2345678",
     )
     random_commit = CommitFactory.create(
-        repository=repository, author__service="github"
+        repository=repository, author__service="github", commitid="3456789"
     )
     pull = PullFactory.create(
-        repository=repository, base=base_commit.commitid, head=head_commit.commitid
+        repository=repository,
+        base=base_commit.commitid,
+        head=head_commit.commitid,
+        pullid=1,
     )
     dbsession.add(base_commit)
     dbsession.add(head_commit)

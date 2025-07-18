@@ -1,0 +1,8 @@
+{
+  "state": "success",
+  "output": {
+    "title": "Codecov Report",
+    "summary": "Summary"
+  },
+  "url": "https://app.codecov.io/gh/codecov/worker/compare/100?src=pr&el=continue&utm_medium=referral&utm_source=github&utm_content=checks&utm_campaign=pr+comments&utm_term=codecov"
+}

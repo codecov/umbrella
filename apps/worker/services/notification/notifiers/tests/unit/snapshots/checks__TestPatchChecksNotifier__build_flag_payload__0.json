@@ -1,0 +1,9 @@
+{
+  "state": "success",
+  "output": {
+    "title": "66.67% of diff hit (target 50.00%)",
+    "summary": "[View this Pull Request on Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1)\n\n66.67% of diff hit (target 50.00%)",
+    "annotations": []
+  },
+  "included_helper_text": {}
+}

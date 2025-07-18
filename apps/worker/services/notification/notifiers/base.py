@@ -34,6 +34,16 @@ class NotificationResult:
         ans.data_received = self.data_received or other.data_received
         return ans
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "notification_attempted": self.notification_attempted,
+            "notification_successful": self.notification_successful,
+            "explanation": self.explanation,
+            "data_sent": self.data_sent,
+            "data_received": self.data_received,
+            "github_app_used": self.github_app_used,
+        }
+
 
 class AbstractBaseNotifier:
     """

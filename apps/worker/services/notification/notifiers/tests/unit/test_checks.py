@@ -1,11 +1,9 @@
 from copy import deepcopy
 from unittest.mock import Mock
-from urllib.parse import quote_plus
 
 import pytest
 
 from services.decoration import Decoration
-from services.notification.notifiers.base import NotificationResult
 from services.notification.notifiers.checks import (
     ChangesChecksNotifier,
     PatchChecksNotifier,
@@ -14,10 +12,6 @@ from services.notification.notifiers.checks import (
 from services.notification.notifiers.checks.base import ChecksNotifier
 from services.notification.notifiers.checks.checks_with_fallback import (
     ChecksWithFallback,
-)
-from services.notification.notifiers.mixins.status import (
-    HelperTextKey,
-    HelperTextTemplate,
 )
 from services.notification.notifiers.status import PatchStatusNotifier
 from shared.reports.readonly import ReadOnlyReport
@@ -694,7 +688,7 @@ class TestPatchChecksNotifier:
         assert expected_result == result
 
     def test_build_flag_payload(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         notifier = PatchChecksNotifier(
@@ -705,20 +699,11 @@ class TestPatchChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": "66.67% of diff hit (target 50.00%)",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_flag_payload/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n66.67% of diff hit (target 50.00%)",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(sample_comparison)
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_upgrade_payload(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"] = {
             "codecov_url": "test.example.br",
@@ -733,21 +718,12 @@ class TestPatchChecksNotifier:
             repository_service=mock_repo_provider,
             decoration_type=Decoration.upgrade,
         )
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": "Codecov Report",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_upgrade_payload/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\nThe author of this PR, codecov-test-user, is not an activated member of this organization on Codecov.\nPlease [activate this user on Codecov](test.example.br/members/gh/test_build_upgrade_payload) to display a detailed status check.\nCoverage data is still being uploaded to Codecov.io for purposes of overall coverage calculations.\nPlease don't hesitate to email us at support@codecov.io with any questions.",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(sample_comparison)
-        assert expected_result == result
+        assert snapshot("json") == result
 
     @pytest.mark.django_db
     def test_build_default_payload(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_all_plans_and_tiers()
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -759,21 +735,11 @@ class TestPatchChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": "66.67% of diff hit (target 50.00%)",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_default_payload/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n66.67% of diff hit (target 50.00%)",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(sample_comparison)
-        assert expected_result["output"]["summary"] == result["output"]["summary"]
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_payload_target_coverage_failure(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         notifier = PatchChecksNotifier(
@@ -784,31 +750,15 @@ class TestPatchChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        expected_result = {
-            "state": "failure",
-            "output": {
-                "title": "66.67% of diff hit (target 70.00%)",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_payload_target_coverage_failure/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n66.67% of diff hit (target 70.00%)",
-                "annotations": [],
-            },
-            "included_helper_text": {
-                HelperTextKey.CUSTOM_TARGET_PATCH: HelperTextTemplate.CUSTOM_TARGET.format(
-                    context="patch",
-                    notification_type="check",
-                    point_of_comparison="patch",
-                    coverage=66.67,
-                    target="70.00",
-                )
-            },
-        }
         result = notifier.build_payload(sample_comparison)
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_payload_without_base_report(
         self,
         sample_comparison_without_base_report,
         mock_repo_provider,
         mock_configuration,
+        snapshot,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         comparison = sample_comparison_without_base_report
@@ -820,28 +770,11 @@ class TestPatchChecksNotifier:
             current_yaml=UserYaml({"github_checks": {"annotations": True}}),
             repository_service=mock_repo_provider,
         )
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": "No report found to compare against",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_payload_without_base_report/{sample_comparison_without_base_report.head.commit.repository.name}/pull/{sample_comparison_without_base_report.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\nNo report found to compare against",
-                "annotations": [
-                    {
-                        "path": "file_1.go",
-                        "start_line": 10,
-                        "end_line": 10,
-                        "annotation_level": "warning",
-                        "message": "Added line #L10 was not covered by tests",
-                    }
-                ],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(comparison)
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_payload_target_coverage_failure_within_threshold(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         third_file = ReportFile("file_3.c")
@@ -862,20 +795,8 @@ class TestPatchChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": "66.67% of diff hit (within 5.00% threshold of 70.00%)",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_payload_target_coverage_failure_within_threshold/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n66.67% of diff hit (within 5.00% threshold of 70.00%)",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(sample_comparison)
-        assert expected_result["state"] == result["state"]
-        assert expected_result["output"]["summary"] == result["output"]["summary"]
-        assert expected_result["output"] == result["output"]
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_payload_with_multiple_changes(
         self,
@@ -883,6 +804,7 @@ class TestPatchChecksNotifier:
         mock_repo_provider,
         mock_configuration,
         multiple_diff_changes,
+        snapshot,
     ):
         json_diff = multiple_diff_changes
         original_value = deepcopy(multiple_diff_changes)
@@ -897,19 +819,10 @@ class TestPatchChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        expected_result = {
-            "state": "failure",
-            "output": {
-                "title": "50.00% of diff hit (target 76.92%)",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_payload_with_multiple_changes/{comparison_with_multiple_changes.head.commit.repository.name}/pull/{comparison_with_multiple_changes.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n50.00% of diff hit (target 76.92%)",
-                "annotations": [],
-            },
-            "included_helper_text": {},  # not a custom target, no helper text
-        }
+
         result = notifier.build_payload(comparison_with_multiple_changes)
-        assert expected_result["state"] == result["state"]
-        assert expected_result["output"] == result["output"]
-        assert expected_result == result
+        assert snapshot("json") == result
+
         # assert that the value of diff was not changed
         for filename in original_value["files"]:
             assert original_value["files"][filename].get(
@@ -986,7 +899,7 @@ class TestPatchChecksNotifier:
         assert expected_annotations == result["output"]["annotations"]
 
     def test_build_payload_no_diff(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_repo_provider.get_compare.return_value = {
             "diff": {
@@ -1027,23 +940,12 @@ class TestPatchChecksNotifier:
             repository_service=mock_repo_provider,
         )
         assert notifier.is_enabled()
-        notifier.name
-        base_commit = sample_comparison.project_coverage_base.commit
-        head_commit = sample_comparison.head.commit
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": f"Coverage not affected when comparing {base_commit.commitid[:7]}...{head_commit.commitid[:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_payload_no_diff/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\nCoverage not affected when comparing {base_commit.commitid[:7]}...{head_commit.commitid[:7]}",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(sample_comparison)
-        assert notifier.notification_type.value == "checks_patch"
-        assert expected_result == result
+        assert snapshot("json") == result
 
-    def test_send_notification(self, sample_comparison, mocker, mock_repo_provider):
+    def test_send_notification(
+        self, sample_comparison, mocker, mock_repo_provider, snapshot
+    ):
         comparison = sample_comparison
         payload = {
             "state": "success",
@@ -1063,14 +965,10 @@ class TestPatchChecksNotifier:
         result = notifier.send_notification(sample_comparison, payload)
         assert result.notification_successful == True
         assert result.explanation is None
-        assert result.data_sent == {
-            "state": "success",
-            "output": {"title": "Codecov Report", "summary": "Summary"},
-            "url": "https://app.codecov.io/gh/codecov/worker/compare/100?src=pr&el=continue&utm_medium=referral&utm_source=github&utm_content=checks&utm_campaign=pr+comments&utm_term=codecov",
-        }
+        assert snapshot("json") == result.data_sent
 
     def test_send_notification_annotations_paginations(
-        self, sample_comparison, mocker, mock_repo_provider
+        self, sample_comparison, mocker, mock_repo_provider, snapshot
     ):
         comparison = sample_comparison
         payload = {
@@ -1115,17 +1013,15 @@ class TestPatchChecksNotifier:
         calls = [call[1] for call in mock_repo_provider.update_check_run.call_args_list]
         assert expected_calls == calls
         assert mock_repo_provider.update_check_run.call_count == 2
-        assert result.data_sent == {
-            "state": "success",
-            "output": {
-                "title": "Codecov Report",
-                "summary": "Summary",
-                "annotations": list(range(1, 61, 1)),
-            },
-        }
+        assert snapshot("json") == result.data_sent
 
     def test_notify(
-        self, sample_comparison, mocker, mock_repo_provider, mock_configuration
+        self,
+        sample_comparison,
+        mocker,
+        mock_repo_provider,
+        mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -1140,24 +1036,18 @@ class TestPatchChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        base_commit = sample_comparison.project_coverage_base.commit
-        head_commit = sample_comparison.head.commit
         result = notifier.notify(sample_comparison)
         assert result.notification_successful == True
         assert result.explanation is None
-        assert result.data_sent == {
-            "state": "success",
-            "output": {
-                "title": f"Coverage not affected when comparing {base_commit.commitid[:7]}...{head_commit.commitid[:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_notify/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\nCoverage not affected when comparing {base_commit.commitid[:7]}...{head_commit.commitid[:7]}",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-            "url": f"test.example.br/gh/test_notify/{sample_comparison.head.commit.repository.name}/pull/{comparison.pull.pullid}",
-        }
+        assert snapshot("json") == result.data_sent
 
     def test_notify_passing_empty_upload(
-        self, sample_comparison, mocker, mock_repo_provider, mock_configuration
+        self,
+        sample_comparison,
+        mocker,
+        mock_repo_provider,
+        mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -1176,19 +1066,15 @@ class TestPatchChecksNotifier:
         result = notifier.notify(sample_comparison)
         assert result.notification_successful == True
         assert result.explanation is None
-        assert result.data_sent == {
-            "state": "success",
-            "output": {
-                "title": "Empty Upload",
-                "summary": "Non-testable files changed.",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-            "url": f"test.example.br/gh/test_notify_passing_empty_upload/{sample_comparison.head.commit.repository.name}/pull/{comparison.pull.pullid}",
-        }
+        assert snapshot("json") == result.data_sent
 
     def test_notify_failing_empty_upload(
-        self, sample_comparison, mocker, mock_repo_provider, mock_configuration
+        self,
+        sample_comparison,
+        mocker,
+        mock_repo_provider,
+        mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -1207,16 +1093,7 @@ class TestPatchChecksNotifier:
         result = notifier.notify(sample_comparison)
         assert result.notification_successful == True
         assert result.explanation is None
-        assert result.data_sent == {
-            "state": "failure",
-            "output": {
-                "title": "Empty Upload",
-                "summary": "Testable files changed",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-            "url": f"test.example.br/gh/test_notify_failing_empty_upload/{sample_comparison.head.commit.repository.name}/pull/{comparison.pull.pullid}",
-        }
+        assert snapshot("json") == result.data_sent
 
     def test_notification_exception(
         self, sample_comparison, mock_repo_provider, mock_configuration
@@ -1335,7 +1212,7 @@ class TestPatchChecksNotifier:
 
 class TestChangesChecksNotifier:
     def test_build_payload(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         notifier = ChangesChecksNotifier(
@@ -1346,21 +1223,13 @@ class TestChangesChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": "No indirect coverage changes found",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_payload/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\nNo indirect coverage changes found",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
+
         result = notifier.build_payload(sample_comparison)
-        assert expected_result == result
+        assert snapshot("json") == result
         assert notifier.notification_type.value == "checks_changes"
 
     def test_build_upgrade_payload(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"] = {
             "codecov_url": "test.example.br",
@@ -1375,17 +1244,9 @@ class TestChangesChecksNotifier:
             repository_service=mock_repo_provider,
             decoration_type=Decoration.upgrade,
         )
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": "Codecov Report",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_upgrade_payload/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\nThe author of this PR, codecov-test-user, is not an activated member of this organization on Codecov.\nPlease [activate this user on Codecov](test.example.br/members/gh/test_build_upgrade_payload) to display a detailed status check.\nCoverage data is still being uploaded to Codecov.io for purposes of overall coverage calculations.\nPlease don't hesitate to email us at support@codecov.io with any questions.",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
+
         result = notifier.build_payload(sample_comparison)
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_payload_with_multiple_changes(
         self,
@@ -1393,6 +1254,7 @@ class TestChangesChecksNotifier:
         mock_repo_provider,
         mock_configuration,
         multiple_diff_changes,
+        snapshot,
     ):
         json_diff = multiple_diff_changes
         mock_repo_provider.get_compare.return_value = {"diff": json_diff}
@@ -1406,23 +1268,15 @@ class TestChangesChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        expected_result = {
-            "state": "failure",
-            "output": {
-                "title": "3 files have indirect coverage changes not visible in diff",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_payload_with_multiple_changes/{comparison_with_multiple_changes.head.commit.repository.name}/pull/{comparison_with_multiple_changes.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n3 files have indirect coverage changes not visible in diff",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(comparison_with_multiple_changes)
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_payload_without_base_report(
         self,
         sample_comparison_without_base_report,
         mock_repo_provider,
         mock_configuration,
+        snapshot,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         comparison = sample_comparison_without_base_report
@@ -1434,20 +1288,11 @@ class TestChangesChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": "Unable to determine changes, no report found at pull request base",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_payload_without_base_report/{sample_comparison_without_base_report.head.commit.repository.name}/pull/{sample_comparison_without_base_report.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\nUnable to determine changes, no report found at pull request base",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(comparison)
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_failing_empty_upload_payload(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"] = {
             "codecov_url": "test.example.br",
@@ -1462,22 +1307,13 @@ class TestChangesChecksNotifier:
             repository_service=mock_repo_provider,
             decoration_type=Decoration.failing_empty_upload,
         )
-        expected_result = {
-            "state": "failure",
-            "output": {
-                "title": "Empty Upload",
-                "summary": "Testable files changed",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(sample_comparison)
-        assert expected_result == result
+        assert snapshot("json") == result
 
 
 class TestProjectChecksNotifier:
     def test_analytics_url(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "codecov.io"
         repo = sample_comparison.head.commit.repository
@@ -1512,33 +1348,10 @@ class TestProjectChecksNotifier:
             repository_service=mock_repo_provider,
         )
         result = notifier.send_notification(sample_comparison, payload)
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": f"60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "summary": f"[View this Pull Request on Codecov](codecov.io/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1&utm_medium=referral&utm_source=github&utm_content=checks&utm_campaign=pr+comments&utm_term={quote_plus(repo.owner.name)})\n\n60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "text": "\n".join(
-                    [
-                        f"## [Codecov](codecov.io/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1&utm_medium=referral&utm_source=github&utm_content=checks&utm_campaign=pr+comments&utm_term={quote_plus(repo.owner.name)}) Report",
-                        f"> Merging [#{sample_comparison.pull.pullid}](codecov.io/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=desc&utm_medium=referral&utm_source=github&utm_content=checks&utm_campaign=pr+comments&utm_term={quote_plus(repo.owner.name)}) ({head_commit.commitid[:7]}) into [master](codecov.io/gh/test_build_default_payload/{repo.name}/commit/{sample_comparison.project_coverage_base.commit.commitid}?el=desc&utm_medium=referral&utm_source=github&utm_content=checks&utm_campaign=pr+comments&utm_term={quote_plus(repo.owner.name)}) ({base_commit.commitid[:7]}) will **increase** coverage by `10.00%`.",
-                        "> The diff coverage is `66.67%`.",
-                        "",
-                        f"| [Files with missing lines](codecov.io/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=tree&utm_medium=referral&utm_source=github&utm_content=checks&utm_campaign=pr+comments&utm_term={quote_plus(repo.owner.name)}) | Coverage Δ | Complexity Δ | |",
-                        "|---|---|---|---|",
-                        f"| [file\\_1.go](codecov.io/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=tree&filepath=file_1.go&utm_medium=referral&utm_source=github&utm_content=checks&utm_campaign=pr+comments&utm_term={quote_plus(repo.owner.name)}#diff-ZmlsZV8xLmdv) | `62.50% <66.67%> (+12.50%)` | `10.00 <0.00> (-1.00)` | :arrow_up: |",
-                        f"| [file\\_2.py](codecov.io/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=tree&filepath=file_2.py&utm_medium=referral&utm_source=github&utm_content=checks&utm_campaign=pr+comments&utm_term={quote_plus(repo.owner.name)}#diff-ZmlsZV8yLnB5) | `50.00% <0.00%> (ø)` | `0.00% <0.00%> (ø%)` | |",
-                        "",
-                    ]
-                ),
-            },
-        }
-        assert expected_result["output"]["text"].split("\n") == result.data_sent[
-            "output"
-        ]["text"].split("\n")
-        assert expected_result == result.data_sent
+        assert snapshot("json") == result.data_sent
 
     def test_build_flag_payload(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         notifier = ProjectChecksNotifier(
@@ -1551,20 +1364,12 @@ class TestProjectChecksNotifier:
         )
         result = notifier.build_payload(sample_comparison)
         base_commit = sample_comparison.project_coverage_base.commit
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": f"60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_flag_payload/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
-        assert result == expected_result
+
+        assert snapshot("json") == result
         assert notifier.notification_type.value == "checks_project"
 
     def test_build_upgrade_payload(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"] = {
             "codecov_url": "test.example.br",
@@ -1579,20 +1384,11 @@ class TestProjectChecksNotifier:
             repository_service=mock_repo_provider,
             decoration_type=Decoration.upgrade,
         )
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": "Codecov Report",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_upgrade_payload/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\nThe author of this PR, codecov-test-user, is not an activated member of this organization on Codecov.\nPlease [activate this user on Codecov](test.example.br/members/gh/test_build_upgrade_payload) to display a detailed status check.\nCoverage data is still being uploaded to Codecov.io for purposes of overall coverage calculations.\nPlease don't hesitate to email us at support@codecov.io with any questions.",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(sample_comparison)
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_passing_empty_upload_payload(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"] = {
             "codecov_url": "test.example.br",
@@ -1607,21 +1403,12 @@ class TestProjectChecksNotifier:
             repository_service=mock_repo_provider,
             decoration_type=Decoration.passing_empty_upload,
         )
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": "Empty Upload",
-                "summary": "Non-testable files changed.",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(sample_comparison)
-        assert expected_result == result
+        assert snapshot("json") == result
 
     @pytest.mark.django_db
     def test_build_default_payload(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_all_plans_and_tiers()
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -1634,45 +1421,11 @@ class TestProjectChecksNotifier:
             repository_service=mock_repo_provider,
         )
         result = notifier.build_payload(sample_comparison)
-        repo = sample_comparison.head.commit.repository
-        base_commit = sample_comparison.project_coverage_base.commit
-        head_commit = sample_comparison.head.commit
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": f"60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "text": "\n".join(
-                    [
-                        f"## [Codecov](test.example.br/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-                        "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-                        f"> Project coverage is 60.00%. Comparing base [(`{base_commit.commitid[:7]}`)](test.example.br/gh/test_build_default_payload/{repo.name}/commit/{base_commit.commitid}?dropdown=coverage&el=desc) to head [(`{head_commit.commitid[:7]}`)](test.example.br/gh/test_build_default_payload/{repo.name}/commit/{head_commit.commitid}?dropdown=coverage&el=desc)."
-                        f"",
-                        "",
-                        f"| [Files with missing lines](test.example.br/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
-                        "|---|---|---|",
-                        f"| [file\\_1.go](test.example.br/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | 66.67% | [1 Missing :warning: ](test.example.br/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=tree) |",
-                        "",
-                        f"| [Files with missing lines](test.example.br/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=tree) | Coverage Δ | Complexity Δ | |",
-                        "|---|---|---|---|",
-                        f"| [file\\_1.go](test.example.br/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | `62.50% <66.67%> (+12.50%)` | `10.00 <0.00> (-1.00)` | :arrow_up: |",
-                        "",
-                        f"... and [1 file with indirect coverage changes](test.example.br/gh/test_build_default_payload/{repo.name}/pull/{sample_comparison.pull.pullid}/indirect-changes?src=pr&el=tree-more)",
-                        "",
-                    ]
-                ),
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
-        assert expected_result["output"]["text"].split("\n") == result["output"][
-            "text"
-        ].split("\n")
-        assert expected_result == result
+        assert snapshot("json") == result
 
     @pytest.mark.django_db
     def test_build_default_payload_with_flags(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_all_plans_and_tiers()
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -1685,48 +1438,13 @@ class TestProjectChecksNotifier:
             repository_service=mock_repo_provider,
         )
         result = notifier.build_payload(sample_comparison)
-        repo = sample_comparison.head.commit.repository
-        base_commit = sample_comparison.project_coverage_base.commit
-        head_commit = sample_comparison.head.commit
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": f"60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "text": "\n".join(
-                    [
-                        f"## [Codecov](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-                        "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-                        f"> Project coverage is 60.00%. Comparing base [(`{base_commit.commitid[:7]}`)](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/commit/{base_commit.commitid}?dropdown=coverage&el=desc) to head [(`{head_commit.commitid[:7]}`)](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/commit/{head_commit.commitid}?dropdown=coverage&el=desc)."
-                        f"",
-                        "",
-                        f"| [Files with missing lines](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
-                        "|---|---|---|",
-                        f"| [file\\_1.go](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | 66.67% | [1 Missing :warning: ](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=tree) |",
-                        "",
-                        f"| [Files with missing lines](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=tree) | Coverage Δ | Complexity Δ | |",
-                        "|---|---|---|---|",
-                        f"| [file\\_1.go](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | `62.50% <66.67%> (+12.50%)` | `10.00 <0.00> (-1.00)` | :arrow_up: |",
-                        "",
-                        f"... and [1 file with indirect coverage changes](test.example.br/gh/test_build_default_payload_with_flags/{repo.name}/pull/{sample_comparison.pull.pullid}/indirect-changes?src=pr&el=tree-more)",
-                        "",
-                    ]
-                ),
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
-        assert expected_result["output"]["text"].split("\n") == result["output"][
-            "text"
-        ].split("\n")
-        assert expected_result == result
+        assert snapshot("json") == result
 
     @pytest.mark.django_db
     def test_build_default_payload_with_flags_and_footer(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_all_plans_and_tiers()
-        test_name = "test_build_default_payload_with_flags_and_footer"
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         notifier = ProjectChecksNotifier(
             repository=sample_comparison.head.commit.repository,
@@ -1737,50 +1455,10 @@ class TestProjectChecksNotifier:
             repository_service=mock_repo_provider,
         )
         result = notifier.build_payload(sample_comparison)
-        repo = sample_comparison.head.commit.repository
-        base_commit = sample_comparison.project_coverage_base.commit
-        head_commit = sample_comparison.head.commit
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": f"60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "text": "\n".join(
-                    [
-                        f"## [Codecov](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1) Report",
-                        "Attention: Patch coverage is `66.66667%` with `1 line` in your changes missing coverage. Please review.",
-                        f"> Project coverage is 60.00%. Comparing base [(`{base_commit.commitid[:7]}`)](test.example.br/gh/{test_name}/{repo.name}/commit/{base_commit.commitid}?dropdown=coverage&el=desc) to head [(`{head_commit.commitid[:7]}`)](test.example.br/gh/{test_name}/{repo.name}/commit/{head_commit.commitid}?dropdown=coverage&el=desc).",
-                        "",
-                        f"| [Files with missing lines](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |",
-                        "|---|---|---|",
-                        f"| [file\\_1.go](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | 66.67% | [1 Missing :warning: ](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=tree) |",
-                        "",
-                        f"| [Files with missing lines](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=tree) | Coverage Δ | Complexity Δ | |",
-                        "|---|---|---|---|",
-                        f"| [file\\_1.go](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | `62.50% <66.67%> (+12.50%)` | `10.00 <0.00> (-1.00)` | :arrow_up: |",
-                        "",
-                        f"... and [1 file with indirect coverage changes](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}/indirect-changes?src=pr&el=tree-more)",
-                        "",
-                        "------",
-                        "",
-                        f"[Continue to review full report in Codecov by Sentry](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=continue).",
-                        "> **Legend** - [Click here to learn more](https://docs.codecov.io/docs/codecov-delta)",
-                        "> `Δ = absolute <relative> (impact)`, `ø = not affected`, `? = missing data`",
-                        f"> Powered by [Codecov](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=footer). Last update [{base_commit.commitid[:7]}...{head_commit.commitid[:7]}](test.example.br/gh/{test_name}/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=lastupdated). Read the [comment docs](https://docs.codecov.io/docs/pull-request-comments).",
-                        "",
-                    ],
-                ),
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
-        assert expected_result["output"]["text"].split("\n") == result["output"][
-            "text"
-        ].split("\n")
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_default_payload_comment_off(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         notifier = ProjectChecksNotifier(
@@ -1792,21 +1470,14 @@ class TestProjectChecksNotifier:
             repository_service=mock_repo_provider,
         )
         result = notifier.build_payload(sample_comparison)
-        repo = sample_comparison.head.commit.repository
-        base_commit = sample_comparison.project_coverage_base.commit
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": f"60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_default_payload_comment_off/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_default_payload_negative_change_comment_off(
-        self, sample_comparison_negative_change, mock_repo_provider, mock_configuration
+        self,
+        sample_comparison_negative_change,
+        mock_repo_provider,
+        mock_configuration,
+        snapshot,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         notifier = ProjectChecksNotifier(
@@ -1818,21 +1489,10 @@ class TestProjectChecksNotifier:
             repository_service=mock_repo_provider,
         )
         result = notifier.build_payload(sample_comparison_negative_change)
-        repo = sample_comparison_negative_change.head.commit.repository
-        base_commit = sample_comparison_negative_change.project_coverage_base.commit
-        expected_result = {
-            "state": "failure",
-            "output": {
-                "title": f"50.00% (-10.00%) compared to {base_commit.commitid[:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_default_payload_negative_change_comment_off/{repo.name}/pull/{sample_comparison_negative_change.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n50.00% (-10.00%) compared to {base_commit.commitid[:7]}",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_payload_not_auto(
-        self, sample_comparison, mock_repo_provider, mock_configuration
+        self, sample_comparison, mock_repo_provider, mock_configuration, snapshot
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         notifier = ProjectChecksNotifier(
@@ -1843,24 +1503,15 @@ class TestProjectChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        repo = sample_comparison.head.commit.repository
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": "60.00% (target 57.00%)",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_payload_not_auto/{repo.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n60.00% (target 57.00%)",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(sample_comparison)
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_build_payload_no_base_report(
         self,
         sample_comparison_without_base_report,
         mock_repo_provider,
         mock_configuration,
+        snapshot,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         comparison = sample_comparison_without_base_report
@@ -1872,21 +1523,16 @@ class TestProjectChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        repo = sample_comparison_without_base_report.head.commit.repository
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": "No report found to compare against",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_build_payload_no_base_report/{repo.name}/pull/{sample_comparison_without_base_report.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\nNo report found to compare against",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
         result = notifier.build_payload(comparison)
-        assert expected_result == result
+        assert snapshot("json") == result
 
     def test_check_notify_no_path_match(
-        self, sample_comparison, mocker, mock_repo_provider, mock_configuration
+        self,
+        sample_comparison,
+        mocker,
+        mock_repo_provider,
+        mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -1903,21 +1549,15 @@ class TestProjectChecksNotifier:
             repository_service=mock_repo_provider,
         )
         result = notifier.notify(sample_comparison)
-        assert result.notification_successful == True
-        assert result.explanation is None
-        assert result.data_sent == {
-            "state": "success",
-            "output": {
-                "title": "No coverage information found on head",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_check_notify_no_path_match/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\nNo coverage information found on head",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-            "url": f"test.example.br/gh/test_check_notify_no_path_match/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}",
-        }
+        assert snapshot("json") == result.to_dict()
 
     def test_check_notify_single_path_match(
-        self, sample_comparison, mocker, mock_repo_provider, mock_configuration
+        self,
+        sample_comparison,
+        mocker,
+        mock_repo_provider,
+        mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -1934,29 +1574,16 @@ class TestProjectChecksNotifier:
             repository_service=mock_repo_provider,
         )
 
-        base_commit = sample_comparison.project_coverage_base.commit
         result = notifier.notify(sample_comparison)
-        assert result.notification_successful is True
-        assert result.explanation is None
-        expected_result = {
-            "state": "success",
-            "output": {
-                "title": f"62.50% (+12.50%) compared to {base_commit.commitid[0:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_check_notify_single_path_match/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n62.50% (+12.50%) compared to {base_commit.commitid[0:7]}",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-            "url": f"test.example.br/gh/test_check_notify_single_path_match/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}",
-        }
-        assert result.data_sent["state"] == expected_result["state"]
-        assert (
-            result.data_sent["output"]["summary"]
-            == expected_result["output"]["summary"]
-        )
-        assert result.data_sent["output"] == expected_result["output"]
+        assert snapshot("json") == result.to_dict()
 
     def test_check_notify_multiple_path_match(
-        self, sample_comparison, mocker, mock_repo_provider, mock_configuration
+        self,
+        sample_comparison,
+        mocker,
+        mock_repo_provider,
+        mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -1973,31 +1600,21 @@ class TestProjectChecksNotifier:
             repository_service=mock_repo_provider,
         )
 
-        base_commit = sample_comparison.project_coverage_base.commit
         result = notifier.notify(sample_comparison)
-        assert result.notification_successful == True
-        assert result.explanation is None
-        assert result.data_sent == {
-            "state": "success",
-            "output": {
-                "title": f"60.00% (+10.00%) compared to {base_commit.commitid[0:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_check_notify_multiple_path_match/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n60.00% (+10.00%) compared to {base_commit.commitid[0:7]}",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-            "url": f"test.example.br/gh/test_check_notify_multiple_path_match/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}",
-        }
+        assert snapshot("json") == result.to_dict()
 
     def test_check_notify_with_paths(
-        self, sample_comparison, mocker, mock_repo_provider, mock_configuration
+        self,
+        sample_comparison,
+        mocker,
+        mock_repo_provider,
+        mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         comparison = sample_comparison
-        payload = {
-            "state": "success",
-            "output": {"title": "Codecov Report", "summary": "Summary"},
-        }
+
         mock_repo_provider.create_check_run.return_value = 2234563
         mock_repo_provider.update_check_run.return_value = "success"
 
@@ -2009,26 +1626,15 @@ class TestProjectChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        base_commit = sample_comparison.project_coverage_base.commit
         result = notifier.notify(sample_comparison)
-        assert result.notification_successful == True
-        assert result.explanation is None
-        assert result.data_sent == {
-            "state": "success",
-            "output": {
-                "title": f"60.00% (+10.00%) compared to {base_commit.commitid[0:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/test_check_notify_with_paths/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n60.00% (+10.00%) compared to {base_commit.commitid[0:7]}",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-            "url": f"test.example.br/gh/test_check_notify_with_paths/{sample_comparison.head.commit.repository.name}/pull/{sample_comparison.pull.pullid}",
-        }
+        assert snapshot("json") == result.to_dict()
 
     def test_notify_pass_behavior_when_coverage_not_uploaded(
         self,
         sample_comparison_coverage_carriedforward,
         mock_repo_provider,
         mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -2045,39 +1651,15 @@ class TestProjectChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        base_commit = (
-            sample_comparison_coverage_carriedforward.project_coverage_base.commit
-        )
-        head_commit = sample_comparison_coverage_carriedforward.head.commit
-
-        expected_result = NotificationResult(
-            notification_attempted=True,
-            notification_successful=True,
-            explanation=None,
-            data_sent={
-                "state": "success",
-                "output": {
-                    "title": f"25.00% (+0.00%) compared to {base_commit.commitid[:7]}",
-                    "summary": f"[View this Pull Request on Codecov](test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison_coverage_carriedforward.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n25.00% (+0.00%) compared to {base_commit.commitid[:7]} [Auto passed due to carriedforward or missing coverage]",
-                    "annotations": [],
-                },
-                "included_helper_text": {},
-                "url": f"test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison_coverage_carriedforward.pull.pullid}",
-            },
-        )
         result = notifier.notify(sample_comparison_coverage_carriedforward)
-        assert (
-            expected_result.data_sent["output"]["summary"]
-            == result.data_sent["output"]["summary"]
-        )
-        assert expected_result.data_sent["output"] == result.data_sent["output"]
-        assert expected_result == result
+        assert snapshot("json") == result.to_dict()
 
     def test_notify_pass_behavior_when_coverage_uploaded(
         self,
         sample_comparison_coverage_carriedforward,
         mock_repo_provider,
         mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -2094,33 +1676,16 @@ class TestProjectChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        base_commit = (
-            sample_comparison_coverage_carriedforward.project_coverage_base.commit
-        )
-        head_commit = sample_comparison_coverage_carriedforward.head.commit
-        expected_result = NotificationResult(
-            notification_attempted=True,
-            notification_successful=True,
-            explanation=None,
-            data_sent={
-                "state": "success",
-                "output": {
-                    "title": f"25.00% (+0.00%) compared to {base_commit.commitid[:7]}",
-                    "summary": f"[View this Pull Request on Codecov](test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison_coverage_carriedforward.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n25.00% (+0.00%) compared to {base_commit.commitid[:7]}",
-                    "annotations": [],
-                },
-                "included_helper_text": {},
-                "url": f"test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison_coverage_carriedforward.pull.pullid}",
-            },
-        )
+
         result = notifier.notify(sample_comparison_coverage_carriedforward)
-        assert expected_result == result
+        assert snapshot("json") == result.to_dict()
 
     def test_notify_include_behavior_when_coverage_not_uploaded(
         self,
         sample_comparison_coverage_carriedforward,
         mock_repo_provider,
         mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -2137,34 +1702,16 @@ class TestProjectChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        base_commit = (
-            sample_comparison_coverage_carriedforward.project_coverage_base.commit
-        )
-        head_commit = sample_comparison_coverage_carriedforward.head.commit
 
-        expected_result = NotificationResult(
-            notification_attempted=True,
-            notification_successful=True,
-            explanation=None,
-            data_sent={
-                "state": "success",
-                "output": {
-                    "title": f"36.17% (+0.00%) compared to {base_commit.commitid[:7]}",
-                    "summary": f"[View this Pull Request on Codecov](test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison_coverage_carriedforward.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n36.17% (+0.00%) compared to {base_commit.commitid[:7]}",
-                    "annotations": [],
-                },
-                "included_helper_text": {},
-                "url": f"test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison_coverage_carriedforward.pull.pullid}",
-            },
-        )
         result = notifier.notify(sample_comparison_coverage_carriedforward)
-        assert expected_result == result
+        assert snapshot("json") == result.to_dict()
 
     def test_notify_exclude_behavior_when_coverage_not_uploaded(
         self,
         sample_comparison_coverage_carriedforward,
         mock_repo_provider,
         mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -2181,21 +1728,16 @@ class TestProjectChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        expected_result = NotificationResult(
-            notification_attempted=False,
-            notification_successful=None,
-            explanation="exclude_flag_coverage_not_uploaded_checks",
-            data_sent=None,
-            data_received=None,
-        )
+
         result = notifier.notify(sample_comparison_coverage_carriedforward)
-        assert expected_result == result
+        assert snapshot("json") == result.to_dict()
 
     def test_notify_exclude_behavior_when_coverage_uploaded(
         self,
         sample_comparison_coverage_carriedforward,
         mock_repo_provider,
         mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -2212,34 +1754,16 @@ class TestProjectChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        base_commit = (
-            sample_comparison_coverage_carriedforward.project_coverage_base.commit
-        )
-        head_commit = sample_comparison_coverage_carriedforward.head.commit
 
-        expected_result = NotificationResult(
-            notification_attempted=True,
-            notification_successful=True,
-            explanation=None,
-            data_sent={
-                "state": "success",
-                "output": {
-                    "title": f"25.00% (+0.00%) compared to {base_commit.commitid[:7]}",
-                    "summary": f"[View this Pull Request on Codecov](test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison_coverage_carriedforward.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n25.00% (+0.00%) compared to {base_commit.commitid[:7]}",
-                    "annotations": [],
-                },
-                "included_helper_text": {},
-                "url": f"test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison_coverage_carriedforward.pull.pullid}",
-            },
-        )
         result = notifier.notify(sample_comparison_coverage_carriedforward)
-        assert expected_result == result
+        assert snapshot("json") == result.to_dict()
 
     def test_notify_exclude_behavior_when_some_coverage_uploaded(
         self,
         sample_comparison_coverage_carriedforward,
         mock_repo_provider,
         mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -2260,34 +1784,16 @@ class TestProjectChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        base_commit = (
-            sample_comparison_coverage_carriedforward.project_coverage_base.commit
-        )
-        head_commit = sample_comparison_coverage_carriedforward.head.commit
 
-        expected_result = NotificationResult(
-            notification_attempted=True,
-            notification_successful=True,
-            explanation=None,
-            data_sent={
-                "state": "success",
-                "output": {
-                    "title": f"36.17% (+0.00%) compared to {base_commit.commitid[:7]}",
-                    "summary": f"[View this Pull Request on Codecov](test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison_coverage_carriedforward.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n36.17% (+0.00%) compared to {base_commit.commitid[:7]}",
-                    "annotations": [],
-                },
-                "included_helper_text": {},
-                "url": f"test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison_coverage_carriedforward.pull.pullid}",
-            },
-        )
         result = notifier.notify(sample_comparison_coverage_carriedforward)
-        assert expected_result == result
+        assert snapshot("json") == result.to_dict()
 
     def test_notify_exclude_behavior_no_flags(
         self,
         sample_comparison_coverage_carriedforward,
         mock_repo_provider,
         mock_configuration,
+        snapshot,
     ):
         mock_repo_provider.get_commit_statuses.return_value = Status([])
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
@@ -2304,39 +1810,14 @@ class TestProjectChecksNotifier:
             current_yaml=UserYaml({}),
             repository_service=mock_repo_provider,
         )
-        base_commit = (
-            sample_comparison_coverage_carriedforward.project_coverage_base.commit
-        )
-        head_commit = sample_comparison_coverage_carriedforward.head.commit
 
         # should send the check as normal if there are no flags
-        expected_result = NotificationResult(
-            notification_attempted=True,
-            notification_successful=True,
-            explanation=None,
-            data_sent={
-                "state": "success",
-                "output": {
-                    "title": f"65.38% (+0.00%) compared to {base_commit.commitid[:7]}",
-                    "summary": f"[View this Pull Request on Codecov](test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison_coverage_carriedforward.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n65.38% (+0.00%) compared to {base_commit.commitid[:7]}",
-                    "annotations": [],
-                },
-                "included_helper_text": {},
-                "url": f"test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison_coverage_carriedforward.pull.pullid}",
-            },
-        )
         result = notifier.notify(sample_comparison_coverage_carriedforward)
-        assert (
-            expected_result.data_sent["output"]["summary"]
-            == result.data_sent["output"]["summary"]
-        )
-        assert expected_result.data_sent["output"] == result.data_sent["output"]
-        assert expected_result.data_sent == result.data_sent
-        assert expected_result == result
+        assert snapshot("json") == result.to_dict()
 
-    def test_build_payload_comments_true(self, sample_comparison, mock_configuration):
-        base_commit = sample_comparison.project_coverage_base.commit
-        head_commit = sample_comparison.head.commit
+    def test_build_payload_comments_true(
+        self, sample_comparison, mock_configuration, snapshot
+    ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         notifier = ProjectChecksNotifier(
             repository=sample_comparison.head.commit.repository,
@@ -2347,19 +1828,11 @@ class TestProjectChecksNotifier:
             repository_service=None,
         )
         res = notifier.build_payload(sample_comparison)
-        assert res == {
-            "state": "success",
-            "output": {
-                "title": f"60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
+        assert snapshot("json") == res
 
-    def test_build_payload_comments_false(self, sample_comparison, mock_configuration):
-        base_commit = sample_comparison.project_coverage_base.commit
-        head_commit = sample_comparison.head.commit
+    def test_build_payload_comments_false(
+        self, sample_comparison, mock_configuration, snapshot
+    ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         notifier = ProjectChecksNotifier(
             repository=sample_comparison.head.commit.repository,
@@ -2370,12 +1843,4 @@ class TestProjectChecksNotifier:
             repository_service=None,
         )
         res = notifier.build_payload(sample_comparison)
-        assert res == {
-            "state": "success",
-            "output": {
-                "title": f"60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "summary": f"[View this Pull Request on Codecov](test.example.br/gh/{head_commit.repository.owner.username}/{head_commit.repository.name}/pull/{sample_comparison.pull.pullid}?dropdown=coverage&src=pr&el=h1)\n\n60.00% (+10.00%) compared to {base_commit.commitid[:7]}",
-                "annotations": [],
-            },
-            "included_helper_text": {},
-        }
+        assert snapshot("json") == res

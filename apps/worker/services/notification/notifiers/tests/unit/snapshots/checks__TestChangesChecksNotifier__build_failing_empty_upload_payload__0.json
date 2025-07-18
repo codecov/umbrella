@@ -1,0 +1,9 @@
+{
+  "state": "failure",
+  "output": {
+    "title": "Empty Upload",
+    "summary": "Testable files changed",
+    "annotations": []
+  },
+  "included_helper_text": {}
+}

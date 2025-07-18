@@ -1,0 +1,10 @@
+{
+  "state": "failure",
+  "output": {
+    "title": "Empty Upload",
+    "summary": "Testable files changed",
+    "annotations": []
+  },
+  "included_helper_text": {},
+  "url": "test.example.br/gh/test-owner/test-repo/pull/1"
+}

@@ -1,0 +1,16 @@
+## [Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1) Report
+:white_check_mark: All modified and coverable lines are covered by tests.
+:white_check_mark: Project coverage is 100.00%. Comparing base ([`1234567`](test.example.br/gh/test-owner/test-repo/commit/1234567?dropdown=coverage&el=desc)) to head ([`2345678`](test.example.br/gh/test-owner/test-repo/commit/2345678?dropdown=coverage&el=desc)).
+
+| [Flag](test.example.br/gh/test-owner/test-repo/pull/1/flags?src=pr&el=flags) | Coverage Δ | |
+|---|---|---|
+| [eighth](test.example.br/gh/test-owner/test-repo/pull/1/flags?src=pr&el=flag) | `?` | |
+| [fifth](test.example.br/gh/test-owner/test-repo/pull/1/flags?src=pr&el=flag) | `∅ <ø> (?)` | |
+| [first](test.example.br/gh/test-owner/test-repo/pull/1/flags?src=pr&el=flag) | `100.00% <ø> (ø)` | |
+| [fourth](test.example.br/gh/test-owner/test-repo/pull/1/flags?src=pr&el=flag) | `∅ <ø> (∅)` | |
+| [second](test.example.br/gh/test-owner/test-repo/pull/1/flags?src=pr&el=flag) | `50.00% <ø> (∅)` | |
+| [seventh](test.example.br/gh/test-owner/test-repo/pull/1/flags?src=pr&el=flag) | `?` | |
+| [sixth](test.example.br/gh/test-owner/test-repo/pull/1/flags?src=pr&el=flag) | `100.00% <ø> (?)` | |
+| [third](test.example.br/gh/test-owner/test-repo/pull/1/flags?src=pr&el=flag) | `∅ <ø> (∅)` | |
+
+Flags with carried forward coverage won't be shown. [Click here](https://docs.codecov.io/docs/carryforward-flags#carryforward-flags-in-the-pull-request-comment) to find out more.
