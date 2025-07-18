@@ -360,7 +360,7 @@ async def resolve_test_results(
             term=term,
         )
 
-        return await queryset_to_connection(
+        connection = await queryset_to_connection(
             aggregated_queryset,
             ordering=(ordering_param, "name"),
             ordering_direction=(ordering_direction, OrderingDirection.DESC),
@@ -370,6 +370,7 @@ async def resolve_test_results(
             before=before,
         )
 
+        return connection
     else:
         queryset = await sync_to_async(generate_test_results)(
             ordering=ordering.get(
