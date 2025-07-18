@@ -15,8 +15,10 @@ from django.db.models import (
 )
 
 from shared.django_apps.ta_timeseries.models import (
+    AggregateDaily,
     BranchAggregateDaily,
     TestrunBranchSummary,
+    TestrunSummary,
 )
 from shared.metrics import Histogram
 from utils.ta_types import (
@@ -28,9 +30,9 @@ PRECOMPUTED_BRANCHES = ("main", "master", "develop")
 
 
 def _is_precomputed_branch(
-    branch: str,
-) -> TypeGuard[Literal["main", "master", "develop"]]:
-    return branch in PRECOMPUTED_BRANCHES
+    branch: str | None,
+) -> TypeGuard[Literal["main", "master", "develop"] | None]:
+    return branch in PRECOMPUTED_BRANCHES or branch is None
 
 
 get_test_result_aggregates_histogram = Histogram(
@@ -53,14 +55,21 @@ def get_test_data_queryset_via_ca(
     repoid: int,
     start_date: datetime,
     end_date: datetime,
-    branch: str,
+    branch: str | None,
 ):
-    test_data = TestrunBranchSummary.objects.filter(
-        repo_id=repoid,
-        branch=branch,
-        timestamp_bin__gte=start_date,
-        timestamp_bin__lt=end_date,
-    )
+    if branch:
+        test_data = TestrunBranchSummary.objects.filter(
+            repo_id=repoid,
+            branch=branch,
+            timestamp_bin__gte=start_date,
+            timestamp_bin__lt=end_date,
+        )
+    else:
+        test_data = TestrunSummary.objects.filter(
+            repo_id=repoid,
+            timestamp_bin__gte=start_date,
+            timestamp_bin__lt=end_date,
+        )
 
     return test_data.values("computed_name", "testsuite").annotate(
         total_pass_count=Sum("pass_count"),
@@ -112,7 +121,7 @@ def get_test_results_queryset(
     repoid: int,
     start_date: datetime,
     end_date: datetime,
-    branch: str,
+    branch: str | None,
     parameter: Literal["flaky_tests", "failed_tests", "slowest_tests", "skipped_tests"]
     | None = None,
     testsuites: list[str] | None = None,
@@ -150,22 +159,34 @@ def _pct_change(current: int | float | None, past: int | float | None) -> float:
 
 def get_repo_aggregates_via_ca(
     repoid: int,
-    branch: Literal["main", "master", "develop"],
+    branch: Literal["main", "master", "develop"] | None,
     start_date: datetime,
     end_date: datetime,
 ):
-    test_data = TestrunBranchSummary.objects.filter(
-        repo_id=repoid,
-        branch=branch,
-        timestamp_bin__gte=start_date,
-        timestamp_bin__lt=end_date,
-    )
-    repo_data = BranchAggregateDaily.objects.filter(
-        repo_id=repoid,
-        branch=branch,
-        bucket_daily__gte=start_date,
-        bucket_daily__lt=end_date,
-    )
+    if branch is None:
+        test_data = TestrunSummary.objects.filter(
+            repo_id=repoid,
+            timestamp_bin__gte=start_date,
+            timestamp_bin__lt=end_date,
+        )
+        repo_data = AggregateDaily.objects.filter(
+            repo_id=repoid,
+            bucket_daily__gte=start_date,
+            bucket_daily__lt=end_date,
+        )
+    else:
+        test_data = TestrunBranchSummary.objects.filter(
+            repo_id=repoid,
+            branch=branch,
+            timestamp_bin__gte=start_date,
+            timestamp_bin__lt=end_date,
+        )
+        repo_data = BranchAggregateDaily.objects.filter(
+            repo_id=repoid,
+            branch=branch,
+            bucket_daily__gte=start_date,
+            bucket_daily__lt=end_date,
+        )
 
     daily_aggregates = repo_data.aggregate(
         total_duration=Sum("total_duration_seconds", output_field=FloatField()),
@@ -203,7 +224,7 @@ def get_repo_aggregates_via_ca(
 
 @get_test_result_aggregates_histogram.time()
 def get_test_results_aggregates_from_timescale(
-    repoid: int, branch: str, start_date: datetime, end_date: datetime
+    repoid: int, branch: str | None, start_date: datetime, end_date: datetime
 ) -> TestResultsAggregates | None:
     if not _is_precomputed_branch(branch):
         return None
@@ -247,22 +268,34 @@ def get_test_results_aggregates_from_timescale(
 
 def get_flake_aggregates_via_ca(
     repoid: int,
-    branch: Literal["main", "master", "develop"],
+    branch: Literal["main", "master", "develop"] | None,
     start_date: datetime,
     end_date: datetime,
 ):
-    test_data = TestrunBranchSummary.objects.filter(
-        repo_id=repoid,
-        branch=branch,
-        timestamp_bin__gte=start_date,
-        timestamp_bin__lt=end_date,
-    )
-    repo_data = BranchAggregateDaily.objects.filter(
-        repo_id=repoid,
-        branch=branch,
-        bucket_daily__gte=start_date,
-        bucket_daily__lt=end_date,
-    )
+    if branch is None:
+        test_data = TestrunSummary.objects.filter(
+            repo_id=repoid,
+            timestamp_bin__gte=start_date,
+            timestamp_bin__lt=end_date,
+        )
+        repo_data = AggregateDaily.objects.filter(
+            repo_id=repoid,
+            bucket_daily__gte=start_date,
+            bucket_daily__lt=end_date,
+        )
+    else:
+        test_data = TestrunBranchSummary.objects.filter(
+            repo_id=repoid,
+            branch=branch,
+            timestamp_bin__gte=start_date,
+            timestamp_bin__lt=end_date,
+        )
+        repo_data = BranchAggregateDaily.objects.filter(
+            repo_id=repoid,
+            branch=branch,
+            bucket_daily__gte=start_date,
+            bucket_daily__lt=end_date,
+        )
 
     daily_aggregates = repo_data.aggregate(
         total_count=Sum(
@@ -291,7 +324,7 @@ def get_flake_aggregates_via_ca(
 
 @get_flake_aggregates_histogram.time()
 def get_flake_aggregates_from_timescale(
-    repoid: int, branch: str, start_date: datetime, end_date: datetime
+    repoid: int, branch: str | None, start_date: datetime, end_date: datetime
 ) -> FlakeAggregates | None:
     if not _is_precomputed_branch(branch):
         return None
