@@ -1,7 +1,6 @@
 from datetime import datetime
 from typing import Literal
 
-from django.db import connections
 from django.db.models import (
     Aggregate,
     Case,
@@ -144,27 +143,28 @@ def get_slowest_tests_duration(
 ) -> tuple[float, int]:
     slow_test_num = min(100, max(unique_test_count // 20, 1))
 
-    with connections["ta_timeseries"].cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT SUM(total_duration) as slowest_tests_duration FROM (
-                SELECT SUM(avg_duration_seconds * (pass_count + fail_count + flaky_fail_count)) as total_duration
-                FROM ta_timeseries_testrun_branch_summary_1day
-                WHERE repo_id = %s
-                    AND branch = %s
-                    AND timestamp_bin >= %s
-                    AND timestamp_bin < %s
-                GROUP BY computed_name, testsuite
-                ORDER BY total_duration DESC
-                LIMIT %s
-            ) as slow_tests
-            """,
-            (repoid, branch, start_date, end_date, slow_test_num),
+    slow_tests = (
+        TestrunBranchSummary.objects.filter(
+            repo_id=repoid,
+            branch=branch,
+            timestamp_bin__gte=start_date,
+            timestamp_bin__lt=end_date,
         )
-        if result := cursor.fetchone():
-            return result[0] or 0.0, slow_test_num
-        else:
-            return 0.0, 0
+        .values("computed_name", "testsuite")
+        .annotate(
+            total_duration=Sum(
+                F("avg_duration_seconds")
+                * (F("pass_count") + F("fail_count") + F("flaky_fail_count")),
+                output_field=FloatField(),
+            )
+        )
+        .order_by("-total_duration")[:slow_test_num]
+    )
+
+    result = slow_tests.aggregate(slowest_tests_duration=Sum("total_duration"))
+
+    slowest_tests_duration = result["slowest_tests_duration"] or 0.0
+    return slowest_tests_duration, slow_test_num
 
 
 @get_test_result_aggregates_histogram.time()
