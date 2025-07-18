@@ -70,7 +70,7 @@ class TestSyncRepoLanguagesGQL:
         org = OwnerFactory.create(service="github")
 
         repo_one_name = "test-one"
-        repo_two_name = "test-two"
+        repo_two_name = "TEST-Two"
         repo_three_name = "test-three"
 
         repo_one = RepositoryFactory.create(name=repo_one_name, owner=org)
