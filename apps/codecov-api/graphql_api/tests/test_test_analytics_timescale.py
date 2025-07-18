@@ -15,7 +15,7 @@ from .helper import GraphQLTestHelper
 def repository():
     owner = OwnerFactory(username="codecov-user")
     repo = RepositoryFactory(
-        author=owner, name="testRepoName", active=True, branch="main"
+        repoid=1, author=owner, name="testRepoName", active=True, branch="main"
     )
 
     return repo
@@ -30,7 +30,8 @@ def new_ta_enabled(mocker):
 
 
 @pytest.fixture
-def populate_timescale(repository):
+def populate_timescale(repository, request):
+    branch = getattr(request, "param", "main")
     Testrun.objects.bulk_create(
         [
             Testrun(
@@ -44,7 +45,7 @@ def populate_timescale(repository):
                 duration_seconds=i,
                 commit_sha=f"test_commit {i}",
                 flags=["flag1", "flag2"] if i % 2 == 0 else ["flag3"],
-                branch="main",
+                branch=branch,
             )
             for i in range(5)
         ]
@@ -154,3 +155,20 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
         result = self.gql_request(query, owner=repository.author)
 
         assert snapshot("json") == result
+
+    @pytest.mark.parametrize("populate_timescale", ["feature-branch"], indirect=True)
+    def test_gql_query_test_results_timescale_non_precomputed_branch(
+        self, repository, populate_timescale, snapshot
+    ):
+        result = get_test_results_queryset(
+            repository.repoid,
+            datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+            - timedelta(days=30),
+            datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0),
+            "feature-branch",
+        )
+
+        assert result.count() == 5
+        assert snapshot("json") == [
+            {k: v for k, v in row.items() if k != "updated_at"} for row in result
+        ]
