@@ -85,9 +85,9 @@ def impersonate_owner(self, request, queryset):
         )
         return
 
-    owner = queryset.first()
+    owner: Owner = queryset.first()
     response = redirect(
-        f"{settings.CODECOV_URL}/{get_short_service_name(owner.service)}/"
+        f"{settings.CODECOV_URL}/{get_short_service_name(owner.service)}/{owner.username}"
     )
 
     # this cookie is read by the `ImpersonationMiddleware` and

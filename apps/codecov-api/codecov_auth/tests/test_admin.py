@@ -47,10 +47,7 @@ from shared.django_apps.codecov_auth.tests.factories import (
     UserFactory,
 )
 from shared.django_apps.core.tests.factories import PullFactory, RepositoryFactory
-from shared.plan.constants import (
-    DEFAULT_FREE_PLAN,
-    PlanName,
-)
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
 
 class OwnerAdminTest(TestCase):
@@ -74,7 +71,11 @@ class OwnerAdminTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_owner_admin_impersonate_owner(self):
-        owner_to_impersonate = OwnerFactory(service="bitbucket", plan=DEFAULT_FREE_PLAN)
+        owner_to_impersonate = OwnerFactory(
+            service="bitbucket",
+            plan=DEFAULT_FREE_PLAN,
+            username="test-owner",
+        )
         other_owner = OwnerFactory(plan=DEFAULT_FREE_PLAN)
 
         with self.subTest("more than one user selected"):
@@ -101,7 +102,7 @@ class OwnerAdminTest(TestCase):
                     ACTION_CHECKBOX_NAME: [owner_to_impersonate.pk],
                 },
             )
-            self.assertIn("/bb/", response.url)
+            self.assertIn("/bb/test-owner", response.url)
             self.assertEqual(
                 response.cookies.get("staff_user").value,
                 str(owner_to_impersonate.pk),
