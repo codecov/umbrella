@@ -83,3 +83,4 @@ def final_commit_yaml(
 def get_yaml_state(yaml: UserYaml) -> YamlStates | None:
     if yaml == get_config("site", default={}):
         return YamlStates.DEFAULT
+    return None

@@ -506,8 +506,8 @@ def determine_upload_commit_to_use(
 
 def insert_commit(
     commitid: str,
-    branch: str,
-    pr: int,
+    branch: str | None,
+    pr: int | None,
     repository: Repository,
     owner: Owner,
     parent_commit_id: str | None = None,

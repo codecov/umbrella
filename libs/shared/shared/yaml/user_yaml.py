@@ -136,7 +136,7 @@ class UserYaml:
         The answer is usually a "deep merge" between the site-level yaml, the
             owner yaml (which is set by them at the UI) and either one of commit_yaml or repo_yaml
 
-        Why does repo_yaml gets overriden by commit_yaml, but owner_yaml doesn't?
+        Why does repo_yaml gets overridden by commit_yaml, but owner_yaml doesn't?
             The idea is that the commit yaml is something at the repo level, which
                 at sometime will be used to replace the current repo yaml.
             In fact, if that commit gets merged on main, then the old repo_yaml won't have any effect

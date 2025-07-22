@@ -327,8 +327,10 @@ class UploadHandler(APIView, ShelterMixin):
             and not upload_params.get("build_url")
             and upload_params.get("build")
         ):
-            # if gitlab ci - change domain based by referer
-            build_url = f"{get_config((repository.service, 'url'))}/{owner.username}/{repository.name}/{upload_params.get('build')}"
+            # if gitlab ci - change domain based by referrer
+            build_url: str | None = (
+                f"{get_config((repository.service, 'url'))}/{owner.username}/{repository.name}/{upload_params.get('build')}"
+            )
         else:
             build_url = upload_params.get("build_url")
         queue_params = upload_params.copy()

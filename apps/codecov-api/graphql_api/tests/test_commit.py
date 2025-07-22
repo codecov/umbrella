@@ -456,6 +456,26 @@ class TestCommit(GraphQLTestHelper, TestCase):
         data = self.gql_request(query, variables=variables)
         assert data["owner"]["repository"]["commit"]["yamlState"] == "DEFAULT"
 
+    @patch(
+        "core.commands.commit.commit.CommitCommands.get_final_yaml",
+        new_callable=AsyncMock,
+    )
+    def test_yaml_return_none_if_not_default(self, command_mock):
+        command_mock.return_value = None
+        query = (
+            query_commit
+            % """
+            yamlState
+        """
+        )
+        variables = {
+            "org": self.org.username,
+            "repo": self.repo.name,
+            "commit": self.commit.commitid,
+        }
+        data = self.gql_request(query, variables=variables)
+        assert data["owner"]["repository"]["commit"]["yamlState"] is None
+
     def test_fetch_commit_ci(self):
         UploadFactory(
             report=self.report,

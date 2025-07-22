@@ -10,7 +10,7 @@ log = logging.getLogger(__name__)
 
 async def fetch_current_yaml_from_provider_via_reference(
     ref: str, repository_service: TorngitBaseAdapter
-) -> str:
+) -> str | None:
     repoid = repository_service.data["repo"]["repoid"]
     location = await determine_commit_yaml_location(ref, repository_service)
     if not location:
@@ -30,15 +30,16 @@ async def fetch_current_yaml_from_provider_via_reference(
         log.exception(
             "File not in %s for commit", extra={"commit": ref, "location": location}
         )
+        return None
 
 
 async def determine_commit_yaml_location(
     ref: str, repository_service: TorngitBaseAdapter
-) -> str:
+) -> str | None:
     """
         Determines where in `ref` the codecov.yaml is, in a given repository
         We currently look for the yaml in two different kinds of places
-            - Root level of the rpeository
+            - Root level of the repository
             - Specific folders that we know some customers use:
                 - `dev`
                 - `.github`
@@ -47,7 +48,7 @@ async def determine_commit_yaml_location(
         repository_service (torngit.base.TorngitBaseAdapter): The torngit handler that can fetch this data.
             Indirectly determines the repository
     Returns:
-        str: The path of the codecov.yaml file we found. Or `None,` if not found
+        str | None: The path of the codecov.yaml file we found. Or `None,` if not found
     """
     possible_locations = [
         "codecov.yml",
@@ -69,14 +70,16 @@ async def determine_commit_yaml_location(
         )
         if yaml_inside_folder:
             return yaml_inside_folder
+    return None
 
 
 def _search_among_files(
     desired_filenames: Sequence[str], all_files: Sequence[Mapping[str, Any]]
-) -> str:
+) -> str | None:
     for file in all_files:
         if (
             file.get("name") in desired_filenames
             or file.get("path").split("/")[-1] in desired_filenames
         ):
             return file["path"]
+    return None
