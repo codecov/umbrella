@@ -322,17 +322,15 @@ class UploadHandler(APIView, ShelterMixin):
             response.write(f"{destination_url}\n{upload_url}")
 
         # Get build url
+        build_url: str | None = upload_params.get("build_url")
         if (
             repository.service == "gitlab_enterprise"
             and not upload_params.get("build_url")
             and upload_params.get("build")
         ):
             # if gitlab ci - change domain based by referrer
-            build_url: str | None = (
-                f"{get_config((repository.service, 'url'))}/{owner.username}/{repository.name}/{upload_params.get('build')}"
-            )
-        else:
-            build_url = upload_params.get("build_url")
+            build_url = f"{get_config((repository.service, 'url'))}/{owner.username}/{repository.name}/{upload_params.get('build')}"
+
         queue_params = upload_params.copy()
         if upload_params.get("using_global_token"):
             queue_params["service"] = request_params.get("service")

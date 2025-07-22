@@ -49,9 +49,7 @@ def fetch_commit_yaml(
             commit.commitid, repository_service
         )
         if yaml_str is None:
-            raise ValueError(
-                f"Yaml not found for commit {commit.commitid} in repository {commit.repository.name}"
-            )
+            raise ValueError("Yaml not found for commit")
         yaml_dict = safe_load(yaml_str)
         return validate_yaml(yaml_dict, show_secrets_for=None)
     except Exception as e:
@@ -61,10 +59,11 @@ def fetch_commit_yaml(
         # be used, so we return None here
 
         log.warning(
-            f"Was not able to fetch yaml file for commit. Ignoring error and returning None. Exception: {e}",
+            "Was not able to fetch yaml file for commit. Ignoring error and returning None.",
             extra={
                 "commit_id": commit.commitid,
                 "owner_arg": type(owner),
+                "exception": str(e),
             },
         )
         return None
