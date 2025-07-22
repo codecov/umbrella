@@ -77,9 +77,9 @@ def _search_among_files(
     desired_filenames: Sequence[str], all_files: Sequence[Mapping[str, Any]]
 ) -> str | None:
     for file in all_files:
-        if (
-            file.get("name") in desired_filenames
-            or file.get("path").split("/")[-1] in desired_filenames
+        file_path = file.get("path")
+        if file.get("name") in desired_filenames or (
+            isinstance(file_path, str) and file_path.split("/")[-1] in desired_filenames
         ):
             return file["path"]
     return None
