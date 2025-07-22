@@ -462,13 +462,25 @@ class UploadHandlerHelpersTest(TestCase):
         with self.subTest("pullid in branch"):
             upload_params = {"branch": "pr/123", "pr": "456"}
 
-            expected_value = "123"
+            expected_value = 123
+            assert expected_value == determine_upload_pr_to_use(upload_params)
+
+        with self.subTest("invalid pullid in branch"):
+            upload_params = {"branch": "pr/b12a3", "pr": "456"}
+
+            expected_value = 456
+            assert expected_value == determine_upload_pr_to_use(upload_params)
+
+        with self.subTest("strange pullid in branch"):
+            upload_params = {"branch": "pr/12sdlkfj3", "pr": "456"}
+
+            expected_value = 12
             assert expected_value == determine_upload_pr_to_use(upload_params)
 
         with self.subTest("pullid in arguments, no pullid in branch"):
             upload_params = {"branch": "uploadbranch", "pr": "456"}
 
-            expected_value = "456"
+            expected_value = 456
             assert expected_value == determine_upload_pr_to_use(upload_params)
 
         with self.subTest("pullid not provided"):

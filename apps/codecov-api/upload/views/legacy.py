@@ -349,7 +349,7 @@ class UploadHandler(APIView, ShelterMixin):
             # These values below might be different from the initial request parameters, so overwrite them here to ensure they're up-to-date
             "commit": commitid,
             "branch": branch,
-            "pr": pr,
+            "pr": str(pr) if pr else None,
         }
 
         log.info(
