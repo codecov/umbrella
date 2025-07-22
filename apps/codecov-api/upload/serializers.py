@@ -175,9 +175,6 @@ class CommitReportSerializer(serializers.ModelSerializer):
         fields = read_only_fields + ("code",)
 
     def validate_code(self, value):
-        """
-        Check that the blog post is about Django.
-        """
         if value not in (None, "default"):
             raise serializers.ValidationError(
                 "Using a non-default `code` has been deprecated"
