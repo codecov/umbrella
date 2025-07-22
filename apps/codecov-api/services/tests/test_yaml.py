@@ -30,6 +30,12 @@ class YamlServiceTest(TestCase):
 
     @patch("services.yaml.fetch_current_yaml_from_provider_via_reference")
     def test_when_commit_has_no_yaml(self, mock_fetch_yaml):
+        mock_fetch_yaml.return_value = None
+        config = yaml.final_commit_yaml(self.commit, None)
+        assert config["codecov"]["require_ci_to_pass"] is True
+
+    @patch("services.yaml.fetch_current_yaml_from_provider_via_reference")
+    def test_when_commit_has_no_yaml_exception(self, mock_fetch_yaml):
         mock_fetch_yaml.side_effect = TorngitObjectNotFoundError(
             response_data=404, message="not found"
         )

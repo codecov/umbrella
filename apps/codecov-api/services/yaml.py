@@ -48,6 +48,10 @@ def fetch_commit_yaml(
         yaml_str = async_to_sync(fetch_current_yaml_from_provider_via_reference)(
             commit.commitid, repository_service
         )
+        if yaml_str is None:
+            raise ValueError(
+                f"Yaml not found for commit {commit.commitid} in repository {commit.repository.name}"
+            )
         yaml_dict = safe_load(yaml_str)
         return validate_yaml(yaml_dict, show_secrets_for=None)
     except Exception as e:
