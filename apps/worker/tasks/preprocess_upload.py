@@ -14,9 +14,18 @@ from services.repository import (
     get_repo_provider_service,
     possibly_update_commit_from_provider_info,
 )
-from shared.celery_config import pre_process_upload_task_name
+from shared.celery_config import (
+    pre_process_upload_task_name,
+    upload_breadcrumb_task_name,
+)
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Errors,
+    Milestones,
+)
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter
+from shared.utils.sentry import current_sentry_trace_id
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -43,6 +52,12 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
                 "PreProcess task is already running",
                 extra={"commit": commitid, "repoid": repoid},
             )
+            # We consider this a success, as the task is already running
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=Milestones.READY_FOR_REPORT,
+            )
             return {"preprocessed_upload": False, "reason": "already_running"}
         try:
             with redis_connection.lock(
@@ -64,6 +79,12 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
                     "number_retries": self.request.retries,
                     "lock_name": lock_name,
                 },
+            )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=Milestones.READY_FOR_REPORT,
+                error=Errors.INTERNAL_LOCK_ERROR,
             )
             return {"preprocessed_upload": False, "reason": "unable_to_acquire_lock"}
 
@@ -100,6 +121,11 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
         commit_report = report_service.initialize_and_save_report(commit)
         # Persist changes from within the lock
         db_session.commit()
+        self._call_upload_breadcrumb_task(
+            commit_sha=commitid,
+            repo_id=repoid,
+            milestone=Milestones.READY_FOR_REPORT,
+        )
         return {
             "preprocessed_upload": True,
             "reportid": str(commit_report.external_id),
@@ -124,12 +150,40 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
                     "repository_service": repository_service,
                 },
             )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=Milestones.READY_FOR_REPORT,
+                error=Errors.REPO_MISSING_VALID_BOT,
+            )
             log.warning(
                 "Unable to reach git provider because repo doesn't have a valid bot",
                 extra={"repoid": commit.repoid, "commit": commit.commitid},
             )
 
         return repository_service
+
+    def _call_upload_breadcrumb_task(
+        self,
+        commit_sha: str,
+        repo_id: int,
+        milestone: Milestones,
+        error: Errors | None = None,
+        error_text: str | None = None,
+    ):
+        """
+        Call the upload breadcrumb task to update the commit status.
+        """
+        self.app.tasks[upload_breadcrumb_task_name].apply_async(
+            kwargs={
+                "commit_sha": commit_sha,
+                "repo_id": repo_id,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=milestone, error=error, error_text=error_text
+                ),
+                "sentry_trace_id": current_sentry_trace_id(),
+            }
+        )
 
 
 RegisteredUploadTask = celery_app.register_task(PreProcessUpload())
