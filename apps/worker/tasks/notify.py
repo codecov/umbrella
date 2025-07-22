@@ -881,6 +881,7 @@ def get_repo_provider_service_for_specific_commit(
             using_integration=True,
             service_id=repository.service_id,
             repoid=repository.repoid,
+            private=repository.private,
         ),
         owner=OwnerInfo(
             service_id=repository.owner.service_id,

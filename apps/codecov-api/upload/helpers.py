@@ -348,20 +348,26 @@ def determine_upload_branch_to_use(
         return None
 
 
-def determine_upload_pr_to_use(upload_params: dict[str, Any]) -> str | None:
+def determine_upload_pr_to_use(upload_params: dict[str, Any]) -> int | None:
     """
     Do processing on the upload request parameters to determine which PR to use for the upload:
     - If a branch was provided and the branch name contains "pull" or "pr" followed by digits, extract the digits and use that as the PR number.
     - Otherwise, use the value provided in the request parameters.
     """
     pullid = is_pull_noted_in_branch.match(upload_params.get("branch") or "")
+    candidate = None
     if pullid:
-        return pullid.groups()[1]
+        candidate = pullid.groups()[1]
     # The value of pr can be "true" and we use that info when determining upload branch, however we don't want to save that value to the db
     elif upload_params.get("pr") == "true":
-        return None
+        pass
     else:
-        return upload_params.get("pr")
+        candidate = upload_params.get("pr")
+
+    if candidate and candidate.isdigit():
+        return int(candidate)
+
+    return None
 
 
 def ghapp_installation_id_to_use(repository: Repository) -> str | None:
@@ -506,8 +512,8 @@ def determine_upload_commit_to_use(
 
 def insert_commit(
     commitid: str,
-    branch: str,
-    pr: int,
+    branch: str | None,
+    pr: int | None,
     repository: Repository,
     owner: Owner,
     parent_commit_id: str | None = None,

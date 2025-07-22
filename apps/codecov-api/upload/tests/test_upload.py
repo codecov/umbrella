@@ -462,13 +462,25 @@ class UploadHandlerHelpersTest(TestCase):
         with self.subTest("pullid in branch"):
             upload_params = {"branch": "pr/123", "pr": "456"}
 
-            expected_value = "123"
+            expected_value = 123
+            assert expected_value == determine_upload_pr_to_use(upload_params)
+
+        with self.subTest("invalid pullid in branch"):
+            upload_params = {"branch": "pr/b12a3", "pr": "456"}
+
+            expected_value = 456
+            assert expected_value == determine_upload_pr_to_use(upload_params)
+
+        with self.subTest("strange pullid in branch"):
+            upload_params = {"branch": "pr/12sdlkfj3", "pr": "456"}
+
+            expected_value = 12
             assert expected_value == determine_upload_pr_to_use(upload_params)
 
         with self.subTest("pullid in arguments, no pullid in branch"):
             upload_params = {"branch": "uploadbranch", "pr": "456"}
 
-            expected_value = "456"
+            expected_value = 456
             assert expected_value == determine_upload_pr_to_use(upload_params)
 
         with self.subTest("pullid not provided"):
@@ -1058,9 +1070,9 @@ class UploadHandlerRouteTest(APITestCase):
 
     def setUp(self):
         tier = TierFactory(tier_name=TierName.BASIC.value)
-        plan = PlanFactory(tier=tier, is_active=True)
+        self.plan = PlanFactory(tier=tier, is_active=True)
         self.org = OwnerFactory(
-            plan=plan.name, username="codecovtest", service="github"
+            plan=self.plan.name, username="codecovtest", service="github"
         )
         self.repo = RepositoryFactory(
             author=self.org,
@@ -1448,6 +1460,16 @@ class UploadHandlerRouteTest(APITestCase):
             )
         )
 
+        # Override the org and repo for this test to hit the GitLab Enterprise-specific branch
+        self.org = OwnerFactory(
+            plan=self.plan.name, username="codecovtest", service="gitlab_enterprise"
+        )
+        self.repo = RepositoryFactory(
+            author=self.org,
+            name="upload-test-repo",
+            upload_token="213a1886-c54b-45a6-8370-0596bda6d79f",
+        )
+
         mock_storage_put.return_value = path + "?AWS=PARAMS"
         mock_get_redis.return_value = MockRedis()
         mock_repo_provider_service.return_value = MockRepoProviderAdapter()
@@ -1457,11 +1479,11 @@ class UploadHandlerRouteTest(APITestCase):
         mock_hash.return_value = "awawaw"
         query_params = {
             "commit": "b521e55aef79b101f48e2544837ca99a7fa3bf6b",
-            "token": "a03e5d02-9495-4413-b0d8-05651bb2e842",
+            "token": "213a1886-c54b-45a6-8370-0596bda6d79f",
             "pr": "456",
             "branch": "",
             "flags": "",
-            "build_url": "",
+            "build": "40293802",
             "package": "",
         }
 

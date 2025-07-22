@@ -81,7 +81,9 @@ async def resolve_yaml(commit: Commit, info: GraphQLResolveInfo) -> dict:
 
 
 @commit_bindable.field("yamlState")
-async def resolve_yaml_state(commit: Commit, info: GraphQLResolveInfo) -> YamlStates:
+async def resolve_yaml_state(
+    commit: Commit, info: GraphQLResolveInfo
+) -> YamlStates | None:
     command = info.context["executor"].get_command("commit")
     final_yaml = await command.get_final_yaml(commit)
     return get_yaml_state(yaml=final_yaml)

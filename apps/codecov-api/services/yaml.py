@@ -48,6 +48,8 @@ def fetch_commit_yaml(
         yaml_str = async_to_sync(fetch_current_yaml_from_provider_via_reference)(
             commit.commitid, repository_service
         )
+        if yaml_str is None:
+            raise ValueError("Yaml not found for commit")
         yaml_dict = safe_load(yaml_str)
         return validate_yaml(yaml_dict, show_secrets_for=None)
     except Exception as e:
@@ -57,10 +59,11 @@ def fetch_commit_yaml(
         # be used, so we return None here
 
         log.warning(
-            f"Was not able to fetch yaml file for commit. Ignoring error and returning None. Exception: {e}",
+            "Was not able to fetch yaml file for commit. Ignoring error and returning None.",
             extra={
                 "commit_id": commit.commitid,
                 "owner_arg": type(owner),
+                "exception": str(e),
             },
         )
         return None
@@ -83,3 +86,4 @@ def final_commit_yaml(
 def get_yaml_state(yaml: UserYaml) -> YamlStates | None:
     if yaml == get_config("site", default={}):
         return YamlStates.DEFAULT
+    return None

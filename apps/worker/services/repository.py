@@ -45,7 +45,7 @@ merged_pull = re.compile(r".*Merged in [^\s]+ \(pull request \#(\d+)\).*").match
 def get_repo_provider_service(
     repository: Repository,
     installation_name_to_use: str = GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-    additional_data: AdditionalData = None,
+    additional_data: AdditionalData | None = None,
 ) -> TorngitBaseAdapter:
     adapter_auth_info = get_adapter_auth_information(
         repository.owner,
@@ -62,6 +62,7 @@ def get_repo_provider_service(
             ),
             service_id=repository.service_id,
             repoid=repository.repoid,
+            private=repository.private,
         ),
         owner=OwnerInfo(
             service_id=repository.owner.service_id,
