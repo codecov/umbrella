@@ -16,6 +16,7 @@ from django.views import View
 from rest_framework import renderers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
+from rest_framework.request import Request
 from rest_framework.views import APIView
 
 from codecov_auth.commands.owner import OwnerCommands
@@ -63,21 +64,7 @@ class UploadHandler(ShelterMixin, APIView):
     permission_classes = [AllowAny]
     renderer_classes = [PlainTextRenderer, renderers.JSONRenderer]
 
-    def get(self, request, *args, **kwargs):
-        return HttpResponse(status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
-    def options(self, request, *args, **kwargs):
-        response = HttpResponse()
-        response["Accept"] = "text/*"
-        response["Access-Control-Allow-Origin"] = "*"
-        response["Access-Control-Allow-Method"] = "POST"
-        response["Access-Control-Allow-Headers"] = (
-            "Origin, Content-Type, Accept, X-User-Agent"
-        )
-
-        return response
-
-    def post(self, request, *args, **kwargs):
+    def post(self, request: Request, *args, **kwargs) -> HttpResponse:
         # Extract the version
         version = self.kwargs["version"]
         endpoint = Endpoints.LEGACY_UPLOAD_COVERAGE
@@ -102,12 +89,7 @@ class UploadHandler(ShelterMixin, APIView):
             },
         )
 
-        # Set response headers
         response = HttpResponse()
-        response["Access-Control-Allow-Origin"] = "*"
-        response["Access-Control-Allow-Headers"] = (
-            "Origin, Content-Type, Accept, X-User-Agent"
-        )
 
         # Parse request parameters
         request_params = {
