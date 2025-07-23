@@ -1,4 +1,6 @@
 import logging
+from collections.abc import Callable
+from typing import Any
 
 from django.conf import settings
 from rest_framework import status
@@ -56,7 +58,9 @@ class UploadCoverageView(GetterMixin, APIView):
     ]
     throttle_classes = [UploadsPerCommitThrottle, UploadsPerWindowThrottle]
 
-    def get_exception_handler(self):
+    def get_exception_handler(
+        self,
+    ) -> Callable[[Exception, dict[str, Any]], Response | None]:
         return repo_auth_custom_exception_handler
 
     def emit_metrics(self, position: str) -> None:
@@ -71,7 +75,7 @@ class UploadCoverageView(GetterMixin, APIView):
             ),
         )
 
-    def post(self, request: Request, *args, **kwargs) -> Response:
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         self.emit_metrics(position="start")
         endpoint = Endpoints.UPLOAD_COVERAGE
 
