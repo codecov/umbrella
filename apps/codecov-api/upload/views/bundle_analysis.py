@@ -74,7 +74,7 @@ class UploadSerializer(serializers.Serializer):
     upload_external_id = serializers.CharField(required=False, allow_null=True)
 
 
-class BundleAnalysisView(APIView, ShelterMixin):
+class BundleAnalysisView(ShelterMixin, APIView):
     permission_classes = [UploadBundleAnalysisPermission]
     authentication_classes = [
         UploadTokenRequiredGetFromBodyAuthenticationCheck,

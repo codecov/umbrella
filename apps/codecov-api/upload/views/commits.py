@@ -54,7 +54,7 @@ def create_commit(
     return serializer.save(repository=repository)
 
 
-class CommitViews(ListCreateAPIView, GetterMixin):
+class CommitViews(GetterMixin, ListCreateAPIView):
     serializer_class = CommitSerializer
     permission_classes = [CanDoCoverageUploadsPermission]
     authentication_classes = [

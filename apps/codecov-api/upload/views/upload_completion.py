@@ -26,7 +26,7 @@ from upload.views.uploads import CanDoCoverageUploadsPermission
 log = logging.getLogger(__name__)
 
 
-class UploadCompletionView(CreateAPIView, GetterMixin):
+class UploadCompletionView(GetterMixin, CreateAPIView):
     permission_classes = [CanDoCoverageUploadsPermission]
     authentication_classes = [
         UploadTokenRequiredAuthenticationCheck,

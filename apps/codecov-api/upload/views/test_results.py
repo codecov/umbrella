@@ -56,8 +56,8 @@ class UploadSerializer(serializers.Serializer):
 
 
 class TestResultsView(
-    APIView,
     ShelterMixin,
+    APIView,
 ):
     permission_classes = [UploadTestResultsPermission]
     authentication_classes = [

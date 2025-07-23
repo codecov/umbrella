@@ -38,7 +38,7 @@ from upload.views.uploads import (
 log = logging.getLogger(__name__)
 
 
-class UploadCoverageView(APIView, GetterMixin):
+class UploadCoverageView(GetterMixin, APIView):
     permission_classes = [CanDoCoverageUploadsPermission]
     authentication_classes = [
         UploadTokenRequiredAuthenticationCheck,
