@@ -363,7 +363,7 @@ async def resolve_test_results(
         connection = await queryset_to_connection(
             aggregated_queryset,
             ordering=(ordering_param, "name"),
-            ordering_direction=(ordering_direction, OrderingDirection.DESC),
+            ordering_direction=(ordering_direction, OrderingDirection.ASC),
             first=first,
             after=after,
             last=last,
