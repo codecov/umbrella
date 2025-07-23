@@ -1,8 +1,9 @@
 import logging
+from typing import Protocol, Required, TypedDict
 
 from django.conf import settings
-from django.views import View
 from rest_framework.exceptions import ValidationError
+from rest_framework.request import Request
 
 from codecov_auth.models import Service
 from core.models import Commit, Repository
@@ -12,8 +13,30 @@ from upload.views.helpers import get_repository_from_string
 log = logging.getLogger(__name__)
 
 
-class ShelterMixin(View):
-    def is_shelter_request(self) -> bool:
+class UploadViewKwargs(TypedDict, total=False):
+    """
+    Type hints for kwargs of views that use `GetterMixin`.
+    """
+
+    service: Required[str]
+    repo: Required[str]
+    # Optional fields that may be present
+    commit_sha: str
+    report_code: str
+
+
+class RequestProtocol(Protocol):
+    @property
+    def request(self) -> Request: ...
+
+
+class UploadKwargsProtocol(Protocol):
+    @property
+    def kwargs(self) -> UploadViewKwargs: ...
+
+
+class ShelterMixin:
+    def is_shelter_request(self: RequestProtocol) -> bool:
         """
         Returns true when the incoming request originated from a Shelter.
         Shelter adds an `X-Shelter-Token` header which contains a shared secret.
@@ -21,13 +44,13 @@ class ShelterMixin(View):
         uploads cannot access.
         """
         shelter_token = self.request.META.get("HTTP_X_SHELTER_TOKEN")
-        return shelter_token and shelter_token == settings.SHELTER_SHARED_SECRET
+        return bool(shelter_token and shelter_token == settings.SHELTER_SHARED_SECRET)
 
 
 class GetterMixin(ShelterMixin):
-    def get_repo(self) -> Repository:
-        service = self.kwargs.get("service")
-        repo_slug = self.kwargs.get("repo")
+    def get_repo(self: UploadKwargsProtocol) -> Repository:
+        service = self.kwargs["service"]
+        repo_slug = self.kwargs["repo"]
         try:
             service_enum = Service(service)
         except ValueError:
@@ -44,7 +67,7 @@ class GetterMixin(ShelterMixin):
             raise ValidationError("Repository not found")
         return repository
 
-    def get_commit(self, repo: Repository) -> Commit:
+    def get_commit(self: UploadKwargsProtocol, repo: Repository) -> Commit:
         commit_sha = self.kwargs.get("commit_sha")
         try:
             commit = Commit.objects.get(
@@ -59,7 +82,7 @@ class GetterMixin(ShelterMixin):
             raise ValidationError("Commit SHA not found")
 
     def get_report(
-        self,
+        self: UploadKwargsProtocol,
         commit: Commit,
         report_type: CommitReport.ReportType | None = CommitReport.ReportType.COVERAGE,
     ) -> CommitReport:

@@ -75,7 +75,7 @@ class EmptyUploadSerializer(serializers.Serializer):
     should_force = serializers.BooleanField(required=False)
 
 
-class EmptyUploadView(CreateAPIView, GetterMixin):
+class EmptyUploadView(GetterMixin, CreateAPIView):
     permission_classes = [CanDoCoverageUploadsPermission]
     authentication_classes = [
         UploadTokenRequiredAuthenticationCheck,

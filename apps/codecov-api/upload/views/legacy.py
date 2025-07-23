@@ -59,7 +59,7 @@ class PlainTextRenderer(renderers.BaseRenderer):
         return smart_str(data, encoding=self.charset)
 
 
-class UploadHandler(APIView, ShelterMixin):
+class UploadHandler(ShelterMixin, APIView):
     permission_classes = [AllowAny]
     renderer_classes = [PlainTextRenderer, renderers.JSONRenderer]
 

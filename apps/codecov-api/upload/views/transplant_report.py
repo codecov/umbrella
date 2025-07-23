@@ -30,7 +30,7 @@ class TransplantReportSerializer(serializers.Serializer):
     to_sha = serializers.CharField(required=True)
 
 
-class TransplantReportView(CreateAPIView, GetterMixin):
+class TransplantReportView(GetterMixin, CreateAPIView):
     permission_classes = [CanDoCoverageUploadsPermission]
     authentication_classes = [
         UploadTokenRequiredAuthenticationCheck,
