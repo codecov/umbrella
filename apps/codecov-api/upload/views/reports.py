@@ -2,9 +2,9 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from django.http import HttpRequest, HttpResponseNotAllowed
 from rest_framework import status
-from rest_framework.generics import ListCreateAPIView
+from rest_framework.generics import CreateAPIView
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -48,7 +48,7 @@ def create_report(
     return instance
 
 
-class ReportViews(ListCreateAPIView, GetterMixin):
+class ReportViews(GetterMixin, CreateAPIView):
     serializer_class = CommitReportSerializer
     permission_classes = [CanDoCoverageUploadsPermission]
     authentication_classes = [
@@ -94,12 +94,6 @@ class ReportViews(ListCreateAPIView, GetterMixin):
                 position="end",
             ),
         )
-        return instance
-
-    def list(
-        self, request: HttpRequest, service: str, repo: str, commit_sha: str
-    ) -> HttpResponseNotAllowed:
-        return HttpResponseNotAllowed(permitted_methods=["POST"])
 
 
 EMPTY_RESPONSE = {
@@ -122,11 +116,13 @@ class ReportResultsView(APIView, GetterMixin):
         TokenlessAuthentication,
     ]
 
-    def get_exception_handler(self) -> Callable[[Exception, dict[str, Any]], Response]:
+    def get_exception_handler(
+        self,
+    ) -> Callable[[Exception, dict[str, Any]], Response | None]:
         return repo_auth_custom_exception_handler
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request: Request, *args, **kwargs) -> Response:
         return Response(EMPTY_RESPONSE)
 
-    def post(self, request, *args, **kwargs):
+    def post(self, request: Request, *args, **kwargs) -> Response:
         return Response(EMPTY_RESPONSE, status=status.HTTP_201_CREATED)
