@@ -76,5 +76,20 @@
       "flag1",
       "flag2"
     ]
+  },
+  {
+    "computed_name": "name5",
+    "testsuite": "testsuite5",
+    "repo_id": 1,
+    "failing_commits": 0,
+    "avg_duration_seconds": 0.0,
+    "last_duration_seconds": 0.0,
+    "pass_count": 0,
+    "fail_count": 0,
+    "skip_count": 1,
+    "flaky_fail_count": 0,
+    "flags": [
+      "flag1"
+    ]
   }
 ]
