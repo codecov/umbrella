@@ -15,8 +15,14 @@ from codecov_auth.authentication.repo_auth import (
     UploadTokenRequiredAuthenticationCheck,
     repo_auth_custom_exception_handler,
 )
+from services.task.task import TaskService
 from shared.api_archive.archive import ArchiveService
-from shared.django_apps.upload_breadcrumbs.models import Endpoints
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from shared.metrics import inc_counter
 from upload.helpers import generate_upload_prometheus_metrics_labels
 from upload.metrics import API_UPLOAD_COUNTER
@@ -95,17 +101,34 @@ class UploadCoverageView(GetterMixin, APIView):
         )
 
         # Create report
+        TaskService().upload_breadcrumb(
+            commit_sha=commit.commitid,
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.PREPARING_FOR_REPORT,
+                endpoint=endpoint,
+            ),
+        )
         commit_report_data = {
             "code": request.data.get("code"),
         }
         commit_report_serializer = CommitReportSerializer(data=commit_report_data)
         if not commit_report_serializer.is_valid():
+            TaskService().upload_breadcrumb(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.PREPARING_FOR_REPORT,
+                    endpoint=endpoint,
+                    error=Errors.BAD_REQUEST,
+                ),
+            )
             return Response(
                 commit_report_serializer.errors, status=status.HTTP_400_BAD_REQUEST
             )
 
         self.emit_metrics(position="create_report")
-        report = create_report(commit_report_serializer, repository, commit)
+        report = create_report(commit_report_serializer, repository, commit, endpoint)
 
         # Do upload
         upload_data = {
