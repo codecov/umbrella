@@ -62,10 +62,12 @@ class Errors(models.TextChoices):
     Possible errors for an upload breadcrumb.
     """
 
+    BAD_REQUEST = "br", _("Bad request, see API response for details")
     REPO_DEACTIVATED = "rd", _("Repository is deactivated within Codecov")
     REPO_MISSING_VALID_BOT = "rmb", _("Repository is missing a valid bot")
     REPO_NOT_FOUND = "rnf", _("Repository not found by the configured bot")
     REPO_BLACKLISTED = "rb", _("Repository is blacklisted by Codecov")
+    COMMIT_NOT_FOUND = "cnf", _("Commit not found in the repository")
     COMMIT_UPLOAD_LIMIT = "cul", _("Upload limit exceeded for this commit")
     OWNER_UPLOAD_LIMIT = "oul", _("Owner (user or team) upload limit exceeded")
     GIT_CLIENT_ERROR = "gce", _("Git client returned a 4xx error")
@@ -73,6 +75,9 @@ class Errors(models.TextChoices):
     MALFORMED_INPUT = "mi", _("Malformed coverage report input")
     UNRECOGNIZED_FORMAT = "uf", _("Unrecognized coverage report format")
     TASK_TIMED_OUT = "tto", _("Task timed out")
+    # Errors that should not be shown to the user
+    INTERNAL_LOCK_ERROR = "int_le", _("Unable to acquire or release lock")
+    # Catch-all for other errors
     UNKNOWN = "u", _("Unknown error")
 
 
