@@ -22,8 +22,10 @@ from rest_framework.views import APIView
 from codecov_auth.commands.owner import OwnerCommands
 from core.commands.repository import RepositoryCommands
 from services.analytics import AnalyticsService
+from services.task import TaskService
 from shared.api_archive.archive import ArchiveService
 from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
     Endpoints,
     Errors,
     Milestones,
@@ -193,6 +195,23 @@ class UploadHandler(ShelterMixin, APIView):
             error=Errors.OWNER_UPLOAD_LIMIT,
         ):
             check_commit_upload_constraints(commit)
+
+        # --------- Signal report creation to match newer endpoints
+
+        TaskService().upload_breadcrumb(
+            commit_sha=commitid,
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.PREPARING_FOR_REPORT, endpoint=endpoint
+            ),
+        )
+        TaskService().upload_breadcrumb(
+            commit_sha=commitid,
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.READY_FOR_REPORT, endpoint=endpoint
+            ),
+        )
 
         # --------- Handle the actual upload
 
