@@ -33,6 +33,7 @@ class ComparisonContext:
     # We need to send commit statuses to this other commit, to guarantee that the check is not ignored.
     # See https://docs.gitlab.com/ee/ci/pipelines/merged_results_pipelines.html#successful-merged-results-pipeline-overrides-a-failed-branch-pipeline
     gitlab_extra_shas: set[str] | None = None
+    force_notify: bool = False
 
 
 NOT_RESOLVED: Any = object()

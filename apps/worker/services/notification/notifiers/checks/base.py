@@ -95,6 +95,18 @@ class ChecksNotifier(StatusNotifier):
         comparison: ComparisonProxy,
         status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> NotificationResult:
+        force_notify = getattr(comparison.context, "force_notify", False)
+
+        if not force_notify:
+            validation_result = self._perform_validation_checks(comparison)
+            if validation_result:
+                return validation_result
+
+        return self._perform_notification(comparison)
+
+    def _perform_validation_checks(
+        self, comparison: ComparisonProxy
+    ) -> NotificationResult | None:
         if comparison.pull is None or ():
             log.debug(
                 "Falling back to commit_status: Not a pull request",
@@ -132,7 +144,7 @@ class ChecksNotifier(StatusNotifier):
                 data_sent=None,
                 data_received=None,
             )
-        if comparison.pull.state != "open":
+        if comparison.pull and comparison.pull.state != "open":
             log.debug(
                 "Falling back to commit_status: Pull request closed",
                 extra={
@@ -187,10 +199,30 @@ class ChecksNotifier(StatusNotifier):
                 data_sent=None,
                 data_received=None,
             )
+
+        flag_coverage_not_uploaded_behavior = (
+            self.determine_status_check_behavior_to_apply(
+                comparison, "flag_coverage_not_uploaded_behavior"
+            )
+        )
+        if (
+            flag_coverage_not_uploaded_behavior == "exclude"
+            and not self.flag_coverage_was_uploaded(comparison)
+        ):
+            return NotificationResult(
+                notification_attempted=False,
+                notification_successful=None,
+                explanation="exclude_flag_coverage_not_uploaded_checks",
+                data_sent=None,
+                data_received=None,
+            )
+
+        return None
+
+    def _perform_notification(self, comparison: ComparisonProxy) -> NotificationResult:
         payload = None
         try:
             with nullcontext():
-                # If flag coverage wasn't uploaded, apply the appropriate behavior
                 flag_coverage_not_uploaded_behavior = (
                     self.determine_status_check_behavior_to_apply(
                         comparison, "flag_coverage_not_uploaded_behavior"
@@ -198,17 +230,6 @@ class ChecksNotifier(StatusNotifier):
                 )
                 if not comparison.has_head_report():
                     payload = self.build_payload(comparison)
-                elif (
-                    flag_coverage_not_uploaded_behavior == "exclude"
-                    and not self.flag_coverage_was_uploaded(comparison)
-                ):
-                    return NotificationResult(
-                        notification_attempted=False,
-                        notification_successful=None,
-                        explanation="exclude_flag_coverage_not_uploaded_checks",
-                        data_sent=None,
-                        data_received=None,
-                    )
                 elif (
                     flag_coverage_not_uploaded_behavior == "pass"
                     and not self.flag_coverage_was_uploaded(comparison)

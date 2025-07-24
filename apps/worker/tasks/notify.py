@@ -73,6 +73,10 @@ GENERIC_TA_ERROR_MSG = "Test Analytics upload error: We are unable to process an
 class NotifyTask(BaseCodecovTask, name=notify_task_name):
     throws = (SoftTimeLimitExceeded,)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.force_notify = False
+
     def run_impl(
         self,
         db_session: Session,
@@ -81,10 +85,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         commitid: str,
         current_yaml=None,
         empty_upload=None,
+        force_notify: bool = False,
         **kwargs,
     ):
+        self.force_notify = force_notify
         redis_connection = get_redis_connection()
-        if self.has_upcoming_notifies_according_to_redis(
+        if not self.force_notify and self.has_upcoming_notifies_according_to_redis(
             redis_connection, repoid, commitid
         ):
             log.info(
@@ -198,12 +204,14 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         assert commit, "Commit not found in database."
 
         test_result_commit_report = commit.commit_report(ReportType.TEST_RESULTS)
-        if (
+        test_failures_detected = (
             test_result_commit_report is not None
             and test_result_commit_report.test_result_totals is not None
             and not test_result_commit_report.test_result_totals.error
             and test_result_commit_report.test_result_totals.failed > 0
-        ):
+        )
+
+        if test_failures_detected and not self.force_notify:
             return {
                 "notify_attempted": False,
                 "notifications": None,
@@ -288,23 +296,31 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 },
             )
             self.log_checkpoint(UploadFlow.NOTIF_GIT_CLIENT_ERROR)
-            return {
-                "notified": False,
-                "notifications": None,
-                "reason": "not_able_fetch_ci_result",
-            }
+            if not self.force_notify:
+                return {
+                    "notified": False,
+                    "notifications": None,
+                    "reason": "not_able_fetch_ci_result",
+                }
+            else:
+                ci_results = None
         except TorngitServerFailureError:
             log.info(
                 "Unable to fetch CI results due to server issues. Not notifying user",
                 extra={"repoid": commit.repoid, "commit": commit.commitid},
             )
             self.log_checkpoint(UploadFlow.NOTIF_GIT_SERVICE_ERROR)
-            return {
-                "notified": False,
-                "notifications": None,
-                "reason": "server_issues_ci_result",
-            }
-        if self.should_wait_longer(current_yaml, commit, ci_results):
+            if not self.force_notify:
+                return {
+                    "notified": False,
+                    "notifications": None,
+                    "reason": "server_issues_ci_result",
+                }
+            else:
+                ci_results = None
+        if (not self.force_notify) and self.should_wait_longer(
+            current_yaml, commit, ci_results
+        ):
             log.info(
                 "Not sending notifications yet because we are waiting for CI to finish",
                 extra={"repoid": commit.repoid, "commit": commit.commitid},
@@ -346,9 +362,15 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         head_report = report_service.get_existing_report_for_commit(
             commit, report_class=ReadOnlyReport
         )
-        if self.should_send_notifications(
-            current_yaml, commit, ci_results, head_report
-        ):
+
+        if self.force_notify:
+            should_notify = True
+        else:
+            should_notify = self.should_send_notifications(
+                current_yaml, commit, ci_results, head_report
+            )
+
+        if should_notify:
             enriched_pull = async_to_sync(
                 fetch_and_update_pull_request_information_from_commit
             )(repository_service, commit, current_yaml)
@@ -360,7 +382,8 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 base_commit = self.fetch_parent(commit)
 
             if (
-                enriched_pull
+                not self.force_notify
+                and enriched_pull
                 and not self.send_notifications_if_commit_differs_from_pulls_head(
                     commit, enriched_pull, current_yaml
                 )
@@ -640,6 +663,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 gh_app_installation_name=installation_name_to_use,
                 gh_is_using_codecov_commenter=gh_is_using_codecov_commenter,
                 gitlab_extra_shas=gitlab_extra_shas_to_notify,
+                force_notify=self.force_notify,
             ),
         )
 
