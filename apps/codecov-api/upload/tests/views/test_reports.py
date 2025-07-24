@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 from django.conf import settings
@@ -12,8 +12,19 @@ from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from upload.views.reports import EMPTY_RESPONSE
 from upload.views.uploads import CanDoCoverageUploadsPermission
+
+PREPARING_FOR_REPORT_BREADCRUMB_DATA = BreadcrumbData(
+    milestone=Milestones.PREPARING_FOR_REPORT,
+    endpoint=Endpoints.CREATE_REPORT,
+)
 
 
 def test_reports_get_not_allowed(client, mocker, db):
@@ -40,7 +51,8 @@ def test_reports_get_not_allowed(client, mocker, db):
     assert res.status_code == 405
 
 
-def test_deactivated_repo(db):
+def test_deactivated_repo(db, mocker):
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repo = RepositoryFactory(
         name="the_repo",
         author__username="codecov",
@@ -67,10 +79,29 @@ def test_deactivated_repo(db):
     assert response_json == [
         f"This repository is deactivated. To resume uploading to it, please activate the repository in the codecov UI: {settings.CODECOV_DASHBOARD_URL}/github/codecov/the_repo/config/general"
     ]
+    mock_upload_breadcrumb.assert_has_calls(
+        [
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repo.repoid,
+                breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+            ),
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repo.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.PREPARING_FOR_REPORT,
+                    endpoint=Endpoints.CREATE_REPORT,
+                    error=Errors.REPO_DEACTIVATED,
+                ),
+            ),
+        ]
+    )
 
 
 def test_reports_post(client, db, mocker, mock_prometheus_metrics):
     mocked_call = mocker.patch.object(TaskService, "preprocess_upload")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
     )
@@ -106,6 +137,11 @@ def test_reports_post(client, db, mocker, mock_prometheus_metrics):
             "upload_version": None,
         },
     )
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+    )
 
 
 @patch("upload.helpers.jwt.decode")
@@ -114,6 +150,7 @@ def test_reports_post_github_oidc_auth(
     mock_jwks_client, mock_jwt_decode, client, db, mocker
 ):
     mocked_call = mocker.patch.object(TaskService, "preprocess_upload")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
     )
@@ -141,6 +178,11 @@ def test_reports_post_github_oidc_auth(
         commit_id=commit.id, code=None, report_type=CommitReport.ReportType.COVERAGE
     ).exists()
     mocked_call.assert_called_with(repository.repoid, commit.commitid)
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+    )
 
 
 @pytest.mark.parametrize("private", [False, True])
@@ -156,6 +198,7 @@ def test_reports_post_github_oidc_auth(
 )
 def test_reports_post_tokenless(client, db, mocker, private, branch, branch_sent):
     mocked_call = mocker.patch.object(TaskService, "preprocess_upload")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the_repo",
         author__username="codecov",
@@ -194,6 +237,11 @@ def test_reports_post_tokenless(client, db, mocker, private, branch, branch_sent
             report_type=CommitReport.ReportType.COVERAGE,
         ).exists()
         mocked_call.assert_called_with(repository.repoid, commit.commitid)
+        mock_upload_breadcrumb.assert_called_once_with(
+            commit_sha=commit.commitid,
+            repo_id=repository.repoid,
+            breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+        )
     else:
         assert response.status_code == 401
         assert not CommitReport.objects.filter(
@@ -226,6 +274,7 @@ def test_reports_post_upload_token_required_auth_check(
     upload_token_required_for_public_repos,
 ):
     mocked_call = mocker.patch.object(TaskService, "preprocess_upload")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the_repo",
         author__username="codecov",
@@ -272,6 +321,11 @@ def test_reports_post_upload_token_required_auth_check(
             report_type=CommitReport.ReportType.COVERAGE,
         ).exists()
         mocked_call.assert_called_with(repository.repoid, commit.commitid)
+        mock_upload_breadcrumb.assert_called_once_with(
+            commit_sha=commit.commitid,
+            repo_id=repository.repoid,
+            breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+        )
     else:
         assert response.status_code == 401
         assert not CommitReport.objects.filter(
@@ -284,6 +338,7 @@ def test_reports_post_upload_token_required_auth_check(
 
 def test_create_report_already_exists(client, db, mocker):
     mocked_call = mocker.patch.object(TaskService, "preprocess_upload")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
     )
@@ -307,10 +362,28 @@ def test_create_report_already_exists(client, db, mocker):
         commit_id=commit.id, code=None, report_type=CommitReport.ReportType.COVERAGE
     ).exists()
     mocked_call.assert_not_called()
+    mock_upload_breadcrumb.assert_has_calls(
+        [
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+            ),
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.READY_FOR_REPORT,
+                    endpoint=Endpoints.CREATE_REPORT,
+                ),
+            ),
+        ]
+    )
 
 
 def test_reports_post_code_as_default(client, db, mocker):
     mocked_call = mocker.patch.object(TaskService, "preprocess_upload")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
     )
@@ -332,6 +405,11 @@ def test_reports_post_code_as_default(client, db, mocker):
         commit_id=commit.id, code=None, report_type=CommitReport.ReportType.COVERAGE
     ).exists()
     mocked_call.assert_called_once()
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+    )
 
 
 def test_reports_results_post_successful(client, db, mocker):

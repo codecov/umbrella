@@ -9,7 +9,24 @@ from database.tests.factories.core import (
 )
 from helpers.exceptions import OwnerWithoutValidBotError, RepositoryWithoutValidBotError
 from services.report import ReportService
+from shared.celery_config import upload_breadcrumb_task_name
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Errors,
+    Milestones,
+)
 from tasks.preprocess_upload import PreProcessUpload
+
+
+@pytest.fixture
+def mock_self_app(mocker):
+    return mocker.patch.object(
+        PreProcessUpload,
+        "app",
+        tasks={
+            upload_breadcrumb_task_name: mocker.MagicMock(),
+        },
+    )
 
 
 class TestPreProcessUpload:
@@ -23,6 +40,7 @@ class TestPreProcessUpload:
         mock_redis,
         celery_app,
         sample_report,
+        mock_self_app,
     ):
         # get_existing_report_for_commit gets called for the parent commit
         mocker.patch.object(
@@ -76,6 +94,18 @@ class TestPreProcessUpload:
         }
         mock_save_commit.assert_called_with(commit, commit_yaml)
         mock_possibly_shift.assert_called()
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.READY_FOR_REPORT,
+                ),
+                "sentry_trace_id": None,
+            }
+        )
 
     def create_commit_and_report(self, dbsession):
         repository = RepositoryFactory()
@@ -94,7 +124,7 @@ class TestPreProcessUpload:
         dbsession.flush()
         return commit, report
 
-    def test_run_impl_already_running(self, dbsession, mock_redis):
+    def test_run_impl_already_running(self, dbsession, mock_redis, mock_self_app):
         mock_redis.get = lambda _name: True
         commit = CommitFactory.create()
         dbsession.add(commit)
@@ -105,8 +135,20 @@ class TestPreProcessUpload:
             commitid=commit.commitid,
         )
         assert result == {"preprocessed_upload": False, "reason": "already_running"}
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.READY_FOR_REPORT,
+                ),
+                "sentry_trace_id": None,
+            }
+        )
 
-    def test_run_impl_unobtainable_lock(self, dbsession, mock_redis):
+    def test_run_impl_unobtainable_lock(self, dbsession, mock_redis, mock_self_app):
         mock_redis.get = lambda _name: False
         commit = CommitFactory.create()
         dbsession.add(commit)
@@ -121,8 +163,23 @@ class TestPreProcessUpload:
             "preprocessed_upload": False,
             "reason": "unable_to_acquire_lock",
         }
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.READY_FOR_REPORT,
+                    error=Errors.INTERNAL_LOCK_ERROR,
+                ),
+                "sentry_trace_id": None,
+            }
+        )
 
-    def test_get_repo_service_repo_and_owner_lack_bot(self, dbsession, mocker):
+    def test_get_repo_service_repo_and_owner_lack_bot(
+        self, dbsession, mocker, mock_self_app
+    ):
         mock_owner_bot = mocker.patch(
             "shared.bots.repo_bots.get_owner_or_appropriate_bot"
         )
@@ -140,8 +197,21 @@ class TestPreProcessUpload:
 
         assert repo_service is None
         mock_save_error.assert_called()
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.READY_FOR_REPORT,
+                    error=Errors.REPO_MISSING_VALID_BOT,
+                ),
+                "sentry_trace_id": None,
+            }
+        )
 
-    def test_get_repo_provider_service_no_bot(self, dbsession, mocker):
+    def test_get_repo_provider_service_no_bot(self, dbsession, mocker, mock_self_app):
         mocker.patch("tasks.preprocess_upload.save_commit_error")
         mock_get_repo_service = mocker.patch(
             "tasks.preprocess_upload.get_repo_provider_service"
@@ -150,8 +220,23 @@ class TestPreProcessUpload:
         commit = CommitFactory.create()
         repo_provider = PreProcessUpload().get_repo_service(commit, None)
         assert repo_provider is None
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.READY_FOR_REPORT,
+                    error=Errors.REPO_MISSING_VALID_BOT,
+                ),
+                "sentry_trace_id": None,
+            }
+        )
 
-    def test_preprocess_upload_fail_no_provider_service(self, dbsession, mocker):
+    def test_preprocess_upload_fail_no_provider_service(
+        self, dbsession, mocker, mock_self_app
+    ):
         mocker.patch("tasks.preprocess_upload.save_commit_error")
         mock_get_repo_service = mocker.patch(
             "tasks.preprocess_upload.get_repo_provider_service"
@@ -168,3 +253,16 @@ class TestPreProcessUpload:
             "updated_commit": False,
             "error": "Failed to get repository_service",
         }
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.READY_FOR_REPORT,
+                    error=Errors.REPO_MISSING_VALID_BOT,
+                ),
+                "sentry_trace_id": None,
+            }
+        )

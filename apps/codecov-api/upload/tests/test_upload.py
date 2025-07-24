@@ -65,6 +65,16 @@ COMMIT_PROCESSED_BREADCRUMB_DATA = BreadcrumbData(
     endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
 )
 
+PREPARING_FOR_REPORT_BREADCRUMB_DATA = BreadcrumbData(
+    milestone=Milestones.PREPARING_FOR_REPORT,
+    endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+)
+
+READY_FOR_REPORT_BREADCRUMB_DATA = BreadcrumbData(
+    milestone=Milestones.READY_FOR_REPORT,
+    endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+)
+
 
 def mock_get_config_global_upload_tokens(*args):
     if args == ("github", "global_upload_token"):
@@ -1090,14 +1100,7 @@ class UploadHandlerRouteTest(APITestCase):
         response = self._options(kwargs={"version": "v2"})
 
         headers = response.headers
-
-        assert headers["accept"] == "text/*"
-        assert headers["access-control-allow-origin"] == "*"
-        assert headers["access-control-allow-method"] == "POST"
-        assert (
-            headers["access-control-allow-headers"]
-            == "Origin, Content-Type, Accept, X-User-Agent"
-        )
+        assert headers["allow"] == "POST, OPTIONS"
 
     def test_invalid_request_params(self):
         query_params = {"pr": 9838, "flags": "flags!!!", "package": "codecov-cli/0.0.0"}
@@ -1163,12 +1166,6 @@ class UploadHandlerRouteTest(APITestCase):
         assert response.status_code == 200
 
         headers = response.headers
-
-        assert headers["access-control-allow-origin"] == "*"
-        assert (
-            headers["access-control-allow-headers"]
-            == "Origin, Content-Type, Accept, X-User-Agent"
-        )
         assert headers["content-type"] != "text/plain"
 
         archive_service = ArchiveService(self.repo)
@@ -1215,6 +1212,16 @@ class UploadHandlerRouteTest(APITestCase):
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
                     breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=READY_FOR_REPORT_BREADCRUMB_DATA,
                 ),
             ]
         )
@@ -1262,12 +1269,6 @@ class UploadHandlerRouteTest(APITestCase):
         assert response.status_code == 200
 
         headers = response.headers
-
-        assert headers["access-control-allow-origin"] == "*"
-        assert (
-            headers["access-control-allow-headers"]
-            == "Origin, Content-Type, Accept, X-User-Agent"
-        )
         assert headers["content-type"] != "text/plain"
 
         archive_service = ArchiveService(self.repo)
@@ -1314,6 +1315,16 @@ class UploadHandlerRouteTest(APITestCase):
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
                     breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=READY_FOR_REPORT_BREADCRUMB_DATA,
                 ),
             ]
         )
@@ -1362,12 +1373,6 @@ class UploadHandlerRouteTest(APITestCase):
         assert response.status_code == 400
 
         headers = response.headers
-
-        assert headers["access-control-allow-origin"] == "*"
-        assert (
-            headers["access-control-allow-headers"]
-            == "Origin, Content-Type, Accept, X-User-Agent"
-        )
         assert headers["content-type"] != "text/plain"
 
         assert response.content == b"Could not determine repo and owner"
@@ -1418,12 +1423,6 @@ class UploadHandlerRouteTest(APITestCase):
         assert response.status_code == 400
 
         headers = response.headers
-
-        assert headers["access-control-allow-origin"] == "*"
-        assert (
-            headers["access-control-allow-headers"]
-            == "Origin, Content-Type, Accept, X-User-Agent"
-        )
         assert headers["content-type"] != "text/plain"
 
         assert response.content == b"Found too many repos"
@@ -1505,6 +1504,16 @@ class UploadHandlerRouteTest(APITestCase):
                     repo_id=self.repo.repoid,
                     breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA,
                 ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=READY_FOR_REPORT_BREADCRUMB_DATA,
+                ),
             ]
         )
 
@@ -1575,6 +1584,16 @@ class UploadHandlerRouteTest(APITestCase):
                     repo_id=self.repo.repoid,
                     breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA,
                 ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=READY_FOR_REPORT_BREADCRUMB_DATA,
+                ),
             ]
         )
 
@@ -1638,12 +1657,6 @@ class UploadHandlerRouteTest(APITestCase):
         assert response.status_code == 400
 
         headers = response.headers
-
-        assert headers["access-control-allow-origin"] == "*"
-        assert (
-            headers["access-control-allow-headers"]
-            == "Origin, Content-Type, Accept, X-User-Agent"
-        )
         assert headers["content-type"] != "text/plain"
 
         assert response.content == b"Could not determine repo and owner"
@@ -1710,12 +1723,6 @@ class UploadHandlerRouteTest(APITestCase):
         assert response.status_code == 400
 
         headers = response.headers
-
-        assert headers["access-control-allow-origin"] == "*"
-        assert (
-            headers["access-control-allow-headers"]
-            == "Origin, Content-Type, Accept, X-User-Agent"
-        )
         assert headers["content-type"] != "text/plain"
 
         assert response.content == b"Found too many repos"
