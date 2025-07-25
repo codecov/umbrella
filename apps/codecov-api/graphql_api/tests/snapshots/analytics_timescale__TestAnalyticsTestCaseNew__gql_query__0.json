@@ -13,6 +13,7 @@
     "total_duration": 0.0,
     "avg_duration": 0.0,
     "last_duration": 0.0,
+    "last_outcome": "pass",
     "flags": [
       "flag1",
       "flag2"
@@ -33,6 +34,7 @@
     "total_duration": 1.0,
     "avg_duration": 1.0,
     "last_duration": 1.0,
+    "last_outcome": "failure",
     "flags": [
       "flag3"
     ],
@@ -52,6 +54,7 @@
     "total_duration": 2.0,
     "avg_duration": 2.0,
     "last_duration": 2.0,
+    "last_outcome": "pass",
     "flags": [
       "flag1",
       "flag2"
@@ -72,6 +75,7 @@
     "total_duration": 3.0,
     "avg_duration": 3.0,
     "last_duration": 3.0,
+    "last_outcome": "failure",
     "flags": [
       "flag3"
     ],
@@ -91,6 +95,7 @@
     "total_duration": 4.0,
     "avg_duration": 4.0,
     "last_duration": 4.0,
+    "last_outcome": "pass",
     "flags": [
       "flag1",
       "flag2"
@@ -111,6 +116,7 @@
     "total_duration": 0.0,
     "avg_duration": 0.0,
     "last_duration": 0.0,
+    "last_outcome": "skip",
     "flags": null,
     "name": "name5"
   }
