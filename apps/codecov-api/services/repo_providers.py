@@ -144,14 +144,14 @@ async def async_get_default_ghapp_installation(
 def get_sentry_ghapp_installation(
     owner: Owner | None,
 ) -> GithubAppInstallation | None:
-    return _get_ghapp_installation(owner, {"app_id": settings.SENTRY_APP_ID})
+    return _get_ghapp_installation(owner, {"app_id": settings.GITHUB_SENTRY_APP_ID})
 
 
 async def async_get_sentry_ghapp_installation(
     owner: Owner | None,
 ) -> GithubAppInstallation | None:
     return await _async_get_ghapp_installation(
-        owner, {"app_id": settings.SENTRY_APP_ID}
+        owner, {"app_id": settings.GITHUB_SENTRY_APP_ID}
     )
 
 

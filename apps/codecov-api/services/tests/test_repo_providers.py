@@ -122,7 +122,7 @@ def test_token_refresh_callback_none_cases(should_have_owner, service, db):
     assert get_token_refresh_callback(owner, service) is None
 
 
-SENTRY_APP_ID = 4321
+GITHUB_SENTRY_APP_ID = 4321
 
 
 class TestRepoProviderService(TestCase):
@@ -141,7 +141,7 @@ class TestRepoProviderService(TestCase):
     def _create_sentry_ghapp(self, owner: Owner):
         return GithubAppInstallationFactory(
             name="sentry_app",
-            app_id=SENTRY_APP_ID,
+            app_id=GITHUB_SENTRY_APP_ID,
             installation_id=4321,
             owner=owner,
             repository_service_ids=None,
@@ -230,7 +230,7 @@ class TestRepoProviderService(TestCase):
         provider = RepoProviderService().get_adapter(some_other_user, repo)
         assert isinstance(Bitbucket(), type(provider))
 
-    @override_settings(SENTRY_APP_ID=SENTRY_APP_ID)
+    @override_settings(GITHUB_SENTRY_APP_ID=GITHUB_SENTRY_APP_ID)
     @patch(
         "services.repo_providers.get_github_app_token",
         return_value=("token", None),
@@ -432,7 +432,7 @@ class TestRepoProviderService(TestCase):
         )
 
     @pytest.mark.asyncio
-    @override_settings(SENTRY_APP_ID=SENTRY_APP_ID)
+    @override_settings(GITHUB_SENTRY_APP_ID=GITHUB_SENTRY_APP_ID)
     @patch(
         "services.repo_providers.RepoProviderService._get_adapter",
         return_value="torngit_adapter",
@@ -443,7 +443,7 @@ class TestRepoProviderService(TestCase):
             name="sentry_app",
             installation_id=4321,
             owner=owner,
-            app_id=SENTRY_APP_ID,
+            app_id=GITHUB_SENTRY_APP_ID,
             repository_service_ids=None,
         )
         await ghapp_installation.asave()

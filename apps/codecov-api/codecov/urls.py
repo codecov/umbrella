@@ -7,6 +7,7 @@ from codecov import views
 
 urlpatterns = [
     path("billing/", include("billing.urls")),
+    path("sentry/", include("api.sentry.urls")),
     path("api/v2/", include("api.public.v2.urls")),
     path("api/v1/", include("api.public.v1.urls")),
     path("api/", include("api.public.v1.urls")),  # for backwards compat
