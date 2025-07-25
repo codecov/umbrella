@@ -28,14 +28,14 @@ from graphql_api.types.test_results_aggregates.test_results_aggregates import (
 )
 from rollouts import READ_NEW_TA
 from shared.django_apps.core.models import Repository
-from shared.django_apps.ta_timeseries.models import TestrunSummary
+from shared.django_apps.ta_timeseries.models import TestAggregateDaily
 from utils.ta_types import FlakeAggregates, TestResultsAggregates, TestResultsRow
 from utils.test_results import get_results, use_new_impl
-from utils.timescale_test_results import (
-    get_flake_aggregates_from_timescale,
+from utils.timescale.flake_aggregates import get_flake_aggregates_from_timescale
+from utils.timescale.test_aggregates import (
     get_test_results_aggregates_from_timescale,
-    get_test_results_queryset,
 )
+from utils.timescale.test_results import get_test_results_queryset
 
 log = logging.getLogger(__name__)
 
@@ -291,15 +291,15 @@ def get_test_suites_new(
 
     q_filter = (
         Q(repo_id=repoid)
-        & Q(timestamp_bin__gte=start_date)
-        & Q(timestamp_bin__lt=end_date)
+        & Q(bucket_daily__gt=start_date)
+        & Q(bucket_daily__lte=end_date)
     )
 
     if term:
         q_filter &= Q(testsuite__istartswith=term)
 
     testsuites = (
-        TestrunSummary.objects.filter(q_filter)
+        TestAggregateDaily.objects.filter(q_filter)
         .values_list("testsuite", flat=True)
         .distinct()[:200]
     )
@@ -345,10 +345,10 @@ def get_flags_new(
                 SELECT DISTINCT flag
                 FROM (
                     SELECT unnest(flags) as flag
-                    FROM ta_timeseries_testrun_summary_1day 
+                    FROM ta_timeseries_test_aggregate_daily 
                     WHERE repo_id = %s 
-                    AND timestamp_bin >= %s 
-                    AND timestamp_bin < %s 
+                    AND bucket_daily > %s 
+                    AND bucket_daily <= %s 
                     AND flags IS NOT NULL
                 ) unnested_flags
                 WHERE flag ILIKE %s
@@ -358,10 +358,10 @@ def get_flags_new(
         else:
             base_query = """
                 SELECT DISTINCT unnest(flags) as flag
-                FROM ta_timeseries_testrun_summary_1day 
+                FROM ta_timeseries_test_aggregate_daily 
                 WHERE repo_id = %s 
-                AND timestamp_bin >= %s 
-                AND timestamp_bin < %s 
+                AND bucket_daily > %s 
+                AND bucket_daily <= %s 
                 AND flags IS NOT NULL
                 ORDER BY flag LIMIT 200
             """
