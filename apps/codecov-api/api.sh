@@ -40,14 +40,14 @@ if [[ -n "${STATSD_HOST:-}" ]]; then
   statsd="--statsd-host ${STATSD_HOST:?}:${STATSD_PORT:?}"
 fi
 
-if [[ "${RUN_ENV:-}" = "ENTERPRISE" ]] || [[ "${RUN_ENV:-}" = "DEV" ]]; then
+if [[ "${CODECOV_SKIP_MIGRATIONS:-}" != "true" && ("${RUN_ENV:-}" = "ENTERPRISE" || "${RUN_ENV:-}" = "DEV") ]]; then
   echo "Running migrations"
   $pre_migrate $berglas python manage.py migrate $post_migrate
   $pre_migrate $berglas python migrate_timeseries.py $post_migrate
   $pre_migrate $berglas python manage.py pgpartition --yes --skip-delete $post_migrate
 fi
 
-if [[ "${RUN_ENV:-}" = "STAGING" ]] || [[ "${RUN_ENV:-}" = "DEV" ]]; then
+if [[ "${RUN_ENV:-}" = "STAGING" || "${RUN_ENV:-}" = "DEV" ]]; then
   export PYTHONWARNINGS=always
 fi
 
