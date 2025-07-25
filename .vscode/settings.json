@@ -12,6 +12,7 @@
     "apps/worker",
     "libs/shared",
   ],
+  "mypy-type-checker.cwd": "${nearestConfig}",
   "cSpell.words": [
     "berglas",
     "Testrun",
