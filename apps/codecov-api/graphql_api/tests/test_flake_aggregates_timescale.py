@@ -83,6 +83,14 @@ def populate_timescale_flake_aggregates(repository):
             "CALL refresh_continuous_aggregate('ta_timeseries_testrun_branch_summary_1day', %s, %s)",
             [min_timestamp, max_timestamp],
         )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_branch_aggregate_hourly', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_branch_aggregate_daily', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
 
 
 @pytest.mark.usefixtures("new_ta_enabled")
