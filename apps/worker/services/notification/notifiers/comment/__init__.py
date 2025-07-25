@@ -92,19 +92,25 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
                 },
             )
 
-        for condition in self.notify_conditions:
-            condition_result = condition.check_condition(
-                notifier=self, comparison=comparison
-            )
-            if condition_result == False:
-                side_effect_result = condition.on_failure_side_effect(self, comparison)
-                default_result = NotificationResult(
-                    notification_attempted=False,
-                    explanation=condition.failure_explanation,
-                    data_sent=None,
-                    data_received=None,
+        force_notify = getattr(comparison.context, "force_notify", False)
+
+        if not force_notify:
+            for condition in self.notify_conditions:
+                condition_result = condition.check_condition(
+                    notifier=self, comparison=comparison
                 )
-                return default_result.merge(side_effect_result)
+                if condition_result == False:
+                    side_effect_result = condition.on_failure_side_effect(
+                        self, comparison
+                    )
+                    default_result = NotificationResult(
+                        notification_attempted=False,
+                        explanation=condition.failure_explanation,
+                        data_sent=None,
+                        data_received=None,
+                    )
+                    return default_result.merge(side_effect_result)
+
         pull = comparison.pull
         try:
             message = self.build_message(

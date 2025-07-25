@@ -148,7 +148,18 @@ class StatusNotifier(AbstractBaseNotifier):
         comparison: ComparisonProxy,
         status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> NotificationResult:
-        payload = None
+        force_notify = getattr(comparison.context, "force_notify", False)
+
+        if not force_notify:
+            validation_result = self._perform_validation_checks(comparison)
+            if validation_result:
+                return validation_result
+
+        return self._perform_notification(comparison)
+
+    def _perform_validation_checks(
+        self, comparison: ComparisonProxy
+    ) -> NotificationResult | None:
         if not self.can_we_set_this_status(comparison):
             return NotificationResult(
                 notification_attempted=False,
@@ -163,6 +174,28 @@ class StatusNotifier(AbstractBaseNotifier):
                 explanation="need_more_builds",
                 data_sent=None,
             )
+
+        # Check flag coverage behavior when force_notify is False
+        flag_coverage_not_uploaded_behavior = (
+            self.determine_status_check_behavior_to_apply(
+                comparison, "flag_coverage_not_uploaded_behavior"
+            )
+        )
+        if (
+            flag_coverage_not_uploaded_behavior == "exclude"
+            and not self.flag_coverage_was_uploaded(comparison)
+        ):
+            return NotificationResult(
+                notification_attempted=False,
+                notification_successful=None,
+                explanation="exclude_flag_coverage_not_uploaded_checks",
+                data_sent=None,
+                data_received=None,
+            )
+
+        return None
+
+    def _perform_notification(self, comparison: ComparisonProxy) -> NotificationResult:
         # Filter the coverage report based on fields in this notification's YAML settings
         # e.g. if "paths" is specified, exclude the coverage not on those paths
         try:
@@ -174,17 +207,6 @@ class StatusNotifier(AbstractBaseNotifier):
             )
             if not comparison.has_head_report():
                 payload = self.build_payload(comparison)
-            elif (
-                flag_coverage_not_uploaded_behavior == "exclude"
-                and not self.flag_coverage_was_uploaded(comparison)
-            ):
-                return NotificationResult(
-                    notification_attempted=False,
-                    notification_successful=None,
-                    explanation="exclude_flag_coverage_not_uploaded_checks",
-                    data_sent=None,
-                    data_received=None,
-                )
             elif (
                 flag_coverage_not_uploaded_behavior == "pass"
                 and not self.flag_coverage_was_uploaded(comparison)
@@ -262,6 +284,11 @@ class StatusNotifier(AbstractBaseNotifier):
     def maybe_send_notification(
         self, comparison: ComparisonProxy, payload: dict
     ) -> NotificationResult:
+        force_notify = getattr(comparison.context, "force_notify", False)
+
+        if force_notify:
+            return self.send_notification(comparison, payload)
+
         base_commit = (
             comparison.project_coverage_base.commit
             if comparison.project_coverage_base
@@ -306,6 +333,8 @@ class StatusNotifier(AbstractBaseNotifier):
             )
 
     def send_notification(self, comparison: ComparisonProxy, payload):
+        force_notify = getattr(comparison.context, "force_notify", False)
+
         repository_service = self.repository_service
         title = self.get_status_external_name()
         head_commit_sha = comparison.head.commit.commitid
@@ -313,7 +342,10 @@ class StatusNotifier(AbstractBaseNotifier):
         state = payload["state"]
         message = payload["message"]
         url = payload["url"]
-        if self.status_already_exists(comparison, title, state, message):
+
+        if not force_notify and self.status_already_exists(
+            comparison, title, state, message
+        ):
             log.info(
                 "Status already set",
                 extra={"context": title, "description": message, "state": state},
