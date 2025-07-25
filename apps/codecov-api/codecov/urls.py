@@ -3,10 +3,12 @@ from django.contrib import admin
 from django.urls import include, path, re_path
 
 from api.internal.constants import INTERNAL_API_PREFIX
+from api.sentry.views import account_link
 from codecov import views
 
 urlpatterns = [
     path("billing/", include("billing.urls")),
+    path("sentry/internal/account/link/", account_link, name="account-link"),
     path("api/v2/", include("api.public.v2.urls")),
     path("api/v1/", include("api.public.v1.urls")),
     path("api/", include("api.public.v1.urls")),  # for backwards compat

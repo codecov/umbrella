@@ -312,6 +312,10 @@ GITHUB_ENTERPRISE_TOKENLESS_BOT_KEY = get_config(
 )
 GITHUB_ENTERPRISE_ACTIONS_TOKEN = get_config("github_enterprise", "actions_token")
 
+GITHUB_SENTRY_APP_NAME = "sentry_app"
+GITHUB_SENTRY_MERGE_APP_ID = get_config("github", "sentry_merge_app_id")
+GITHUB_SENTRY_APP_PEM = get_config("github", "sentry_merge_app_pem")
+
 BITBUCKET_CLIENT_ID = get_config("bitbucket", "client_id")
 BITBUCKET_CLIENT_SECRET = get_config("bitbucket", "client_secret")
 BITBUCKET_BOT_KEY = get_config("bitbucket", "bot", "key")
