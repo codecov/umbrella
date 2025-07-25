@@ -93,17 +93,6 @@ class EvalsViewSetTestCase(APITestCase):
         assert res.data["detail"] == "Invalid token."
 
     @patch("api.shared.permissions.RepositoryArtifactPermissions.has_permission")
-    @patch("rollouts.READ_NEW_EVALS.check_value")
-    def test_no_summary_if_feature_flag_disabled(
-        self, mock_feature_flag_check, repository_artifact_permissions_has_permission
-    ):
-        repository_artifact_permissions_has_permission.return_value = True
-        mock_feature_flag_check.return_value = False
-
-        res = self._request_summary()
-        assert res.status_code == 403
-
-    @patch("api.shared.permissions.RepositoryArtifactPermissions.has_permission")
     @patch("api.shared.permissions.SuperTokenPermissions.has_permission")
     def test_no_compare_if_unauthenticated_token_request(
         self,
@@ -194,13 +183,9 @@ class EvalsViewSetTestCase(APITestCase):
             },
         )
 
-    @patch("rollouts.READ_NEW_EVALS.check_value", return_value=True)
-    def test_summary_aggregation_and_filtering_no_filter(self, mock_feature_flag):
-        """
-        Create Testrun instances and verify the summary endpoint aggregates and filters correctly.
-        """
+    def test_summary_aggregation_and_filtering_no_filter(self):
         self._make_testruns()
-        res = self._request_summary({})  # no filter
+        res = self._request_summary()
         assert res.status_code == 200
         data = res.json()
 
@@ -209,13 +194,12 @@ class EvalsViewSetTestCase(APITestCase):
         assert data["failedItems"] == 1
         assert data["avgDurationSeconds"] == (10.0 + 20.0 + 30.0) / 3
         assert data["avgCost"] == (5.0 + 7.0 + 3.0) / 3
-        assert data["scores"]["accuracy"]["sum"] == pytest.approx(0.9 + 0.7 + 0.1)
-        assert data["scores"]["accuracy"]["avg"] == pytest.approx((0.9 + 0.7 + 0.1) / 3)
-        assert data["scores"]["f1"]["sum"] == pytest.approx(0.8 + 0.6 + 0.2)
-        assert data["scores"]["f1"]["avg"] == pytest.approx((0.8 + 0.6 + 0.2) / 3)
+        assert data["scores"] == {
+            "accuracy": {"sum": (0.9 + 0.7 + 0.1), "avg": (0.9 + 0.7 + 0.1) / 3},
+            "f1": {"sum": (0.8 + 0.6 + 0.2), "avg": (0.8 + 0.6 + 0.2) / 3},
+        }
 
-    @patch("rollouts.READ_NEW_EVALS.check_value", return_value=True)
-    def test_summary_aggregation_and_filtering_filter_classA(self, mock_feature_flag):
+    def test_summary_aggregation_and_filtering_filter_classA(self):
         self._make_testruns()
         res = self._request_summary(classname="ClassA")
         assert res.status_code == 200
@@ -231,8 +215,7 @@ class EvalsViewSetTestCase(APITestCase):
             "f1": {"sum": (0.8 + 0.6), "avg": (0.8 + 0.6) / 2},
         }
 
-    @patch("rollouts.READ_NEW_EVALS.check_value", return_value=True)
-    def test_summary_aggregation_and_filtering_filter_classB(self, mock_feature_flag):
+    def test_summary_aggregation_and_filtering_filter_classB(self):
         self._make_testruns()
         res = self._request_summary(classname="ClassB")
         assert res.status_code == 200
@@ -248,8 +231,7 @@ class EvalsViewSetTestCase(APITestCase):
             "f1": {"sum": 0.2, "avg": 0.2},
         }
 
-    @patch("rollouts.READ_NEW_EVALS.check_value", return_value=True)
-    def test_compare_missing_parameters(self, mock_feature_flag):
+    def test_compare_missing_parameters(self):
         """Test that compare endpoint returns 400 when missing required parameters"""
         response = self._request_compare()
         assert response.status_code == 400
@@ -263,8 +245,7 @@ class EvalsViewSetTestCase(APITestCase):
         assert response.status_code == 400
         assert response.json() == {"error": "Both base_sha and head_sha are required"}
 
-    @patch("rollouts.READ_NEW_EVALS.check_value", return_value=True)
-    def test_compare_no_data(self, mock_feature_flag):
+    def test_compare_no_data(self):
         """Test compare endpoint when no data exists for either commit"""
         response = self._request_compare(base_sha="abc123", head_sha="def456")
         assert response.status_code == 200
@@ -287,8 +268,7 @@ class EvalsViewSetTestCase(APITestCase):
         assert data["diff"]["avgCost"] == 0
         assert data["diff"]["scores"] == {}
 
-    @patch("rollouts.READ_NEW_EVALS.check_value", return_value=True)
-    def test_compare_with_data(self, mock_feature_flag):
+    def test_compare_with_data(self):
         """Test compare endpoint with actual test data"""
         base_time = datetime(2025, 6, 17, 9, 15, 43, 150189, tzinfo=UTC)
         head_time = base_time + timedelta(hours=1)
@@ -372,8 +352,7 @@ class EvalsViewSetTestCase(APITestCase):
             "avg": pytest.approx(6.25),
         }  # 6.25% better
 
-    @patch("rollouts.READ_NEW_EVALS.check_value", return_value=True)
-    def test_compare_with_mixed_outcomes(self, mock_feature_flag):
+    def test_compare_with_mixed_outcomes(self):
         """Test compare endpoint with mixed pass/fail outcomes"""
         base_time = datetime(2025, 6, 17, 9, 15, 43, 150189, tzinfo=UTC)
         head_time = base_time + timedelta(hours=1)
