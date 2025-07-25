@@ -53,6 +53,10 @@ class GithubWebhookHandler(APIView):
 
     service_name = "github"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dry_run = False
+
     @property
     def ai_features_app_id(self):
         return get_config("github", "ai_features_app_id")
@@ -113,7 +117,7 @@ class GithubWebhookHandler(APIView):
         Attempts to fetch the repo first via the index on (ownerid, service_id),
         then naively on service, service_id if that fails.
         """
-        repo_data = self.request.data.get("repository", {})
+        repo_data = request.data.get("repository", {})
         repo_service_id = repo_data.get("id")
         owner_service_id = repo_data.get("owner", {}).get("id")
         repo_slug = repo_data.get("full_name")
@@ -174,7 +178,7 @@ class GithubWebhookHandler(APIView):
         return Response(data="pong")
 
     def repository(self, request, *args, **kwargs):
-        action, repo = self.request.data.get("action"), self._get_repo(request)
+        action, repo = request.data.get("action"), self._get_repo(request)
         if action == "publicized":
             repo.private, repo.activated = False, False
             repo.save()
@@ -215,7 +219,7 @@ class GithubWebhookHandler(APIView):
                 extra={"repoid": repo.repoid, "github_webhook_event": self.event},
             )
             return Response("Unsupported ref type")
-        branch_name = self.request.data.get("ref")[11:]
+        branch_name = request.data.get("ref")[11:]
         Branch.objects.filter(
             repository=self._get_repo(request), name=branch_name
         ).delete()
@@ -266,8 +270,8 @@ class GithubWebhookHandler(APIView):
             )
             return Response(data=WebhookHandlerErrorMessages.SKIP_WEBHOOK_IGNORED)
 
-        pushed_to_branch_name = self.request.data.get("ref")[11:]
-        commits = self.request.data.get("commits", [])
+        pushed_to_branch_name = request.data.get("ref")[11:]
+        commits = request.data.get("commits", [])
 
         if not commits:
             log.debug(
@@ -315,12 +319,13 @@ class GithubWebhookHandler(APIView):
                     "github_webhook_event": self.event,
                 },
             )
-            TaskService().status_set_pending(
-                repoid=repo.repoid,
-                commitid=most_recent_commit.get("id"),
-                branch=pushed_to_branch_name,
-                on_a_pull_request=False,
-            )
+            if not self.dry_run:
+                TaskService().status_set_pending(
+                    repoid=repo.repoid,
+                    commitid=most_recent_commit.get("id"),
+                    branch=pushed_to_branch_name,
+                    on_a_pull_request=False,
+                )
 
         return Response()
 
@@ -373,7 +378,8 @@ class GithubWebhookHandler(APIView):
             },
         )
 
-        TaskService().notify(repoid=repo.repoid, commitid=commitid)
+        if not self.dry_run:
+            TaskService().notify(repoid=repo.repoid, commitid=commitid)
 
         return Response()
 
@@ -418,7 +424,8 @@ class GithubWebhookHandler(APIView):
                     "pullid": pullid,
                 },
             )
-            TaskService().pulls_sync(repoid=repo.repoid, pullid=pullid)
+            if not self.dry_run:
+                TaskService().pulls_sync(repoid=repo.repoid, pullid=pullid)
         elif action == "edited":
             log.info(
                 f"Pull request action is 'edited', updating pull title to "
@@ -563,17 +570,18 @@ class GithubWebhookHandler(APIView):
                     else None
                 )
                 # If installer does not exist, just attribute the action to the org owner.
-                AmplitudeEventPublisher().publish(
-                    "App Installed",
-                    {
-                        "user_ownerid": (
-                            installer.ownerid
-                            if installer is not None
-                            else owner.ownerid
-                        ),
-                        "ownerid": owner.ownerid,
-                    },
-                )
+                if not self.dry_run:
+                    AmplitudeEventPublisher().publish(
+                        "App Installed",
+                        {
+                            "user_ownerid": (
+                                installer.ownerid
+                                if installer is not None
+                                else owner.ownerid
+                            ),
+                            "ownerid": owner.ownerid,
+                        },
+                    )
             else:
                 # edge case, do quick validation
                 if ghapp_installation.owner_id != owner.ownerid:
@@ -643,14 +651,15 @@ class GithubWebhookHandler(APIView):
                 (obj["id"], obj["node_id"]) for obj in repos_affected
             }
 
-            TaskService().refresh(
-                ownerid=owner.ownerid,
-                username=username,
-                sync_teams=False,
-                sync_repos=True,
-                using_integration=True,
-                repos_affected=list(repos_affected_clean),
-            )
+            if not self.dry_run:
+                TaskService().refresh(
+                    ownerid=owner.ownerid,
+                    username=username,
+                    sync_teams=False,
+                    sync_repos=True,
+                    using_integration=True,
+                    repos_affected=list(repos_affected_clean),
+                )
 
         return Response(data="Integration webhook received")
 
@@ -706,13 +715,14 @@ class GithubWebhookHandler(APIView):
 
             # Force a sync for the removed member to remove their access to the
             # org and its private repositories.
-            TaskService().refresh(
-                ownerid=member.ownerid,
-                username=member.username,
-                sync_teams=True,
-                sync_repos=True,
-                using_integration=False,
-            )
+            if not self.dry_run:
+                TaskService().refresh(
+                    ownerid=member.ownerid,
+                    username=member.username,
+                    sync_teams=True,
+                    sync_repos=True,
+                    using_integration=False,
+                )
 
             try:
                 if org.plan_activated_users:
@@ -750,11 +760,12 @@ class GithubWebhookHandler(APIView):
                         "new_plan_seats": new_plan_seats,
                     },
                 )
-        TaskService().sync_plans(
-            sender=request.data["sender"],
-            account=request.data["marketplace_purchase"]["account"],
-            action=request.data["action"],
-        )
+        if not self.dry_run:
+            TaskService().sync_plans(
+                sender=request.data["sender"],
+                account=request.data["marketplace_purchase"]["account"],
+                action=request.data["action"],
+            )
         return Response()
 
     def marketplace_purchase(self, request, *args, **kwargs):
@@ -803,12 +814,12 @@ class GithubWebhookHandler(APIView):
         return Response()
 
     def post(self, request, *args, **kwargs):
-        self.event = self.request.META.get(GitHubHTTPHeaders.EVENT)
+        self.event = request.META.get(GitHubHTTPHeaders.EVENT)
         log.info(
             "GitHub Webhook Handler invoked",
             extra={
                 "github_webhook_event": self.event,
-                "delivery": self.request.META.get(GitHubHTTPHeaders.DELIVERY_TOKEN),
+                "delivery": request.META.get(GitHubHTTPHeaders.DELIVERY_TOKEN),
             },
         )
         self.validate_signature(request)
