@@ -35,12 +35,17 @@ from utils.ta_types import (
     TestResultsAggregates,
 )
 
-PRECOMPUTED_BRANCHES = ("main", "master", "develop")
+type PrecomputedBranch = Literal["main", "master", "develop"]
+PRECOMPUTED_BRANCHES: tuple[PrecomputedBranch, ...] = (
+    "main",
+    "master",
+    "develop",
+)
 
 
 def _is_precomputed_branch(
     branch: str | None,
-) -> TypeIs[Literal["main", "master", "develop"] | None]:
+) -> TypeIs[PrecomputedBranch | None]:
     return branch in PRECOMPUTED_BRANCHES or branch is None
 
 
@@ -76,7 +81,7 @@ def _calculate_slow_test_num(total_tests: int) -> int:
 
 def get_test_data_queryset_via_ca(
     repoid: int,
-    branch: Literal["main", "master", "develop"] | None,
+    branch: PrecomputedBranch | None,
     start_date: datetime,
     end_date: datetime,
     parameter: Literal["flaky_tests", "failed_tests", "slowest_tests", "skipped_tests"]
@@ -366,7 +371,7 @@ def _pct_change(current: int | float | None, past: int | float | None) -> float:
 
 def get_repo_aggregates_via_ca(
     repoid: int,
-    branch: Literal["main", "master", "develop"] | None,
+    branch: PrecomputedBranch | None,
     start_date: datetime,
     end_date: datetime,
 ):
@@ -474,7 +479,7 @@ def get_test_results_aggregates_from_timescale(
 
 def get_flake_aggregates_via_ca(
     repoid: int,
-    branch: Literal["main", "master", "develop"] | None,
+    branch: PrecomputedBranch | None,
     start_date: datetime,
     end_date: datetime,
 ):
