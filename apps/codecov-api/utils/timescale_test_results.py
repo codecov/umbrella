@@ -9,6 +9,8 @@ from django.db.models import (
     Exists,
     F,
     FloatField,
+    Func,
+    IntegerField,
     Max,
     OuterRef,
     Q,
@@ -18,14 +20,14 @@ from django.db.models import (
     When,
     Window,
 )
-from django.db.models.functions import RowNumber, Trunc
+from django.db.models.functions import Coalesce, RowNumber, Trunc
 
 from shared.django_apps.ta_timeseries.models import (
     AggregateDaily,
     BranchAggregateDaily,
+    BranchTestAggregateDaily,
+    TestAggregateDaily,
     Testrun,
-    TestrunBranchSummary,
-    TestrunSummary,
 )
 from shared.metrics import Histogram
 from utils.ta_types import (
@@ -63,6 +65,11 @@ class Last(Aggregate):
     template = "%(function)s(%(expressions)s)"
 
 
+class Cardinality(Func):
+    function = "cardinality"
+    template = "%(function)s(%(expressions)s)"
+
+
 def _calculate_slow_test_num(total_tests: int) -> int:
     return min(100, max(total_tests // 20, 1)) if total_tests else 0
 
@@ -76,14 +83,14 @@ def get_test_data_queryset_via_ca(
     | None = None,
 ):
     if branch:
-        test_data = TestrunBranchSummary.objects.filter(
+        test_data = BranchTestAggregateDaily.objects.filter(
             repo_id=repoid,
             branch=branch,
             timestamp_bin__gte=start_date,
             timestamp_bin__lt=end_date,
         )
     else:
-        test_data = TestrunSummary.objects.filter(
+        test_data = TestAggregateDaily.objects.filter(
             repo_id=repoid,
             timestamp_bin__gte=start_date,
             timestamp_bin__lt=end_date,
@@ -94,7 +101,11 @@ def get_test_data_queryset_via_ca(
         total_fail_count=Sum("fail_count"),
         total_flaky_fail_count=Sum("flaky_fail_count"),
         total_skip_count=Sum("skip_count"),
-        commits_where_fail=Sum("failing_commits"),
+        commits_where_fail=Coalesce(
+            Cardinality(ArrayMergeDedupe("failing_commits")),
+            0,
+            output_field=IntegerField(),
+        ),
         total_count=Sum(
             F("pass_count") + F("fail_count") + F("flaky_fail_count"),
             output_field=FloatField(),
@@ -156,7 +167,7 @@ def get_test_data_queryset_via_ca(
         case "skipped_tests":
             if branch is not None:
                 latest_ts_subquery = Subquery(
-                    TestrunBranchSummary.objects.filter(
+                    BranchTestAggregateDaily.objects.filter(
                         repo_id=repoid,
                         branch=branch,
                         computed_name=OuterRef("computed_name"),
@@ -170,7 +181,7 @@ def get_test_data_queryset_via_ca(
                 )
 
                 has_skip_latest = Exists(
-                    TestrunBranchSummary.objects.filter(
+                    BranchTestAggregateDaily.objects.filter(
                         repo_id=repoid,
                         branch=branch,
                         computed_name=OuterRef("computed_name"),
@@ -360,7 +371,7 @@ def get_repo_aggregates_via_ca(
     end_date: datetime,
 ):
     if branch is None:
-        test_data = TestrunSummary.objects.filter(
+        test_data = TestAggregateDaily.objects.filter(
             repo_id=repoid,
             timestamp_bin__gte=start_date,
             timestamp_bin__lt=end_date,
@@ -371,7 +382,7 @@ def get_repo_aggregates_via_ca(
             bucket_daily__lt=end_date,
         )
     elif branch in PRECOMPUTED_BRANCHES:
-        test_data = TestrunBranchSummary.objects.filter(
+        test_data = BranchTestAggregateDaily.objects.filter(
             repo_id=repoid,
             branch=branch,
             timestamp_bin__gte=start_date,
@@ -468,7 +479,7 @@ def get_flake_aggregates_via_ca(
     end_date: datetime,
 ):
     if branch is None:
-        test_data = TestrunSummary.objects.filter(
+        test_data = TestAggregateDaily.objects.filter(
             repo_id=repoid,
             timestamp_bin__gte=start_date,
             timestamp_bin__lt=end_date,
@@ -479,7 +490,7 @@ def get_flake_aggregates_via_ca(
             bucket_daily__lt=end_date,
         )
     else:
-        test_data = TestrunBranchSummary.objects.filter(
+        test_data = BranchTestAggregateDaily.objects.filter(
             repo_id=repoid,
             branch=branch,
             timestamp_bin__gte=start_date,

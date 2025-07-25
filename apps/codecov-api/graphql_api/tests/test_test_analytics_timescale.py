@@ -36,13 +36,13 @@ def populate_timescale(repository):
         [
             Testrun(
                 repo_id=repository.repoid,
-                timestamp=datetime.now(UTC) - timedelta(days=5 - i),
+                timestamp=datetime.now(UTC) - timedelta(days=10 - i),
                 testsuite=f"testsuite{i}",
                 classname="",
                 name=f"name{i}",
                 computed_name=f"name{i}",
                 outcome="pass" if i % 2 == 0 else "failure",
-                duration_seconds=i,
+                duration_seconds=i * 2,
                 commit_sha=f"test_commit {i}",
                 flags=["flag1", "flag2"] if i % 2 == 0 else ["flag3"],
                 branch="feature",
@@ -90,14 +90,14 @@ def populate_timescale(repository):
 
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_branch_summary_1day', %s, %s)",
+            "CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_daily', %s, %s)",
             [
                 (datetime.now(UTC) - timedelta(days=60)),
                 datetime.now(UTC),
             ],
         )
         cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_summary_1day', %s, %s)",
+            "CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_daily', %s, %s)",
             [
                 (datetime.now(UTC) - timedelta(days=60)),
                 datetime.now(UTC),

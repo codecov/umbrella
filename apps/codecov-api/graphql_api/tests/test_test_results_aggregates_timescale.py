@@ -78,11 +78,11 @@ def populate_timescale_test_results_aggregates(repository):
 
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_branch_summary_1day', %s, %s)",
+            "CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_daily', %s, %s)",
             [min_timestamp, max_timestamp],
         )
         cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_summary_1day', %s, %s)",
+            "CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_daily', %s, %s)",
             [min_timestamp, max_timestamp],
         )
         cursor.execute(
