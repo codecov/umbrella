@@ -1,14 +1,22 @@
 import asyncio
 import logging
 import re
+from collections.abc import Callable
 from json import dumps
+from typing import Any, cast
 from uuid import uuid4
 
 import minio
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.core.exceptions import MultipleObjectsReturned
-from django.http import Http404, HttpResponse, HttpResponseServerError
+from django.http import (
+    Http404,
+    HttpRequest,
+    HttpResponse,
+    HttpResponseBase,
+    HttpResponseServerError,
+)
 from django.utils import timezone
 from django.utils.decorators import classonlymethod
 from django.utils.encoding import smart_str
@@ -16,13 +24,17 @@ from django.views import View
 from rest_framework import renderers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
+from rest_framework.request import Request
 from rest_framework.views import APIView
 
 from codecov_auth.commands.owner import OwnerCommands
 from core.commands.repository import RepositoryCommands
+from core.models import Repository
 from services.analytics import AnalyticsService
+from services.task import TaskService
 from shared.api_archive.archive import ArchiveService
 from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
     Endpoints,
     Errors,
     Milestones,
@@ -55,29 +67,17 @@ class PlainTextRenderer(renderers.BaseRenderer):
     media_type = "text/plain"
     format = "txt"
 
-    def render(self, data, media_type=None, renderer_context=None):
-        return smart_str(data, encoding=self.charset)
+    def render(
+        self, data: Any, media_type: str | None = None, renderer_context: Any = None
+    ) -> str:
+        return smart_str(data, encoding=cast(str, self.charset))
 
 
 class UploadHandler(ShelterMixin, APIView):
     permission_classes = [AllowAny]
     renderer_classes = [PlainTextRenderer, renderers.JSONRenderer]
 
-    def get(self, request, *args, **kwargs):
-        return HttpResponse(status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
-    def options(self, request, *args, **kwargs):
-        response = HttpResponse()
-        response["Accept"] = "text/*"
-        response["Access-Control-Allow-Origin"] = "*"
-        response["Access-Control-Allow-Method"] = "POST"
-        response["Access-Control-Allow-Headers"] = (
-            "Origin, Content-Type, Accept, X-User-Agent"
-        )
-
-        return response
-
-    def post(self, request, *args, **kwargs):
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> HttpResponse:
         # Extract the version
         version = self.kwargs["version"]
         endpoint = Endpoints.LEGACY_UPLOAD_COVERAGE
@@ -102,12 +102,7 @@ class UploadHandler(ShelterMixin, APIView):
             },
         )
 
-        # Set response headers
         response = HttpResponse()
-        response["Access-Control-Allow-Origin"] = "*"
-        response["Access-Control-Allow-Headers"] = (
-            "Origin, Content-Type, Accept, X-User-Agent"
-        )
 
         # Parse request parameters
         request_params = {
@@ -211,6 +206,23 @@ class UploadHandler(ShelterMixin, APIView):
             error=Errors.OWNER_UPLOAD_LIMIT,
         ):
             check_commit_upload_constraints(commit)
+
+        # --------- Signal report creation to match newer endpoints
+
+        TaskService().upload_breadcrumb(
+            commit_sha=commitid,
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.PREPARING_FOR_REPORT, endpoint=endpoint
+            ),
+        )
+        TaskService().upload_breadcrumb(
+            commit_sha=commitid,
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.READY_FOR_REPORT, endpoint=endpoint
+            ),
+        )
 
         # --------- Handle the actual upload
 
@@ -385,12 +397,12 @@ class UploadHandler(ShelterMixin, APIView):
 
 class UploadDownloadHandler(View):
     @classonlymethod
-    def as_view(_, **initkwargs):
+    def as_view(_, **initkwargs: Any) -> Callable[..., HttpResponseBase]:
         view = super().as_view(**initkwargs)
         view._is_coroutine = asyncio.coroutines._is_coroutine
         return view
 
-    async def get_repo(self):
+    async def get_repo(self) -> Repository:
         owner = await OwnerCommands(
             self.request.current_owner, self.service
         ).fetch_owner(self.owner_username)
@@ -408,7 +420,7 @@ class UploadDownloadHandler(View):
         return repo
 
     @sync_to_async
-    def validate_path(self, repo):
+    def validate_path(self, repo: Repository) -> None:
         msg = "Requested report could not be found"
         if not self.path:
             raise Http404(msg)
@@ -418,7 +430,7 @@ class UploadDownloadHandler(View):
 
             # Verify that the repo hash in the path matches the repo in the URL by generating the repo hash
             archive_service = ArchiveService(repo)
-            if archive_service.storage_hash not in self.path:
+            if cast(str, archive_service.storage_hash) not in self.path:
                 raise Http404(msg)
         elif self.path.startswith("shelter/"):
             # Shelter upload
@@ -430,19 +442,19 @@ class UploadDownloadHandler(View):
             # unexpected path structure
             raise Http404(msg)
 
-    def read_params(self):
+    def read_params(self) -> None:
         self.path = self.request.GET.get("path")
         self.service = get_long_service_name(self.kwargs.get("service"))
         self.repo_name = self.kwargs.get("repo_name")
         self.owner_username = self.kwargs.get("owner_username")
 
     @sync_to_async
-    def get_presigned_url(self, repo):
+    def get_presigned_url(self, repo: Repository) -> str:
         archive_service = ArchiveService(repo)
 
         try:
             return archive_service.storage.create_presigned_get(
-                archive_service.root, self.path, expires=30
+                archive_service.root, cast(str, self.path), expires=30
             )
         except minio.error.S3Error as e:
             if e.code == "NoSuchKey":
@@ -450,7 +462,9 @@ class UploadDownloadHandler(View):
             else:
                 raise
 
-    async def get(self, request, *args, **kwargs):
+    async def get(
+        self, request: HttpRequest, *args: Any, **kwargs: Any
+    ) -> HttpResponse:
         await self._get_user(request)
 
         self.read_params()
@@ -462,7 +476,7 @@ class UploadDownloadHandler(View):
         return response
 
     @sync_to_async
-    def _get_user(self, request):
+    def _get_user(self, request: HttpRequest) -> None:
         # force eager evaluation of `request.user` (a lazy object)
         # while we're in a sync context
         if request.user:

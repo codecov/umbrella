@@ -31,7 +31,7 @@ class UploadDownloadHelperTest(APITestCase):
             kwargs={
                 "service": "gh",
                 "owner_username": "codecovtest",
-                "repo_name": "invalid",
+                "repo_name": "upload-test-repo",
             },
         )
         assert response.status_code == 404
@@ -41,7 +41,7 @@ class UploadDownloadHelperTest(APITestCase):
             kwargs={
                 "service": "gh",
                 "owner_username": "codecovtest",
-                "repo_name": "invalid",
+                "repo_name": "upload-test-repo",
             },
             data={"path": "v2"},
         )
@@ -52,7 +52,7 @@ class UploadDownloadHelperTest(APITestCase):
             kwargs={
                 "service": "gh",
                 "owner_username": "invalid",
-                "repo_name": "invalid",
+                "repo_name": "upload-test-repo",
             },
             data={"path": "v4/raw"},
         )
