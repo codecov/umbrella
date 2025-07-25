@@ -42,7 +42,7 @@ from services.repository import (
     fetch_and_update_pull_request_information_from_commit,
     get_repo_provider_service,
 )
-from services.test_results import ErrorPayload, specific_error_message
+from services.test_results import ErrorPayload, short_error_message
 from services.yaml import get_current_yaml, read_yaml_field
 from shared.bots.github_apps import (
     get_github_app_token,
@@ -67,7 +67,7 @@ from tasks.upload_processor import UPLOAD_PROCESSING_LOCK_NAME
 
 log = logging.getLogger(__name__)
 
-GENERIC_TA_ERROR_MSG = ":x: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format."
+GENERIC_TA_ERROR_MSG = "Test Analytics upload error: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format."
 
 
 class NotifyTask(BaseCodecovTask, name=notify_task_name):
@@ -939,7 +939,7 @@ def get_ta_relevant_context(
                 error_code=upload_error.error_code,
                 error_message=error_message,
             )
-            ta_error_msg = specific_error_message(error_payload)
+            ta_error_msg = short_error_message(error_payload)
 
         all_tests_passed = False
         if totals:

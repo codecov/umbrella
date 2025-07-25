@@ -1,0 +1,5 @@
+
+| [Files with missing lines](pull.link?dropdown=coverage&src=pr&el=tree) | Patch % | Lines |
+|---|---|---|
+| [file\_2.py](pull.link?src=pr&el=tree&filepath=file_2.py#diff-ZmlsZV8yLnB5) | -23.33% | [2 Missing and 3 partials :warning: ](pull.link?src=pr&el=tree) |
+| [file\_1.go](pull.link?src=pr&el=tree&filepath=file_1.go#diff-ZmlsZV8xLmdv) | 66.66% | [1 Missing :warning: ](pull.link?src=pr&el=tree) |

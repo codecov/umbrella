@@ -113,7 +113,7 @@ dev = [
     "pytest-codspeed>=3.2.0",
     "pytest-cov>=6.1.1",
     "pytest-django>=4.11.1",
-    "pytest-insta>=0.3.0",
+    "pytest-insta==0.3.0",
     "pytest-mock>=3.14.0",
     "pytest-sqlalchemy>=0.3.0",
     "respx>=0.22.0",

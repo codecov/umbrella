@@ -1,0 +1,26 @@
+## [Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1) Report
+:white_check_mark: All modified and coverable lines are covered by tests.
+:white_check_mark: Project coverage is 65.38%. Comparing base ([`2345678`](test.example.br/gh/test-owner/test-repo/commit/2345678?dropdown=coverage&el=desc)) to head ([`1234567`](test.example.br/gh/test-owner/test-repo/commit/1234567?dropdown=coverage&el=desc)).
+
+[![Impacted file tree graph](test.example.br/gh/test-owner/test-repo/pull/1/graphs/tree.svg?width=650&height=150&src=pr&token=test-image-token)](test.example.br/gh/test-owner/test-repo/pull/1?src=pr&el=tree)
+
+```diff
+@@           Coverage Diff           @@
+##           master       #1   +/-   ##
+=======================================
+  Coverage   65.38%   65.38%           
+=======================================
+  Files          15       15           
+  Lines         208      208           
+=======================================
+  Hits          136      136           
+  Misses          4        4           
+  Partials       68       68           
+```
+
+------
+
+[Continue to review full report in Codecov by Sentry](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=continue).
+> **Legend** - [Click here to learn more](https://docs.codecov.io/docs/codecov-delta)
+> `Δ = absolute <relative> (impact)`, `ø = not affected`, `? = missing data`
+> Powered by [Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=footer). Last update [2345678...1234567](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=lastupdated). Read the [comment docs](https://docs.codecov.io/docs/pull-request-comments).

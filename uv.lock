@@ -2775,7 +2775,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.1.1" },
     { name = "pytest-django", specifier = ">=4.11.1" },
     { name = "pytest-freezer", specifier = ">=0.4.9" },
-    { name = "pytest-insta", specifier = ">=0.3.0" },
+    { name = "pytest-insta", specifier = "==0.3.0" },
     { name = "pytest-mock", specifier = ">=3.14.0" },
     { name = "pytest-sqlalchemy", specifier = ">=0.3.0" },
     { name = "respx", specifier = ">=0.22.0" },

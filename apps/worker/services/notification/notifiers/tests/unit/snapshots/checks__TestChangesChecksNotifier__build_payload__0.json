@@ -1,0 +1,9 @@
+{
+  "state": "success",
+  "output": {
+    "title": "No indirect coverage changes found",
+    "summary": "[View this Pull Request on Codecov](test.example.br/gh/test-owner/test-repo/pull/1?dropdown=coverage&src=pr&el=h1)\n\nNo indirect coverage changes found",
+    "annotations": []
+  },
+  "included_helper_text": {}
+}

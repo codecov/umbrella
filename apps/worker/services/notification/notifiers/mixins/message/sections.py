@@ -93,7 +93,6 @@ def get_message_layout(
     if status_or_checks_helper_text:
         upper.append(("status_or_checks_helper_text", HelperTextSectionWriter))
     upper.append(("messages_to_user", MessagesToUserSectionWriter))
-
     return MessageLayout(upper, middle, lower)
 
 
@@ -147,10 +146,8 @@ class NewFooterSectionWriter(BaseSectionWriter):
 class HeaderSectionWriter(BaseSectionWriter):
     def _possibly_include_test_result_setup_confirmation(self, comparison):
         if ta_error_msg := comparison.test_results_error():
-            yield ""
-            yield ta_error_msg
+            yield f":warning: {ta_error_msg}"
         elif comparison.all_tests_passed():
-            yield ""
             yield ALL_TESTS_PASSED_MSG
 
     def do_write_section(self, comparison, diff, changes, links, behind_by=None):
@@ -169,10 +166,10 @@ class HeaderSectionWriter(BaseSectionWriter):
         if misses_and_partials:
             ln_text = "lines" if misses_and_partials > 1 else "line"
             yield (
-                f"Attention: Patch coverage is `{patch_coverage}%` with `{misses_and_partials} {ln_text}` in your changes missing coverage. Please review."
+                f":x: Patch coverage is `{patch_coverage}%` with `{misses_and_partials} {ln_text}` in your changes missing coverage. Please review."
             )
         else:
-            yield "All modified and coverable lines are covered by tests :white_check_mark:"
+            yield ":white_check_mark: All modified and coverable lines are covered by tests."
 
         hide_project_coverage = self.settings.get("hide_project_coverage", False)
         if hide_project_coverage:
@@ -184,7 +181,7 @@ class HeaderSectionWriter(BaseSectionWriter):
 
         if base_report and head_report:
             yield (
-                f"> Project coverage is {round_number(yaml, Decimal(head_report.totals.coverage))}%. Comparing base [(`{comparison.project_coverage_base.commit.commitid[:7]}`)]({links['base']}?dropdown=coverage&el=desc) to head [(`{comparison.head.commit.commitid[:7]}`)]({links['head']}?dropdown=coverage&el=desc)."
+                f":white_check_mark: Project coverage is {round_number(yaml, Decimal(head_report.totals.coverage))}%. Comparing base ([`{comparison.project_coverage_base.commit.commitid[:7]}`]({links['base']}?dropdown=coverage&el=desc)) to head ([`{comparison.head.commit.commitid[:7]}`]({links['head']}?dropdown=coverage&el=desc))."
             )
         else:
             # This doesn't actually emit a message if the _head_ report is missing
@@ -195,12 +192,12 @@ class HeaderSectionWriter(BaseSectionWriter):
             branch = pull_dict["base" if not base_report else "head"]["branch"]
             commit = pull_dict["base" if not base_report else "head"]["commitid"][:7]
             yield (
-                f"> Please [upload](https://docs.codecov.com/docs/codecov-uploader) report for {what} (`{branch}@{commit}`). [Learn more](https://docs.codecov.io/docs/error-reference#section-missing-{what.lower()}-commit) about missing {what} report."
+                f":warning: Please [upload](https://docs.codecov.com/docs/codecov-uploader) report for {what} (`{branch}@{commit}`). [Learn more](https://docs.codecov.io/docs/error-reference#section-missing-{what.lower()}-commit) about missing {what} report."
             )
 
         if behind_by:
             yield (
-                f"> Report is {behind_by} commits behind head on {pull_dict['base']['branch']}."
+                f":warning: Report is {behind_by} commits behind head on {pull_dict['base']['branch']}."
             )
         if (
             comparison.enriched_pull.provider_pull is not None
@@ -222,10 +219,10 @@ class HeaderSectionWriter(BaseSectionWriter):
             pull_head = comparison.enriched_pull.provider_pull["head"]["commitid"][:7]
             current_head = comparison.head.commit.commitid[:7]
             yield (
-                f"> :exclamation: **Current head {current_head} differs from pull request most recent head {pull_head}**"
+                f":warning: **Current head {current_head} differs from pull request most recent head {pull_head}**"
             )
-            yield "> "
-            yield f"> Please [upload](https://docs.codecov.com/docs/codecov-uploader) reports for the commit {pull_head} to get more accurate results."
+            yield ""
+            yield f"Please [upload](https://docs.codecov.com/docs/codecov-uploader) reports for the commit {pull_head} to get more accurate results."
 
         for msg in self._possibly_include_test_result_setup_confirmation(comparison):
             yield msg
@@ -249,6 +246,7 @@ class AnnouncementSectionWriter(BaseSectionWriter):
 class FooterSectionWriter(BaseSectionWriter):
     def do_write_section(self, comparison, diff, changes, links, behind_by=None):
         pull_dict = comparison.enriched_pull.provider_pull
+        yield ""
         yield "------"
         yield ""
         yield (
@@ -272,6 +270,7 @@ class FooterSectionWriter(BaseSectionWriter):
 class ReachSectionWriter(BaseSectionWriter):
     def do_write_section(self, comparison, diff, changes, links, behind_by=None):
         pull = comparison.enriched_pull.database_pull
+        yield ""
         yield (
             "[![Impacted file tree graph]({})]({}?src=pr&el=tree)".format(
                 get_pull_graph_url(
@@ -295,6 +294,7 @@ class DiffSectionWriter(BaseSectionWriter):
             base_report = Report()
         pull_dict = comparison.enriched_pull.provider_pull
         pull = comparison.enriched_pull.database_pull
+        yield ""
         yield "```diff"
         lines = diff_to_string(
             self.current_yaml,
@@ -375,6 +375,7 @@ class NewFilesSectionWriter(BaseSectionWriter):
             )
             changed_files_with_missing_lines = [f for f in changed_files if f[3] > 0]
             if changed_files_with_missing_lines:
+                yield ""
                 yield (
                     "| [Files with missing lines]({}?dropdown=coverage&src=pr&el=tree) {}".format(
                         links["pull"], table_header
@@ -444,6 +445,7 @@ class FileSectionWriter(BaseSectionWriter):
                         is_critical=path in files_in_critical,
                     )
 
+            yield ""
             yield (
                 "| [Files with missing lines]({}?dropdown=coverage&src=pr&el=tree) {}".format(
                     links["pull"], table_header
@@ -551,6 +553,7 @@ class FlagSectionWriter(BaseSectionWriter):
                 + ("---|" if has_carriedforward_flags else "")
             )
 
+            yield ""
             yield (
                 "| [Flag]({href}/flags?src=pr&el=flags) ".format(href=links["pull"])
                 + table_header
@@ -651,6 +654,7 @@ class ComponentsSectionWriter(BaseSectionWriter):
             all_components, comparison
         )
 
+        yield ""
         # Table header and layout
         yield "| [Components]({href}/components?src=pr&el=components) | Coverage \u0394 | |".format(
             href=links["pull"],
@@ -679,6 +683,8 @@ class HelperTextSectionWriter(BaseSectionWriter):
     def do_write_section(self, comparison: ComparisonProxy, *args, **kwargs):
         helper_template = ":x: {helper_text}"
         sorted_helper_text_keys = sorted(self.status_or_checks_helper_text.keys())
+        if sorted_helper_text_keys:
+            yield ""
         for helper_text_key in sorted_helper_text_keys:
             yield helper_template.format(
                 helper_text=self.status_or_checks_helper_text[helper_text_key]
