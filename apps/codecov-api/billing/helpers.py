@@ -7,7 +7,7 @@ from shared.plan.constants import TierName
 
 def on_enterprise_plan(owner: Owner) -> bool:
     plan = Plan.objects.select_related("tier").get(name=owner.plan)
-    return settings.IS_ENTERPRISE or (plan.tier.tier_name == TierName.ENTERPRISE.value)
+    return settings.IS_ENTERPRISE or (plan.tier.tier_name = TierName.ENTERPRISE.value)
 
 
 def get_all_admins_for_owners(owners: QuerySet[Owner]):
