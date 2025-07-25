@@ -578,6 +578,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e2/10/c9020f6e5b293e4c24aa72cab7966bcd7f03b1196da9c5cf916da9873c48/django_stubs-5.2.1-py3-none-any.whl", hash = "sha256:c0e170d70329c27e737a5b80c5518fb6161d0c4792321d11a4a93dcda120f4ef", size = 484761, upload-time = "2025-06-17T18:07:34.554Z" },
 ]
 
+[package.optional-dependencies]
+compatible-mypy = [
+    { name = "mypy" },
+]
+
 [[package]]
 name = "django-stubs-ext"
 version = "5.2.1"
@@ -617,6 +622,12 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/47/2b/45a1c9ccb7c4a1f79112a2b4b65a1abd3ee9d4ed1a80d21736bd8f999750/djangorestframework_stubs-3.16.0.tar.gz", hash = "sha256:8c5ccdfe9271b1a37946a3564dc3714d521cd3f2f8695e528808e0c700538243", size = 34818, upload-time = "2025-04-27T12:19:22.706Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/23/f8/50be82c084173adb95f2a925f6336aa53b97ea7ce6fe1dc943ddc20b1193/djangorestframework_stubs-3.16.0-py3-none-any.whl", hash = "sha256:2085a6e023de65843d4d53fe5abc73fbbc3ef380a59919ad9801182f6bb435de", size = 54703, upload-time = "2025-04-27T12:19:18.098Z" },
+]
+
+[package.optional-dependencies]
+compatible-mypy = [
+    { name = "django-stubs", extra = ["compatible-mypy"] },
+    { name = "mypy" },
 ]
 
 [[package]]
@@ -2508,8 +2519,8 @@ codecov-api = [
 ]
 dev = [
     { name = "coverage" },
-    { name = "django-stubs" },
-    { name = "djangorestframework-stubs" },
+    { name = "django-stubs", extra = ["compatible-mypy"] },
+    { name = "djangorestframework-stubs", extra = ["compatible-mypy"] },
     { name = "factory-boy" },
     { name = "fakeredis" },
     { name = "freezegun" },
@@ -2760,8 +2771,8 @@ codecov-api = [
 ]
 dev = [
     { name = "coverage", specifier = ">=7.8.0" },
-    { name = "django-stubs", specifier = ">=5.2.1" },
-    { name = "djangorestframework-stubs", specifier = ">=3.16.0" },
+    { name = "django-stubs", extras = ["compatible-mypy"], specifier = ">=5.2.1" },
+    { name = "djangorestframework-stubs", extras = ["compatible-mypy"], specifier = ">=3.16.0" },
     { name = "factory-boy", specifier = ">=3.3.3" },
     { name = "fakeredis", specifier = ">=2.29.0" },
     { name = "freezegun", specifier = ">=1.5.1" },
