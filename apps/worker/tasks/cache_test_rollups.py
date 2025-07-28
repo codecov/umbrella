@@ -2,6 +2,7 @@ import datetime as dt
 from typing import Literal
 
 import polars as pl
+import sentry_sdk
 from django.db import connections
 from redis.exceptions import LockError
 
@@ -125,10 +126,15 @@ class CacheTestRollupsTask(BaseCodecovTask, name=cache_test_rollups_task_name):
                 f"rollups:{repo_id}:{branch}", timeout=300, blocking_timeout=2
             ):
                 if impl_type == "new" or impl_type == "both":
-                    cache_rollups(repo_id, branch)
-                    cache_rollups(repo_id, None)
-                    if impl_type == "new":
-                        return {"success": True}
+                    try:
+                        cache_rollups(repo_id, branch)
+                        cache_rollups(repo_id, None)
+                        if impl_type == "new":
+                            return {"success": True}
+                    except Exception as e:
+                        sentry_sdk.capture_exception(e)
+                        if impl_type == "new":
+                            return {"success": False}
 
                 self.run_impl_within_lock(repo_id, branch)
 
