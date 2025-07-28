@@ -121,8 +121,8 @@ dev = [
     "types-mock>=5.2.0.20250516",
     "types-requests<2.31.0.7", # this is pinned to an older version because of `urllib3` dependency
     "vcrpy>=7.0.0",
-    "django-stubs>=5.2.1",
-    "djangorestframework-stubs>=3.16.0",
+    "django-stubs[compatible-mypy]>=5.2.1",
+    "djangorestframework-stubs[compatible-mypy]>=3.16.0",
     "pytest-freezer>=0.4.9",
 ]
 
