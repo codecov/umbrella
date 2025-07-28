@@ -44,12 +44,12 @@ class UploadTestResultsPermission(BasePermission):
 class UploadSerializer(serializers.Serializer):
     commit = serializers.CharField(required=True)
     slug = serializers.CharField(required=True)
-    service = serializers.CharField(required=False)  # git_service
-    build = serializers.CharField(required=False)
-    buildUrl = serializers.CharField(required=False)
-    code = serializers.CharField(required=False)
-    flags = FlagListField(required=False)
-    pr = serializers.CharField(required=False)
+    service = serializers.CharField(required=False, allow_null=True)  # git_service
+    build = serializers.CharField(required=False, allow_null=True)
+    buildUrl = serializers.CharField(required=False, allow_null=True)
+    code = serializers.CharField(required=False, allow_null=True)
+    flags = FlagListField(required=False, allow_null=True)
+    pr = serializers.CharField(required=False, allow_null=True)
     branch = serializers.CharField(required=False, allow_null=True)
     storage_path = serializers.CharField(required=False)
     file_not_found = serializers.BooleanField(required=False)
