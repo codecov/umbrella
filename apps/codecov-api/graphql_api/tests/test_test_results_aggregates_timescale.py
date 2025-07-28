@@ -14,7 +14,9 @@ from .helper import GraphQLTestHelper
 @pytest.fixture(autouse=True)
 def repository():
     owner = OwnerFactory(username="codecov-user")
-    repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
+    repo = RepositoryFactory(
+        author=owner, name="testRepoName", active=True, branch="main"
+    )
     return repo
 
 
@@ -65,7 +67,7 @@ def populate_timescale_test_results_aggregates(repository):
             duration_seconds=15.0 + (i) if i != 4 else 0.0,
             commit_sha=f"commit {i}",
             flags=[f"flag{i}"],
-            branch="main",
+            branch="feature-branch",
         )
         for i in range(2, 5)
     ]
@@ -84,11 +86,23 @@ def populate_timescale_test_results_aggregates(repository):
             [min_timestamp, max_timestamp],
         )
         cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_summary_1day', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
+        cursor.execute(
             "CALL refresh_continuous_aggregate('ta_timeseries_branch_aggregate_hourly', %s, %s)",
             [min_timestamp, max_timestamp],
         )
         cursor.execute(
             "CALL refresh_continuous_aggregate('ta_timeseries_branch_aggregate_daily', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_aggregate_hourly', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_aggregate_daily', %s, %s)",
             [min_timestamp, max_timestamp],
         )
 
@@ -113,10 +127,10 @@ class TestTestResultsAggregatesTimescale(GraphQLTestHelper):
         assert result.skips == 0
         assert result.slowest_tests_duration == 10.0
         assert result.total_slow_tests == 1
-        assert result.slowest_tests_duration_percent_change == (10.0 - 18.0) / 18.0
-        assert result.total_duration_percent_change == (20.0 - 35.0) / 35.0
+        assert result.slowest_tests_duration_percent_change == 0.0
+        assert result.total_duration_percent_change == 0.0
         assert result.fails_percent_change == 0.0
-        assert result.skips_percent_change == -1.0
+        assert result.skips_percent_change == 0.0
         assert result.total_slow_tests_percent_change == 0.0
 
     def test_gql_query_test_results_aggregates_timescale(
@@ -129,6 +143,38 @@ class TestTestResultsAggregatesTimescale(GraphQLTestHelper):
                         ... on Repository {{
                             testAnalytics {{
                                 testResultsAggregates {{
+                                    totalDuration
+                                    slowestTestsDuration
+                                    totalFails
+                                    totalSkips
+                                    totalSlowTests
+                                    totalDurationPercentChange
+                                    slowestTestsDurationPercentChange
+                                    totalFailsPercentChange
+                                    totalSkipsPercentChange
+                                    totalSlowTestsPercentChange
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
+
+    def test_gql_query_test_results_aggregates_timescale_branch(
+        self, repository, populate_timescale_test_results_aggregates, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                testResultsAggregates(branch: "main") {{
                                     totalDuration
                                     slowestTestsDuration
                                     totalFails
