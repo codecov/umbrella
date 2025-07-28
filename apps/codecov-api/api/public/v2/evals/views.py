@@ -12,7 +12,6 @@ from rest_framework.decorators import action
 from api.public.v2.schema import repo_parameters
 from api.shared.mixins import RepoPropertyMixin
 from api.shared.permissions import RepositoryArtifactPermissions
-from rollouts import READ_NEW_EVALS
 from shared.django_apps.db_settings import TA_TIMESERIES_ENABLED
 from shared.django_apps.ta_timeseries.models import Testrun
 
@@ -38,17 +37,13 @@ class EvalsFilters(django_filters.FilterSet):
 class EvalsPermissions(RepositoryArtifactPermissions):
     """
     Permissions class for evals endpoints. Extends RepositoryArtifactPermissions
-    to add a check for the READ_NEW_EVALS feature flag.
+    to add a check for the TA_TIMESERIES_ENABLED setting.
     """
 
     def has_permission(self, request, view):
         # First check if the user has basic repository access
         has_basic_permission = super().has_permission(request, view)
         if not has_basic_permission:
-            return False
-
-        # Then check if the repository has the feature flag enabled
-        if not READ_NEW_EVALS.check_value(identifier=str(view.repo.repoid)):
             return False
 
         # Finally, check if the environment has TA_TIMESERIES_ENABLED
