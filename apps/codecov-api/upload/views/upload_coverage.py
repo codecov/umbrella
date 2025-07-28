@@ -1,4 +1,6 @@
 import logging
+from collections.abc import Callable
+from typing import Any
 
 from django.conf import settings
 from rest_framework import status
@@ -15,8 +17,14 @@ from codecov_auth.authentication.repo_auth import (
     UploadTokenRequiredAuthenticationCheck,
     repo_auth_custom_exception_handler,
 )
+from services.task.task import TaskService
 from shared.api_archive.archive import ArchiveService
-from shared.django_apps.upload_breadcrumbs.models import Endpoints
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from shared.metrics import inc_counter
 from upload.helpers import generate_upload_prometheus_metrics_labels
 from upload.metrics import API_UPLOAD_COUNTER
@@ -50,7 +58,9 @@ class UploadCoverageView(GetterMixin, APIView):
     ]
     throttle_classes = [UploadsPerCommitThrottle, UploadsPerWindowThrottle]
 
-    def get_exception_handler(self):
+    def get_exception_handler(
+        self,
+    ) -> Callable[[Exception, dict[str, Any]], Response | None]:
         return repo_auth_custom_exception_handler
 
     def emit_metrics(self, position: str) -> None:
@@ -65,7 +75,7 @@ class UploadCoverageView(GetterMixin, APIView):
             ),
         )
 
-    def post(self, request: Request, *args, **kwargs) -> Response:
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         self.emit_metrics(position="start")
         endpoint = Endpoints.UPLOAD_COVERAGE
 
@@ -95,17 +105,34 @@ class UploadCoverageView(GetterMixin, APIView):
         )
 
         # Create report
+        TaskService().upload_breadcrumb(
+            commit_sha=commit.commitid,
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.PREPARING_FOR_REPORT,
+                endpoint=endpoint,
+            ),
+        )
         commit_report_data = {
             "code": request.data.get("code"),
         }
         commit_report_serializer = CommitReportSerializer(data=commit_report_data)
         if not commit_report_serializer.is_valid():
+            TaskService().upload_breadcrumb(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.PREPARING_FOR_REPORT,
+                    endpoint=endpoint,
+                    error=Errors.BAD_REQUEST,
+                ),
+            )
             return Response(
                 commit_report_serializer.errors, status=status.HTTP_400_BAD_REQUEST
             )
 
         self.emit_metrics(position="create_report")
-        report = create_report(commit_report_serializer, repository, commit)
+        report = create_report(commit_report_serializer, repository, commit, endpoint)
 
         # Do upload
         upload_data = {

@@ -96,8 +96,9 @@ def test_deactivated_repo(db, mocker):
     )
 
 
-def test_upload_coverage_with_errors(db):
+def test_upload_coverage_with_errors(db, mocker):
     mock_all_plans_and_tiers()
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory()
     repo_slug = f"{repository.author.username}::::{repository.name}"
     url = reverse(
@@ -112,13 +113,72 @@ def test_upload_coverage_with_errors(db):
     response = client.post(url, {}, format="json")
     assert response.status_code == 400
     assert "commitid" in response.json()
+    mock_upload_breadcrumb.assert_not_called()
+
+    # Invalid code option
+    response = client.post(
+        url,
+        {"commitid": "abc123", "code": "blah"},
+        format="json",
+    )
+    assert response.status_code == 400
+    assert "code" in response.json()
+    report_calls = [
+        call(
+            commit_sha="abc123",
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                endpoint=Endpoints.UPLOAD_COVERAGE,
+            ),
+        ),
+        call(
+            commit_sha="abc123",
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.PREPARING_FOR_REPORT,
+                endpoint=Endpoints.UPLOAD_COVERAGE,
+            ),
+        ),
+        call(
+            commit_sha="abc123",
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.PREPARING_FOR_REPORT,
+                endpoint=Endpoints.UPLOAD_COVERAGE,
+                error=Errors.BAD_REQUEST,
+            ),
+        ),
+    ]
+    mock_upload_breadcrumb.assert_has_calls(report_calls)
 
     # Invalid flag format
     response = client.post(
-        url, {"commitid": "abc123", "flags": "not-a-list"}, format="json"
+        url, {"commitid": "abc1234", "flags": "not-a-list"}, format="json"
     )
     assert response.status_code == 400
     assert "flags" in response.json()
+    mock_upload_breadcrumb.assert_has_calls(
+        report_calls
+        + [
+            call(
+                commit_sha="abc1234",
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                    endpoint=Endpoints.UPLOAD_COVERAGE,
+                ),
+            ),
+            call(
+                commit_sha="abc1234",
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.PREPARING_FOR_REPORT,
+                    endpoint=Endpoints.UPLOAD_COVERAGE,
+                ),
+            ),
+        ]
+    )
 
 
 def test_upload_coverage_post(db, mocker):
@@ -136,6 +196,7 @@ def test_upload_coverage_post(db, mocker):
     amplitude_mock = mocker.patch(
         "shared.events.amplitude.AmplitudeEventPublisher.publish"
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
 
     repository = RepositoryFactory(
         name="the_repo1", author__username="codecov", author__service="github"
@@ -229,6 +290,33 @@ def test_upload_coverage_post(db, mocker):
     )
     presigned_put_mock.assert_called_with("archive", upload.storage_path, 10)
     upload_task_mock.assert_called()
+    mock_upload_breadcrumb.assert_has_calls(
+        [
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                    endpoint=Endpoints.UPLOAD_COVERAGE,
+                ),
+            ),
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED,
+                ),
+            ),
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.PREPARING_FOR_REPORT,
+                    endpoint=Endpoints.UPLOAD_COVERAGE,
+                ),
+            ),
+        ]
+    )
 
 
 @override_settings(SHELTER_SHARED_SECRET="shelter-shared-secret")
@@ -244,6 +332,7 @@ def test_upload_coverage_post_shelter(db, mocker):
     upload_task_mock = mocker.patch(
         "upload.views.uploads.trigger_upload_task", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
 
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
@@ -323,3 +412,30 @@ def test_upload_coverage_post_shelter(db, mocker):
     assert upload.storage_path == "shelter/test/path.txt"
     presigned_put_mock.assert_called_with("archive", upload.storage_path, 10)
     upload_task_mock.assert_called()
+    mock_upload_breadcrumb.assert_has_calls(
+        [
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.FETCHING_COMMIT_DETAILS,
+                    endpoint=Endpoints.UPLOAD_COVERAGE,
+                ),
+            ),
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED,
+                ),
+            ),
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.PREPARING_FOR_REPORT,
+                    endpoint=Endpoints.UPLOAD_COVERAGE,
+                ),
+            ),
+        ]
+    )
