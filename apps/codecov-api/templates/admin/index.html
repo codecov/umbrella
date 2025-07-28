@@ -1,0 +1,29 @@
+{% extends "admin/index.html" %}
+{% load admin_urls %}
+
+{% block content_title %}
+    <h1>{% firstof site_header|default:"Django administration" %}</h1>
+{% endblock %}
+
+{% block content %}
+    {% if user.is_staff %}
+        <div class="module">
+            <h2>Task Management</h2>
+            <table>
+                <caption class="visually-hidden">Task management utilities</caption>
+                <tbody>
+                    <tr>
+                        <th scope="row">
+                            <a href="{% url 'admin:core_submit_task_service' %}">
+                                Execute TaskService Method
+                            </a>
+                        </th>
+                        <td>Execute TaskService methods directly for background processing</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+
+    {{ block.super }}
+{% endblock %}
