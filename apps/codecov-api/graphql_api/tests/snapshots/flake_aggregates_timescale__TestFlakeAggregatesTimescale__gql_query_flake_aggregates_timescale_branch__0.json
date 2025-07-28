@@ -1,0 +1,14 @@
+{
+  "owner": {
+    "repository": {
+      "testAnalytics": {
+        "flakeAggregates": {
+          "flakeRate": 0.5,
+          "flakeCount": 1,
+          "flakeRatePercentChange": 0.0,
+          "flakeCountPercentChange": 0.0
+        }
+      }
+    }
+  }
+}

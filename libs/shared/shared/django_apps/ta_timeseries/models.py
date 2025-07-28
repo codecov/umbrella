@@ -290,3 +290,79 @@ class BranchAggregateDaily(
         app_label = TA_TIMESERIES_APP_LABEL
         db_table = "ta_timeseries_branch_aggregate_daily"
         managed = False
+
+
+class TestAggregateDaily(
+    ExportModelOperationsMixin("ta_timeseries.test_aggregate_daily"),
+    models.Model,
+):
+    __test__ = False
+    timestamp_bin = models.DateTimeField(primary_key=True)
+    repo_id = models.IntegerField()
+    name = models.TextField()
+    classname = models.TextField()
+    testsuite = models.TextField()
+    computed_name = models.TextField()
+    failing_commits = ArrayField(models.TextField(), default=list)
+    avg_duration_seconds = models.FloatField()
+    last_duration_seconds = models.FloatField()
+    pass_count = models.IntegerField()
+    fail_count = models.IntegerField()
+    skip_count = models.IntegerField()
+    flaky_fail_count = models.IntegerField()
+    updated_at = models.DateTimeField()
+    flags = ArrayField(models.TextField(), null=True)
+
+    __repr__ = sane_repr(
+        "timestamp_bin",
+        "computed_name",
+        "pass_count",
+        "fail_count",
+        "skip_count",
+        "flaky_fail_count",
+        "flags",
+    )  # type: ignore
+
+    class Meta:
+        app_label = TA_TIMESERIES_APP_LABEL
+        db_table = "ta_timeseries_test_aggregate_daily"
+        managed = False
+
+
+class BranchTestAggregateDaily(
+    ExportModelOperationsMixin("ta_timeseries.branch_test_aggregate_daily"),
+    models.Model,
+):
+    __test__ = False
+    timestamp_bin = models.DateTimeField(primary_key=True)
+    repo_id = models.IntegerField()
+    branch = models.TextField()
+    name = models.TextField()
+    classname = models.TextField()
+    testsuite = models.TextField()
+    computed_name = models.TextField()
+    failing_commits = ArrayField(models.TextField(), default=list)
+    avg_duration_seconds = models.FloatField()
+    last_duration_seconds = models.FloatField()
+    pass_count = models.IntegerField()
+    fail_count = models.IntegerField()
+    skip_count = models.IntegerField()
+    flaky_fail_count = models.IntegerField()
+    updated_at = models.DateTimeField()
+    flags = ArrayField(models.TextField(), null=True)
+
+    __repr__ = sane_repr(
+        "timestamp_bin",
+        "branch",
+        "computed_name",
+        "pass_count",
+        "fail_count",
+        "skip_count",
+        "flaky_fail_count",
+        "flags",
+    )  # type: ignore
+
+    class Meta:
+        app_label = TA_TIMESERIES_APP_LABEL
+        db_table = "ta_timeseries_branch_test_aggregate_daily"
+        managed = False

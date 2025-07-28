@@ -14,7 +14,12 @@ from .helper import GraphQLTestHelper
 @pytest.fixture(autouse=True)
 def repository():
     owner = OwnerFactory(username="codecov-user")
-    repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
+    repo = RepositoryFactory(
+        author=owner,
+        name="testRepoName",
+        active=True,
+        branch="main",
+    )
     return repo
 
 
@@ -28,11 +33,9 @@ def new_ta_enabled(mocker):
 
 @pytest.fixture
 def populate_timescale_flake_aggregates(repository):
-    # Create testruns with different flaky behavior patterns
     today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     thirty_days_ago = today - timedelta(days=30)
 
-    # Recent testruns (today's data) - some flaky tests
     recent_testruns = [
         Testrun(
             repo_id=repository.repoid,
@@ -51,7 +54,6 @@ def populate_timescale_flake_aggregates(repository):
         for i in range(2)
     ]
 
-    # Old testruns (30 days ago data) - different flaky pattern for comparison
     old_testruns = [
         Testrun(
             test_id=calc_test_id(f"flaky_test_{i}", "", f"testsuite{i}"),
@@ -65,7 +67,7 @@ def populate_timescale_flake_aggregates(repository):
             duration_seconds=15.0 + (i),
             commit_sha=f"commit {i}",
             flags=[f"flag{i}"],
-            branch="main",
+            branch="feature-branch",
         )
         for i in range(2, 5)
     ]
@@ -74,13 +76,16 @@ def populate_timescale_flake_aggregates(repository):
 
     Testrun.objects.bulk_create(testruns)
 
-    # Refresh the continuous aggregate to ensure the repo summary is updated
     min_timestamp = datetime.now(UTC) - timedelta(days=60)
     max_timestamp = datetime.now(UTC)
 
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_branch_summary_1day', %s, %s)",
+            "CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_daily', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_daily', %s, %s)",
             [min_timestamp, max_timestamp],
         )
         cursor.execute(
@@ -89,6 +94,14 @@ def populate_timescale_flake_aggregates(repository):
         )
         cursor.execute(
             "CALL refresh_continuous_aggregate('ta_timeseries_branch_aggregate_daily', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_aggregate_hourly', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_aggregate_daily', %s, %s)",
             [min_timestamp, max_timestamp],
         )
 
@@ -109,8 +122,8 @@ class TestFlakeAggregatesTimescale(GraphQLTestHelper):
         assert result is not None
         assert result.flake_rate == 0.5
         assert result.flake_count == 1
-        assert result.flake_rate_percent_change == -0.5
-        assert result.flake_count_percent_change == -0.6666666666666666
+        assert result.flake_rate_percent_change == 0.0
+        assert result.flake_count_percent_change == 0.0
 
     def test_gql_query_flake_aggregates_timescale(
         self, repository, populate_timescale_flake_aggregates, snapshot
@@ -137,3 +150,57 @@ class TestFlakeAggregatesTimescale(GraphQLTestHelper):
         result = self.gql_request(query, owner=repository.author)
 
         assert snapshot("json") == result
+
+    def test_gql_query_flake_aggregates_timescale_branch(
+        self, repository, populate_timescale_flake_aggregates, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                flakeAggregates(branch: "main") {{
+                                    flakeRate
+                                    flakeCount
+                                    flakeRatePercentChange
+                                    flakeCountPercentChange
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
+
+    def test_flake_aggregates_timescale_non_precomputed_branch(
+        self, repository, populate_timescale_flake_aggregates, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                flakeAggregates(branch: "feature-branch") {{
+                                    flakeRate
+                                    flakeCount
+                                    flakeRatePercentChange
+                                    flakeCountPercentChange
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert result == {
+            "owner": {"repository": {"testAnalytics": {"flakeAggregates": None}}}
+        }
