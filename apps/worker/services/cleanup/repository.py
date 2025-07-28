@@ -88,7 +88,7 @@ def start_repo_cleanup(repo_id: int) -> tuple[bool, int]:
 
         # We mark the repository as "scheduled for deletion" by setting the `deleted`
         # flag, moving it to a new shadow owner, and clearing some tokens.
-        shadow_owner = Owner.objects.get_or_create(
+        shadow_owner, _ = Owner.objects.get_or_create(
             # `Owner` is unique across service/id, and both are non-NULL,
             # so we cannot duplicate the values just like that, so lets change up the `service_id`
             # a bit. We need the `Repository.service_id` for further `ArchiveService` deletions.
