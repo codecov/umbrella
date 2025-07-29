@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Literal, cast
 
+import sentry_sdk
 from redis import Redis
 from redis.exceptions import LockError
 from sqlalchemy.orm import Session
@@ -69,9 +70,14 @@ class ProcessFlakesTask(BaseCodecovTask, name=process_flakes_task_name):
         log.info("Received process flakes task")
 
         if impl_type == "new" or impl_type == "both":
-            process_flakes_for_repo(repo_id)
-            if impl_type == "new":
-                return {"successful": True}
+            try:
+                process_flakes_for_repo(repo_id)
+                if impl_type == "new":
+                    return {"successful": True}
+            except Exception as e:
+                sentry_sdk.capture_exception(e)
+                if impl_type == "new":
+                    return {"successful": False}
 
         redis_client = get_redis_connection()
         lock_name = LOCK_NAME.format(repo_id)
