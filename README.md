@@ -60,7 +60,7 @@ This requires that you've run `gcloud auth login` and `gcloud auth configure-doc
 
 From the repository root:
 
-```
+```sh
 # Build `umbrella` containers, pull other containers, start docker compose
 $ make devenv
 
@@ -90,7 +90,7 @@ You can view logs with `docker compose logs api` / `docker compose logs worker` 
 
 ## Running tests locally
 
-```
+```sh
 # Runs worker tests and emits coverage and test result data in `apps/worker`
 $ make devenv.test.worker
 
@@ -99,6 +99,9 @@ $ make devenv.test.api
 
 # Runs shared tests and emits coverage and test result data in `libs/shared/tests`
 $ make devenv.test.shared
+
+# Runs all of the above tests
+$ make devenv.test
 ```
 
 Including the extra parameter "EXTRA_PYTEST_ARGS" allows you to add additional options to the pytest run. For example, if you wanted to run tests in the shared foo directory you could
@@ -119,8 +122,7 @@ github.com:codecov/umbrella=5889cc1e-35b3-41b8-9e02-d441ec80d463
 
 From then on, you can invoke `./tools/devenv/scripts/codecovcli-helper.sh` more-or-less how you'd invoke `codecovcli`:
 
-```
-
+```sh
 # Upload worker coverage report with workerunit flag
 $ ./tools/devenv/scripts/codecovcli-helper.sh upload-process --report-type coverage -f apps/worker/coverage.xml -F workerunit
 
@@ -130,10 +132,12 @@ $ ./tools/devenv/scripts/codecovcli-helper.sh upload-process --report-type test_
 
 For convenience, some `make` targets have been created that will upload the coverage and junit files produced by the `make` targest for tests:
 
-```
+```sh
 $ make devenv.upload.worker
 $ make devenv.upload.api
 $ make devenv.upload.shared
+# Runs all of the above
+$ make devenv.upload
 ```
 
 ## Local Gazebo development

@@ -6,6 +6,9 @@ EXTRA_PYTEST_ARGS ?=
 .PHONY: devenv.test
 devenv.test: devenv.test.worker devenv.test.api devenv.test.shared
 
+.PHONY: devenv.upload
+devenv.upload: devenv.upload.worker devenv.upload.api devenv.upload.shared
+
 .PHONY: devenv.test.worker
 devenv.test.worker:
 	docker exec -e COVERAGE_CORE=sysmon -e RUN_ENV=TESTING -e CODECOV_YML=${TEST_YML} -e DJANGO_SETTINGS_MODULE=django_scaffold.settings_test -it umbrella-worker-1 pytest --cov=./ --cov-report=xml:coverage.xml --junitxml=junit.xml -o junit_family=legacy --rootdir=/app -c pytest.ini $(EXTRA_PYTEST_ARGS)
