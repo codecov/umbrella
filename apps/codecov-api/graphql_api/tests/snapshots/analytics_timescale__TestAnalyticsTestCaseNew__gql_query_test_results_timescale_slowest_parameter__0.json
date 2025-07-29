@@ -1,0 +1,29 @@
+{
+  "owner": {
+    "repository": {
+      "testAnalytics": {
+        "testResults": {
+          "totalCount": 1,
+          "edges": [
+            {
+              "cursor": "NC4wfG5hbWU0",
+              "node": {
+                "name": "name4",
+                "failureRate": 0.0,
+                "flakeRate": 0.0,
+                "avgDuration": 4.0,
+                "totalDuration": 8.0,
+                "totalFailCount": 0,
+                "totalFlakyFailCount": 0,
+                "totalPassCount": 2,
+                "totalSkipCount": 0,
+                "commitsFailed": 0,
+                "lastDuration": 4.0
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
