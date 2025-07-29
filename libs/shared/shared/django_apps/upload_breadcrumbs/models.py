@@ -1,3 +1,5 @@
+from typing import Any
+
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
 from django.core.exceptions import ValidationError
@@ -135,13 +137,13 @@ class BreadcrumbData(
 
     @field_validator("*", mode="after")
     @classmethod
-    def validate_initialized(cls, value):
+    def validate_initialized(cls, value: Any) -> Any:
         if value == "":
             raise ValueError("field must not be empty.")
         return value
 
     @model_validator(mode="after")
-    def require_at_least_one_field(self):
+    def require_at_least_one_field(self) -> "BreadcrumbData":
         if not any(
             [
                 self.milestone,
@@ -154,23 +156,23 @@ class BreadcrumbData(
         return self
 
     @model_validator(mode="after")
-    def check_error_dependency(self):
+    def check_error_dependency(self) -> "BreadcrumbData":
         if self.error_text and not self.error:
             raise ValueError("'error_text' is provided, but 'error' is missing.")
         return self
 
     @model_validator(mode="after")
-    def check_unknown_error(self):
+    def check_unknown_error(self) -> "BreadcrumbData":
         if self.error == Errors.UNKNOWN and not self.error_text:
             raise ValueError("'error_text' must be provided when 'error' is UNKNOWN.")
         return self
 
-    def model_dump(self, *args, **kwargs):
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, str]:
         kwargs["exclude_none"] = True
         return super().model_dump(*args, **kwargs)
 
     @classmethod
-    def django_validate(cls, *args, **kwargs) -> None:
+    def django_validate(cls, *args: Any, **kwargs: Any) -> None:
         """
         Performs validation in a way that conforms to the expectations of
         Django's model validation system.

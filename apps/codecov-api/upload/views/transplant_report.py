@@ -2,9 +2,9 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from django.http import HttpRequest
 from rest_framework import serializers, status
 from rest_framework.generics import CreateAPIView
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from codecov_auth.authentication.repo_auth import (
@@ -40,10 +40,12 @@ class TransplantReportView(GetterMixin, CreateAPIView):
         RepositoryLegacyTokenAuthentication,
     ]
 
-    def get_exception_handler(self) -> Callable[[Exception, dict[str, Any]], Response]:
+    def get_exception_handler(
+        self,
+    ) -> Callable[[Exception, dict[str, Any]], Response | None]:
         return repo_auth_custom_exception_handler
 
-    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Response:
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         inc_counter(
             API_UPLOAD_COUNTER,
             labels=generate_upload_prometheus_metrics_labels(

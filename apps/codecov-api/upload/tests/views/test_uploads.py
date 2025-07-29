@@ -9,6 +9,7 @@ from rest_framework.test import APIClient, APITestCase
 
 from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov_auth.authentication.repo_auth import OrgLevelTokenRepositoryAuth
+from codecov_auth.authentication.types import RepositoryAuthInterface
 from codecov_auth.services.org_level_token_service import OrgLevelTokenService
 from reports.models import (
     CommitReport,
@@ -35,10 +36,10 @@ from upload.views.uploads import (
 
 
 def test_upload_permission_class_pass(db, mocker):
-    request_mocked = MagicMock(auth=MagicMock())
+    request_mocked = MagicMock(auth=MagicMock(spec=RepositoryAuthInterface))
     request_mocked.auth.get_scopes.return_value = ["upload"]
     permission = CanDoCoverageUploadsPermission()
-    assert permission.has_permission(request_mocked, MagicMock())
+    assert permission.has_permission(request_mocked, MagicMock(spec=UploadViews))
     request_mocked.auth.get_scopes.assert_called_once()
 
 
@@ -52,7 +53,7 @@ def test_upload_permission_orglevel_token(db, mocker):
     token = OrgLevelTokenService.get_or_create_org_token(owner)
 
     request_mocked = MagicMock(auth=OrgLevelTokenRepositoryAuth(token))
-    mocked_view = MagicMock()
+    mocked_view = MagicMock(spec=UploadViews)
     mocked_view.get_repo = MagicMock(return_value=repo)
     permission = CanDoCoverageUploadsPermission()
     assert permission.has_permission(request_mocked, mocked_view)
@@ -60,10 +61,10 @@ def test_upload_permission_orglevel_token(db, mocker):
 
 
 def test_upload_permission_class_fail(db, mocker):
-    request_mocked = MagicMock(auth=MagicMock())
+    request_mocked = MagicMock(auth=MagicMock(spec=RepositoryAuthInterface))
     request_mocked.auth.get_scopes.return_value = ["wrong_scope"]
     permission = CanDoCoverageUploadsPermission()
-    assert not permission.has_permission(request_mocked, MagicMock())
+    assert not permission.has_permission(request_mocked, MagicMock(spec=UploadViews))
     request_mocked.auth.get_scopes.assert_called_once()
 
 
@@ -77,7 +78,7 @@ def test_upload_permission_orglevel_fail(db, mocker):
     token = OrgLevelTokenService.get_or_create_org_token(owner)
 
     request_mocked = MagicMock(auth=OrgLevelTokenRepositoryAuth(token))
-    mocked_view = MagicMock()
+    mocked_view = MagicMock(spec=UploadViews)
     mocked_view.get_repo = MagicMock(return_value=repo)
     permission = CanDoCoverageUploadsPermission()
     assert not permission.has_permission(request_mocked, mocked_view)

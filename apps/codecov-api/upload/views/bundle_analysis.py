@@ -4,10 +4,10 @@ from collections.abc import Callable
 from typing import Any
 
 from django.conf import settings
-from django.http import HttpRequest
 from rest_framework import serializers, status
 from rest_framework.exceptions import NotAuthenticated, NotFound
 from rest_framework.permissions import BasePermission
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -19,7 +19,7 @@ from codecov_auth.authentication.repo_auth import (
     UploadTokenRequiredGetFromBodyAuthenticationCheck,
     repo_auth_custom_exception_handler,
 )
-from codecov_auth.authentication.types import RepositoryAsUser
+from codecov_auth.authentication.types import RepositoryAsUser, RepositoryAuthInterface
 from codecov_auth.models import Owner, Service
 from core.models import Commit
 from reports.models import CommitReport
@@ -55,8 +55,11 @@ BUNDLE_ANALYSIS_UPLOAD_VIEWS_COUNTER = Counter(
 
 
 class UploadBundleAnalysisPermission(BasePermission):
-    def has_permission(self, request: HttpRequest, view: Any) -> bool:
-        return request.auth is not None and "upload" in request.auth.get_scopes()
+    def has_permission(self, request: Request, view: Any) -> bool:
+        return (
+            isinstance(request.auth, RepositoryAuthInterface)
+            and "upload" in request.auth.get_scopes()
+        )
 
 
 class UploadSerializer(serializers.Serializer):
@@ -84,10 +87,12 @@ class BundleAnalysisView(ShelterMixin, APIView):
         BundleAnalysisTokenlessAuthentication,
     ]
 
-    def get_exception_handler(self) -> Callable:
+    def get_exception_handler(
+        self,
+    ) -> Callable[[Exception, dict[str, Any]], Response | None]:
         return repo_auth_custom_exception_handler
 
-    def _handle_upload(self, request: HttpRequest) -> tuple[str, Response]:
+    def _handle_upload(self, request: Request) -> tuple[str, Response]:
         serializer = UploadSerializer(data=request.data)
         if not serializer.is_valid():
             return (
@@ -215,7 +220,7 @@ class BundleAnalysisView(ShelterMixin, APIView):
 
         return ("success", Response({"url": url}, status=201))
 
-    def post(self, request: HttpRequest) -> Response:
+    def post(self, request: Request) -> Response:
         labels = generate_upload_prometheus_metrics_labels(
             action="bundle_analysis",
             endpoint="bundle_analysis",

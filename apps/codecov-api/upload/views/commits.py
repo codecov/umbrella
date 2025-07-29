@@ -1,13 +1,13 @@
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from django.db.models import QuerySet
-from rest_framework import serializers
 from rest_framework.exceptions import NotAuthenticated
 from rest_framework.generics import ListCreateAPIView
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.serializers import BaseSerializer
 
 from codecov_auth.authentication.repo_auth import (
     GitHubOIDCTokenAuthentication,
@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 
 
 def create_commit(
-    serializer: serializers.ModelSerializer, repository: Repository, endpoint: Endpoints
+    serializer: CommitSerializer, repository: Repository, endpoint: Endpoints
 ) -> Commit:
     with upload_breadcrumb_context(
         initial_breadcrumb=True,
@@ -86,7 +86,7 @@ class CommitViews(GetterMixin, ListCreateAPIView):
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return super().create(request, *args, **kwargs)
 
-    def perform_create(self, serializer) -> None:
+    def perform_create(self, serializer: BaseSerializer) -> None:
         inc_counter(
             API_UPLOAD_COUNTER,
             labels=generate_upload_prometheus_metrics_labels(
@@ -98,7 +98,9 @@ class CommitViews(GetterMixin, ListCreateAPIView):
             ),
         )
         repository = self.get_repo()
-        commit = create_commit(serializer, repository, Endpoints.CREATE_COMMIT)
+        commit = create_commit(
+            cast(CommitSerializer, serializer), repository, Endpoints.CREATE_COMMIT
+        )
 
         log.info(
             "Request to create new commit",
