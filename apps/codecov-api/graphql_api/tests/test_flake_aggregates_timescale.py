@@ -33,11 +33,9 @@ def new_ta_enabled(mocker):
 
 @pytest.fixture
 def populate_timescale_flake_aggregates(repository):
-    # Create testruns with different flaky behavior patterns
     today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     thirty_days_ago = today - timedelta(days=30)
 
-    # Recent testruns (today's data) - some flaky tests
     recent_testruns = [
         Testrun(
             repo_id=repository.repoid,
@@ -56,7 +54,6 @@ def populate_timescale_flake_aggregates(repository):
         for i in range(2)
     ]
 
-    # Old testruns (30 days ago data) - different flaky pattern for comparison
     old_testruns = [
         Testrun(
             test_id=calc_test_id(f"flaky_test_{i}", "", f"testsuite{i}"),
@@ -79,7 +76,6 @@ def populate_timescale_flake_aggregates(repository):
 
     Testrun.objects.bulk_create(testruns)
 
-    # Refresh the continuous aggregate to ensure the repo summary is updated
     min_timestamp = datetime.now(UTC) - timedelta(days=60)
     max_timestamp = datetime.now(UTC)
 
@@ -180,3 +176,31 @@ class TestFlakeAggregatesTimescale(GraphQLTestHelper):
         result = self.gql_request(query, owner=repository.author)
 
         assert snapshot("json") == result
+
+    def test_flake_aggregates_timescale_non_precomputed_branch(
+        self, repository, populate_timescale_flake_aggregates, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                flakeAggregates(branch: "feature-branch") {{
+                                    flakeRate
+                                    flakeCount
+                                    flakeRatePercentChange
+                                    flakeCountPercentChange
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert result == {
+            "owner": {"repository": {"testAnalytics": {"flakeAggregates": None}}}
+        }

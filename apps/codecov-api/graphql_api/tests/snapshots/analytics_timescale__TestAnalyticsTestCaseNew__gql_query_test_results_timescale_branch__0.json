@@ -1,0 +1,93 @@
+{
+  "owner": {
+    "repository": {
+      "testAnalytics": {
+        "testResults": {
+          "totalCount": 5,
+          "edges": [
+            {
+              "cursor": "NC4wfG5hbWU0",
+              "node": {
+                "name": "name4",
+                "failureRate": 0.0,
+                "flakeRate": 0.0,
+                "avgDuration": 4.0,
+                "totalDuration": 4.0,
+                "totalFailCount": 0,
+                "totalFlakyFailCount": 0,
+                "totalPassCount": 1,
+                "totalSkipCount": 0,
+                "commitsFailed": 0,
+                "lastDuration": 4.0
+              }
+            },
+            {
+              "cursor": "My4wfG5hbWUz",
+              "node": {
+                "name": "name3",
+                "failureRate": 1.0,
+                "flakeRate": 0.0,
+                "avgDuration": 3.0,
+                "totalDuration": 3.0,
+                "totalFailCount": 1,
+                "totalFlakyFailCount": 0,
+                "totalPassCount": 0,
+                "totalSkipCount": 0,
+                "commitsFailed": 1,
+                "lastDuration": 3.0
+              }
+            },
+            {
+              "cursor": "Mi4wfG5hbWUy",
+              "node": {
+                "name": "name2",
+                "failureRate": 0.0,
+                "flakeRate": 0.0,
+                "avgDuration": 2.0,
+                "totalDuration": 2.0,
+                "totalFailCount": 0,
+                "totalFlakyFailCount": 0,
+                "totalPassCount": 1,
+                "totalSkipCount": 0,
+                "commitsFailed": 0,
+                "lastDuration": 2.0
+              }
+            },
+            {
+              "cursor": "MS4wfG5hbWUx",
+              "node": {
+                "name": "name1",
+                "failureRate": 1.0,
+                "flakeRate": 0.0,
+                "avgDuration": 1.0,
+                "totalDuration": 1.0,
+                "totalFailCount": 1,
+                "totalFlakyFailCount": 0,
+                "totalPassCount": 0,
+                "totalSkipCount": 0,
+                "commitsFailed": 1,
+                "lastDuration": 1.0
+              }
+            },
+            {
+              "cursor": "MC4wfG5hbWUw",
+              "node": {
+                "name": "name0",
+                "failureRate": 0.0,
+                "flakeRate": 0.0,
+                "avgDuration": 0.0,
+                "totalDuration": 0.0,
+                "totalFailCount": 0,
+                "totalFlakyFailCount": 0,
+                "totalPassCount": 1,
+                "totalSkipCount": 0,
+                "commitsFailed": 0,
+                "lastDuration": 0.0
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

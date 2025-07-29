@@ -30,11 +30,9 @@ def new_ta_enabled(mocker):
 
 @pytest.fixture
 def populate_timescale_test_results_aggregates(repository):
-    # Create testruns with different flaky behavior patterns
     now_utc = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     thirty_days_ago = now_utc - timedelta(days=30)
 
-    # Recent testruns (today's data) - some flaky tests
     recent_testruns = [
         Testrun(
             repo_id=repository.repoid,
@@ -53,7 +51,6 @@ def populate_timescale_test_results_aggregates(repository):
         for i in range(2)
     ]
 
-    # Old testruns (30 days ago data) - different flaky pattern for comparison
     old_testruns = [
         Testrun(
             test_id=calc_test_id(f"test_{i}", "", f"testsuite{i}"),
@@ -76,7 +73,6 @@ def populate_timescale_test_results_aggregates(repository):
 
     Testrun.objects.bulk_create(testruns)
 
-    # Refresh the continuous aggregate to ensure the repo summary is updated
     min_timestamp = datetime.now(UTC) - timedelta(days=60)
     max_timestamp = datetime.now(UTC)
 
@@ -196,3 +192,37 @@ class TestTestResultsAggregatesTimescale(GraphQLTestHelper):
         result = self.gql_request(query, owner=repository.author)
 
         assert snapshot("json") == result
+
+    def test_test_results_aggregates_timescale_non_precomputed_branch(
+        self, repository, populate_timescale_test_results_aggregates, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                testResultsAggregates(branch: "feature-branch") {{
+                                    totalDuration
+                                    slowestTestsDuration
+                                    totalFails
+                                    totalSkips
+                                    totalSlowTests
+                                    totalDurationPercentChange
+                                    slowestTestsDurationPercentChange
+                                    totalFailsPercentChange
+                                    totalSkipsPercentChange
+                                    totalSlowTestsPercentChange
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert result == {
+            "owner": {"repository": {"testAnalytics": {"testResultsAggregates": None}}}
+        }
