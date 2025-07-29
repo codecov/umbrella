@@ -3,12 +3,23 @@ from unittest.mock import patch
 from django.urls import reverse
 from rest_framework.test import APIClient
 
+from services.task.task import TaskService
 from shared.django_apps.codecov_auth.tests.factories import (
     OrganizationLevelTokenFactory,
 )
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Milestones,
+)
 from shared.yaml.user_yaml import UserYaml
 from upload.views.uploads import CanDoCoverageUploadsPermission
+
+EMPTY_UPLOAD_BREADCRUMB_DATA = BreadcrumbData(
+    milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+    endpoint=Endpoints.EMPTY_UPLOAD,
+)
 
 
 class MockedProviderAdapter:
@@ -27,6 +38,7 @@ def test_uploads_get_not_allowed(client, db, mocker):
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the-repo", author__username="codecov", author__service="github"
     )
@@ -40,6 +52,7 @@ def test_uploads_get_not_allowed(client, db, mocker):
     assert url == "/upload/github/codecov::::the-repo/commits/commit-sha/empty-upload"
     res = client.get(url)
     assert res.status_code == 405
+    mock_upload_breadcrumb.assert_not_called()
 
 
 @patch("services.task.TaskService.notify")
@@ -56,6 +69,7 @@ def test_empty_upload_with_yaml_ignored_files(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     mock_final_yaml.return_value = UserYaml(
         {
             "ignore": [
@@ -109,6 +123,11 @@ def test_empty_upload_with_yaml_ignored_files(
             "upload_version": None,
         },
     )
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=EMPTY_UPLOAD_BREADCRUMB_DATA,
+    )
 
 
 @patch("services.task.TaskService.notify")
@@ -120,6 +139,7 @@ def test_empty_upload_non_testable_files(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     mock_final_yaml.return_value = UserYaml(
         {
             "ignore": [
@@ -168,6 +188,11 @@ def test_empty_upload_non_testable_files(
     notify_mock.assert_called_once_with(
         repoid=repository.repoid, commitid=commit.commitid, empty_upload="pass"
     )
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=EMPTY_UPLOAD_BREADCRUMB_DATA,
+    )
 
 
 @patch("services.task.TaskService.notify")
@@ -179,6 +204,7 @@ def test_empty_upload_with_testable_file(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     mock_final_yaml.return_value = UserYaml(
         {"ignore": ["file.py", "another_file.py", "README.md"]}
     )
@@ -216,6 +242,11 @@ def test_empty_upload_with_testable_file(
     notify_mock.assert_called_once_with(
         repoid=repository.repoid, commitid=commit.commitid, empty_upload="fail"
     )
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=EMPTY_UPLOAD_BREADCRUMB_DATA,
+    )
 
 
 @patch("services.task.TaskService.notify")
@@ -227,6 +258,7 @@ def test_empty_upload_with_testable_file_with_force(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     mock_final_yaml.return_value = UserYaml(
         {"ignore": ["file.py", "another_file.py", "README.md"]}
     )
@@ -262,6 +294,11 @@ def test_empty_upload_with_testable_file_with_force(
     notify_mock.assert_called_once_with(
         repoid=repository.repoid, commitid=commit.commitid, empty_upload="pass"
     )
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=EMPTY_UPLOAD_BREADCRUMB_DATA,
+    )
 
 
 @patch("services.task.TaskService.notify")
@@ -273,6 +310,7 @@ def test_empty_upload_with_testable_file_invalid_serializer(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     mock_final_yaml.return_value = UserYaml(
         {"ignore": ["file.py", "another_file.py", "README.md"]}
     )
@@ -299,6 +337,7 @@ def test_empty_upload_with_testable_file_invalid_serializer(
     )
     response = client.post(url, data={"should_force": "hello world"})
     assert response.status_code == 400
+    mock_upload_breadcrumb.assert_not_called()
 
 
 @patch("services.task.TaskService.notify")
@@ -310,6 +349,7 @@ def test_empty_upload_no_changed_files_in_pr(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     mock_final_yaml.return_value = UserYaml(
         {
             "ignore": [
@@ -350,6 +390,11 @@ def test_empty_upload_no_changed_files_in_pr(
     notify_mock.assert_called_once_with(
         repoid=repository.repoid, commitid=commit.commitid, empty_upload="pass"
     )
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=EMPTY_UPLOAD_BREADCRUMB_DATA,
+    )
 
 
 @patch("services.task.TaskService.notify")
@@ -366,6 +411,7 @@ def test_empty_upload_no_changed_files_in_pr_github_oidc_auth(
     db,
     mocker,
 ):
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
     )
@@ -409,6 +455,11 @@ def test_empty_upload_no_changed_files_in_pr_github_oidc_auth(
     notify_mock.assert_called_once_with(
         repoid=repository.repoid, commitid=commit.commitid, empty_upload="pass"
     )
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=EMPTY_UPLOAD_BREADCRUMB_DATA,
+    )
 
 
 @patch("services.task.TaskService.notify")
@@ -420,6 +471,7 @@ def test_empty_upload_no_commit_pr_id(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     mock_final_yaml.return_value = UserYaml(
         {
             "ignore": [
@@ -460,9 +512,15 @@ def test_empty_upload_no_commit_pr_id(
     notify_mock.assert_called_once_with(
         repoid=repository.repoid, commitid=commit.commitid, empty_upload="pass"
     )
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=EMPTY_UPLOAD_BREADCRUMB_DATA,
+    )
 
 
 def test_empty_upload_no_auth(db, mocker):
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
     )
@@ -488,6 +546,7 @@ def test_empty_upload_no_auth(db, mocker):
         == "Failed token authentication, please double-check that your repository token matches in the Codecov UI, "
         "or review the docs https://docs.codecov.com/docs/adding-the-codecov-token"
     )
+    mock_upload_breadcrumb.assert_not_called()
 
 
 @patch("services.yaml.fetch_commit_yaml")
@@ -499,6 +558,7 @@ def test_empty_upload_commit_yaml_org_token(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     mock_repo_provider_service.return_value = MockedProviderAdapter(
         ["README.md", "codecov.yml", "template.txt", "base.py"]
     )
@@ -540,6 +600,11 @@ def test_empty_upload_commit_yaml_org_token(
     fetch_yaml_mock.assert_called_once_with(
         commit, repository.author, should_use_sentry_app=False
     )
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=EMPTY_UPLOAD_BREADCRUMB_DATA,
+    )
 
 
 @patch("services.yaml.fetch_commit_yaml")
@@ -551,6 +616,7 @@ def test_empty_upload_ommit_yaml_repo_token(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     mock_repo_provider_service.return_value = MockedProviderAdapter(
         ["README.md", "codecov.yml", "template.txt", "base.py"]
     )
@@ -589,4 +655,9 @@ def test_empty_upload_ommit_yaml_repo_token(
 
     fetch_yaml_mock.assert_called_once_with(
         commit, repository.author, should_use_sentry_app=False
+    )
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=EMPTY_UPLOAD_BREADCRUMB_DATA,
     )

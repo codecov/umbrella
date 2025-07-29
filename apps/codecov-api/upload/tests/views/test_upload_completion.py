@@ -6,14 +6,27 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from reports.tests.factories import CommitReportFactory, UploadFactory
+from services.task.task import TaskService
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from upload.views.uploads import CanDoCoverageUploadsPermission
+
+UPLOAD_COMPLETION_BREADCRUMB_DATA = BreadcrumbData(
+    milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+    endpoint=Endpoints.UPLOAD_COMPLETION,
+)
 
 
 def test_upload_completion_view_no_uploads(db, mocker):
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
 
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
@@ -44,6 +57,15 @@ def test_upload_completion_view_no_uploads(db, mocker):
         "uploads_processing": 0,
         "uploads_error": 0,
     }
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=BreadcrumbData(
+            milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+            endpoint=Endpoints.UPLOAD_COMPLETION,
+            error=Errors.UPLOAD_NOT_FOUND,
+        ),
+    )
 
 
 @patch("services.task.TaskService.manual_upload_completion_trigger")
@@ -53,6 +75,7 @@ def test_upload_completion_view_processed_uploads(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
     )
@@ -99,6 +122,11 @@ def test_upload_completion_view_processed_uploads(
             "upload_version": None,
         },
     )
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=UPLOAD_COMPLETION_BREADCRUMB_DATA,
+    )
 
 
 @patch("services.task.TaskService.manual_upload_completion_trigger")
@@ -110,6 +138,7 @@ def test_upload_completion_view_processed_uploads_github_oidc_auth(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
     )
@@ -151,9 +180,15 @@ def test_upload_completion_view_processed_uploads_github_oidc_auth(
         "uploads_error": 0,
     }
     mocked_manual_trigger.assert_called_once_with(repository.repoid, commit.commitid)
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=UPLOAD_COMPLETION_BREADCRUMB_DATA,
+    )
 
 
 def test_upload_completion_view_no_auth(db, mocker):
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
     )
@@ -188,12 +223,14 @@ def test_upload_completion_view_no_auth(db, mocker):
         == "Failed token authentication, please double-check that your repository token matches in the Codecov UI, "
         "or review the docs https://docs.codecov.com/docs/adding-the-codecov-token"
     )
+    mock_upload_breadcrumb.assert_not_called()
 
 
 @patch("codecov_auth.authentication.repo_auth.exception_handler")
 def test_upload_completion_view_repo_auth_custom_exception_handler_error(
     customized_error, db, mocker
 ):
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
     mocked_response = HttpResponse(
         "No content posted.",
         status=status.HTTP_401_UNAUTHORIZED,
@@ -230,6 +267,7 @@ def test_upload_completion_view_repo_auth_custom_exception_handler_error(
     )
     assert response.status_code == 401
     assert response == mocked_response
+    mock_upload_breadcrumb.assert_not_called()
 
 
 @patch("services.task.TaskService.manual_upload_completion_trigger")
@@ -239,6 +277,7 @@ def test_upload_completion_view_still_processing_uploads(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
 
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
@@ -276,6 +315,11 @@ def test_upload_completion_view_still_processing_uploads(
         "uploads_error": 0,
     }
     mocked_manual_trigger.assert_called_once_with(repository.repoid, commit.commitid)
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=UPLOAD_COMPLETION_BREADCRUMB_DATA,
+    )
 
 
 @patch("services.task.TaskService.manual_upload_completion_trigger")
@@ -283,6 +327,7 @@ def test_upload_completion_view_errored_uploads(mocked_manual_trigger, db, mocke
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
 
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
@@ -320,6 +365,11 @@ def test_upload_completion_view_errored_uploads(mocked_manual_trigger, db, mocke
         "uploads_error": 1,
     }
     mocked_manual_trigger.assert_called_once_with(repository.repoid, commit.commitid)
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=UPLOAD_COMPLETION_BREADCRUMB_DATA,
+    )
 
 
 @patch("services.task.TaskService.manual_upload_completion_trigger")
@@ -329,6 +379,7 @@ def test_upload_completion_view_errored_and_processing_uploads(
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
 
     repository = RepositoryFactory(
         name="the_repo", author__username="codecov", author__service="github"
@@ -366,3 +417,8 @@ def test_upload_completion_view_errored_and_processing_uploads(
         "uploads_error": 1,
     }
     mocked_manual_trigger.assert_called_once_with(repository.repoid, commit.commitid)
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=UPLOAD_COMPLETION_BREADCRUMB_DATA,
+    )

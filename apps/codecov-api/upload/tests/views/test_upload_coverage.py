@@ -177,6 +177,15 @@ def test_upload_coverage_with_errors(db, mocker):
                     endpoint=Endpoints.UPLOAD_COVERAGE,
                 ),
             ),
+            call(
+                commit_sha="abc1234",
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+                    endpoint=Endpoints.UPLOAD_COVERAGE,
+                    error=Errors.BAD_REQUEST,
+                ),
+            ),
         ]
     )
 
@@ -315,6 +324,14 @@ def test_upload_coverage_post(db, mocker):
                     endpoint=Endpoints.UPLOAD_COVERAGE,
                 ),
             ),
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+                    endpoint=Endpoints.UPLOAD_COVERAGE,
+                ),
+            ),
         ]
     )
 
@@ -434,6 +451,14 @@ def test_upload_coverage_post_shelter(db, mocker):
                 repo_id=repository.repoid,
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.PREPARING_FOR_REPORT,
+                    endpoint=Endpoints.UPLOAD_COVERAGE,
+                ),
+            ),
+            call(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
                     endpoint=Endpoints.UPLOAD_COVERAGE,
                 ),
             ),

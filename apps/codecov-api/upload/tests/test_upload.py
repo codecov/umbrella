@@ -75,6 +75,11 @@ READY_FOR_REPORT_BREADCRUMB_DATA = BreadcrumbData(
     endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
 )
 
+WAITING_FOR_COVERAGE_UPLOAD_BREADCRUMB_DATA = BreadcrumbData(
+    milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+    endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+)
+
 
 def mock_get_config_global_upload_tokens(*args):
     if args == ("github", "global_upload_token"):
@@ -1514,6 +1519,11 @@ class UploadHandlerRouteTest(APITestCase):
                     repo_id=self.repo.repoid,
                     breadcrumb_data=READY_FOR_REPORT_BREADCRUMB_DATA,
                 ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=WAITING_FOR_COVERAGE_UPLOAD_BREADCRUMB_DATA,
+                ),
             ]
         )
 
@@ -1593,6 +1603,11 @@ class UploadHandlerRouteTest(APITestCase):
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
                     breadcrumb_data=READY_FOR_REPORT_BREADCRUMB_DATA,
+                ),
+                call(
+                    commit_sha=query_params["commit"],
+                    repo_id=self.repo.repoid,
+                    breadcrumb_data=WAITING_FOR_COVERAGE_UPLOAD_BREADCRUMB_DATA,
                 ),
             ]
         )
