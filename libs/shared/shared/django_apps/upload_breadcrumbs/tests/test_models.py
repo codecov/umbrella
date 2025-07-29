@@ -15,6 +15,160 @@ from shared.django_apps.upload_breadcrumbs.tests.factories import (
 )
 
 
+@pytest.mark.parametrize(
+    "enum_class, enum_entries, enum_values, enum_labels",
+    [
+        (
+            Milestones,
+            [
+                Milestones.FETCHING_COMMIT_DETAILS,
+                Milestones.COMMIT_PROCESSED,
+                Milestones.PREPARING_FOR_REPORT,
+                Milestones.READY_FOR_REPORT,
+                Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+                Milestones.COMPILING_UPLOADS,
+                Milestones.PROCESSING_UPLOAD,
+                Milestones.UPLOAD_COMPLETE,
+                Milestones.NOTIFICATIONS_TRIGGERED,
+                Milestones.NOTIFICATIONS_SENT,
+            ],
+            ["fcd", "cp", "pfr", "rfr", "wfcu", "cu", "pu", "uc", "nt", "ns"],
+            [
+                "Fetching commit details",
+                "Commit processed",
+                "Preparing for report",
+                "Ready for report",
+                "Waiting for coverage upload",
+                "Compiling uploads",
+                "Processing upload",
+                "Upload complete",
+                "Notifications triggered",
+                "Notifications sent",
+            ],
+        ),
+        (
+            Endpoints,
+            [
+                Endpoints.CREATE_COMMIT,
+                Endpoints.CREATE_REPORT,
+                Endpoints.DO_UPLOAD,
+                Endpoints.EMPTY_UPLOAD,
+                Endpoints.UPLOAD_COMPLETION,
+                Endpoints.UPLOAD_COVERAGE,
+                Endpoints.LEGACY_UPLOAD_COVERAGE,
+            ],
+            ["cc", "cr", "du", "eu", "ucomp", "ucov", "luc"],
+            [
+                "new_upload.commits",
+                "new_upload.reports",
+                "new_upload.uploads",
+                "new_upload.empty_upload",
+                "new_upload.upload-complete",
+                "new_upload.upload_coverage",
+                "upload-handler",
+            ],
+        ),
+        (
+            Errors,
+            [
+                Errors.BAD_REQUEST,
+                Errors.REPO_DEACTIVATED,
+                Errors.REPO_MISSING_VALID_BOT,
+                Errors.REPO_NOT_FOUND,
+                Errors.REPO_BLACKLISTED,
+                Errors.COMMIT_NOT_FOUND,
+                Errors.COMMIT_UPLOAD_LIMIT,
+                Errors.OWNER_UPLOAD_LIMIT,
+                Errors.GIT_CLIENT_ERROR,
+                Errors.REPORT_NOT_FOUND,
+                Errors.UPLOAD_NOT_FOUND,
+                Errors.MALFORMED_INPUT,
+                Errors.UNRECOGNIZED_FORMAT,
+                Errors.TASK_TIMED_OUT,
+                Errors.INTERNAL_LOCK_ERROR,
+                Errors.INTERNAL_RETRYING,
+                Errors.INTERNAL_OUT_OF_RETRIES,
+                Errors.INTERNAL_NO_PENDING_JOBS,
+                Errors.INTERNAL_NO_ARGUMENTS,
+                Errors.UNKNOWN,
+            ],
+            [
+                "br",
+                "rd",
+                "rmb",
+                "rnf",
+                "rb",
+                "cnf",
+                "cul",
+                "oul",
+                "gce",
+                "rptnf",
+                "unf",
+                "mi",
+                "uf",
+                "tto",
+                "int_le",
+                "int_re",
+                "int_or",
+                "int_np",
+                "int_na",
+                "u",
+            ],
+            [
+                "Bad request, see API response for details",
+                "Repository is deactivated within Codecov",
+                "Repository is missing a valid bot",
+                "Repository not found by the configured bot",
+                "Repository is blacklisted by Codecov",
+                "Commit not found in the repository",
+                "Upload limit exceeded for this commit",
+                "Owner (user or team) upload limit exceeded",
+                "Git client returned a 4xx error",
+                "Report not found for the commit",
+                "Upload not found for the commit",
+                "Malformed coverage report input",
+                "Unrecognized coverage report format",
+                "Task timed out",
+                "Unable to acquire or release lock",
+                "Retrying the upload task",
+                "Out of retries for the upload task",
+                "No pending jobs found for the commit",
+                "No arguments found in Redis for the upload task",
+                "Unknown error",
+            ],
+        ),
+    ],
+)
+def test_enums(
+    enum_class: Milestones | Errors | Endpoints,
+    enum_entries: list[Milestones | Errors | Endpoints],
+    enum_values: list[str],
+    enum_labels: list[str],
+):
+    """
+    This test ensures that when any of the upload breadcrumb enums are updated,
+    a developer is reminded to:
+
+    * Consider the implications of removing or renaming an enum value
+      * The values and labels are used in various places, including being shown
+        to users, Django admins, and in Prometheus metrics
+      * Old values may still be present in the database so reading them may
+        fail and cause unexpected behavior
+    * Update this test with the added/changed/removed enum value(s) and/or
+      label(s)
+    """
+
+    message = (
+        "You are modifying an important enum. Please read the comments"
+        " associated with this test for details."
+    )
+
+    assert len(enum_class) == len(enum_entries), message
+    for entry, value, label in zip(enum_entries, enum_values, enum_labels):
+        assert entry.value == value, message
+        assert entry.label == label, message
+
+
 class TestBreadcrumbData:
     def test_valid_all_fields(self):
         data = BreadcrumbData(
@@ -61,7 +215,7 @@ class TestBreadcrumbData:
             ),
             (
                 {
-                    "error": Errors.MISSING_TOKEN,
+                    "error": Errors.REPO_NOT_FOUND,
                     "error_text": "",
                 },
                 "field must not be empty.",
