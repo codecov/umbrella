@@ -2,9 +2,9 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from django.http import HttpRequest
 from rest_framework import status
 from rest_framework.generics import CreateAPIView
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from codecov_auth.authentication.repo_auth import (
@@ -17,8 +17,17 @@ from codecov_auth.authentication.repo_auth import (
 )
 from reports.models import ReportSession
 from services.task import TaskService
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from shared.metrics import inc_counter
-from upload.helpers import generate_upload_prometheus_metrics_labels
+from upload.helpers import (
+    generate_upload_prometheus_metrics_labels,
+    upload_breadcrumb_context,
+)
 from upload.metrics import API_UPLOAD_COUNTER
 from upload.views.base import GetterMixin
 from upload.views.uploads import CanDoCoverageUploadsPermission
@@ -36,10 +45,14 @@ class UploadCompletionView(GetterMixin, CreateAPIView):
         RepositoryLegacyTokenAuthentication,
     ]
 
-    def get_exception_handler(self) -> Callable[[Exception, dict[str, Any]], Response]:
+    def get_exception_handler(
+        self,
+    ) -> Callable[[Exception, dict[str, Any]], Response | None]:
         return repo_auth_custom_exception_handler
 
-    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Response:
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        endpoint = Endpoints.UPLOAD_COMPLETION
+        milestone = Milestones.NOTIFICATIONS_TRIGGERED
         inc_counter(
             API_UPLOAD_COUNTER,
             labels=generate_upload_prometheus_metrics_labels(
@@ -51,7 +64,17 @@ class UploadCompletionView(GetterMixin, CreateAPIView):
             ),
         )
         repo = self.get_repo()
-        commit = self.get_commit(repo)
+
+        with upload_breadcrumb_context(
+            initial_breadcrumb=False,
+            commit_sha=self.kwargs.get("commit_sha"),
+            repo_id=repo.repoid,
+            milestone=milestone,
+            endpoint=endpoint,
+            error=Errors.COMMIT_NOT_FOUND,
+        ):
+            commit = self.get_commit(repo)
+
         uploads_queryset = ReportSession.objects.filter(
             report__commit=commit,
             report__code=None,
@@ -65,6 +88,15 @@ class UploadCompletionView(GetterMixin, CreateAPIView):
                     "commit": commit.commitid,
                     "pullid": commit.pullid,
                 },
+            )
+            TaskService().upload_breadcrumb(
+                commit_sha=commit.commitid,
+                repo_id=repo.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=milestone,
+                    endpoint=endpoint,
+                    error=Errors.UPLOAD_NOT_FOUND,
+                ),
             )
             return Response(
                 data={
@@ -86,6 +118,14 @@ class UploadCompletionView(GetterMixin, CreateAPIView):
                 errored_uploads += 1
 
         TaskService().manual_upload_completion_trigger(repo.repoid, commit.commitid)
+        TaskService().upload_breadcrumb(
+            commit_sha=commit.commitid,
+            repo_id=repo.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=milestone,
+                endpoint=endpoint,
+            ),
+        )
         inc_counter(
             API_UPLOAD_COUNTER,
             labels=generate_upload_prometheus_metrics_labels(
