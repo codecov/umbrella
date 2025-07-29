@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from django.conf import settings
 from rest_framework import status
@@ -150,6 +150,15 @@ class UploadCoverageView(GetterMixin, APIView):
 
         upload_serializer = UploadSerializer(data=upload_data)
         if not upload_serializer.is_valid():
+            TaskService().upload_breadcrumb(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+                    endpoint=endpoint,
+                    error=Errors.BAD_REQUEST,
+                ),
+            )
             return Response(
                 upload_serializer.errors, status=status.HTTP_400_BAD_REQUEST
             )
@@ -162,6 +171,7 @@ class UploadCoverageView(GetterMixin, APIView):
             report,
             self.is_shelter_request(),
             get_token_for_analytics(commit, self.request),
+            endpoint,
         )
 
         self.emit_metrics(position="end")
@@ -175,7 +185,19 @@ class UploadCoverageView(GetterMixin, APIView):
         upload_repository = upload.report.commit.repository
         url = f"{settings.CODECOV_DASHBOARD_URL}/{upload_repository.author.service}/{upload_repository.author.username}/{upload_repository.name}/commit/{commitid}"
         archive_service = ArchiveService(upload_repository)
-        raw_upload_location = archive_service.create_presigned_put(upload.storage_path)
+        raw_upload_location = archive_service.create_presigned_put(
+            cast(str, upload.storage_path)
+        )
+
+        TaskService().upload_breadcrumb(
+            commit_sha=commit.commitid,
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+                endpoint=endpoint,
+            ),
+        )
+
         return Response(
             {
                 "external_id": str(upload.external_id),
