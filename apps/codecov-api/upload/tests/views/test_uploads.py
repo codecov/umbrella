@@ -9,6 +9,7 @@ from rest_framework.test import APIClient, APITestCase
 
 from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov_auth.authentication.repo_auth import OrgLevelTokenRepositoryAuth
+from codecov_auth.authentication.types import RepositoryAuthInterface
 from codecov_auth.services.org_level_token_service import OrgLevelTokenService
 from reports.models import (
     CommitReport,
@@ -17,12 +18,18 @@ from reports.models import (
     UploadFlagMembership,
 )
 from reports.tests.factories import CommitReportFactory, UploadFactory
+from services.task.task import TaskService
 from shared.api_archive.archive import ArchiveService, MinioEndpoints
 from shared.django_apps.codecov_auth.tests.factories import PlanFactory, TierFactory
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
     RepositoryFactory,
+)
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Milestones,
 )
 from shared.plan.constants import PlanName, TierName
 from shared.utils.test_utils import mock_config_helper
@@ -35,10 +42,10 @@ from upload.views.uploads import (
 
 
 def test_upload_permission_class_pass(db, mocker):
-    request_mocked = MagicMock(auth=MagicMock())
+    request_mocked = MagicMock(auth=MagicMock(spec=RepositoryAuthInterface))
     request_mocked.auth.get_scopes.return_value = ["upload"]
     permission = CanDoCoverageUploadsPermission()
-    assert permission.has_permission(request_mocked, MagicMock())
+    assert permission.has_permission(request_mocked, MagicMock(spec=UploadViews))
     request_mocked.auth.get_scopes.assert_called_once()
 
 
@@ -52,7 +59,7 @@ def test_upload_permission_orglevel_token(db, mocker):
     token = OrgLevelTokenService.get_or_create_org_token(owner)
 
     request_mocked = MagicMock(auth=OrgLevelTokenRepositoryAuth(token))
-    mocked_view = MagicMock()
+    mocked_view = MagicMock(spec=UploadViews)
     mocked_view.get_repo = MagicMock(return_value=repo)
     permission = CanDoCoverageUploadsPermission()
     assert permission.has_permission(request_mocked, mocked_view)
@@ -60,10 +67,10 @@ def test_upload_permission_orglevel_token(db, mocker):
 
 
 def test_upload_permission_class_fail(db, mocker):
-    request_mocked = MagicMock(auth=MagicMock())
+    request_mocked = MagicMock(auth=MagicMock(spec=RepositoryAuthInterface))
     request_mocked.auth.get_scopes.return_value = ["wrong_scope"]
     permission = CanDoCoverageUploadsPermission()
-    assert not permission.has_permission(request_mocked, MagicMock())
+    assert not permission.has_permission(request_mocked, MagicMock(spec=UploadViews))
     request_mocked.auth.get_scopes.assert_called_once()
 
 
@@ -77,7 +84,7 @@ def test_upload_permission_orglevel_fail(db, mocker):
     token = OrgLevelTokenService.get_or_create_org_token(owner)
 
     request_mocked = MagicMock(auth=OrgLevelTokenRepositoryAuth(token))
-    mocked_view = MagicMock()
+    mocked_view = MagicMock(spec=UploadViews)
     mocked_view.get_repo = MagicMock(return_value=repo)
     permission = CanDoCoverageUploadsPermission()
     assert not permission.has_permission(request_mocked, mocked_view)
@@ -327,6 +334,7 @@ def test_uploads_post_tokenless(db, mocker, mock_redis, private, branch, branch_
         "upload.views.uploads.trigger_upload_task", return_value=True
     )
     analytics_service_mock = mocker.patch("upload.views.uploads.AnalyticsService")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
 
     repository = RepositoryFactory(
         name="the_repo",
@@ -437,9 +445,18 @@ def test_uploads_post_tokenless(db, mocker, mock_redis, private, branch, branch_
                 "uploader_type": "CLI",
             },
         )
+        mock_upload_breadcrumb.assert_called_once_with(
+            commit_sha=commit.commitid,
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+                endpoint=Endpoints.DO_UPLOAD,
+            ),
+        )
     else:
         assert response.status_code == 401
         assert response.json().get("detail") == "Not valid tokenless upload"
+        mock_upload_breadcrumb.assert_not_called()
 
 
 @pytest.mark.parametrize("private", [False, True])
@@ -465,6 +482,7 @@ def test_uploads_post_token_required_auth_check(
         "upload.views.uploads.trigger_upload_task", return_value=True
     )
     analytics_service_mock = mocker.patch("upload.views.uploads.AnalyticsService")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
 
     repository = RepositoryFactory(
         name="the_repo",
@@ -582,9 +600,18 @@ def test_uploads_post_token_required_auth_check(
                 "uploader_type": "CLI",
             },
         )
+        mock_upload_breadcrumb.assert_called_once_with(
+            commit_sha=commit.commitid,
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+                endpoint=Endpoints.DO_UPLOAD,
+            ),
+        )
     else:
         assert response.status_code == 401
         assert response.json().get("detail") == "Not valid tokenless upload"
+        mock_upload_breadcrumb.assert_not_called()
 
 
 @patch("upload.views.uploads.AnalyticsService")
@@ -605,6 +632,7 @@ def test_uploads_post_github_oidc_auth(
     upload_task_mock = mocker.patch(
         "upload.views.uploads.trigger_upload_task", return_value=True
     )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
 
     repository = RepositoryFactory(
         name="the_repo",
@@ -708,6 +736,14 @@ def test_uploads_post_github_oidc_auth(
             "version": "version",
             "uploader_type": "CLI",
         },
+    )
+    mock_upload_breadcrumb.assert_called_once_with(
+        commit_sha=commit.commitid,
+        repo_id=repository.repoid,
+        breadcrumb_data=BreadcrumbData(
+            milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+            endpoint=Endpoints.DO_UPLOAD,
+        ),
     )
 
 
@@ -870,6 +906,9 @@ class TestGitlabEnterpriseOIDC(APITestCase):
             return_value="presigned put",
         )
         self.mocker.patch("upload.views.uploads.trigger_upload_task", return_value=True)
+        mock_upload_breadcrumb = self.mocker.patch.object(
+            TaskService, "upload_breadcrumb"
+        )
 
         repository = RepositoryFactory(
             name="the_repo",
@@ -911,6 +950,14 @@ class TestGitlabEnterpriseOIDC(APITestCase):
         assert response.status_code == 201
         mock_jwks_client.assert_called_with(
             "https://example.com/_services/token/.well-known/jwks"
+        )
+        mock_upload_breadcrumb.assert_called_once_with(
+            commit_sha=commit.commitid,
+            repo_id=repository.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+                endpoint=Endpoints.DO_UPLOAD,
+            ),
         )
 
     @patch("upload.views.uploads.AnalyticsService")

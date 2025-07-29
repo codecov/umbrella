@@ -312,7 +312,7 @@ class UploadHandler(ShelterMixin, APIView):
                 upload_url = archive_service.create_presigned_put(default_path)
             except Exception as e:
                 log.warning(
-                    f"Error generating minio presign put {e}",
+                    "Error generating minio presigned put",
                     extra={
                         "commit": commitid,
                         "pr": pr,
@@ -320,10 +320,21 @@ class UploadHandler(ShelterMixin, APIView):
                         "version": version,
                         "upload_params": upload_params,
                     },
+                    exc_info=True,
+                )
+                TaskService().upload_breadcrumb(
+                    commit_sha=commitid,
+                    repo_id=repository.repoid,
+                    breadcrumb_data=BreadcrumbData(
+                        milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+                        endpoint=endpoint,
+                        error=Errors.UNKNOWN,
+                        error_text=str(e),
+                    ),
                 )
                 return HttpResponseServerError("Unknown error, please try again later")
             log.info(
-                "Returning presign put",
+                "Returning presigned put",
                 extra={
                     "commit": commitid,
                     "repoid": repository.repoid,
@@ -332,6 +343,14 @@ class UploadHandler(ShelterMixin, APIView):
             )
             response["Content-Type"] = "text/plain"
             response.write(f"{destination_url}\n{upload_url}")
+            TaskService().upload_breadcrumb(
+                commit_sha=commitid,
+                repo_id=repository.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+                    endpoint=endpoint,
+                ),
+            )
 
         # Get build url
         build_url: str | None = upload_params.get("build_url")

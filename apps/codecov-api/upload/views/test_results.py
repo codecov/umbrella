@@ -1,10 +1,13 @@
 import logging
 import uuid
+from collections.abc import Callable
+from typing import Any
 
 from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.exceptions import NotAuthenticated, NotFound
 from rest_framework.permissions import BasePermission
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -16,7 +19,7 @@ from codecov_auth.authentication.repo_auth import (
     UploadTokenRequiredGetFromBodyAuthenticationCheck,
     repo_auth_custom_exception_handler,
 )
-from codecov_auth.authentication.types import RepositoryAsUser
+from codecov_auth.authentication.types import RepositoryAsUser, RepositoryAuthInterface
 from codecov_auth.models import Owner, Service
 from core.models import Commit
 from reports.models import CommitReport
@@ -37,8 +40,11 @@ log = logging.getLogger(__name__)
 
 
 class UploadTestResultsPermission(BasePermission):
-    def has_permission(self, request, view):
-        return request.auth is not None and "upload" in request.auth.get_scopes()
+    def has_permission(self, request: Request, view: APIView) -> bool:
+        return (
+            isinstance(request.auth, RepositoryAuthInterface)
+            and "upload" in request.auth.get_scopes()
+        )
 
 
 class UploadSerializer(serializers.Serializer):
@@ -68,10 +74,12 @@ class TestResultsView(
         TestAnalyticsTokenlessAuthentication,
     ]
 
-    def get_exception_handler(self):
+    def get_exception_handler(
+        self,
+    ) -> Callable[[Exception, dict[str, Any]], Response | None]:
         return repo_auth_custom_exception_handler
 
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         inc_counter(
             API_UPLOAD_COUNTER,
             labels=generate_upload_prometheus_metrics_labels(

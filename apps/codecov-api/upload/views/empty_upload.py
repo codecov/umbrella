@@ -5,10 +5,10 @@ from typing import Any
 
 import regex
 from asgiref.sync import async_to_sync
-from django.http import HttpRequest
 from rest_framework import serializers, status
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import CreateAPIView
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from codecov_auth.authentication.repo_auth import (
@@ -24,12 +24,19 @@ from core.models import Commit
 from services.repo_providers import RepoProviderService
 from services.task import TaskService
 from services.yaml import final_commit_yaml
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Endpoints,
+    Errors,
+    Milestones,
+)
 from shared.metrics import inc_counter
 from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitClientError, TorngitClientGeneralError
 from upload.helpers import (
     generate_upload_prometheus_metrics_labels,
     try_to_get_best_possible_bot_token,
+    upload_breadcrumb_context,
 )
 from upload.metrics import API_UPLOAD_COUNTER
 from upload.views.base import GetterMixin
@@ -85,10 +92,14 @@ class EmptyUploadView(GetterMixin, CreateAPIView):
         RepositoryLegacyTokenAuthentication,
     ]
 
-    def get_exception_handler(self) -> Callable[[Exception, dict[str, Any]], Response]:
+    def get_exception_handler(
+        self,
+    ) -> Callable[[Exception, dict[str, Any]], Response | None]:
         return repo_auth_custom_exception_handler
 
-    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> Response:
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        endpoint = Endpoints.EMPTY_UPLOAD
+        milestone = Milestones.NOTIFICATIONS_TRIGGERED
         inc_counter(
             API_UPLOAD_COUNTER,
             labels=generate_upload_prometheus_metrics_labels(
@@ -106,11 +117,27 @@ class EmptyUploadView(GetterMixin, CreateAPIView):
         should_force = data.get("should_force", False)
 
         repo = self.get_repo()
-        commit = self.get_commit(repo)
+        with upload_breadcrumb_context(
+            initial_breadcrumb=False,
+            commit_sha=self.kwargs.get("commit_sha"),
+            repo_id=repo.repoid,
+            milestone=milestone,
+            endpoint=endpoint,
+            error=Errors.COMMIT_NOT_FOUND,
+        ):
+            commit = self.get_commit(repo)
 
         if should_force is True:
             TaskService().notify(
                 repoid=repo.repoid, commitid=commit.commitid, empty_upload="pass"
+            )
+            TaskService().upload_breadcrumb(
+                commit_sha=commit.commitid,
+                repo_id=repo.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                    endpoint=endpoint,
+                ),
             )
             return Response(
                 data={
@@ -128,13 +155,22 @@ class EmptyUploadView(GetterMixin, CreateAPIView):
         yaml = final_commit_yaml(commit, owner).to_dict()
         token = try_to_get_best_possible_bot_token(repo)
         provider = RepoProviderService().get_adapter(repo.author, repo, token=token)
-        pull_id = commit.pullid
-        if pull_id is None:
-            pull_id = self.get_pull_request_id(commit, provider, pull_id)
 
-        changed_files: list[str] = self.get_changed_files_from_provider(
-            commit, provider, pull_id
-        )
+        with upload_breadcrumb_context(
+            initial_breadcrumb=False,
+            commit_sha=commit.commitid,
+            repo_id=repo.repoid,
+            milestone=milestone,
+            endpoint=endpoint,
+            error=Errors.GIT_CLIENT_ERROR,
+        ):
+            pull_id = commit.pullid
+            if pull_id is None:
+                pull_id = self.get_pull_request_id(commit, provider, pull_id)
+
+            changed_files: list[str] = self.get_changed_files_from_provider(
+                commit, provider, pull_id
+            )
 
         ignored_files = yaml.get("ignore", [])
 
@@ -169,6 +205,14 @@ class EmptyUploadView(GetterMixin, CreateAPIView):
             TaskService().notify(
                 repoid=repo.repoid, commitid=commit.commitid, empty_upload="pass"
             )
+            TaskService().upload_breadcrumb(
+                commit_sha=commit.commitid,
+                repo_id=repo.repoid,
+                breadcrumb_data=BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                    endpoint=endpoint,
+                ),
+            )
             return Response(
                 data={
                     "result": "All changed files are ignored. Triggering passing notifications.",
@@ -180,6 +224,14 @@ class EmptyUploadView(GetterMixin, CreateAPIView):
         non_ignored_files = set(changed_files) - set(ignored_changed_files)
         TaskService().notify(
             repoid=repo.repoid, commitid=commit.commitid, empty_upload="fail"
+        )
+        TaskService().upload_breadcrumb(
+            commit_sha=commit.commitid,
+            repo_id=repo.repoid,
+            breadcrumb_data=BreadcrumbData(
+                milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                endpoint=endpoint,
+            ),
         )
 
         return Response(
@@ -194,7 +246,7 @@ class EmptyUploadView(GetterMixin, CreateAPIView):
         self, commit: Commit, provider: TorngitBaseAdapter, pull_id: int
     ) -> list[str]:
         try:
-            changed_files = async_to_sync(provider.get_pull_request_files)(pull_id)
+            changed_files = async_to_sync(provider.get_pull_request_files)(str(pull_id))
         except TorngitClientError:
             log.warning(
                 "Request client error",

@@ -1,26 +1,32 @@
+from abc import ABC, abstractmethod
+
 from django.contrib.auth.models import Group, Permission
 from django.db.models.manager import EmptyManager
 
 from core.models import Repository
+from shared.django_apps.codecov_auth.models import TokenTypeChoices
 
 
 class RepositoryAsUser:
-    def __init__(self, repository):
+    def __init__(self, repository: Repository):
         self._repository = repository
 
-    def is_authenticated(self):
+    def is_authenticated(self) -> bool:
         return True
 
 
-class RepositoryAuthInterface:
-    def get_scopes():
-        raise NotImplementedError()
+class RepositoryAuthInterface(ABC):
+    @abstractmethod
+    def get_scopes(self) -> list[str] | list[TokenTypeChoices]:
+        pass
 
-    def get_repositories() -> list[Repository]:
-        raise NotImplementedError()
+    @abstractmethod
+    def get_repositories(self) -> list[Repository]:
+        pass
 
+    @abstractmethod
     def allows_repo(self, repository: Repository) -> bool:
-        raise NotImplementedError()
+        pass
 
 
 class DjangoUser:
@@ -33,19 +39,19 @@ class DjangoUser:
     _user_permissions = EmptyManager(Permission)
 
     @property
-    def is_anonymous(self):
+    def is_anonymous(self) -> bool:
         return False
 
     @property
-    def is_authenticated(self):
+    def is_authenticated(self) -> bool:
         return False
 
     @property
-    def groups(self):
+    def groups(self) -> bool:
         return False
 
     @property
-    def user_permissions(self):
+    def user_permissions(self) -> bool:
         return False
 
     def get_user_permissions(self, obj=None):

@@ -87,6 +87,7 @@ class ReportViews(GetterMixin, CreateAPIView):
 
     def perform_create(self, serializer: BaseSerializer) -> None:
         endpoint = Endpoints.CREATE_REPORT
+        milestone = Milestones.PREPARING_FOR_REPORT
         inc_counter(
             API_UPLOAD_COUNTER,
             labels=generate_upload_prometheus_metrics_labels(
@@ -103,7 +104,7 @@ class ReportViews(GetterMixin, CreateAPIView):
             initial_breadcrumb=True,
             commit_sha=self.kwargs.get("commit_sha"),
             repo_id=repository.repoid,
-            milestone=Milestones.PREPARING_FOR_REPORT,
+            milestone=milestone,
             endpoint=endpoint,
             error=Errors.REPO_DEACTIVATED,
         ):
@@ -113,7 +114,7 @@ class ReportViews(GetterMixin, CreateAPIView):
             initial_breadcrumb=False,
             commit_sha=self.kwargs.get("commit_sha"),
             repo_id=repository.repoid,
-            milestone=Milestones.PREPARING_FOR_REPORT,
+            milestone=milestone,
             endpoint=endpoint,
             error=Errors.COMMIT_NOT_FOUND,
         ):

@@ -56,7 +56,7 @@ def insert_coverage_measurement(
     uploader_used: str,
     private_repo: bool,
     report_type: ReportType,
-):
+) -> UserMeasurement:
     return UserMeasurement.objects.create(
         repo_id=repo_id,
         commit_id=commit_id,

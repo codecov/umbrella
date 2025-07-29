@@ -1,3 +1,5 @@
+from typing import Any
+
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
 from django.core.exceptions import ValidationError
@@ -18,15 +20,23 @@ class Milestones(models.TextChoices):
 
     These milestones represent the various stages of the upload process.
 
-    * FETCHING_COMMIT_DETAILS: Creating a commit database entry and fetching commit details.
-    * COMMIT_PROCESSED: Commit has been processed and is ready for report preparation.
+    * FETCHING_COMMIT_DETAILS: Creating a commit database entry and fetching
+      commit details.
+    * COMMIT_PROCESSED: Commit has been processed and is ready for report
+      preparation.
     * PREPARING_FOR_REPORT: Creating a report database entry.
-    * READY_FOR_REPORT: Carry-forwarding flags from previous uploads is complete.
-    * WAITING_FOR_COVERAGE_UPLOAD: Create a pre-signed URL for the upload and wait for the coverage upload.
-    * COMPILING_UPLOADS: Scheduling upload processing task(s) and initializing any missing database entries.
+    * READY_FOR_REPORT: Carry-forwarding flags from previous uploads is
+      complete.
+    * WAITING_FOR_COVERAGE_UPLOAD: Create a pre-signed URL for the upload and
+      wait for the coverage upload.
+    * COMPILING_UPLOADS: Scheduling upload processing task(s) and initializing
+      any missing database entries.
     * PROCESSING_UPLOAD: Processing the uploaded file(s).
     * UPLOAD_COMPLETE: Processing and compilation of the upload is complete.
-    * NOTIFICATIONS_SENT: Notifications (e.g. pull request comments) have been sent.
+    * NOTIFICATIONS_TRIGGERED: Notifications (e.g. pull request comments) have
+      been triggered either manually or automatically.
+    * NOTIFICATIONS_SENT: Notifications (e.g. pull request comments) have been
+      sent.
     """
 
     FETCHING_COMMIT_DETAILS = "fcd", _("Fetching commit details")
@@ -37,6 +47,7 @@ class Milestones(models.TextChoices):
     COMPILING_UPLOADS = "cu", _("Compiling uploads")
     PROCESSING_UPLOAD = "pu", _("Processing upload")
     UPLOAD_COMPLETE = "uc", _("Upload complete")
+    NOTIFICATIONS_TRIGGERED = "nt", _("Notifications triggered")
     NOTIFICATIONS_SENT = "ns", _("Notifications sent")
 
 
@@ -71,12 +82,20 @@ class Errors(models.TextChoices):
     COMMIT_UPLOAD_LIMIT = "cul", _("Upload limit exceeded for this commit")
     OWNER_UPLOAD_LIMIT = "oul", _("Owner (user or team) upload limit exceeded")
     GIT_CLIENT_ERROR = "gce", _("Git client returned a 4xx error")
-    MISSING_TOKEN = "mt", _("Missing authorization token")
+    REPORT_NOT_FOUND = "rptnf", _("Report not found for the commit")
+    UPLOAD_NOT_FOUND = "unf", _("Upload not found for the commit")
     MALFORMED_INPUT = "mi", _("Malformed coverage report input")
     UNRECOGNIZED_FORMAT = "uf", _("Unrecognized coverage report format")
     TASK_TIMED_OUT = "tto", _("Task timed out")
     # Errors that should not be shown to the user
     INTERNAL_LOCK_ERROR = "int_le", _("Unable to acquire or release lock")
+    INTERNAL_RETRYING = "int_re", _("Retrying the upload task")
+    INTERNAL_OUT_OF_RETRIES = "int_or", _("Out of retries for the upload task")
+    INTERNAL_NO_PENDING_JOBS = "int_np", _("No pending jobs found for the commit")
+    INTERNAL_NO_ARGUMENTS = (
+        "int_na",
+        _("No arguments found in Redis for the upload task"),
+    )
     # Catch-all for other errors
     UNKNOWN = "u", _("Unknown error")
 
@@ -88,8 +107,8 @@ class BreadcrumbData(
     use_enum_values=True,
 ):
     """
-    Represents the data structure for the `breadcrumb_data` field which contains
-    information about the milestone, endpoint, error, and error text.
+    Represents the data structure for the `breadcrumb_data` field which
+    contains information about the milestone, endpoint, error, and error text.
 
     Each field is optional and cannot be set to an empty string. Note that any
     field not set or set to `None` will be excluded from the model dump.
@@ -107,7 +126,8 @@ class BreadcrumbData(
     :raises ValidationError: If no non-empty fields are provided.
     :raises ValidationError: If any field is explicitly set to an empty string.
     :raises ValidationError: If `error_text` is provided without an `error`.
-    :raises ValidationError: If `error` is set to UNKNOWN without an `error_text`.
+    :raises ValidationError: If `error` is set to `UNKNOWN` without any
+        `error_text`.
     """
 
     milestone: Milestones | None = None
@@ -117,13 +137,13 @@ class BreadcrumbData(
 
     @field_validator("*", mode="after")
     @classmethod
-    def validate_initialized(cls, value):
+    def validate_initialized(cls, value: Any) -> Any:
         if value == "":
             raise ValueError("field must not be empty.")
         return value
 
     @model_validator(mode="after")
-    def require_at_least_one_field(self):
+    def require_at_least_one_field(self) -> "BreadcrumbData":
         if not any(
             [
                 self.milestone,
@@ -136,23 +156,23 @@ class BreadcrumbData(
         return self
 
     @model_validator(mode="after")
-    def check_error_dependency(self):
+    def check_error_dependency(self) -> "BreadcrumbData":
         if self.error_text and not self.error:
             raise ValueError("'error_text' is provided, but 'error' is missing.")
         return self
 
     @model_validator(mode="after")
-    def check_unknown_error(self):
+    def check_unknown_error(self) -> "BreadcrumbData":
         if self.error == Errors.UNKNOWN and not self.error_text:
             raise ValueError("'error_text' must be provided when 'error' is UNKNOWN.")
         return self
 
-    def model_dump(self, *args, **kwargs):
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, str]:
         kwargs["exclude_none"] = True
         return super().model_dump(*args, **kwargs)
 
     @classmethod
-    def django_validate(cls, *args, **kwargs) -> None:
+    def django_validate(cls, *args: Any, **kwargs: Any) -> None:
         """
         Performs validation in a way that conforms to the expectations of
         Django's model validation system.
