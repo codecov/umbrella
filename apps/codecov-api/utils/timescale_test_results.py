@@ -86,14 +86,14 @@ def get_test_data_queryset_via_ca(
         test_data = TestrunBranchSummary.objects.filter(
             repo_id=repoid,
             branch=branch,
-            timestamp_bin__gte=start_date,
-            timestamp_bin__lt=end_date,
+            timestamp_bin__gt=start_date,
+            timestamp_bin__lte=end_date,
         )
     else:
         test_data = TestrunSummary.objects.filter(
             repo_id=repoid,
-            timestamp_bin__gte=start_date,
-            timestamp_bin__lt=end_date,
+            timestamp_bin__gt=start_date,
+            timestamp_bin__lte=end_date,
         )
 
     test_data = test_data.values("computed_name", "testsuite").annotate(  # type: ignore[assignment]
@@ -168,8 +168,8 @@ def get_test_data_queryset_via_ca(
                         branch=branch,
                         computed_name=OuterRef("computed_name"),
                         testsuite=OuterRef("testsuite"),
-                        timestamp_bin__gte=start_date,
-                        timestamp_bin__lt=end_date,
+                        timestamp_bin__gt=start_date,
+                        timestamp_bin__lte=end_date,
                     )
                     .order_by("-timestamp_bin")
                     .values("timestamp_bin")[:1],
@@ -207,8 +207,8 @@ def get_test_data_queryset_via_testrun(
     test_data = Testrun.objects.filter(
         repo_id=repoid,
         branch=branch,
-        timestamp__gte=start_date,
-        timestamp__lt=end_date,
+        timestamp__gt=start_date,
+        timestamp__lte=end_date,
     )
 
     test_data = test_data.values("computed_name", "testsuite").annotate(  # type: ignore[assignment]
@@ -379,26 +379,26 @@ def get_repo_aggregates_via_ca(
     if branch is None:
         test_data = TestrunSummary.objects.filter(
             repo_id=repoid,
-            timestamp_bin__gte=start_date,
-            timestamp_bin__lt=end_date,
+            timestamp_bin__gt=start_date,
+            timestamp_bin__lte=end_date,
         )
         repo_data = AggregateDaily.objects.filter(
             repo_id=repoid,
-            bucket_daily__gte=start_date,
-            bucket_daily__lt=end_date,
+            bucket_daily__gt=start_date,
+            bucket_daily__lte=end_date,
         )
     elif branch in PRECOMPUTED_BRANCHES:
         test_data = TestrunBranchSummary.objects.filter(
             repo_id=repoid,
             branch=branch,
-            timestamp_bin__gte=start_date,
-            timestamp_bin__lt=end_date,
+            timestamp_bin__gt=start_date,
+            timestamp_bin__lte=end_date,
         )
         repo_data = BranchAggregateDaily.objects.filter(
             repo_id=repoid,
             branch=branch,
-            bucket_daily__gte=start_date,
-            bucket_daily__lt=end_date,
+            bucket_daily__gt=start_date,
+            bucket_daily__lte=end_date,
         )
 
     daily_aggregates = repo_data.aggregate(
@@ -487,26 +487,26 @@ def get_flake_aggregates_via_ca(
     if branch is None:
         test_data = TestrunSummary.objects.filter(
             repo_id=repoid,
-            timestamp_bin__gte=start_date,
-            timestamp_bin__lt=end_date,
+            timestamp_bin__gt=start_date,
+            timestamp_bin__lte=end_date,
         )
         repo_data = AggregateDaily.objects.filter(
             repo_id=repoid,
-            bucket_daily__gte=start_date,
-            bucket_daily__lt=end_date,
+            bucket_daily__gt=start_date,
+            bucket_daily__lte=end_date,
         )
     else:
         test_data = TestrunBranchSummary.objects.filter(
             repo_id=repoid,
             branch=branch,
-            timestamp_bin__gte=start_date,
-            timestamp_bin__lt=end_date,
+            timestamp_bin__gt=start_date,
+            timestamp_bin__lte=end_date,
         )
         repo_data = BranchAggregateDaily.objects.filter(
             repo_id=repoid,
             branch=branch,
-            bucket_daily__gte=start_date,
-            bucket_daily__lt=end_date,
+            bucket_daily__gt=start_date,
+            bucket_daily__lte=end_date,
         )
 
     daily_aggregates = repo_data.aggregate(
