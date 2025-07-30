@@ -48,13 +48,18 @@ def wrap_error_handling_mutation(resolver):
     return resolver_with_error_handling
 
 
+def is_called_from_sentry_app(info):
+    """
+    Check if the request is called from a Sentry app. These requests don't specifically have
+    authenticated users, but we allow them to act as authenticated users by way of the JWT token validation.
+    """
+    return getattr(info.context["request"], USE_SENTRY_APP_INDICATOR, False)
+
+
 def require_authenticated(resolver):
     def authenticated_resolver(instance, info, *args, **kwargs):
         current_user = info.context["request"].user
-        if (
-            not getattr(info.context["request"], USE_SENTRY_APP_INDICATOR, False)
-            and not current_user.is_authenticated
-        ):
+        if not is_called_from_sentry_app(info) and not current_user.is_authenticated:
             raise exceptions.Unauthenticated()
 
         return resolver(instance, info, *args, **kwargs)
