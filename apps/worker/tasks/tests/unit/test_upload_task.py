@@ -6,7 +6,7 @@ from unittest import mock
 from unittest.mock import AsyncMock, call
 
 import pytest
-from celery.exceptions import Retry
+from celery.exceptions import Retry, SoftTimeLimitExceeded
 from redis.exceptions import LockError
 
 from database.enums import ReportType
@@ -19,6 +19,12 @@ from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.log_context import LogContext, set_log_context
 from services.report import NotReadyToBuildReportYetError, ReportService
+from shared.celery_config import upload_breadcrumb_task_name
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Errors,
+    Milestones,
+)
 from shared.helpers.redis import get_redis_connection
 from shared.reports.enums import UploadState, UploadType
 from shared.torngit import GitlabEnterprise
@@ -34,6 +40,18 @@ from tasks.upload_finisher import upload_finisher_task
 from tasks.upload_processor import upload_processor_task
 
 here = Path(__file__)
+
+
+@pytest.fixture
+def mock_self_app(mocker, celery_app):
+    mock_app = celery_app
+    mock_app.tasks[upload_breadcrumb_task_name] = mocker.MagicMock()
+
+    return mocker.patch.object(
+        UploadTask,
+        "app",
+        mock_app,
+    )
 
 
 def _start_upload_flow(mocker):
@@ -166,13 +184,12 @@ class TestUploadTaskIntegration:
         dbsession,
         codecov_vcr,
         mock_storage,
-        celery_app,
         mock_checkpoint_submit,
+        mock_self_app,
     ):
         _start_upload_flow(mocker)
         mocked_chord = mocker.patch("tasks.upload.chord")
         url = "v4/raw/2019-05-22/C3C4715CA57C910D11D5EB899FC86A7E/4c4e4654ac25037ae869caeb3619d485970b6304/a84d445c-9c1e-434f-8275-f18f1f320f81.txt"
-        mocker.patch.object(UploadTask, "app", celery_app)
 
         commit = CommitFactory.create(
             message="",
@@ -235,7 +252,7 @@ class TestUploadTaskIntegration:
         finisher = upload_finisher_task.signature(kwargs=kwargs)
         mocked_chord.assert_called_with([processor], finisher)
         calls = [
-            mock.call(
+            call(
                 "time_before_processing",
                 UploadFlow.UPLOAD_TASK_BEGIN,
                 UploadFlow.PROCESSING_BEGIN,
@@ -245,7 +262,7 @@ class TestUploadTaskIntegration:
                     UploadFlow.INITIAL_PROCESSING_COMPLETE: 10000,
                 },
             ),
-            mock.call(
+            call(
                 "initial_processing_duration",
                 UploadFlow.PROCESSING_BEGIN,
                 UploadFlow.INITIAL_PROCESSING_COMPLETE,
@@ -257,6 +274,44 @@ class TestUploadTaskIntegration:
             ),
         ]
         mock_checkpoint_submit.assert_has_calls(calls)
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.GIT_CLIENT_ERROR,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [first_session.id],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_call_bundle_analysis(
@@ -268,6 +323,7 @@ class TestUploadTaskIntegration:
         mock_storage,
         mock_redis,
         celery_app,
+        mock_self_app,
     ):
         chain = mocker.patch("tasks.upload.chain")
         storage_path = (
@@ -275,7 +331,6 @@ class TestUploadTaskIntegration:
         )
         redis_queue = [{"url": storage_path, "build_code": "some_random_build"}]
         jsonified_redis_queue = [json.dumps(x) for x in redis_queue]
-        mocker.patch.object(UploadTask, "app", celery_app)
 
         commit = CommitFactory.create(
             message="",
@@ -327,6 +382,44 @@ class TestUploadTaskIntegration:
             commit_yaml={"codecov": {"max_report_age": "1y ago"}},
         )
         chain.assert_called_with([processor_sig, notify_sig])
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.GIT_CLIENT_ERROR,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [upload.id],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_call_bundle_analysis_no_upload(
@@ -337,13 +430,12 @@ class TestUploadTaskIntegration:
         codecov_vcr,
         mock_storage,
         mock_redis,
-        celery_app,
+        mock_self_app,
     ):
         chain = mocker.patch("tasks.upload.chain")
         storage_path = "v4/raw/2019-05-22/C3C4715CA57C910D11D5EB899FC86A7E/4c4e4654ac25037ae869caeb3619d485970b6304/a84d445c-9c1e-434f-8275-f18f1f320f81.txt"
         redis_queue = [{"url": storage_path, "build_code": "some_random_build"}]
         jsonified_redis_queue = [json.dumps(x) for x in redis_queue]
-        mocker.patch.object(UploadTask, "app", celery_app)
 
         commit = CommitFactory.create(
             message="",
@@ -381,6 +473,13 @@ class TestUploadTaskIntegration:
         commit_report = commit.commit_report(report_type=ReportType.BUNDLE_ANALYSIS)
         assert commit_report is None
 
+        commit_reports = commit.reports_list
+        assert len(commit_reports) == 1
+        commit_report = commit_reports[0]
+        assert commit_report.report_type == ReportType.TEST_RESULTS.value
+        assert len(commit_report.uploads) == 1
+        assert commit_report.commit == commit
+
         processor_sig = bundle_analysis_processor_task.s(
             {},
             repoid=commit.repoid,
@@ -394,6 +493,44 @@ class TestUploadTaskIntegration:
             },
         )
         assert call([processor_sig]) in chain.mock_calls
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.GIT_CLIENT_ERROR,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [commit_report.uploads[0].id],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_call_test_results(
@@ -404,13 +541,12 @@ class TestUploadTaskIntegration:
         codecov_vcr,
         mock_storage,
         mock_redis,
-        celery_app,
+        mock_self_app,
     ):
         chain = mocker.patch("tasks.upload.chain")
         storage_path = "v4/raw/2019-05-22/C3C4715CA57C910D11D5EB899FC86A7E/4c4e4654ac25037ae869caeb3619d485970b6304/a84d445c-9c1e-434f-8275-f18f1f320f81.txt"
         redis_queue = [{"url": storage_path, "build_code": "some_random_build"}]
         jsonified_redis_queue = [json.dumps(x) for x in redis_queue]
-        mocker.patch.object(UploadTask, "app", celery_app)
 
         commit = CommitFactory.create(
             message="",
@@ -470,6 +606,44 @@ class TestUploadTaskIntegration:
         kwargs[_kwargs_key(TestResultsFlow)] = mocker.ANY
         notify_sig = test_results_finisher_task.signature(kwargs=kwargs)
         chain.assert_called_with(*[processor_sig, notify_sig])
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.GIT_CLIENT_ERROR,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [upload.id],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_call_new_ta_tasks(
@@ -480,7 +654,7 @@ class TestUploadTaskIntegration:
         codecov_vcr,
         mock_storage,
         mock_redis,
-        celery_app,
+        mock_self_app,
         mock_repo_provider_service,
     ):
         chain = mocker.patch("tasks.upload.chain")
@@ -488,7 +662,6 @@ class TestUploadTaskIntegration:
         storage_path = "v4/raw/2019-05-22/C3C4715CA57C910D11D5EB899FC86A7E/4c4e4654ac25037ae869caeb3619d485970b6304/a84d445c-9c1e-434f-8275-f18f1f320f81.txt"
         redis_queue = [{"url": storage_path, "build_code": "some_random_build"}]
         jsonified_redis_queue = [json.dumps(x) for x in redis_queue]
-        mocker.patch.object(UploadTask, "app", celery_app)
 
         commit = CommitFactory.create(
             message="",
@@ -561,6 +734,32 @@ class TestUploadTaskIntegration:
         kwargs[_kwargs_key(TestResultsFlow)] = mocker.ANY
         notify_sig = test_results_finisher_task.signature(kwargs=kwargs)
         chain.assert_has_calls([call(processor_sig, notify_sig)], any_order=True)
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [upload.id],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db(databases={"default"}, transaction=True)
     def test_upload_task_call_test_results_new_repo(
@@ -571,7 +770,7 @@ class TestUploadTaskIntegration:
         codecov_vcr,
         mock_storage,
         mock_redis,
-        celery_app,
+        mock_self_app,
         mock_repo_provider_service,
     ):
         chain = mocker.patch("tasks.upload.chain")
@@ -646,6 +845,32 @@ class TestUploadTaskIntegration:
         kwargs[_kwargs_key(TestResultsFlow)] = mocker.ANY
         notify_sig = test_results_finisher_task.signature(kwargs=kwargs)
         chain.assert_called_with(*[processor_sig, notify_sig])
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [upload.id],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     def test_upload_task_call_no_jobs(
         self,
@@ -655,10 +880,8 @@ class TestUploadTaskIntegration:
         codecov_vcr,
         mock_storage,
         mock_redis,
-        celery_app,
+        mock_self_app,
     ):
-        mocker.patch.object(UploadTask, "app", celery_app)
-
         commit = CommitFactory.create(
             parent_commit_id=None,
             message="",
@@ -681,6 +904,33 @@ class TestUploadTaskIntegration:
         assert expected_result == result
         assert commit.message == ""
         assert commit.parent_commit_id is None
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.INTERNAL_NO_PENDING_JOBS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_upload_processing_delay_not_enough_delay(
@@ -689,14 +939,13 @@ class TestUploadTaskIntegration:
         mock_configuration,
         dbsession,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         mock_possibly_update_commit_from_provider_info = mocker.patch(
             "tasks.upload.possibly_update_commit_from_provider_info", return_value=True
         )
         mocker.patch.object(UploadTask, "possibly_setup_webhooks", return_value=True)
         mock_configuration.set_params({"setup": {"upload_processing_delay": 1000}})
-        mocker.patch.object(UploadTask, "app", celery_app)
 
         commit = CommitFactory.create(
             parent_commit_id=None,
@@ -732,6 +981,33 @@ class TestUploadTaskIntegration:
         assert commit.parent_commit_id is None
         assert redis.exists(f"uploads/{commit.repoid}/{commit.commitid}")
         assert not mock_possibly_update_commit_from_provider_info.called
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.INTERNAL_RETRYING,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_upload_processing_delay_enough_delay(
@@ -740,7 +1016,7 @@ class TestUploadTaskIntegration:
         mock_configuration,
         dbsession,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         mocker.patch(
             "tasks.upload.possibly_update_commit_from_provider_info", return_value=True
@@ -757,7 +1033,6 @@ class TestUploadTaskIntegration:
             pullid=1,
         )
         mock_configuration.set_params({"setup": {"upload_processing_delay": 1000}})
-        mocker.patch.object(UploadTask, "app", celery_app)
         mocker.patch.object(UploadTask, "possibly_setup_webhooks", return_value=True)
         mocked_chord = mocker.patch("tasks.upload.chord")
         dbsession.add(commit)
@@ -783,7 +1058,38 @@ class TestUploadTaskIntegration:
         assert commit.message == ""
         assert commit.parent_commit_id is None
         assert not redis.exists(f"uploads/{commit.repoid}/{commit.commitid}")
+        commit_report = commit.commit_report(report_type=ReportType.COVERAGE)
+        assert commit_report is not None
+        assert len(commit_report.uploads) == 2
         mocked_chord.assert_called_with([mocker.ANY, mocker.ANY], mocker.ANY)
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": sorted(
+                            [upload.id for upload in commit_report.uploads]
+                        ),
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     @pytest.mark.skip(reason="Bitbucket down is breaking this test")
@@ -793,10 +1099,9 @@ class TestUploadTaskIntegration:
         mock_configuration,
         dbsession,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         mock_configuration.set_params({"setup": {"upload_processing_delay": 1000}})
-        mocker.patch.object(UploadTask, "app", celery_app)
         mocker.patch(
             "tasks.upload.possibly_update_commit_from_provider_info", return_value=True
         )
@@ -831,7 +1136,38 @@ class TestUploadTaskIntegration:
         assert commit.message == ""
         assert commit.parent_commit_id is None
         assert not redis.exists(f"uploads/{commit.repoid}/{commit.commitid}")
+        commit_report = commit.commit_report(report_type=ReportType.COVERAGE)
+        assert commit_report is not None
+        assert len(commit_report.uploads) == 2
         mocked_chord.assert_called_with([mocker.ANY, mocker.ANY], mocker.ANY)
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": sorted(
+                            [upload.id for upload in commit_report.uploads]
+                        ),
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_call_multiple_processors(
@@ -841,10 +1177,9 @@ class TestUploadTaskIntegration:
         dbsession,
         codecov_vcr,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         mocked_chord = mocker.patch("tasks.upload.chord")
-        mocker.patch.object(UploadTask, "app", celery_app)
 
         commit = CommitFactory.create(
             message="",
@@ -883,6 +1218,9 @@ class TestUploadTaskIntegration:
         assert result == {"was_setup": False, "was_updated": True}
         assert commit.message == "dsidsahdsahdsa"
         assert commit.parent_commit_id is None
+        commit_report = commit.commit_report(report_type=ReportType.COVERAGE)
+        assert commit_report is not None
+        assert len(commit_report.uploads) == 8
         processors = [
             upload_processor_task.s(
                 repoid=commit.repoid,
@@ -906,6 +1244,46 @@ class TestUploadTaskIntegration:
         kwargs[_kwargs_key(UploadFlow)] = mocker.ANY
         t_final = upload_finisher_task.signature(kwargs=kwargs)
         mocked_chord.assert_called_with(processors, t_final)
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.GIT_CLIENT_ERROR,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": sorted(
+                            [upload.id for upload in commit_report.uploads]
+                        ),
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     def test_upload_task_proper_parent(
         self,
@@ -915,10 +1293,9 @@ class TestUploadTaskIntegration:
         codecov_vcr,
         mock_storage,
         mock_redis,
-        celery_app,
+        mock_self_app,
     ):
         mocked_1 = mocker.patch("tasks.upload.chain")
-        mocker.patch.object(UploadTask, "app", celery_app)
         mocked_3 = mocker.patch.object(UploadContext, "arguments_list", return_value=[])
 
         owner = OwnerFactory.create(
@@ -970,6 +1347,45 @@ class TestUploadTaskIntegration:
             blocking_timeout=5,
             timeout=300,
         )
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.GIT_CLIENT_ERROR,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.INTERNAL_NO_ARGUMENTS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_no_bot(
@@ -979,10 +1395,9 @@ class TestUploadTaskIntegration:
         dbsession,
         mock_redis,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         mocked_schedule_task = mocker.patch.object(UploadTask, "schedule_task")
-        mocker.patch.object(UploadTask, "app", celery_app)
         mocked_fetch_yaml = mocker.patch(
             "services.repository.fetch_commit_yaml_and_possibly_store"
         )
@@ -1037,6 +1452,32 @@ class TestUploadTaskIntegration:
             mocker.ANY,
         )
         assert not mocked_fetch_yaml.called
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            error=Errors.REPO_MISSING_VALID_BOT,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_bot_no_permissions(
@@ -1046,10 +1487,9 @@ class TestUploadTaskIntegration:
         dbsession,
         mock_redis,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         mocked_schedule_task = mocker.patch.object(UploadTask, "schedule_task")
-        mocker.patch.object(UploadTask, "app", celery_app)
         mocked_fetch_yaml = mocker.patch(
             "services.repository.fetch_commit_yaml_and_possibly_store"
         )
@@ -1105,6 +1545,32 @@ class TestUploadTaskIntegration:
             mocker.ANY,
         )
         assert not mocked_fetch_yaml.called
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            error=Errors.REPO_NOT_FOUND,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_bot_unauthorized(
@@ -1298,7 +1764,9 @@ class TestUploadTaskUnit:
         assert res == [{"url": "http://example.first.com"}, {"and_another": "one"}]
 
     @pytest.mark.django_db
-    def test_schedule_task_with_one_task(self, dbsession, mocker, mock_repo_provider):
+    def test_schedule_task_with_one_task(
+        self, dbsession, mocker, mock_repo_provider, mock_self_app
+    ):
         _start_upload_flow(mocker)
         mocker.patch(
             "tasks.base.get_repo_provider_service",
@@ -1340,9 +1808,22 @@ class TestUploadTaskUnit:
             }
         )
         mocked_chord.assert_called_with([processor], finisher)
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMPILING_UPLOADS,
+                ),
+                "upload_ids": [1],
+                "sentry_trace_id": None,
+            }
+        )
 
     def test_run_impl_unobtainable_lock_no_pending_jobs(
-        self, dbsession, mocker, mock_redis
+        self, dbsession, mocker, mock_redis, mock_self_app
     ):
         commit = CommitFactory.create()
         dbsession.add(commit)
@@ -1354,9 +1835,36 @@ class TestUploadTaskUnit:
             "was_setup": False,
             "was_updated": False,
         }
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.INTERNAL_NO_PENDING_JOBS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     def test_run_impl_unobtainable_lock_too_many_retries(
-        self, dbsession, mocker, mock_redis
+        self, dbsession, mocker, mock_redis, mock_self_app
     ):
         commit = CommitFactory.create()
         dbsession.add(commit)
@@ -1372,8 +1880,37 @@ class TestUploadTaskUnit:
             "was_updated": False,
             "reason": "too_many_retries",
         }
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.INTERNAL_LOCK_ERROR,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
-    def test_run_impl_currently_processing(self, dbsession, mocker, mock_redis):
+    def test_run_impl_currently_processing(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
@@ -1390,9 +1927,36 @@ class TestUploadTaskUnit:
             task.run_impl(dbsession, commit.repoid, commit.commitid)
         mocked_is_currently_processing.assert_called_with()
         assert not mocked_run_impl_within_lock.called
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.INTERNAL_RETRYING,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     def test_run_impl_currently_processing_second_retry(
-        self, dbsession, mocker, mock_redis
+        self, dbsession, mocker, mock_redis, mock_self_app
     ):
         commit = CommitFactory.create()
         dbsession.add(commit)
@@ -1410,6 +1974,19 @@ class TestUploadTaskUnit:
         mocked_is_currently_processing.assert_called_with()
         assert mocked_run_impl_within_lock.called
         assert result == {"some": "value"}
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMPILING_UPLOADS,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
 
     def test_is_currently_processing(self, mock_redis):
         repoid = 1
@@ -1429,7 +2006,9 @@ class TestUploadTaskUnit:
         )
         assert not upload_args.is_currently_processing()
 
-    def test_run_impl_unobtainable_lock_retry(self, dbsession, mocker, mock_redis):
+    def test_run_impl_unobtainable_lock_retry(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
@@ -1439,6 +2018,91 @@ class TestUploadTaskUnit:
         task.request.retries = 0
         with pytest.raises(Retry):
             task.run_impl(dbsession, commit.repoid, commit.commitid)
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.INTERNAL_LOCK_ERROR,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.INTERNAL_RETRYING,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
+
+    def test_run_impl_soft_time_limit_exceeded(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        mock_redis.keys[f"uploads/{commit.repoid}/{commit.commitid}"] = ["something"]
+
+        mocker.patch.object(
+            UploadTask, "run_impl_within_lock", side_effect=SoftTimeLimitExceeded()
+        )
+
+        task = UploadTask()
+        task.request.retries = 0
+        with pytest.raises(Retry):
+            task.run_impl(dbsession, commit.repoid, commit.commitid)
+
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repository.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.COMPILING_UPLOADS,
+                            error=Errors.TASK_TIMED_OUT,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     def test_possibly_setup_webhooks_public_repo(
         self, mocker, mock_configuration, mock_repo_provider
@@ -1661,7 +2325,7 @@ class TestUploadTaskUnit:
         gitlab_provider.edit_webhook.assert_not_called()
 
     def test_needs_webhook_secret_backfill_error(
-        self, dbsession, mocker, mock_configuration
+        self, dbsession, mocker, mock_configuration, mock_self_app
     ):
         mock_configuration.set_params(
             {"gitlab_enterprise": {"bot": {"key": "somekey"}}}
@@ -1688,9 +2352,29 @@ class TestUploadTaskUnit:
         assert res is False
         assert repository.webhook_secret is None
         gitlab_e_provider.edit_webhook.assert_called_once()
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMPILING_UPLOADS,
+                    error=Errors.GIT_CLIENT_ERROR,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
 
     def test_upload_not_ready_to_build_report(
-        self, dbsession, mocker, mock_configuration, mock_repo_provider, mock_redis
+        self,
+        dbsession,
+        mocker,
+        mock_configuration,
+        mock_repo_provider,
+        mock_redis,
+        mock_self_app,
     ):
         mock_configuration.set_params({"github": {"bot": {"key": "somekey"}}})
         commit = CommitFactory.create()
@@ -1712,3 +2396,17 @@ class TestUploadTaskUnit:
         )
         with pytest.raises(Retry):
             task.run_impl_within_lock(dbsession, upload_args, kwargs={})
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMPILING_UPLOADS,
+                    error=Errors.INTERNAL_RETRYING,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
