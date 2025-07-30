@@ -118,15 +118,8 @@ def get_results(
             cache to redis
     deserialize
     """
-    if use_new_impl(repoid):
-        func = new_get_results
-        label = "new"
-    else:
-        func = old_get_results
-        label = "old"
-
-    with get_results_summary.labels(label).time():
-        return func(repoid, branch, interval_start, interval_end)
+    with get_results_summary.labels("old").time():
+        return old_get_results(repoid, branch, interval_start, interval_end)
 
 
 def old_get_results(

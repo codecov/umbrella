@@ -227,7 +227,10 @@ def repository_with_new_commit(db):
 def store_in_redis(repository_with_old_commit, mocker):
     """Store data in Redis and ensure old implementation is used"""
     # Mock the rollout to return False to ensure old implementation
-    mocker.patch("utils.test_results.use_new_impl", return_value=False)
+    mocker.patch(
+        "graphql_api.types.test_analytics.test_analytics.use_new_impl",
+        return_value=False,
+    )
     mocker.patch(
         "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
         return_value=False,
@@ -250,7 +253,10 @@ def store_in_redis(repository_with_old_commit, mocker):
 def store_in_storage(repository_with_old_commit, mocker):
     """Store data in storage and ensure old implementation is used"""
     # Mock the rollout to return False to ensure old implementation
-    mocker.patch("utils.test_results.use_new_impl", return_value=False)
+    mocker.patch(
+        "graphql_api.types.test_analytics.test_analytics.use_new_impl",
+        return_value=False,
+    )
     mocker.patch(
         "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
         return_value=False,
@@ -281,7 +287,10 @@ def store_in_storage(repository_with_old_commit, mocker):
 def store_in_redis_with_duplicate_names(repository_with_old_commit, mocker):
     """Store duplicate names data in Redis and ensure old implementation is used"""
     # Mock the rollout to return False to ensure old implementation
-    mocker.patch("utils.test_results.use_new_impl", return_value=False)
+    mocker.patch(
+        "graphql_api.types.test_analytics.test_analytics.use_new_impl",
+        return_value=False,
+    )
     mocker.patch(
         "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
         return_value=False,
@@ -854,108 +863,6 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
         assert result["owner"]["repository"]["testAnalytics"]["testSuites"] == [
             "testsuite1",
         ]
-
-    @pytest.mark.parametrize("ordering", ["FAILURE_RATE", "TOTAL_DURATION"])
-    def test_gql_query_with_new_ta_format(self, mocker, repository, snapshot, ordering):
-        # set the feature flag
-        mocker.patch("utils.test_results.use_new_impl", return_value=True)
-
-        # read file from samples
-        storage = get_appropriate_storage_service()
-        try:
-            storage.create_root_storage(settings.GCS_BUCKET_NAME)
-        except BucketAlreadyExistsError:
-            pass
-        storage.write_file(
-            settings.GCS_BUCKET_NAME,
-            f"test_analytics/branch_rollups/{repository.repoid}/{repository.branch}.arrow",
-            test_results_table_v1.write_ipc(None).getvalue(),
-            metadata={"version": "1"},
-        )
-
-        # run the GQL query
-        query = base_gql_query % (
-            repository.author.username,
-            repository.name,
-            f"""
-            testResults(ordering: {{ parameter: {ordering}, direction: DESC }} ) {{
-                totalCount
-                edges {{
-                    cursor
-                    node {{
-                        name
-                        failureRate
-                        flakeRate
-                        updatedAt
-                        avgDuration
-                        totalDuration
-                        totalFailCount
-                        totalFlakyFailCount
-                        totalPassCount
-                        totalSkipCount
-                        commitsFailed
-                        lastDuration
-                    }}
-                }}
-            }}
-            flakeAggregates {{
-                flakeRate
-                flakeCount
-            }}
-            testResultsAggregates {{
-                totalDuration
-                slowestTestsDuration
-                totalFails
-                totalSkips
-                totalSlowTests
-            }}
-            testSuites
-            """,
-        )
-
-        result = self.gql_request(query, owner=repository.author)
-
-        # take a snapshot of the results
-        assert (
-            result["owner"]["repository"]["testAnalytics"]["testResults"]["totalCount"]
-            == 5
-        )
-        assert snapshot("json") == [
-            {
-                **edge,
-                "node": {k: v for k, v in edge["node"].items() if k != "updatedAt"},
-            }
-            for edge in result["owner"]["repository"]["testAnalytics"]["testResults"][
-                "edges"
-            ]
-        ]
-
-        assert sorted(result["owner"]["repository"]["testAnalytics"]["testSuites"]) == [
-            "testsuite0",
-            "testsuite1",
-            "testsuite2",
-            "testsuite3",
-            "testsuite4",
-        ]
-
-        assert result["owner"]["repository"]["testAnalytics"]["flakeAggregates"] == {
-            "flakeRate": (1 / 15),
-            "flakeCount": 1,
-        }
-
-        assert result["owner"]["repository"]["testAnalytics"][
-            "testResultsAggregates"
-        ] == {
-            "totalDuration": 8000.0,
-            "slowestTestsDuration": 2500.0,
-            "totalFails": 50,
-            "totalSkips": 25,
-            "totalSlowTests": 1,
-        }
-        storage.delete_file(
-            settings.GCS_BUCKET_NAME,
-            f"test_analytics/branch_rollups/{repository.repoid}/{repository.branch}.arrow",
-        )
 
     def test_has_commits_before_cutoff_with_old_commits(self, db):
         repository = RepositoryFactory()

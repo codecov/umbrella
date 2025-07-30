@@ -13,7 +13,10 @@
     "total_duration": 0.0,
     "avg_duration": 0.0,
     "last_duration": 0.0,
-    "flags": ["flag1", "flag2"],
+    "flags": [
+      "flag1",
+      "flag2"
+    ],
     "name": "name0"
   },
   {
@@ -30,7 +33,9 @@
     "total_duration": 1.0,
     "avg_duration": 1.0,
     "last_duration": 1.0,
-    "flags": ["flag3"],
+    "flags": [
+      "flag3"
+    ],
     "name": "name1"
   },
   {
@@ -47,7 +52,10 @@
     "total_duration": 2.0,
     "avg_duration": 2.0,
     "last_duration": 2.0,
-    "flags": ["flag1", "flag2"],
+    "flags": [
+      "flag1",
+      "flag2"
+    ],
     "name": "name2"
   },
   {
@@ -64,7 +72,9 @@
     "total_duration": 3.0,
     "avg_duration": 3.0,
     "last_duration": 3.0,
-    "flags": ["flag3"],
+    "flags": [
+      "flag3"
+    ],
     "name": "name3"
   },
   {
@@ -81,7 +91,10 @@
     "total_duration": 4.0,
     "avg_duration": 4.0,
     "last_duration": 4.0,
-    "flags": ["flag1", "flag2"],
+    "flags": [
+      "flag1",
+      "flag2"
+    ],
     "name": "name4"
   },
   {
@@ -98,7 +111,7 @@
     "total_duration": 0.0,
     "avg_duration": 0.0,
     "last_duration": 0.0,
-    "flags": ["flag1"],
+    "flags": null,
     "name": "name5"
   }
 ]

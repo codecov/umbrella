@@ -2,13 +2,11 @@ import datetime as dt
 from typing import Literal
 
 import polars as pl
-import sentry_sdk
 from django.db import connections
 from redis.exceptions import LockError
 
 import shared.storage
 from app import celery_app
-from services.test_analytics.ta_cache_rollups import cache_rollups
 from services.test_analytics.ta_metrics import (
     read_rollups_from_db_summary,
     rollup_size_summary,
@@ -125,16 +123,11 @@ class CacheTestRollupsTask(BaseCodecovTask, name=cache_test_rollups_task_name):
             with redis_conn.lock(
                 f"rollups:{repo_id}:{branch}", timeout=300, blocking_timeout=2
             ):
-                if impl_type == "new" or impl_type == "both":
-                    try:
-                        cache_rollups(repo_id, branch)
-                        cache_rollups(repo_id, None)
-                        if impl_type == "new":
-                            return {"success": True}
-                    except Exception as e:
-                        sentry_sdk.capture_exception(e)
-                        if impl_type == "new":
-                            return {"success": False}
+                # we were previously calling cache_rollups here, but we are choosing not to anymore
+                # we don't want to populate the cache file with data from Timescale because it's very expensive
+                # we're going to read directly from Timescale in the API instead
+                if impl_type == "new":
+                    return {"success": True}
 
                 self.run_impl_within_lock(repo_id, branch)
 

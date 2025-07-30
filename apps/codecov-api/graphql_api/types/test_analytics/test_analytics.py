@@ -9,6 +9,8 @@ import polars as pl
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
 from django.core.exceptions import ValidationError
+from django.db import connections
+from django.db.models import Q
 from graphql.type.definition import GraphQLResolveInfo
 
 from graphql_api.helpers.connection import queryset_to_connection
@@ -26,8 +28,9 @@ from graphql_api.types.test_results_aggregates.test_results_aggregates import (
 )
 from rollouts import READ_NEW_TA
 from shared.django_apps.core.models import Repository
+from shared.django_apps.ta_timeseries.models import TestrunSummary
 from utils.ta_types import FlakeAggregates, TestResultsAggregates, TestResultsRow
-from utils.test_results import get_results
+from utils.test_results import get_results, use_new_impl
 from utils.timescale_test_results import (
     get_flake_aggregates_from_timescale,
     get_test_results_aggregates_from_timescale,
@@ -263,7 +266,7 @@ def generate_test_results(
     )
 
 
-def get_test_suites(
+def get_test_suites_old(
     repoid: int, term: str | None = None, interval: int = 30
 ) -> list[str]:
     repo = Repository.objects.get(repoid=repoid)
@@ -280,7 +283,42 @@ def get_test_suites(
     return testsuites.to_series().drop_nulls().to_list() or []
 
 
-def get_flags(repoid: int, term: str | None = None, interval: int = 30) -> list[str]:
+def get_test_suites_new(
+    repoid: int, term: str | None = None, interval: int = 30
+) -> list[str]:
+    end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_date = end_date - timedelta(days=interval)
+
+    q_filter = (
+        Q(repo_id=repoid)
+        & Q(timestamp_bin__gte=start_date)
+        & Q(timestamp_bin__lt=end_date)
+    )
+
+    if term:
+        q_filter &= Q(testsuite__istartswith=term)
+
+    testsuites = (
+        TestrunSummary.objects.filter(q_filter)
+        .values_list("testsuite", flat=True)
+        .distinct()[:200]
+    )
+
+    return list(testsuites)
+
+
+def get_test_suites(
+    repoid: int, term: str | None = None, interval: int = 30
+) -> list[str]:
+    if READ_NEW_TA.check_value(repoid) or use_new_impl(repoid):
+        return get_test_suites_new(repoid, term, interval)
+    else:
+        return get_test_suites_old(repoid, term, interval)
+
+
+def get_flags_old(
+    repoid: int, term: str | None = None, interval: int = 30
+) -> list[str]:
     repo = Repository.objects.get(repoid=repoid)
 
     table = get_results(repoid, repo.branch, interval)
@@ -293,6 +331,53 @@ def get_flags(repoid: int, term: str | None = None, interval: int = 30) -> list[
         flags = flags.filter(pl.col("flags").str.starts_with(term))
 
     return flags.to_series().drop_nulls().to_list() or []
+
+
+def get_flags_new(
+    repoid: int, term: str | None = None, interval: int = 30
+) -> list[str]:
+    end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_date = end_date - timedelta(days=interval)
+
+    with connections["ta_timeseries"].cursor() as cursor:
+        if term:
+            base_query = """
+                SELECT DISTINCT flag
+                FROM (
+                    SELECT unnest(flags) as flag
+                    FROM ta_timeseries_testrun_summary_1day 
+                    WHERE repo_id = %s 
+                    AND timestamp_bin >= %s 
+                    AND timestamp_bin < %s 
+                    AND flags IS NOT NULL
+                ) unnested_flags
+                WHERE flag ILIKE %s
+                ORDER BY flag LIMIT 200
+            """
+            params = [repoid, start_date, end_date, f"{term}%"]
+        else:
+            base_query = """
+                SELECT DISTINCT unnest(flags) as flag
+                FROM ta_timeseries_testrun_summary_1day 
+                WHERE repo_id = %s 
+                AND timestamp_bin >= %s 
+                AND timestamp_bin < %s 
+                AND flags IS NOT NULL
+                ORDER BY flag LIMIT 200
+            """
+            params = [repoid, start_date, end_date]
+
+        cursor.execute(base_query, params)
+        flags = [row[0] for row in cursor.fetchall()]
+
+    return flags
+
+
+def get_flags(repoid: int, term: str | None = None, interval: int = 30) -> list[str]:
+    if READ_NEW_TA.check_value(repoid) or use_new_impl(repoid):
+        return get_flags_new(repoid, term, interval)
+    else:
+        return get_flags_old(repoid, term, interval)
 
 
 class GQLTestResultsOrdering(TypedDict):
@@ -324,7 +409,9 @@ async def resolve_test_results(
     last: int | None = None,
     before: str | None = None,
 ) -> TestResultConnection:
-    if await sync_to_async(READ_NEW_TA.check_value)(repository.repoid):
+    if await sync_to_async(READ_NEW_TA.check_value)(
+        repository.repoid
+    ) or await sync_to_async(use_new_impl)(repository.repoid):
         measurement_interval = (
             filters.get("interval", MeasurementInterval.INTERVAL_30_DAY)
             if filters
@@ -408,7 +495,9 @@ async def resolve_test_results_aggregates(
     interval: MeasurementInterval | None = None,
     **_: Any,
 ) -> TestResultsAggregates | None:
-    if await sync_to_async(READ_NEW_TA.check_value)(repository.repoid):
+    if await sync_to_async(READ_NEW_TA.check_value)(
+        repository.repoid
+    ) or await sync_to_async(use_new_impl)(repository.repoid):
         measurement_interval = (
             interval if interval else MeasurementInterval.INTERVAL_30_DAY
         )
@@ -435,7 +524,9 @@ async def resolve_flake_aggregates(
     interval: MeasurementInterval | None = None,
     **_: Any,
 ) -> FlakeAggregates | None:
-    if await sync_to_async(READ_NEW_TA.check_value)(repository.repoid):
+    if await sync_to_async(READ_NEW_TA.check_value)(
+        repository.repoid
+    ) or await sync_to_async(use_new_impl)(repository.repoid):
         measurement_interval = (
             interval if interval else MeasurementInterval.INTERVAL_30_DAY
         )
