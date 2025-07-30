@@ -16,16 +16,13 @@ from services.repository import (
 )
 from shared.celery_config import (
     pre_process_upload_task_name,
-    upload_breadcrumb_task_name,
 )
 from shared.django_apps.upload_breadcrumbs.models import (
-    BreadcrumbData,
     Errors,
     Milestones,
 )
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter
-from shared.utils.sentry import current_sentry_trace_id
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -162,28 +159,6 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
             )
 
         return repository_service
-
-    def _call_upload_breadcrumb_task(
-        self,
-        commit_sha: str,
-        repo_id: int,
-        milestone: Milestones,
-        error: Errors | None = None,
-        error_text: str | None = None,
-    ):
-        """
-        Call the upload breadcrumb task to update the commit status.
-        """
-        self.app.tasks[upload_breadcrumb_task_name].apply_async(
-            kwargs={
-                "commit_sha": commit_sha,
-                "repo_id": repo_id,
-                "breadcrumb_data": BreadcrumbData(
-                    milestone=milestone, error=error, error_text=error_text
-                ),
-                "sentry_trace_id": current_sentry_trace_id(),
-            }
-        )
 
 
 RegisteredUploadTask = celery_app.register_task(PreProcessUpload())

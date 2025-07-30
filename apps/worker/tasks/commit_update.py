@@ -9,14 +9,12 @@ from services.repository import (
     get_repo_provider_service,
     possibly_update_commit_from_provider_info,
 )
-from shared.celery_config import commit_update_task_name, upload_breadcrumb_task_name
+from shared.celery_config import commit_update_task_name
 from shared.django_apps.upload_breadcrumbs.models import (
-    BreadcrumbData,
     Errors,
     Milestones,
 )
 from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
-from shared.utils.sentry import current_sentry_trace_id
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
@@ -150,16 +148,11 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
                 extra={"commitid": commitid, "repoid": repoid},
             )
 
-        self.app.tasks[upload_breadcrumb_task_name].apply_async(
-            kwargs={
-                "commit_sha": commitid,
-                "repo_id": repoid,
-                "breadcrumb_data": BreadcrumbData(
-                    milestone=Milestones.COMMIT_PROCESSED,
-                    error=error,
-                ),
-                "sentry_trace_id": current_sentry_trace_id(),
-            }
+        self._call_upload_breadcrumb_task(
+            commit_sha=commitid,
+            repo_id=repoid,
+            milestone=Milestones.COMMIT_PROCESSED,
+            error=error,
         )
         return {"was_updated": was_updated}
 

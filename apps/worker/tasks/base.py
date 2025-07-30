@@ -28,10 +28,18 @@ from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValid
 from helpers.log_context import LogContext, set_log_context
 from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
+from shared.celery_config import upload_breadcrumb_task_name
 from shared.celery_router import route_tasks_based_on_user_plan
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Errors,
+    Milestones,
+)
 from shared.metrics import Counter, Histogram
 from shared.torngit.base import TorngitBaseAdapter
+from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
 from shared.typings.torngit import AdditionalData
+from shared.utils.sentry import current_sentry_trace_id
 
 log = logging.getLogger("worker")
 
@@ -343,19 +351,25 @@ class BaseCodecovTask(celery_app.Task):
         self,
         repository: Repository,
         installation_name_to_use: str = GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-        additional_data: AdditionalData = None,
-        commit: Commit = None,
+        additional_data: AdditionalData | None = None,
+        commit: Commit | None = None,
     ) -> TorngitBaseAdapter | None:
         try:
             return get_repo_provider_service(
                 repository, installation_name_to_use, additional_data
             )
         except RepositoryWithoutValidBotError:
-            save_commit_error(
-                commit,
-                error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
-                error_params={"repoid": repository.repoid},
-            )
+            if commit:
+                save_commit_error(
+                    commit,
+                    error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
+                    error_params={"repoid": repository.repoid},
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=repository.repoid,
+                    error=Errors.REPO_MISSING_VALID_BOT,
+                )
             log.warning(
                 "Unable to reach git provider because repo doesn't have a valid bot"
             )
@@ -384,5 +398,74 @@ class BaseCodecovTask(celery_app.Task):
                         "apps_suspended": exp.suspended_count,
                     },
                 )
+        except TorngitRepoNotFoundError:
+            if commit:
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=repository.repoid,
+                    error=Errors.REPO_NOT_FOUND,
+                )
+            log.warning(
+                "Unable to reach git provider because this specific bot/integration can't see that repository",
+                extra={"repoid": repository.repoid},
+            )
+        except TorngitClientError:
+            if commit:
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=repository.repoid,
+                    error=Errors.GIT_CLIENT_ERROR,
+                )
+            log.warning(
+                "Unable to get repo provider service",
+                extra={"repoid": repository.repoid},
+                exc_info=True,
+            )
         except Exception as e:
             log.exception("Uncaught exception when trying to get repository service")
+            if commit:
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=repository.repoid,
+                    error=Errors.UNKNOWN,
+                    error_text=str(e),
+                )
+
+        return None
+
+    def _call_upload_breadcrumb_task(
+        self,
+        commit_sha: str,
+        repo_id: int,
+        milestone: Milestones | None = None,
+        upload_ids: list[int] = [],
+        error: Errors | None = None,
+        error_text: str | None = None,
+    ):
+        """
+        Queue a task to create an upload breadcrumb.
+        """
+        try:
+            self.app.tasks[upload_breadcrumb_task_name].apply_async(
+                kwargs={
+                    "commit_sha": commit_sha,
+                    "repo_id": repo_id,
+                    "breadcrumb_data": BreadcrumbData(
+                        milestone=milestone, error=error, error_text=error_text
+                    ),
+                    "upload_ids": upload_ids,
+                    "sentry_trace_id": current_sentry_trace_id(),
+                }
+            )
+        except Exception:
+            log.exception(
+                "Failed to queue upload breadcrumb task",
+                extra={
+                    "commit_sha": commit_sha,
+                    "repo_id": repo_id,
+                    "milestone": milestone,
+                    "upload_ids": upload_ids,
+                    "error": error,
+                    "error_text": error_text,
+                },
+            )

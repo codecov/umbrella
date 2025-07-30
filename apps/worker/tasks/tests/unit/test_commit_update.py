@@ -20,13 +20,14 @@ from tasks.commit_update import CommitUpdateTask
 
 
 @pytest.fixture
-def mock_self_app(mocker):
+def mock_self_app(mocker, celery_app):
+    mock_app = celery_app
+    mock_app.tasks[upload_breadcrumb_task_name] = mocker.MagicMock()
+
     return mocker.patch.object(
         CommitUpdateTask,
         "app",
-        tasks={
-            upload_breadcrumb_task_name: mocker.MagicMock(),
-        },
+        mock_app,
     )
 
 
@@ -71,6 +72,7 @@ class TestCommitUpdate:
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.COMMIT_PROCESSED,
                 ),
+                "upload_ids": [],
                 "sentry_trace_id": None,
             }
         )
@@ -114,6 +116,7 @@ class TestCommitUpdate:
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.COMMIT_PROCESSED, error=Errors.GIT_CLIENT_ERROR
                 ),
+                "upload_ids": [],
                 "sentry_trace_id": None,
             }
         )
@@ -158,6 +161,7 @@ class TestCommitUpdate:
                     milestone=Milestones.COMMIT_PROCESSED,
                     error=Errors.REPO_MISSING_VALID_BOT,
                 ),
+                "upload_ids": [],
                 "sentry_trace_id": None,
             }
         )
@@ -203,6 +207,7 @@ class TestCommitUpdate:
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.COMMIT_PROCESSED, error=Errors.REPO_NOT_FOUND
                 ),
+                "upload_ids": [],
                 "sentry_trace_id": None,
             }
         )
@@ -248,6 +253,7 @@ class TestCommitUpdate:
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.COMMIT_PROCESSED, error=Errors.GIT_CLIENT_ERROR
                 ),
+                "upload_ids": [],
                 "sentry_trace_id": None,
             }
         )
@@ -353,6 +359,7 @@ class TestCommitUpdate:
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.COMMIT_PROCESSED
                 ),
+                "upload_ids": [],
                 "sentry_trace_id": None,
             }
         )

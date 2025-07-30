@@ -19,13 +19,14 @@ from tasks.preprocess_upload import PreProcessUpload
 
 
 @pytest.fixture
-def mock_self_app(mocker):
+def mock_self_app(mocker, celery_app):
+    mock_app = celery_app
+    mock_app.tasks[upload_breadcrumb_task_name] = mocker.MagicMock()
+
     return mocker.patch.object(
         PreProcessUpload,
         "app",
-        tasks={
-            upload_breadcrumb_task_name: mocker.MagicMock(),
-        },
+        mock_app,
     )
 
 
@@ -38,7 +39,6 @@ class TestPreProcessUpload:
         dbsession,
         mock_storage,
         mock_redis,
-        celery_app,
         sample_report,
         mock_self_app,
     ):
@@ -103,6 +103,7 @@ class TestPreProcessUpload:
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.READY_FOR_REPORT,
                 ),
+                "upload_ids": [],
                 "sentry_trace_id": None,
             }
         )
@@ -144,6 +145,7 @@ class TestPreProcessUpload:
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.READY_FOR_REPORT,
                 ),
+                "upload_ids": [],
                 "sentry_trace_id": None,
             }
         )
@@ -173,6 +175,7 @@ class TestPreProcessUpload:
                     milestone=Milestones.READY_FOR_REPORT,
                     error=Errors.INTERNAL_LOCK_ERROR,
                 ),
+                "upload_ids": [],
                 "sentry_trace_id": None,
             }
         )
@@ -207,6 +210,7 @@ class TestPreProcessUpload:
                     milestone=Milestones.READY_FOR_REPORT,
                     error=Errors.REPO_MISSING_VALID_BOT,
                 ),
+                "upload_ids": [],
                 "sentry_trace_id": None,
             }
         )
@@ -230,6 +234,7 @@ class TestPreProcessUpload:
                     milestone=Milestones.READY_FOR_REPORT,
                     error=Errors.REPO_MISSING_VALID_BOT,
                 ),
+                "upload_ids": [],
                 "sentry_trace_id": None,
             }
         )
@@ -263,6 +268,7 @@ class TestPreProcessUpload:
                     milestone=Milestones.READY_FOR_REPORT,
                     error=Errors.REPO_MISSING_VALID_BOT,
                 ),
+                "upload_ids": [],
                 "sentry_trace_id": None,
             }
         )
