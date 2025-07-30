@@ -82,7 +82,7 @@ def populate_timescale(repository):
                 outcome="skip",
                 duration_seconds=0,
                 commit_sha="test_commit_skip",
-                flags=["flag1"],
+                flags=None,
                 branch="main",
             )
         ]
@@ -308,6 +308,50 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
                                         }}
                                     }}
                                 }}
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
+
+    def test_gql_query_testsuites_and_flags_resolvers(
+        self, repository, populate_timescale, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                testSuites
+                                flags
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
+
+    def test_gql_query_testsuites_and_flags_resolvers_with_term(
+        self, repository, populate_timescale, snapshot
+    ):
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                testSuites(term: "testsuite1")
+                                flags(term: "flag1")
                             }}
                         }}
                     }}

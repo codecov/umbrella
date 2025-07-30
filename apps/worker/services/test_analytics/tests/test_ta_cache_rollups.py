@@ -10,6 +10,7 @@ from shared.django_apps.ta_timeseries.models import (
     TestrunSummary,
     calc_test_id,
 )
+from shared.storage.exceptions import FileNotInStorageError
 from shared.storage.minio import MinioStorageService
 from tasks.cache_test_rollups import CacheTestRollupsTask
 
@@ -280,8 +281,5 @@ def test_cache_test_rollups_use_timeseries_branch(mock_storage, snapshot):
         impl_type="new",
     )
 
-    table = read_table(mock_storage, "test_analytics/branch_rollups/1/feature.arrow")
-    table_dict = table.to_dict(as_series=False)
-    del table_dict["timestamp_bin"]
-    del table_dict["updated_at"]
-    assert snapshot("json") == table_dict
+    with pytest.raises(FileNotInStorageError):
+        read_table(mock_storage, "test_analytics/branch_rollups/1/feature.arrow")

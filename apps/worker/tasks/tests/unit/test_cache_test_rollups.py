@@ -237,27 +237,3 @@ def test_cache_test_rollups_update_date_does_not_exist(mock_storage, db):
         repository_id=repo.repoid, branch="main"
     ).first()
     assert obj.last_rollup_date == dt.date.today()
-
-
-@freeze_time()
-def test_cache_test_rollups_both(mock_storage, db, mocker):
-    mock_cache_rollups = mocker.patch("tasks.cache_test_rollups.cache_rollups")
-    task = CacheTestRollupsTask()
-    mocker.patch.object(task, "run_impl_within_lock")
-    repo = RepositoryFactory()
-    _ = task.run_impl(
-        _db_session=None,
-        repo_id=repo.repoid,
-        branch="main",
-        update_date=True,
-        impl_type="both",
-    )
-
-    mock_cache_rollups.assert_has_calls(
-        [
-            mocker.call(repo.repoid, "main"),
-            mocker.call(repo.repoid, None),
-        ]
-    )
-
-    task.run_impl_within_lock.assert_called_once()

@@ -1,0 +1,14 @@
+{
+  "owner": {
+    "repository": {
+      "testAnalytics": {
+        "testSuites": [
+          "testsuite1"
+        ],
+        "flags": [
+          "flag1"
+        ]
+      }
+    }
+  }
+}

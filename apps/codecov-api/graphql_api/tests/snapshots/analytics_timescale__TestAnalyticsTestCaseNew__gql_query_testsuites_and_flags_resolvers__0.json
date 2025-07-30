@@ -1,0 +1,21 @@
+{
+  "owner": {
+    "repository": {
+      "testAnalytics": {
+        "testSuites": [
+          "testsuite0",
+          "testsuite1",
+          "testsuite2",
+          "testsuite3",
+          "testsuite4",
+          "testsuite5"
+        ],
+        "flags": [
+          "flag1",
+          "flag2",
+          "flag3"
+        ]
+      }
+    }
+  }
+}
