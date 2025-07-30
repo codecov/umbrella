@@ -38,6 +38,8 @@ github:
   integration:
     id: 254
     pem: src/certs/github.pem
+  sentry_merge_app_id: 1234567890
+  sentry_merge_app_pem: randomly_long_string_of_characters
 
 bitbucket:
   bot:
