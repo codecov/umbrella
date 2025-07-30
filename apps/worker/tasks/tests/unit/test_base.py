@@ -19,13 +19,34 @@ from database.enums import CommitErrorTypes
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import OwnerFactory, RepositoryFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
-from shared.celery_config import sync_repos_task_name, upload_task_name
+from shared.celery_config import (
+    sync_repos_task_name,
+    upload_breadcrumb_task_name,
+    upload_task_name,
+)
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Errors,
+)
 from shared.plan.constants import PlanName
+from shared.torngit.exceptions import TorngitClientError
 from tasks.base import BaseCodecovRequest, BaseCodecovTask
 from tasks.base import celery_app as base_celery_app
 from tests.helpers import mock_all_plans_and_tiers
 
 here = Path(__file__)
+
+
+@pytest.fixture
+def mock_self_app(mocker, celery_app):
+    mock_app = celery_app
+    mock_app.tasks[upload_breadcrumb_task_name] = mocker.MagicMock()
+
+    return mocker.patch.object(
+        BaseCodecovTask,
+        "app",
+        mock_app,
+    )
 
 
 class MockDateTime(datetime):
@@ -257,7 +278,7 @@ class TestBaseCodecovTask:
 
         assert mock_wrap_up.call_args_list == [call(dbsession)]
 
-    def test_get_repo_provider_service_working(self, mocker):
+    def test_get_repo_provider_service_working(self, mocker, mock_self_app):
         mock_repo_provider = mocker.MagicMock()
         mock_get_repo_provider_service = mocker.patch(
             "tasks.base.get_repo_provider_service", return_value=mock_repo_provider
@@ -269,6 +290,7 @@ class TestBaseCodecovTask:
         mock_get_repo_provider_service.assert_called_with(
             mock_repo, GITHUB_APP_INSTALLATION_DEFAULT_NAME, None
         )
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_not_called()
 
     def test_get_repo_provider_service_rate_limited(self, mocker):
         mocker.patch(
@@ -302,7 +324,7 @@ class TestBaseCodecovTask:
         mock_repo = mocker.MagicMock()
         assert task.get_repo_provider_service(mock_repo) is None
 
-    def test_get_repo_provider_service_no_valid_bot(self, mocker):
+    def test_get_repo_provider_service_no_valid_bot(self, mocker, mock_self_app):
         mocker.patch(
             "tasks.base.get_repo_provider_service",
             side_effect=RepositoryWithoutValidBotError(),
@@ -318,6 +340,75 @@ class TestBaseCodecovTask:
             mock_commit,
             error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
             error_params={"repoid": 5},
+        )
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": mock_commit.commitid,
+                "repo_id": mock_repo.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    error=Errors.REPO_MISSING_VALID_BOT,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
+
+    def test_get_repo_provider_service_torngit_client_error(
+        self, mocker, mock_self_app
+    ):
+        mocker.patch(
+            "tasks.base.get_repo_provider_service", side_effect=TorngitClientError()
+        )
+
+        task = BaseCodecovTask()
+        mock_repo = mocker.MagicMock()
+        mock_repo.repoid = 8
+        mock_commit = mocker.MagicMock()
+        mock_commit.commitid = "abc123"
+        task.get_repo_provider_service(mock_repo, commit=mock_commit)
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": mock_commit.commitid,
+                "repo_id": mock_repo.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    error=Errors.GIT_CLIENT_ERROR,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
+
+    def test_call_upload_breadcrumb_task_exception(self, mocker, mock_self_app):
+        exception = Exception("Test exception")
+        mocker.patch("tasks.base.get_repo_provider_service", side_effect=exception)
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.side_effect = Exception("Task exception")
+
+        task = BaseCodecovTask()
+        mock_repo = mocker.MagicMock()
+        mock_repo.repoid = 8
+        mock_commit = mocker.MagicMock()
+        mock_commit.commitid = "abc123"
+        # Ensure the exception from _call_upload_breadcrumb_task does not propagate
+        task.get_repo_provider_service(mock_repo, commit=mock_commit)
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": mock_commit.commitid,
+                "repo_id": mock_repo.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    error=Errors.UNKNOWN,
+                    error_text=str(exception),
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
         )
 
 

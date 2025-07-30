@@ -4,12 +4,13 @@ import time
 import uuid
 from copy import deepcopy
 from datetime import UTC, datetime
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery import chain, chord
+from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from redis import Redis
 from redis.exceptions import LockError
@@ -40,6 +41,10 @@ from services.test_analytics.ta_metrics import new_ta_tasks_repo_summary
 from services.test_results import TestResultsReportService
 from shared.celery_config import upload_task_name
 from shared.config import get_config
+from shared.django_apps.upload_breadcrumbs.models import (
+    Errors,
+    Milestones,
+)
 from shared.django_apps.user_measurements.models import UserMeasurement
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Histogram
@@ -246,12 +251,14 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         repoid: int,
         commitid: str,
         report_type: str = "coverage",
-        *args,
-        **kwargs,
+        *args: Any,
+        **kwargs: Any,
     ):
         upload_context = UploadContext(
             repoid=int(repoid), commitid=commitid, report_type=ReportType(report_type)
         )
+
+        milestone = Milestones.COMPILING_UPLOADS
 
         # If we're a retry, kwargs will already have our first checkpoint.
         # If not, log it directly into kwargs so we can pass it onto other tasks
@@ -264,11 +271,23 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 TestResultsFlow.TEST_RESULTS_BEGIN, kwargs=kwargs, ignore_repeat=True
             )
 
+        self._call_upload_breadcrumb_task(
+            commit_sha=commitid,
+            repo_id=repoid,
+            milestone=milestone,
+        )
+
         log.info("Received upload task", extra=upload_context.log_extra())
 
         if not upload_context.has_pending_jobs():
             log.info("No pending jobs. Upload task is done.")
             self.maybe_log_upload_checkpoint(UploadFlow.NO_PENDING_JOBS)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                error=Errors.INTERNAL_NO_PENDING_JOBS,
+            )
             return {
                 "was_setup": False,
                 "was_updated": False,
@@ -280,6 +299,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 "Currently processing upload. Retrying in 60s.",
                 extra=upload_context.log_extra(),
             )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                error=Errors.INTERNAL_RETRYING,
+            )
             self.retry(countdown=60, kwargs=upload_context.kwargs_for_retry(kwargs))
 
         if retry_countdown := _should_debounce_processing(upload_context):
@@ -288,6 +313,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 extra=upload_context.log_extra(
                     countdown=retry_countdown,
                 ),
+            )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                error=Errors.INTERNAL_RETRYING,
             )
             self.retry(
                 countdown=retry_countdown,
@@ -305,6 +336,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 if not upload_context.has_pending_jobs():
                     log.info("No pending jobs. Upload task is done.")
                     self.maybe_log_upload_checkpoint(UploadFlow.NO_PENDING_JOBS)
+                    self._call_upload_breadcrumb_task(
+                        commit_sha=commitid,
+                        repo_id=repoid,
+                        milestone=milestone,
+                        error=Errors.INTERNAL_NO_PENDING_JOBS,
+                    )
                     return {
                         "was_setup": False,
                         "was_updated": False,
@@ -326,12 +363,24 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "report_type": report_type,
                 },
             )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                error=Errors.INTERNAL_LOCK_ERROR,
+            )
             if not upload_context.has_pending_jobs():
                 log.info(
                     "Not retrying since there are likely no jobs that need scheduling",
                     extra=upload_context.log_extra(),
                 )
                 self.maybe_log_upload_checkpoint(UploadFlow.NO_PENDING_JOBS)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    error=Errors.INTERNAL_NO_PENDING_JOBS,
+                )
                 return {
                     "was_setup": False,
                     "was_updated": False,
@@ -343,6 +392,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     extra=upload_context.log_extra(),
                 )
                 self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
                 return {
                     "was_setup": False,
                     "was_updated": False,
@@ -354,6 +409,25 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 "Retrying upload",
                 extra=upload_context.log_extra(countdown=retry_countdown),
             )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                error=Errors.INTERNAL_RETRYING,
+            )
+            self.retry(
+                max_retries=3,
+                countdown=retry_countdown,
+                kwargs=upload_context.kwargs_for_retry(kwargs),
+            )
+        except SoftTimeLimitExceeded:
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                error=Errors.TASK_TIMED_OUT,
+            )
+            retry_countdown = 20 * 2**self.request.retries
             self.retry(
                 max_retries=3,
                 countdown=retry_countdown,
@@ -408,11 +482,23 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "Unable to reach git provider because this specific bot/integration can't see that repository",
                     extra=upload_context.log_extra(),
                 )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=repository.repoid,
+                    milestone=Milestones.COMPILING_UPLOADS,
+                    error=Errors.REPO_NOT_FOUND,
+                )
             except TorngitClientError:
                 log.warning(
                     "Unable to reach git provider because there was a 4xx error",
                     extra=upload_context.log_extra(),
                     exc_info=True,
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=repository.repoid,
+                    milestone=Milestones.COMPILING_UPLOADS,
+                    error=Errors.GIT_CLIENT_ERROR,
                 )
         else:
             context = OwnerContext(
@@ -447,6 +533,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             log.warning(
                 "Commit not yet ready to build its initial report. Retrying in 60s.",
                 extra=upload_context.log_extra(),
+            )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                milestone=Milestones.COMPILING_UPLOADS,
+                error=Errors.INTERNAL_RETRYING,
             )
             self.retry(countdown=60, kwargs=upload_context.kwargs_for_retry(kwargs))
 
@@ -484,6 +576,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         else:
             self.maybe_log_upload_checkpoint(UploadFlow.INITIAL_PROCESSING_COMPLETE)
             self.maybe_log_upload_checkpoint(UploadFlow.NO_REPORTS_FOUND)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=repoid,
+                milestone=Milestones.COMPILING_UPLOADS,
+                error=Errors.INTERNAL_NO_ARGUMENTS,
+            )
             log.info(
                 "Not scheduling task because there were no arguments found on redis",
                 extra=upload_context.log_extra(),
@@ -652,6 +750,15 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         # that's not bundle analysis type.
         self.possibly_carryforward_bundle_report(
             commit, commit_report, commit_yaml, argument_list
+        )
+
+        # Send the same milestone again but with the upload IDs this time
+        upload_ids = [int(upload["upload_id"]) for upload in argument_list]
+        self._call_upload_breadcrumb_task(
+            commit_sha=commit.commitid,
+            repo_id=commit.repoid,
+            milestone=Milestones.COMPILING_UPLOADS,
+            upload_ids=upload_ids,
         )
 
         if upload_context.report_type == ReportType.COVERAGE:
@@ -833,7 +940,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             )
 
     def possibly_setup_webhooks(self, commit: Commit, repository_service):
-        repository = commit.repository
+        repository: Repository = commit.repository
         repo_data = repository_service.data
 
         ghapp_default_installations = list(
@@ -927,6 +1034,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                         "action": "SET" if should_post_webhook else "EDIT",
                     },
                     exc_info=True,
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=repository.repoid,
+                    milestone=Milestones.COMPILING_UPLOADS,
+                    error=Errors.GIT_CLIENT_ERROR,
                 )
         return False
 
