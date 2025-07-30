@@ -1,4 +1,5 @@
 from codecov.commands import exceptions
+from codecov_auth.constants import USE_SENTRY_APP_INDICATOR
 from codecov_auth.helpers import current_user_part_of_org
 
 
@@ -50,7 +51,10 @@ def wrap_error_handling_mutation(resolver):
 def require_authenticated(resolver):
     def authenticated_resolver(instance, info, *args, **kwargs):
         current_user = info.context["request"].user
-        if not current_user.is_authenticated:
+        if (
+            not getattr(info.context["request"], USE_SENTRY_APP_INDICATOR, False)
+            and not current_user.is_authenticated
+        ):
             raise exceptions.Unauthenticated()
 
         return resolver(instance, info, *args, **kwargs)

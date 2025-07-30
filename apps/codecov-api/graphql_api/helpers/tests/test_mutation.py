@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 from asgiref.sync import sync_to_async
 from django.test import SimpleTestCase
 
@@ -7,8 +9,13 @@ from codecov.commands.exceptions import (
     Unauthorized,
     ValidationError,
 )
+from codecov_auth.constants import USE_SENTRY_APP_INDICATOR
 
-from ..mutation import resolve_union_error_type, wrap_error_handling_mutation
+from ..mutation import (
+    require_authenticated,
+    resolve_union_error_type,
+    wrap_error_handling_mutation,
+)
 
 
 class HelperMutationTest(SimpleTestCase):
@@ -72,3 +79,48 @@ class HelperMutationTest(SimpleTestCase):
 
         with self.assertRaises(AttributeError):
             await resolver()
+
+
+class RequireAuthenticatedTest(SimpleTestCase):
+    def setUp(self):
+        self.mock_info = Mock()
+        self.mock_request = Mock()
+        self.mock_info.context = {"request": self.mock_request}
+
+    def test_require_authenticated_with_authenticated_user_passes(self):
+        """Test that authenticated users pass (original behavior)"""
+        # No Sentry app indicator
+        self.mock_request.user.is_authenticated = True
+
+        @require_authenticated
+        def test_resolver(instance, info, *args, **kwargs):
+            return "success"
+
+        result = test_resolver(None, self.mock_info)
+        assert result == "success"
+
+    def test_require_authenticated_unauthenticated_raises_error(self):
+        """Test that unauthenticated users are blocked"""
+        setattr(self.mock_request, USE_SENTRY_APP_INDICATOR, False)
+        self.mock_request.user.is_authenticated = False
+
+        @require_authenticated
+        def test_resolver(instance, info, *args, **kwargs):
+            return "success"
+
+        with self.assertRaises(Unauthenticated):
+            test_resolver(None, self.mock_info)
+
+    def test_require_authenticated_with_sentry_app_and_unauthenticated_user_passes(
+        self,
+    ):
+        """Test that unauthenticated requests with Sentry app indicator pass"""
+        setattr(self.mock_request, USE_SENTRY_APP_INDICATOR, True)
+        self.mock_request.user.is_authenticated = False
+
+        @require_authenticated
+        def test_resolver(instance, info, *args, **kwargs):
+            return "success"
+
+        result = test_resolver(None, self.mock_info)
+        assert result == "success"
