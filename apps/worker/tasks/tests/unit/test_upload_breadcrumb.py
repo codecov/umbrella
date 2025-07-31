@@ -105,7 +105,7 @@ class TestUploadBreadcrumbTask:
             ),
             CounterAssertion(
                 "upload_breadcrumbs_error_total",
-                {"error": Errors.MALFORMED_INPUT.label},
+                {"error": Errors.UNSUPPORTED_FORMAT.label},
                 1,
             ),
             CounterAssertion(
@@ -123,7 +123,7 @@ class TestUploadBreadcrumbTask:
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.PROCESSING_UPLOAD,
                     endpoint=Endpoints.DO_UPLOAD,
-                    error=Errors.MALFORMED_INPUT,
+                    error=Errors.UNSUPPORTED_FORMAT,
                 ),
             )
 
