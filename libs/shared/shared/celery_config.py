@@ -209,12 +209,12 @@ class BaseCeleryConfig:
 
     # http://celery.readthedocs.org/en/latest/configuration.html#celeryd-task-soft-time-limit
     task_soft_time_limit = int(
-        get_config("setup", "tasks", "celery", "soft_timelimit", default=400)
+        get_config("setup", "tasks", "celery", "soft_timelimit", default=600)
     )
 
     # http://celery.readthedocs.org/en/latest/configuration.html#std:setting-CELERYD_TASK_TIME_LIMIT
     task_time_limit = int(
-        get_config("setup", "tasks", "celery", "hard_timelimit", default=480)
+        get_config("setup", "tasks", "celery", "hard_timelimit", default=720)
     )
 
     notify_soft_time_limit = int(

@@ -121,7 +121,7 @@ class TestBaseCodecovTask:
     def test_hard_time_limit_task_from_default_app(self, mocker):
         mocker.patch.object(SampleTask, "request", timelimit=None)
         r = SampleTask()
-        assert r.hard_time_limit_task == 480
+        assert r.hard_time_limit_task == 720
 
     @patch("tasks.base.datetime", MockDateTime)
     def test_sample_run(self, mocker, dbsession):
