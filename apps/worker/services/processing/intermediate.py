@@ -52,7 +52,7 @@ def save_intermediate_report(upload_id: int, report: Report):
         "chunks": zstd_chunks,
     }
     with redis.pipeline() as pipeline:
-        pipeline.hmset(report_key, mapping)
+        pipeline.hset(report_key, mapping=mapping)
         pipeline.expire(report_key, REPORT_TTL)
         pipeline.execute()
     return
