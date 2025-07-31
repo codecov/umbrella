@@ -417,7 +417,7 @@ async def resolve_test_results(
             if filters
             else MeasurementInterval.INTERVAL_30_DAY
         )
-        end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = datetime.now(UTC)
         start_date = end_date - timedelta(days=measurement_interval.value)
         ordering_param = (
             ordering.get("parameter", TestResultsOrderingParameter.AVG_DURATION)
@@ -501,7 +501,7 @@ async def resolve_test_results_aggregates(
         measurement_interval = (
             interval if interval else MeasurementInterval.INTERVAL_30_DAY
         )
-        end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = datetime.now(UTC)
         start_date = end_date - timedelta(days=measurement_interval.value)
         return await sync_to_async(get_test_results_aggregates_from_timescale)(
             repoid=repository.repoid,
@@ -530,7 +530,7 @@ async def resolve_flake_aggregates(
         measurement_interval = (
             interval if interval else MeasurementInterval.INTERVAL_30_DAY
         )
-        end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = datetime.now(UTC)
         start_date = end_date - timedelta(days=measurement_interval.value)
         return await sync_to_async(get_flake_aggregates_from_timescale)(
             repoid=repository.repoid,
