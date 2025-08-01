@@ -6,6 +6,7 @@ from enum import Enum
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
+from celery.exceptions import SoftTimeLimitExceeded
 from redis.exceptions import LockError
 from redis.lock import Lock
 
@@ -37,6 +38,7 @@ from shared.celery_config import (
     timeseries_save_commit_measurements_task_name,
     upload_finisher_task_name,
 )
+from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.cache import cache
 from shared.helpers.redis import get_redis_connection
 from shared.reports.resources import Report
@@ -86,6 +88,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         except ValueError as e:
             log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
 
+        milestone = Milestones.UPLOAD_COMPLETE
+
         log.info(
             "Received upload_finisher task",
             extra={"processing_results": processing_results},
@@ -105,89 +109,143 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         state = ProcessingState(repoid, commitid)
 
         upload_ids = [upload["upload_id"] for upload in processing_results]
-        diff = load_commit_diff(commit, self.name)
 
         try:
-            with get_report_lock(repoid, commitid, self.hard_time_limit_task):
-                report_service = ReportService(commit_yaml)
-                report = perform_report_merging(
-                    report_service, commit_yaml, commit, processing_results
-                )
+            diff = load_commit_diff(commit, self.name)
 
-                log.info(
-                    "Saving combined report",
-                    extra={"processing_results": processing_results},
-                )
-
-                if diff:
-                    report.apply_diff(diff)
-                report_service.save_report(commit, report)
-
-                db_session.commit()
-                state.mark_uploads_as_merged(upload_ids)
-
-        except LockError:
-            max_retry = 200 * 3**self.request.retries
-            retry_in = min(random.randint(max_retry // 2, max_retry), 60 * 60 * 5)
-            log.warning(
-                "Unable to acquire report lock. Retrying",
-                extra={"countdown": retry_in, "number_retries": self.request.retries},
-            )
-            self.retry(max_retries=MAX_RETRIES, countdown=retry_in)
-
-        cleanup_intermediate_reports(upload_ids)
-
-        if not should_trigger_postprocessing(state.get_upload_numbers()):
-            UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
-            UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
-            return
-
-        lock_name = f"upload_finisher_lock_{repoid}_{commitid}"
-        redis_connection = get_redis_connection()
-        try:
-            with redis_connection.lock(lock_name, timeout=60 * 5, blocking_timeout=5):
-                result = self.finish_reports_processing(
-                    db_session, commit, commit_yaml, processing_results
-                )
-                if is_timeseries_enabled():
-                    dataset_names = [
-                        dataset.name
-                        for dataset in repository_datasets_query(repository)
-                    ]
-                    if dataset_names:
-                        self.app.tasks[
-                            timeseries_save_commit_measurements_task_name
-                        ].apply_async(
-                            kwargs={
-                                "commitid": commitid,
-                                "repoid": repoid,
-                                "dataset_names": dataset_names,
-                            }
-                        )
-
-                # Mark the repository as updated so it will appear earlier in the list
-                # of recently-active repositories
-                now = datetime.now(tz=UTC)
-                threshold = now - timedelta(minutes=60)
-                if not repository.updatestamp or repository.updatestamp < threshold:
-                    repository.updatestamp = now
-                    db_session.commit()
-                else:
-                    log.info(
-                        "Skipping repository update because it was updated recently",
-                        extra={
-                            "repository": repository.name,
-                            "updatestamp": repository.updatestamp,
-                            "threshold": threshold,
-                        },
+            try:
+                with get_report_lock(repoid, commitid, self.hard_time_limit_task):
+                    report_service = ReportService(commit_yaml)
+                    report = perform_report_merging(
+                        report_service, commit_yaml, commit, processing_results
                     )
 
-                self.invalidate_caches(redis_connection, commit)
-                log.info("Finished upload_finisher task")
-                return result
-        except LockError:
-            log.warning("Unable to acquire lock", extra={"lock_name": lock_name})
-            UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
+                    log.info(
+                        "Saving combined report",
+                        extra={"processing_results": processing_results},
+                    )
+
+                    if diff:
+                        report.apply_diff(diff)
+                    report_service.save_report(commit, report)
+
+                    db_session.commit()
+                    state.mark_uploads_as_merged(upload_ids)
+
+            except LockError:
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_LOCK_ERROR,
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_RETRYING,
+                )
+                max_retry = 200 * 3**self.request.retries
+                retry_in = min(random.randint(max_retry // 2, max_retry), 60 * 60 * 5)
+                log.warning(
+                    "Unable to acquire report lock. Retrying",
+                    extra={
+                        "countdown": retry_in,
+                        "number_retries": self.request.retries,
+                    },
+                )
+                self.retry(max_retries=MAX_RETRIES, countdown=retry_in)
+
+            cleanup_intermediate_reports(upload_ids)
+
+            if not should_trigger_postprocessing(state.get_upload_numbers()):
+                UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
+                UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                )
+                return
+
+            lock_name = f"upload_finisher_lock_{repoid}_{commitid}"
+            redis_connection = get_redis_connection()
+            try:
+                with redis_connection.lock(
+                    lock_name, timeout=60 * 5, blocking_timeout=5
+                ):
+                    result = self.finish_reports_processing(
+                        db_session, commit, commit_yaml, processing_results
+                    )
+                    if is_timeseries_enabled():
+                        dataset_names = [
+                            dataset.name
+                            for dataset in repository_datasets_query(repository)
+                        ]
+                        if dataset_names:
+                            self.app.tasks[
+                                timeseries_save_commit_measurements_task_name
+                            ].apply_async(
+                                kwargs={
+                                    "commitid": commitid,
+                                    "repoid": repoid,
+                                    "dataset_names": dataset_names,
+                                }
+                            )
+
+                    # Mark the repository as updated so it will appear earlier in the list
+                    # of recently-active repositories
+                    now = datetime.now(tz=UTC)
+                    threshold = now - timedelta(minutes=60)
+                    if not repository.updatestamp or repository.updatestamp < threshold:
+                        repository.updatestamp = now
+                        db_session.commit()
+                    else:
+                        log.info(
+                            "Skipping repository update because it was updated recently",
+                            extra={
+                                "repository": repository.name,
+                                "updatestamp": repository.updatestamp,
+                                "threshold": threshold,
+                            },
+                        )
+
+                    self.invalidate_caches(redis_connection, commit)
+                    self._call_upload_breadcrumb_task(
+                        commit_sha=commitid,
+                        repo_id=repoid,
+                        milestone=milestone,
+                        upload_ids=upload_ids,
+                    )
+                    log.info("Finished upload_finisher task")
+                    return result
+            except LockError:
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_LOCK_ERROR,
+                )
+                log.warning("Unable to acquire lock", extra={"lock_name": lock_name})
+                UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
+                return
+
+        except SoftTimeLimitExceeded:
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                upload_ids=upload_ids,
+                error=Errors.TASK_TIMED_OUT,
+            )
+            return {
+                "error": "Soft time limit exceeded",
+                "upload_ids": upload_ids,
+            }
 
     def finish_reports_processing(
         self,
@@ -216,6 +274,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     notify_kwargs = UploadFlow.save_to_kwargs(notify_kwargs)
                     task = self.app.tasks[notify_task_name].apply_async(
                         kwargs=notify_kwargs
+                    )
+                    self._call_upload_breadcrumb_task(
+                        commit_sha=commitid,
+                        repo_id=repoid,
+                        milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                        upload_ids=[
+                            upload["upload_id"] for upload in processing_results
+                        ],
                     )
                     log.info(
                         "Scheduling notify task",
