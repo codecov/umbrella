@@ -85,9 +85,9 @@ def resolve_commit(repository: Repository, info: GraphQLResolveInfo, id: str) ->
     return commit
 
 
+@repository_bindable.field("uploadToken")
 @require_part_of_org
 @sync_to_async
-@repository_bindable.field("uploadToken")
 def resolve_upload_token(repository: Repository, info: GraphQLResolveInfo) -> str:
     should_hide_tokens = settings.HIDE_ALL_CODECOV_TOKENS
 
