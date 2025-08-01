@@ -5,8 +5,8 @@
         "flakeAggregates": {
           "flakeRate": 0.5,
           "flakeCount": 1,
-          "flakeRatePercentChange": -0.5,
-          "flakeCountPercentChange": -0.6666666666666666
+          "flakeRatePercentChange": 0.0,
+          "flakeCountPercentChange": 0.0
         }
       }
     }
