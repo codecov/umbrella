@@ -28,8 +28,3 @@ class RepositoryCommandsTest(TestCase):
         interactor_mock.assert_called_once_with(
             self.org, self.repo.name, [], exclude_okta_enforced_repos=False
         )
-
-    @patch("core.commands.repository.repository.GetUploadTokenInteractor.execute")
-    def test_get_upload_token_to_interactor(self, interactor_mock):
-        self.command.get_upload_token(self.repo)
-        interactor_mock.assert_called_once_with(self.repo)

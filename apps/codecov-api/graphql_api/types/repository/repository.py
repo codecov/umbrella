@@ -87,8 +87,26 @@ def resolve_commit(repository: Repository, info: GraphQLResolveInfo, id: str) ->
 
 @repository_bindable.field("uploadToken")
 @require_part_of_org
-@sync_to_async
 def resolve_upload_token(repository: Repository, info: GraphQLResolveInfo) -> str:
+    should_hide_tokens = settings.HIDE_ALL_CODECOV_TOKENS
+
+    current_owner = info.context["request"].current_owner
+    if not current_owner:
+        is_current_user_admin = False
+    else:
+        is_current_user_admin = current_owner.is_admin(repository.author)
+
+    if should_hide_tokens and not is_current_user_admin:
+        return TOKEN_UNAVAILABLE
+
+    return repository.upload_token
+
+
+# Used for Sentry app requests
+@repository_bindable.field("token")
+@require_part_of_org
+@sync_to_async
+def resolve_token(repository: Repository, info: GraphQLResolveInfo) -> str:
     should_hide_tokens = settings.HIDE_ALL_CODECOV_TOKENS
 
     current_owner = info.context["request"].current_owner
