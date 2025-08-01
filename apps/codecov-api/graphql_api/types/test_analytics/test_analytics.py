@@ -505,7 +505,7 @@ async def resolve_test_results_aggregates(
         start_date = end_date - timedelta(days=measurement_interval.value)
         return await sync_to_async(get_test_results_aggregates_from_timescale)(
             repoid=repository.repoid,
-            branch=branch,
+            branch=repository.branch,
             start_date=start_date,
             end_date=end_date,
         )
@@ -534,7 +534,7 @@ async def resolve_flake_aggregates(
         start_date = end_date - timedelta(days=measurement_interval.value)
         return await sync_to_async(get_flake_aggregates_from_timescale)(
             repoid=repository.repoid,
-            branch=branch,
+            branch=repository.branch,
             start_date=start_date,
             end_date=end_date,
         )
