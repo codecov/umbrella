@@ -1,0 +1,148 @@
+name: App CI
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: "read"
+  id-token: "write"
+  issues: "write"
+  pull-requests: "write"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  # Determine which projects were changed and need their CI run. Returns a list of
+  # changed project names in its `changes` output.
+  #
+  # Pushes to `staging` effectively override this so that pushing to `staging` will
+  # always deploy everything.
+  change-detection:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      changes: ${{ github.event.ref != 'refs/heads/staging' && steps.strip.outputs.matrix || '["worker", "codecov-api", "shared"]' }}
+    steps:
+      # Checking out is not necessary for PRs but it is otherwise
+      - uses: actions/checkout@v4
+        if: ${{ github.event_name != 'pull_request' }}
+        with:
+          submodules: 'recursive'
+
+      # Determine which projects were changed and need their CI run
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            build-glue: &build-glue
+              - 'Makefile'
+              - 'docker/Makefile.docker'
+              - 'docker/Makefile.ci-tests'
+              - 'docker/Dockerfile.requirements'
+              - 'docker/Dockerfile'
+              - 'uv.lock'
+              - 'ci-tests.docker-compose.yml'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/_build-requirements.yml'
+              - '.github/workflows/_build-app.yml'
+              - '.github/workflows/_self-hosted.yml'
+            shared: &shared
+              - *build-glue
+              - 'libs/shared/**'
+              - '.github/workflows/shared-ci.yml'
+            worker:
+              - *build-glue
+              - *shared
+              - 'apps/worker/**'
+              - '.github/workflows/worker-ci.yml'
+            codecov-api:
+              - *build-glue
+              - *shared
+              - 'apps/codecov-api/**'
+              - '.github/workflows/api-ci.yml'
+
+      # The 'build-glue' filter set above doesn't have its own CI to run or anything;
+      # remove it from the list of changed projects.
+      - id: strip
+        run: |
+          matrix=$(echo '${{ steps.filter.outputs.changes }}' | jq -c 'map(select(. != "build-glue"))')
+          echo "changes='$matrix'" >> "$GITHUB_OUTPUT"
+
+  # Run lint for everything. This is simple and fast; no need to limit this to
+  # specific projects or anything.
+  lint:
+    name: Run Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v3
+
+  # Build a requirements image. If a new one isn't needed, this job will make sure
+  # it's populated in the GHA cache.
+  reqs:
+    name: Build Requirements
+    uses: ./.github/workflows/_build-requirements.yml
+    secrets: inherit
+
+  build-prod:
+    name: Build Images
+    needs: [change-detection, reqs]
+    uses: ./.github/workflows/_build-images.yml
+    secrets: inherit
+    with:
+      changes: ${{ needs.change-detection.outputs.changes }}
+      build-prod: true
+      build-self-hosted: false
+
+  # Run tests.
+  test:
+    name: Test
+    needs: [change-detection, build-prod]
+    uses: ./.github/workflows/_run-tests.yml
+    secrets: inherit
+    with:
+      changes: ${{ needs.change-detection.outputs.changes }}
+
+  build-self-hosted:
+    name: Build Self-Hosted Images
+    needs: [change-detection, test]
+    uses: ./.github/workflows/_build-images.yml
+    secrets: inherit
+    with:
+      changes: ${{ needs.change-detection.outputs.changes }}
+      build-prod: false
+      build-self-hosted: true
+
+  push-images:
+    name: Push Images
+    if: ${{ github.event_name == 'push' && github.repository_owner == 'codecov' }}
+    needs: [change-detection, build-prod, build-self-hosted, test]
+    uses: ./.github/workflows/_push-images.yml
+    secrets: inherit
+    with:
+      changes: ${{ needs.change-detection.outputs.changes }}
+      push-prod: ${{ github.event.ref == 'refs/heads/main' }}
+      push-staging: ${{ github.event.ref == 'refs/heads/staging' }}
+      push-self-hosted-release: false
+
+  # Trigger deploys.
+  trigger-worker-deploy:
+    name: Trigger worker deployment
+    needs: [change-detection, push-images]
+    if: ${{ !cancelled() && github.event_name == 'push' && contains(fromJSON(needs.change-detection.outputs.changes), 'worker') }}
+    uses: ./.github/workflows/trigger-worker-deploy.yml
+
+  trigger-api-deploy:
+    name: Trigger api deployment
+    needs: [change-detection, push-images]
+    if: ${{ !cancelled() && github.event_name == 'push' && contains(fromJSON(needs.change-detection.outputs.changes), 'codecov-api') }}
+    uses: ./.github/workflows/trigger-api-deploy.yml
