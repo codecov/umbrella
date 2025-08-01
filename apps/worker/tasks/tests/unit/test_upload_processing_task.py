@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import call
 
 import celery
 import pytest
@@ -6,21 +7,49 @@ from celery.exceptions import Retry
 
 from database.models import CommitReport
 from database.tests.factories import CommitFactory, UploadFactory
-from helpers.exceptions import ReportEmptyError, ReportExpiredException
+from helpers.exceptions import (
+    CorruptRawReportError,
+    ReportEmptyError,
+    ReportExpiredException,
+)
 from services.processing.processing import process_upload
-from services.report import ProcessingError, RawReportInfo, ReportService
+from services.report import (
+    ProcessingError,
+    ProcessingResult,
+    RawReportInfo,
+    ReportService,
+)
 from services.report.parser.legacy import LegacyReportParser
 from shared.api_archive.archive import ArchiveService
+from shared.celery_config import upload_breadcrumb_task_name
 from shared.config import get_config
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Errors,
+    Milestones,
+)
 from shared.reports.reportfile import ReportFile
 from shared.reports.resources import Report
 from shared.reports.types import ReportLine, ReportTotals
 from shared.storage.exceptions import FileNotInStorageError
 from shared.upload.constants import UploadErrorCode
+from shared.utils.sessions import Session
 from shared.yaml import UserYaml
 from tasks.upload_processor import UploadProcessorTask
 
 here = Path(__file__)
+
+
+@pytest.fixture
+def mock_self_app(mocker, celery_app):
+    mock_app = celery_app
+    mock_app.tasks[upload_breadcrumb_task_name] = mocker.MagicMock()
+
+    return mocker.patch.object(
+        UploadProcessorTask,
+        "app",
+        mock_app,
+    )
 
 
 def test_default_acks_late() -> None:
@@ -42,7 +71,7 @@ class TestUploadProcessorTask:
         dbsession,
         codecov_vcr,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         url = "v4/raw/2019-05-22/C3C4715CA57C910D11D5EB899FC86A7E/4c4e4654ac25037ae869caeb3619d485970b6304/a84d445c-9c1e-434f-8275-f18f1f320f81.txt"
         with open(here.parent.parent / "samples" / "sample_uploaded_report_1.txt") as f:
@@ -51,7 +80,6 @@ class TestUploadProcessorTask:
         upload = UploadFactory.create(storage_path=url)
         dbsession.add(upload)
         dbsession.flush()
-        mocker.patch.object(UploadProcessorTask, "app", celery_app)
 
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
@@ -80,6 +108,19 @@ class TestUploadProcessorTask:
             "arguments": {"upload_id": upload.id_, "url": url},
             "successful": True,
         }
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.PROCESSING_UPLOAD,
+                ),
+                "upload_ids": [upload.id_],
+                "sentry_trace_id": None,
+            }
+        )
 
     @pytest.mark.integration
     @pytest.mark.django_db
@@ -90,7 +131,7 @@ class TestUploadProcessorTask:
         dbsession,
         codecov_vcr,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         mock_configuration.set_params(
             {"services": {"minio": {"expire_raw_after_n_days": True}}}
@@ -103,7 +144,6 @@ class TestUploadProcessorTask:
         upload = UploadFactory.create(storage_path=url)
         dbsession.add(upload)
         dbsession.flush()
-        mocker.patch.object(UploadProcessorTask, "app", celery_app)
 
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
@@ -137,6 +177,19 @@ class TestUploadProcessorTask:
             "arguments": {"upload_id": upload.id_, "url": url},
             "successful": True,
         }
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.PROCESSING_UPLOAD,
+                ),
+                "upload_ids": [upload.id_],
+                "sentry_trace_id": None,
+            }
+        )
 
     @pytest.mark.django_db
     def test_upload_processor_call_with_upload_obj(
@@ -195,7 +248,7 @@ class TestUploadProcessorTask:
         dbsession,
         codecov_vcr,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         commit = CommitFactory.create(
             message="",
@@ -259,6 +312,33 @@ class TestUploadProcessorTask:
                 ),
             ),
         )
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                        ),
+                        "upload_ids": [upload.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.UNSUPPORTED_FORMAT,
+                        ),
+                        "upload_ids": [upload.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_call_with_expired_report(
@@ -268,7 +348,7 @@ class TestUploadProcessorTask:
         dbsession,
         mock_repo_provider,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         mocked_1 = mocker.patch.object(ArchiveService, "read_chunks")
         mocked_1.return_value = None
@@ -282,8 +362,6 @@ class TestUploadProcessorTask:
             false_report,
             ReportExpiredException(),
         ]
-        # Mocking retry to also raise the exception so we can see how it is called
-        mocker.patch.object(UploadProcessorTask, "app", celery_app)
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
@@ -322,6 +400,17 @@ class TestUploadProcessorTask:
             "arguments": {"url": "url", "what": "huh", "upload_id": upload_1.id_},
             "successful": True,
         }
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_called_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.PROCESSING_UPLOAD,
+                ),
+                "upload_ids": [upload_1.id_],
+                "sentry_trace_id": None,
+            }
+        )
 
         result = UploadProcessorTask().run_impl(
             dbsession,
@@ -344,6 +433,33 @@ class TestUploadProcessorTask:
         }
 
         assert commit.state == "complete"
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                        ),
+                        "upload_ids": [upload_2.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.REPORT_EXPIRED,
+                        ),
+                        "upload_ids": [upload_2.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     def test_upload_task_process_individual_report_with_notfound_report(
         self,
@@ -352,12 +468,10 @@ class TestUploadProcessorTask:
         dbsession,
         mock_repo_provider,
         mock_storage,
+        mock_self_app,
     ):
         mocked_1 = mocker.patch.object(ArchiveService, "read_chunks")
         mocked_1.return_value = None
-        # Mocking retry to also raise the exception so we can see how it is called
-        mocked_4 = mocker.patch.object(UploadProcessorTask, "app")
-        mocked_4.send_task.return_value = True
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
@@ -373,13 +487,66 @@ class TestUploadProcessorTask:
         dbsession.add(upload)
         dbsession.flush()
 
-        result = process_upload(
-            lambda error: None,
+        task = UploadProcessorTask()
+
+        with pytest.raises(Retry):
+            task.run_impl(
+                dbsession,
+                {},
+                repoid=commit.repoid,
+                commitid=commit.commitid,
+                commit_yaml={"codecov": {"max_report_age": False}},
+                arguments={"upload_id": upload.id_},
+            )
+
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                        ),
+                        "upload_ids": [upload.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.FILE_NOT_IN_STORAGE,
+                        ),
+                        "upload_ids": [upload.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.INTERNAL_RETRYING,
+                        ),
+                        "upload_ids": [upload.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
+
+        task.request.retries = 1
+        result = task.run_impl(
             dbsession,
-            commit.repoid,
-            commit.commitid,
-            UserYaml({"codecov": {"max_report_age": False}}),
-            {"upload_id": upload.id_},
+            {},
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={"codecov": {"max_report_age": False}},
+            arguments={"upload_id": upload.id_},
         )
 
         assert result == {
@@ -393,6 +560,33 @@ class TestUploadProcessorTask:
         }
 
         assert commit.state == "complete"
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                        ),
+                        "upload_ids": [upload.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.FILE_NOT_IN_STORAGE,
+                        ),
+                        "upload_ids": [upload.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     def test_upload_task_process_individual_report_with_notfound_report_no_retries_yet(
         self, dbsession, mocker, mock_storage
@@ -432,7 +626,7 @@ class TestUploadProcessorTask:
         dbsession,
         mock_repo_provider,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         mocked_1 = mocker.patch.object(ArchiveService, "read_chunks")
         mocked_1.return_value = None
@@ -446,7 +640,6 @@ class TestUploadProcessorTask:
             false_report,
             ReportEmptyError(),
         ]
-        mocker.patch.object(UploadProcessorTask, "app", celery_app)
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
@@ -484,6 +677,19 @@ class TestUploadProcessorTask:
             "arguments": {"url": "url", "what": "huh", "upload_id": upload_1.id_},
             "successful": True,
         }
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.PROCESSING_UPLOAD,
+                ),
+                "upload_ids": [upload_1.id_],
+                "sentry_trace_id": None,
+            }
+        )
 
         result = UploadProcessorTask().run_impl(
             dbsession,
@@ -505,6 +711,33 @@ class TestUploadProcessorTask:
         }
 
         assert commit.state == "complete"
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                        ),
+                        "upload_ids": [upload_2.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.REPORT_EMPTY,
+                        ),
+                        "upload_ids": [upload_2.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_call_no_successful_report(
@@ -514,15 +747,13 @@ class TestUploadProcessorTask:
         dbsession,
         mock_repo_provider,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         mocked_1 = mocker.patch.object(ArchiveService, "read_chunks")
         mocked_1.return_value = None
         mocked_2 = mocker.patch("services.report.process_raw_upload")
-        mocked_2.side_effect = [ReportEmptyError(), ReportExpiredException()]
+        mocked_2.side_effect = [ReportEmptyError(), CorruptRawReportError("", "")]
         mocker.patch.object(ArchiveService, "read_file", return_value=b"")
-        # Mocking retry to also raise the exception so we can see how it is called
-        mocker.patch.object(UploadProcessorTask, "app", celery_app)
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
@@ -562,6 +793,33 @@ class TestUploadProcessorTask:
             "successful": False,
             "error": {"code": "report_empty", "params": {}},
         }
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                        ),
+                        "upload_ids": [upload_1.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.REPORT_EMPTY,
+                        ),
+                        "upload_ids": [upload_1.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
         result = UploadProcessorTask().run_impl(
             dbsession,
@@ -580,8 +838,106 @@ class TestUploadProcessorTask:
                 "upload_id": upload_2.id_,
             },
             "successful": False,
-            "error": {"code": "report_expired", "params": {}},
+            "error": {
+                "code": "unknown_processing",
+                "params": {"location": mocker.ANY},
+            },
         }
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                        ),
+                        "upload_ids": [upload_2.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.UNSUPPORTED_FORMAT,
+                        ),
+                        "upload_ids": [upload_2.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
+
+    @pytest.mark.django_db
+    def test_upload_task_call_processing_timeout(
+        self,
+        mocker,
+        mock_configuration,
+        dbsession,
+        mock_repo_provider,
+        mock_storage,
+        mock_self_app,
+    ):
+        mocked_1 = mocker.patch.object(ArchiveService, "read_chunks")
+        mocked_1.return_value = None
+        mocked_2 = mocker.patch.object(ReportService, "build_report_from_raw_content")
+        mocked_2.return_value = ProcessingResult(
+            session=Session(),
+            error=ProcessingError(
+                code=UploadErrorCode.PROCESSING_TIMEOUT,
+                params={},
+            ),
+        )
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+        current_report_row = CommitReport(commit_id=commit.id_)
+        dbsession.add(current_report_row)
+        dbsession.flush()
+        upload_1 = UploadFactory.create(
+            report=current_report_row, state="started", storage_path="url"
+        )
+        dbsession.add(upload_1)
+        dbsession.flush()
+        UploadProcessorTask().run_impl(
+            dbsession,
+            {},
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            arguments={"url": "url", "what": "huh", "upload_id": upload_1.id_},
+        )
+        assert commit.state == "complete"
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                        ),
+                        "upload_ids": [upload_1.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.TASK_TIMED_OUT,
+                        ),
+                        "upload_ids": [upload_1.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_call_softtimelimit(
@@ -591,14 +947,12 @@ class TestUploadProcessorTask:
         dbsession,
         mock_repo_provider,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         mocked_1 = mocker.patch.object(ArchiveService, "read_chunks")
         mocked_1.return_value = None
         mocked_2 = mocker.patch.object(ReportService, "build_report_from_raw_content")
         mocked_2.side_effect = celery.exceptions.SoftTimeLimitExceeded("banana")
-        # Mocking retry to also raise the exception so we can see how it is called
-        mocker.patch.object(UploadProcessorTask, "app", celery_app)
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
@@ -620,6 +974,33 @@ class TestUploadProcessorTask:
                 arguments={"url": "url", "what": "huh", "upload_id": upload_1.id_},
             )
         assert commit.state == "error"
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                        ),
+                        "upload_ids": [upload_1.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.TASK_TIMED_OUT,
+                        ),
+                        "upload_ids": [upload_1.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     @pytest.mark.django_db
     def test_upload_task_call_celeryerror(
@@ -629,14 +1010,12 @@ class TestUploadProcessorTask:
         dbsession,
         mock_repo_provider,
         mock_storage,
-        celery_app,
+        mock_self_app,
     ):
         mocked_1 = mocker.patch.object(ArchiveService, "read_chunks")
         mocked_1.return_value = None
         mocked_2 = mocker.patch.object(ReportService, "build_report_from_raw_content")
         mocked_2.side_effect = celery.exceptions.Retry("banana")
-        # Mocking retry to also raise the exception so we can see how it is called
-        mocker.patch.object(UploadProcessorTask, "app", celery_app)
         commit = CommitFactory.create(state="pending")
         dbsession.add(commit)
         dbsession.flush()
@@ -658,6 +1037,34 @@ class TestUploadProcessorTask:
                 arguments={"url": "url", "what": "huh", "upload_id": upload_1.id_},
             )
         assert commit.state == "pending"
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                        ),
+                        "upload_ids": [upload_1.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.UNKNOWN,
+                            error_text=str(mocked_2.side_effect),
+                        ),
+                        "upload_ids": [upload_1.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     def test_save_report_apply_diff_not_there(
         self, mocker, mock_configuration, dbsession, mock_storage
