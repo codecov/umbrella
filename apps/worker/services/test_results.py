@@ -3,7 +3,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Literal, TypedDict, TypeVar
+from typing import TypedDict, TypeVar
 
 import sentry_sdk
 from sqlalchemy import desc, func
@@ -23,6 +23,12 @@ from helpers.notifier import BaseNotifier, NotifierResult
 from services.license import requires_license
 from services.processing.types import UploadArguments
 from services.report import BaseReportService
+from services.test_analytics.ta_types import (
+    ErrorPayload,
+    FlakeInfo,
+    TestResultsNotificationFailure,
+    TestResultsNotificationPayload,
+)
 from services.urls import get_members_url, get_test_analytics_url
 from services.yaml import read_yaml_field
 from shared.django_apps.codecov_auth.models import Plan
@@ -127,42 +133,6 @@ def generate_test_id(repoid, testsuite, name, flags_hash):
 
 
 T = TypeVar("T", str, bytes)
-
-
-@dataclass
-class TestResultsNotificationFailure[T: (str, bytes)]:
-    failure_message: str
-    display_name: str
-    envs: list[str]
-    test_id: T
-    duration_seconds: float
-    build_url: str | None = None
-
-
-@dataclass
-class FlakeInfo:
-    failed: int
-    count: int
-
-
-@dataclass
-class TACommentInDepthInfo[T: (str, bytes)]:
-    failures: list[TestResultsNotificationFailure[T]]
-    flaky_tests: dict[T, FlakeInfo]
-
-
-@dataclass
-class TestResultsNotificationPayload[T: (str, bytes)]:
-    failed: int
-    passed: int
-    skipped: int
-    info: TACommentInDepthInfo[T] | None = None
-
-
-@dataclass
-class ErrorPayload:
-    error_code: Literal["unsupported_file_format", "file_not_in_storage", "warning"]
-    error_message: str | None = None
 
 
 def wrap_in_details(summary: str, content: str):
