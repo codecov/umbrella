@@ -32,9 +32,9 @@ class Milestones(models.TextChoices):
     * COMPILING_UPLOADS: Scheduling upload processing task(s) and initializing
       any missing database entries.
     * PROCESSING_UPLOAD: Processing the uploaded file(s).
-    * UPLOAD_COMPLETE: Processing and compilation of the upload is complete.
     * NOTIFICATIONS_TRIGGERED: Notifications (e.g. pull request comments) have
       been triggered either manually or automatically.
+    * UPLOAD_COMPLETE: Processing and compilation of the upload is complete.
     * NOTIFICATIONS_SENT: Notifications (e.g. pull request comments) have been
       sent.
     """
@@ -46,8 +46,8 @@ class Milestones(models.TextChoices):
     WAITING_FOR_COVERAGE_UPLOAD = "wfcu", _("Waiting for coverage upload")
     COMPILING_UPLOADS = "cu", _("Compiling uploads")
     PROCESSING_UPLOAD = "pu", _("Processing upload")
-    UPLOAD_COMPLETE = "uc", _("Upload complete")
     NOTIFICATIONS_TRIGGERED = "nt", _("Notifications triggered")
+    UPLOAD_COMPLETE = "uc", _("Upload complete")
     NOTIFICATIONS_SENT = "ns", _("Notifications sent")
 
 
@@ -83,9 +83,18 @@ class Errors(models.TextChoices):
     OWNER_UPLOAD_LIMIT = "oul", _("Owner (user or team) upload limit exceeded")
     GIT_CLIENT_ERROR = "gce", _("Git client returned a 4xx error")
     REPORT_NOT_FOUND = "rptnf", _("Report not found for the commit")
+    REPORT_EXPIRED = "rpe", _("Report expired and cannot be processed")
+    REPORT_EMPTY = "rem", _("Report is empty and cannot be processed")
+    FILE_NOT_IN_STORAGE = "fnis", _("File not found in storage")
     UPLOAD_NOT_FOUND = "unf", _("Upload not found for the commit")
-    MALFORMED_INPUT = "mi", _("Malformed coverage report input")
-    UNRECOGNIZED_FORMAT = "uf", _("Unrecognized coverage report format")
+    UNSUPPORTED_FORMAT = (
+        "uf",
+        _(
+            "Unsupported coverage report format. Please check that the file "
+            "is a valid coverage report and that the report format is "
+            "supported by Codecov."
+        ),
+    )
     TASK_TIMED_OUT = "tto", _("Task timed out")
     # Errors that should not be shown to the user
     INTERNAL_LOCK_ERROR = "int_le", _("Unable to acquire or release lock")
