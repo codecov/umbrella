@@ -5,6 +5,7 @@ from datetime import datetime
 from functools import cached_property
 from typing import Optional
 
+from django.utils import timezone
 from sqlalchemy import Column, ForeignKey, Index, UniqueConstraint, types
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session, backref, relationship, validates
@@ -446,7 +447,7 @@ class Branch(CodecovBaseModel):
     __tablename__ = "branches"
 
     repoid = Column(types.Integer, ForeignKey("repos.repoid"), primary_key=True)
-    updatestamp = Column(types.DateTime, default=datetime.now)
+    updatestamp = Column(types.DateTime, default=timezone.now)
     branch = Column(types.Text, nullable=False, primary_key=True)
     base = Column(types.Text)
     head = Column(types.Text, nullable=False)
@@ -480,9 +481,7 @@ class Pull(CodecovBaseModel):
     repoid = Column(types.Integer, ForeignKey("repos.repoid"))
     pullid = Column(types.Integer, nullable=False)
     issueid = Column(types.Integer)
-    updatestamp = Column(
-        types.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
-    )
+    updatestamp = Column(types.DateTime, default=timezone.now, onupdate=timezone.now)
     state = Column(types.Text, nullable=False, default="open")
     title = Column(types.Text)
     base = Column(types.Text)
