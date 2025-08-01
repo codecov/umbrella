@@ -10,12 +10,14 @@ from django.conf import settings
 from graphql.type.definition import GraphQLResolveInfo
 
 import shared.rate_limits as rate_limits
+from codecov_auth.helpers import current_user_part_of_org
 from codecov_auth.models import SERVICE_GITHUB, SERVICE_GITHUB_ENTERPRISE, Owner
 from core.models import Branch, Commit, Pull, Repository
 from graphql_api.actions.commits import load_commit_statuses, repo_commits
 from graphql_api.dataloader.commit import CommitLoader
 from graphql_api.dataloader.owner import OwnerLoader
 from graphql_api.helpers.connection import queryset_to_connection
+from graphql_api.helpers.mutation import is_called_from_sentry_app
 from graphql_api.helpers.requested_fields import selected_fields
 from graphql_api.types.coverage_analytics.coverage_analytics import (
     CoverageAnalyticsProps,
@@ -85,7 +87,9 @@ def resolve_commit(repository: Repository, info: GraphQLResolveInfo, id: str) ->
 
 
 @repository_bindable.field("uploadToken")
-def resolve_upload_token(repository: Repository, info: GraphQLResolveInfo) -> str:
+def resolve_upload_token(
+    repository: Repository, info: GraphQLResolveInfo
+) -> str | None:
     should_hide_tokens = settings.HIDE_ALL_CODECOV_TOKENS
 
     current_owner = info.context["request"].current_owner
@@ -96,8 +100,25 @@ def resolve_upload_token(repository: Repository, info: GraphQLResolveInfo) -> st
 
     if should_hide_tokens and not is_current_user_admin:
         return TOKEN_UNAVAILABLE
-    command = info.context["executor"].get_command("repository")
-    return command.get_upload_token(repository)
+
+    if not current_user_part_of_org(current_owner, repository.author):
+        return None
+
+    return repository.upload_token
+
+
+# Used for Sentry app requests
+@repository_bindable.field("token")
+@sync_to_async
+def resolve_token(repository: Repository, info: GraphQLResolveInfo) -> str:
+    should_hide_tokens = settings.HIDE_ALL_CODECOV_TOKENS
+
+    # We dont need the current_user_part_of_org check here because the token resolver is only available to Sentry app requests
+    # The sentry app already does this resolution on their end, so we can just return the token
+    if should_hide_tokens or not is_called_from_sentry_app(info):
+        return TOKEN_UNAVAILABLE
+
+    return repository.upload_token
 
 
 @repository_bindable.field("pull")

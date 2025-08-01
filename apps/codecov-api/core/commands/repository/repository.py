@@ -11,7 +11,6 @@ from .interactors.encode_secret_string import EncodeSecretStringInteractor
 from .interactors.erase_repository import EraseRepositoryInteractor
 from .interactors.fetch_repository import FetchRepositoryInteractor
 from .interactors.get_repository_token import GetRepositoryTokenInteractor
-from .interactors.get_upload_token import GetUploadTokenInteractor
 from .interactors.regenerate_repository_token import RegenerateRepositoryTokenInteractor
 from .interactors.regenerate_repository_upload_token import (
     RegenerateRepositoryUploadTokenInteractor,
@@ -43,9 +42,6 @@ class RepositoryCommands(BaseCommand):
         return self.get_interactor(UpdateRepositoryInteractor).execute(
             repo_name, owner, default_branch, activated
         )
-
-    def get_upload_token(self, repository: Repository) -> uuid.UUID:
-        return self.get_interactor(GetUploadTokenInteractor).execute(repository)
 
     def get_repository_token(
         self, repository: Repository, token_type: RepositoryToken.TokenType
