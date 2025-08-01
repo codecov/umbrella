@@ -1,0 +1,149 @@
+{% extends "admin/base_site.html" %}
+{% load admin_urls static admin_modify i18n %}
+
+{% block title %}Execute TaskService Method - {{ site_title|default:"Django site admin" }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; Execute TaskService Method
+</div>
+{% endblock %}
+
+{% block content %}
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="messagelist">
+            <div class="{% if message.tags %}{{ message.tags }}{% endif %}">{{ message }}</div>
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" novalidate>
+    {% csrf_token %}
+
+    <div>
+        <fieldset class="module aligned">
+            <h2>Method Configuration</h2>
+
+            {% for field in form %}
+                <div class="form-row{% if field.errors %} errors{% endif %}">
+                    <div>
+                        {{ field.label_tag }}
+                        {{ field }}
+                        {% if field.help_text %}
+                            <div class="help">{{ field.help_text }}</div>
+                        {% endif %}
+                        {{ field.errors }}
+                    </div>
+                </div>
+            {% endfor %}
+
+            {% if form.non_field_errors %}
+                <div class="form-row">
+                    <div class="errors">
+                        {{ form.non_field_errors }}
+                    </div>
+                </div>
+            {% endif %}
+        </fieldset>
+
+        <div class="submit-row">
+            <input type="submit" value="Execute Method" class="default" />
+            <a href="{% url 'admin:index' %}" class="button cancel-link">Cancel</a>
+        </div>
+    </div>
+</form>
+
+<div class="module">
+    <h2>Common Method Examples</h2>
+    <h3>Method Arguments</h3>
+    <ul>
+        <li><strong>notify:</strong> <code>{"repoid": 1, "commitid": "abc123"}</code></li>
+        <li><strong>upload:</strong> <code>{"repoid": 1, "commitid": "abc123", "report_type": "coverage"}</code></li>
+        <li><strong>compute_comparison:</strong> <code>{"comparison_id": 123}</code></li>
+        <li><strong>refresh:</strong> <code>{"ownerid": 1, "username": "user123"}</code></li>
+        <li><strong>send_email:</strong> <code>{"to_addr": "user@example.com", "subject": "Test", "template_name": "test_template"}</code></li>
+    </ul>
+</div>
+
+<script type="text/javascript">
+var methodInfoJson = '{{ form.get_task_parameter_info_json|escapejs }}';
+var methodInfo = JSON.parse(methodInfoJson);
+
+function updateTaskPreview(selectedMethod) {
+    var previewField = document.getElementById('task-preview-field');
+
+    if (!selectedMethod || selectedMethod === '') {
+        previewField.value = 'Select a task method to see its signature and parameters';
+        return;
+    }
+
+    var methodData = methodInfo[selectedMethod];
+    if (!methodData) {
+        previewField.value = 'No parameter information available for method: ' + selectedMethod +
+                            '\nAvailable methods: ' + Object.keys(methodInfo).join(', ');
+        return;
+    }
+
+    var preview = methodData.description + '\n\n';
+
+    if (methodData.signature) {
+        preview += 'Method Signature:\n';
+        preview += 'def ' + selectedMethod + methodData.signature + '\n\n';
+    }
+
+    if (methodData.parameters && methodData.parameters.length > 0) {
+        preview += 'Parameters:\n';
+        for (var i = 0; i < methodData.parameters.length; i++) {
+            var param = methodData.parameters[i];
+            var reqText = param.required ? '(required)' : '(optional)';
+            var typeText = param.type !== 'Any' ? ' : ' + param.type : '';
+            var defaultText = param.default ? ' = ' + param.default : '';
+
+            preview += '  - ' + param.name + typeText + defaultText + ' ' + reqText + '\n';
+        }
+        preview += '\n';
+    }
+
+    if (methodData.required && methodData.required.length > 0) {
+        preview += 'Example JSON:\n{\n';
+
+        for (var i = 0; i < methodData.required.length; i++) {
+            var param = methodData.required[i];
+            preview += '  "' + param + '": "example_value"';
+            if (i < methodData.required.length - 1 || (methodData.optional && methodData.optional.length > 0)) {
+                preview += ',';
+            }
+            preview += '\n';
+        }
+
+        if (methodData.optional && methodData.optional.length > 0) {
+            preview += '  // Optional parameters:\n';
+            for (var i = 0; i < methodData.optional.length; i++) {
+                var param = methodData.optional[i];
+                preview += '  // "' + param + '": "example_value"';
+                if (i < methodData.optional.length - 1) {
+                    preview += ',';
+                }
+                preview += '\n';
+            }
+        }
+
+        preview += '}';
+    } else {
+        preview += 'Example JSON:\n{\n  // No required parameters\n}';
+    }
+
+    previewField.value = preview;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var methodSelect = document.querySelector('[name="task_method"]');
+    if (methodSelect && methodSelect.value) {
+        updateTaskPreview(methodSelect.value);
+    }
+});
+</script>
+{% endblock %}

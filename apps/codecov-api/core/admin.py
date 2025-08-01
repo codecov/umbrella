@@ -1,13 +1,20 @@
+import logging
+
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.core.paginator import Paginator
 from django.db import connections
+from django.shortcuts import redirect, render
+from django.urls import path
 from django.utils.functional import cached_property
 
 from codecov.admin import AdminMixin
 from codecov_auth.models import RepositoryToken
+from core.forms import TaskServiceSubmissionForm
 from core.models import Pull, Repository
 from services.task.task import TaskService
+
+log = logging.getLogger(__name__)
 
 
 class RepositoryTokenInline(admin.TabularInline):
@@ -140,3 +147,82 @@ class PullsAdmin(AdminMixin, admin.ModelAdmin):
 
     def has_add_permission(self, _, obj=None):
         return False
+
+
+class CeleryTaskSubmissionAdminSite:
+    def __init__(self, admin_site):
+        self.admin_site = admin_site
+
+    def get_urls(self):
+        return [
+            path(
+                "task-service/",
+                self.admin_site.admin_view(self.submit_task_view),
+                name="core_submit_task_service",
+            ),
+        ]
+
+    def submit_task_view(self, request):
+        if request.method == "POST":
+            form = TaskServiceSubmissionForm(request.POST)
+            if form.is_valid():
+                try:
+                    _ = form.call_task_method()
+                    task_method = form.cleaned_data["task_method"]
+                    method_kwargs = form.cleaned_data["method_kwargs"]
+
+                    messages.success(
+                        request,
+                        f'TaskService method "{task_method}" queued successfully!',
+                    )
+
+                    return redirect(request.path)
+
+                except Exception as e:
+                    log.exception(
+                        "Failed to execute TaskService method",
+                        extra={
+                            "task_method": task_method,
+                            "method_kwargs": method_kwargs,
+                            "error": str(e),
+                        },
+                    )
+                    messages.error(request, f"Failed to execute method: {e}")
+        else:
+            form = TaskServiceSubmissionForm()
+
+        class MockOpts:
+            app_label = "core"
+            verbose_name = "TaskService Method Execution"
+            verbose_name_plural = "TaskService Method Executions"
+            model_name = "taskserviceexecution"
+
+        context = {
+            **self.admin_site.each_context(request),
+            "form": form,
+            "title": "Execute TaskService Method",
+            "opts": MockOpts(),
+            "has_view_permission": True,
+            "has_add_permission": True,
+            "has_change_permission": False,
+            "has_delete_permission": False,
+        }
+
+        return render(request, "admin/core/submit_celery_task.html", context)
+
+
+celery_admin_utility = CeleryTaskSubmissionAdminSite(admin.site)
+
+
+def get_urls():
+    original_get_urls = admin.site.get_urls
+
+    def new_get_urls():
+        urls = original_get_urls()
+        custom_urls = celery_admin_utility.get_urls()
+        return custom_urls + urls
+
+    return new_get_urls
+
+
+admin.site.get_urls = get_urls()
