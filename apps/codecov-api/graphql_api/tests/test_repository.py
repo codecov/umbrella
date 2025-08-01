@@ -1,10 +1,12 @@
 import datetime
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from asgiref.sync import async_to_sync
 from django.test import TestCase, override_settings
 from freezegun import freeze_time
 
-from graphql_api.types.repository.repository import TOKEN_UNAVAILABLE
+from codecov_auth.constants import USE_SENTRY_APP_INDICATOR
+from graphql_api.types.repository.repository import TOKEN_UNAVAILABLE, resolve_token
 from shared.django_apps.core.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -58,6 +60,7 @@ default_fields = """
     latestCommitAt
     oldestCommitAt
     uploadToken
+    token
     defaultBranch
     author { username }
     graphToken
@@ -133,6 +136,7 @@ class TestFetchRepository(GraphQLTestHelper, TestCase):
             "oldestCommitAt": None,
             "updatedAt": "2021-01-01T00:00:00+00:00",
             "uploadToken": repo.upload_token,
+            "token": "Token Unavailable. Please contact your admin.",
             "defaultBranch": "main",
             "author": {"username": "codecov-user"},
             "graphToken": graphToken,
@@ -194,6 +198,7 @@ class TestFetchRepository(GraphQLTestHelper, TestCase):
             },
             "updatedAt": "2021-01-01T00:00:00+00:00",
             "uploadToken": repo.upload_token,
+            "token": "Token Unavailable. Please contact your admin.",
             "defaultBranch": "main",
             "author": {"username": "codecov-user"},
             "graphToken": graphToken,
@@ -733,3 +738,34 @@ class TestFetchRepository(GraphQLTestHelper, TestCase):
                 "has_owner": True,
             },
         )
+
+    @override_settings(HIDE_ALL_CODECOV_TOKENS=False)
+    def test_repository_token_resolver_with_sentry_app(self):
+        """Test the actual resolve_token function with Sentry app using async_to_sync"""
+        repo = RepositoryFactory(author=self.owner, name="test-repo")
+
+        mock_info = Mock()
+        mock_request = Mock()
+        setattr(mock_request, USE_SENTRY_APP_INDICATOR, True)
+        mock_info.context = {"request": mock_request}
+
+        sync_resolve_token = async_to_sync(resolve_token)
+        result = sync_resolve_token(repo, mock_info)
+
+        assert result == repo.upload_token
+        assert result != TOKEN_UNAVAILABLE
+
+    @override_settings(HIDE_ALL_CODECOV_TOKENS=False)
+    def test_repository_token_resolver_without_sentry_app(self):
+        """Test the actual resolve_token function without Sentry app using async_to_sync"""
+        repo = RepositoryFactory(author=self.owner, name="test-repo")
+
+        mock_info = Mock()
+        mock_request = Mock(spec=[])  # Empty spec so no auto-attributes
+        mock_info.context = {"request": mock_request}
+
+        sync_resolve_token = async_to_sync(resolve_token)
+        result = sync_resolve_token(repo, mock_info)
+
+        assert result == TOKEN_UNAVAILABLE
+        assert result != repo.upload_token
