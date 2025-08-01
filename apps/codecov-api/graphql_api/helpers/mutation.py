@@ -76,7 +76,7 @@ def require_part_of_org(resolver):
             or not current_user.is_authenticated
             or not current_owner
             or not current_user_part_of_org(current_owner, queried_owner)
-        ) and not is_called_from_sentry_app(info):
+        ):
             return None
 
         return resolver(queried_owner, info, *args, **kwargs)

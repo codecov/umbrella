@@ -16,7 +16,7 @@ from graphql_api.actions.commits import load_commit_statuses, repo_commits
 from graphql_api.dataloader.commit import CommitLoader
 from graphql_api.dataloader.owner import OwnerLoader
 from graphql_api.helpers.connection import queryset_to_connection
-from graphql_api.helpers.mutation import require_part_of_org
+from graphql_api.helpers.mutation import is_called_from_sentry_app
 from graphql_api.helpers.requested_fields import selected_fields
 from graphql_api.types.coverage_analytics.coverage_analytics import (
     CoverageAnalyticsProps,
@@ -86,7 +86,6 @@ def resolve_commit(repository: Repository, info: GraphQLResolveInfo, id: str) ->
 
 
 @repository_bindable.field("uploadToken")
-@require_part_of_org
 def resolve_upload_token(repository: Repository, info: GraphQLResolveInfo) -> str:
     should_hide_tokens = settings.HIDE_ALL_CODECOV_TOKENS
 
@@ -104,18 +103,11 @@ def resolve_upload_token(repository: Repository, info: GraphQLResolveInfo) -> st
 
 # Used for Sentry app requests
 @repository_bindable.field("token")
-@require_part_of_org
 @sync_to_async
 def resolve_token(repository: Repository, info: GraphQLResolveInfo) -> str:
     should_hide_tokens = settings.HIDE_ALL_CODECOV_TOKENS
 
-    current_owner = info.context["request"].current_owner
-    if not current_owner:
-        is_current_user_admin = False
-    else:
-        is_current_user_admin = current_owner.is_admin(repository.author)
-
-    if should_hide_tokens and not is_current_user_admin:
+    if should_hide_tokens or not is_called_from_sentry_app(info):
         return TOKEN_UNAVAILABLE
 
     return repository.upload_token
