@@ -79,3 +79,40 @@ class RepositoryAdminTests(AdminTest):
 
         repo.refresh_from_db()
         self.assertIsNone(repo.webhook_secret)
+
+    def test_get_search_results_with_integer_search_term(self):
+        """Test searching by repoid when search term is a valid integer."""
+        # Create repositories with known repoids
+        repo1 = RepositoryFactory()
+        repo2 = RepositoryFactory()
+        repo3 = RepositoryFactory()
+
+        request = MagicMock()
+        queryset = Repository.objects.all()
+        search_term = str(repo2.repoid)  # Search by repoid
+
+        result_queryset, may_have_duplicates = self.repo_admin.get_search_results(
+            request, queryset, search_term
+        )
+
+        # Should find the repository with the matching repoid
+        self.assertIn(repo2, result_queryset)
+        # Should also include results from parent search (by author username)
+        self.assertGreaterEqual(len(result_queryset), 1)
+
+    def test_get_search_results_with_non_integer_search_term(self):
+        """Test that non-integer search terms don't trigger repoid search."""
+        repo1 = RepositoryFactory()
+        repo2 = RepositoryFactory()
+
+        request = MagicMock()
+        queryset = Repository.objects.all()
+        search_term = "not_a_number"
+
+        result_queryset, may_have_duplicates = self.repo_admin.get_search_results(
+            request, queryset, search_term
+        )
+
+        # Should not find any repositories by repoid since search term is not an integer
+        # The result should only include what the parent search returns (by author username)
+        self.assertEqual(len(result_queryset), 0)
