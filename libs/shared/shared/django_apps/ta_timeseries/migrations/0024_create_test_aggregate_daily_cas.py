@@ -10,7 +10,8 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunSQL(
             """
-            CREATE MATERIALIZED VIEW ta_timeseries_test_aggregate_hourly
+            CREATE MATERIALIZED VIEW IF NOT EXISTS
+            ta_timeseries_test_aggregate_hourly
             WITH (timescaledb.continuous, timescaledb.materialized_only = false, timescaledb.create_group_indexes = false) AS
             SELECT
                 repo_id,
@@ -31,13 +32,15 @@ class Migration(migrations.Migration):
                 MAX(timestamp) AS updated_at,
                 array_merge_dedup_agg(flags) as flags
             FROM ta_timeseries_testrun
-            GROUP BY repo_id, testsuite, classname, name, bucket_hourly;
+            GROUP BY repo_id, testsuite, classname, name, bucket_hourly
+            WITH NO DATA;
             """,
             reverse_sql="DROP MATERIALIZED VIEW ta_timeseries_test_aggregate_hourly;",
         ),
         migrations.RunSQL(
             """
-            CREATE MATERIALIZED VIEW ta_timeseries_test_aggregate_daily
+            CREATE MATERIALIZED VIEW IF NOT EXISTS
+            ta_timeseries_test_aggregate_daily
             WITH (timescaledb.continuous, timescaledb.materialized_only = false, timescaledb.create_group_indexes = false) AS
             SELECT
                 repo_id,
@@ -58,13 +61,15 @@ class Migration(migrations.Migration):
                 MAX(updated_at) AS updated_at,
                 array_merge_dedup_agg(flags) as flags
             FROM ta_timeseries_test_aggregate_hourly
-            GROUP BY repo_id, testsuite, classname, name, bucket_daily;
+            GROUP BY repo_id, testsuite, classname, name, bucket_daily
+            WITH NO DATA;
             """,
             reverse_sql="DROP MATERIALIZED VIEW ta_timeseries_test_aggregate_daily;",
         ),
         migrations.RunSQL(
             """
-            CREATE MATERIALIZED VIEW ta_timeseries_branch_test_aggregate_hourly
+            CREATE MATERIALIZED VIEW IF NOT EXISTS
+            ta_timeseries_branch_test_aggregate_hourly
             WITH (timescaledb.continuous, timescaledb.materialized_only = false, timescaledb.create_group_indexes = false) AS
             SELECT
                 repo_id,
@@ -87,13 +92,15 @@ class Migration(migrations.Migration):
                 array_merge_dedup_agg(flags) as flags
             FROM ta_timeseries_testrun
             WHERE branch IN ('main', 'master', 'develop')
-            GROUP BY repo_id, branch, testsuite, classname, name, bucket_hourly;
+            GROUP BY repo_id, branch, testsuite, classname, name, bucket_hourly
+            WITH NO DATA;
             """,
             reverse_sql="DROP MATERIALIZED VIEW ta_timeseries_branch_test_aggregate_hourly;",
         ),
         migrations.RunSQL(
             """
-            CREATE MATERIALIZED VIEW ta_timeseries_branch_test_aggregate_daily
+            CREATE MATERIALIZED VIEW IF NOT EXISTS
+            ta_timeseries_branch_test_aggregate_daily
             WITH (timescaledb.continuous, timescaledb.materialized_only = false, timescaledb.create_group_indexes = false) AS
             SELECT
                 repo_id,
@@ -115,7 +122,8 @@ class Migration(migrations.Migration):
                 MAX(updated_at) AS updated_at,
                 array_merge_dedup_agg(flags) as flags
             FROM ta_timeseries_branch_test_aggregate_hourly
-            GROUP BY repo_id, branch, testsuite, classname, name, bucket_daily;
+            GROUP BY repo_id, branch, testsuite, classname, name, bucket_daily
+            WITH NO DATA;
             """,
             reverse_sql="DROP MATERIALIZED VIEW ta_timeseries_branch_test_aggregate_daily;",
         ),
