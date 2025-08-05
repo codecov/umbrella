@@ -98,6 +98,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         repoid = int(repoid)
         commit_yaml = UserYaml(commit_yaml)
 
+        log.info("run_impl: Getting commit")
+
         commit = (
             db_session.query(Commit)
             .filter(Commit.repoid == repoid, Commit.commitid == commitid)
@@ -105,11 +107,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         )
         assert commit, "Commit not found in database."
 
+        log.info("run_impl: Got commit")
+
         state = ProcessingState(repoid, commitid)
 
         upload_ids = [upload["upload_id"] for upload in processing_results]
 
         try:
+            log.info("run_impl: Processing reports with lock")
+
             self._process_reports_with_lock(
                 db_session,
                 commit,
@@ -120,9 +126,11 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 state,
             )
 
+            log.info("run_impl: Cleaning up intermediate reports")
             cleanup_intermediate_reports(upload_ids)
 
             if not should_trigger_postprocessing(state.get_upload_numbers()):
+                log.info("run_impl: Postprocessing should not be triggered")
                 UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
                 UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
                 self._call_upload_breadcrumb_task(
@@ -132,6 +140,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     upload_ids=upload_ids,
                 )
                 return
+
+            log.info("run_impl: Handling finisher lock")
 
             return self._handle_finisher_lock(
                 db_session,
@@ -146,6 +156,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             raise
 
         except SoftTimeLimitExceeded:
+            log.warning("run_impl: soft time limit exceeded")
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -159,6 +170,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             }
 
         except Exception as e:
+            log.exception("run_impl: unexpected error in upload finisher")
             sentry_sdk.capture_exception(e)
             log.exception(
                 "Unexpected error in upload finisher",
@@ -192,24 +204,38 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         repoid = commit.repoid
         commitid = commit.commitid
 
+        log.info("run_impl: Loaded commit diff")
+
         try:
             with get_report_lock(repoid, commitid, self.hard_time_limit_task):
+                log.info("run_impl: Acquired report lock")
+
                 report_service = ReportService(commit_yaml)
+
+                log.info("run_impl: Performing report merging")
+
                 report = perform_report_merging(
                     report_service, commit_yaml, commit, processing_results
                 )
 
                 log.info(
-                    "Saving combined report",
+                    "run_impl: Saving combined report",
                     extra={"processing_results": processing_results},
                 )
 
                 if diff:
+                    log.info("run_impl: Applying diff to report")
                     report.apply_diff(diff)
+
+                log.info("run_impl: Saving report")
                 report_service.save_report(commit, report)
 
                 db_session.commit()
+
+                log.info("run_impl: Marking uploads as merged")
                 state.mark_uploads_as_merged(upload_ids)
+
+                log.info("run_impl: Finished upload_finisher task")
 
         except LockError:
             self._call_upload_breadcrumb_task(
@@ -256,10 +282,16 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         try:
             with redis_connection.lock(lock_name, timeout=60 * 5, blocking_timeout=5):
+                log.info("handle_finisher_lock: Acquired finisher lock")
+
                 result = self.finish_reports_processing(
                     db_session, commit, commit_yaml, processing_results
                 )
+
+                log.info("handle_finisher_lock: Finished reports processing")
+
                 if is_timeseries_enabled():
+                    log.info("handle_finisher_lock: Saving commit measurements")
                     dataset_names = [
                         dataset.name
                         for dataset in repository_datasets_query(repository)
@@ -280,6 +312,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 now = datetime.now(tz=UTC)
                 threshold = now - timedelta(minutes=60)
                 if not repository.updatestamp or repository.updatestamp < threshold:
+                    log.info("handle_finisher_lock: Updating repository")
                     repository.updatestamp = now
                     db_session.commit()
                 else:
@@ -292,6 +325,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         },
                     )
 
+                log.info("handle_finisher_lock: Invalidating caches")
                 self.invalidate_caches(redis_connection, commit)
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
@@ -299,7 +333,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     milestone=milestone,
                     upload_ids=upload_ids,
                 )
-                log.info("Finished upload_finisher task")
+                log.info("handle_finisher_lock: Finished upload_finisher task")
                 return result
 
         except LockError:
@@ -328,9 +362,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         # always notify, let the notify handle if it should submit
         notifications_called = False
         if not regexp_ci_skip.search(commit.message or ""):
-            match self.should_call_notifications(
+            should_call_notifications = self.should_call_notifications(
                 commit, commit_yaml, processing_results
-            ):
+            )
+            log.info(
+                "finish_reports_processing: should_call_notifications",
+                extra={"should_call_notifications": should_call_notifications},
+            )
+            match should_call_notifications:
                 case ShouldCallNotifyResult.NOTIFY:
                     notifications_called = True
                     notify_kwargs = {
@@ -519,19 +558,33 @@ def perform_report_merging(
     commit: Commit,
     processing_results: list[ProcessingResult],
 ) -> Report:
+    log.info("perform_report_merging: Getting existing report")
     master_report = report_service.get_existing_report_for_commit(commit)
     if master_report is None:
+        log.info("perform_report_merging: No existing report found, creating new one")
         master_report = Report()
+    else:
+        log.info("perform_report_merging: Existing report found")
 
     upload_ids = [
         upload["upload_id"] for upload in processing_results if upload["successful"]
     ]
+    log.info(
+        "perform_report_merging: Loading intermediate reports",
+        extra={"upload_ids": upload_ids},
+    )
     intermediate_reports = load_intermediate_reports(upload_ids)
 
+    log.info(
+        "perform_report_merging: Merging reports", extra={"upload_ids": upload_ids}
+    )
     master_report, merge_result = merge_reports(
         commit_yaml, master_report, intermediate_reports
     )
 
+    log.info(
+        "perform_report_merging: Updating uploads", extra={"upload_ids": upload_ids}
+    )
     # Update the `Upload` in the database with the final session_id
     # (aka `order_number`) and other statuses
     update_uploads(
@@ -548,6 +601,7 @@ def perform_report_merging(
 @sentry_sdk.trace
 @cache.cache_function(ttl=60 * 60)  # the commit diff is immutable
 def load_commit_diff(commit: Commit, task_name: str | None = None) -> dict | None:
+    log.info("load_commit_diff: Loading commit diff")
     repository = commit.repository
     commitid = commit.commitid
     try:
@@ -556,9 +610,11 @@ def load_commit_diff(commit: Commit, task_name: str | None = None) -> dict | Non
             if task_name
             else GITHUB_APP_INSTALLATION_DEFAULT_NAME
         )
+        log.info("load_commit_diff: Getting repository service")
         repository_service = get_repo_provider_service(
             repository, installation_name_to_use=installation_name_to_use
         )
+        log.info("load_commit_diff: Getting commit diff")
         return async_to_sync(repository_service.get_commit_diff)(commitid)
 
     # TODO(swatinem): can we maybe get rid of all this logging?
