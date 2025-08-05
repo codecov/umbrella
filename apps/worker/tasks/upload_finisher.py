@@ -6,6 +6,7 @@ from enum import Enum
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
+from celery.exceptions import Retry, SoftTimeLimitExceeded
 from redis.exceptions import LockError
 from redis.lock import Lock
 
@@ -37,6 +38,7 @@ from shared.celery_config import (
     timeseries_save_commit_measurements_task_name,
     upload_finisher_task_name,
 )
+from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.cache import cache
 from shared.helpers.redis import get_redis_connection
 from shared.reports.resources import Report
@@ -86,6 +88,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         except ValueError as e:
             log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
 
+        milestone = Milestones.UPLOAD_COMPLETE
+
         log.info(
             "Received upload_finisher task",
             extra={"processing_results": processing_results},
@@ -100,12 +104,93 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             .first()
         )
         assert commit, "Commit not found in database."
-        repository = commit.repository
 
         state = ProcessingState(repoid, commitid)
 
         upload_ids = [upload["upload_id"] for upload in processing_results]
+
+        try:
+            self._process_reports_with_lock(
+                db_session,
+                commit,
+                commit_yaml,
+                processing_results,
+                milestone,
+                upload_ids,
+                state,
+            )
+
+            cleanup_intermediate_reports(upload_ids)
+
+            if not should_trigger_postprocessing(state.get_upload_numbers()):
+                UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
+                UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                )
+                return
+
+            return self._handle_finisher_lock(
+                db_session,
+                commit,
+                commit_yaml,
+                processing_results,
+                milestone,
+                upload_ids,
+            )
+
+        except Retry:
+            raise
+
+        except SoftTimeLimitExceeded:
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                upload_ids=upload_ids,
+                error=Errors.TASK_TIMED_OUT,
+            )
+            return {
+                "error": "Soft time limit exceeded",
+                "upload_ids": upload_ids,
+            }
+
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            log.exception(
+                "Unexpected error in upload finisher",
+                extra={"upload_ids": upload_ids},
+            )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                upload_ids=upload_ids,
+                error=Errors.UNKNOWN,
+                error_text=str(e),
+            )
+            return {
+                "error": str(e),
+                "upload_ids": upload_ids,
+            }
+
+    def _process_reports_with_lock(
+        self,
+        db_session,
+        commit: Commit,
+        commit_yaml: UserYaml,
+        processing_results: list[ProcessingResult],
+        milestone: Milestones,
+        upload_ids: list,
+        state: ProcessingState,
+    ):
+        """Process reports with a lock to prevent concurrent modifications."""
         diff = load_commit_diff(commit, self.name)
+        repoid = commit.repoid
+        commitid = commit.commitid
 
         try:
             with get_report_lock(repoid, commitid, self.hard_time_limit_task):
@@ -127,23 +212,48 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 state.mark_uploads_as_merged(upload_ids)
 
         except LockError:
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                upload_ids=upload_ids,
+                error=Errors.INTERNAL_LOCK_ERROR,
+            )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                upload_ids=upload_ids,
+                error=Errors.INTERNAL_RETRYING,
+            )
             max_retry = 200 * 3**self.request.retries
             retry_in = min(random.randint(max_retry // 2, max_retry), 60 * 60 * 5)
             log.warning(
                 "Unable to acquire report lock. Retrying",
-                extra={"countdown": retry_in, "number_retries": self.request.retries},
+                extra={
+                    "countdown": retry_in,
+                    "number_retries": self.request.retries,
+                },
             )
             self.retry(max_retries=MAX_RETRIES, countdown=retry_in)
 
-        cleanup_intermediate_reports(upload_ids)
-
-        if not should_trigger_postprocessing(state.get_upload_numbers()):
-            UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
-            UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
-            return
+    def _handle_finisher_lock(
+        self,
+        db_session,
+        commit: Commit,
+        commit_yaml: UserYaml,
+        processing_results: list[ProcessingResult],
+        milestone: Milestones,
+        upload_ids: list,
+    ):
+        """Handle the finisher lock and post-processing tasks."""
+        repoid = commit.repoid
+        commitid = commit.commitid
+        repository = commit.repository
 
         lock_name = f"upload_finisher_lock_{repoid}_{commitid}"
         redis_connection = get_redis_connection()
+
         try:
             with redis_connection.lock(lock_name, timeout=60 * 5, blocking_timeout=5):
                 result = self.finish_reports_processing(
@@ -183,11 +293,26 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     )
 
                 self.invalidate_caches(redis_connection, commit)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                )
                 log.info("Finished upload_finisher task")
                 return result
+
         except LockError:
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                upload_ids=upload_ids,
+                error=Errors.INTERNAL_LOCK_ERROR,
+            )
             log.warning("Unable to acquire lock", extra={"lock_name": lock_name})
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
+            return
 
     def finish_reports_processing(
         self,
@@ -216,6 +341,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     notify_kwargs = UploadFlow.save_to_kwargs(notify_kwargs)
                     task = self.app.tasks[notify_task_name].apply_async(
                         kwargs=notify_kwargs
+                    )
+                    self._call_upload_breadcrumb_task(
+                        commit_sha=commitid,
+                        repo_id=repoid,
+                        milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                        upload_ids=[
+                            upload["upload_id"] for upload in processing_results
+                        ],
                     )
                     log.info(
                         "Scheduling notify task",
