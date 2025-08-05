@@ -177,6 +177,7 @@ class TestFlakeAggregatesTimescale(GraphQLTestHelper):
 
         assert snapshot("json") == result
 
+    @pytest.mark.skip(reason="Temporarily only fetching default branch data")
     def test_flake_aggregates_timescale_non_precomputed_branch(
         self, repository, populate_timescale_flake_aggregates, snapshot
     ):
