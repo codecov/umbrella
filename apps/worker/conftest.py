@@ -1,5 +1,6 @@
 import logging
 import os
+from copy import deepcopy
 from pathlib import Path
 from unittest import mock
 
@@ -18,7 +19,7 @@ from database.base import Base
 from database.engine import json_dumps
 from helpers.environment import _get_cached_current_env
 from helpers.logging_config import get_logging_config_dict
-from shared.config import ConfigHelper
+from shared.config import ConfigHelper, _get_config_instance
 from shared.rollouts import Feature
 from shared.storage.memory import MemoryStorageService
 from shared.testutils import django_setup_test_db
@@ -239,6 +240,63 @@ def mock_configuration(mocker):
     }
     mock_config.set_params(our_config)
     return mock_config
+
+
+@pytest.fixture
+def mock_config(mocker):
+    """
+    A fixture that allows targeting specific configuration parameters instead of overwriting the entire configuration.
+
+    Usage:
+        def test_something(mock_config):
+            mock_config({}, "site")  # Sets config["site"] = {}
+            mock_config("value", "services", "redis", "host")  # Sets config["services"]["redis"]["host"] = "value"
+            mock_config(None, "services", "minio")  # Deletes config["services"]["minio"]
+    """
+
+    config_instance = _get_config_instance()
+
+    original_params = deepcopy(config_instance.params) if config_instance.params else {}
+
+    def config_setter(val, *args):
+        """
+        Set or delete configuration values at the specified path.
+
+        Args:
+            val: The value to set. If None, the key will be deleted.
+            *args: The path to the configuration key (e.g., "services", "redis", "host")
+        """
+        if not args:
+            raise ValueError("At least one key path must be provided")
+
+        # Get current config params, initialize if None
+        current_config = config_instance.params.copy() if config_instance.params else {}
+
+        if val is None:
+            current = current_config
+            for key in args[:-1]:
+                if key not in current or not isinstance(current[key], dict):
+                    return
+                current = current[key]
+
+            if args[-1] in current:
+                del current[args[-1]]
+        else:
+            current = current_config
+            for key in args[:-1]:
+                if key not in current:
+                    current[key] = {}
+                elif not isinstance(current[key], dict):
+                    current[key] = {}
+                current = current[key]
+
+            current[args[-1]] = val
+
+        config_instance.set_params(current_config)
+
+    yield config_setter
+
+    config_instance.set_params(original_params)
 
 
 @pytest.fixture

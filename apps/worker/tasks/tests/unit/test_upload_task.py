@@ -31,6 +31,7 @@ from shared.torngit import GitlabEnterprise
 from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
 from shared.torngit.gitlab import Gitlab
 from shared.utils.sessions import SessionType
+from shared.yaml.user_yaml import UserYaml
 from tasks.bundle_analysis_notify import bundle_analysis_notify_task
 from tasks.bundle_analysis_processor import bundle_analysis_processor_task
 from tasks.test_results_finisher import test_results_finisher_task
@@ -2409,4 +2410,86 @@ class TestUploadTaskUnit:
                 "upload_ids": [],
                 "sentry_trace_id": None,
             }
+        )
+
+    @pytest.mark.django_db
+    def test_upload_debounce_limit(
+        self, dbsession, mocker, mock_config, mock_storage, mock_self_app
+    ):
+        mock_config(10, "setup", "upload_debounce_limit")
+        mocked_chord = mocker.patch("tasks.upload.chord")
+        mocked_fetch_yaml = mocker.patch(
+            "tasks.upload.fetch_commit_yaml_and_possibly_store"
+        )
+        mocked_possibly_update_commit_from_provider_info = mocker.patch(
+            "tasks.upload.possibly_update_commit_from_provider_info"
+        )
+        mocked_possibly_update_commit_from_provider_info.return_value = False
+
+        mocker.patch(
+            "tasks.upload.UploadTask.possibly_setup_webhooks",
+            return_value=False,
+        )
+
+        mocked_fetch_yaml.return_value = UserYaml.from_dict({})
+
+        commit = CommitFactory.create(
+            message="",
+            commitid="abf6d4df662c47e32460020ab14abf9303581429",
+            repository__owner__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
+            repository__owner__username="ThiagoCodecov",
+            repository__owner__service="github",
+            repository__yaml={"codecov": {"max_report_age": "1y ago"}},
+            repository__name="example-python",
+            pullid=1,
+            # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
+            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+        )
+        dbsession.add(commit)
+        dbsession.flush()
+
+        redis_queue = [
+            {
+                "url": f"some_random_storage_path_{i}",
+                "build_code": f"some_random_build_{i}",
+            }
+            for i in range(25)
+        ]
+        jsonified_redis_queue = [json.dumps(x) for x in redis_queue]
+
+        redis = get_redis_connection()
+        redis.lpush(
+            f"uploads/{commit.repoid}/{commit.commitid}", *jsonified_redis_queue
+        )
+
+        UploadTask().run_impl(
+            dbsession,
+            commit.repoid,
+            commit.commitid,
+        )
+
+        # every chord instance gets called 5 times
+        assert len(mocked_chord.mock_calls) / 5 == 3
+
+        chord_calls = mocked_chord.call_args_list
+        all_processor_tasks = []
+        for chord_call in chord_calls:
+            processor_tasks = chord_call[0][0]
+            all_processor_tasks.extend(processor_tasks)
+
+        actual_storage_paths = []
+        for task in all_processor_tasks:
+            if hasattr(task, "kwargs") and "arguments" in task.kwargs:
+                arguments = task.kwargs["arguments"]
+                if "url" in arguments:
+                    actual_storage_paths.append(arguments["url"])
+
+        expected_storage_paths = [item["url"] for item in redis_queue]
+
+        assert len(actual_storage_paths) == 25, (
+            f"Expected 25 storage paths, got {len(actual_storage_paths)}"
+        )
+
+        assert set(actual_storage_paths) == set(expected_storage_paths), (
+            f"Storage paths don't match. Expected: {expected_storage_paths}, Got: {actual_storage_paths}"
         )

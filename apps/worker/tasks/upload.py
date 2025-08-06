@@ -556,20 +556,41 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             UPLOADS_PER_TASK_SCHEDULE.labels(report_type=report_type.value).observe(
                 len(upload_argument_list)
             )
-            scheduled_tasks = self.schedule_task(
-                commit,
-                commit_yaml.to_dict(),
-                upload_argument_list,
-                commit_report,
-                upload_context,
-            )
+            debounce_limit = get_config("setup", "upload_debounce_limit", default=None)
+            if debounce_limit:
+                chunks = [
+                    upload_argument_list[i : i + debounce_limit]
+                    for i in range(0, len(upload_argument_list), debounce_limit)
+                ]
+                scheduled_tasks_list = []
+                for chunk in chunks:
+                    chunk_scheduled_tasks = self.schedule_task(
+                        commit,
+                        commit_yaml.to_dict(),
+                        chunk,
+                        commit_report,
+                        upload_context,
+                    )
+                    scheduled_tasks_list += list(chunk_scheduled_tasks.as_tuple())
+
+                scheduled_tasks = scheduled_tasks_list
+            else:
+                scheduled_tasks = self.schedule_task(
+                    commit,
+                    commit_yaml.to_dict(),
+                    upload_argument_list,
+                    commit_report,
+                    upload_context,
+                )
+
+                scheduled_tasks = scheduled_tasks.as_tuple()
 
             log.info(
                 f"Scheduling {upload_context.report_type.value} processing tasks",
                 extra=upload_context.log_extra(
                     argument_list=upload_argument_list,
                     number_arguments=len(upload_argument_list),
-                    scheduled_task_ids=scheduled_tasks.as_tuple(),
+                    scheduled_task_ids=scheduled_tasks,
                 ),
             )
 
