@@ -190,7 +190,7 @@ def _process_file(
             # This is a partial branch, convert to hit
             coverage = 1
             missing_branches = None  # Clear missing branches for hits
-            coverage_type = CoverageType.line  # Change to line coverage
+            # Keep coverage_type as branch to maintain proper branch counting
 
         _line = report_builder_session.create_coverage_line(
             coverage,

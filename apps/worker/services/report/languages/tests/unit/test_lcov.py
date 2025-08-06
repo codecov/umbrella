@@ -233,11 +233,11 @@ end_of_record
         report = report_builder_session.output_report()
         processed_report = convert_report_to_better_readable(report)
 
-        # Should convert "1/2" partial to hit (1)
+        # Should convert "1/2" partial to hit (1) but keep branch type
         expected = {
             "partial_test.c": [
                 (10, 5, None, [[0, 5]], None, None),  # line coverage unchanged
-                (10, 1, None, [[0, 1]], None, None),  # branch converted to hit
+                (10, 1, "b", [[0, 1]], None, None),  # branch converted to hit, keeps branch type
             ]
         }
         assert processed_report["archive"] == expected
@@ -306,7 +306,7 @@ end_of_record
         expected = {
             "mixed_test.c": [
                 (10, 5, None, [[0, 5]], None, None),
-                (10, 1, None, [[0, 1]], None, None),  # partial -> hit
+                (10, 1, "b", [[0, 1]], None, None),  # partial -> hit, keeps branch type
                 (20, 3, None, [[0, 3]], None, None),
                 (20, "2/2", "b", [[0, "2/2"]], None, None),  # hit stays hit
                 (30, 0, None, [[0, 0]], None, None),

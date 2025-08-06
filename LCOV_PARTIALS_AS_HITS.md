@@ -63,12 +63,12 @@ if partials_as_hits and branch_sum > 0 and branch_sum < branch_num:
     # This is a partial branch, convert to hit
     coverage = 1
     missing_branches = None  # Clear missing branches for hits
-    coverage_type = CoverageType.line  # Change to line coverage
+    # Keep coverage_type as branch to maintain proper branch counting
 ```
 
 #### 3. Conversion Logic
 - **Condition**: `branch_sum > 0 && branch_sum < branch_num` identifies partial coverage
-- **Action**: Convert to `coverage = 1` with `CoverageType.line`
+- **Action**: Convert to `coverage = 1` while preserving `CoverageType.branch`
 - **Preservation**: Full hits and complete misses remain unchanged
 
 ## Behavior Examples
