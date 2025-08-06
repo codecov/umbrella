@@ -219,7 +219,7 @@ BRDA:10,0,0,1
 BRDA:10,0,1,0
 end_of_record
 """
-        
+
         def path_fixer(path):
             return path if path == "partial_test.c" else None
 
@@ -252,7 +252,7 @@ BRDA:10,0,0,1
 BRDA:10,0,1,0
 end_of_record
 """
-        
+
         def path_fixer(path):
             return path if path == "partial_test.c" else None
 
@@ -290,7 +290,7 @@ BRDA:30,0,0,0
 BRDA:30,0,1,0
 end_of_record
 """
-        
+
         def path_fixer(path):
             return path if path == "mixed_test.c" else None
 
@@ -308,7 +308,14 @@ end_of_record
             "mixed_test.c": [
                 (10, 1, "b", [[0, 1]], None, None),  # partial -> hit
                 (20, "2/2", "b", [[0, "2/2"]], None, None),  # hit stays hit
-                (30, "0/2", "b", [[0, "0/2", ["0:0", "0:1"], None, None]], None, None),  # miss stays miss
+                (
+                    30,
+                    "0/2",
+                    "b",
+                    [[0, "0/2", ["0:0", "0:1"], None, None]],
+                    None,
+                    None,
+                ),  # miss stays miss
             ]
         }
         assert processed_report["archive"] == expected
