@@ -388,6 +388,17 @@ class BaseCodecovTask(celery_app.Task):
                         "countdown_seconds": retry_delay_seconds,
                     },
                 )
+                if commit:
+                    self._call_upload_breadcrumb_task(
+                        commit_sha=commit.commitid,
+                        repo_id=repository.repoid,
+                        error=Errors.INTERNAL_APP_RATE_LIMITED,
+                    )
+                    self._call_upload_breadcrumb_task(
+                        commit_sha=commit.commitid,
+                        repo_id=repository.repoid,
+                        error=Errors.INTERNAL_RETRYING,
+                    )
                 self._retry(countdown=retry_delay_seconds)
             else:
                 log.warning(
