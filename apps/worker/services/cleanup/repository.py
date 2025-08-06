@@ -101,6 +101,7 @@ def start_repo_cleanup(repo_id: int) -> tuple[bool, int]:
             author=shadow_owner,
             upload_token=new_token,
             image_token=new_token,
+            name=f"{owner_name}-{uuid4().hex}",
         )
 
     return (True, shadow_owner.ownerid)
