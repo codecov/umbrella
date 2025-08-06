@@ -237,7 +237,14 @@ end_of_record
         expected = {
             "partial_test.c": [
                 (10, 5, None, [[0, 5]], None, None),  # line coverage unchanged
-                (10, 1, "b", [[0, 1]], None, None),  # branch converted to hit, keeps branch type
+                (
+                    10,
+                    1,
+                    "b",
+                    [[0, 1]],
+                    None,
+                    None,
+                ),  # branch converted to hit, keeps branch type
             ]
         }
         assert processed_report["archive"] == expected
