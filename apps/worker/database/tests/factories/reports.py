@@ -60,6 +60,8 @@ class FlakeFactory(factory.Factory):
 
 
 class TestResultReportTotalsFactory(factory.Factory):
+    __test__ = False
+
     class Meta:
         model = TestResultReportTotals
 
