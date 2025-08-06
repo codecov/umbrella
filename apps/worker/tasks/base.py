@@ -428,7 +428,7 @@ class BaseCodecovTask(celery_app.Task):
                     commit_sha=commit.commitid,
                     repo_id=repository.repoid,
                     error=Errors.UNKNOWN,
-                    error_text=str(e),
+                    error_text=repr(e),
                 )
 
         return None

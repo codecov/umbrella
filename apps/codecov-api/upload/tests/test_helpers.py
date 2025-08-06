@@ -441,6 +441,6 @@ def test_upload_breadcrumb_context_with_exception(mocker):
         breadcrumb_data=BreadcrumbData(
             milestone=Milestones.FETCHING_COMMIT_DETAILS,
             error=Errors.UNKNOWN,
-            error_text=str(exc.value),
+            error_text=repr(exc.value),
         ),
     )

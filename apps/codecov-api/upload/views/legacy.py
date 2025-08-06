@@ -329,7 +329,7 @@ class UploadHandler(ShelterMixin, APIView):
                         milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
                         endpoint=endpoint,
                         error=Errors.UNKNOWN,
-                        error_text=str(e),
+                        error_text=repr(e),
                     ),
                 )
                 return HttpResponseServerError("Unknown error, please try again later")

@@ -927,7 +927,7 @@ def upload_breadcrumb_context(
                     milestone=milestone,
                     endpoint=endpoint,
                     error=error if error else Errors.UNKNOWN,
-                    error_text=str(e) if not error else None,
+                    error_text=repr(e) if not error else None,
                 ),
             )
         raise

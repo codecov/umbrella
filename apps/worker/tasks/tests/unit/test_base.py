@@ -404,7 +404,7 @@ class TestBaseCodecovTask:
                 "repo_id": mock_repo.repoid,
                 "breadcrumb_data": BreadcrumbData(
                     error=Errors.UNKNOWN,
-                    error_text=str(exception),
+                    error_text=repr(exception),
                 ),
                 "upload_ids": [],
                 "sentry_trace_id": None,
