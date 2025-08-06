@@ -1,0 +1,11 @@
+{% if error -%}
+{{ error_message }}
+{%- endif %}
+{%- if error and payload.info %}
+
+---
+
+{% endif %}
+{%- if payload.info -%}
+{{ test_results_section }}
+{%- endif %}

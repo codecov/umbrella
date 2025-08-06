@@ -9,6 +9,7 @@ from app import celery_app
 from database.models import Commit, Repository
 from helpers.notifier import NotifierResult
 from helpers.string import shorten_file_paths
+from services.comment import post_comment
 from services.repository import (
     fetch_and_update_pull_request_information_from_commit,
     get_repo_provider_service,
@@ -18,6 +19,11 @@ from services.test_analytics.ta_metrics import (
     read_failures_summary,
     read_tests_totals_summary,
 )
+from services.test_analytics.ta_notify import (
+    build_error_comment_message,
+    build_test_results_message,
+    build_upgrade_comment_message,
+)
 from services.test_analytics.ta_process_flakes import KEY_NAME
 from services.test_analytics.ta_timeseries import (
     TestInstance,
@@ -25,15 +31,14 @@ from services.test_analytics.ta_timeseries import (
     get_pr_comment_agg,
     get_pr_comment_failures,
 )
-from services.test_results import (
+from services.test_analytics.ta_types import (
     ErrorPayload,
-    FinisherResult,
     TACommentInDepthInfo,
     TestResultsNotificationFailure,
     TestResultsNotificationPayload,
-    TestResultsNotifier,
-    should_do_flaky_detection,
 )
+from services.test_results import FinisherResult, should_do_flaky_detection
+from services.urls import get_members_url
 from shared.celery_config import cache_test_rollups_task_name, process_flakes_task_name
 from shared.django_apps.reports.models import ReportSession, UploadError
 from shared.helpers.redis import get_redis_connection
@@ -201,18 +206,20 @@ def new_impl(
             "queue_notify": False,
         }
 
-    notifier = TestResultsNotifier(
-        commit,
-        commit_yaml,
-        _pull=pull,
-        _repo_service=repo_service,
-        error=error,
-    )
-
     seat_needs_activation = check_seat_activation(db_session, pull)
 
     if seat_needs_activation:
-        success, _ = notifier.upgrade_comment()
+        author_username = (
+            pull.provider_pull["author"].get("username")
+            if pull.provider_pull
+            else commit.author.username
+        )
+        message = build_upgrade_comment_message(
+            author_username,
+            get_members_url(pull.database_pull),
+        )
+
+        success = post_comment(commit, message) == NotifierResult.COMMENT_POSTED
         log.info(
             "Seat needs activation, posted upgrade comment",
             extra={**extra, "success": success},
@@ -226,7 +233,8 @@ def new_impl(
     if summary["failed"] == 0:
         # no failures, only error
         log.info("No failures, posting error comment", extra=extra)
-        notifier.error_comment()
+        message = build_error_comment_message(error)
+        _ = post_comment(commit, message) == NotifierResult.COMMENT_POSTED
 
         return {
             "notify_attempted": True,
@@ -239,11 +247,11 @@ def new_impl(
 
     notif_failures = transform_failures(upload_ids, failures)
 
-    flaky_tests = {}
-
-    # flake detection if appropriate
-    if should_do_flaky_detection(repo, commit_yaml):
-        flaky_tests = get_flaky_tests_dict(repoid)
+    flaky_tests = (
+        get_flaky_tests_dict(repoid)
+        if should_do_flaky_detection(repo, commit_yaml)
+        else {}
+    )
 
     payload = TestResultsNotificationPayload(
         failed=summary["failed"],
@@ -252,10 +260,8 @@ def new_impl(
         info=TACommentInDepthInfo(notif_failures, flaky_tests),
     )
 
-    notifier.payload = payload
-
-    notifier_result = notifier.notify()
-    success = True if notifier_result is NotifierResult.COMMENT_POSTED else False
+    message = build_test_results_message(payload, error, commit)
+    success = post_comment(commit, message) == NotifierResult.COMMENT_POSTED
     log.info("Posted TA comment", extra={**extra, "success": success})
     return {
         "notify_attempted": True,
