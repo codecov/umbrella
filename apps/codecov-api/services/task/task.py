@@ -166,7 +166,14 @@ class TaskService:
             },
         ).apply_async()
 
-    def notify_signature(self, repoid, commitid, current_yaml=None, empty_upload=None):
+    def notify_signature(
+        self,
+        repoid,
+        commitid,
+        current_yaml=None,
+        empty_upload=None,
+        force_notify=False,
+    ):
         return self._create_signature(
             celery_config.notify_task_name,
             kwargs={
@@ -174,12 +181,24 @@ class TaskService:
                 "commitid": commitid,
                 "current_yaml": current_yaml,
                 "empty_upload": empty_upload,
+                "force_notify": force_notify,
             },
         )
 
-    def notify(self, repoid, commitid, current_yaml=None, empty_upload=None):
+    def notify(
+        self,
+        repoid,
+        commitid,
+        current_yaml=None,
+        empty_upload=None,
+        force_notify=False,
+    ):
         self.notify_signature(
-            repoid, commitid, current_yaml=current_yaml, empty_upload=empty_upload
+            repoid,
+            commitid,
+            current_yaml=current_yaml,
+            empty_upload=empty_upload,
+            force_notify=force_notify,
         ).apply_async()
 
     def pulls_sync(self, repoid, pullid):

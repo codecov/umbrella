@@ -88,7 +88,10 @@ class StandardNotifier(AbstractBaseNotifier):
         filtered_comparison = comparison.get_filtered_comparison(
             **self.get_notifier_filters()
         )
-        if self.should_notify_comparison(filtered_comparison):
+
+        force_notify = getattr(comparison.context, "force_notify", False)
+
+        if force_notify or self.should_notify_comparison(filtered_comparison):
             result = self.do_notify(filtered_comparison)
         else:
             result = NotificationResult(
