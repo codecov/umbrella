@@ -1057,7 +1057,7 @@ class TestUploadProcessorTask:
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.PROCESSING_UPLOAD,
                             error=Errors.UNKNOWN,
-                            error_text=str(mocked_2.side_effect),
+                            error_text=repr(mocked_2.side_effect),
                         ),
                         "upload_ids": [upload_1.id_],
                         "sentry_trace_id": None,

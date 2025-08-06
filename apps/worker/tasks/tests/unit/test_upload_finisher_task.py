@@ -945,7 +945,7 @@ class TestUploadFinisherTask:
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.UPLOAD_COMPLETE,
                     error=Errors.UNKNOWN,
-                    error_text="Unexpected error occurred",
+                    error_text="ValueError('Unexpected error occurred')",
                 ),
                 "upload_ids": [0],
                 "sentry_trace_id": None,

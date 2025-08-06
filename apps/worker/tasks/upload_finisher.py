@@ -182,7 +182,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone=milestone,
                 upload_ids=upload_ids,
                 error=Errors.UNKNOWN,
-                error_text=str(e),
+                error_text=repr(e),
             )
             return {
                 "error": str(e),

@@ -143,7 +143,7 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 milestone=Milestones.PROCESSING_UPLOAD,
                 upload_ids=[arguments["upload_id"]],
                 error=Errors.UNKNOWN,
-                error_text=str(e),
+                error_text=repr(e),
             )
             raise
 
