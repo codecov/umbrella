@@ -56,6 +56,7 @@ from shared.celery_config import (
 )
 from shared.config import get_config
 from shared.django_apps.codecov_auth.models import Service
+from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import Redis, get_redis_connection
 from shared.reports.readonly import ReadOnlyReport
 from shared.torngit.base import TokenType, TorngitBaseAdapter
@@ -83,6 +84,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         empty_upload=None,
         **kwargs,
     ):
+        milestone = Milestones.NOTIFICATIONS_SENT
         redis_connection = get_redis_connection()
         if self.has_upcoming_notifies_according_to_redis(
             redis_connection, repoid, commitid
@@ -92,6 +94,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 extra={"repoid": repoid, "commitid": commitid},
             )
             self.log_checkpoint(UploadFlow.SKIPPING_NOTIFICATION)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                error=Errors.INTERNAL_OTHER_JOB,
+            )
             return {
                 "notified": False,
                 "notifications": None,
@@ -132,6 +140,18 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 ),
             )
             self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                error=Errors.INTERNAL_LOCK_ERROR,
+            )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                error=Errors.INTERNAL_OTHER_JOB,
+            )
             return {
                 "notified": False,
                 "notifications": None,
@@ -159,8 +179,14 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         current_yaml: UserYaml | None,
         *args,
         **kwargs,
-    ) -> None:
+    ):
         try:
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=Milestones.NOTIFICATIONS_SENT,
+                error=Errors.INTERNAL_RETRYING,
+            )
             self.retry(max_retries=max_retries, countdown=countdown)
         except MaxRetriesExceededError:
             log.warning(
@@ -174,6 +200,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 },
             )
             self.log_checkpoint(UploadFlow.NOTIF_TOO_MANY_RETRIES)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=Milestones.NOTIFICATIONS_SENT,
+                error=Errors.INTERNAL_OUT_OF_RETRIES,
+            )
             return {
                 "notified": False,
                 "notifications": None,
@@ -190,6 +222,8 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         empty_upload=None,
         **kwargs,
     ):
+        milestone = Milestones.NOTIFICATIONS_SENT
+
         log.info("Starting notifications", extra={"commit": commitid, "repoid": repoid})
         commits_query = db_session.query(Commit).filter(
             Commit.repoid == repoid, Commit.commitid == commitid
@@ -204,6 +238,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             and not test_result_commit_report.test_result_totals.error
             and test_result_commit_report.test_result_totals.failed > 0
         ):
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=Milestones.NOTIFICATIONS_SENT,
+                error=Errors.SKIPPED_NOTIFICATIONS,
+            )
             return {
                 "notify_attempted": False,
                 "notifications": None,
@@ -227,6 +267,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 extra={"repoid": repoid, "commit": commitid},
             )
             self.log_checkpoint(UploadFlow.NOTIF_NO_VALID_INTEGRATION)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                error=Errors.REPO_MISSING_VALID_BOT,
+            )
             return {"notified": False, "notifications": None, "reason": "no_valid_bot"}
         except NoConfiguredAppsAvailable as exp:
             if exp.rate_limited_count > 0:
@@ -244,6 +290,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                         "apps_suspended": exp.suspended_count,
                         "countdown_seconds": retry_delay_seconds,
                     },
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    error=Errors.INTERNAL_APP_RATE_LIMITED,
                 )
                 return self._attempt_retry(
                     max_retries=10,
@@ -288,6 +340,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 },
             )
             self.log_checkpoint(UploadFlow.NOTIF_GIT_CLIENT_ERROR)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=milestone,
+                error=Errors.GIT_CLIENT_ERROR,
+            )
             return {
                 "notified": False,
                 "notifications": None,
@@ -299,6 +357,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 extra={"repoid": commit.repoid, "commit": commit.commitid},
             )
             self.log_checkpoint(UploadFlow.NOTIF_GIT_SERVICE_ERROR)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=milestone,
+                error=Errors.GIT_CLIENT_ERROR,
+            )
             return {
                 "notified": False,
                 "notifications": None,
@@ -376,6 +440,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     },
                 )
                 self.log_checkpoint(UploadFlow.NOTIF_STALE_HEAD)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=commit.repoid,
+                    milestone=milestone,
+                    error=Errors.SKIPPED_NOTIFICATIONS,
+                )
                 return {
                     "notified": False,
                     "notifications": None,
@@ -390,6 +460,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 base_report = None
             if head_report is None and empty_upload is None:
                 self.log_checkpoint(UploadFlow.NOTIF_ERROR_NO_REPORT)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=commit.repoid,
+                    milestone=milestone,
+                    error=Errors.REPORT_NOT_FOUND,
+                )
                 return {
                     "notified": False,
                     "notifications": None,
@@ -434,6 +510,11 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 gitlab_extra_shas_to_notify=gitlab_extra_shas_to_notify,
             )
             self.log_checkpoint(UploadFlow.NOTIFIED)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=milestone,
+            )
             log.info(
                 "Notifications done",
                 extra={
@@ -452,6 +533,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 extra={"commit": commit.commitid, "repoid": commit.repoid},
             )
             self.log_checkpoint(UploadFlow.SKIPPING_NOTIFICATION)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=milestone,
+                error=Errors.SKIPPED_NOTIFICATIONS,
+            )
             return {"notified": False, "notifications": None}
 
     def is_using_codecov_commenter(
@@ -555,7 +642,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         self, commit: Commit, repository_service: TorngitBaseAdapter
     ) -> set[str]:
         """ "
-        Fetches extra commit SHAs we should send statuses too for GitLab.
+        Fetches extra commit SHAs we should send statuses to for GitLab.
 
         GitLab has a "merge results pipeline" (see https://docs.gitlab.com/ee/ci/pipelines/merged_results_pipelines.html)
         This runs on an "internal" commit that is the merge from the PR HEAD and the target branch. This commit only exists in GitLab.
@@ -623,40 +710,50 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         # Some code wrongly assumes things are non-`None` and will error.
         # Other code checks `report` and then errors on `commit`.
 
-        comparison = ComparisonProxy(
-            Comparison(
-                head=FullCommit(commit=commit, report=head_report),
-                project_coverage_base=FullCommit(
-                    commit=base_commit, report=base_report
+        try:
+            comparison = ComparisonProxy(
+                Comparison(
+                    head=FullCommit(commit=commit, report=head_report),
+                    project_coverage_base=FullCommit(
+                        commit=base_commit, report=base_report
+                    ),
+                    patch_coverage_base_commitid=patch_coverage_base_commitid,
+                    enriched_pull=enriched_pull,
+                    current_yaml=current_yaml,
                 ),
-                patch_coverage_base_commitid=patch_coverage_base_commitid,
-                enriched_pull=enriched_pull,
-                current_yaml=current_yaml,
-            ),
-            context=ComparisonContext(
-                repository_service=repository_service,
-                all_tests_passed=all_tests_passed,
-                test_results_error=test_results_error,
-                gh_app_installation_name=installation_name_to_use,
-                gh_is_using_codecov_commenter=gh_is_using_codecov_commenter,
-                gitlab_extra_shas=gitlab_extra_shas_to_notify,
-            ),
-        )
+                context=ComparisonContext(
+                    repository_service=repository_service,
+                    all_tests_passed=all_tests_passed,
+                    test_results_error=test_results_error,
+                    gh_app_installation_name=installation_name_to_use,
+                    gh_is_using_codecov_commenter=gh_is_using_codecov_commenter,
+                    gitlab_extra_shas=gitlab_extra_shas_to_notify,
+                ),
+            )
 
-        self.save_patch_totals(comparison)
+            self.save_patch_totals(comparison)
 
-        decoration_type = self.determine_decoration_type_from_pull(
-            enriched_pull, empty_upload
-        )
+            decoration_type = self.determine_decoration_type_from_pull(
+                enriched_pull, empty_upload
+            )
 
-        notifications_service = NotificationService(
-            commit.repository,
-            current_yaml,
-            repository_service,
-            decoration_type,
-            gh_installation_name_to_use=installation_name_to_use,
-        )
-        return notifications_service.notify(comparison)
+            notifications_service = NotificationService(
+                commit.repository,
+                current_yaml,
+                repository_service,
+                decoration_type,
+                gh_installation_name_to_use=installation_name_to_use,
+            )
+            return notifications_service.notify(comparison)
+        except Exception as e:
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=Milestones.NOTIFICATIONS_SENT,
+                error=Errors.UNKNOWN,
+                error_text=repr(e),
+            )
+            raise
 
     def send_notifications_if_commit_differs_from_pulls_head(
         self, commit, enriched_pull, current_yaml
@@ -709,7 +806,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             )
             return False
 
-        # check the nuber of builds
+        # check the number of builds
         after_n_builds = read_yaml_field(
             current_yaml, ("codecov", "notify", "after_n_builds")
         )

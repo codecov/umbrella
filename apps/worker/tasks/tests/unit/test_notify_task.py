@@ -38,6 +38,12 @@ from services.repository import EnrichedPull
 from shared.celery_config import (
     activate_account_user_task_name,
     new_user_activated_task_name,
+    upload_breadcrumb_task_name,
+)
+from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
+    Errors,
+    Milestones,
 )
 from shared.reports.resources import Report
 from shared.torngit.base import TorngitBaseAdapter
@@ -68,6 +74,18 @@ def _start_upload_flow(mocker):
     UploadFlow.log(UploadFlow.INITIAL_PROCESSING_COMPLETE)
     UploadFlow.log(UploadFlow.BATCH_PROCESSING_COMPLETE)
     UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
+
+
+@pytest.fixture
+def mock_self_app(mocker, celery_app):
+    mock_app = celery_app
+    mock_app.tasks[upload_breadcrumb_task_name] = mocker.MagicMock()
+
+    return mocker.patch.object(
+        NotifyTask,
+        "app",
+        mock_app,
+    )
 
 
 @pytest.fixture
@@ -412,12 +430,11 @@ class TestNotifyTaskHelpers:
 
 class TestNotifyTask:
     def test_simple_call_no_notifications(
-        self, dbsession, mocker, mock_storage, mock_configuration
+        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
         )
-        mocker.patch.object(NotifyTask, "app")
         mocked_should_send_notifications = mocker.patch.object(
             NotifyTask, "should_send_notifications", return_value=False
         )
@@ -443,14 +460,33 @@ class TestNotifyTask:
         mocked_should_send_notifications.assert_called_with(
             UserYaml({}), commit, fetch_and_update_whether_ci_passed_result, None
         )
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_SENT,
+                    error=Errors.SKIPPED_NOTIFICATIONS,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            },
+        )
 
     def test_simple_call_no_notifications_no_yaml_given(
-        self, dbsession, mocker, mock_storage, mock_configuration, mock_repo_provider
+        self,
+        dbsession,
+        mocker,
+        mock_storage,
+        mock_configuration,
+        mock_repo_provider,
+        mock_self_app,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
         )
-        mocker.patch.object(NotifyTask, "app")
         mocked_should_send_notifications = mocker.patch.object(
             NotifyTask, "should_send_notifications", return_value=False
         )
@@ -483,6 +519,20 @@ class TestNotifyTask:
             UserYaml({}), commit, fetch_and_update_whether_ci_passed_result, None
         )
         mocked_fetch_yaml.assert_called_with(commit, mock_repo_provider)
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_SENT,
+                    error=Errors.SKIPPED_NOTIFICATIONS,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            },
+        )
 
     def test_simple_call_no_notifications_commit_differs_from_pulls_head(
         self,
@@ -491,12 +541,12 @@ class TestNotifyTask:
         mock_storage,
         mock_configuration,
         mock_repo_provider,
+        mock_self_app,
         enriched_pull,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
         )
-        mocker.patch.object(NotifyTask, "app")
         mocked_should_send_notifications = mocker.patch.object(
             NotifyTask, "should_send_notifications", return_value=True
         )
@@ -541,6 +591,20 @@ class TestNotifyTask:
             fetch_and_update_whether_ci_passed_result,
             head_report,
         )
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_SENT,
+                    error=Errors.SKIPPED_NOTIFICATIONS,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            },
+        )
 
     def test_simple_call_yes_notifications_no_base(
         self,
@@ -549,6 +613,7 @@ class TestNotifyTask:
         mock_storage,
         mock_configuration,
         mock_checkpoint_submit,
+        mock_self_app,
     ):
         fake_notifier = mocker.MagicMock(
             AbstractBaseNotifier,
@@ -570,7 +635,6 @@ class TestNotifyTask:
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
         )
-        mocker.patch.object(NotifyTask, "app")
         mocker.patch.object(NotifyTask, "save_patch_totals")
         mocker.patch.object(NotifyTask, "should_send_notifications", return_value=True)
         fetch_and_update_whether_ci_passed_result = {}
@@ -631,9 +695,22 @@ class TestNotifyTask:
             UploadFlow.NOTIFIED,
             data=checkpoints_data,
         )
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_SENT,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            },
+        )
 
     def test_simple_call_no_pullrequest_found(
-        self, dbsession, mocker, mock_storage, mock_configuration
+        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
     ):
         mocked_submit_third_party_notifications = mocker.patch.object(
             NotifyTask, "submit_third_party_notifications"
@@ -641,7 +718,6 @@ class TestNotifyTask:
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
         )
-        mocker.patch.object(NotifyTask, "app")
         mocker.patch.object(NotifyTask, "should_send_notifications", return_value=True)
         fetch_and_update_whether_ci_passed_result = {}
         mocker.patch.object(
@@ -671,13 +747,26 @@ class TestNotifyTask:
             "notifications": mocked_submit_third_party_notifications.return_value,
         }
 
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_SENT,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            },
+        )
+
     def test_simple_call_should_delay(
-        self, dbsession, mocker, mock_storage, mock_configuration
+        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
         )
-        mocker.patch.object(NotifyTask, "app")
         mocked_should_wait_longer = mocker.patch.object(
             NotifyTask, "should_wait_longer", return_value=True
         )
@@ -708,14 +797,27 @@ class TestNotifyTask:
         mocked_should_wait_longer.assert_called_with(
             UserYaml({}), commit, fetch_and_update_whether_ci_passed_result
         )
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_SENT,
+                    error=Errors.INTERNAL_RETRYING,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            },
+        )
 
     def test_simple_call_should_delay_using_integration(
-        self, dbsession, mocker, mock_storage, mock_configuration
+        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
         )
-        mocker.patch.object(NotifyTask, "app")
         mocked_should_wait_longer = mocker.patch.object(
             NotifyTask, "should_wait_longer", return_value=True
         )
@@ -747,14 +849,27 @@ class TestNotifyTask:
         mocked_should_wait_longer.assert_called_with(
             UserYaml({}), commit, fetch_and_update_whether_ci_passed_result
         )
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_SENT,
+                    error=Errors.INTERNAL_RETRYING,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            },
+        )
 
     def test_simple_call_not_able_fetch_ci(
-        self, dbsession, mocker, mock_storage, mock_configuration
+        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
         )
-        mocker.patch.object(NotifyTask, "app")
         mocker.patch.object(
             NotifyTask,
             "fetch_and_update_whether_ci_passed",
@@ -780,13 +895,27 @@ class TestNotifyTask:
         }
         assert expected_result == res
 
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_SENT,
+                    error=Errors.GIT_CLIENT_ERROR,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            },
+        )
+
     def test_simple_call_not_able_fetch_ci_server_issues(
-        self, dbsession, mocker, mock_storage, mock_configuration
+        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
         )
-        mocker.patch.object(NotifyTask, "app")
         mocker.patch.object(
             NotifyTask,
             "fetch_and_update_whether_ci_passed",
@@ -811,6 +940,21 @@ class TestNotifyTask:
             "reason": "server_issues_ci_result",
         }
         assert expected_result == res
+
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_SENT,
+                    error=Errors.GIT_CLIENT_ERROR,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            },
+        )
 
     def test_should_send_notifications_ci_did_not_pass(self, dbsession, mocker):
         commit = CommitFactory.create(
@@ -854,7 +998,7 @@ class TestNotifyTask:
         res = task.should_send_notifications(current_yaml, commit, True, mock_report)
         assert not res
 
-    def test_notify_task_no_bot(self, dbsession, mocker):
+    def test_notify_task_no_bot(self, dbsession, mocker, mock_self_app):
         get_repo_provider_service = mocker.patch(
             "tasks.notify.get_repo_provider_service"
         )
@@ -883,8 +1027,25 @@ class TestNotifyTask:
         }
         assert expected_result == res
 
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_SENT,
+                    error=Errors.REPO_MISSING_VALID_BOT,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            },
+        )
+
     @freeze_time("2024-04-22T11:15:00")
-    def test_notify_task_no_ghapp_available_one_rate_limited(self, dbsession, mocker):
+    def test_notify_task_no_ghapp_available_one_rate_limited(
+        self, dbsession, mocker, mock_self_app
+    ):
         get_repo_provider_service = mocker.patch(
             "tasks.notify.get_repo_provider_service"
         )
@@ -911,9 +1072,39 @@ class TestNotifyTask:
         )
         assert res is None
         mock_retry.assert_called_with(max_retries=10, countdown=45 * 60)
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.NOTIFICATIONS_SENT,
+                            error=Errors.INTERNAL_APP_RATE_LIMITED,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    },
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.NOTIFICATIONS_SENT,
+                            error=Errors.INTERNAL_RETRYING,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    },
+                ),
+            ]
+        )
 
     @freeze_time("2024-04-22T11:15:00")
-    def test_notify_task_no_ghapp_available_all_suspended(self, dbsession, mocker):
+    def test_notify_task_no_ghapp_available_all_suspended(
+        self, dbsession, mocker, mock_self_app
+    ):
         get_repo_provider_service = mocker.patch(
             "tasks.notify.get_repo_provider_service"
         )
@@ -944,8 +1135,11 @@ class TestNotifyTask:
             "reason": "no_valid_github_app_found",
         }
         mock_retry.assert_not_called()
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_not_called()
 
-    def test_submit_third_party_notifications_exception(self, mocker, dbsession):
+    def test_submit_third_party_notifications_exception(
+        self, mocker, dbsession, mock_self_app
+    ):
         current_yaml = {}
         repository = RepositoryFactory.create()
         dbsession.add(repository)
@@ -1026,8 +1220,63 @@ class TestNotifyTask:
         )
         assert expected_result == res
 
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_not_called()
+
+    def test_submit_third_party_notifications_uncaught_exception(
+        self, mocker, dbsession, mock_self_app
+    ):
+        current_yaml = {}
+        repository = RepositoryFactory.create()
+        dbsession.add(repository)
+        dbsession.flush()
+        base_commit = CommitFactory.create(repository=repository)
+        head_commit = CommitFactory.create(repository=repository, branch="new_branch")
+        pull = PullFactory.create(
+            repository=repository, base=base_commit.commitid, head=head_commit.commitid
+        )
+        enrichedPull = EnrichedPull(database_pull=pull, provider_pull={})
+        dbsession.add(base_commit)
+        dbsession.add(head_commit)
+        dbsession.add(pull)
+        dbsession.flush()
+        base_report = Report()
+        head_report = Report()
+
+        mocker.patch(
+            "tasks.notify.ComparisonProxy.__init__", side_effect=Exception("Bad init")
+        )
+
+        task = NotifyTask()
+
+        with pytest.raises(Exception, match="Bad init"):
+            res = task.submit_third_party_notifications(
+                current_yaml,
+                base_commit,
+                head_commit,
+                base_report,
+                head_report,
+                enrichedPull,
+                mocker.MagicMock(),
+            )
+
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": head_commit.commitid,
+                "repo_id": head_commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_SENT,
+                    error=Errors.UNKNOWN,
+                    error_text="Exception('Bad init')",
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            },
+        )
+
     def test_notify_task_max_retries_exceeded(
-        self, dbsession, mocker, mock_repo_provider
+        self, dbsession, mocker, mock_repo_provider, mock_self_app
     ):
         mocker.patch.object(NotifyTask, "should_wait_longer", return_value=True)
         mocker.patch.object(NotifyTask, "retry", side_effect=MaxRetriesExceededError())
@@ -1058,7 +1307,38 @@ class TestNotifyTask:
         }
         assert expected_result == res
 
-    def test_run_impl_unobtainable_lock(self, dbsession, mock_redis, mocker):
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.NOTIFICATIONS_SENT,
+                            error=Errors.INTERNAL_RETRYING,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    },
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.NOTIFICATIONS_SENT,
+                            error=Errors.INTERNAL_OUT_OF_RETRIES,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    },
+                ),
+            ]
+        )
+
+    def test_run_impl_unobtainable_lock(
+        self, dbsession, mock_redis, mocker, mock_self_app
+    ):
         mocked_run_impl_within_lock = mocker.patch.object(
             NotifyTask, "run_impl_within_lock"
         )
@@ -1087,8 +1367,38 @@ class TestNotifyTask:
             "reason": "unobtainable_lock",
         }
         assert not mocked_run_impl_within_lock.called
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.NOTIFICATIONS_SENT,
+                            error=Errors.INTERNAL_LOCK_ERROR,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    },
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.NOTIFICATIONS_SENT,
+                            error=Errors.INTERNAL_OTHER_JOB,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    },
+                ),
+            ]
+        )
 
-    def test_run_impl_other_jobs_coming(self, dbsession, mock_redis, mocker):
+    def test_run_impl_other_jobs_coming(
+        self, dbsession, mock_redis, mocker, mock_self_app
+    ):
         mocked_run_impl_within_lock = mocker.patch.object(
             NotifyTask, "run_impl_within_lock"
         )
@@ -1110,6 +1420,20 @@ class TestNotifyTask:
             "reason": "has_other_notifies_coming",
         }
         assert not mocked_run_impl_within_lock.called
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.NOTIFICATIONS_SENT,
+                    error=Errors.INTERNAL_OTHER_JOB,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            },
+        )
 
     def test_run_impl_can_run_logic(self, dbsession, mock_redis, mocker):
         mocked_run_impl_within_lock = mocker.patch.object(
