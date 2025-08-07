@@ -403,6 +403,17 @@ def test_was_pr_merged_with_squash():
     )
 
 
+def test_was_pr_merged_with_squash_experiment():
+    mock_repo_provider = MagicMock(
+        get_commit=MagicMock(return_value={"parents": ["1", "2"]})
+    )
+    task = PullSyncTask()
+    assert not task.was_squash_via_merge_commit(
+        mock_repo_provider,
+        {"merge_commit_sha": "c739768fcac68144a3a6d82305b9c4106934d31a"},
+    )
+
+
 def test_cache_changes_stores_changed_files_in_redis_if_owner_is_whitelisted(
     dbsession,
     mock_redis,
