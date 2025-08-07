@@ -292,7 +292,7 @@ class TestBaseCodecovTask:
         )
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_not_called()
 
-    def test_get_repo_provider_service_rate_limited(self, mocker):
+    def test_get_repo_provider_service_rate_limited(self, mocker, mock_self_app):
         mocker.patch(
             "tasks.base.get_repo_provider_service",
             side_effect=NoConfiguredAppsAvailable(
@@ -302,12 +302,40 @@ class TestBaseCodecovTask:
             ),
         )
         mocker.patch("tasks.base.get_seconds_to_next_hour", return_value=120)
+        mock_commit = mocker.MagicMock()
+        mock_commit.commitid = "abc123"
 
         task = BaseCodecovTask()
         mock_retry = mocker.patch.object(task, "retry")
         mock_repo = mocker.MagicMock()
-        assert task.get_repo_provider_service(mock_repo) is None
+        assert task.get_repo_provider_service(mock_repo, commit=mock_commit) is None
         task.retry.assert_called_with(countdown=120)
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": mock_commit.commitid,
+                        "repo_id": mock_repo.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            error=Errors.INTERNAL_APP_RATE_LIMITED,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": mock_commit.commitid,
+                        "repo_id": mock_repo.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            error=Errors.INTERNAL_RETRYING,
+                        ),
+                        "upload_ids": [],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )
 
     def test_get_repo_provider_service_suspended(self, mocker):
         mocker.patch(
