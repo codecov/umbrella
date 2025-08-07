@@ -915,7 +915,7 @@ def get_ta_relevant_context(
         )
         upload_error = (
             db_session.query(UploadError)
-            .filter(UploadError.upload_id.in_(ta_upload_ids))
+            .filter(UploadError.upload_id.in_(ta_upload_ids.select()))
             .first()
         )
 
