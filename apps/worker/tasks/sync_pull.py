@@ -429,7 +429,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         if merge_commit_sha is None:
             return None
 
-        merge_commit = repository_service.get_commit(merge_commit_sha)
+        merge_commit = async_to_sync(repository_service.get_commit)(merge_commit_sha)
         return len(merge_commit["parents"]) <= 1
 
     def was_squash_via_ancestor_tree(self, commits_on_pr, base_ancestors_tree):

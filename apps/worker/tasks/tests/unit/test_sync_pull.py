@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 from celery.exceptions import Retry
@@ -404,8 +405,8 @@ def test_was_pr_merged_with_squash():
 
 
 def test_was_pr_merged_with_squash_experiment():
-    mock_repo_provider = MagicMock(
-        get_commit=MagicMock(return_value={"parents": ["1", "2"]})
+    mock_repo_provider = AsyncMock(
+        get_commit=AsyncMock(return_value={"parents": ["1", "2"]})
     )
     task = PullSyncTask()
     assert not task.was_squash_via_merge_commit(
