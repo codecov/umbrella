@@ -30,8 +30,8 @@ file_data1 = [
 
 file_data2 = [
     2,
-    [0, 10, 8, 2, 0, "80.00000", 0, 0, 0, 0, 0, 0, 0],
-    [[0, 10, 8, 2, 0, "80.00000", 0, 0, 0, 0, 0, 0, 0]],
+    [0, 10, 7, 3, 0, "70.00000", 0, 0, 0, 0, 0, 0, 0],
+    [[0, 10, 7, 3, 0, "70.00000", 0, 0, 0, 0, 0, 0, 0]],
     [0, 2, 1, 1, 0, "50.00000", 0, 0, 0, 0, 0, 0, 0],
 ]
 
@@ -61,10 +61,10 @@ totals1 = ReportTotals(
 totals2 = ReportTotals(
     files=0,
     lines=10,
-    hits=8,
-    misses=2,
+    hits=7,
+    misses=3,
     partials=0,
-    coverage="80.00000",
+    coverage="70.00000",
     branches=0,
     methods=0,
     messages=0,
@@ -239,6 +239,9 @@ class TestReportPathsNested(TestCase):
             "dir/subdir/file2.py": file_data2,
             "dir/subdir/dir1/file3.py": file_data3,
             "dir/subdir/dir2/file3.py": file_data3,
+            "dir/subdir/dir2/dir3/dir4/file4.py": file_data3,
+            "dir/subdir/dir2/dir3/dir4/file5.py": file_data3,
+            "dir/subdir/dir2/dir3/dir4/dir5/dir6/file6.py": file_data3,
             "src/ui/A/A.js": file_data3,
             "src/ui/Avatar/A.js": file_data3,
         }
@@ -262,6 +265,33 @@ class TestReportPathsNested(TestCase):
                         full_path="dir/subdir/dir2",
                         children=[
                             File(full_path="dir/subdir/dir2/file3.py", totals=totals3),
+                            Dir(
+                                full_path="dir/subdir/dir2/dir3",
+                                children=[
+                                    Dir(
+                                        full_path="dir/subdir/dir2/dir3/dir4",
+                                        children=[
+                                            File(
+                                                full_path="dir/subdir/dir2/dir3/dir4/file4.py",
+                                                totals=totals3,
+                                            ),
+                                            File(
+                                                full_path="dir/subdir/dir2/dir3/dir4/file5.py",
+                                                totals=totals3,
+                                            ),
+                                            Dir(
+                                                full_path="dir/subdir/dir2/dir3/dir4/dir5",
+                                                children=[
+                                                    File(
+                                                        full_path="dir/subdir/dir2/dir3/dir4/dir5/dir6/file6.py",
+                                                        totals=totals3,
+                                                    ),
+                                                ],
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
                         ],
                     ),
                 ],
