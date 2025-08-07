@@ -96,6 +96,8 @@ class Errors(models.TextChoices):
         ),
     )
     TASK_TIMED_OUT = "tto", _("Task timed out")
+    SKIPPED_NOTIFICATIONS = "sn", _("Notifications were skipped due to configuration")
+
     # Errors that should not be shown to the user
     INTERNAL_LOCK_ERROR = "int_le", _("Unable to acquire or release lock")
     INTERNAL_RETRYING = "int_re", _("Retrying the upload task")
@@ -105,6 +107,15 @@ class Errors(models.TextChoices):
         "int_na",
         _("No arguments found in Redis for the upload task"),
     )
+    INTERNAL_APP_RATE_LIMITED = (
+        "int_rl",
+        _("Codecov app is rate limited by the git client"),
+    )
+    INTERNAL_OTHER_JOB = (
+        "int_oj",
+        _("Another identical job is already running or will run for this commit"),
+    )
+
     # Catch-all for other errors
     UNKNOWN = "u", _("Unknown error")
 
