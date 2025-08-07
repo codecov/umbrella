@@ -404,15 +404,27 @@ def test_was_pr_merged_with_squash():
     )
 
 
-def test_was_pr_merged_with_squash_experiment():
+@pytest.mark.parametrize(
+    "merge_commit_sha,parents,head_commitid,expected",
+    [
+        ("c1", ["1", "2"], "c1", False),
+        ("c1", ["1", "2"], "whatever", False),
+        ("c1", ["1"], "c1", False),
+        ("c1", ["1"], "c2", True),
+    ],
+)
+def test_was_pr_merged_with_squash_experiment(
+    merge_commit_sha, parents, head_commitid, expected
+):
     mock_repo_provider = AsyncMock(
-        get_commit=AsyncMock(return_value={"parents": ["1", "2"]})
+        get_commit=AsyncMock(return_value={"parents": parents})
     )
     task = PullSyncTask()
-    assert not task.was_squash_via_merge_commit(
-        mock_repo_provider,
-        {"merge_commit_sha": "c739768fcac68144a3a6d82305b9c4106934d31a"},
-    )
+    pull_dict = {
+        "head": {"commitid": head_commitid},
+        "merge_commit_sha": merge_commit_sha,
+    }
+    assert task.was_squash_via_merge_commit(mock_repo_provider, pull_dict) == expected
 
 
 def test_cache_changes_stores_changed_files_in_redis_if_owner_is_whitelisted(
