@@ -243,36 +243,25 @@ class ReportPaths:
             grouped[path.basename].append(path)
 
         results: list[File | Dir] = []
-        # check if current level has multiple groups to allow for flattening
-        has_siblings = len(grouped) > 1
 
         for basename, paths in grouped.items():
-            if len(paths) == 1:
-                if paths[0].is_file:
-                    path = paths[0]
-                    results.append(
-                        File(full_path=path.full_path, totals=self._totals(path))
-                    )
-                else:
-                    # continue on if there is only one child and it is a directory
-                    children = self._single_directory_recursive(
-                        PrefixedPath(full_path=path.full_path, prefix=basename)
-                        for path in paths
-                    )
-
-                    # we don't flatten directories with a single child if that parent
-                    # directory has siblings
-                    if has_siblings:
-                        results.append(Dir(full_path=basename, children=children))
-                    else:
-                        # we flatten directories with a single child when they
-                        # also only have a single child
-                        results.extend(children)
+            if len(paths) == 1 and paths[0].is_file:
+                path = paths[0]
+                results.append(
+                    File(full_path=path.full_path, totals=self._totals(path))
+                )
             else:
                 children = self._single_directory_recursive(
                     PrefixedPath(full_path=path.full_path, prefix=basename)
                     for path in paths
                 )
+
+                # Flatten directories that have only one immediate child that is a directory
+                while len(children) == 1 and isinstance(children[0], Dir):
+                    # Update the directory's full_path to include the flattened path
+                    basename = children[0].full_path
+                    children = children[0].children
+
                 results.append(Dir(full_path=basename, children=children))
 
         return results
