@@ -1,9 +1,9 @@
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
 from django.conf import settings
-from django.test import TestCase, override_settings
-from django.utils import timezone
+from django.test import TransactionTestCase, override_settings
 
 from reports.tests.factories import RepositoryFlagFactory
 from shared.django_apps.core.tests.factories import (
@@ -11,6 +11,7 @@ from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
+from timeseries.helpers import refresh_measurement_summaries
 from timeseries.models import MeasurementName
 from timeseries.tests.factories import DatasetFactory, MeasurementFactory
 
@@ -98,7 +99,7 @@ query Repo(
 @pytest.mark.skipif(
     not settings.TIMESERIES_ENABLED, reason="requires timeseries data storage"
 )
-class TestFlags(GraphQLTestHelper, TestCase):
+class TestFlags(GraphQLTestHelper, TransactionTestCase):
     databases = {"default", "timeseries"}
 
     def setUp(self):
@@ -113,8 +114,8 @@ class TestFlags(GraphQLTestHelper, TestCase):
         variables = {
             "org": self.org.username,
             "repo": self.repo.name,
-            "measurementsAfter": timezone.datetime(2022, 1, 1),
-            "measurementsBefore": timezone.datetime(2022, 12, 31),
+            "measurementsAfter": datetime(2022, 1, 1, tzinfo=UTC),
+            "measurementsBefore": datetime(2022, 12, 31, tzinfo=UTC),
             "measurementsInterval": "INTERVAL_1_DAY",
         }
         data = self.gql_request(query_flags, variables=variables)
@@ -156,8 +157,8 @@ class TestFlags(GraphQLTestHelper, TestCase):
         variables = {
             "org": self.org.username,
             "repo": self.repo.name,
-            "measurementsAfter": timezone.datetime(2022, 1, 1),
-            "measurementsBefore": timezone.datetime(2022, 12, 31),
+            "measurementsAfter": datetime(2022, 1, 1, tzinfo=UTC),
+            "measurementsBefore": datetime(2022, 12, 31, tzinfo=UTC),
             "measurementsInterval": "INTERVAL_1_DAY",
         }
         data = self.gql_request(query_flags, variables=variables)
@@ -258,10 +259,14 @@ class TestFlags(GraphQLTestHelper, TestCase):
         variables = {
             "org": self.org.username,
             "repo": self.repo.name,
-            "measurementsAfter": timezone.datetime(2022, 6, 20),
-            "measurementsBefore": timezone.datetime(2022, 6, 23),
+            "measurementsAfter": datetime(2022, 6, 20, tzinfo=UTC),
+            "measurementsBefore": datetime(2022, 6, 23, tzinfo=UTC),
             "measurementsInterval": "INTERVAL_1_DAY",
         }
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, tzinfo=UTC),
+        )
         data = self.gql_request(query_flags, variables=variables)
         assert data == {
             "owner": {
@@ -362,6 +367,10 @@ class TestFlags(GraphQLTestHelper, TestCase):
             "measurementsBefore": "2021-04-20T00:00:00",  # this is in the middle of bin 2
             "measurementsInterval": "INTERVAL_30_DAY",
         }
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, tzinfo=UTC),
+        )
         data = self.gql_request(query_flags, variables=variables)
         assert data == {
             "owner": {
@@ -417,6 +426,10 @@ class TestFlags(GraphQLTestHelper, TestCase):
             "measurementsBefore": "2021-04-15T00:00:00",  # this is in the middle of bin 2
             "measurementsInterval": "INTERVAL_7_DAY",
         }
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, tzinfo=UTC),
+        )
         data = self.gql_request(query_flags, variables=variables)
         assert data == {
             "owner": {

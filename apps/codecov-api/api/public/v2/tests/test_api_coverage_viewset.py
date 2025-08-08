@@ -1,11 +1,13 @@
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
 from django.conf import settings
-from django.test import TestCase
+from django.test import TransactionTestCase
 
 from reports.tests.factories import RepositoryFlagFactory
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
+from timeseries.helpers import refresh_measurement_summaries
 from timeseries.models import MeasurementName
 from timeseries.tests.factories import DatasetFactory, MeasurementFactory
 from utils.test_utils import APIClient
@@ -15,7 +17,7 @@ from utils.test_utils import APIClient
     not settings.TIMESERIES_ENABLED, reason="requires timeseries data storage"
 )
 @patch("api.shared.repo.repository_accessors.RepoAccessors.get_repo_permissions")
-class CoverageViewSetTestCase(TestCase):
+class CoverageViewSetTestCase(TransactionTestCase):
     databases = {"default", "timeseries"}
 
     def setUp(self):
@@ -76,6 +78,11 @@ class CoverageViewSetTestCase(TestCase):
             measurable_id="9999",
             branch="main",
             value=10.0,
+        )
+
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, tzinfo=UTC),
         )
 
         response = self.client.get(
@@ -148,6 +155,11 @@ class CoverageViewSetTestCase(TestCase):
             measurable_id="9999",
             branch="other",
             value=10.0,
+        )
+
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, tzinfo=UTC),
         )
 
         response = self.client.get(
@@ -256,6 +268,11 @@ class CoverageViewSetTestCase(TestCase):
             measurable_id=str(flag1.pk),
             branch="main",
             value=100.0,
+        )
+
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, tzinfo=UTC),
         )
 
         response = self.client.get(
