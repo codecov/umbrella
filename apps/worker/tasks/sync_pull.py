@@ -33,6 +33,7 @@ from shared.celery_config import (
 )
 from shared.helpers.redis import get_redis_connection
 from shared.reports.types import Change
+from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitClientError
 from shared.yaml import UserYaml
 from shared.yaml.user_yaml import OwnerContext
@@ -419,18 +420,37 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             )
         return {"soft_deleted_count": deleted_count, "merged_count": merged_count}
 
-    def was_squash_via_merge_commit(self, repository_service, pull_dict):
-        # if the merge commit exists for this PR, and that commit
-        # has multiple parents, then it's a regular merge commit
-        # otherwise it's a squash
+    def was_squash_via_merge_commit(
+        self, repository_service: TorngitBaseAdapter, pull_dict: dict[str, Any]
+    ):
+        """
+        the goal of this function is to determine whether we should update the branch and
+        merged of the commits that are on the PR.
+
+        we shouldn't do this on squash merge because in that case the commits never made it onto
+        the base branch of the PR, but on rebase or normal merge, we should
+
+        since it's not easy to tell whether a PR was a squash merge since the commit on the base branch
+        might be completely unrelated, we'll check the merge commit for 2 things:
+        - if it has more than a single parent, it's a merge commit
+        - if it's equal to the head of the PR, it's a rebase commit
+
+        so if we rule those 2 scenarios out, it's a squash commit
+
+        NOTE: we don't support checking for rebase merges but anyways if it's a rebase merge and the
+        merge commit != head commit, or we can't find the merge commit, we should assume that it's the
+        same as if we had a squash commit
+        """
 
         merge_commit_sha = pull_dict.get("merge_commit_sha")
 
         if merge_commit_sha is None:
-            return None
+            return False
 
         merge_commit = async_to_sync(repository_service.get_commit)(merge_commit_sha)
-        return len(merge_commit["parents"]) <= 1
+        is_merge = len(merge_commit["parents"]) > 1
+        is_rebase = merge_commit_sha == pull_dict["head"]["commitid"]
+        return not is_merge and not is_rebase
 
     def was_squash_via_ancestor_tree(self, commits_on_pr, base_ancestors_tree):
         """
