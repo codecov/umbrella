@@ -21,13 +21,16 @@ BOT_USER_EMAILS = [
     "29139614+renovate[bot]@users.noreply.github.com",
     "157164994+sentry-autofix[bot]@users.noreply.github.com",
     "198982749+Copilot@users.noreply.github.com",
+    "devin-ai-integration@users.noreply.github.com",
+    "199848969+devin-ai-integration@users.noreply.github.com",
 ]
 BOT_USER_IDS = [
     "49699333",
     "29139614",
     "157164994",
     "198982749",
-]  # dependabot[bot], renovate[bot], sentry-autofix[bot], copilot-swe-agent[bot]
+    "199848969",
+]  # dependabot[bot], renovate[bot], sentry-autofix[bot], copilot-swe-agent[bot], devin-ai-integration
 USER_BASIC_LIMIT_UPLOAD = 250
 
 
