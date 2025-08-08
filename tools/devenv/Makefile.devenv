@@ -55,7 +55,7 @@ devenv.migrate:
 
 .PHONY: devenv.admin
 devenv.admin:
-	@echo "Enter the external ID of the user to make an admin. The user must have first logged into the main application and then their ID can be found in the database or by visiting the admin interface (http://localhost:8080/admin/) and copying the ID that appears on the login page."
+	@echo "Enter the external ID of the user to make an admin. The user must have first logged into the main application (http://localhost:8080/) and then their ID can be found in the database or by visiting the admin interface (http://localhost:8080/admin/) and copying the ID that appears on the login page."
 	@printf "Input: "; \
 	read external_id; \
 	docker compose run --entrypoint python --rm api manage.py shell -c "from codecov_auth.models import User; user = User.objects.get(external_id='$$external_id'); user.is_staff = True; user.is_superuser = True; user.save(); print(f'User {user.name} (external_id: $$external_id) is now an admin')"
