@@ -242,6 +242,9 @@ class TestReportPathsNested(TestCase):
             "dir/subdir/dir2/dir3/dir4/file4.py": file_data3,
             "dir/subdir/dir2/dir3/dir4/file5.py": file_data3,
             "dir/subdir/dir2/dir3/dir4/dir5/dir6/file6.py": file_data3,
+            "other1/file1.py": file_data3,
+            "other1/other2/other3/other4/file2.py": file_data3,
+            "other1/other2/other3/other4/file3.py": file_data3,
             "src/ui/A/A.js": file_data3,
             "src/ui/Avatar/A.js": file_data3,
         }
@@ -266,33 +269,44 @@ class TestReportPathsNested(TestCase):
                         children=[
                             File(full_path="dir/subdir/dir2/file3.py", totals=totals3),
                             Dir(
-                                full_path="dir/subdir/dir2/dir3",
+                                full_path="dir/subdir/dir2/dir3/dir4",
                                 children=[
+                                    File(
+                                        full_path="dir/subdir/dir2/dir3/dir4/file4.py",
+                                        totals=totals3,
+                                    ),
+                                    File(
+                                        full_path="dir/subdir/dir2/dir3/dir4/file5.py",
+                                        totals=totals3,
+                                    ),
                                     Dir(
-                                        full_path="dir/subdir/dir2/dir3/dir4",
+                                        full_path="dir/subdir/dir2/dir3/dir4/dir5/dir6",
                                         children=[
                                             File(
-                                                full_path="dir/subdir/dir2/dir3/dir4/file4.py",
+                                                full_path="dir/subdir/dir2/dir3/dir4/dir5/dir6/file6.py",
                                                 totals=totals3,
-                                            ),
-                                            File(
-                                                full_path="dir/subdir/dir2/dir3/dir4/file5.py",
-                                                totals=totals3,
-                                            ),
-                                            Dir(
-                                                full_path="dir/subdir/dir2/dir3/dir4/dir5",
-                                                children=[
-                                                    File(
-                                                        full_path="dir/subdir/dir2/dir3/dir4/dir5/dir6/file6.py",
-                                                        totals=totals3,
-                                                    ),
-                                                ],
                                             ),
                                         ],
                                     ),
                                 ],
                             ),
                         ],
+                    ),
+                ],
+            ),
+        ]
+
+        report_paths = ReportPaths(self.report, path="other1")
+        assert report_paths.single_directory() == [
+            File(full_path="other1/file1.py", totals=totals3),
+            Dir(
+                full_path="other1/other2/other3/other4",
+                children=[
+                    File(
+                        full_path="other1/other2/other3/other4/file2.py", totals=totals3
+                    ),
+                    File(
+                        full_path="other1/other2/other3/other4/file3.py", totals=totals3
                     ),
                 ],
             ),
