@@ -145,7 +145,7 @@ services:
       - codecov
 
   timescale:
-    image: timescale/timescaledb-ha:pg14-latest
+    image: timescale/timescaledb:latest-pg14
     environment:
       - POSTGRES_HOST_AUTH_METHOD=trust
     volumes:
