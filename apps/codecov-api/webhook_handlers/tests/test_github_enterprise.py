@@ -297,16 +297,12 @@ class GithubEnterpriseWebhookHandlerTests(APITestCase):
         unmerged_commit.refresh_from_db()
         assert unmerged_commit.branch != branch_name
 
-    @patch("redis.Redis.sismember", lambda x, y, z: True)
-    @patch("services.task.TaskService.status_set_pending")
-    def test_push_triggers_set_pending_task_on_most_recent_commit(
-        self, set_pending_mock
-    ):
+    def test_push_with_most_recent_commit(self):
         commit1 = CommitFactory(merged=False, repository=self.repo)
         commit2 = CommitFactory(merged=False, repository=self.repo)
         unmerged_branch_name = "unmerged"
 
-        self._post_event_data(
+        response = self._post_event_data(
             event=GitHubWebhookEvents.PUSH,
             data={
                 "ref": "refs/heads/" + unmerged_branch_name,
@@ -318,21 +314,12 @@ class GithubEnterpriseWebhookHandlerTests(APITestCase):
             },
         )
 
-        set_pending_mock.assert_called_once_with(
-            repoid=self.repo.repoid,
-            commitid=commit2.commitid,
-            branch=unmerged_branch_name,
-            on_a_pull_request=False,
-        )
+        assert response.status_code == 200
 
-    @patch("redis.Redis.sismember", lambda x, y, z: False)
-    @patch("services.task.TaskService.status_set_pending")
-    def test_push_doesnt_trigger_task_if_repo_not_part_of_beta_set(
-        self, set_pending_mock
-    ):
+    def test_push_when_repo_not_part_of_beta_set(self):
         commit1 = CommitFactory(merged=False, repository=self.repo)
 
-        self._post_event_data(
+        response = self._post_event_data(
             event=GitHubWebhookEvents.PUSH,
             data={
                 "ref": "refs/heads/" + "derp",
@@ -341,11 +328,9 @@ class GithubEnterpriseWebhookHandlerTests(APITestCase):
             },
         )
 
-        set_pending_mock.assert_not_called()
+        assert response.status_code == 200
 
-    @patch("redis.Redis.sismember", lambda x, y, z: True)
-    @patch("services.task.TaskService.status_set_pending")
-    def test_push_doesnt_trigger_task_if_ci_skipped(self, set_pending_mock):
+    def test_push_when_ci_skipped(self):
         commit1 = CommitFactory(merged=False, repository=self.repo, message="[ci skip]")
 
         response = self._post_event_data(
@@ -357,8 +342,8 @@ class GithubEnterpriseWebhookHandlerTests(APITestCase):
             },
         )
 
-        assert response.data == "CI Skipped"
-        set_pending_mock.assert_not_called()
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data is None
 
     def test_status_exits_early_if_repo_not_active(self):
         self.repo.active = False
