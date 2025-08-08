@@ -428,6 +428,10 @@ SHELTER_ENABLED = get_config("setup", "shelter_enabled", default=True)
 SENTRY_ENV = os.environ.get("CODECOV_ENV", None)
 SENTRY_DSN = os.environ.get("SERVICES__SENTRY__SERVER_DSN", None)
 SENTRY_DENY_LIST = DEFAULT_DENYLIST + ["_headers", "token_to_use"]
+# For linking to traces in Django admin, defaults to your most recently visited sentry.io org
+SENTRY_ORG_URL = get_config(
+    "services", "sentry", "org_domain", default="https://sentry.io"
+)
 
 if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(os.environ.get("SERVICES__SENTRY__SAMPLE_RATE", "0.1"))

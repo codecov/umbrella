@@ -66,6 +66,8 @@ TEMPLATES = [
     }
 ]
 
+SENTRY_ORG_URL = "https://test.sentry.io"
+
 TELEMETRY_VANILLA_DB = "default"
 TELEMETRY_TIMESCALE_DB = "timeseries"
 
