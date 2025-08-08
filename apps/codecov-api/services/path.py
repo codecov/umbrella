@@ -255,6 +255,13 @@ class ReportPaths:
                     PrefixedPath(full_path=path.full_path, prefix=basename)
                     for path in paths
                 )
+
+                # Flatten directories that have only one immediate child that is a directory
+                while len(children) == 1 and isinstance(children[0], Dir):
+                    # Update the directory's full_path to include the flattened path
+                    basename = children[0].full_path
+                    children = children[0].children
+
                 results.append(Dir(full_path=basename, children=children))
 
         return results
