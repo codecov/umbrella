@@ -95,7 +95,6 @@ def _get_ownerid_from_task(dbsession, task_name: str, task_kwargs: dict) -> int 
         shared_celery_config.commit_update_task_name: _get_ownerid_from_repoid,
         shared_celery_config.flush_repo_task_name: _get_ownerid_from_repoid,
         shared_celery_config.status_set_error_task_name: _get_ownerid_from_repoid,
-        shared_celery_config.status_set_pending_task_name: _get_ownerid_from_repoid,
         shared_celery_config.pulls_task_name: _get_ownerid_from_repoid,
         shared_celery_config.upload_finisher_task_name: _get_ownerid_from_repoid,  # didn't want to directly import the task module
         shared_celery_config.manual_upload_completion_trigger_task_name: _get_ownerid_from_repoid,
@@ -123,7 +122,6 @@ def _get_user_plan_from_task(dbsession, task_name: str, task_kwargs: dict) -> st
         shared_celery_config.commit_update_task_name: _get_user_plan_from_repoid,
         shared_celery_config.flush_repo_task_name: _get_user_plan_from_repoid,
         shared_celery_config.status_set_error_task_name: _get_user_plan_from_repoid,
-        shared_celery_config.status_set_pending_task_name: _get_user_plan_from_repoid,
         shared_celery_config.pulls_task_name: _get_user_plan_from_repoid,
         shared_celery_config.upload_finisher_task_name: _get_user_plan_from_repoid,  # didn't want to directly import the task module
         shared_celery_config.manual_upload_completion_trigger_task_name: _get_user_plan_from_repoid,

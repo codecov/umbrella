@@ -454,6 +454,13 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         kwargs=notify_error_kwargs
                     )
         else:
+            log.info(
+                "Skipping notify because CI skip tag is present",
+                extra={
+                    "repoid": repoid,
+                    "commit": commitid,
+                },
+            )
             commit.state = "skipped"
 
         UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)

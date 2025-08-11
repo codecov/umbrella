@@ -46,7 +46,6 @@ def _get_user_plan_from_task(task_name: str, task_kwargs: dict) -> str:
         shared_celery_config.upload_task_name: _get_user_plan_from_repoid,
         shared_celery_config.notify_task_name: _get_user_plan_from_repoid,
         shared_celery_config.status_set_error_task_name: _get_user_plan_from_repoid,
-        shared_celery_config.status_set_pending_task_name: _get_user_plan_from_repoid,
         shared_celery_config.pulls_task_name: _get_user_plan_from_repoid,
         # from comparison_id
         shared_celery_config.compute_comparison_task_name: _get_user_plan_from_comparison_id,
@@ -94,7 +93,6 @@ def _get_ownerid_from_task(task_name: str, task_kwargs: dict) -> int | None:
         shared_celery_config.upload_task_name: _get_ownerid_from_repoid,
         shared_celery_config.notify_task_name: _get_ownerid_from_repoid,
         shared_celery_config.status_set_error_task_name: _get_ownerid_from_repoid,
-        shared_celery_config.status_set_pending_task_name: _get_ownerid_from_repoid,
         shared_celery_config.pulls_task_name: _get_ownerid_from_repoid,
         # from comparison_id
         shared_celery_config.compute_comparison_task_name: _get_ownerid_from_comparison_id,
