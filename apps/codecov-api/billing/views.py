@@ -11,7 +11,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from billing.helpers import get_all_admins_for_owners
+from billing.helpers import get_admins_for_owners, update_org_admins
 from codecov_auth.models import Owner, Plan
 from services.task.task import TaskService
 from shared.plan.service import PlanService
@@ -52,7 +52,8 @@ class StripeWebhookHandler(APIView):
         if not owners.exists():
             return
 
-        admins = get_all_admins_for_owners(owners)
+        update_org_admins(owners)
+        admins: list[Owner] = get_admins_for_owners(owners)
         owners.update(delinquent=False)
         self._log_updated(list(owners))
 
@@ -115,7 +116,8 @@ class StripeWebhookHandler(APIView):
         self._log_updated(list(owners))
 
         # Send failed payment email to all owner admins
-        admins = get_all_admins_for_owners(owners)
+        update_org_admins(owners)
+        admins: list[Owner] = get_admins_for_owners(owners)
 
         task_service = TaskService()
         payment_intent = stripe.PaymentIntent.retrieve(
