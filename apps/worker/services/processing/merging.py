@@ -28,34 +28,61 @@ def merge_reports(
 ) -> tuple[Report, MergeResult]:
     session_mapping: dict[int, int] = {}
 
+    log.info("merge_reports: Clearing all carryforward sessions")
     deleted_sessions = clear_all_carryforward_sessions(
         commit_yaml, master_report, intermediate_reports
     )
 
+    log.info("merge_reports: Merging intermediate reports")
     for intermediate_report in intermediate_reports:
         report = intermediate_report.report
         if report.is_empty():
+            log.info("merge_reports: Empty report, skipping")
             continue
 
         old_sessionid = next(iter(report.sessions))
         new_sessionid = master_report.next_session_number()
         session_mapping[intermediate_report.upload_id] = new_sessionid
 
+        log.info(
+            "merge_reports: Merging report",
+            extra={"old_sessionid": old_sessionid, "new_sessionid": new_sessionid},
+        )
+
         if master_report.is_empty() and old_sessionid == new_sessionid:
+            log.info(
+                "merge_reports: Master report is empty, skipping merge",
+                extra={"old_sessionid": old_sessionid, "new_sessionid": new_sessionid},
+            )
             # if the master report is empty, we can avoid a costly merge operation
             master_report = report
             continue
 
+        log.info(
+            "merge_reports: Changing sessionid",
+            extra={"old_sessionid": old_sessionid, "new_sessionid": new_sessionid},
+        )
+
         report.change_sessionid(old_sessionid, new_sessionid)
         session = report.sessions[new_sessionid]
+
+        log.info(
+            "merge_reports: Adding session",
+            extra={"session_id": session.id},
+        )
 
         _session_id, session = master_report.add_session(
             session, use_id_from_session=True
         )
 
         joined = get_joined_flag(commit_yaml, session.flags or [])
+        log.info(
+            "merge_reports: Merging report",
+            extra={"joined": joined},
+        )
         master_report.merge(report, joined)
 
+    log.info("merge_reports: Returning merge result")
     return master_report, MergeResult(session_mapping, deleted_sessions)
 
 
