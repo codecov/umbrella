@@ -27,9 +27,14 @@ def from_txt(reports: bytes, report_builder_session: ReportBuilderSession) -> No
     # http://ltp.sourceforge.net/coverage/lcov/geninfo.1.php
 
     # Add partials_as_hits configuration
-    partials_as_hits = report_builder_session.yaml_field(
+    partials_as_hits_raw = report_builder_session.yaml_field(
         ("parsers", "lcov", "partials_as_hits"), False
     )
+    # Cast to boolean to handle string values like "false", "False", "true", "True"
+    if isinstance(partials_as_hits_raw, str):
+        partials_as_hits = partials_as_hits_raw.lower() not in ("false", "0", "")
+    else:
+        partials_as_hits = bool(partials_as_hits_raw)
 
     # merge same files
     for string in reports.split(b"\nend_of_record"):

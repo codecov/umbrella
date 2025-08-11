@@ -119,6 +119,20 @@ end_of_record
 
 
 class TestLcov:
+    # Common test data for partials_as_hits tests
+    PARTIAL_BRANCH_LCOV_DATA = b"""
+TN:
+SF:partial_test.c
+DA:10,5
+BRDA:10,0,0,1
+BRDA:10,0,1,0
+end_of_record
+"""
+
+    @staticmethod
+    def partial_test_path_fixer(path):
+        return path if path == "partial_test.c" else None
+
     def test_report(self):
         def fixes(path):
             if path == "ignore":
@@ -211,25 +225,13 @@ end_of_record
 
     def test_lcov_partials_as_hits_enabled(self):
         """Test that partial branches become hits when partials_as_hits=True"""
-        lcov_data = b"""
-TN:
-SF:partial_test.c
-DA:10,5
-BRDA:10,0,0,1
-BRDA:10,0,1,0
-end_of_record
-"""
-
-        def path_fixer(path):
-            return path if path == "partial_test.c" else None
-
         # With partials_as_hits enabled
         report_builder_session = create_report_builder_session(
             current_yaml={"parsers": {"lcov": {"partials_as_hits": True}}},
-            path_fixer=path_fixer,
+            path_fixer=self.partial_test_path_fixer,
         )
 
-        lcov.from_txt(lcov_data, report_builder_session)
+        lcov.from_txt(self.PARTIAL_BRANCH_LCOV_DATA, report_builder_session)
         report = report_builder_session.output_report()
         processed_report = convert_report_to_better_readable(report)
 
@@ -244,24 +246,12 @@ end_of_record
 
     def test_lcov_partials_as_hits_disabled(self):
         """Test that partials remain partial when partials_as_hits=False (default)"""
-        lcov_data = b"""
-TN:
-SF:partial_test.c
-DA:10,5
-BRDA:10,0,0,1
-BRDA:10,0,1,0
-end_of_record
-"""
-
-        def path_fixer(path):
-            return path if path == "partial_test.c" else None
-
         # With partials_as_hits disabled (default)
         report_builder_session = create_report_builder_session(
-            path_fixer=path_fixer,
+            path_fixer=self.partial_test_path_fixer,
         )
 
-        lcov.from_txt(lcov_data, report_builder_session)
+        lcov.from_txt(self.PARTIAL_BRANCH_LCOV_DATA, report_builder_session)
         report = report_builder_session.output_report()
         processed_report = convert_report_to_better_readable(report)
 
@@ -316,6 +306,26 @@ end_of_record
                     None,
                     None,
                 ),  # miss stays miss
+            ]
+        }
+        assert processed_report["archive"] == expected
+
+    def test_lcov_partials_as_hits_string_false_not_truthy(self):
+        """Test that string 'false' is correctly converted to boolean False (not truthy)"""
+        # Test the problematic case: string "false" should be False, not truthy
+        report_builder_session = create_report_builder_session(
+            current_yaml={"parsers": {"lcov": {"partials_as_hits": "false"}}},
+            path_fixer=self.partial_test_path_fixer,
+        )
+
+        lcov.from_txt(self.PARTIAL_BRANCH_LCOV_DATA, report_builder_session)
+        report = report_builder_session.output_report()
+        processed_report = convert_report_to_better_readable(report)
+
+        # Should keep "1/2" as partial (False behavior), not convert to hit
+        expected = {
+            "partial_test.c": [
+                (10, "1/2", "b", [[0, "1/2", ["0:1"], None, None]], None, None),
             ]
         }
         assert processed_report["archive"] == expected
