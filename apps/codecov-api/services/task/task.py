@@ -176,6 +176,12 @@ class TaskService:
             celery_config.pulls_task_name, kwargs={"repoid": repoid, "pullid": pullid}
         ).apply_async()
 
+    def detect_flakes(self, repo_id: int):
+        self._create_signature(
+            celery_config.detect_flakes_task_name,
+            kwargs={"repo_id": repo_id},
+        ).apply_async()
+
     def refresh(
         self,
         ownerid,
