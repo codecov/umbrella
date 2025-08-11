@@ -103,12 +103,34 @@ def process_single_upload(
 
 @sentry_sdk.trace
 def process_flakes_for_commit(repo_id: int, commit_id: str):
+    log.info(
+        "process_flakes_for_commit: starting processing",
+    )
     uploads = get_relevant_uploads(repo_id, commit_id)
+
+    log.info(
+        "process_flakes_for_commit: fetched uploads",
+        extra={"uploads": [upload.id for upload in uploads]},
+    )
 
     curr_flakes = fetch_current_flakes(repo_id)
 
+    log.info(
+        "process_flakes_for_commit: fetched current flakes",
+        extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
+    )
+
     for upload in uploads:
         process_single_upload(upload, curr_flakes, repo_id)
+        log.info(
+            "process_flakes_for_commit: processed upload",
+            extra={"upload": upload.id},
+        )
+
+    log.info(
+        "process_flakes_for_commit: bulk creating flakes",
+        extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
+    )
 
     Flake.objects.bulk_create(
         curr_flakes.values(),
