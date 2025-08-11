@@ -1,6 +1,8 @@
 from django.db import models
+from django_prometheus.models import ExportModelOperationsMixin
 
 from shared.django_apps.codecov.models import BaseModel
+from shared.django_apps.db import sane_repr
 
 # Added to avoid 'doesn't declare an explicit app_label and isn't in an application in INSTALLED_APPS' error\
 # Needs to be called the same as the API app
@@ -54,5 +56,29 @@ class PullComment(BaseModel):
             models.Index(
                 name="ta_pr_comment_repo_pull_idx",
                 fields=["repo_id", "pull_id"],
+            ),
+        ]
+
+
+class TAUpload(ExportModelOperationsMixin("test_analytics.taupload"), BaseModel):
+    repo_id = models.BigIntegerField(null=False)
+
+    __repr__ = sane_repr("id", "repo_id", "created_at", "updated_at")  # type: ignore
+
+    class Meta:
+        app_label = TEST_ANALYTICS_APP_LABEL
+        db_table = "test_analytics_upload"
+        indexes = [
+            models.Index(
+                name="ta_upload_repo_idx",
+                fields=["repo_id"],
+            ),
+            models.Index(
+                name="ta_upload_time_idx",
+                fields=["created_at"],
+            ),
+            models.Index(
+                name="ta_upload_repo_time_idx",
+                fields=["repo_id", "created_at"],
             ),
         ]
