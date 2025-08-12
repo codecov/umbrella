@@ -1,0 +1,642 @@
+import json
+from unittest.mock import MagicMock, patch
+
+from django.conf import settings
+from django.contrib.admin.sites import AdminSite
+from django.test import Client, TestCase, override_settings
+from django.utils.safestring import SafeString
+
+from shared.django_apps.codecov_auth.tests.factories import UserFactory
+from shared.django_apps.core.tests.factories import RepositoryFactory
+from shared.django_apps.upload_breadcrumbs.admin import (
+    EndpointFilter,
+    ErrorFilter,
+    MilestoneFilter,
+    PresentDataFilter,
+    UploadBreadcrumbAdmin,
+)
+from shared.django_apps.upload_breadcrumbs.models import (
+    Endpoints,
+    Errors,
+    Milestones,
+    UploadBreadcrumb,
+)
+from shared.django_apps.upload_breadcrumbs.tests.factories import (
+    UploadBreadcrumbFactory,
+)
+
+
+class UploadBreadcrumbAdminTest(TestCase):
+    def setUp(self):
+        self.user = UserFactory(is_staff=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.admin = UploadBreadcrumbAdmin(UploadBreadcrumb, AdminSite())
+        self.repo = RepositoryFactory()
+
+    def test_permissions_disabled(self):
+        """Test that all permissions are disabled for upload breadcrumbs."""
+        request = MagicMock()
+        self.assertFalse(self.admin.has_delete_permission(request))
+        self.assertFalse(self.admin.has_add_permission(request))
+        self.assertFalse(self.admin.has_change_permission(request))
+
+    @override_settings(DJANGO_ADMIN_URL="random_admin_url")
+    def test_formatted_repo_id_with_existing_repo(self):
+        """Test formatted_repo_id displays repo info correctly."""
+        breadcrumb = UploadBreadcrumbFactory(repo_id=self.repo.repoid)
+
+        result = self.admin.formatted_repo_id(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertIn(str(self.repo.repoid), result)
+        self.assertIn(self.repo.author.username, result)
+        self.assertIn(self.repo.name, result)
+        self.assertIn(f"/{settings.DJANGO_ADMIN_URL}/core/repository/", result)
+
+    def test_formatted_repo_id_with_nonexistent_repo(self):
+        """Test formatted_repo_id handles missing related repo object gracefully."""
+        breadcrumb = UploadBreadcrumbFactory(repo_id=999999)
+
+        result = self.admin.formatted_repo_id(breadcrumb)
+
+        self.assertEqual(result, "999999")
+
+    def test_formatted_repo_id_with_no_repo_id(self):
+        """Test formatted_repo_id handles None repo_id."""
+        # Create a breadcrumb with a valid repo_id first, then set it to None to bypass validation
+        breadcrumb = UploadBreadcrumbFactory(repo_id=self.repo.repoid)
+        breadcrumb.repo_id = None
+
+        result = self.admin.formatted_repo_id(breadcrumb)
+
+        self.assertEqual(result, "-")
+
+    def test_formatted_commit_sha(self):
+        """Test commit SHA formatting with various input lengths."""
+        test_cases = [
+            ("abcdefghijklmnop1234567890", "abcdefg"),  # Long SHA truncated to 7
+            ("abc123", "abc123"),  # Short SHA not truncated
+            ("", "-"),  # Empty SHA returns dash
+        ]
+
+        for commit_sha, expected_result in test_cases:
+            with self.subTest(commit_sha=commit_sha):
+                breadcrumb = UploadBreadcrumbFactory(commit_sha=commit_sha)
+                result = self.admin.formatted_commit_sha(breadcrumb)
+                self.assertEqual(result, expected_result)
+
+    def test_formatted_breadcrumb_data_with_all_fields(self):
+        """Test breadcrumb data formatting with all fields present."""
+        breadcrumb_data = {
+            "milestone": Milestones.COMMIT_PROCESSED.value,
+            "endpoint": Endpoints.CREATE_COMMIT.value,
+            "error": Errors.BAD_REQUEST.value,
+            "error_text": "This is a test error message that is very long and should be truncated",
+        }
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+
+        result = self.admin.formatted_breadcrumb_data(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertIn("📍", result)  # milestone emoji
+        self.assertIn("🔗", result)  # endpoint emoji
+        self.assertIn("❌", result)  # error emoji
+        self.assertIn("💬", result)  # error text emoji
+        self.assertIn(str(Milestones.COMMIT_PROCESSED.label), result)
+        self.assertIn(str(Endpoints.CREATE_COMMIT.label), result)
+        self.assertIn(str(Errors.BAD_REQUEST.label), result)
+        self.assertIn("This is a test error message that is very long ...", result)
+
+    def test_formatted_breadcrumb_data_empty(self):
+        """Test breadcrumb data formatting with no data."""
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data={})
+
+        result = self.admin.formatted_breadcrumb_data(breadcrumb)
+
+        self.assertEqual(result, "-")
+
+    def test_formatted_breadcrumb_data_individual_fields(self):
+        """Test breadcrumb data formatting with individual fields."""
+        test_cases = [
+            (
+                {"milestone": Milestones.COMMIT_PROCESSED.value},
+                "📍",
+                str(Milestones.COMMIT_PROCESSED.label),
+                ["🔗", "❌", "💬"],
+            ),
+            (
+                {"endpoint": Endpoints.CREATE_COMMIT.value},
+                "🔗",
+                str(Endpoints.CREATE_COMMIT.label),
+                ["📍", "❌", "💬"],
+            ),
+            (
+                {"error": Errors.BAD_REQUEST.value},
+                "❌",
+                str(Errors.BAD_REQUEST.label),
+                ["📍", "🔗", "💬"],
+            ),
+            (
+                {"error_text": "Short error"},
+                "💬",
+                "Short error",
+                ["📍", "🔗", "❌"],
+            ),
+        ]
+
+        for (
+            breadcrumb_data,
+            expected_emoji,
+            expected_content,
+            not_expected_emojis,
+        ) in test_cases:
+            with self.subTest(breadcrumb_data=breadcrumb_data):
+                breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+                result = self.admin.formatted_breadcrumb_data(breadcrumb)
+
+                self.assertIsInstance(result, SafeString)
+                self.assertIn(expected_emoji, result)
+                self.assertIn(expected_content, result)
+                for emoji in not_expected_emojis:
+                    self.assertNotIn(emoji, result)
+
+    def test_formatted_breadcrumb_data_detail(self):
+        """Test detailed breadcrumb data formatting."""
+        breadcrumb_data = {
+            "milestone": Milestones.COMMIT_PROCESSED.value,
+            "endpoint": Endpoints.CREATE_COMMIT.value,
+            "error": Errors.BAD_REQUEST.value,
+            "error_text": "Test error",
+        }
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+
+        result = self.admin.formatted_breadcrumb_data_detail(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertIn("📍 Milestone:", result)
+        self.assertIn("🔗 Endpoint:", result)
+        self.assertIn("❌ Error:", result)
+        self.assertIn("💬 Error Text:", result)
+        self.assertIn("Raw JSON Data", result)
+        self.assertIn(json.dumps(breadcrumb_data, indent=2), result)
+
+    def test_formatted_breadcrumb_data_detail_empty(self):
+        """Test detailed breadcrumb data formatting with no data."""
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data={})
+
+        result = self.admin.formatted_breadcrumb_data_detail(breadcrumb)
+
+        self.assertEqual(result, "-")
+
+    def test_formatted_breadcrumb_data_detail_none(self):
+        """Test detailed breadcrumb data formatting with None data."""
+        breadcrumb = MagicMock()
+        breadcrumb.breadcrumb_data = None
+
+        result = self.admin.formatted_breadcrumb_data_detail(breadcrumb)
+
+        self.assertEqual(result, "-")
+
+    def test_formatted_breadcrumb_data_detail_individual_fields(self):
+        """Test detailed breadcrumb data formatting with individual fields."""
+        # Test milestone only
+        breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data={"milestone": Milestones.COMMIT_PROCESSED.value}
+        )
+        result = self.admin.formatted_breadcrumb_data_detail(breadcrumb)
+        self.assertIn("📍 Milestone:", result)
+        self.assertIn(str(Milestones.COMMIT_PROCESSED.label), result)
+
+        # Test endpoint only
+        breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data={"endpoint": Endpoints.CREATE_COMMIT.value}
+        )
+        result = self.admin.formatted_breadcrumb_data_detail(breadcrumb)
+        self.assertIn("🔗 Endpoint:", result)
+        self.assertIn(str(Endpoints.CREATE_COMMIT.label), result)
+        self.assertIn(Endpoints.CREATE_COMMIT.name, result)
+
+        # Test error only
+        breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data={"error": Errors.BAD_REQUEST.value}
+        )
+        result = self.admin.formatted_breadcrumb_data_detail(breadcrumb)
+        self.assertIn("❌ Error:", result)
+        self.assertIn(str(Errors.BAD_REQUEST.label), result)
+
+        # Test error_text only
+        breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data={"error_text": "Custom error message"}
+        )
+        result = self.admin.formatted_breadcrumb_data_detail(breadcrumb)
+        self.assertIn("💬 Error Text:", result)
+        self.assertIn("Custom error message", result)
+
+    def test_formatted_upload_ids(self):
+        """Test upload IDs formatting for list view with various inputs."""
+        test_cases = [
+            ([123, 456, 789], "123, 456, 789"),  # Few IDs
+            ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], "1, 2, 3, ... (+7 more)"),  # Many IDs
+            (None, "-"),  # None IDs
+            ([], "-"),  # Empty list
+        ]
+
+        for upload_ids, expected_result in test_cases:
+            with self.subTest(upload_ids=upload_ids):
+                breadcrumb = UploadBreadcrumbFactory(upload_ids=upload_ids)
+                result = self.admin.formatted_upload_ids(breadcrumb)
+                self.assertEqual(result, expected_result)
+
+    def test_formatted_upload_ids_detail_empty_cases(self):
+        """Test detailed upload IDs formatting with empty cases."""
+        test_cases = [
+            (None, "-"),
+            ([], "-"),
+        ]
+
+        for upload_ids, expected_result in test_cases:
+            with self.subTest(upload_ids=upload_ids):
+                breadcrumb = UploadBreadcrumbFactory(upload_ids=upload_ids)
+                result = self.admin.formatted_upload_ids_detail(breadcrumb)
+                self.assertEqual(result, expected_result)
+
+    def test_formatted_upload_ids_detail(self):
+        """Test detailed upload IDs formatting."""
+        upload_ids = [123, 456, 789]
+        breadcrumb = UploadBreadcrumbFactory(upload_ids=upload_ids)
+
+        result = self.admin.formatted_upload_ids_detail(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertIn("Upload IDs (3 total):", result)
+        self.assertIn("• 123", result)
+        self.assertIn("• 456", result)
+        self.assertIn("• 789", result)
+
+    def test_formatted_sentry_trace_id(self):
+        """Test Sentry trace ID formatting with various inputs."""
+        test_cases = [
+            ("abcdef1234567890", "abcdef12...", True),  # Long trace with ellipsis
+            ("abc123", "abc123", False),  # Short trace without ellipsis
+            (None, "-", False),  # None trace returns dash
+        ]
+
+        for trace_id, expected_display, should_have_ellipsis in test_cases:
+            with self.subTest(trace_id=trace_id):
+                breadcrumb = UploadBreadcrumbFactory(sentry_trace_id=trace_id)
+                result = self.admin.formatted_sentry_trace_id(breadcrumb)
+
+                if trace_id is None:
+                    self.assertEqual(result, "-")
+                else:
+                    self.assertIsInstance(result, SafeString)
+                    self.assertIn(expected_display, result)
+                    if should_have_ellipsis:
+                        self.assertIn("...", result)
+                        self.assertIn(
+                            f"https://test.sentry.io/explore/traces/trace/{trace_id}",
+                            result,
+                        )
+                        self.assertIn('target="_blank"', result)
+                    else:
+                        self.assertNotIn("...", result)
+
+    def test_formatted_sentry_trace_id_detail(self):
+        """Test detailed Sentry trace ID formatting."""
+        test_cases = [
+            ("abcdef1234567890", "formatted"),  # Valid trace ID
+            (None, "-"),  # None trace returns dash
+        ]
+
+        for trace_id, expected_result in test_cases:
+            with self.subTest(trace_id=trace_id):
+                breadcrumb = UploadBreadcrumbFactory(sentry_trace_id=trace_id)
+                result = self.admin.formatted_sentry_trace_id_detail(breadcrumb)
+
+                if expected_result == "-":
+                    self.assertEqual(result, "-")
+                else:
+                    self.assertIsInstance(result, SafeString)
+                    self.assertIn(f"Trace ID:</strong> {trace_id}", result)
+                    self.assertIn(
+                        f"https://test.sentry.io/explore/traces/trace/{trace_id}",
+                        result,
+                    )
+
+    def test_log_links_gcp_disabled(self):
+        """Test log links generation when GCP logging is disabled."""
+        commit_sha = "abcdef123"
+        trace_id = "trace123"
+        breadcrumb = UploadBreadcrumbFactory(
+            commit_sha=commit_sha, sentry_trace_id=trace_id
+        )
+
+        with patch(
+            "shared.django_apps.upload_breadcrumbs.admin.get_config"
+        ) as mock_get_config:
+            mock_get_config.return_value = False
+            result = self.admin.log_links(breadcrumb)
+
+        self.assertEqual(result, "-")
+
+    def test_log_links(self):
+        """Test log links generation."""
+        commit_sha = "abcdef123"
+        trace_id = "trace123"
+        breadcrumb = UploadBreadcrumbFactory(
+            commit_sha=commit_sha, sentry_trace_id=trace_id
+        )
+
+        with patch(
+            "shared.django_apps.upload_breadcrumbs.admin.get_config"
+        ) as mock_get_config:
+            mock_get_config.return_value = True
+            result = self.admin.log_links(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertIn("GCP Commit SHA Logs", result)
+        self.assertIn("GCP Sentry Trace Logs", result)
+        self.assertIn("console.cloud.google.com", result)
+        self.assertIn(commit_sha, result)
+        self.assertIn(trace_id, result)
+
+    def test_log_links_empty(self):
+        """Test log links with no commit SHA or trace ID."""
+        breadcrumb = UploadBreadcrumbFactory(commit_sha="", sentry_trace_id=None)
+
+        with patch(
+            "shared.django_apps.upload_breadcrumbs.admin.get_config"
+        ) as mock_get_config:
+            mock_get_config.return_value = True
+            result = self.admin.log_links(breadcrumb)
+
+        self.assertEqual(result, "-")
+
+    def test_log_links_only_commit_sha(self):
+        """Test log links with only commit SHA."""
+        commit_sha = "abcdef123"
+        breadcrumb = UploadBreadcrumbFactory(
+            commit_sha=commit_sha, sentry_trace_id=None
+        )
+
+        with patch(
+            "shared.django_apps.upload_breadcrumbs.admin.get_config"
+        ) as mock_get_config:
+            mock_get_config.return_value = True
+            result = self.admin.log_links(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertIn("GCP Commit SHA Logs", result)
+        self.assertNotIn("GCP Sentry Trace Logs", result)
+        self.assertIn(commit_sha, result)
+
+    def test_changelist_view_includes_info(self):
+        """Test that changelist view includes breadcrumb information."""
+        request = MagicMock()
+
+        # Mock the super().changelist_view call to capture what extra_context is passed to it
+        with patch("django.contrib.admin.ModelAdmin.changelist_view") as mock_super:
+            mock_super.return_value = MagicMock()
+
+            # Call the method with None extra_context (the typical case)
+            self.admin.changelist_view(request, None)
+
+            # Verify the parent method was called
+            mock_super.assert_called_once()
+
+            # Get the extra_context that was passed to the parent method
+            call_args = mock_super.call_args
+            self.assertEqual(len(call_args[0]), 2)  # request and extra_context
+            passed_extra_context = call_args[0][1]
+
+            # Verify extra_context contains breadcrumb_info
+            self.assertIn("breadcrumb_info", passed_extra_context)
+            self.assertIsInstance(passed_extra_context["breadcrumb_info"], SafeString)
+            self.assertIn(
+                "Upload Breadcrumbs Information",
+                passed_extra_context["breadcrumb_info"],
+            )
+            self.assertIn("Milestone:", passed_extra_context["breadcrumb_info"])
+
+            # Check that milestone list is included
+            for milestone in Milestones:
+                self.assertIn(
+                    str(milestone.label), passed_extra_context["breadcrumb_info"]
+                )
+
+
+class PresentDataFilterTest(TestCase):
+    def setUp(self):
+        self.filter = PresentDataFilter(
+            None, {}, UploadBreadcrumb, UploadBreadcrumbAdmin
+        )
+
+    def test_lookups(self):
+        """Test filter lookups are correct."""
+        request = MagicMock()
+        model_admin = MagicMock()
+
+        lookups = self.filter.lookups(request, model_admin)
+
+        expected = [
+            ("has_milestone", "Has Milestone"),
+            ("has_endpoint", "Has Endpoint"),
+            ("has_error", "Has Error"),
+            ("has_error_text", "Has Error Text"),
+            ("has_upload_ids", "Has Upload IDs"),
+            ("has_sentry_trace", "Has Sentry Trace"),
+        ]
+        self.assertEqual(lookups, expected)
+
+    def test_queryset_no_value(self):
+        """Test queryset returns unchanged when no filter value."""
+        request = MagicMock()
+        queryset = UploadBreadcrumb.objects.all()
+
+        with patch.object(self.filter, "value", return_value=None):
+            result = self.filter.queryset(request, queryset)
+
+        self.assertEqual(result, queryset)
+
+    def test_queryset_multiple_filters(self):
+        """Test multiple filters combined."""
+        request = MagicMock()
+        queryset = UploadBreadcrumb.objects.all()
+
+        with patch.object(
+            self.filter,
+            "value",
+            return_value="has_milestone,has_endpoint,has_error,has_error_text,has_upload_ids,has_sentry_trace",
+        ):
+            result = self.filter.queryset(request, queryset)
+
+        # Check that the filter was applied
+        self.assertNotEqual(result, queryset)
+
+    def test_choices_multiselect(self):
+        """Test multiselect choices functionality."""
+        changelist = MagicMock()
+        changelist.get_query_string.return_value = "test_query_string"
+
+        with patch.object(self.filter, "value", return_value="has_milestone,has_error"):
+            choices = list(self.filter.choices(changelist))
+
+        # Should have "All" option plus all filter options
+        self.assertEqual(len(choices), 7)  # 1 "All" + 6 filter options
+
+        # Check that selected items have checkmarks
+        milestone_choice = next(c for c in choices if "Has Milestone" in c["display"])
+        error_choice = next(c for c in choices if "Has Error" in c["display"])
+        endpoint_choice = next(c for c in choices if "Has Endpoint" in c["display"])
+
+        self.assertTrue(milestone_choice["selected"])
+        self.assertTrue(error_choice["selected"])
+        self.assertFalse(endpoint_choice["selected"])
+        self.assertIn("✓", milestone_choice["display"])
+        self.assertIn("✓", error_choice["display"])
+        self.assertNotIn("✓", endpoint_choice["display"])
+
+    def test_queryset_individual_filters(self):
+        """Test each filter type individually."""
+        request = MagicMock()
+        queryset = UploadBreadcrumb.objects.all()
+
+        # Test each filter type individually
+        filter_types = [
+            "has_milestone",
+            "has_endpoint",
+            "has_error",
+            "has_error_text",
+            "has_upload_ids",
+            "has_sentry_trace",
+        ]
+
+        for filter_type in filter_types:
+            with self.subTest(filter_type=filter_type):
+                with patch.object(self.filter, "value", return_value=filter_type):
+                    result = self.filter.queryset(request, queryset)
+                    # Check that the filter was applied (queryset changed)
+                    self.assertNotEqual(result, queryset)
+
+    def test_queryset_with_unknown_filter(self):
+        """Test with unknown filter type"""
+        request = MagicMock()
+        queryset = UploadBreadcrumb.objects.all()
+
+        with patch.object(self.filter, "value", return_value="unknown_filter"):
+            result = self.filter.queryset(request, queryset)
+            self.assertEqual(result, queryset)
+
+
+class MilestoneFilterTest(TestCase):
+    def setUp(self):
+        self.filter = MilestoneFilter(None, {}, UploadBreadcrumb, UploadBreadcrumbAdmin)
+
+    def test_lookups(self):
+        """Test milestone filter lookups."""
+        request = MagicMock()
+        model_admin = MagicMock()
+
+        lookups = self.filter.lookups(request, model_admin)
+
+        # Should have all milestone choices
+        self.assertEqual(len(lookups), len(Milestones))
+        for choice in Milestones:
+            self.assertIn((choice.value, str(choice.label)), lookups)
+
+    def test_queryset(self):
+        """Test milestone filter queryset behavior."""
+        test_cases = [
+            (Milestones.COMMIT_PROCESSED.value, True),
+            (None, False),
+        ]
+
+        for filter_value, should_change_queryset in test_cases:
+            with self.subTest(filter_value=filter_value):
+                request = MagicMock()
+                queryset = UploadBreadcrumb.objects.all()
+
+                with patch.object(self.filter, "value", return_value=filter_value):
+                    result = self.filter.queryset(request, queryset)
+
+                if should_change_queryset:
+                    self.assertNotEqual(result, queryset)
+                else:
+                    self.assertEqual(result, queryset)
+
+
+class EndpointFilterTest(TestCase):
+    def setUp(self):
+        self.filter = EndpointFilter(None, {}, UploadBreadcrumb, UploadBreadcrumbAdmin)
+
+    def test_lookups(self):
+        """Test endpoint filter lookups use enum names."""
+        request = MagicMock()
+        model_admin = MagicMock()
+
+        lookups = self.filter.lookups(request, model_admin)
+
+        # Should have all endpoint choices with names (not labels)
+        self.assertEqual(len(lookups), len(Endpoints))
+        for choice in Endpoints:
+            self.assertIn((choice.value, choice.name), lookups)
+
+    def test_queryset(self):
+        """Test endpoint filter queryset behavior."""
+        test_cases = [
+            (Endpoints.CREATE_COMMIT.value, True),
+            (None, False),
+        ]
+
+        for filter_value, should_change_queryset in test_cases:
+            with self.subTest(filter_value=filter_value):
+                request = MagicMock()
+                queryset = UploadBreadcrumb.objects.all()
+
+                with patch.object(self.filter, "value", return_value=filter_value):
+                    result = self.filter.queryset(request, queryset)
+
+                if should_change_queryset:
+                    self.assertNotEqual(result, queryset)
+                else:
+                    self.assertEqual(result, queryset)
+
+
+class ErrorFilterTest(TestCase):
+    def setUp(self):
+        self.filter = ErrorFilter(None, {}, UploadBreadcrumb, UploadBreadcrumbAdmin)
+
+    def test_lookups(self):
+        """Test error filter lookups use enum names."""
+        request = MagicMock()
+        model_admin = MagicMock()
+
+        lookups = self.filter.lookups(request, model_admin)
+
+        # Should have all error choices with names (not labels)
+        self.assertEqual(len(lookups), len(Errors))
+        for choice in Errors:
+            self.assertIn((choice.value, choice.name), lookups)
+
+    def test_queryset(self):
+        """Test error filter queryset behavior with different values."""
+        test_cases = [
+            (Errors.BAD_REQUEST.value, True),
+            (None, False),
+        ]
+
+        for filter_value, should_change_queryset in test_cases:
+            with self.subTest(filter_value=filter_value):
+                request = MagicMock()
+                queryset = UploadBreadcrumb.objects.all()
+
+                with patch.object(self.filter, "value", return_value=filter_value):
+                    result = self.filter.queryset(request, queryset)
+
+                if should_change_queryset:
+                    # Check that the filter was applied
+                    self.assertNotEqual(result, queryset)
+                else:
+                    # Should return original queryset
+                    self.assertEqual(result, queryset)
