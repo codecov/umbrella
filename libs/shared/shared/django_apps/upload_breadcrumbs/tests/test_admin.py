@@ -1,8 +1,9 @@
 import json
 from unittest.mock import MagicMock, patch
 
+from django.conf import settings
 from django.contrib.admin.sites import AdminSite
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.utils.safestring import SafeString
 
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
@@ -40,6 +41,7 @@ class UploadBreadcrumbAdminTest(TestCase):
         self.assertFalse(self.admin.has_add_permission(request))
         self.assertFalse(self.admin.has_change_permission(request))
 
+    @override_settings(DJANGO_ADMIN_URL="random_admin_url")
     def test_formatted_repo_id_with_existing_repo(self):
         """Test formatted_repo_id displays repo info correctly."""
         breadcrumb = UploadBreadcrumbFactory(repo_id=self.repo.repoid)
@@ -50,7 +52,7 @@ class UploadBreadcrumbAdminTest(TestCase):
         self.assertIn(str(self.repo.repoid), result)
         self.assertIn(self.repo.author.username, result)
         self.assertIn(self.repo.name, result)
-        self.assertIn("/admin/core/repository/", result)
+        self.assertIn(f"/{settings.DJANGO_ADMIN_URL}/core/repository/", result)
 
     def test_formatted_repo_id_with_nonexistent_repo(self):
         """Test formatted_repo_id handles missing related repo object gracefully."""
@@ -322,6 +324,22 @@ class UploadBreadcrumbAdminTest(TestCase):
                         result,
                     )
 
+    def test_log_links_gcp_disabled(self):
+        """Test log links generation when GCP logging is disabled."""
+        commit_sha = "abcdef123"
+        trace_id = "trace123"
+        breadcrumb = UploadBreadcrumbFactory(
+            commit_sha=commit_sha, sentry_trace_id=trace_id
+        )
+
+        with patch(
+            "shared.django_apps.upload_breadcrumbs.admin.get_config"
+        ) as mock_get_config:
+            mock_get_config.return_value = False
+            result = self.admin.log_links(breadcrumb)
+
+        self.assertEqual(result, "-")
+
     def test_log_links(self):
         """Test log links generation."""
         commit_sha = "abcdef123"
@@ -330,11 +348,15 @@ class UploadBreadcrumbAdminTest(TestCase):
             commit_sha=commit_sha, sentry_trace_id=trace_id
         )
 
-        result = self.admin.log_links(breadcrumb)
+        with patch(
+            "shared.django_apps.upload_breadcrumbs.admin.get_config"
+        ) as mock_get_config:
+            mock_get_config.return_value = True
+            result = self.admin.log_links(breadcrumb)
 
         self.assertIsInstance(result, SafeString)
-        self.assertIn("Commit SHA Logs", result)
-        self.assertIn("Sentry Trace Logs", result)
+        self.assertIn("GCP Commit SHA Logs", result)
+        self.assertIn("GCP Sentry Trace Logs", result)
         self.assertIn("console.cloud.google.com", result)
         self.assertIn(commit_sha, result)
         self.assertIn(trace_id, result)
@@ -343,7 +365,11 @@ class UploadBreadcrumbAdminTest(TestCase):
         """Test log links with no commit SHA or trace ID."""
         breadcrumb = UploadBreadcrumbFactory(commit_sha="", sentry_trace_id=None)
 
-        result = self.admin.log_links(breadcrumb)
+        with patch(
+            "shared.django_apps.upload_breadcrumbs.admin.get_config"
+        ) as mock_get_config:
+            mock_get_config.return_value = True
+            result = self.admin.log_links(breadcrumb)
 
         self.assertEqual(result, "-")
 
@@ -354,11 +380,15 @@ class UploadBreadcrumbAdminTest(TestCase):
             commit_sha=commit_sha, sentry_trace_id=None
         )
 
-        result = self.admin.log_links(breadcrumb)
+        with patch(
+            "shared.django_apps.upload_breadcrumbs.admin.get_config"
+        ) as mock_get_config:
+            mock_get_config.return_value = True
+            result = self.admin.log_links(breadcrumb)
 
         self.assertIsInstance(result, SafeString)
-        self.assertIn("Commit SHA Logs", result)
-        self.assertNotIn("Sentry Trace Logs", result)
+        self.assertIn("GCP Commit SHA Logs", result)
+        self.assertNotIn("GCP Sentry Trace Logs", result)
         self.assertIn(commit_sha, result)
 
     def test_changelist_view_includes_info(self):

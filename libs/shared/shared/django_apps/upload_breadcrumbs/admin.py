@@ -4,11 +4,13 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib import admin
+from django.contrib.admin.views.main import ChangeList
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
+from shared.config import get_config
 from shared.django_apps.core.models import Repository
 from shared.django_apps.upload_breadcrumbs.models import (
     Endpoints,
@@ -34,24 +36,34 @@ class PresentDataFilter(admin.SimpleListFilter):
             ("has_sentry_trace", "Has Sentry Trace"),
         ]
 
-    def choices(self, changelist: Any) -> Iterator[Any]:
-        """Override choices to add multiselect functionality."""
+    def choices(self, changelist: ChangeList) -> Iterator[Any]:
+        """
+        Override choices to add multiselect functionality.
+
+        This method customizes the filter UI to allow multiple selections instead of
+        the default single-select behavior. It creates checkboxes that users can
+        toggle on/off to select multiple filter criteria simultaneously.
+        """
+        # Yield the "All" option that clears all filters
+        # `query_string` is the URL-encoded query string for the filter that gets applied if selected
         yield {
             "selected": self.value() is None,
             "query_string": changelist.get_query_string(remove=[self.parameter_name]),
             "display": "All",
         }
 
+        # Parse the current filter value into a list of selected options
         value = self.value()
         current_values = value.split(",") if isinstance(value, str) else []
 
         for lookup, title in self.lookup_choices:
             selected = lookup in current_values
+
             if selected:
-                # Remove this value from current selection
+                # Allow users to "uncheck" the option by clicking it again
                 new_values = [v for v in current_values if v != lookup]
             else:
-                # Add this value to current selection
+                # Allow users to "check" this option
                 new_values = current_values + [lookup]
 
             new_value = ",".join(new_values) if new_values else None
@@ -147,9 +159,9 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
     search_fields = (
         "repo_id__startswith",
         "commit_sha__startswith",
-        "sentry_trace_id__exact",
+        "sentry_trace_id__startswith",
     )
-    search_help_text = "Search by repository ID (starts with match), commit SHA (starts with match), and/or Sentry trace ID (exact match). Separate multiple values with spaces to AND search (E.g. '<repo_id> <commit_sha>')."
+    search_help_text = "Search by repository ID, commit SHA, and/or Sentry trace ID (all prefix match). Separate multiple values with spaces to AND search (E.g. '<repo_id> <commit_sha>')."
     list_filter = [
         PresentDataFilter,
         MilestoneFilter,
@@ -178,7 +190,9 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
 
         try:
             repo = Repository.objects.get(repoid=obj.repo_id)
-            repo_url = f"/admin/core/repository/{repo.repoid}/change/"
+            repo_url = (
+                f"/{settings.DJANGO_ADMIN_URL}/core/repository/{repo.repoid}/change/"
+            )
             return format_html(
                 '<a href="{}" target="_blank">{}</a> ({})',
                 repo_url,
@@ -282,10 +296,12 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         if not obj.upload_ids:
             return "-"
 
-        if len(obj.upload_ids) <= 3:
+        MAX_DISPLAY_COUNT = 3
+
+        if len(obj.upload_ids) <= MAX_DISPLAY_COUNT:
             return ", ".join(str(uid) for uid in obj.upload_ids)
         else:
-            return f"{', '.join(str(uid) for uid in obj.upload_ids[:3])}, ... (+{len(obj.upload_ids) - 3} more)"
+            return f"{', '.join(str(uid) for uid in obj.upload_ids[:MAX_DISPLAY_COUNT])}, ... (+{len(obj.upload_ids) - MAX_DISPLAY_COUNT} more)"
 
     @admin.display(description="Upload IDs")
     def formatted_upload_ids_detail(self, obj: UploadBreadcrumb) -> str:
@@ -313,7 +329,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
 
         return mark_safe("".join(html_parts))
 
-    @admin.display(description="Sentry Trace", ordering="sentry_trace_id")
+    @admin.display(description="Sentry Trace")
     def formatted_sentry_trace_id(self, obj: UploadBreadcrumb) -> str:
         """Display Sentry trace ID as a hyperlink for list view."""
         if not obj.sentry_trace_id:
@@ -362,26 +378,35 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
 
     @admin.display(description="Log Links")
     def log_links(self, obj: UploadBreadcrumb) -> str:
-        logs_base_url = "https://console.cloud.google.com/logs/query"
-
         html_parts = []
         html_parts.append("<div>")
 
+        if get_config(
+            "setup", "upload_breadcrumbs", "gcp_log_links_enabled", default=False
+        ):
+            html_parts.extend(self._gcp_log_links(obj))
+
+        html_parts.append("</div>")
+
+        return mark_safe("".join(html_parts)) if len(html_parts) > 2 else "-"
+
+    def _gcp_log_links(self, obj: UploadBreadcrumb) -> list[str]:
+        logs_base_url = "https://console.cloud.google.com/logs/query"
+
+        html_parts = []
         if obj.commit_sha:
             url = f"{logs_base_url};query=resource.type%3D%22k8s_container%22%0ASEARCH%2528%22%60{obj.commit_sha}%60%22%2529;duration=P2D"
             html_parts.append(
-                f'<div>• <a href="{url}" target="_blank">Commit SHA Logs</a></div>'
+                f'<div>• <a href="{url}" target="_blank">GCP Commit SHA Logs</a></div>'
             )
 
         if obj.sentry_trace_id:
             url = f"{logs_base_url};query=resource.type%3D%22k8s_container%22%0ASEARCH%2528%22%60{obj.sentry_trace_id}%60%22%2529;duration=P2D"
             html_parts.append(
-                f'<div>• <a href="{url}" target="_blank">Sentry Trace Logs</a></div>'
+                f'<div>• <a href="{url}" target="_blank">GCP Sentry Trace Logs</a></div>'
             )
 
-        html_parts.append("</div>")
-
-        return mark_safe("".join(html_parts)) if len(html_parts) > 2 else "-"
+        return html_parts
 
     def changelist_view(
         self, request: HttpRequest, extra_context: dict | None = None
@@ -403,10 +428,11 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
                     Upload breadcrumbs track the progress of coverage uploads throughout every stage of the upload process.
                     Each breadcrumb represents a step in the upload process and may include:
                     <ul style="margin: 10px 0 10px 20px;">
-                        <li><strong>Milestone:</strong> Current stage of the upload. The possible milestones are as follows and should appear for a given upload in this order:
+                        <li><strong>Milestone:</strong> Current stage of the upload. The possible milestones are as follows and should appear for a given upload in this order (although slight variations may occur due to breadcrumbs being saved asynchronously):
                             <ol style="margin: 5px 0 5px 20px;">
                                 {milestone_list}
                             </ol>
+                            Note that if "{Milestones.NOTIFICATIONS_TRIGGERED.label}" is not present, then "{Milestones.NOTIFICATIONS_SENT.label}" will also not be present. Outside of this, all coverage uploads should have every milestone.
                         </li>
                         <li><strong>Endpoint:</strong> API endpoint that triggered this breadcrumb. This is helpful to determine if there is an issue related to a specific endpoint.</li>
                         <li><strong>Error:</strong> Any errors encountered during processing. This will either be a pre-defined error or "Unknown" for anything else. Not every error is indicative of total failure (such as retries), but they give insight into potential issues.</li>
