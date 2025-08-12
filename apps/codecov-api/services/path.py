@@ -26,7 +26,15 @@ class PathNode:
 
     @property
     def name(self) -> str:
-        return self.full_path.split("/")[-1]
+        if hasattr(self, "children"):  # this is a Dir
+            max_levels = getattr(self, "max_directory_level", 1)
+            parts = self.full_path.split("/")
+            if len(parts) <= max_levels:
+                return self.full_path
+            # take the max number of flattened dirs
+            return "/".join(parts[-max_levels:])
+        else:  # this is a File
+            return self.full_path.split("/")[-1]
 
     @property
     def lines(self) -> int:
@@ -70,6 +78,7 @@ class Dir(PathNode):
 
     full_path: str
     children: list[File | Dir]
+    max_directory_level: int = 1
 
     @cached_property
     def totals(self) -> ReportTotals:
@@ -256,13 +265,21 @@ class ReportPaths:
                     for path in paths
                 )
 
+                levels = 1
                 # Flatten directories that have only one immediate child that is a directory
                 while len(children) == 1 and isinstance(children[0], Dir):
+                    levels += children[0].max_directory_level
                     # Update the directory's full_path to include the flattened path
                     basename = children[0].full_path
                     children = children[0].children
 
-                results.append(Dir(full_path=basename, children=children))
+                results.append(
+                    Dir(
+                        full_path=basename,
+                        children=children,
+                        max_directory_level=levels,
+                    )
+                )
 
         return results
 
