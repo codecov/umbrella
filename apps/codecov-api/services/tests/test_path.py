@@ -270,6 +270,7 @@ class TestReportPathsNested(TestCase):
                             File(full_path="dir/subdir/dir2/file3.py", totals=totals3),
                             Dir(
                                 full_path="dir/subdir/dir2/dir3/dir4",
+                                max_directory_level=2,
                                 children=[
                                     File(
                                         full_path="dir/subdir/dir2/dir3/dir4/file4.py",
@@ -281,6 +282,7 @@ class TestReportPathsNested(TestCase):
                                     ),
                                     Dir(
                                         full_path="dir/subdir/dir2/dir3/dir4/dir5/dir6",
+                                        max_directory_level=2,
                                         children=[
                                             File(
                                                 full_path="dir/subdir/dir2/dir3/dir4/dir5/dir6/file6.py",
@@ -301,6 +303,7 @@ class TestReportPathsNested(TestCase):
             File(full_path="other1/file1.py", totals=totals3),
             Dir(
                 full_path="other1/other2/other3/other4",
+                max_directory_level=3,
                 children=[
                     File(
                         full_path="other1/other2/other3/other4/file2.py", totals=totals3
