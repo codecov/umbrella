@@ -26,7 +26,15 @@ class PathNode:
 
     @property
     def name(self) -> str:
-        return self.full_path.split("/")[-1]
+        if hasattr(self, "children"):  # this is a Dir
+            max_levels = getattr(self, "max_directory_level", 1)
+            parts = self.full_path.split("/")
+            if len(parts) <= max_levels:
+                return self.full_path
+            # take the max number of flattened dirs
+            return "/".join(parts[-max_levels:])
+        else:  # this is a File
+            return self.full_path.split("/")[-1]
 
     @property
     def lines(self) -> int:
@@ -70,6 +78,7 @@ class Dir(PathNode):
 
     full_path: str
     children: list[File | Dir]
+    max_directory_level: int = 1
 
     @cached_property
     def totals(self) -> ReportTotals:
@@ -240,22 +249,41 @@ class ReportPaths:
     ) -> list[File | Dir]:
         grouped = defaultdict(list)
         for path in paths:
+            # group paths by their matching basename
             grouped[path.basename].append(path)
 
         results: list[File | Dir] = []
 
         for basename, paths in grouped.items():
+            # we know we have reached the end of a tree branch when we reach a file
             if len(paths) == 1 and paths[0].is_file:
                 path = paths[0]
                 results.append(
                     File(full_path=path.full_path, totals=self._totals(path))
                 )
             else:
+                # get the children of the current directory
                 children = self._single_directory_recursive(
                     PrefixedPath(full_path=path.full_path, prefix=basename)
                     for path in paths
                 )
-                results.append(Dir(full_path=basename, children=children))
+
+                levels = 1
+                # Flatten 1 or more directory levels that have only one immediate child that is a directory
+                while len(children) == 1 and isinstance(children[0], Dir):
+                    levels += children[0].max_directory_level
+                    # Update the basename to include the next level to be flattened and shift downwards
+                    basename = children[0].full_path
+                    children = children[0].children
+
+                results.append(
+                    Dir(
+                        full_path=basename,
+                        children=children,
+                        # the number of directory levels flattened, if any, by adding 1 to the direct child's number
+                        max_directory_level=levels,
+                    )
+                )
 
         return results
 
