@@ -13,8 +13,10 @@ if THIS_POD_IP:
 WEBHOOK_URL = get_config("setup", "webhook_url", default="https://codecov.io")
 
 
-STRIPE_API_KEY = os.environ.get("SERVICES__STRIPE__API_KEY", None)
-STRIPE_ENDPOINT_SECRET = os.environ.get("SERVICES__STRIPE__ENDPOINT_SECRET", None)
+STRIPE_API_KEY = get_config("services", "stripe", "api_key", default=None)
+STRIPE_ENDPOINT_SECRET = get_config(
+    "services", "stripe", "endpoint_secret", default=None
+)
 
 CORS_ALLOW_HEADERS += ["sentry-trace", "baggage"]
 CODECOV_URL = get_config("setup", "codecov_url", default="https://codecov.io")

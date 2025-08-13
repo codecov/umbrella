@@ -426,7 +426,7 @@ SHELTER_SHARED_SECRET = get_config("setup", "shelter_shared_secret", default=Non
 SHELTER_ENABLED = get_config("setup", "shelter_enabled", default=True)
 
 SENTRY_ENV = os.environ.get("CODECOV_ENV", None)
-SENTRY_DSN = os.environ.get("SERVICES__SENTRY__SERVER_DSN", None)
+SENTRY_DSN = get_config("services", "sentry", "server_dsn", default=None)
 SENTRY_DENY_LIST = DEFAULT_DENYLIST + ["_headers", "token_to_use"]
 # For linking to traces in Django admin, defaults to your most recently visited sentry.io org
 SENTRY_ORG_URL = get_config(
@@ -434,7 +434,9 @@ SENTRY_ORG_URL = get_config(
 )
 
 if SENTRY_DSN is not None:
-    SENTRY_SAMPLE_RATE = float(os.environ.get("SERVICES__SENTRY__SAMPLE_RATE", "0.1"))
+    SENTRY_SAMPLE_RATE = float(
+        get_config("services", "sentry", "sample_rate", default="0.1")
+    )
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         event_scrubber=EventScrubber(denylist=SENTRY_DENY_LIST),
@@ -450,7 +452,7 @@ if SENTRY_DSN is not None:
         environment=SENTRY_ENV,
         traces_sample_rate=SENTRY_SAMPLE_RATE,
         profiles_sample_rate=float(
-            os.environ.get("SERVICES__SENTRY__PROFILE_SAMPLE_RATE", "0.01")
+            get_config("services", "sentry", "profile_sample_rate", default="0.01")
         ),
     )
     if os.getenv("CLUSTER_ENV"):
