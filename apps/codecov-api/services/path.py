@@ -249,27 +249,30 @@ class ReportPaths:
     ) -> list[File | Dir]:
         grouped = defaultdict(list)
         for path in paths:
+            # group paths by their matching basename
             grouped[path.basename].append(path)
 
         results: list[File | Dir] = []
 
         for basename, paths in grouped.items():
+            # we know we have reached the end of a tree branch when we reach a file
             if len(paths) == 1 and paths[0].is_file:
                 path = paths[0]
                 results.append(
                     File(full_path=path.full_path, totals=self._totals(path))
                 )
             else:
+                # get the children of the current directory
                 children = self._single_directory_recursive(
                     PrefixedPath(full_path=path.full_path, prefix=basename)
                     for path in paths
                 )
 
                 levels = 1
-                # Flatten directories that have only one immediate child that is a directory
+                # Flatten 1 or more directory levels that have only one immediate child that is a directory
                 while len(children) == 1 and isinstance(children[0], Dir):
                     levels += children[0].max_directory_level
-                    # Update the directory's full_path to include the flattened path
+                    # Update the basename to include the next level to be flattened and shift downwards
                     basename = children[0].full_path
                     children = children[0].children
 
@@ -277,6 +280,7 @@ class ReportPaths:
                     Dir(
                         full_path=basename,
                         children=children,
+                        # the number of directory levels flattened, if any, by adding 1 to the direct child's number
                         max_directory_level=levels,
                     )
                 )
