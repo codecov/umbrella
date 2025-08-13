@@ -1,15 +1,13 @@
 from django import forms
 from django.contrib import admin
-from django.core.paginator import Paginator
-from django.db import connections
 from django.db.models import QuerySet
 from django.http import HttpRequest
-from django.utils.functional import cached_property
 
 from codecov.admin import AdminMixin
 from codecov_auth.models import RepositoryToken
 from core.models import Pull, Repository
 from services.task.task import TaskService
+from shared.django_apps.utils.paginator import EstimatedCountPaginator
 
 
 class RepositoryTokenInline(admin.TabularInline):
@@ -24,26 +22,6 @@ class RepositoryTokenInline(admin.TabularInline):
 
     class Meta:
         readonly_fields = ("key",)
-
-
-class EstimatedCountPaginator(Paginator):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.object_list.count = self.count
-
-    @cached_property
-    def count(self):
-        # Inspired by https://code.djangoproject.com/ticket/8408
-        if self.object_list.query.where:
-            return self.object_list.count()
-
-        db_table = self.object_list.model._meta.db_table
-        cursor = connections[self.object_list.db].cursor()
-        cursor.execute("SELECT reltuples FROM pg_class WHERE relname = %s", (db_table,))
-        result = cursor.fetchone()
-        if not result:
-            return 0
-        return int(result[0])
 
 
 class RepositoryAdminForm(forms.ModelForm):

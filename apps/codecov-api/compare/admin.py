@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from shared.django_apps.utils.paginator import EstimatedCountPaginator
+
 from .models import CommitComparison
 
 
@@ -13,6 +15,7 @@ class CommitComparisonAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
+    paginator = EstimatedCountPaginator
 
     def get_base_commit(self, obj):
         return obj.base_commit.commitid

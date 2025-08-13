@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from codecov.admin import AdminMixin
 from reports.models import ReportSession
+from shared.django_apps.utils.paginator import EstimatedCountPaginator
 
 
 @admin.register(ReportSession)
@@ -11,6 +12,7 @@ class ReportSessionAdmin(AdminMixin, admin.ModelAdmin):
     readonly_fields = ("external_id", "storage_path", "upload_type")
     search_fields = ("external_id",)
     fields = readonly_fields
+    paginator = EstimatedCountPaginator
 
     def has_delete_permission(self, request, obj=None):
         return False
