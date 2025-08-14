@@ -534,7 +534,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
             if repo.language != repo_data["language"]:
                 repo.language = repo_data["language"]
                 has_changes = True
-            if repo.name and repo.name.lower() != repo_data["name"].lower():
+            if repo.name != repo_data["name"]:
                 repo.name = repo_data["name"]
                 has_changes = True
             if repo.deleted is not False:
