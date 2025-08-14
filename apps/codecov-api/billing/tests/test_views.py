@@ -218,8 +218,13 @@ class StripeWebhookHandlerTests(APITestCase):
     @patch("services.task.TaskService.send_email")
     def test_invoice_payment_succeeded_emails_delinquents(self, mocked_send_email):
         non_admin = OwnerFactory(email="non-admin@codecov.io")
-        admin_1 = OwnerFactory(email="admin1@codecov.io")
-        admin_2 = OwnerFactory(email="admin2@codecov.io")
+        admin_1 = OwnerFactory(
+            email="admin1@codecov.io", organizations=[self.owner.ownerid]
+        )
+        admin_2 = OwnerFactory(
+            email="admin2@codecov.io", organizations=[self.owner.ownerid]
+        )
+        admin_3 = OwnerFactory(email="admin3@codecov.io", organizations=[])
         self.owner.admins = [admin_1.ownerid, admin_2.ownerid]
         self.owner.plan_activated_users = [non_admin.ownerid]
         self.owner.email = "owner@codecov.io"
@@ -248,6 +253,7 @@ class StripeWebhookHandlerTests(APITestCase):
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert self.owner.delinquent is False
         assert self.other_owner.delinquent is False
+        assert self.owner.admins == [admin_1.ownerid, admin_2.ownerid]
 
         expected_calls = [
             call(
@@ -391,8 +397,13 @@ class StripeWebhookHandlerTests(APITestCase):
         mocked_send_email,
     ):
         non_admin = OwnerFactory(email="non-admin@codecov.io")
-        admin_1 = OwnerFactory(email="admin1@codecov.io")
-        admin_2 = OwnerFactory(email="admin2@codecov.io")
+        admin_1 = OwnerFactory(
+            email="admin1@codecov.io", organizations=[self.owner.ownerid]
+        )
+        admin_2 = OwnerFactory(
+            email="admin2@codecov.io", organizations=[self.owner.ownerid]
+        )
+        admin_3 = OwnerFactory(email="admin3@codecov.io", organizations=[])
         self.owner.admins = [admin_1.ownerid, admin_2.ownerid]
         self.owner.plan_activated_users = [non_admin.ownerid]
         self.owner.email = "owner@codecov.io"
@@ -419,6 +430,7 @@ class StripeWebhookHandlerTests(APITestCase):
         self.owner.refresh_from_db()
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert self.owner.delinquent is True
+        assert self.owner.admins == [admin_1.ownerid, admin_2.ownerid]
 
         expected_calls = [
             call(
@@ -456,7 +468,7 @@ class StripeWebhookHandlerTests(APITestCase):
             ),
         ]
 
-        mocked_send_email.assert_has_calls(expected_calls)
+        mocked_send_email.assert_has_calls(expected_calls, any_order=True)
 
     @patch("services.task.TaskService.send_email")
     @patch("services.billing.stripe.PaymentIntent.retrieve")
@@ -466,9 +478,14 @@ class StripeWebhookHandlerTests(APITestCase):
         mocked_send_email,
     ):
         non_admin = OwnerFactory(email="non-admin@codecov.io")
-        admin_1 = OwnerFactory(email="admin1@codecov.io")
-        admin_2 = OwnerFactory(email="admin2@codecov.io")
-        self.owner.admins = [admin_1.ownerid, admin_2.ownerid]
+        admin_1 = OwnerFactory(
+            email="admin1@codecov.io", organizations=[self.owner.ownerid]
+        )
+        admin_2 = OwnerFactory(
+            email="admin2@codecov.io", organizations=[self.owner.ownerid]
+        )
+        admin_3 = OwnerFactory(email="admin3@codecov.io", organizations=[])
+        self.owner.admins = [admin_1.ownerid, admin_2.ownerid, admin_3.ownerid]
         self.owner.plan_activated_users = [non_admin.ownerid]
         self.owner.email = "owner@codecov.io"
         self.owner.save()
@@ -497,6 +514,7 @@ class StripeWebhookHandlerTests(APITestCase):
         self.owner.refresh_from_db()
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert self.owner.delinquent is True
+        assert self.owner.admins == [admin_1.ownerid, admin_2.ownerid]
 
         expected_calls = [
             call(
