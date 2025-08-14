@@ -9,6 +9,7 @@ from django.shortcuts import render
 from codecov.admin import AdminMixin
 from core.models import Repository
 from services.task import TaskService
+from shared.django_apps.utils.paginator import EstimatedCountPaginator
 from timeseries.models import Dataset
 
 
@@ -33,6 +34,7 @@ class BackfillForm(forms.Form):
 class DatasetAdmin(AdminMixin, admin.ModelAdmin):
     list_display = ("name", "repository", "backfilled")
     actions = ["backfill"]
+    paginator = EstimatedCountPaginator
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)

@@ -18,6 +18,7 @@ from shared.django_apps.upload_breadcrumbs.models import (
     Milestones,
     UploadBreadcrumb,
 )
+from shared.django_apps.utils.paginator import EstimatedCountPaginator
 
 
 class PresentDataFilter(admin.SimpleListFilter):
@@ -155,6 +156,10 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         "formatted_upload_ids",
         "formatted_sentry_trace_id",
     )
+    sortable_by = (
+        "repo_id",
+        "formatted_commit_sha",
+    )  # Limit sorting options to indexed columns
     show_full_result_count = False
     search_fields = (
         "repo_id__startswith",
@@ -177,10 +182,10 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         "formatted_sentry_trace_id_detail",
         "log_links",
     )
-    date_hierarchy = "created_at"
     list_per_page = 50
     list_max_show_all = 200
     show_full_result_count = False  # Disable full result count for performance
+    paginator = EstimatedCountPaginator
 
     @admin.display(description="Repository", ordering="repo_id")
     def formatted_repo_id(self, obj: UploadBreadcrumb) -> str:
