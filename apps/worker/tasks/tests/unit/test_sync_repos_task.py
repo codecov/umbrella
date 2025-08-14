@@ -279,7 +279,7 @@ class TestSyncReposTaskUnit:
 
         assert repo1.name is None  # Should be nulled by trigger
         assert repo1.deleted is True  # Should be marked as deleted by trigger
-        assert repo1.active is False  # Should be marked as inactive by trigger
+        assert repo1.activated is False  # Should be marked as inactive by trigger
 
         # repo2 should have the name successfully
         assert repo2.name == "ExistingRepo"
