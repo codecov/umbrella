@@ -159,6 +159,104 @@ class TestSyncReposTaskUnit:
         assert updated_repo.updatestamp is not None
         assert updated_repo.deleted is False
 
+    def test_upsert_repo_case_only_name_change_skipped(self, dbsession):
+        """Test that case-only repo name changes are skipped to avoid trigger conflicts"""
+        service = "github"
+        repo_service_id = "12345"
+
+        # Create existing repo with capitalized name
+        user = OwnerFactory.create(
+            service=service,
+            username="testuser",
+            service_id="54321",
+        )
+        dbsession.add(user)
+
+        existing_repo = RepositoryFactory.create(
+            name="TestRepo",  # Capitalized name
+            service_id=repo_service_id,
+            owner=user,
+            private=False,
+            language="python",
+        )
+        dbsession.add(existing_repo)
+        dbsession.flush()
+        original_updatestamp = existing_repo.updatestamp
+
+        # Try to update with lowercase name (case-only change)
+        repo_data = {
+            "service_id": repo_service_id,
+            "name": "testrepo",  # lowercase - case-only change
+            "private": False,
+            "language": "python",
+            "branch": "main",
+        }
+
+        upserted_repoid = SyncReposTask().upsert_repo(
+            dbsession, service, user.ownerid, repo_data
+        )
+
+        # Should return same repo ID
+        assert upserted_repoid == existing_repo.repoid
+
+        # Check that name was NOT updated (stays capitalized)
+        updated_repo = (
+            dbsession.query(Repository)
+            .filter(Repository.repoid == existing_repo.repoid)
+            .first()
+        )
+        assert updated_repo.name == "TestRepo"  # Should remain unchanged
+        # updatestamp should also remain unchanged since no real changes were made
+        assert updated_repo.updatestamp == original_updatestamp
+
+    def test_upsert_repo_real_name_change_proceeds(self, dbsession):
+        """Test that real (non-case-only) repo name changes proceed normally"""
+        service = "github"
+        repo_service_id = "12345"
+
+        # Create existing repo
+        user = OwnerFactory.create(
+            service=service,
+            username="testuser",
+            service_id="54321",
+        )
+        dbsession.add(user)
+
+        existing_repo = RepositoryFactory.create(
+            name="OldRepoName",
+            service_id=repo_service_id,
+            owner=user,
+            private=False,
+            language="python",
+        )
+        dbsession.add(existing_repo)
+        dbsession.flush()
+
+        # Try to update with completely different name
+        repo_data = {
+            "service_id": repo_service_id,
+            "name": "NewRepoName",  # Real name change
+            "private": False,
+            "language": "python",
+            "branch": "main",
+        }
+
+        upserted_repoid = SyncReposTask().upsert_repo(
+            dbsession, service, user.ownerid, repo_data
+        )
+
+        # Should return same repo ID
+        assert upserted_repoid == existing_repo.repoid
+
+        # Check that name WAS updated
+        updated_repo = (
+            dbsession.query(Repository)
+            .filter(Repository.repoid == existing_repo.repoid)
+            .first()
+        )
+        assert updated_repo.name == "NewRepoName"  # Should be updated
+        assert updated_repo.updatestamp is not None  # Should be updated
+
     def test_upsert_repo_exists_but_wrong_owner(self, dbsession):
         service = "gitlab"
         repo_service_id = "12071992"
