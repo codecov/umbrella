@@ -284,6 +284,72 @@ class StripeWebhookHandlerTests(APITestCase):
 
         mocked_send_email.assert_has_calls(expected_calls)
 
+    @patch("services.task.TaskService.send_email")
+    @patch("logging.Logger.warning")
+    def test_invoice_payment_succeeded_updates_admins_removing_invalid_ones(
+        self, mock_log_warning, mocked_send_email
+    ):
+        valid_admin = OwnerFactory(
+            email="valid-admin@codecov.io", organizations=[self.owner.ownerid]
+        )
+        invalid_admin = OwnerFactory(
+            email="invalid-admin@codecov.io",
+            organizations=[],
+        )
+
+        self.owner.admins = [valid_admin.ownerid, invalid_admin.ownerid]
+        self.owner.email = "owner@codecov.io"
+        self.owner.delinquent = True
+        self.owner.save()
+
+        response = self._send_event(
+            payload={
+                "type": "invoice.payment_succeeded",
+                "data": {
+                    "object": {
+                        "customer": self.owner.stripe_customer_id,
+                        "subscription": self.owner.stripe_subscription_id,
+                        "total": 24000,
+                        "hosted_invoice_url": "https://stripe.com",
+                    }
+                },
+            }
+        )
+
+        self.owner.refresh_from_db()
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert self.owner.delinquent is False
+
+        assert self.owner.admins == [valid_admin.ownerid]
+
+        mock_log_warning.assert_called_once_with(
+            "Suppressing billing email to admin not in organization",
+            extra={
+                "org_owner_id": self.owner.ownerid,
+                "admin_owner_id": invalid_admin.ownerid,
+            },
+        )
+
+        expected_calls = [
+            call(
+                to_addr=self.owner.email,
+                subject="You're all set",
+                template_name="success-after-failed-payment",
+                amount=240,
+                cta_link="https://stripe.com",
+                date=datetime.now().strftime("%B %-d, %Y"),
+            ),
+            call(
+                to_addr=valid_admin.email,
+                subject="You're all set",
+                template_name="success-after-failed-payment",
+                amount=240,
+                cta_link="https://stripe.com",
+                date=datetime.now().strftime("%B %-d, %Y"),
+            ),
+        ]
+        mocked_send_email.assert_has_calls(expected_calls)
+
     @patch("services.billing.stripe.PaymentIntent.retrieve")
     def test_invoice_payment_failed_skips_delinquency_if_payment_intent_requires_action(
         self, retrieve_paymentintent_mock
@@ -469,6 +535,82 @@ class StripeWebhookHandlerTests(APITestCase):
         ]
 
         mocked_send_email.assert_has_calls(expected_calls, any_order=True)
+
+    @patch("services.task.TaskService.send_email")
+    @patch("logging.Logger.warning")
+    @patch("services.billing.stripe.PaymentIntent.retrieve")
+    def test_invoice_payment_failed_updates_admins_removing_invalid_ones(
+        self, retrieve_paymentintent_mock, mock_log_warning, mocked_send_email
+    ):
+        valid_admin = OwnerFactory(
+            email="valid-admin@codecov.io", organizations=[self.owner.ownerid]
+        )
+        invalid_admin = OwnerFactory(
+            email="invalid-admin@codecov.io",
+            organizations=[],
+        )
+
+        self.owner.admins = [valid_admin.ownerid, invalid_admin.ownerid]
+        self.owner.email = "owner@codecov.io"
+        self.owner.save()
+
+        retrieve_paymentintent_mock.return_value = MockPaymentIntent()
+
+        response = self._send_event(
+            payload={
+                "type": "invoice.payment_failed",
+                "data": {
+                    "object": {
+                        "customer": self.owner.stripe_customer_id,
+                        "subscription": self.owner.stripe_subscription_id,
+                        "total": 24000,
+                        "hosted_invoice_url": "https://stripe.com",
+                        "payment_intent": "payment_intent_asdf",
+                        "default_payment_method": {},
+                    }
+                },
+            }
+        )
+
+        self.owner.refresh_from_db()
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert self.owner.delinquent is True
+
+        assert self.owner.admins == [valid_admin.ownerid]
+
+        mock_log_warning.assert_called_once_with(
+            "Suppressing billing email to admin not in organization",
+            extra={
+                "org_owner_id": self.owner.ownerid,
+                "admin_owner_id": invalid_admin.ownerid,
+            },
+        )
+
+        expected_calls = [
+            call(
+                to_addr=self.owner.email,
+                subject="Your Codecov payment failed",
+                template_name="failed-payment",
+                name=self.owner.username,
+                amount=240,
+                card_type="visa",
+                last_four="1234",
+                cta_link="https://stripe.com",
+                date=datetime.now().strftime("%B %-d, %Y"),
+            ),
+            call(
+                to_addr=valid_admin.email,
+                subject="Your Codecov payment failed",
+                template_name="failed-payment",
+                name=valid_admin.username,
+                amount=240,
+                card_type="visa",
+                last_four="1234",
+                cta_link="https://stripe.com",
+                date=datetime.now().strftime("%B %-d, %Y"),
+            ),
+        ]
+        mocked_send_email.assert_has_calls(expected_calls)
 
     @patch("services.task.TaskService.send_email")
     @patch("services.billing.stripe.PaymentIntent.retrieve")
