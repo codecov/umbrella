@@ -90,6 +90,12 @@ def resolve_plan_user_count(plan_service: PlanService, info) -> int:
     return plan_service.plan_user_count
 
 
+@plan_bindable.field("freeSeatCount")
+@sync_to_async
+def resolve_free_seat_count(plan_service: PlanService, info) -> int:
+    return plan_service.free_seat_count
+
+
 @plan_bindable.field("hasSeatsLeft")
 @sync_to_async
 def resolve_has_seats_left(plan_service: PlanService, info) -> bool:
