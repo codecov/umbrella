@@ -13,6 +13,7 @@ from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.codecov_auth.models import Owner, OwnerProfile
 from shared.django_apps.core.models import Commit, Pull, Repository
 from shared.django_apps.reports.models import DailyTestRollup, TestInstance
+from shared.django_apps.test_analytics.models import TAPullComment, TAUpload
 from shared.django_apps.upload_breadcrumbs.models import UploadBreadcrumb
 from shared.django_apps.user_measurements.models import UserMeasurement
 
@@ -37,6 +38,8 @@ UNDOCUMENTED_RELATIONS: list[tuple[type[Model], str, type[Model]]] = [
     (Repository, "repo_id", CacheConfig),
     (Commit, "commit_sha", UploadBreadcrumb),
     (Repository, "repo_id", UploadBreadcrumb),
+    (Repository, "repo_id", TAPullComment),
+    (Repository, "repo_id", TAUpload),
 ]
 
 

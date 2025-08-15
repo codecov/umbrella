@@ -33,6 +33,20 @@ WHERE "upload_breadcrumbs_uploadbreadcrumb"."repo_id" IN (%s);
 -- [123]
 
 
+-- TAPullComment
+DELETE
+FROM "test_analytics_tapullcomment"
+WHERE "test_analytics_tapullcomment"."repo_id" IN (%s);
+-- [123]
+
+
+-- TAUpload
+DELETE
+FROM "test_analytics_upload"
+WHERE "test_analytics_upload"."repo_id" IN (%s);
+-- [123]
+
+
 -- RepositoryToken
 DELETE
 FROM "codecov_auth_repositorytoken"
