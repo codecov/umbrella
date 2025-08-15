@@ -581,6 +581,13 @@ class GithubWebhookHandler(APIView):
                         ghapp_installation, owner, request, app_id, installation_id
                     )
 
+            sentry_app_id = get_config("github", "sentry_merge_app_id")
+            if sentry_app_id is not None and ghapp_installation.app_id == sentry_app_id:
+                ghapp_installation.app_id = app_id
+                ghapp_installation.pem_path = get_config(
+                    "github", "sentry_merge_app_pem"
+                )
+
             # Either update or set
             ghapp_installation.name = self._decide_app_name(ghapp_installation)
 
