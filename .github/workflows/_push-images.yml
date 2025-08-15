@@ -1,0 +1,171 @@
+name: Push Images
+
+on:
+  workflow_call:
+    inputs:
+      # A stringified JSON object containing a list of projects
+      # (worker, codecov-api, shared) for which CI should run.
+      changes:
+        type: string
+        required: true
+
+      # Whether or not we should push new images to production. Each new production push
+      # also gets a new "rolling" push for self-hosted images.
+      push-prod:
+        type: boolean
+        default: false
+
+      # Whether or not we should push new images to staging.
+      push-staging:
+        type: boolean
+        default: false
+
+      # Whether or not we should push new calver release images for self-hosted.
+      push-self-hosted-release:
+        type: boolean
+        default: false
+
+jobs:
+  push-image:
+    name: Push ${{ matrix.project }} Images
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: worker
+            enabled: ${{ contains(fromJSON(inputs.changes), 'worker') }}
+            repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
+            output_directory: apps/worker
+            make_target_prefix: worker.
+            sentry_project: worker
+
+          - project: codecov-api
+            enabled: ${{ contains(fromJSON(inputs.changes), 'codecov-api') }}
+            repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
+            output_directory: apps/codecov-api
+            make_target_prefix: api.
+            sentry_project: api
+
+    env:
+      AR_REPO: ${{ matrix.repo }}
+
+    steps:
+      - name: Checkout
+        if: ${{ matrix.enabled }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache App
+        id: cache-app
+        if: ${{ matrix.enabled && (inputs.push-prod || inputs.push-staging) }}
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ matrix.repo }}-app
+        with:
+          path: |
+            ${{ matrix.output_directory }}/app.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+
+      - name: Cache Self-Hosted
+        id: cache-self-hosted
+        if: ${{ matrix.enabled && (inputs.push-prod || inputs.push-self-hosted-release) }}
+        uses: actions/cache@v4
+        env:
+          cache-name: ${{ matrix.repo }}-self-hosted
+        with:
+          path: |
+            ${{ matrix.output_directory }}/self-hosted-runtime.tar
+            ${{ matrix.output_directory }}/self-hosted.tar
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
+
+      - name: Load Cached App
+        if: ${{ matrix.enabled && (inputs.push-prod || inputs.push-staging) }}
+        run: |
+          make ${{ matrix.make_target_prefix }}load.app
+
+      - name: Load Cached Self-Hosted
+        if: ${{ matrix.enabled && (inputs.push-prod || inputs.push-self-hosted-release) }}
+        run: |
+          make ${{ matrix.make_target_prefix }}load.self-hosted
+
+      - id: "auth"
+        if: ${{ matrix.enabled && (inputs.push-prod || inputs.push-staging) }}
+        name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v2.1.2"
+        with:
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
+          service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
+
+      # Set up Docker to push to our GCR repositories
+      - name: Docker configuration
+        if: ${{ matrix.enabled && (inputs.push-prod || inputs.push-staging) }}
+        run: |-
+          echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
+
+      - name: Push Production Image
+        if: ${{ matrix.enabled && inputs.push-prod }}
+        run: |
+          make ${{ matrix.make_target_prefix }}tag.production
+          make ${{ matrix.make_target_prefix }}tag.latest
+          make ${{ matrix.make_target_prefix }}push.production
+          make ${{ matrix.make_target_prefix }}push.latest
+
+      - name: Push Staging Image
+        if: ${{ matrix.enabled && inputs.push-staging }}
+        run: |
+          make ${{ matrix.make_target_prefix }}tag.staging
+          make ${{ matrix.make_target_prefix }}push.staging
+
+      - name: Get Sentry Release SHA
+        if: ${{ matrix.enabled && (inputs.push-prod || inputs.push-staging) }}
+        env:
+          SHA: ${{ github.sha }}
+        id: sha
+        run: echo short_sha="${SHA:0:7}" >> $GITHUB_OUTPUT
+
+      - name: Create Production Sentry Release
+        if: ${{ matrix.enabled && inputs.push-prod }}
+        uses: getsentry/action-release@v1
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.CODECOV_SENTRY_RELEASE_TOKEN }}
+          SENTRY_ORG: ${{ secrets.CODECOV_SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ matrix.sentry_project }}
+        with:
+          environment: production
+          version: production-release-${{ steps.sha.outputs.short_sha }}
+          ignore_missing: true
+
+      - name: Create Staging Sentry Release
+        if: ${{ matrix.enabled && inputs.push-staging }}
+        uses: getsentry/action-release@v1
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.CODECOV_SENTRY_RELEASE_TOKEN }}
+          SENTRY_ORG: ${{ secrets.CODECOV_SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ matrix.sentry_project }}
+        with:
+          environment: staging
+          version: staging-release-${{ steps.sha.outputs.short_sha }}
+          ignore_missing: true
+
+      # Set up Docker to push to our Docker Hub repositories
+      - name: Log in to Docker Hub
+        if: ${{ matrix.enabled && (inputs.push-prod || inputs.push-self-hosted-release) }}
+        uses: docker/login-action@v3.1.0
+        with:
+          username: ${{ secrets.CODECOV_DEVOPS_DOCKER_USERNAME }}
+          password: ${{ secrets.CODECOV_DEVOPS_DOCKER_PASSWORD }}
+
+      - name: Push Self-Hosted Rolling Images
+        if: ${{ matrix.enabled && inputs.push-prod }}
+        run: |
+          make ${{ matrix.make_target_prefix }}tag.self-hosted-rolling
+          make ${{ matrix.make_target_prefix }}push.self-hosted-rolling
+
+      - name: Push Self-Hosted Release Images
+        if: ${{ matrix.enabled && inputs.push-self-hosted-release }}
+        run: |
+          make ${{ matrix.make_target_prefix }}tag.self-hosted-release
+          make ${{ matrix.make_target_prefix }}push.self-hosted-release

@@ -19,24 +19,25 @@ jobs:
       tag_to_prepend: self-hosted-
     secrets: inherit
 
-  push-worker-image:
-    needs: [create-release]
+  build-images:
     if: ${{ github.event.pull_request.merged == true && startsWith(github.head_ref, 'release/') && github.repository_owner == 'codecov' }}
-    uses: ./.github/workflows/_self-hosted.yml
+    needs: [create-release]
     secrets: inherit
+    uses:
+      ./.github/workflows/_build-images.yml
     with:
-      push_release: true
-      repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
-      output_directory: apps/worker
-      make_target_prefix: worker.
+      changes: '["worker", "codecov-api"]'
+      build-prod: false
+      build-self-hosted: true
 
-  push-api-image:
-    needs: [create-release]
+  push-images:
     if: ${{ github.event.pull_request.merged == true && startsWith(github.head_ref, 'release/') && github.repository_owner == 'codecov' }}
-    uses: ./.github/workflows/_self-hosted.yml
+    needs: [build-images]
     secrets: inherit
+    uses:
+      ./.github/workflows/_push-images.yml
     with:
-      push_release: true
-      repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
-      output_directory: apps/codecov-api
-      make_target_prefix: api.
+      changes: '["worker", "codecov-api"]'
+      push-prod: false
+      push-staging: false
+      push-self-hosted-release: true
