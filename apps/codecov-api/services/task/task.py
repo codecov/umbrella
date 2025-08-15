@@ -10,6 +10,7 @@ from core.models import Repository
 from services.task.task_router import route_task
 from shared import celery_config
 from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData
+from shared.upload.types import TAUploadContext
 from shared.utils.pydantic_serializer import PydanticModelDump, register_preserializer
 from shared.utils.sentry import current_sentry_trace_id
 from timeseries.models import Dataset, MeasurementName
@@ -174,6 +175,30 @@ class TaskService:
     def pulls_sync(self, repoid, pullid):
         self._create_signature(
             celery_config.pulls_task_name, kwargs={"repoid": repoid, "pullid": pullid}
+        ).apply_async()
+
+    def queue_ta_upload(
+        self,
+        repo_id: int,
+        upload_context: TAUploadContext,
+    ):
+        chain_to_call = [
+            self._create_signature(
+                celery_config.ingest_testruns_task_name,
+                kwargs={"repoid": repo_id, "upload_context": upload_context},
+            ),
+            self._create_signature(
+                celery_config.detect_flakes_task_name,
+                kwargs={"repo_id": repo_id},
+            ),
+        ]
+
+        return chain(*chain_to_call).apply_async()
+
+    def detect_flakes(self, repo_id: int):
+        self._create_signature(
+            celery_config.detect_flakes_task_name,
+            kwargs={"repo_id": repo_id},
         ).apply_async()
 
     def refresh(
