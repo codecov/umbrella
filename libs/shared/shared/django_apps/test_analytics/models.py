@@ -1,5 +1,7 @@
 from django.db import models
 
+from shared.django_apps.codecov.models import BaseModel
+
 # Added to avoid 'doesn't declare an explicit app_label and isn't in an application in INSTALLED_APPS' error\
 # Needs to be called the same as the API app
 TEST_ANALYTICS_APP_LABEL = "test_analytics"
@@ -26,4 +28,31 @@ class Flake(models.Model):
             models.Index(fields=["test_id"]),
             models.Index(fields=["repoid", "test_id"]),
             models.Index(fields=["repoid", "end_date"]),
+        ]
+
+
+class PullComment(BaseModel):
+    """
+    Stores pull request comment references without referencing the full commit
+    or pull objects which are subject to Sentry retention policies.
+    """
+
+    repo_id = models.BigIntegerField()
+    pull_id = models.IntegerField()
+    comment_id = models.TextField(null=True)
+
+    class Meta:
+        app_label = TEST_ANALYTICS_APP_LABEL
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["repo_id", "pull_id"],
+                name="ta_pr_comment_repo_pull",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                name="ta_pr_comment_repo_pull_idx",
+                fields=["repo_id", "pull_id"],
+            ),
         ]
