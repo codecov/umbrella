@@ -6,4 +6,5 @@ class TAUploadContext(TypedDict):
     branch: str
     merged: bool
     pull_id: int | None
+    storage_path: str
     flags: list[str] | None
