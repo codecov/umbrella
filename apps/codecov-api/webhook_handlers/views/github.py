@@ -1,6 +1,5 @@
 import hmac
 import logging
-import re
 from contextlib import suppress
 from hashlib import sha1, sha256
 from typing import Literal
@@ -35,10 +34,6 @@ from webhook_handlers.constants import (
 from . import WEBHOOKS_ERRORED, WEBHOOKS_RECEIVED
 
 log = logging.getLogger(__name__)
-
-
-# This should probably go somewhere where it can be easily shared
-regexp_ci_skip = re.compile(r"\[(ci|skip| |-){3,}\]").search
 
 
 class GithubWebhookHandler(APIView):
@@ -113,7 +108,7 @@ class GithubWebhookHandler(APIView):
         Attempts to fetch the repo first via the index on (ownerid, service_id),
         then naively on service, service_id if that fails.
         """
-        repo_data = self.request.data.get("repository", {})
+        repo_data = request.data.get("repository", {})
         repo_service_id = repo_data.get("id")
         owner_service_id = repo_data.get("owner", {}).get("id")
         repo_slug = repo_data.get("full_name")
@@ -174,7 +169,7 @@ class GithubWebhookHandler(APIView):
         return Response(data="pong")
 
     def repository(self, request, *args, **kwargs):
-        action, repo = self.request.data.get("action"), self._get_repo(request)
+        action, repo = request.data.get("action"), self._get_repo(request)
         if action == "publicized":
             repo.private, repo.activated = False, False
             repo.save()
@@ -215,14 +210,10 @@ class GithubWebhookHandler(APIView):
                 extra={"repoid": repo.repoid, "github_webhook_event": self.event},
             )
             return Response("Unsupported ref type")
-        branch_name = self.request.data.get("ref")[11:]
+        branch_name = request.data.get("ref")[11:]
         Branch.objects.filter(
             repository=self._get_repo(request), name=branch_name
         ).delete()
-        log.info(
-            f"Branch '{branch_name}' deleted",
-            extra={"repoid": repo.repoid, "github_webhook_event": self.event},
-        )
         return Response()
 
     def public(self, request, *args, **kwargs):
@@ -239,88 +230,32 @@ class GithubWebhookHandler(APIView):
         ref_type = "branch" if request.data.get("ref", "")[5:10] == "heads" else "tag"
         repo = self._get_repo(request)
         if ref_type != "branch":
-            log.debug(
-                "Ref is tag, not branch, ignoring push event",
-                extra={"repoid": repo.repoid, "github_webhook_event": self.event},
-            )
             return Response("Unsupported ref type")
 
         if not repo.active:
-            log.debug(
-                "Repository is not active, ignoring push event",
-                extra={"repoid": repo.repoid, "github_webhook_event": self.event},
-            )
             return Response(data=WebhookHandlerErrorMessages.SKIP_NOT_ACTIVE)
 
         push_webhook_ignore_repos = get_config(
             "setup", "push_webhook_ignore_repo_names", default=[]
         )
         if repo.name in push_webhook_ignore_repos:
-            log.debug(
-                "Codecov is configured to ignore this repository name",
-                extra={
-                    "repoid": repo.repoid,
-                    "github_webhook_event": self.event,
-                    "repo_name": repo.name,
-                },
-            )
             return Response(data=WebhookHandlerErrorMessages.SKIP_WEBHOOK_IGNORED)
 
-        pushed_to_branch_name = self.request.data.get("ref")[11:]
-        commits = self.request.data.get("commits", [])
+        pushed_to_branch_name = request.data.get("ref")[11:]
+        commits = request.data.get("commits", [])
 
         if not commits:
-            log.debug(
-                f"No commits in webhook payload for branch {pushed_to_branch_name}",
-                extra={"repoid": repo.repoid, "github_webhook_event": self.event},
-            )
             return Response()
 
         if pushed_to_branch_name == repo.branch:
             commits_queryset = Commit.objects.filter(
-                ~Q(branch=pushed_to_branch_name),
+                ~Q(branch=repo.branch),
                 repository=repo,
                 commitid__in=[commit.get("id") for commit in commits],
                 merged=False,
             )
-            commits_queryset.update(branch=pushed_to_branch_name, merged=True)
-            log.info(
-                f"Branch name updated for commits to {pushed_to_branch_name}; setting merged to True",
-                extra={
-                    "repoid": repo.repoid,
-                    "github_webhook_event": self.event,
-                    "commits": [commit.get("id") for commit in commits],
-                },
-            )
 
-        most_recent_commit = commits[-1]
-
-        if regexp_ci_skip(most_recent_commit.get("message")):
-            log.info(
-                "CI skip tag on head commit, not setting status",
-                extra={
-                    "repoid": repo.repoid,
-                    "commit": most_recent_commit.get("id"),
-                    "github_webhook_event": self.event,
-                },
-            )
-            return Response(data="CI Skipped")
-
-        if self.redis.sismember("beta.pending", repo.repoid):
-            log.info(
-                "Triggering status set pending task",
-                extra={
-                    "repoid": repo.repoid,
-                    "commit": most_recent_commit.get("id"),
-                    "github_webhook_event": self.event,
-                },
-            )
-            TaskService().status_set_pending(
-                repoid=repo.repoid,
-                commitid=most_recent_commit.get("id"),
-                branch=pushed_to_branch_name,
-                on_a_pull_request=False,
-            )
+            commits_queryset.update(branch=repo.branch, merged=True)
 
         return Response()
 
@@ -329,34 +264,10 @@ class GithubWebhookHandler(APIView):
         commitid = request.data.get("sha")
 
         if not repo.active:
-            log.debug(
-                "Repository is not active, ignoring status event",
-                extra={
-                    "repoid": repo.repoid,
-                    "commit": commitid,
-                    "github_webhook_event": self.event,
-                },
-            )
             return Response(data=WebhookHandlerErrorMessages.SKIP_NOT_ACTIVE)
         if request.data.get("context", "")[:8] == "codecov/":
-            log.debug(
-                "Recieved a web hook for a Codecov status from GitHub. We ignore these, skipping.",
-                extra={
-                    "repoid": repo.repoid,
-                    "commit": commitid,
-                    "github_webhook_event": self.event,
-                },
-            )
             return Response(data=WebhookHandlerErrorMessages.SKIP_CODECOV_STATUS)
         if request.data.get("state") == "pending":
-            log.debug(
-                "Recieved a web hook for a `pending` status from GitHub. We ignore these, skipping.",
-                extra={
-                    "repoid": repo.repoid,
-                    "commit": commitid,
-                    "github_webhook_event": self.event,
-                },
-            )
             return Response(data=WebhookHandlerErrorMessages.SKIP_PENDING_STATUSES)
 
         if not Commit.objects.filter(
@@ -365,7 +276,7 @@ class GithubWebhookHandler(APIView):
             return Response(data=WebhookHandlerErrorMessages.SKIP_PROCESSING)
 
         log.info(
-            "Triggering notify task",
+            "github_status_webhook: triggering notify task",
             extra={
                 "repoid": repo.repoid,
                 "commit": commitid,
@@ -401,34 +312,14 @@ class GithubWebhookHandler(APIView):
         repo = self._get_repo(request)
 
         if not repo.active:
-            log.info(
-                "Repository is not active, ignoring pull request event",
-                extra={"repoid": repo.repoid, "github_webhook_event": self.event},
-            )
             return Response(data=WebhookHandlerErrorMessages.SKIP_NOT_ACTIVE)
 
         action, pullid = request.data.get("action"), request.data.get("number")
 
         if action in ["opened", "closed", "reopened", "synchronize", "labeled"]:
-            log.info(
-                f"Pull request action is '{action}', triggering pulls_sync task",
-                extra={
-                    "repoid": repo.repoid,
-                    "github_webhook_event": self.event,
-                    "pullid": pullid,
-                },
-            )
             TaskService().pulls_sync(repoid=repo.repoid, pullid=pullid)
+
         elif action == "edited":
-            log.info(
-                f"Pull request action is 'edited', updating pull title to "
-                f"'{request.data.get('pull_request', {}).get('title')}'",
-                extra={
-                    "repoid": repo.repoid,
-                    "github_webhook_event": self.event,
-                    "pullid": pullid,
-                },
-            )
             Pull.objects.filter(repository=repo, pullid=pullid).update(
                 title=request.data.get("pull_request", {}).get("title")
             )
@@ -803,12 +694,12 @@ class GithubWebhookHandler(APIView):
         return Response()
 
     def post(self, request, *args, **kwargs):
-        self.event = self.request.META.get(GitHubHTTPHeaders.EVENT)
+        self.event = request.META.get(GitHubHTTPHeaders.EVENT)
         log.info(
             "GitHub Webhook Handler invoked",
             extra={
                 "github_webhook_event": self.event,
-                "delivery": self.request.META.get(GitHubHTTPHeaders.DELIVERY_TOKEN),
+                "delivery": request.META.get(GitHubHTTPHeaders.DELIVERY_TOKEN),
             },
         )
         self.validate_signature(request)
