@@ -247,6 +247,9 @@ class UploadBreadcrumb(
     class Meta:
         ordering = ["-created_at"]
         indexes = [
+            models.Index(
+                fields=["-created_at", "-id"], name="%(app_label)s_created_id"
+            ),
             models.Index(fields=["commit_sha"], name="%(app_label)s_commit_sha"),
             models.Index(
                 fields=["commit_sha", "repo_id"], name="%(app_label)s_sha_repo"
