@@ -90,6 +90,26 @@ WHERE "upload_breadcrumbs_uploadbreadcrumb"."repo_id" IN
 -- [123]
 
 
+-- TAPullComment
+DELETE
+FROM "test_analytics_tapullcomment"
+WHERE "test_analytics_tapullcomment"."repo_id" IN
+    (SELECT U0."repoid"
+     FROM "repos" U0
+     WHERE U0."ownerid" IN (%s));
+-- [123]
+
+
+-- TAUpload
+DELETE
+FROM "test_analytics_upload"
+WHERE "test_analytics_upload"."repo_id" IN
+    (SELECT U0."repoid"
+     FROM "repos" U0
+     WHERE U0."ownerid" IN (%s));
+-- [123]
+
+
 -- RepositoryToken
 DELETE
 FROM "codecov_auth_repositorytoken"

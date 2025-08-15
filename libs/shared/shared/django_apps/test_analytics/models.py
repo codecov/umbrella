@@ -33,7 +33,7 @@ class Flake(models.Model):
         ]
 
 
-class PullComment(BaseModel):
+class TAPullComment(BaseModel):
     """
     Stores pull request comment references without referencing the full commit
     or pull objects which are subject to Sentry retention policies.
