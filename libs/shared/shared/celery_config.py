@@ -73,6 +73,9 @@ sync_test_results_task_name = (
     f"app.tasks.{TaskConfigGroup.test_results.value}.SyncTestResultsTask"
 )
 
+ingest_testruns_task_name = (
+    f"app.tasks.{TaskConfigGroup.test_results.value}.IngestTestruns"
+)
 # Cache rollup tasks
 cache_test_rollups_task_name = (
     f"app.tasks.{TaskConfigGroup.cache_rollup.value}.CacheTestRollupsTask"
