@@ -5,6 +5,7 @@ from asgiref.sync import async_to_sync
 
 from app import celery_app
 from database.models import Owner
+from helpers.admins import update_single_owner_admins
 from services.owner import get_owner_provider_service
 from shared.celery_config import sync_teams_task_name
 from tasks.base import BaseCodecovTask
@@ -61,6 +62,12 @@ class SyncTeamsTask(BaseCodecovTask, name=sync_teams_task_name):
 
         owner.updatestamp = datetime.now()
         owner.organizations = team_ids
+
+        if removed_orgs:
+            for org_id in removed_orgs:
+                org = db_session.query(Owner).filter(Owner.ownerid == org_id).first()
+                if org:
+                    update_single_owner_admins(db_session, org)
 
     def upsert_team(self, db_session, service, service_id, data):
         log.info(

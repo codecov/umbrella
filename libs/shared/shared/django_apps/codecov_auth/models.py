@@ -696,6 +696,30 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
                 pass
         self.save()
 
+    def update_admins(self) -> None:
+        if not self.admins:
+            return
+
+        admin_ids = self.admins if self.admins is not None else []
+        admins = Owner.objects.filter(pk__in=admin_ids)
+        valid_admin_ids: set[int] = set()
+
+        for admin in admins:
+            if admin.organizations and self.ownerid in admin.organizations:
+                valid_admin_ids.add(admin.ownerid)
+            else:
+                log.warning(
+                    "Suppressing billing email to admin not in organization",
+                    extra={
+                        "org_owner_id": self.ownerid,
+                        "admin_owner_id": admin.ownerid,
+                    },
+                )
+
+        if valid_admin_ids != set(self.admins):
+            self.admins = list(valid_admin_ids)
+            self.save(update_fields=["admins"])
+
 
 GITHUB_APP_INSTALLATION_DEFAULT_NAME = "codecov_app_installation"
 
