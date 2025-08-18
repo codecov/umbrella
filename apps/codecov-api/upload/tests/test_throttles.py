@@ -13,7 +13,8 @@ from shared.django_apps.core.tests.factories import (
 from shared.django_apps.reports.models import ReportType
 from shared.helpers.redis import get_redis_connection
 from shared.plan.constants import DEFAULT_FREE_PLAN
-from shared.upload.utils import UploaderType, insert_coverage_measurement
+from shared.upload.types import UploaderType
+from shared.upload.utils import insert_coverage_measurement
 from upload.throttles import UploadsPerCommitThrottle, UploadsPerWindowThrottle
 
 

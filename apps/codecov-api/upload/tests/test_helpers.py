@@ -26,7 +26,8 @@ from shared.django_apps.upload_breadcrumbs.models import (
 )
 from shared.github import InvalidInstallationError
 from shared.plan.constants import DEFAULT_FREE_PLAN
-from shared.upload.utils import UploaderType, insert_coverage_measurement
+from shared.upload.types import UploaderType
+from shared.upload.utils import insert_coverage_measurement
 from upload.helpers import (
     check_commit_upload_constraints,
     determine_repo_for_upload,

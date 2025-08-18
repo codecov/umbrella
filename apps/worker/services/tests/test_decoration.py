@@ -33,7 +33,8 @@ from shared.django_apps.reports.tests.factories import (
 )
 from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.plan.service import PlanService
-from shared.upload.utils import UploaderType, insert_coverage_measurement
+from shared.upload.types import UploaderType
+from shared.upload.utils import insert_coverage_measurement
 from shared.utils.test_utils import mock_config_helper
 from tests.helpers import mock_all_plans_and_tiers
 

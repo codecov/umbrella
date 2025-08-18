@@ -49,7 +49,8 @@ from shared.django_apps.user_measurements.models import UserMeasurement
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Histogram
 from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
-from shared.upload.utils import UploaderType, bulk_insert_coverage_measurements
+from shared.upload.types import UploaderType
+from shared.upload.utils import bulk_insert_coverage_measurements
 from shared.yaml import UserYaml
 from shared.yaml.user_yaml import OwnerContext
 from tasks.base import BaseCodecovTask
