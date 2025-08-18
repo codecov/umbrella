@@ -3,10 +3,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime
+from time import monotonic
 from typing import Literal, TypedDict
 
 import sentry_sdk
 import test_results_parser
+from django.db import InterfaceError, connections
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -222,6 +224,21 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
             case "both":
                 try:
                     self._new_impl(repoid, commitid, commit_yaml, arguments_list, False)
+                except InterfaceError as exc:
+                    conn = connections["default"]
+                    log.exception(
+                        "Interface error while talking to database",
+                        extra={
+                            "task_args": args,
+                            "task_kwargs": kwargs,
+                            "close_at": conn.close_at,
+                            "closed_in_transaction": conn.closed_in_transaction,
+                            "errors_occurred": conn.errors_occurred,
+                            "monotonic_time": monotonic(),
+                        },
+                        exc_info=True,
+                    )
+                    sentry_sdk.capture_exception(exc)
                 except Exception as exc:
                     sentry_sdk.capture_exception(exc)
                 return self._old_impl(
