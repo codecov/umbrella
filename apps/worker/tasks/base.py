@@ -278,6 +278,7 @@ class BaseCodecovTask(celery_app.Task):
                         "closed_in_transaction": conn.closed_in_transaction,
                         "errors_occurred": conn.errors_occurred,
                         "monotonic_time": monotonic(),
+                        "is_usable": conn.is_usable(),
                     },
                     exc_info=True,
                 )
