@@ -11,7 +11,8 @@ from shared.django_apps.core.tests.factories import (
 )
 from shared.django_apps.reports.models import ReportType
 from shared.plan.constants import PlanName, TierName, TrialStatus
-from shared.upload.utils import UploaderType, insert_coverage_measurement
+from shared.upload.types import UploaderType
+from shared.upload.utils import insert_coverage_measurement
 
 from ..get_uploads_number_per_user import GetUploadsNumberPerUserInteractor
 

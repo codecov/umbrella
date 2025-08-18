@@ -40,7 +40,8 @@ from shared.django_apps.upload_breadcrumbs.models import (
 from shared.events.amplitude import UNKNOWN_USER_OWNERID, AmplitudeEventPublisher
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import inc_counter
-from shared.upload.utils import UploaderType, insert_coverage_measurement
+from shared.upload.types import UploaderType
+from shared.upload.utils import insert_coverage_measurement
 from upload.helpers import (
     dispatch_upload_task,
     generate_upload_prometheus_metrics_labels,

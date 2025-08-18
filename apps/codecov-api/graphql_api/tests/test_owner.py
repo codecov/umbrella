@@ -30,7 +30,8 @@ from shared.django_apps.core.tests.factories import (
 )
 from shared.django_apps.reports.models import ReportType
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TrialStatus
-from shared.upload.utils import UploaderType, insert_coverage_measurement
+from shared.upload.types import UploaderType
+from shared.upload.utils import insert_coverage_measurement
 
 from .helper import GraphQLTestHelper, paginate_connection
 
