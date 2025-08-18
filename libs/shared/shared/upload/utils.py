@@ -1,5 +1,4 @@
 from datetime import timedelta
-from enum import Enum
 
 from django.db import transaction
 from django.db.models import Q
@@ -9,11 +8,6 @@ from shared.django_apps.codecov_auth.models import TrialStatus
 from shared.django_apps.reports.models import ReportType
 from shared.django_apps.user_measurements.models import UserMeasurement
 from shared.plan.service import PlanService
-
-
-class UploaderType(Enum):
-    LEGACY = "legacy"
-    CLI = "cli"
 
 
 def query_monthly_coverage_measurements(plan_service: PlanService) -> int:
