@@ -141,6 +141,9 @@ else:
 # the default is 0 seconds, meaning django closes the connection after every request
 # https://docs.djangoproject.com/en/3.1/ref/settings/#conn-max-age
 CONN_MAX_AGE = int(get_config("services", "database", "conn_max_age", default=0))
+CONN_HEALTH_CHECKS = get_config(
+    "services", "database", "conn_health_checks", default=False
+)
 
 DATABASES = {
     "default": {
@@ -151,6 +154,7 @@ DATABASES = {
         "HOST": DATABASE_HOST,
         "PORT": DATABASE_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
+        "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
     }
 }
 
@@ -163,6 +167,7 @@ if DATABASE_READ_REPLICA_ENABLED:
         "HOST": DATABASE_READ_HOST,
         "PORT": DATABASE_READ_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
+        "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
     }
 
 if TIMESERIES_ENABLED:
@@ -174,6 +179,7 @@ if TIMESERIES_ENABLED:
         "HOST": TIMESERIES_DATABASE_HOST,
         "PORT": TIMESERIES_DATABASE_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
+        "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
     }
 
     if TIMESERIES_DATABASE_READ_REPLICA_ENABLED:
@@ -185,6 +191,7 @@ if TIMESERIES_ENABLED:
             "HOST": TIMESERIES_DATABASE_READ_HOST,
             "PORT": TIMESERIES_DATABASE_READ_PORT,
             "CONN_MAX_AGE": CONN_MAX_AGE,
+            "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
         }
 
 if TA_TIMESERIES_ENABLED:
@@ -196,6 +203,7 @@ if TA_TIMESERIES_ENABLED:
         "HOST": TA_TIMESERIES_DATABASE_HOST,
         "PORT": TA_TIMESERIES_DATABASE_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
+        "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
     }
 
 # See https://django-postgres-extra.readthedocs.io/en/main/settings.html
