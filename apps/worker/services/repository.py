@@ -26,6 +26,7 @@ from shared.torngit.exceptions import (
     TorngitError,
     TorngitObjectNotFoundError,
 )
+from shared.torngit.response_types import ProviderPull
 from shared.typings.torngit import (
     AdditionalData,
     OwnerInfo,
@@ -575,6 +576,46 @@ async def fetch_and_update_pull_request_information(
     db_session.commit()
 
     return EnrichedPull(database_pull=pull, provider_pull=pull_information)
+
+
+async def fetch_pull_request_information(
+    repository_service: TorngitBaseAdapter,
+    repo_id: int,
+    commit_sha: str,
+    branch: str,
+    pull_id: int | None,
+) -> ProviderPull | None:
+    """
+    Fetches pull request information from the provider without interacting with
+    the database.
+    """
+    if not pull_id:
+        try:
+            pull_id = await repository_service.find_pull_request(
+                commit=commit_sha, branch=branch
+            )
+        except TorngitClientError:
+            log.warning(
+                "Unable to fetch what pull request the commit belongs to",
+                exc_info=True,
+                extra={"repo_id": repo_id, "commit_sha": commit_sha},
+            )
+    if not pull_id:
+        return None
+    try:
+        return await repository_service.get_pull_request(str(pull_id))
+    except TorngitClientError:
+        log.warning(
+            "Unable to find pull request information on provider to update it due to client error",
+            extra={"repo_id": repo_id, "pull_id": pull_id},
+        )
+        return None
+    except TorngitError:
+        log.warning(
+            "Unable to find pull request information on provider to update it due to unknown provider error",
+            extra={"repo_id": repo_id, "pull_id": pull_id},
+        )
+        return None
 
 
 @sentry_sdk.trace

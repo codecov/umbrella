@@ -10,6 +10,7 @@ from database.tests.factories import (
     PullFactory,
     UploadFactory,
 )
+from services.repository import EnrichedPull
 from services.test_analytics.ta_finish_upload import FinisherResult, new_impl
 from services.yaml import UserYaml
 from shared.django_apps.core.models import Commit as DjangoCommit
@@ -203,6 +204,7 @@ def test_ta_finish_upload(
 
     mock_pull(
         mocker.Mock(
+            spec=EnrichedPull,
             provider_pull={
                 "author": {
                     "username": "test-user",

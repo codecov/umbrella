@@ -300,6 +300,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                     failed_tests, passed_tests, skipped_tests, None
                 )
                 notifier = TestResultsNotifier(
+                    repo,
                     commit,
                     commit_yaml,
                     payload=payload,
@@ -353,7 +354,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
 
             if should_show_upgrade_message:
                 notifier = TestResultsNotifier(
-                    commit, commit_yaml, _pull=pull, _repo_service=repo_service
+                    repo, commit, commit_yaml, _pull=pull, _repo_service=repo_service
                 )
                 success, reason = notifier.upgrade_comment()
 
@@ -377,6 +378,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                 failed_tests, passed_tests, skipped_tests, info
             )
             notifier = TestResultsNotifier(
+                repo,
                 commit,
                 commit_yaml,
                 payload=payload,
