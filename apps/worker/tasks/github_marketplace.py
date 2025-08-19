@@ -6,6 +6,7 @@ import requests
 from app import celery_app
 from database.models import Owner, Repository
 from services.github_marketplace import GitHubMarketplaceService
+from services.owner import clear_identical_owners
 from services.stripe import stripe
 from shared.celery_config import ghm_sync_plans_task_name
 from shared.plan.constants import DEFAULT_FREE_PLAN
@@ -140,8 +141,12 @@ class SyncPlansTask(BaseCodecovTask, name=ghm_sync_plans_task_name):
         )
 
         if owner:
-            owner.username = username
-            owner.updatestamp = datetime.now()
+            if not owner.username or (
+                username and owner.username.lower() != username.lower()
+            ):
+                clear_identical_owners(db_session, owner, username, "github")
+                owner.username = username
+                owner.updatestamp = datetime.now()
         else:
             owner = self.create_owner(db_session, service_id, username)
 

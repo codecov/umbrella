@@ -907,3 +907,36 @@ class LoginMixinTests(TestCase):
             )
             == 1
         )
+
+    @patch("shared.events.amplitude.AmplitudeEventPublisher.publish")
+    def test_get_or_create_owner_clears_conflicting_username_and_deletes_sessions(
+        self, amplitude_publish_mock
+    ):
+        subject_owner = OwnerFactory(
+            service="github", service_id=12345, username="oldname"
+        )
+        conflicting_owner = OwnerFactory(service="github", username="newname")
+
+        SessionFactory(owner=conflicting_owner, type="login", name="to_delete_login")
+        SessionFactory(owner=conflicting_owner, type="api", name="to_delete_api")
+
+        assert Session.objects.filter(owner=conflicting_owner).count() == 2
+
+        self.mixin_instance._get_or_create_owner(
+            {
+                "user": {
+                    "id": subject_owner.service_id,
+                    "key": "xyz",
+                    "login": "newname",
+                },
+                "has_private_access": False,
+            },
+            self.request,
+        )
+
+        conflicting_owner.refresh_from_db()
+        assert conflicting_owner.username is None
+        assert Session.objects.filter(owner=conflicting_owner).count() == 0
+
+        subject_owner.refresh_from_db()
+        assert subject_owner.username == "newname"

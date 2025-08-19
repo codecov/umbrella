@@ -378,6 +378,27 @@ class LoginMixin:
             defaults={"createstamp": timezone.now()},
         )
         if login_data["login"] != owner.username:
+            if login_data["login"] is not None:
+                other_owner = Owner.objects.filter(
+                    service=f"{self.service}",
+                    username=login_data["login"],
+                ).first()
+                if other_owner:
+                    log.warning(
+                        "_get_or_create_owner: Username already exists for another owner",
+                        extra={
+                            "service": self.service,
+                            "service_id": login_data["id"],
+                            "ownerid": owner.ownerid,
+                            "other_ownerid": other_owner.ownerid,
+                        },
+                    )
+
+                    other_owner.username = None
+                    other_owner.save(update_fields=["username"])
+
+                    Session.objects.filter(owner=other_owner).delete()
+
             fields_to_update.append("username")
             owner.username = login_data["login"]
 

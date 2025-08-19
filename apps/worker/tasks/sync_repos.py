@@ -9,7 +9,7 @@ from sqlalchemy.orm.session import Session
 
 from app import celery_app
 from database.models import Owner, Repository
-from services.owner import get_owner_provider_service
+from services.owner import clear_identical_owners, get_owner_provider_service
 from shared.celery_config import (
     sync_repo_languages_gql_task_name,
     sync_repo_languages_task_name,
@@ -490,7 +490,8 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         )
 
         if owner:
-            if (owner.username or "").lower() != username.lower():
+            if not owner.username or owner.username.lower() != username.lower():
+                clear_identical_owners(db_session, owner, username, service)
                 owner.username = username
         else:
             owner = Owner(
