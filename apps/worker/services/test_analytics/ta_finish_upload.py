@@ -202,6 +202,7 @@ def new_impl(
         }
 
     notifier = TestResultsNotifier(
+        repo,
         commit,
         commit_yaml,
         _pull=pull,

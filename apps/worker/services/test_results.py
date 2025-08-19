@@ -19,10 +19,11 @@ from database.models import (
     TestInstance,
     Upload,
 )
-from helpers.notifier import BaseNotifier, NotifierResult
+from helpers.notifier import BaseNotifier
 from services.license import requires_license
 from services.processing.types import UploadArguments
 from services.report import BaseReportService
+from services.repository import EnrichedPull
 from services.urls import get_members_url, get_test_analytics_url
 from services.yaml import read_yaml_field
 from shared.django_apps.codecov_auth.models import Plan
@@ -205,9 +206,10 @@ def generate_failure_info[T: (str, bytes)](
         return failure_message
 
 
-def generate_view_test_analytics_line(commit: Commit) -> str:
-    repo = commit.repository
-    test_analytics_url = get_test_analytics_url(repo, commit)
+def generate_view_test_analytics_line(
+    repo: Repository, commit_branch: str | None
+) -> str:
+    test_analytics_url = get_test_analytics_url(repo, commit_branch)
     return f"\nTo view more test analytics, go to the [Test Analytics Dashboard]({test_analytics_url})\n<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/BpocVj23nhr2Y45G7) to help us improve Test Analytics.</sub>"
 
 
@@ -368,7 +370,15 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
 
                 message.append(flaky_section)
 
-            message.append(generate_view_test_analytics_line(self.commit))
+            message.append(
+                generate_view_test_analytics_line(
+                    # TODO: Deprecate database-reliant code path after old TA pipeline is removed
+                    self.repo,
+                    self.commit.branch
+                    if isinstance(self.commit, Commit)
+                    else self.commit["branch"],
+                )
+            )
         return "\n".join(message)
 
     def error_comment(self):
@@ -397,6 +407,9 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
         pull = self.get_pull()
         if pull is None:
             return False, "no_pull"
+
+        # TODO: this will need to change when seat activation in the new pipeline is added
+        assert isinstance(pull, EnrichedPull), "Expected EnrichedPull type"
 
         db_pull = pull.database_pull
         provider_pull = pull.provider_pull
@@ -431,18 +444,6 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
             return (False, "torngit_error")
 
         return (True, "comment_posted")
-
-    def notify(self):
-        assert self._pull
-        pull = self._pull
-
-        message = self.build_message()
-
-        sent_to_provider = self.send_to_provider(pull, message)
-        if sent_to_provider == False:
-            return NotifierResult.TORNGIT_ERROR
-
-        return NotifierResult.COMMENT_POSTED
 
 
 def latest_failures_for_commit(

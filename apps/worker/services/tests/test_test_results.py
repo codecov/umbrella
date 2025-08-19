@@ -2,12 +2,9 @@ from unittest import mock
 
 import pytest
 
-from database.tests.factories import (
-    CommitFactory,
-    OwnerFactory,
-    RepositoryFactory,
-)
+from database.tests.factories import CommitFactory, OwnerFactory, RepositoryFactory
 from helpers.notifier import NotifierResult
+from services.repository import EnrichedPull
 from services.test_results import (
     ErrorPayload,
     FlakeInfo,
@@ -21,8 +18,11 @@ from services.test_results import (
     should_do_flaky_detection,
 )
 from services.yaml import UserYaml
+from shared.django_apps.test_analytics.models import TAPullComment
 from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.torngit.exceptions import TorngitClientError
+from shared.torngit.response_types import ProviderPull
+from shared.upload.types import TAUploadContext
 from tests.helpers import mock_all_plans_and_tiers
 
 
@@ -34,9 +34,49 @@ def mock_repo_service():
     return repo_service
 
 
+def test_get_pull_none(mocker):
+    mocker.patch(
+        "helpers.notifier.fetch_and_update_pull_request_information_from_commit",
+        return_value=None,
+    )
+    commit = CommitFactory()
+    tn = TestResultsNotifier(commit.repository, commit, None)
+    tn._repo_service = mock_repo_service()
+
+    res = tn.get_pull()
+
+    assert res is None
+
+
+def test_get_pull_provider_pull(mocker):
+    provider_pull = ProviderPull(
+        id="1",
+        number="1",
+        title="Test PR",
+        state="open",
+        author={"username": "test_user"},
+        base={"branch": "main", "commitid": "base_commit"},
+        head={"branch": "feature", "commitid": "head_commit"},
+        merge_commit_sha=None,
+    )
+    mocker.patch(
+        "helpers.notifier.fetch_pull_request_information",
+        return_value=provider_pull,
+    )
+    repo = RepositoryFactory(repoid=12)
+    commit = TAUploadContext(commit_sha="abc123", branch="main", pull_id=1)
+    tn = TestResultsNotifier(repo, commit, None)
+    tn._repo_service = mock_repo_service()
+
+    res = tn.get_pull()
+
+    assert res == provider_pull
+
+
 def test_send_to_provider():
-    tn = TestResultsNotifier(CommitFactory(), None)
-    tn._pull = mock.Mock()
+    commit = CommitFactory()
+    tn = TestResultsNotifier(commit.repository, commit, None)
+    tn._pull = mock.Mock(spec=EnrichedPull, database_pull=mock.Mock())
     tn._pull.database_pull.commentid = None
     tn._repo_service = mock_repo_service()
     m = {"id": 1}
@@ -52,13 +92,35 @@ def test_send_to_provider():
     assert tn._pull.database_pull.commentid == 1
 
 
+@pytest.mark.django_db
+def test_send_to_provider_provider_pull():
+    repo = RepositoryFactory(repoid=12)
+    commit = CommitFactory(repository=repo)
+    tn = TestResultsNotifier(repo, commit, None)
+    tn._pull = mock.Mock(spec=ProviderPull, id=1)
+    tn._repo_service = mock_repo_service()
+    m = {"id": "1"}
+    tn._repo_service.post_comment.return_value = m
+
+    res = tn.send_to_provider(tn._pull, "hello world")
+
+    assert res == True
+
+    tn._repo_service.post_comment.assert_called_with(tn._pull.id, "hello world")
+    assert (
+        TAPullComment.objects.get(
+            repo_id=commit.repository.repoid, pull_id=1
+        ).comment_id
+        == "1"
+    )
+
+
 def test_send_to_provider_edit():
-    tn = TestResultsNotifier(CommitFactory(), None)
-    tn._pull = mock.Mock()
+    commit = CommitFactory()
+    tn = TestResultsNotifier(commit.repository, commit, None)
+    tn._pull = mock.Mock(spec=EnrichedPull, database_pull=mock.Mock())
     tn._pull.database_pull.commentid = 1
     tn._repo_service = mock_repo_service()
-    m = {"id": 1}
-    tn._repo_service.edit_comment.return_value = m
 
     res = tn.send_to_provider(tn._pull, "hello world")
 
@@ -68,9 +130,26 @@ def test_send_to_provider_edit():
     )
 
 
+@pytest.mark.django_db
+def test_send_to_provider_edit_provider_pull():
+    repo = RepositoryFactory(repoid=12)
+    commit = CommitFactory(repository=repo)
+    pull_id = 7
+    TAPullComment.objects.create(repo_id=repo.repoid, pull_id=pull_id, comment_id="1")
+    tn = TestResultsNotifier(commit.repository, commit, None)
+    tn._pull = mock.Mock(spec=ProviderPull, id=pull_id)
+    tn._repo_service = mock_repo_service()
+
+    res = tn.send_to_provider(tn._pull, "hello world")
+
+    assert res == True
+    tn._repo_service.edit_comment.assert_called_with(tn._pull.id, "1", "hello world")
+
+
 def test_send_to_provider_fail():
-    tn = TestResultsNotifier(CommitFactory(), None)
-    tn._pull = mock.Mock()
+    commit = CommitFactory()
+    tn = TestResultsNotifier(commit.repository, commit, None)
+    tn._pull = mock.Mock(spec=EnrichedPull, database_pull=mock.Mock())
     tn._pull.database_pull.commentid = 1
     tn._repo_service = mock_repo_service()
     tn._repo_service.edit_comment.side_effect = TorngitClientError
@@ -116,7 +195,7 @@ def test_build_message(snapshot):
         repository__owner__service="github",
         repository__name="name",
     )
-    tn = TestResultsNotifier(commit, None, None, None, payload)
+    tn = TestResultsNotifier(commit.repository, commit, None, None, None, payload)
     res = tn.build_message()
 
     assert snapshot("txt") == res
@@ -142,10 +221,21 @@ def test_build_message_with_flake(snapshot):
         repository__owner__service="github",
         repository__name="name",
     )
-    tn = TestResultsNotifier(commit, None, None, None, payload)
+    tn = TestResultsNotifier(commit.repository, commit, None, None, None, payload)
     res = tn.build_message()
 
     assert snapshot("txt") == res
+
+
+def test_notify_no_pull(mocker):
+    commit = CommitFactory()
+    tn = TestResultsNotifier(commit.repository, commit, None, _pull=None)
+    tn.get_pull = mock.Mock(return_value=None)
+    tn.build_message = mock.Mock()
+
+    notification_result = tn.notify()
+
+    assert notification_result == NotifierResult.NO_PULL
 
 
 def test_notify(mocker):
@@ -154,7 +244,8 @@ def test_notify(mocker):
         "helpers.notifier.fetch_and_update_pull_request_information_from_commit",
         return_value=mock.Mock(),
     )
-    tn = TestResultsNotifier(CommitFactory(), None, _pull=mock.Mock())
+    commit = CommitFactory()
+    tn = TestResultsNotifier(commit.repository, commit, None, _pull=mock.Mock())
     tn.build_message = mock.Mock()
     tn.send_to_provider = mock.Mock()
 
@@ -171,7 +262,8 @@ def test_notify_fail_torngit_error(
         "helpers.notifier.fetch_and_update_pull_request_information_from_commit",
         return_value=mock.Mock(),
     )
-    tn = TestResultsNotifier(CommitFactory(), None, _pull=mock.Mock())
+    commit = CommitFactory()
+    tn = TestResultsNotifier(commit.repository, commit, None, _pull=mock.Mock())
     tn.build_message = mock.Mock()
     tn.send_to_provider = mock.Mock(return_value=False)
 
@@ -212,14 +304,15 @@ def test_specific_error_message(mocker, snapshot):
     )
     mocker.patch(
         "helpers.notifier.fetch_and_update_pull_request_information_from_commit",
-        return_value=mock.AsyncMock(),
+        return_value=mock.AsyncMock(spec=EnrichedPull, database_pull=mock.Mock()),
     )
 
     error = ErrorPayload(
         "unsupported_file_format",
         "Error parsing JUnit XML in test.xml at 4:32: ParserError: No name found",
     )
-    tn = TestResultsNotifier(CommitFactory(), None, error=error)
+    commit = CommitFactory()
+    tn = TestResultsNotifier(commit.repository, commit, None, error=error)
     result = tn.error_comment()
 
     assert result == (True, "comment_posted")
@@ -238,10 +331,11 @@ def test_specific_error_message_no_error(mocker, snapshot):
     )
     mocker.patch(
         "helpers.notifier.fetch_and_update_pull_request_information_from_commit",
-        return_value=mock.AsyncMock(),
+        return_value=mock.AsyncMock(spec=EnrichedPull, database_pull=mock.Mock()),
     )
 
-    tn = TestResultsNotifier(CommitFactory(), None)
+    commit = CommitFactory()
+    tn = TestResultsNotifier(commit.repository, commit, None)
     result = tn.error_comment()
 
     assert result == (True, "comment_posted")

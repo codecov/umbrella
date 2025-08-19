@@ -77,6 +77,7 @@ class NotifyErrorTask(BaseCodecovTask, name=notify_error_task_name):
         )
 
         error_notifier = ErrorNotifier(
+            commit.repository,
             commit,
             commit_yaml,
             failed_upload=num_failed_upload,

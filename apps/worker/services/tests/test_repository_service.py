@@ -7,10 +7,7 @@ import pytest
 from freezegun import freeze_time
 
 from database.models import Owner
-from database.models.core import (
-    Pull,
-    Repository,
-)
+from database.models.core import Pull, Repository
 from database.tests.factories import (
     CommitFactory,
     GithubAppInstallationFactory,
@@ -24,6 +21,7 @@ from services.repository import (
     fetch_and_update_pull_request_information_from_commit,
     fetch_appropriate_parent_for_commit,
     fetch_commit_yaml_and_possibly_store,
+    fetch_pull_request_information,
     get_repo_provider_service,
     get_repo_provider_service_by_id,
     update_commit_from_provider_info,
@@ -35,6 +33,7 @@ from shared.reports.types import UploadType
 from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import (
     TorngitClientError,
+    TorngitError,
     TorngitObjectNotFoundError,
     TorngitServerUnreachableError,
 )
@@ -2003,6 +2002,153 @@ class TestGetRepoProviderServiceForSpecificCommit:
             "abcqwertabcqwertabcqwertabcqwertabcqwert",
             "e9868516aafd365aeab2957d3745353b532d3a37",
         )
+
+
+class TestFetchPullRequestInformation:
+    @pytest.mark.asyncio
+    async def test_fetch_pull_request_information_with_pull_id_success(self, mocker):
+        """Test successful fetch when pull_id is provided"""
+        pull_data = {
+            "id": "123",
+            "number": "456",
+            "state": "open",
+            "title": "Test PR",
+            "author": {"id": "author_id", "username": "author_username"},
+            "base": {"branch": "main", "commitid": "base_sha"},
+            "head": {"branch": "feature", "commitid": "head_sha"},
+        }
+
+        repository_service = mocker.MagicMock(
+            get_pull_request=mock.AsyncMock(return_value=pull_data)
+        )
+
+        result = await fetch_pull_request_information(
+            repository_service, 123, "commit_sha", "feature", 456
+        )
+
+        assert result == pull_data
+        repository_service.get_pull_request.assert_called_once_with("456")
+        # Should not try to find pull request since pull_id was provided
+        assert (
+            not hasattr(repository_service, "find_pull_request")
+            or not repository_service.find_pull_request.called
+        )
+
+    @pytest.mark.asyncio
+    async def test_fetch_pull_request_information_without_pull_id_success(self, mocker):
+        """Test successful fetch when pull_id is None and needs to be found"""
+        pull_data = {
+            "id": "123",
+            "number": "456",
+            "state": "open",
+            "title": "Test PR",
+            "author": {"id": "author_id", "username": "author_username"},
+            "base": {"branch": "main", "commitid": "base_sha"},
+            "head": {"branch": "feature", "commitid": "head_sha"},
+        }
+
+        repository_service = mocker.MagicMock(
+            find_pull_request=mock.AsyncMock(return_value=456),
+            get_pull_request=mock.AsyncMock(return_value=pull_data),
+        )
+
+        result = await fetch_pull_request_information(
+            repository_service, 123, "commit_sha", "feature", None
+        )
+
+        assert result == pull_data
+        repository_service.find_pull_request.assert_called_once_with(
+            commit="commit_sha", branch="feature"
+        )
+        repository_service.get_pull_request.assert_called_once_with("456")
+
+    @pytest.mark.asyncio
+    async def test_fetch_pull_request_information_find_pull_request_client_error(
+        self, mocker
+    ):
+        """Test when find_pull_request raises TorngitClientError"""
+        repository_service = mocker.MagicMock(
+            find_pull_request=mock.AsyncMock(
+                side_effect=TorngitClientError(422, "response", "message")
+            )
+        )
+
+        result = await fetch_pull_request_information(
+            repository_service, 123, "commit_sha", "feature", None
+        )
+
+        assert result is None
+        repository_service.find_pull_request.assert_called_once_with(
+            commit="commit_sha", branch="feature"
+        )
+        # Should not try to get pull request since find failed
+        assert (
+            not hasattr(repository_service, "get_pull_request")
+            or not repository_service.get_pull_request.called
+        )
+
+    @pytest.mark.asyncio
+    async def test_fetch_pull_request_information_find_pull_request_returns_none(
+        self, mocker
+    ):
+        """Test when find_pull_request returns None"""
+        repository_service = mocker.MagicMock(
+            find_pull_request=mock.AsyncMock(return_value=None)
+        )
+
+        result = await fetch_pull_request_information(
+            repository_service, 123, "commit_sha", "feature", None
+        )
+
+        assert result is None
+        repository_service.find_pull_request.assert_called_once_with(
+            commit="commit_sha", branch="feature"
+        )
+        # Should not try to get pull request since pull_id is None
+        assert (
+            not hasattr(repository_service, "get_pull_request")
+            or not repository_service.get_pull_request.called
+        )
+
+    @pytest.mark.asyncio
+    async def test_fetch_pull_request_information_get_pull_request_client_error(
+        self, mocker
+    ):
+        """Test when get_pull_request raises TorngitClientError"""
+        repository_service = mocker.MagicMock(
+            find_pull_request=mock.AsyncMock(return_value=456),
+            get_pull_request=mock.AsyncMock(
+                side_effect=TorngitClientError(404, "response", "message")
+            ),
+        )
+
+        result = await fetch_pull_request_information(
+            repository_service, 123, "commit_sha", "feature", None
+        )
+
+        assert result is None
+        repository_service.find_pull_request.assert_called_once_with(
+            commit="commit_sha", branch="feature"
+        )
+        repository_service.get_pull_request.assert_called_once_with("456")
+
+    @pytest.mark.asyncio
+    async def test_fetch_pull_request_information_get_pull_request_torngit_error(
+        self, mocker
+    ):
+        """Test when get_pull_request raises TorngitError"""
+        repository_service = mocker.MagicMock(
+            get_pull_request=mock.AsyncMock(
+                side_effect=TorngitError("response", "message")
+            )
+        )
+
+        result = await fetch_pull_request_information(
+            repository_service, 123, "commit_sha", "feature", 456
+        )
+
+        assert result is None
+        repository_service.get_pull_request.assert_called_once_with("456")
 
 
 def test_fetch_commit_yaml_and_possibly_store_only_commit_yaml(

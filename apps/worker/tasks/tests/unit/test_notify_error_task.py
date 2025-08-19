@@ -33,7 +33,11 @@ def test_error_notifier():
     total_upload = 2
 
     e = ErrorNotifier(
-        commit, None, failed_upload=failed_upload, total_upload=total_upload
+        commit.repository,
+        commit,
+        None,
+        failed_upload=failed_upload,
+        total_upload=total_upload,
     )
 
     assert (
