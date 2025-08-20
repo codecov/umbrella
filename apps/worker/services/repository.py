@@ -12,7 +12,8 @@ from sqlalchemy.orm import Query, Session, lazyload
 
 import shared.torngit as torngit
 from database.enums import CommitErrorTypes
-from database.models import Commit, Owner, Pull, Repository
+from database.models import Commit, Owner, Pull
+from database.models import Repository as SQLAlchemyRepository
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from helpers.save_commit_error import save_commit_error
 from helpers.token_refresh import get_token_refresh_callback
@@ -20,6 +21,7 @@ from services.yaml import read_yaml_field, save_repo_yaml_to_database_if_needed
 from services.yaml.fetcher import fetch_commit_yaml_from_provider
 from shared.bots import get_adapter_auth_information
 from shared.config import get_config, get_verify_ssl
+from shared.django_apps.core.models import Repository
 from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import (
     TorngitClientError,
@@ -44,7 +46,7 @@ merged_pull = re.compile(r".*Merged in [^\s]+ \(pull request \#(\d+)\).*").match
 
 @sentry_sdk.trace
 def get_repo_provider_service(
-    repository: Repository,
+    repository: Repository | SQLAlchemyRepository,
     installation_name_to_use: str = GITHUB_APP_INSTALLATION_DEFAULT_NAME,
     additional_data: AdditionalData | None = None,
 ) -> TorngitBaseAdapter:
@@ -432,7 +434,11 @@ async def gitlab_webhook_update(repository_service, hookid, secret):
 
 
 def get_repo_provider_service_by_id(db_session, repoid, commitid=None):
-    repo = db_session.query(Repository).filter(Repository.repoid == int(repoid)).first()
+    repo = (
+        db_session.query(SQLAlchemyRepository)
+        .filter(SQLAlchemyRepository.repoid == int(repoid))
+        .first()
+    )
 
     assert repo, "repo-not-found"
 
