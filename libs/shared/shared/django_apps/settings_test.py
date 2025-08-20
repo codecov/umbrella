@@ -66,6 +66,7 @@ TEMPLATES = [
     }
 ]
 
+GITHUB_SENTRY_APP_NAME = "sentry_app"
 SENTRY_ORG_URL = "https://test.sentry.io"
 
 TELEMETRY_VANILLA_DB = "default"
