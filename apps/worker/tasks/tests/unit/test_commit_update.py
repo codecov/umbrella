@@ -46,10 +46,10 @@ class TestCommitUpdate:
         commit = CommitFactory.create(
             message="",
             commitid="a2d3e3c30547a000f026daa47610bb3f7b63aece",
-            repository__owner__unencrypted_oauth_token="ghp_test3c8iyfspq6h4s9ugpmq19qp7826rv20o",
-            repository__owner__username="test-acc9",
-            repository__owner__service="github",
-            repository__owner__service_id="104562106",
+            repository__author__unencrypted_oauth_token="ghp_test3c8iyfspq6h4s9ugpmq19qp7826rv20o",
+            repository__author__username="test-acc9",
+            repository__author__service="github",
+            repository__author__service_id="104562106",
             repository__name="test_example",
             pullid=1,
         )
@@ -93,8 +93,8 @@ class TestCommitUpdate:
         commit = CommitFactory.create(
             message="",
             parent_commit_id=None,
-            repository__owner__unencrypted_oauth_token="un-authorized",
-            repository__owner__username="test-acc9",
+            repository__author__unencrypted_oauth_token="un-authorized",
+            repository__author__username="test-acc9",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
         )
         mock_repo_provider.data = {
@@ -139,8 +139,8 @@ class TestCommitUpdate:
             message="",
             parent_commit_id=None,
             commitid="a2d3e3c30547a000f026daa47610bb3f7b63aece",
-            repository__owner__unencrypted_oauth_token="ghp_test3c8iyfspq6h4s9ugpmq19qp7826rv20o",
-            repository__owner__username="test-acc9",
+            repository__author__unencrypted_oauth_token="ghp_test3c8iyfspq6h4s9ugpmq19qp7826rv20o",
+            repository__author__username="test-acc9",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
             repository__name="test_example",
         )
@@ -185,8 +185,8 @@ class TestCommitUpdate:
         commit = CommitFactory.create(
             message="",
             parent_commit_id=None,
-            repository__owner__unencrypted_oauth_token="ghp_test3c8iyfspq6h4s9ugpmq19qp7826rv20o",
-            repository__owner__username="test-acc9",
+            repository__author__unencrypted_oauth_token="ghp_test3c8iyfspq6h4s9ugpmq19qp7826rv20o",
+            repository__author__username="test-acc9",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
             repository__name="test_example",
         )
@@ -231,8 +231,8 @@ class TestCommitUpdate:
         commit = CommitFactory.create(
             message="",
             parent_commit_id=None,
-            repository__owner__unencrypted_oauth_token="ghp_test3c8iyfspq6h4s9ugpmq19qp7826rv20o",
-            repository__owner__username="test-acc9",
+            repository__author__unencrypted_oauth_token="ghp_test3c8iyfspq6h4s9ugpmq19qp7826rv20o",
+            repository__author__username="test-acc9",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
             repository__name="test_example",
         )
@@ -277,8 +277,8 @@ class TestCommitUpdate:
         commit = CommitFactory.create(
             message="commit_msg",
             parent_commit_id=None,
-            repository__owner__unencrypted_oauth_token="ghp_test3c8iyfspq6h4s9ugpmq19qp7826rv20o",
-            repository__owner__username="test-acc9",
+            repository__author__unencrypted_oauth_token="ghp_test3c8iyfspq6h4s9ugpmq19qp7826rv20o",
+            repository__author__username="test-acc9",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
             repository__name="test_example",
             timestamp=dt.datetime.fromisoformat("2019-02-01T17:59:47"),

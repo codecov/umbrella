@@ -10,7 +10,7 @@ def test_ai_pr_review_task(
     dbsession,
 ):
     owner = OwnerFactory(service="github")
-    repository = RepositoryFactory(owner=owner)
+    repository = RepositoryFactory(author=owner)
     dbsession.add(owner)
     dbsession.add(repository)
     dbsession.flush()

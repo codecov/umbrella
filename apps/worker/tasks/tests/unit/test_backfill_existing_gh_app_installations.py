@@ -147,7 +147,7 @@ class TestBackfillWithPreviousGHAppInstallation:
             repo_data = repo["repo"]
             dbsession.add(
                 RepositoryFactory(
-                    owner=owner,
+                    author=owner,
                     name=repo_data["name"],
                     service_id=repo_data["service_id"],
                 )

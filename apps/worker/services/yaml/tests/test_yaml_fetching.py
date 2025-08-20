@@ -76,8 +76,8 @@ class TestYamlSavingService:
             get_source=mock.AsyncMock(return_value=contents_result_future),
         )
         good_commit = CommitFactory.create(
-            repository__owner__service="github",
-            repository__owner__service_id=44376991,
+            repository__author__service="github",
+            repository__author__service_id=44376991,
             repository__service_id=156617777,
         )
         dbsession.add(good_commit)
@@ -129,8 +129,8 @@ class TestYamlSavingService:
             get_source=mock.AsyncMock(return_value=contents_result_future),
         )
         bad_commit = CommitFactory.create(
-            repository__owner__service="github",
-            repository__owner__service_id=44123999,  # correct one is 44376991
+            repository__author__service="github",
+            repository__author__service_id=44123999,  # correct one is 44376991
             repository__service_id=156617777,
         )
         dbsession.add(bad_commit)

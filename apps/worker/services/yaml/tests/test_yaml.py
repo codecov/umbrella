@@ -214,7 +214,7 @@ class TestYamlService:
                     "status": {"project": True, "patch": True, "changes": False},
                 }
             },
-            repository__owner__yaml={"codecov": {"bot": "ThiagoCodecov"}},
+            repository__author__yaml={"codecov": {"bot": "ThiagoCodecov"}},
         )
         res = await get_current_yaml(commit, valid_handler)
         assert res.to_dict() == {
@@ -264,7 +264,7 @@ class TestYamlService:
         )
         commit = CommitFactory.create(
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
             repository__yaml={
                 "coverage": {
                     "precision": 2,
@@ -321,7 +321,7 @@ class TestYamlService:
         )
         commit = CommitFactory.create(
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
             repository__yaml={
                 "coverage": {
                     "precision": 2,
@@ -373,7 +373,7 @@ class TestYamlService:
         )
         commit = CommitFactory.create(
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
             repository__yaml={
                 "coverage": {
                     "precision": 2,

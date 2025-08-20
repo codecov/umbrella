@@ -64,7 +64,7 @@ class BundleAnalysisNotifyService:
 
     @property
     def owner(self) -> Owner:
-        return self.commit.repository.owner
+        return self.commit.repository.author
 
     @sentry_sdk.trace
     def build_base_context(self) -> BaseBundleAnalysisNotificationContext | None:

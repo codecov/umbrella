@@ -23,10 +23,10 @@ def is_not_first_pull(mocker):
 @pytest.fixture
 def sample_comparison(dbsession, request, sample_report, small_report):
     repository = RepositoryFactory.create(
-        owner__service="github",
-        owner__username="joseph-sentry",
+        author__service="github",
+        author__username="joseph-sentry",
         name="codecov-demo",
-        owner__unencrypted_oauth_token="ghp_testmgzs9qm7r27wp376fzv10aobbpva7hd3",
+        author__unencrypted_oauth_token="ghp_testmgzs9qm7r27wp376fzv10aobbpva7hd3",
         image_token="abcdefghij",
     )
     dbsession.add(repository)
@@ -86,9 +86,9 @@ def sample_comparison(dbsession, request, sample_report, small_report):
 @pytest.fixture
 def sample_comparison_gitlab(dbsession, request, sample_report, small_report):
     repository = RepositoryFactory.create(
-        owner__username="joseph-sentry",
-        owner__service="gitlab",
-        owner__unencrypted_oauth_token="test1nioqi3p3681oa43",
+        author__username="joseph-sentry",
+        author__service="gitlab",
+        author__unencrypted_oauth_token="test1nioqi3p3681oa43",
         service_id="47404140",
         name="example-python",
         image_token="abcdefghij",
@@ -150,10 +150,10 @@ def sample_comparison_gitlab(dbsession, request, sample_report, small_report):
 @pytest.fixture
 def sample_comparison_for_upgrade(dbsession, request, sample_report, small_report):
     repository = RepositoryFactory.create(
-        owner__service="github",
-        owner__username="codecove2e",
+        author__service="github",
+        author__username="codecove2e",
         name="example-python",
-        owner__unencrypted_oauth_token="ghp_testgkdo1u8jqexy9wabk1n0puoetf9ziam5",
+        author__unencrypted_oauth_token="ghp_testgkdo1u8jqexy9wabk1n0puoetf9ziam5",
         image_token="abcdefghij",
     )
     dbsession.add(repository)
@@ -215,10 +215,10 @@ def sample_comparison_for_limited_upload(
     dbsession, request, sample_report, small_report
 ):
     repository = RepositoryFactory.create(
-        owner__username="test-acc9",
-        owner__service="github",
+        author__username="test-acc9",
+        author__service="github",
         name="priv_example",
-        owner__unencrypted_oauth_token="ghp_test1xwr5rxl12dbm97a7r4anr6h67uw0thf",
+        author__unencrypted_oauth_token="ghp_test1xwr5rxl12dbm97a7r4anr6h67uw0thf",
         image_token="abcdefghij",
     )
     dbsession.add(repository)

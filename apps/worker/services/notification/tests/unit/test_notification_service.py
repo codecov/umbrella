@@ -45,8 +45,8 @@ from tests.helpers import mock_all_plans_and_tiers
 @pytest.fixture
 def sample_comparison(dbsession, request):
     repository = RepositoryFactory.create(
-        owner__username=request.node.name,
-        owner__service="github",
+        author__username=request.node.name,
+        author__service="github",
         using_integration=True,
     )
     dbsession.add(repository)
@@ -103,32 +103,32 @@ class TestNotificationService:
             (
                 {
                     "using_integration": True,
-                    "owner__integration_id": 12341234,
-                    "owner__service": "github",
+                    "author__integration_id": 12341234,
+                    "author__service": "github",
                 },
                 True,
             ),
             (
                 {
                     "using_integration": True,
-                    "owner__integration_id": 12341234,
-                    "owner__service": "gitlab",
+                    "author__integration_id": 12341234,
+                    "author__service": "gitlab",
                 },
                 False,
             ),
             (
                 {
                     "using_integration": True,
-                    "owner__integration_id": 12341234,
-                    "owner__service": "github_enterprise",
+                    "author__integration_id": 12341234,
+                    "author__service": "github_enterprise",
                 },
                 True,
             ),
             (
                 {
                     "using_integration": False,
-                    "owner__integration_id": None,
-                    "owner__service": "github",
+                    "author__integration_id": None,
+                    "author__service": "github",
                 },
                 False,
             ),
@@ -140,7 +140,7 @@ class TestNotificationService:
     ):
         repository = RepositoryFactory.create(**repo_data)
         current_yaml = {"github_checks": True}
-        assert repository.owner.github_app_installations == []
+        assert repository.author.github_app_installations == []
         service = NotificationService(repository, current_yaml, None)
         assert (
             service._should_use_checks_notifier(status_type=StatusType.PROJECT.value)
@@ -149,15 +149,15 @@ class TestNotificationService:
 
     @pytest.mark.django_db
     def test_should_use_checks_notifier_ghapp_all_repos_covered(self, dbsession):
-        repository = RepositoryFactory.create(owner__service="github")
+        repository = RepositoryFactory.create(author__service="github")
         ghapp_installation = GithubAppInstallationFactory(
             installation_id=456789,
-            owner=repository.owner,
+            owner=repository.author,
         )
         dbsession.add(ghapp_installation)
         dbsession.flush()
         current_yaml = {"github_checks": True}
-        assert repository.owner.github_app_installations == [ghapp_installation]
+        assert repository.author.github_app_installations == [ghapp_installation]
         service = NotificationService(repository, current_yaml, None)
         assert (
             service._should_use_checks_notifier(status_type=StatusType.PROJECT.value)
@@ -170,16 +170,16 @@ class TestNotificationService:
         dbsession,
     ):
         repository = RepositoryFactory.create(
-            owner__service="github", owner__plan=PlanName.TEAM_MONTHLY.value
+            author__service="github", author__plan=PlanName.TEAM_MONTHLY.value
         )
         ghapp_installation = GithubAppInstallationFactory(
             installation_id=456789,
-            owner=repository.owner,
+            owner=repository.author,
         )
         dbsession.add(ghapp_installation)
         dbsession.flush()
         current_yaml = {"github_checks": True}
-        assert repository.owner.github_app_installations == [ghapp_installation]
+        assert repository.author.github_app_installations == [ghapp_installation]
         service = NotificationService(repository, current_yaml, None)
         assert (
             service._should_use_checks_notifier(status_type=StatusType.PROJECT.value)
@@ -197,16 +197,16 @@ class TestNotificationService:
     @pytest.mark.django_db
     def test_use_status_notifier_for_team_plan(self, dbsession):
         repository = RepositoryFactory.create(
-            owner__service="github", owner__plan=PlanName.TEAM_MONTHLY.value
+            author__service="github", author__plan=PlanName.TEAM_MONTHLY.value
         )
         ghapp_installation = GithubAppInstallationFactory(
             installation_id=456789,
-            owner=repository.owner,
+            owner=repository.author,
         )
         dbsession.add(ghapp_installation)
         dbsession.flush()
         current_yaml = {"github_checks": True}
-        assert repository.owner.github_app_installations == [ghapp_installation]
+        assert repository.author.github_app_installations == [ghapp_installation]
         service = NotificationService(repository, current_yaml, None)
         assert (
             service._should_use_status_notifier(status_type=StatusType.PROJECT.value)
@@ -224,16 +224,16 @@ class TestNotificationService:
     @pytest.mark.django_db
     def test_use_status_notifier_for_non_team_plan(self, dbsession):
         repository = RepositoryFactory.create(
-            owner__service="github", owner__plan=PlanName.CODECOV_PRO_MONTHLY.value
+            author__service="github", author__plan=PlanName.CODECOV_PRO_MONTHLY.value
         )
         ghapp_installation = GithubAppInstallationFactory(
             installation_id=456789,
-            owner=repository.owner,
+            owner=repository.author,
         )
         dbsession.add(ghapp_installation)
         dbsession.flush()
         current_yaml = {"github_checks": True}
-        assert repository.owner.github_app_installations == [ghapp_installation]
+        assert repository.author.github_app_installations == [ghapp_installation]
         service = NotificationService(repository, current_yaml, None)
         assert (
             service._should_use_status_notifier(status_type=StatusType.PROJECT.value)
@@ -256,12 +256,12 @@ class TestNotificationService:
     def test_should_use_checks_notifier_ghapp_some_repos_covered(
         self, dbsession, gh_installation_name
     ):
-        repository = RepositoryFactory.create(owner__service="github")
-        other_repo_same_owner = RepositoryFactory.create(owner=repository.owner)
+        repository = RepositoryFactory.create(author__service="github")
+        other_repo_same_owner = RepositoryFactory.create(author=repository.author)
         ghapp_installation = GithubAppInstallationFactory(
             name=gh_installation_name,
             installation_id=456789,
-            owner=repository.owner,
+            owner=repository.author,
             repository_service_ids=[repository.service_id],
             app_id=123123,
             pem_path="path_to_pem_file",
@@ -269,7 +269,7 @@ class TestNotificationService:
         dbsession.add(ghapp_installation)
         dbsession.flush()
         current_yaml = {"github_checks": True}
-        assert repository.owner.github_app_installations == [ghapp_installation]
+        assert repository.author.github_app_installations == [ghapp_installation]
         service = NotificationService(
             repository,
             current_yaml,
@@ -294,8 +294,8 @@ class TestNotificationService:
             "notifications": {"slack": ["slack.com"]}
         }
         repository = RepositoryFactory.create(
-            owner__unencrypted_oauth_token="testlln8sdeec57lz83oe3l8y9qq4lhqat2f1kzm",
-            owner__username="ThiagoCodecov",
+            author__unencrypted_oauth_token="testlln8sdeec57lz83oe3l8y9qq4lhqat2f1kzm",
+            author__username="ThiagoCodecov",
             yaml={"codecov": {"max_report_age": "1y ago"}},
             name="example-python",
         )
@@ -319,8 +319,8 @@ class TestNotificationService:
         self, dbsession, mock_configuration, mocker
     ):
         repository = RepositoryFactory.create(
-            owner__integration_id=123,
-            owner__service="github",
+            author__integration_id=123,
+            author__service="github",
             yaml={"codecov": {"max_report_age": "1y ago"}},
             name="example-python",
             using_integration=True,
@@ -332,7 +332,7 @@ class TestNotificationService:
             "coverage": {"status": {"project": True, "patch": True, "changes": True}}
         }
         mocker.patch.dict(
-            os.environ, {"CHECKS_WHITELISTED_OWNERS": f"0,{repository.owner.ownerid}"}
+            os.environ, {"CHECKS_WHITELISTED_OWNERS": f"0,{repository.author.ownerid}"}
         )
         service = NotificationService(repository, current_yaml, None)
         instances = list(service.get_notifiers_instances())
@@ -357,8 +357,8 @@ class TestNotificationService:
     ):
         mocker.patch("services.notification.get_config", return_value=False)
         repository = RepositoryFactory.create(
-            owner__integration_id=123,
-            owner__service="github",
+            author__integration_id=123,
+            author__service="github",
             yaml={"codecov": {"max_report_age": "1y ago"}},
             name="example-python",
             using_integration=True,
@@ -370,7 +370,7 @@ class TestNotificationService:
             "coverage": {"status": {"project": True, "patch": True, "changes": True}}
         }
         mocker.patch.dict(
-            os.environ, {"CHECKS_WHITELISTED_OWNERS": f"0,{repository.owner.ownerid}"}
+            os.environ, {"CHECKS_WHITELISTED_OWNERS": f"0,{repository.author.ownerid}"}
         )
         service = NotificationService(repository, current_yaml, None)
         instances = list(service.get_notifiers_instances())
@@ -394,9 +394,9 @@ class TestNotificationService:
         gh_installation_name,
     ):
         repository = RepositoryFactory.create(
-            owner__integration_id=123,
-            owner__service="github",
-            owner__ownerid=1234,
+            author__integration_id=123,
+            author__service="github",
+            author__ownerid=1234,
             yaml={"codecov": {"max_report_age": "1y ago"}},
             name="example-python",
             using_integration=True,
@@ -446,9 +446,9 @@ class TestNotificationService:
         self, dbsession, mock_configuration, mocker, gh_installation_name
     ):
         repository = RepositoryFactory.create(
-            owner__integration_id=123,
-            owner__service="github",
-            owner__ownerid=1234,
+            author__integration_id=123,
+            author__service="github",
+            author__ownerid=1234,
             yaml={"codecov": {"max_report_age": "1y ago"}},
             name="example-python",
             using_integration=True,

@@ -40,7 +40,7 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
         error = None
         try:
             installation_name_to_use = get_installation_name_for_owner_for_task(
-                self.name, repository.owner
+                self.name, repository.author
             )
             repository_service = get_repo_provider_service(
                 repository, installation_name_to_use=installation_name_to_use

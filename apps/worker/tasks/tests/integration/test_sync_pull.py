@@ -16,11 +16,11 @@ class TestPullSyncTask:
         task = PullSyncTask()
 
         repository = RepositoryFactory.create(
-            owner__username="ThiagoCodecov",
-            owner__service="github",
-            owner__service_id="44376991",
+            author__username="ThiagoCodecov",
+            author__service="github",
+            author__service_id="44376991",
             name="example-python",
-            owner__unencrypted_oauth_token="testduhiiri16grurxduwjexioy26ohqhaxvk67z",
+            author__unencrypted_oauth_token="testduhiiri16grurxduwjexioy26ohqhaxvk67z",
         )
         report_json = {
             "files": {

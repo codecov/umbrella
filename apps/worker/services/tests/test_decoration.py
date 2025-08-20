@@ -42,10 +42,10 @@ from tests.helpers import mock_all_plans_and_tiers
 @pytest.fixture
 def enriched_pull(dbsession, request):
     repository = RepositoryFactory.create(
-        owner__username="codecov",
-        owner__service="github",
-        owner__unencrypted_oauth_token="testtlxuu2kfef3km1fbecdlmnb2nvpikvmoadi3",
-        owner__plan="users-pr-inappm",
+        author__username="codecov",
+        author__service="github",
+        author__unencrypted_oauth_token="testtlxuu2kfef3km1fbecdlmnb2nvpikvmoadi3",
+        author__plan="users-pr-inappm",
         name="example-python",
         image_token="abcdefghij",
         private=True,
@@ -138,7 +138,7 @@ def gitlab_enriched_pull_subgroup(dbsession, gitlab_middle_group):
     dbsession.flush()
 
     repository = RepositoryFactory.create(
-        owner=subgroup, name="example-python", image_token="abcdefghij", private=True
+        author=subgroup, name="example-python", image_token="abcdefghij", private=True
     )
     dbsession.add(repository)
     dbsession.flush()
@@ -190,7 +190,7 @@ class TestDecorationServiceTestCase:
         dbsession.add(pr_author)
         dbsession.flush()
 
-        enriched_pull.database_pull.repository.owner.plan = DEFAULT_FREE_PLAN
+        enriched_pull.database_pull.repository.author.plan = DEFAULT_FREE_PLAN
         enriched_pull.database_pull.repository.private = True
 
         commit = CommitFactory.create(
@@ -206,7 +206,7 @@ class TestDecorationServiceTestCase:
             upload = UploadFactory.create(report=report, storage_path="url")
             dbsession.add(upload)
             insert_coverage_measurement(
-                owner_id=enriched_pull.database_pull.repository.owner.ownerid,
+                owner_id=enriched_pull.database_pull.repository.author.ownerid,
                 repo_id=enriched_pull.database_pull.repository.repoid,
                 commit_id=commit.id,
                 upload_id=upload.id,
@@ -225,7 +225,7 @@ class TestDecorationServiceTestCase:
         dbsession.flush()
 
         insert_coverage_measurement(
-            owner_id=enriched_pull.database_pull.repository.owner.ownerid,
+            owner_id=enriched_pull.database_pull.repository.author.ownerid,
             repo_id=enriched_pull.database_pull.repository.repoid,
             commit_id=commit.id,
             upload_id=upload.id,
@@ -251,7 +251,7 @@ class TestDecorationServiceTestCase:
         dbsession.add(pr_author)
         dbsession.flush()
 
-        enriched_pull.database_pull.repository.owner.plan = "users-teamm"
+        enriched_pull.database_pull.repository.author.plan = "users-teamm"
         enriched_pull.database_pull.repository.private = True
 
         commit = CommitFactory.create(
@@ -267,7 +267,7 @@ class TestDecorationServiceTestCase:
             upload = UploadFactory.create(report=report, storage_path="url")
             dbsession.add(upload)
             insert_coverage_measurement(
-                owner_id=enriched_pull.database_pull.repository.owner.ownerid,
+                owner_id=enriched_pull.database_pull.repository.author.ownerid,
                 repo_id=enriched_pull.database_pull.repository.repoid,
                 commit_id=commit.id,
                 upload_id=upload.id,
@@ -285,7 +285,7 @@ class TestDecorationServiceTestCase:
         dbsession.add(upload)
         dbsession.flush()
         insert_coverage_measurement(
-            owner_id=enriched_pull.database_pull.repository.owner.ownerid,
+            owner_id=enriched_pull.database_pull.repository.author.ownerid,
             repo_id=enriched_pull.database_pull.repository.repoid,
             commit_id=commit.id,
             upload_id=upload.id,
@@ -317,7 +317,7 @@ class TestDecorationServiceTestCase:
         dbsession.add(pr_author)
         dbsession.flush()
 
-        enriched_pull.database_pull.repository.owner.plan = DEFAULT_FREE_PLAN
+        enriched_pull.database_pull.repository.author.plan = DEFAULT_FREE_PLAN
         enriched_pull.database_pull.repository.private = True
 
         commit = CommitFactory.create(
@@ -331,7 +331,7 @@ class TestDecorationServiceTestCase:
             upload = UploadFactory.create(report=report, storage_path="url")
             dbsession.add(upload)
             insert_coverage_measurement(
-                owner_id=enriched_pull.database_pull.repository.owner.ownerid,
+                owner_id=enriched_pull.database_pull.repository.author.ownerid,
                 repo_id=enriched_pull.database_pull.repository.repoid,
                 commit_id=commit.id,
                 upload_id=upload.id,
@@ -452,7 +452,7 @@ class TestDecorationServiceTestCase:
 
     @pytest.mark.django_db
     def test_get_decoration_type_not_pr_plan(self, dbsession, mocker, enriched_pull):
-        enriched_pull.database_pull.repository.owner.plan = "users-inappm"
+        enriched_pull.database_pull.repository.author.plan = "users-inappm"
         dbsession.flush()
 
         decoration_details = determine_decoration_details(enriched_pull)
@@ -465,10 +465,10 @@ class TestDecorationServiceTestCase:
     # what is a users plan?
     def test_get_decoration_type_for_users_plan(self, dbsession):
         repository = RepositoryFactory.create(
-            owner__username="drazisil-org",
-            owner__service="github",
-            owner__unencrypted_oauth_token="testtfasdfasdflxuu2kfer2ef23",
-            owner__plan=DEFAULT_FREE_PLAN,
+            author__username="drazisil-org",
+            author__service="github",
+            author__unencrypted_oauth_token="testtfasdfasdflxuu2kfer2ef23",
+            author__plan=DEFAULT_FREE_PLAN,
             private=True,
         )
         dbsession.add(repository)
@@ -527,7 +527,7 @@ class TestDecorationServiceTestCase:
         assert decoration_details.should_attempt_author_auto_activation is False
         assert (
             pr_author.ownerid
-            not in enriched_pull_whitelisted.database_pull.repository.owner.plan_activated_users
+            not in enriched_pull_whitelisted.database_pull.repository.author.plan_activated_users
         )
 
     @pytest.mark.django_db
@@ -544,9 +544,9 @@ class TestDecorationServiceTestCase:
     def test_get_decoration_type_pr_author_manual_activation_required(
         self, dbsession, mocker, enriched_pull, with_sql_functions
     ):
-        enriched_pull.database_pull.repository.owner.plan_user_count = 3
-        enriched_pull.database_pull.repository.owner.plan_activated_users = []
-        enriched_pull.database_pull.repository.owner.plan_auto_activate = False
+        enriched_pull.database_pull.repository.author.plan_user_count = 3
+        enriched_pull.database_pull.repository.author.plan_activated_users = []
+        enriched_pull.database_pull.repository.author.plan_auto_activate = False
 
         pr_author = OwnerFactory.create(
             service="github",
@@ -564,7 +564,7 @@ class TestDecorationServiceTestCase:
         assert decoration_details.should_attempt_author_auto_activation is False
         assert (
             pr_author.ownerid
-            not in enriched_pull.database_pull.repository.owner.plan_activated_users
+            not in enriched_pull.database_pull.repository.author.plan_activated_users
         )
 
     @pytest.mark.django_db
@@ -623,11 +623,11 @@ class TestDecorationServiceTestCase:
         )
         dbsession.add(pr_author)
         dbsession.flush()
-        enriched_pull.database_pull.repository.owner.plan_user_count = 3
-        enriched_pull.database_pull.repository.owner.plan_activated_users = [
+        enriched_pull.database_pull.repository.author.plan_user_count = 3
+        enriched_pull.database_pull.repository.author.plan_activated_users = [
             pr_author.ownerid
         ]
-        enriched_pull.database_pull.repository.owner.plan_auto_activate = False
+        enriched_pull.database_pull.repository.author.plan_auto_activate = False
         dbsession.flush()
 
         decoration_details = determine_decoration_details(enriched_pull)
@@ -641,9 +641,9 @@ class TestDecorationServiceTestCase:
     def test_get_decoration_type_should_attempt_pr_author_auto_activation(
         self, dbsession, mocker, enriched_pull
     ):
-        enriched_pull.database_pull.repository.owner.plan_user_count = 3
-        enriched_pull.database_pull.repository.owner.plan_activated_users = []
-        enriched_pull.database_pull.repository.owner.plan_auto_activate = True
+        enriched_pull.database_pull.repository.author.plan_user_count = 3
+        enriched_pull.database_pull.repository.author.plan_activated_users = []
+        enriched_pull.database_pull.repository.author.plan_auto_activate = True
 
         pr_author = OwnerFactory.create(
             service="github",
@@ -661,23 +661,23 @@ class TestDecorationServiceTestCase:
         assert decoration_details.should_attempt_author_auto_activation is True
         assert (
             decoration_details.activation_org_ownerid
-            == enriched_pull.database_pull.repository.owner.ownerid
+            == enriched_pull.database_pull.repository.author.ownerid
         )
         assert decoration_details.activation_author_ownerid == pr_author.ownerid
         # activation hasnt happened yet
         assert (
             pr_author.ownerid
-            not in enriched_pull.database_pull.repository.owner.plan_activated_users
+            not in enriched_pull.database_pull.repository.author.plan_activated_users
         )
 
     @pytest.mark.django_db
     def test_get_decoration_type_should_attempt_pr_author_auto_activation_users_developer(
         self, dbsession, mocker, enriched_pull
     ):
-        enriched_pull.database_pull.repository.owner.plan = DEFAULT_FREE_PLAN
-        enriched_pull.database_pull.repository.owner.plan_user_count = 1
-        enriched_pull.database_pull.repository.owner.plan_activated_users = []
-        enriched_pull.database_pull.repository.owner.plan_auto_activate = True
+        enriched_pull.database_pull.repository.author.plan = DEFAULT_FREE_PLAN
+        enriched_pull.database_pull.repository.author.plan_user_count = 1
+        enriched_pull.database_pull.repository.author.plan_activated_users = []
+        enriched_pull.database_pull.repository.author.plan_auto_activate = True
 
         pr_author = OwnerFactory.create(
             service="github",
@@ -695,13 +695,13 @@ class TestDecorationServiceTestCase:
         assert decoration_details.should_attempt_author_auto_activation is True
         assert (
             decoration_details.activation_org_ownerid
-            == enriched_pull.database_pull.repository.owner.ownerid
+            == enriched_pull.database_pull.repository.author.ownerid
         )
         assert decoration_details.activation_author_ownerid == pr_author.ownerid
         # activation hasnt happened yet
         assert (
             pr_author.ownerid
-            not in enriched_pull.database_pull.repository.owner.plan_activated_users
+            not in enriched_pull.database_pull.repository.author.plan_activated_users
         )
 
     @pytest.mark.django_db
@@ -794,7 +794,7 @@ class TestDecorationServiceGitLabTestCase:
     ):
         gitlab_root_group.plan_auto_activate = False
         # setting on child group should not matter, uses setting from root
-        child_group = gitlab_enriched_pull_subgroup.database_pull.repository.owner
+        child_group = gitlab_enriched_pull_subgroup.database_pull.repository.author
         child_group.plan_auto_activate = True
 
         pr_author = OwnerFactory.create(
@@ -894,9 +894,9 @@ class TestDecorationServiceGitLabTestCase:
     def test_get_decoration_type_owner_activated_users_null(
         self, dbsession, mocker, enriched_pull
     ):
-        enriched_pull.database_pull.repository.owner.plan_user_count = 3
-        enriched_pull.database_pull.repository.owner.plan_activated_users = None
-        enriched_pull.database_pull.repository.owner.plan_auto_activate = True
+        enriched_pull.database_pull.repository.author.plan_user_count = 3
+        enriched_pull.database_pull.repository.author.plan_activated_users = None
+        enriched_pull.database_pull.repository.author.plan_auto_activate = True
 
         pr_author = OwnerFactory.create(
             service="github",
@@ -914,10 +914,12 @@ class TestDecorationServiceGitLabTestCase:
         assert decoration_details.should_attempt_author_auto_activation is True
         assert (
             decoration_details.activation_org_ownerid
-            == enriched_pull.database_pull.repository.owner.ownerid
+            == enriched_pull.database_pull.repository.author.ownerid
         )
         assert decoration_details.activation_author_ownerid == pr_author.ownerid
-        assert enriched_pull.database_pull.repository.owner.plan_activated_users is None
+        assert (
+            enriched_pull.database_pull.repository.author.plan_activated_users is None
+        )
 
     @pytest.mark.django_db
     def test_uploads_used_with_expired_trial(self, mocker, dbsession):
@@ -966,7 +968,7 @@ class TestDecorationServiceGitLabTestCase:
 
         # user is activated on subgroup but not root group and root group does not auto activate
         gitlab_root_group.plan_auto_activate = False
-        child_group = gitlab_enriched_pull_subgroup.database_pull.repository.owner
+        child_group = gitlab_enriched_pull_subgroup.database_pull.repository.author
         child_group.plan_auto_activate = False
         child_group.plan_activated_users = [pr_author.ownerid]
         dbsession.flush()
@@ -983,7 +985,7 @@ class TestDecorationServiceGitLabTestCase:
         assert pr_author.ownerid not in gitlab_root_group.plan_activated_users
         assert (
             pr_author.ownerid
-            in gitlab_enriched_pull_subgroup.database_pull.repository.owner.plan_activated_users
+            in gitlab_enriched_pull_subgroup.database_pull.repository.author.plan_activated_users
         )
 
         # allow auto-activate on root for user to get non-blocking decoration

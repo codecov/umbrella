@@ -55,10 +55,10 @@ def get_dashboard_base_url() -> str:
 
 
 def _get_username_for_url(repository: Repository) -> str:
-    username = repository.owner.username
-    if repository.owner.service == Service.GITLAB.value:
+    username = repository.author.username
+    if repository.author.service == Service.GITLAB.value:
         # if GL, direct url to root org not subgroup
-        root_org = repository.owner.root_organization
+        root_org = repository.author.root_organization
         if root_org is not None:
             username = root_org.username
     return username
@@ -68,7 +68,7 @@ def get_commit_url(commit: Commit) -> str:
     return SiteUrls.commit_url.get_url(
         base_url=get_dashboard_base_url(),
         service_short=services_short_dict.get(commit.repository.service),
-        username=commit.repository.owner.username,
+        username=commit.repository.author.username,
         project_name=commit.repository.name,
         commit_sha=commit.commitid,
     )
@@ -78,7 +78,7 @@ def get_commit_url_from_commit_sha(repository, commit_sha) -> str:
     return SiteUrls.commit_url.get_url(
         base_url=get_dashboard_base_url(),
         service_short=services_short_dict.get(repository.service),
-        username=repository.owner.username,
+        username=repository.author.username,
         project_name=repository.name,
         commit_sha=commit_sha,
     )
@@ -88,7 +88,7 @@ def get_graph_url(commit: Commit, graph_filename: str, **kwargs) -> str:
     url = SiteUrls.graph_url.get_url(
         base_url=get_dashboard_base_url(),
         service_short=services_short_dict.get(commit.repository.service),
-        username=commit.repository.owner.username,
+        username=commit.repository.author.username,
         project_name=commit.repository.name,
         commit_sha=commit.commitid,
         graph_filename=graph_filename,
@@ -101,7 +101,7 @@ def get_repository_url(repository: Repository) -> str:
     return SiteUrls.repository_url.get_url(
         base_url=get_dashboard_base_url(),
         service_short=services_short_dict.get(repository.service),
-        username=repository.owner.username,
+        username=repository.author.username,
         project_name=repository.name,
     )
 
@@ -111,7 +111,7 @@ def get_pull_url(pull: Pull) -> str:
     return SiteUrls.pull_url.get_url(
         base_url=get_dashboard_base_url(),
         service_short=services_short_dict.get(repository.service),
-        username=repository.owner.username,
+        username=repository.author.username,
         project_name=repository.name,
         pull_id=pull.pullid,
     )
@@ -122,7 +122,7 @@ def get_bundle_analysis_pull_url(pull: Pull) -> str:
     pull_url = SiteUrls.pull_url.get_url(
         base_url=get_dashboard_base_url(),
         service_short=services_short_dict.get(repository.service),
-        username=repository.owner.username,
+        username=repository.author.username,
         project_name=repository.name,
         pull_id=pull.pullid,
     )
@@ -135,7 +135,7 @@ def get_pull_graph_url(pull: Pull, graph_filename: str, **kwargs) -> str:
     url = SiteUrls.pull_graph_url.get_url(
         base_url=get_dashboard_base_url(),
         service_short=services_short_dict.get(repository.service),
-        username=repository.owner.username,
+        username=repository.author.username,
         project_name=repository.name,
         pull_id=pull.pullid,
         graph_filename=graph_filename,
@@ -179,7 +179,7 @@ def get_test_analytics_url(repo: Repository, commit_branch: str | None) -> str:
     return SiteUrls.test_analytics_url.get_url(
         dashboard_base_url=get_dashboard_base_url(),
         service_short=services_short_dict.get(repo.service),
-        username=repo.owner.username,
+        username=repo.author.username,
         project_name=repo.name,
         branch_name=branch_name,
     )
