@@ -1,0 +1,447 @@
+import json
+import time
+from unittest.mock import patch
+from urllib.parse import urljoin
+
+import jwt
+import pytest
+import requests
+from django.test import RequestFactory, override_settings
+from rest_framework import status
+from rest_framework.reverse import reverse
+from rest_framework.test import APIClient
+
+from billing.tests.mocks import mock_all_plans_and_tiers
+from codecov_auth.models import Owner
+from codecov_auth.permissions import JWTAuthenticationPermission
+from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
+from shared.django_apps.core.tests.factories import RepositoryFactory
+from webhook_handlers.constants import GitHubHTTPHeaders
+
+
+@pytest.fixture(autouse=True)
+def sentry_settings():
+    with override_settings(SENTRY_JWT_SHARED_SECRET="test-shared-secret"):
+        yield
+
+
+@pytest.fixture
+def owner():
+    return OwnerFactory(service="github", service_id="12345")
+
+
+@pytest.fixture
+def repo(owner):
+    return RepositoryFactory(author=owner, service_id="67890")
+
+
+@pytest.fixture
+def url():
+    return reverse("sentry-webhook")
+
+
+@pytest.fixture
+def client():
+    return APIClient()
+
+
+@pytest.fixture
+def create_valid_jwt_token():
+    payload = {
+        "exp": int(time.time()) + 3600,
+        "iat": int(time.time()),
+        "iss": "https://sentry.io",
+        "g_p": "github",
+    }
+    return jwt.encode(payload, "test-shared-secret", algorithm="HS256")
+
+
+@pytest.fixture
+def create_expired_jwt_token():
+    payload = {
+        "exp": int(time.time()) - 3600,
+        "iat": int(time.time()) - 7200,
+        "iss": "https://sentry.io",
+        "g_p": "github",
+    }
+    return jwt.encode(payload, "test-shared-secret", algorithm="HS256")
+
+
+@pytest.fixture
+def mock_task_service():
+    with patch("webhook_handlers.views.github.TaskService") as mock:
+        yield mock
+
+
+@pytest.fixture
+def create_invalid_jwt_token():
+    payload = {
+        "exp": int(time.time()) + 3600,
+        "iat": int(time.time()),
+        "iss": "https://sentry.io",
+        "g_p": "github",
+    }
+    return jwt.encode(payload, "wrong-secret", algorithm="HS256")
+
+
+@pytest.fixture
+def installation_webhook_payload(owner, repo):
+    return {
+        "action": "created",
+        "installation": {
+            "id": 12345,
+            "account": {
+                "id": owner.service_id,
+                "login": owner.username,
+            },
+            "app_id": 67890,
+            "repository_selection": "selected",
+        },
+        "repositories": [{"id": repo.service_id, "node_id": "some-node-id"}],
+        "sender": {"login": "test-user"},
+    }
+
+
+@pytest.fixture
+def installation_repositories_webhook_payload(owner, repo):
+    return {
+        "action": "added",
+        "installation": {
+            "id": 12345,
+            "account": {
+                "id": owner.service_id,
+                "login": owner.username,
+            },
+            "app_id": 67890,
+        },
+        "repository_selection": "selected",
+        "repositories_added": [{"id": repo.service_id, "node_id": "some-node-id"}],
+        "sender": {"login": "test-user"},
+    }
+
+
+@pytest.fixture
+def push_webhook_payload(owner, repo):
+    return {
+        "ref": "refs/heads/main",
+        "repository": {
+            "id": repo.service_id,
+            "full_name": f"{owner.username}/{repo.name}",
+            "owner": {"id": owner.service_id},
+        },
+        "commits": [{"id": "abc123", "message": "Test commit"}],
+    }
+
+
+def test_permission_class_directly(create_valid_jwt_token, create_invalid_jwt_token):
+    factory = RequestFactory()
+    token = create_valid_jwt_token
+
+    request = factory.post("/", HTTP_AUTHORIZATION=f"Bearer {token}")
+    permission = JWTAuthenticationPermission()
+    assert permission.has_permission(request, None)
+
+    invalid_token = create_invalid_jwt_token
+    request = factory.post("/", HTTP_AUTHORIZATION=f"Bearer {invalid_token}")
+    permission = JWTAuthenticationPermission()
+    assert not permission.has_permission(request, None)
+
+
+@pytest.mark.django_db(databases=["default"], transaction=True)
+class TestSentryWebhook:
+    @pytest.fixture(autouse=True, scope="function")
+    def mock_all_plans_and_tiers_fixture(self):
+        mock_all_plans_and_tiers()
+
+    def test_valid_jwt_authentication(
+        self,
+        client,
+        url,
+        installation_webhook_payload,
+        create_valid_jwt_token,
+        mock_task_service,
+    ):
+        data = installation_webhook_payload
+
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data == {"status": "ok"}
+
+    def test_missing_jwt_token(self, client, url, installation_webhook_payload):
+        data = installation_webhook_payload
+
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_invalid_authorization_header_format(
+        self, client, url, installation_webhook_payload
+    ):
+        data = installation_webhook_payload
+
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION="InvalidFormat token",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_invalid_jwt_token(
+        self, client, url, installation_webhook_payload, create_invalid_jwt_token
+    ):
+        data = installation_webhook_payload
+        token = create_invalid_jwt_token
+
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_expired_jwt_token(
+        self, client, url, installation_webhook_payload, create_expired_jwt_token
+    ):
+        data = installation_webhook_payload
+        token = create_expired_jwt_token
+
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_jwt_token_missing_required_claims(
+        self, client, url, installation_webhook_payload
+    ):
+        payload = {
+            "exp": int(time.time()) + 3600,
+        }
+        token = jwt.encode(payload, "test-shared-secret", algorithm="HS256")
+
+        data = installation_webhook_payload
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_jwt_token_wrong_issuer(self, client, url, installation_webhook_payload):
+        payload = {
+            "exp": int(time.time()) + 3600,
+            "iat": int(time.time()),
+            "iss": "https://wrong-issuer.com",
+        }
+        token = jwt.encode(payload, "test-shared-secret", algorithm="HS256")
+
+        data = installation_webhook_payload
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_webhook_runs_does_not_rollback(
+        self,
+        client,
+        url,
+        installation_webhook_payload,
+        create_valid_jwt_token,
+        mock_task_service,
+    ):
+        with patch(
+            "webhook_handlers.views.sentry.ROLLBACK_SENTRY_WEBHOOK.check_value"
+        ) as mock_check_value:
+            mock_check_value.return_value = False
+
+        data = installation_webhook_payload
+
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert Owner.objects.count() == 1
+
+    def test_unknown_event_type(self, client, url, create_valid_jwt_token):
+        data = {"some": "data"}
+
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "unknown_event_type"},
+        )
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_missing_event_field(self, client, url, create_valid_jwt_token):
+        data = {"some": "data"}
+
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_missing_payload_field(self, client, url, create_valid_jwt_token):
+        data = {}
+
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_empty_request_data(self, client, url, create_valid_jwt_token):
+        data = {}
+
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_successful_installation_response_format(
+        self,
+        client,
+        url,
+        installation_webhook_payload,
+        create_valid_jwt_token,
+        mock_task_service,
+    ):
+        data = installation_webhook_payload
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_successful_installation_repositories_response_format(
+        self,
+        client,
+        url,
+        installation_repositories_webhook_payload,
+        create_valid_jwt_token,
+        mock_task_service,
+    ):
+        data = installation_repositories_webhook_payload
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "installation_repositories"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_successful_push_response_format(
+        self,
+        client,
+        url,
+        push_webhook_payload,
+        create_valid_jwt_token,
+        mock_task_service,
+    ):
+        data = push_webhook_payload
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "push"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_successful_pull_request_response_format(
+        self, client, url, owner, repo, create_valid_jwt_token, mock_task_service
+    ):
+        data = {
+            "action": "opened",
+            "number": 123,
+            "repository": {
+                "id": repo.service_id,
+                "full_name": f"{owner.username}/{repo.name}",
+                "owner": {"id": owner.service_id},
+            },
+            "pull_request": {"title": "Test PR"},
+        }
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "pull_request"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_e2e_valid_jwt_authentication_live_server(
+        self,
+        live_server,
+        installation_webhook_payload,
+        create_valid_jwt_token,
+        mock_task_service,
+    ):
+        e2e_url = urljoin(live_server.url, reverse("sentry-webhook"))
+        response = requests.post(
+            e2e_url,
+            data=json.dumps(installation_webhook_payload),
+            headers={
+                "Authorization": f"Bearer {create_valid_jwt_token}",
+                "X-GitHub-Event": "installation",
+                "Content-Type": "application/json",
+            },
+            timeout=5,
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == {"status": "ok"}
