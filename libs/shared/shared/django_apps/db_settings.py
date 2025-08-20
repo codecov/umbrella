@@ -142,7 +142,7 @@ else:
 # https://docs.djangoproject.com/en/3.1/ref/settings/#conn-max-age
 CONN_MAX_AGE = int(get_config("services", "database", "conn_max_age", default=0))
 CONN_HEALTH_CHECKS = get_config(
-    "services", "database", "conn_health_checks", default=False
+    "services", "database", "conn_health_checks", default=True
 )
 
 DATABASES = {

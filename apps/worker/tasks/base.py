@@ -1,12 +1,11 @@
 import logging
 from datetime import datetime
-from time import monotonic
 
 import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from django.db import InterfaceError, connections
+from django.db import InterfaceError, close_old_connections
 from sqlalchemy.exc import (
     DataError,
     IntegrityError,
@@ -264,24 +263,12 @@ class BaseCodecovTask(celery_app.Task):
             self.task_run_counter.inc()
             self._emit_queue_metrics()
 
+            close_old_connections()
+
             try:
                 with self.task_core_runtime.time():  # Timer isn't tested
                     return self.run_impl(db_session, *args, **kwargs)
             except InterfaceError as ex:
-                conn = connections["default"]
-                log.exception(
-                    "Interface error while talking to database",
-                    extra={
-                        "task_args": args,
-                        "task_kwargs": kwargs,
-                        "close_at": conn.close_at,
-                        "closed_in_transaction": conn.closed_in_transaction,
-                        "errors_occurred": conn.errors_occurred,
-                        "monotonic_time": monotonic(),
-                        "is_usable": conn.is_usable(),
-                    },
-                    exc_info=True,
-                )
                 sentry_sdk.capture_exception(
                     ex,
                 )
