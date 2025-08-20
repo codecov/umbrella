@@ -7,7 +7,7 @@ from services.repository import EnrichedPull
 
 
 def make_sample_comparison(adjusted_base=False):
-    repo = RepositoryFactory.create(owner__service="github")
+    repo = RepositoryFactory.create(author__service="github")
 
     head_commit = CommitFactory.create(repository=repo)
     adjusted_base_commit = CommitFactory.create(repository=repo)

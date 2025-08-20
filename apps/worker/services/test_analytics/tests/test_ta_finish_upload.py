@@ -82,8 +82,8 @@ def prepopulate(dbsession):
         report__commit__repository__private=django_repo.private,
         report__commit__repository__branch=django_repo.branch,
         report__commit__repository__name="test-repo",
-        report__commit__repository__owner__service="github",
-        report__commit__repository__owner__username="test-user",
+        report__commit__repository__author__service="github",
+        report__commit__repository__author__username="test-user",
     )
     dbsession.add(sql_alc_upload)
     dbsession.commit()
@@ -212,7 +212,7 @@ def test_ta_finish_upload(
             },
             database_pull=PullFactory(
                 repository=repo,
-                author=commit.repository.owner,
+                author=commit.repository.author,
                 commentid=1,
             ),
         )

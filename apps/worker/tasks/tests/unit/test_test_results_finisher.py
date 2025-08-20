@@ -70,10 +70,10 @@ def test_results_setup(mocker, dbsession):
     commit = CommitFactory.create(
         message="hello world",
         commitid="cd76b0821854a780b60012aed85af0a8263004ad",
-        repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-        repository__owner__username="test-username",
-        repository__owner__service="github",
-        repository__owner__plan=PlanName.CODECOV_PRO_MONTHLY.value,
+        repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+        repository__author__username="test-username",
+        repository__author__service="github",
+        repository__author__plan=PlanName.CODECOV_PRO_MONTHLY.value,
         repository__name="test-repo-name",
     )
     commit.branch = "main"
@@ -237,10 +237,10 @@ def test_results_setup_no_instances(mocker, dbsession):
     commit = CommitFactory.create(
         message="hello world",
         commitid="cd76b0821854a780b60012aed85af0a8263004ad",
-        repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-        repository__owner__username="joseph-sentry",
-        repository__owner__service="github",
-        repository__owner__plan=PlanName.CODECOV_PRO_MONTHLY.value,
+        repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+        repository__author__username="joseph-sentry",
+        repository__author__service="github",
+        repository__author__plan=PlanName.CODECOV_PRO_MONTHLY.value,
         repository__name="codecov-demo",
     )
     commit.branch = "main"
@@ -589,8 +589,8 @@ class TestUploadTestFinisherTask:
             .filter(Repository.repoid == self.repoid)
             .first()
         )
-        repo.owner.plan_activated_users = []
-        repo.owner.plan = PlanName.CODECOV_PRO_MONTHLY.value
+        repo.author.plan_activated_users = []
+        repo.author.plan = PlanName.CODECOV_PRO_MONTHLY.value
         repo.private = True
         self.dbsession.flush()
 
@@ -777,7 +777,7 @@ class TestUploadTestFinisherTask:
         self.commit.merged = True
 
         repo = self.dbsession.query(Repository).filter_by(repoid=self.repoid).first()
-        repo.owner.plan = plan
+        repo.author.plan = plan
         self.dbsession.flush()
 
         result = self.run_test_results_finisher(

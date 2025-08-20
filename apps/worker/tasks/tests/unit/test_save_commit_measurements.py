@@ -12,7 +12,7 @@ class TestSaveCommitMeasurements:
         dbsession.add(owner)
 
         repository = RepositoryFactory.create(
-            owner=owner, languages_last_updated=None, languages=[]
+            author=owner, languages_last_updated=None, languages=[]
         )
         dbsession.add(repository)
 
@@ -60,7 +60,7 @@ class TestSaveCommitMeasurements:
         dbsession.add(owner)
 
         repository = RepositoryFactory.create(
-            owner=owner, languages_last_updated=None, languages=[]
+            author=owner, languages_last_updated=None, languages=[]
         )
         dbsession.add(repository)
 

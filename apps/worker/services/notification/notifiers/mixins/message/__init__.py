@@ -81,7 +81,7 @@ class MessageMixin:
         write(f"## [Codecov]({links['pull']}?dropdown=coverage&src=pr&el=h1) Report")
 
         repo = comparison.head.commit.repository
-        owner: Owner = repo.owner
+        owner: Owner = repo.author
 
         # Separate PR comment based on plan that can't/won't be tweaked by codecov.yml settings
         owner_plan = PlanService(owner)
@@ -156,7 +156,7 @@ class MessageMixin:
         and will be writing with a Codecov Commenter Account.
         """
         repo: Repository = comparison.head.commit.repository
-        repo_owner: Owner = repo.owner
+        repo_owner: Owner = repo.author
         if (
             repo_owner.service == "github"
             and not is_enterprise()

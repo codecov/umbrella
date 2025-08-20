@@ -327,7 +327,7 @@ class TestGettingAdapterAuthInformation:
             dbsession.flush()
 
             repo = RepositoryFactory(
-                owner=owner, using_integration=(integration_id is not None)
+                author=owner, using_integration=(integration_id is not None)
             )
             if with_bot:
                 repo.bot = OwnerFactory(
@@ -353,15 +353,15 @@ class TestGettingAdapterAuthInformation:
                     key="owner_token",
                     refresh_token="refresh_token",
                     secret=None,
-                    username=repo.owner.username,
-                    entity_name=owner_key_name(repo.owner.ownerid),
+                    username=repo.author.username,
+                    entity_name=owner_key_name(repo.author.ownerid),
                 ),
-                token_owner=repo.owner,
+                token_owner=repo.author,
                 selected_installation_info=None,
                 fallback_installations=None,
                 token_type_mapping=None,
             )
-            assert get_adapter_auth_information(repo.owner, repo) == expected
+            assert get_adapter_auth_information(repo.author, repo) == expected
 
         def test_select_owner_bot_info(self, dbsession):
             repo = self._generate_test_repo(
@@ -372,15 +372,15 @@ class TestGettingAdapterAuthInformation:
                     key="bot_token",
                     refresh_token="bot_refresh_token",
                     secret=None,
-                    username=repo.owner.bot.username,
-                    entity_name=owner_key_name(repo.owner.bot.ownerid),
+                    username=repo.author.bot.username,
+                    entity_name=owner_key_name(repo.author.bot.ownerid),
                 ),
-                token_owner=repo.owner.bot,
+                token_owner=repo.author.bot,
                 selected_installation_info=None,
                 fallback_installations=None,
                 token_type_mapping=None,
             )
-            assert get_adapter_auth_information(repo.owner, repo) == expected
+            assert get_adapter_auth_information(repo.author, repo) == expected
 
         def test_select_repo_bot_info(self, dbsession):
             repo = self._generate_test_repo(
@@ -399,7 +399,7 @@ class TestGettingAdapterAuthInformation:
                 fallback_installations=None,
                 token_type_mapping=None,
             )
-            assert get_adapter_auth_information(repo.owner, repo) == expected
+            assert get_adapter_auth_information(repo.author, repo) == expected
 
         def test_select_repo_bot_info_public_repo(self, dbsession, mock_configuration):
             repo = self._generate_test_repo(
@@ -441,7 +441,7 @@ class TestGettingAdapterAuthInformation:
                     TokenType.commit: repo_bot_token,
                 },
             )
-            assert get_adapter_auth_information(repo.owner, repo) == expected
+            assert get_adapter_auth_information(repo.author, repo) == expected
 
         @patch(
             "shared.bots.github_apps.get_github_integration_token",
@@ -478,7 +478,7 @@ class TestGettingAdapterAuthInformation:
                 fallback_installations=[],
                 token_type_mapping=None,
             )
-            assert get_adapter_auth_information(repo.owner, repo) == expected
+            assert get_adapter_auth_information(repo.author, repo) == expected
 
         @patch(
             "shared.bots.github_apps.get_github_integration_token",
@@ -488,7 +488,7 @@ class TestGettingAdapterAuthInformation:
             repo = self._generate_test_repo(
                 dbsession, with_bot=False, integration_id=1500, with_owner_bot=False
             )
-            repo.owner.oauth_token = None
+            repo.author.oauth_token = None
             # Repo's owner has no GithubApp, no token, and no bot configured
             # The repo has not a bot configured
             # The integration_id is no longer verified
@@ -498,7 +498,7 @@ class TestGettingAdapterAuthInformation:
                     key="installation_token_1500_None",
                     username="installation_1500",
                     entity_name=gh_app_key_name(
-                        installation_id=repo.owner.integration_id, app_id=None
+                        installation_id=repo.author.integration_id, app_id=None
                     ),
                 ),
                 token_owner=None,
@@ -506,7 +506,7 @@ class TestGettingAdapterAuthInformation:
                 fallback_installations=[],
                 token_type_mapping=None,
             )
-            assert get_adapter_auth_information(repo.owner, repo) == expected
+            assert get_adapter_auth_information(repo.author, repo) == expected
 
         @patch(
             "shared.bots.github_apps.get_github_integration_token",
@@ -551,7 +551,7 @@ class TestGettingAdapterAuthInformation:
                 fallback_installations=[],
                 token_type_mapping=None,
             )
-            assert get_adapter_auth_information(repo.owner, repo) == expected
+            assert get_adapter_auth_information(repo.author, repo) == expected
 
         @patch(
             "shared.bots.github_apps.get_github_integration_token",
@@ -605,7 +605,7 @@ class TestGettingAdapterAuthInformation:
             )
             assert (
                 get_adapter_auth_information(
-                    repo.owner, repo, installation_name_to_use="my_dedicated_app"
+                    repo.author, repo, installation_name_to_use="my_dedicated_app"
                 )
                 == expected
             )
@@ -614,8 +614,8 @@ class TestGettingAdapterAuthInformation:
     def test_select_repo_public_with_no_token_no_admin_token_configured(
         self, service, dbsession, mocker
     ):
-        repo = RepositoryFactory(owner__service=service, private=False)
-        repo.owner.oauth_token = None
+        repo = RepositoryFactory(author__service=service, private=False)
+        repo.author.oauth_token = None
         dbsession.add(repo)
         dbsession.flush()
         mock_config_helper(
@@ -651,4 +651,4 @@ class TestGettingAdapterAuthInformation:
                 TokenType.commit: None,
             },
         )
-        assert get_adapter_auth_information(repo.owner, repo) == expected
+        assert get_adapter_auth_information(repo.author, repo) == expected

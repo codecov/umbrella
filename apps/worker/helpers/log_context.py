@@ -76,7 +76,7 @@ class LogContext:
                         Owner.service,
                         Owner.plan,
                     )
-                    .join(Repository.owner)
+                    .join(Repository.author)
                     .filter(Repository.repoid == self.repo_id)
                 )
 

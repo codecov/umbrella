@@ -178,9 +178,9 @@ class TestUploadFinisherTask:
             branch="thisbranch",
             ci_passed=True,
             repository__branch="thisbranch",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
-            repository__owner__service="github",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
+            repository__author__service="github",
             author__service="github",
             notified=True,
             repository__yaml={
@@ -277,7 +277,7 @@ class TestUploadFinisherTask:
             branch="thisbranch",
             ci_passed=True,
             repository__branch="thisbranch",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={
                 "codecov": {"max_report_age": "1y ago"}
             },  # Sorry, this is a timebomb now
@@ -344,7 +344,7 @@ class TestUploadFinisherTask:
             branch="other_branch",
             ci_passed=True,
             repository__branch="thisbranch",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={
                 "codecov": {"max_report_age": "1y ago"}
             },  # Sorry, this is a timebomb now
@@ -397,8 +397,8 @@ class TestUploadFinisherTask:
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml=commit_yaml,
         )
         dbsession.add(commit)
@@ -418,8 +418,8 @@ class TestUploadFinisherTask:
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="aabbcc",
-            repository__owner__username="Codecov",
+            repository__author__unencrypted_oauth_token="aabbcc",
+            repository__author__username="Codecov",
             repository__yaml=commit_yaml,
         )
         dbsession.add(commit)
@@ -437,8 +437,8 @@ class TestUploadFinisherTask:
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml=commit_yaml,
         )
         dbsession.add(commit)
@@ -472,8 +472,8 @@ class TestUploadFinisherTask:
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml=commit_yaml,
         )
         dbsession.add(commit)
@@ -493,8 +493,8 @@ class TestUploadFinisherTask:
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml=commit_yaml,
         )
         dbsession.add(commit)
@@ -520,8 +520,8 @@ class TestUploadFinisherTask:
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml=commit_yaml,
         )
         dbsession.add(commit)
@@ -547,8 +547,8 @@ class TestUploadFinisherTask:
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml=commit_yaml,
         )
         dbsession.add(commit)
@@ -590,8 +590,8 @@ class TestUploadFinisherTask:
     ):
         commit_yaml = {}
         repository = RepositoryFactory.create(
-            owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            owner__username="ThiagoCodecov",
+            author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            author__username="ThiagoCodecov",
             yaml=commit_yaml,
         )
         pull = PullFactory.create(repository=repository)
@@ -665,8 +665,8 @@ class TestUploadFinisherTask:
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml=commit_yaml,
         )
         dbsession.add(commit)

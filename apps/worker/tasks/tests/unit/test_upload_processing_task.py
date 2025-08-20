@@ -84,9 +84,9 @@ class TestUploadProcessorTask:
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
-            repository__owner__service="github",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
+            repository__author__service="github",
             repository__name="example-python",
         )
         dbsession.add(commit)
@@ -148,9 +148,9 @@ class TestUploadProcessorTask:
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
-            repository__owner__service="github",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
+            repository__author__service="github",
             repository__name="example-python",
         )
         dbsession.add(commit)
@@ -199,9 +199,9 @@ class TestUploadProcessorTask:
             message="dsidsahdsahdsa",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
             author__service="github",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__service="github",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__service="github",
+            repository__author__username="ThiagoCodecov",
             repository__name="example-python",
         )
         dbsession.add(commit)
@@ -253,8 +253,8 @@ class TestUploadProcessorTask:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={"codecov": {"max_report_age": False}},
         )
         dbsession.add(commit)
@@ -365,8 +365,8 @@ class TestUploadProcessorTask:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={
                 "codecov": {"max_report_age": "1y ago"}
             },  # Sorry for the timebomb
@@ -475,8 +475,8 @@ class TestUploadProcessorTask:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={"codecov": {"max_report_age": False}},
         )
         dbsession.add(commit)
@@ -643,8 +643,8 @@ class TestUploadProcessorTask:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={
                 "codecov": {"max_report_age": "1y ago"}
             },  # Sorry for the timebomb
@@ -757,8 +757,8 @@ class TestUploadProcessorTask:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={
                 "codecov": {"max_report_age": "1y ago"}
             },  # Sorry for the timebomb
@@ -1071,8 +1071,8 @@ class TestUploadProcessorTask:
     ):
         commit = CommitFactory.create(
             message="",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={
                 "codecov": {"max_report_age": "1y ago"}
             },  # Sorry for the timebomb
@@ -1103,8 +1103,8 @@ class TestUploadProcessorTask:
     ):
         commit = CommitFactory.create(
             message="",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={
                 "codecov": {"max_report_age": "1y ago"}
             },  # Sorry for the timebomb
@@ -1171,8 +1171,8 @@ class TestUploadProcessorTask:
     ):
         commit = CommitFactory.create(
             message="",
-            repository__owner__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={
                 "codecov": {"max_report_age": "1y ago"}
             },  # Sorry for the timebomb

@@ -15,7 +15,7 @@ def _get_user_plan_from_ownerid(db_session, ownerid, *args, **kwargs) -> str:
 def _get_user_plan_from_repoid(db_session, repoid, *args, **kwargs) -> str:
     result = (
         db_session.query(Owner.plan)
-        .join(Repository.owner)
+        .join(Repository.author)
         .filter(Repository.repoid == repoid)
         .first()
     )
@@ -33,7 +33,7 @@ def _get_user_plan_from_comparison_id(dbsession, comparison_id, *args, **kwargs)
         dbsession.query(Owner.plan)
         .join(CompareCommit.compare_commit)
         .join(Commit.repository)
-        .join(Repository.owner)
+        .join(Repository.author)
         .filter(CompareCommit.id_ == comparison_id)
         .first()
     )
@@ -53,7 +53,7 @@ def _get_ownerid_from_org_ownerid(dbsession, org_ownerid, *args, **kwargs) -> in
 def _get_ownerid_from_repoid(dbsession, repoid, *args, **kwargs) -> int | None:
     result = (
         dbsession.query(Owner.ownerid)
-        .join(Repository.owner)
+        .join(Repository.author)
         .filter(Repository.repoid == repoid)
         .first()
     )
@@ -69,7 +69,7 @@ def _get_ownerid_from_comparison_id(
         dbsession.query(Owner.ownerid)
         .join(CompareCommit.compare_commit)
         .join(Commit.repository)
-        .join(Repository.owner)
+        .join(Repository.author)
         .filter(CompareCommit.id_ == comparison_id)
         .first()
     )

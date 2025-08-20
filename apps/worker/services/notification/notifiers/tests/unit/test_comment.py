@@ -3014,7 +3014,7 @@ class TestCommentNotifierInNewLayout:
         comparison = sample_comparison_head_and_pull_head_differ
         comparison.repository_service.service = "github"
         # relevant part of this test
-        comparison.head.commit.repository.owner.plan = "users-teamm"
+        comparison.head.commit.repository.author.plan = "users-teamm"
         notifier = CommentNotifier(
             repository=comparison.head.commit.repository,
             title="title",
@@ -3058,7 +3058,7 @@ class TestCommentNotifierInNewLayout:
         comparison = sample_comparison_coverage_carriedforward
         comparison.repository_service.service = "github"
         # relevant part of this test
-        comparison.head.commit.repository.owner.plan = "users-teamm"
+        comparison.head.commit.repository.author.plan = "users-teamm"
         notifier = CommentNotifier(
             repository=comparison.head.commit.repository,
             title="title",
@@ -3094,7 +3094,7 @@ class TestCommentNotifierInNewLayout:
         comparison = sample_comparison_coverage_carriedforward
         comparison.repository_service.service = "github"
         # relevant part of this test
-        comparison.head.commit.repository.owner.plan = "users-teamm"
+        comparison.head.commit.repository.author.plan = "users-teamm"
         notifier = CommentNotifier(
             repository=comparison.head.commit.repository,
             title="title",
@@ -3130,7 +3130,7 @@ class TestCommentNotifierInNewLayout:
         comparison = sample_comparison_coverage_carriedforward
         comparison.repository_service.service = "github"
         # relevant part of this test
-        comparison.head.commit.repository.owner.plan = "users-teamm"
+        comparison.head.commit.repository.author.plan = "users-teamm"
         notifier = CommentNotifier(
             repository=comparison.head.commit.repository,
             title="title",
@@ -3497,7 +3497,7 @@ class TestCommentNotifierWelcome:
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
             createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
-        repository = RepositoryFactory.create(owner=owner)
+        repository = RepositoryFactory.create(author=owner)
         branch = "new_branch"
         # artificially create multiple pull entries with BA comments only
         ba_pull_one = PullFactory.create(
@@ -3600,14 +3600,14 @@ class TestCommentNotifierWelcome:
         sample_comparison.head.commit.repository.private = False
 
         before_introduction_date = datetime(2024, 4, 1, 0, 0, 0).replace(tzinfo=UTC)
-        sample_comparison.head.commit.repository.owner.createstamp = (
+        sample_comparison.head.commit.repository.author.createstamp = (
             before_introduction_date
         )
 
         dbsession.add_all(
             [
                 sample_comparison.head.commit.repository,
-                sample_comparison.head.commit.repository.owner,
+                sample_comparison.head.commit.repository.author,
             ]
         )
         dbsession.flush()
@@ -3624,11 +3624,11 @@ class TestCommentNotifierWelcome:
         assert PROJECT_COVERAGE_CTA not in result
 
         after_introduction_date = datetime(2024, 6, 1, 0, 0, 0).replace(tzinfo=UTC)
-        sample_comparison.head.commit.repository.owner.createstamp = (
+        sample_comparison.head.commit.repository.author.createstamp = (
             after_introduction_date
         )
 
-        dbsession.add(sample_comparison.head.commit.repository.owner)
+        dbsession.add(sample_comparison.head.commit.repository.author)
         dbsession.flush()
 
         notifier = CommentNotifier(
@@ -3650,14 +3650,14 @@ class TestCommentNotifierWelcome:
         sample_comparison.head.commit.repository.private = True
 
         before_introduction_date = datetime(2024, 4, 1, 0, 0, 0).replace(tzinfo=UTC)
-        sample_comparison.head.commit.repository.owner.createstamp = (
+        sample_comparison.head.commit.repository.author.createstamp = (
             before_introduction_date
         )
 
         dbsession.add_all(
             [
                 sample_comparison.head.commit.repository,
-                sample_comparison.head.commit.repository.owner,
+                sample_comparison.head.commit.repository.author,
             ]
         )
         dbsession.flush()
@@ -3674,11 +3674,11 @@ class TestCommentNotifierWelcome:
         assert PROJECT_COVERAGE_CTA not in result
 
         after_introduction_date = datetime(2024, 6, 1, 0, 0, 0).replace(tzinfo=UTC)
-        sample_comparison.head.commit.repository.owner.createstamp = (
+        sample_comparison.head.commit.repository.author.createstamp = (
             after_introduction_date
         )
 
-        dbsession.add(sample_comparison.head.commit.repository.owner)
+        dbsession.add(sample_comparison.head.commit.repository.author)
         dbsession.flush()
 
         notifier = CommentNotifier(
@@ -3700,16 +3700,18 @@ class TestCommentNotifierWelcome:
         sample_comparison.head.commit.repository.private = True
 
         after_introduction_date = datetime(2024, 6, 1, 0, 0, 0).replace(tzinfo=UTC)
-        sample_comparison.head.commit.repository.owner.createstamp = (
+        sample_comparison.head.commit.repository.author.createstamp = (
             after_introduction_date
         )
 
-        sample_comparison.head.commit.repository.owner.plan = PlanName.TEAM_YEARLY.value
+        sample_comparison.head.commit.repository.author.plan = (
+            PlanName.TEAM_YEARLY.value
+        )
 
         dbsession.add_all(
             [
                 sample_comparison.head.commit.repository,
-                sample_comparison.head.commit.repository.owner,
+                sample_comparison.head.commit.repository.author,
             ]
         )
         dbsession.flush()
@@ -3725,9 +3727,9 @@ class TestCommentNotifierWelcome:
         result = notifier.build_message(sample_comparison)
         assert PROJECT_COVERAGE_CTA not in result
 
-        sample_comparison.head.commit.repository.owner.plan = DEFAULT_FREE_PLAN
+        sample_comparison.head.commit.repository.author.plan = DEFAULT_FREE_PLAN
 
-        dbsession.add(sample_comparison.head.commit.repository.owner)
+        dbsession.add(sample_comparison.head.commit.repository.author)
         dbsession.flush()
 
         notifier = CommentNotifier(
@@ -3747,14 +3749,18 @@ class TestMessagesToUserSection:
         "repo, is_enterprise, owner_has_apps, expected",
         [
             pytest.param(
-                RepositoryFactory(owner__service="github", owner__integration_id=None),
+                RepositoryFactory(
+                    author__service="github", author__integration_id=None
+                ),
                 False,
                 False,
                 ":exclamation: Your organization needs to install the [Codecov GitHub app](https://github.com/apps/codecov/installations/select_target) to enable full functionality.",
                 id="owner_not_using_app_should_emit_warning",
             ),
             pytest.param(
-                RepositoryFactory(owner__service="github", owner__integration_id=None),
+                RepositoryFactory(
+                    author__service="github", author__integration_id=None
+                ),
                 True,
                 False,
                 "",
@@ -3762,7 +3768,7 @@ class TestMessagesToUserSection:
             ),
             pytest.param(
                 RepositoryFactory(
-                    owner__service="github", owner__integration_id="integration_id"
+                    author__service="github", author__integration_id="integration_id"
                 ),
                 False,
                 False,
@@ -3770,7 +3776,9 @@ class TestMessagesToUserSection:
                 id="owner_using_app_legacy_should_not_emit_warning",
             ),
             pytest.param(
-                RepositoryFactory(owner__service="github", owner__integration_id=None),
+                RepositoryFactory(
+                    author__service="github", author__integration_id=None
+                ),
                 False,
                 True,
                 "",
@@ -3787,9 +3795,9 @@ class TestMessagesToUserSection:
         expected: str,
     ):
         if owner_has_apps:
-            repo.owner.github_app_installations = [
+            repo.author.github_app_installations = [
                 GithubAppInstallationFactory(
-                    owner=repo.owner, app_id=10, installation_id=1000
+                    owner=repo.author, app_id=10, installation_id=1000
                 )
             ]
         commit = CommitFactory(repository=repo)

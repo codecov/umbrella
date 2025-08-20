@@ -23,7 +23,7 @@ async def fetch_commit_yaml_from_provider(
             yaml_content,
             show_secrets_for=(
                 commit.repository.service,
-                commit.repository.owner.service_id,
+                commit.repository.author.service_id,
                 commit.repository.service_id,
             ),
         )

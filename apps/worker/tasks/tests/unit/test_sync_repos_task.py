@@ -135,7 +135,7 @@ class TestSyncReposTaskUnit:
             name="old-name",
             using_integration=False,
             service_id="12071992",
-            owner=user,
+            author=user,
         )
         dbsession.add(old_repo)
         dbsession.flush()
@@ -193,7 +193,7 @@ class TestSyncReposTaskUnit:
             name="pytest",
             using_integration=False,
             service_id="12071992",
-            owner=wrong_owner,
+            author=wrong_owner,
         )
         dbsession.add(old_repo)
         dbsession.flush()
@@ -244,7 +244,7 @@ class TestSyncReposTaskUnit:
             name=repository_name,
             using_integration=False,
             service_id=wrong_service_id,
-            owner=correct_owner,
+            author=correct_owner,
         )
         dbsession.add(repo_same_name)
         wrong_owner = OwnerFactory.create(
@@ -256,7 +256,7 @@ class TestSyncReposTaskUnit:
             name=repository_name,
             using_integration=False,
             service_id=repo_service_id,
-            owner=wrong_owner,
+            author=wrong_owner,
         )
         dbsession.add(right_service_id_repo)
         dbsession.flush()
@@ -311,7 +311,7 @@ class TestSyncReposTaskUnit:
             name="pytest",
             using_integration=False,
             service_id=repo_wrong_service_id,
-            owner=user,
+            author=user,
         )
         dbsession.add(old_repo)
         dbsession.flush()
@@ -404,21 +404,21 @@ class TestSyncReposTaskUnit:
             name="pub",
             using_integration=False,
             service_id="159090647",
-            owner=user,
+            author=user,
         )
         repo_pytest = RepositoryFactory.create(
             private=False,
             name="pytest",
             using_integration=False,
             service_id="159089634",
-            owner=user,
+            author=user,
         )
         repo_spack = RepositoryFactory.create(
             private=False,
             name="spack",
             using_integration=False,
             service_id="164948070",
-            owner=user,
+            author=user,
         )
         dbsession.add(repo_pub)
         dbsession.add(repo_pytest)
@@ -563,7 +563,7 @@ class TestSyncReposTaskUnit:
                 name=repo["repo"]["name"],
                 using_integration=repo["_using_integration"],
                 service_id=repo["repo"]["service_id"],
-                owner=user,
+                author=user,
             )
             for repo in mock_repos[:-1]
         ]
@@ -621,14 +621,14 @@ class TestSyncReposTaskUnit:
             name="pytest",
             using_integration=True,
             service_id="159089634",
-            owner=user,
+            author=user,
         )
         repo_spack = RepositoryFactory.create(
             private=False,
             name="spack",
             using_integration=True,
             service_id="164948070",
-            owner=user,
+            author=user,
         )
         dbsession.add(repo_pytest)
         dbsession.add(repo_spack)
@@ -683,7 +683,7 @@ class TestSyncReposTaskUnit:
         dbsession.add(user)
         dbsession.flush()
 
-        repos = [RepositoryFactory.create(private=True, owner=user) for _ in range(10)]
+        repos = [RepositoryFactory.create(private=True, author=user) for _ in range(10)]
         dbsession.add_all(repos)
         dbsession.flush()
 
@@ -694,8 +694,8 @@ class TestSyncReposTaskUnit:
         list_repos_result = [
             {
                 "owner": {
-                    "service_id": repo.owner.service_id,
-                    "username": repo.owner.username,
+                    "service_id": repo.author.service_id,
+                    "username": repo.author.username,
                 },
                 "repo": {
                     "service_id": repo.service_id,
@@ -821,7 +821,7 @@ class TestSyncReposTaskUnit:
                 name=repo["repo"]["name"],
                 using_integration=repo["_using_integration"],
                 service_id=repo["repo"]["service_id"],
-                owner=user,
+                author=user,
             )
             for repo in mock_repos[:-1]
         ]
@@ -919,7 +919,7 @@ class TestSyncReposTaskUnit:
                 name=repo["repo"]["name"],
                 using_integration=repo["_using_integration"],
                 service_id=repo["repo"]["service_id"],
-                owner=user,
+                author=user,
             )
             for repo in mock_repos[:-1]
         ]
@@ -997,7 +997,7 @@ class TestSyncReposTaskUnit:
                 name=repo["repo"]["name"],
                 using_integration=repo["_using_integration"],
                 service_id=repo["repo"]["service_id"],
-                owner=user,
+                author=user,
             )
             dbsession.add(new_repo)
         dbsession.flush()

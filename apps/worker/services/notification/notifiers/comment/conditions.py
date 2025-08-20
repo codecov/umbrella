@@ -214,7 +214,7 @@ class NoAutoActivateMessageIfAutoActivateIsOff(NotifyCondition):
     def check_condition(
         notifier: AbstractBaseNotifier, comparison: ComparisonProxy
     ) -> bool:
-        owner = notifier.repository.owner
+        owner = notifier.repository.author
         # Return False ONLY if (owner.plan_auto_activate is False) and should_use_upgrade_message
         # Checking if owner.plan_auto_activate is False so None will pass (tests)
         return (owner.plan_auto_activate != False) or (

@@ -532,7 +532,9 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         redis_connection.delete(f"cache/{commit.repoid}/tree/{commit.branch}")
         redis_connection.delete(f"cache/{commit.repoid}/tree/{commit.commitid}")
         repository = commit.repository
-        key = ":".join((repository.service, repository.owner.username, repository.name))
+        key = ":".join(
+            (repository.service, repository.author.username, repository.name)
+        )
         if commit.branch:
             redis_connection.hdel("badge", (f"{key}:{commit.branch}").lower())
             if commit.branch == repository.branch:
@@ -613,7 +615,7 @@ def load_commit_diff(commit: Commit, task_name: str | None = None) -> dict | Non
     commitid = commit.commitid
     try:
         installation_name_to_use = (
-            get_installation_name_for_owner_for_task(task_name, repository.owner)
+            get_installation_name_for_owner_for_task(task_name, repository.author)
             if task_name
             else GITHUB_APP_INSTALLATION_DEFAULT_NAME
         )

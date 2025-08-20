@@ -55,7 +55,7 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         log.info("Computing comparison", extra=log_extra)
         current_yaml = get_repo_yaml(repo)
         installation_name_to_use = get_installation_name_for_owner_for_task(
-            self.name, repo.owner
+            self.name, repo.author
         )
         report_service = ReportService(
             current_yaml, gh_app_installation_name=installation_name_to_use

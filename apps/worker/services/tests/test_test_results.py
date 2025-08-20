@@ -191,8 +191,8 @@ def test_build_message(snapshot):
     payload = TestResultsNotificationPayload(1, 2, 3, info)
     commit = CommitFactory(
         branch="thing/thing",
-        repository__owner__username="username",
-        repository__owner__service="github",
+        repository__author__username="username",
+        repository__author__service="github",
         repository__name="name",
     )
     tn = TestResultsNotifier(commit.repository, commit, None, None, None, payload)
@@ -217,8 +217,8 @@ def test_build_message_with_flake(snapshot):
     payload = TestResultsNotificationPayload(1, 2, 3, info)
     commit = CommitFactory(
         branch="test_branch",
-        repository__owner__username="username",
-        repository__owner__service="github",
+        repository__author__username="username",
+        repository__author__service="github",
         repository__name="name",
     )
     tn = TestResultsNotifier(commit.repository, commit, None, None, None, payload)
@@ -286,7 +286,7 @@ def test_notify_fail_torngit_error(
 def test_should_do_flake_detection(dbsession, mocker, config, private, plan, ex_result):
     mock_all_plans_and_tiers()
     owner = OwnerFactory(plan=plan)
-    repo = RepositoryFactory(private=private, owner=owner)
+    repo = RepositoryFactory(private=private, author=owner)
     dbsession.add(repo)
     dbsession.flush()
 

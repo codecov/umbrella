@@ -745,7 +745,7 @@ class MessagesToUserSectionWriter(BaseSectionWriter):
     def _write_install_github_app_warning(self, comparison: ComparisonProxy) -> str:
         """Writes a warning message to GitHub owners that have not yet installed the Codecov App to their account."""
         repo = comparison.head.commit.repository
-        owner = repo.owner
+        owner = repo.author
         is_user_in_github = owner.service == "github"
         owner_is_using_app = (
             owner.integration_id is not None or owner.github_app_installations != []

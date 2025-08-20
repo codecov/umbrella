@@ -20,9 +20,9 @@ from services.repository import EnrichedPull
 @pytest.fixture
 def comparison(dbsession):
     repository = RepositoryFactory.create(
-        owner__username="codecov",
-        owner__unencrypted_oauth_token="testtlxuu2kfef3km1fbecdlmnb2nvpikvmoadi3",
-        owner__plan="users-pr-inappm",
+        author__username="codecov",
+        author__unencrypted_oauth_token="testtlxuu2kfef3km1fbecdlmnb2nvpikvmoadi3",
+        author__plan="users-pr-inappm",
         name="example-python",
         image_token="abcdefghij",
         private=True,
@@ -87,7 +87,7 @@ class TestCommitNotificationsServiceTestCase:
         comparison.enriched_pull = None
         commit = comparison.head.commit
         app = GithubAppInstallationFactory(
-            owner=commit.repository.owner, installation_id=1234
+            owner=commit.repository.author, installation_id=1234
         )
         dbsession.add(app)
         dbsession.flush()

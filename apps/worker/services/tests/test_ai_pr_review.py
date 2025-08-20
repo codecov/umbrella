@@ -14,16 +14,16 @@ index d728f92f..37f333fb 100644
 +import json
  import logging
  from datetime import datetime
- 
+
 +from django.conf import settings
  from django.db.models.signals import post_save
  from django.dispatch import receiver
 +from google.cloud import pubsub_v1
- 
+
 -from codecov_auth.models import Owner, OwnerProfile
 +from codecov_auth.models import OrganizationLevelToken, Owner, OwnerProfile
- 
- 
+
+
  @receiver(post_save, sender=Owner)
 @@ -13,3 +16,34 @@ def create_owner_profile_when_owner_is_created(
  ):
@@ -97,8 +97,8 @@ index 77500d63..adffea32 100644
 --- a/core/signals.py
 +++ b/core/signals.py
 @@ -18,12 +18,19 @@ def _get_pubsub_publisher():
- 
- 
+
+
  @receiver(post_save, sender=Repository, dispatch_uid="shelter_sync_repo")
 -def update_repository(sender, instance, **kwargs):
 +def update_repository(sender, instance: Repository, **kwargs):
@@ -124,7 +124,7 @@ index b6eafc65..26a8c8e2 100644
 +++ b/core/tests/test_signals.py
 @@ -21,5 +21,6 @@ def test_shelter_repo_sync(mocker):
      RepositoryFactory(repoid=91728376)
- 
+
      publish.assert_called_once_with(
 -        "projects/test-project-id/topics/test-topic-id", b'{"sync": 91728376}'
 +        "projects/test-project-id/topics/test-topic-id",
@@ -170,7 +170,7 @@ async def test_perform_initial_review(
     bot_token.return_value = (torngit_token, None)
 
     owner = OwnerFactory.create(service="github", username="scott-codecov")
-    repository = RepositoryFactory.create(owner=owner, name="codecov-test")
+    repository = RepositoryFactory.create(author=owner, name="codecov-test")
     dbsession.add(owner)
     dbsession.add(repository)
     dbsession.commit()
@@ -199,7 +199,7 @@ async def test_perform_duplicate_review(
     bot_token.return_value = (torngit_token, None)
 
     owner = OwnerFactory(service="github", username="scott-codecov")
-    repository = RepositoryFactory(owner=owner, name="codecov-test")
+    repository = RepositoryFactory(author=owner, name="codecov-test")
     dbsession.add(owner)
     dbsession.add(repository)
     dbsession.commit()
@@ -236,7 +236,7 @@ async def test_perform_new_commit(
     bot_token.return_value = (torngit_token, None)
 
     owner = OwnerFactory(service="github", username="scott-codecov")
-    repository = RepositoryFactory(owner=owner, name="codecov-test")
+    repository = RepositoryFactory(author=owner, name="codecov-test")
     dbsession.add(owner)
     dbsession.add(repository)
     dbsession.commit()

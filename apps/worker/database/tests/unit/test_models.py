@@ -395,10 +395,10 @@ class TestGithubAppInstallationModel:
     def test_covers_all_repos(self, dbsession: Session):
         owner = OwnerFactory.create()
         other_owner = OwnerFactory.create()
-        repo1 = RepositoryFactory.create(owner=owner)
-        repo2 = RepositoryFactory.create(owner=owner)
-        repo3 = RepositoryFactory.create(owner=owner)
-        other_repo_different_owner = RepositoryFactory.create(owner=other_owner)
+        repo1 = RepositoryFactory.create(author=owner)
+        repo2 = RepositoryFactory.create(author=owner)
+        repo3 = RepositoryFactory.create(author=owner)
+        other_repo_different_owner = RepositoryFactory.create(author=other_owner)
         installation_obj = GithubAppInstallationFactory(
             owner=owner,
             installation_id=100,
@@ -422,8 +422,8 @@ class TestGithubAppInstallationModel:
 
     def test_covers_some_repos(self, dbsession: Session):
         owner = OwnerFactory()
-        repo = RepositoryFactory(owner=owner)
-        same_owner_other_repo = RepositoryFactory(owner=owner)
+        repo = RepositoryFactory(author=owner)
+        same_owner_other_repo = RepositoryFactory(author=owner)
         other_repo_different_owner = RepositoryFactory()
         installation_obj = GithubAppInstallationFactory(
             owner=owner,

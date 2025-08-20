@@ -37,8 +37,8 @@ def fake_owners(dbsession):
 @pytest.fixture
 def fake_repos(dbsession, fake_owners):
     (owner, owner_enterprise_cloud) = fake_owners
-    repo = RepositoryFactory.create(owner=owner)
-    repo_enterprise_cloud = RepositoryFactory.create(owner=owner_enterprise_cloud)
+    repo = RepositoryFactory.create(author=owner)
+    repo_enterprise_cloud = RepositoryFactory.create(author=owner_enterprise_cloud)
     dbsession.add(repo)
     dbsession.add(repo_enterprise_cloud)
     dbsession.flush()

@@ -10,9 +10,9 @@ class TestRepositoryServiceIntegration:
     @pytest.mark.asyncio
     async def test_get_repo_provider_service_github(self, dbsession, codecov_vcr):
         repo = RepositoryFactory.create(
-            owner__unencrypted_oauth_token="testlln8sdeec57lz83oe3l8y9qq4lhqat2f1kzm",
-            owner__username="ThiagoCodecov",
-            owner__service="github",
+            author__unencrypted_oauth_token="testlln8sdeec57lz83oe3l8y9qq4lhqat2f1kzm",
+            author__username="ThiagoCodecov",
+            author__service="github",
             name="example-python",
         )
         dbsession.add(repo)
@@ -44,9 +44,9 @@ class TestRepositoryServiceIntegration:
             "client_secret": "testw35rwjj75gbaervbsmgl13vf39jd",
         }
         repo = RepositoryFactory.create(
-            owner__unencrypted_oauth_token="H6scSkq7rKZDXtDqe4:kdTf3NVM9RkUc9rAaDM853j5f32PkBGU",
-            owner__username="ThiagoCodecov",
-            owner__service="bitbucket",
+            author__unencrypted_oauth_token="H6scSkq7rKZDXtDqe4:kdTf3NVM9RkUc9rAaDM853j5f32PkBGU",
+            author__username="ThiagoCodecov",
+            author__service="bitbucket",
             name="example-python",
         )
         dbsession.add(repo)
@@ -77,9 +77,9 @@ class TestRepositoryServiceIntegration:
             "client_secret": "testw35rwjj75gbaervbsmgl13vf39jd",
         }
         repo = RepositoryFactory.create(
-            owner__unencrypted_oauth_token="test10r65j3084oje16v12yzfuojw4yovzwa18y9txooo716odibjdwk8cn1p42r",
-            owner__username="stevepeak",
-            owner__service="gitlab",
+            author__unencrypted_oauth_token="test10r65j3084oje16v12yzfuojw4yovzwa18y9txooo716odibjdwk8cn1p42r",
+            author__username="stevepeak",
+            author__service="gitlab",
             name="example-python",
             service_id="187725",
         )

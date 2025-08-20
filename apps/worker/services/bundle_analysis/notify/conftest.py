@@ -12,7 +12,7 @@ SAMPLE_FOLDER_PATH = Path(__file__).resolve().parent / "tests" / "samples"
 
 
 def get_commit_pair(dbsession) -> tuple[Commit, Commit]:
-    base_commit = CommitFactory(repository__owner__service="github")
+    base_commit = CommitFactory(repository__author__service="github")
     head_commit = CommitFactory(repository=base_commit.repository)
     dbsession.add_all([base_commit, head_commit])
     dbsession.commit()

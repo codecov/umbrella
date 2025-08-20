@@ -205,7 +205,7 @@ class StandardNotifier(AbstractBaseNotifier):
             )
         return self.BASE_MESSAGE.format(
             head_url=get_commit_url(commit),
-            owner_username=commit.repository.owner.username,
+            owner_username=commit.repository.author.username,
             repo_name=commit.repository.name,
             comparison_string=comparison_string,
             head_branch=commit.branch,

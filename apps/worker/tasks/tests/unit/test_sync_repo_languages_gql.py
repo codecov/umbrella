@@ -73,11 +73,11 @@ class TestSyncRepoLanguagesGQL:
         repo_two_name = "TEST-Two"
         repo_three_name = "test-three"
 
-        repo_one = RepositoryFactory.create(name=repo_one_name, owner=org)
+        repo_one = RepositoryFactory.create(name=repo_one_name, author=org)
         repo_two = RepositoryFactory.create(
-            name=repo_two_name, languages_last_updated=None, owner=org
+            name=repo_two_name, languages_last_updated=None, author=org
         )
-        repo_three = RepositoryFactory.create(name=repo_three_name, owner=org)
+        repo_three = RepositoryFactory.create(name=repo_three_name, author=org)
 
         dbsession.add_all([current_owner, org, repo_one, repo_two, repo_three])
         dbsession.flush()

@@ -22,7 +22,7 @@ class SampleNotifierForTest(StandardNotifier):
 class TestStandardkNotifier:
     def test_is_enabled_without_site_settings(self, dbsession):
         repository = RepositoryFactory.create(
-            owner__username="test_is_enabled_without_site_settings"
+            author__username="test_is_enabled_without_site_settings"
         )
         dbsession.add(repository)
         dbsession.flush()
@@ -38,7 +38,7 @@ class TestStandardkNotifier:
 
     def test_is_enabled_with_site_settings_no_special_config(self, dbsession):
         repository = RepositoryFactory.create(
-            owner__username="test_is_enabled_without_site_settings"
+            author__username="test_is_enabled_without_site_settings"
         )
         dbsession.add(repository)
         dbsession.flush()
@@ -54,7 +54,7 @@ class TestStandardkNotifier:
 
     def test_is_enabled_with_site_settings_no_url(self, dbsession):
         repository = RepositoryFactory.create(
-            owner__username="test_is_enabled_without_site_settings"
+            author__username="test_is_enabled_without_site_settings"
         )
         dbsession.add(repository)
         dbsession.flush()
@@ -70,7 +70,7 @@ class TestStandardkNotifier:
 
     def test_is_enabled_with_site_settings_whitelisted_url(self, dbsession):
         repository = RepositoryFactory.create(
-            owner__username="test_is_enabled_without_site_settings"
+            author__username="test_is_enabled_without_site_settings"
         )
         dbsession.add(repository)
         dbsession.flush()
@@ -86,7 +86,7 @@ class TestStandardkNotifier:
 
     def test_is_enabled_with_site_settings_not_whitelisted_url(self, dbsession):
         repository = RepositoryFactory.create(
-            owner__username="test_is_enabled_without_site_settings"
+            author__username="test_is_enabled_without_site_settings"
         )
         dbsession.add(repository)
         dbsession.flush()

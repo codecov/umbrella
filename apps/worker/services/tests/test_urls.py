@@ -42,7 +42,7 @@ class TestURLs:
             username="gh",
         )
         dbsession.add(github_org)
-        r = RepositoryFactory.create(owner=github_org)
+        r = RepositoryFactory.create(author=github_org)
         dbsession.add(r)
         gh_pull = PullFactory.create(repository=r)
         dbsession.add(gh_pull)
@@ -52,7 +52,7 @@ class TestURLs:
 
         gitlab_root_org = OwnerFactory.create(service="gitlab", username="gl_root")
         dbsession.add(gitlab_root_org)
-        r = RepositoryFactory.create(owner=gitlab_root_org)
+        r = RepositoryFactory.create(author=gitlab_root_org)
         dbsession.add(r)
         gl_root_pull = PullFactory.create(repository=r)
         dbsession.add(gl_root_pull)
@@ -66,7 +66,7 @@ class TestURLs:
             parent_service_id=gitlab_root_org.service_id,
         )
         dbsession.add(gitlab_mid_org)
-        r = RepositoryFactory.create(owner=gitlab_mid_org)
+        r = RepositoryFactory.create(author=gitlab_mid_org)
         dbsession.add(r)
         gl_mid_pull = PullFactory.create(repository=r)
         dbsession.add(gl_mid_pull)
@@ -80,7 +80,7 @@ class TestURLs:
             parent_service_id=gitlab_mid_org.service_id,
         )
         dbsession.add(gitlab_sub_org)
-        r = RepositoryFactory.create(owner=gitlab_sub_org)
+        r = RepositoryFactory.create(author=gitlab_sub_org)
         dbsession.add(r)
         gl_child_pull = PullFactory.create(repository=r)
         dbsession.add(gl_child_pull)

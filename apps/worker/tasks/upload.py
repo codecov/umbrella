@@ -41,10 +41,7 @@ from services.test_analytics.ta_metrics import new_ta_tasks_repo_summary
 from services.test_results import TestResultsReportService
 from shared.celery_config import upload_task_name
 from shared.config import get_config
-from shared.django_apps.upload_breadcrumbs.models import (
-    Errors,
-    Milestones,
-)
+from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.django_apps.user_measurements.models import UserMeasurement
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Histogram
@@ -463,7 +460,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
         was_updated, was_setup = False, False
         installation_name_to_use = get_installation_name_for_owner_for_task(
-            self.name, repository.owner
+            self.name, repository.author
         )
         repository_service = self.get_repo_provider_service(
             repository, installation_name_to_use=installation_name_to_use, commit=commit
@@ -503,12 +500,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 )
         else:
             context = OwnerContext(
-                owner_onboarding_date=repository.owner.createstamp,
-                owner_plan=repository.owner.plan,
+                owner_onboarding_date=repository.author.createstamp,
+                owner_plan=repository.author.plan,
                 ownerid=repository.ownerid,
             )
             commit_yaml = UserYaml.get_final_yaml(
-                owner_yaml=repository.owner.yaml,
+                owner_yaml=repository.author.yaml,
                 repo_yaml=repository.yaml,
                 commit_yaml=None,
                 owner_context=context,
@@ -679,7 +676,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 upload_flag_map[upload] = arguments.get("flags", [])
                 measurements_list.append(
                     UserMeasurement(
-                        owner_id=repository.owner.ownerid,
+                        owner_id=repository.author.ownerid,
                         repo_id=repository.repoid,
                         commit_id=commit.id,
                         upload_id=upload.id,
@@ -968,7 +965,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         ghapp_default_installations = list(
             filter(
                 lambda obj: obj.name == GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-                commit.repository.owner.github_app_installations or [],
+                commit.repository.author.github_app_installations or [],
             )
         )
         should_post_ghapp = not (

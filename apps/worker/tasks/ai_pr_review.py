@@ -31,7 +31,7 @@ class AiPrReviewTask(BaseCodecovTask, name=ai_pr_review_task_name):
 
         repository = db_session.query(Repository).filter_by(repoid=repoid).first()
         assert repository
-        if repository.owner.service != "github":
+        if repository.author.service != "github":
             log.warning("AI PR review only supports GitHub currently")
             return {"successful": False, "error": "not_github"}
 

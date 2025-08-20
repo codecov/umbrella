@@ -11,4 +11,4 @@ class DjangoSQLAlchemyRepositoryWrapper:
         if _is_django_model(repository):
             return repository.author
         else:
-            return repository.owner
+            return repository.author

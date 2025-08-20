@@ -242,9 +242,9 @@ def sample_commit_with_report_already_carriedforward(dbsession, mock_storage):
         _report_json={"sessions": sessions_dict, "files": file_headers},
         repository__name="test-repo",
         repository__image_token="test-image-token",
-        repository__owner__username="test-owner",
-        repository__owner__service="github",
-        repository__owner__integration_id="10000",
+        repository__author__username="test-owner",
+        repository__author__service="github",
+        repository__author__integration_id="10000",
         repository__using_integration=True,
         commitid="1234567",
     )
@@ -266,9 +266,9 @@ def create_sample_comparison(dbsession, request, sample_report, mocker):
 
     def _comparison(service="github", username="codecov-test"):
         repository = RepositoryFactory.create(
-            owner__username=username,
-            owner__service=service,
-            owner__integration_id="10000",
+            author__username=username,
+            author__service=service,
+            author__integration_id="10000",
             using_integration=True,
         )
         dbsession.add(repository)
@@ -304,14 +304,14 @@ def sample_comparison(dbsession, request, sample_report, mocker):
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username="test-owner",
-        owner__name="test-owner-name",
-        owner__service="github",
-        owner__integration_id="10000",
+        author__username="test-owner",
+        author__name="test-owner-name",
+        author__service="github",
+        author__integration_id="10000",
         name="test-repo",
         image_token="test-image-token",
         # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-        owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+        author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         using_integration=True,
     )
     dbsession.add(repository)
@@ -438,11 +438,11 @@ def sample_comparison_negative_change(dbsession, request, sample_report, mocker)
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username="test-owner",
+        author__username="test-owner",
         name="test-repo",
         image_token="test-image-token",
-        owner__service="github",
-        owner__integration_id="10000",
+        author__service="github",
+        author__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)
@@ -499,11 +499,11 @@ def sample_comparison_no_change(dbsession, request, sample_report, mocker):
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username="test-owner",
+        author__username="test-owner",
         name="test-repo",
         image_token="test-image-token",
-        owner__service="github",
-        owner__integration_id="10000",
+        author__service="github",
+        author__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)
@@ -560,11 +560,11 @@ def sample_comparison_without_pull(dbsession, request, sample_report, mocker):
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username="test-owner",
+        author__username="test-owner",
         name="test-repo",
         image_token="test-image-token",
-        owner__service="github",
-        owner__integration_id="10000",
+        author__service="github",
+        author__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)
@@ -607,10 +607,10 @@ def sample_comparison_database_pull_without_provider(
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username="test-owner",
+        author__username="test-owner",
         name="test-repo",
         image_token="test-image-token",
-        owner__integration_id="10000",
+        author__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)
@@ -648,9 +648,9 @@ def sample_comparison_database_pull_without_provider(
 
 def generate_sample_comparison(username, dbsession, base_report, head_report):
     repository = RepositoryFactory.create(
-        owner__username=username,
-        owner__service="github",
-        owner__integration_id="10000",
+        author__username=username,
+        author__service="github",
+        author__integration_id="10000",
         using_integration=True,
         name="test-repo",
         image_token="test-image-token",
@@ -710,11 +710,11 @@ def sample_comparison_without_base_report(dbsession, request, sample_report, moc
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username="test-owner",
+        author__username="test-owner",
         name="test-repo",
         image_token="test-image-token",
-        owner__service="github",
-        owner__integration_id="10000",
+        author__service="github",
+        author__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)
@@ -782,11 +782,11 @@ def sample_comparison_without_base_with_pull(dbsession, request, sample_report, 
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__username="test-owner",
+        author__username="test-owner",
         name="test-repo",
         image_token="test-image-token",
-        owner__service="github",
-        owner__integration_id="10000",
+        author__service="github",
+        author__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)
@@ -843,12 +843,12 @@ def sample_comparison_head_and_pull_head_differ(
         return_value="github-integration-token",
     )
     repository = RepositoryFactory.create(
-        owner__service="github",
-        owner__username="ThiagoCodecov",
+        author__service="github",
+        author__username="ThiagoCodecov",
         name="example-python",
-        owner__unencrypted_oauth_token="testtlxuu2kfef3km1fbecdlmnb2nvpikvmoadi3",
+        author__unencrypted_oauth_token="testtlxuu2kfef3km1fbecdlmnb2nvpikvmoadi3",
         image_token="abcdefghij",
-        owner__integration_id="10000",
+        author__integration_id="10000",
         using_integration=True,
     )
     dbsession.add(repository)

@@ -69,9 +69,9 @@ class WebhookNotifier(RequestsYamlBasedNotifier):
             "base": self.build_commit_payload(base_full_commit),
             "compare": self.generate_compare_dict(comparison),
             "owner": {
-                "username": repository.owner.username,
-                "service_id": repository.owner.service_id,
-                "service": repository.owner.service,
+                "username": repository.author.username,
+                "service_id": repository.author.service_id,
+                "service": repository.author.service,
             },
             "pull": pull_dict,
         }

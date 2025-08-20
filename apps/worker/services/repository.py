@@ -49,7 +49,7 @@ def get_repo_provider_service(
     additional_data: AdditionalData | None = None,
 ) -> TorngitBaseAdapter:
     adapter_auth_info = get_adapter_auth_information(
-        repository.owner,
+        repository.author,
         repository=repository,
         installation_name_to_use=installation_name_to_use,
     )
@@ -66,9 +66,9 @@ def get_repo_provider_service(
             private=repository.private,
         ),
         owner=OwnerInfo(
-            service_id=repository.owner.service_id,
-            ownerid=repository.ownerid,
-            username=repository.owner.username,
+            service_id=repository.author.service_id,
+            ownerid=repository.author.ownerid,
+            username=repository.author.username,
         ),
         installation=adapter_auth_info["selected_installation_info"],
         fallback_installations=adapter_auth_info["fallback_installations"],
@@ -660,12 +660,12 @@ def fetch_commit_yaml_and_possibly_store(
         )
         commit_yaml = None
     context = OwnerContext(
-        owner_onboarding_date=repository.owner.createstamp,
-        owner_plan=repository.owner.plan,
+        owner_onboarding_date=repository.author.createstamp,
+        owner_plan=repository.author.plan,
         ownerid=repository.ownerid,
     )
     return UserYaml.get_final_yaml(
-        owner_yaml=repository.owner.yaml,
+        owner_yaml=repository.author.yaml,
         repo_yaml=repository.yaml,
         commit_yaml=commit_yaml,
         owner_context=context,

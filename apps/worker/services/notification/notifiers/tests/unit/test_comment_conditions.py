@@ -291,7 +291,7 @@ def test_no_auto_activate_message_if_auto_activate_is_off(
         mock_repo_provider,
     )
     notifier.decoration_type = decoration_type
-    notifier.repository.owner.plan_auto_activate = plan_auto_activate
+    notifier.repository.author.plan_auto_activate = plan_auto_activate
     assert (
         NoAutoActivateMessageIfAutoActivateIsOff.check_condition(
             notifier, sample_comparison_no_change

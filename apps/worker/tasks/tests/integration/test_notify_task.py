@@ -50,10 +50,10 @@ class TestNotifyTask:
             "https://codecov.io"
         )
         repository = RepositoryFactory.create(
-            owner__unencrypted_oauth_token=sample_token,
-            owner__username="ThiagoCodecov",
-            owner__service_id="44376991",
-            owner__service="github",
+            author__unencrypted_oauth_token=sample_token,
+            author__username="ThiagoCodecov",
+            author__service_id="44376991",
+            author__service="github",
             yaml={"codecov": {"max_report_age": "1y ago"}},
             name="example-python",
         )
@@ -172,10 +172,10 @@ class TestNotifyTask:
         )
         mocked_app = mocker.patch.object(NotifyTask, "app")
         repository = RepositoryFactory.create(
-            owner__unencrypted_oauth_token=sample_token,
-            owner__username="ThiagoCodecov",
-            owner__service="github",
-            owner__service_id="44376991",
+            author__unencrypted_oauth_token=sample_token,
+            author__username="ThiagoCodecov",
+            author__service="github",
+            author__service_id="44376991",
             name="example-python",
         )
         dbsession.add(repository)
@@ -365,10 +365,10 @@ class TestNotifyTask:
             "https://myexamplewebsite.io"
         )
         repository = RepositoryFactory.create(
-            owner__unencrypted_oauth_token=sample_token,
-            owner__service="github",
-            owner__username="ThiagoCodecov",
-            owner__service_id="44376991",
+            author__unencrypted_oauth_token=sample_token,
+            author__service="github",
+            author__username="ThiagoCodecov",
+            author__service_id="44376991",
             name="example-python",
         )
         dbsession.add(repository)
@@ -581,10 +581,10 @@ class TestNotifyTask:
         )
         mocked_app = mocker.patch.object(NotifyTask, "app")
         repository = RepositoryFactory.create(
-            owner__unencrypted_oauth_token=sample_token,
-            owner__service="github",
-            owner__username="ThiagoCodecov",
-            owner__service_id="44376991",
+            author__unencrypted_oauth_token=sample_token,
+            author__service="github",
+            author__username="ThiagoCodecov",
+            author__service_id="44376991",
             name="example-python",
         )
         dbsession.add(repository)
@@ -795,17 +795,17 @@ class TestNotifyTask:
         )
         mocker.patch.object(NotifyTask, "app")
         repository = RepositoryFactory.create(
-            owner__unencrypted_oauth_token=sample_token,
-            owner__username="joseph-sentry",
-            owner__service="github",
-            owner__service_id="136376984",
-            owner__email="joseph.sawaya@sentry.io",
+            author__unencrypted_oauth_token=sample_token,
+            author__username="joseph-sentry",
+            author__service="github",
+            author__service_id="136376984",
+            author__email="joseph.sawaya@sentry.io",
             name="codecov-demo",
             image_token="abcdefghij",
         )
         dbsession.add(repository)
         dbsession.flush()
-        repository.owner.plan_activated_users = [repository.owner.ownerid]
+        repository.author.plan_activated_users = [repository.author.ownerid]
         dbsession.add(repository)
         dbsession.flush()
         head_commitid = "5601846871b8142ab0df1e0b8774756c658bcc7d"
@@ -816,7 +816,7 @@ class TestNotifyTask:
             branch="main",
             commitid=master_sha,
             repository=repository,
-            author=repository.owner,
+            author=repository.author,
         )
         # create another pull so that we don't trigger the 1st time comment message
         dbsession.add(PullFactory.create(repository=repository, pullid=8))
@@ -827,7 +827,7 @@ class TestNotifyTask:
             commitid=head_commitid,
             parent_commit_id=master_commit.commitid,
             repository=repository,
-            author=repository.owner,
+            author=repository.author,
         )
         dbsession.add(commit)
         dbsession.add(master_commit)
@@ -872,10 +872,10 @@ class TestNotifyTask:
         )
         expected_author_dict = {
             "username": "joseph-sentry",
-            "service_id": repository.owner.service_id,
-            "email": repository.owner.email,
+            "service_id": repository.author.service_id,
+            "email": repository.author.email,
             "service": "github",
-            "name": repository.owner.name,
+            "name": repository.author.name,
         }
         expected_result = {
             "notified": True,
@@ -978,7 +978,7 @@ class TestNotifyTask:
                             },
                             "owner": {
                                 "username": "joseph-sentry",
-                                "service_id": repository.owner.service_id,
+                                "service_id": repository.author.service_id,
                                 "service": "github",
                             },
                             "pull": {
@@ -1255,10 +1255,10 @@ class TestNotifyTask:
         )
         mocked_app = mocker.patch.object(NotifyTask, "app")
         repository = RepositoryFactory.create(
-            owner__unencrypted_oauth_token=sample_token,
-            owner__username="ThiagoCodecov",
-            owner__service="github",
-            owner__service_id="44376991",
+            author__unencrypted_oauth_token=sample_token,
+            author__username="ThiagoCodecov",
+            author__service="github",
+            author__service_id="44376991",
             name="example-python",
         )
         dbsession.add(repository)
@@ -1318,10 +1318,10 @@ class TestNotifyTask:
         )
         mocked_app = mocker.patch.object(NotifyTask, "app")
         repository = RepositoryFactory.create(
-            owner__unencrypted_oauth_token=sample_token,
-            owner__username="ThiagoCodecov",
-            owner__service="github",
-            owner__service_id="44376991",
+            author__unencrypted_oauth_token=sample_token,
+            author__username="ThiagoCodecov",
+            author__service="github",
+            author__service_id="44376991",
             name="example-python",
         )
         dbsession.add(repository)

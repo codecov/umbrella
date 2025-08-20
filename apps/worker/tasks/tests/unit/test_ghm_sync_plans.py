@@ -16,7 +16,7 @@ class TestGHMarketplaceSyncPlansTaskUnit:
         )
         dbsession.add(owner)
         repo = RepositoryFactory.create(
-            private=True, service_id="12071992", activated=True, owner=owner
+            private=True, service_id="12071992", activated=True, author=owner
         )
         dbsession.add(repo)
         dbsession.flush()
@@ -80,7 +80,7 @@ class TestGHMarketplaceSyncPlansTaskUnit:
         )
         dbsession.add(owner)
         repo = RepositoryFactory.create(
-            private=True, service_id="12071992", activated=True, owner=owner
+            private=True, service_id="12071992", activated=True, author=owner
         )
         dbsession.add(repo)
         dbsession.flush()
@@ -116,7 +116,7 @@ class TestGHMarketplaceSyncPlansTaskUnit:
         )
         dbsession.add(owner)
         repo = RepositoryFactory.create(
-            private=True, service_id="12071992", activated=True, owner=owner
+            private=True, service_id="12071992", activated=True, author=owner
         )
         dbsession.add(repo)
         dbsession.flush()
