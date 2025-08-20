@@ -169,13 +169,15 @@ class RiskyRunPython(migrations.RunPython):
         super().database_backwards(app_label, schema_editor, from_state, to_state)
 
 
-def drop_materialized_view(view_name: str, if_exists: bool = True) -> migrations.RunSQL:
+def ts_drop_materialized_view(
+    view_name: str, if_exists: bool = True
+) -> migrations.RunSQL:
     exists_clause = " IF EXISTS" if if_exists else ""
     forward_sql = f"DROP MATERIALIZED VIEW{exists_clause} {view_name};"
     return migrations.RunSQL(forward_sql)
 
 
-def create_continuous_aggregate(
+def ts_create_continuous_aggregate(
     view_name: str,
     select_sql: str,
     *,
@@ -207,7 +209,7 @@ def create_continuous_aggregate(
     return migrations.RunSQL(forward_sql, reverse_sql=reverse_sql)
 
 
-def create_index(
+def ts_create_index(
     index_name: str,
     table_name: str,
     columns: list[str],
@@ -215,14 +217,12 @@ def create_index(
     column_exprs: list[str] = [str(col) for col in columns]
 
     cols_sql = ", ".join(column_exprs)
-    forward_sql = (
-        f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({cols_sql});"
-    )
+    forward_sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({cols_sql}) WITH (timescaledb.transaction_per_chunk);"
     reverse_sql = f"DROP INDEX IF EXISTS {index_name};"
     return migrations.RunSQL(forward_sql, reverse_sql=reverse_sql)
 
 
-def add_continuous_aggregate_policy(
+def ts_add_continuous_aggregate_policy(
     view_name: str,
     *,
     start_offset: str | None,
@@ -246,7 +246,7 @@ def add_continuous_aggregate_policy(
     return migrations.RunSQL(forward_sql, reverse_sql=reverse_sql)
 
 
-def add_retention_policy(relation_name: str, drop_after: str) -> migrations.RunSQL:
+def ts_add_retention_policy(relation_name: str, drop_after: str) -> migrations.RunSQL:
     forward_sql = (
         f"SELECT add_retention_policy('{relation_name}', INTERVAL '{drop_after}');"
     )
@@ -254,7 +254,7 @@ def add_retention_policy(relation_name: str, drop_after: str) -> migrations.RunS
     return migrations.RunSQL(forward_sql, reverse_sql=reverse_sql)
 
 
-def refresh_continuous_aggregate(
+def ts_refresh_continuous_aggregate(
     view_name: str,
     start_expr_sql: str,
     end_expr_sql: str | None,
