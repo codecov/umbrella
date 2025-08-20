@@ -66,6 +66,10 @@ class Testrun(ExportModelOperationsMixin("ta_timeseries.testrun"), models.Model)
                 fields=["repo_id", "branch", "test_id", "timestamp"],
             ),
             models.Index(
+                name="ta_ts__repo_test_time_idx",
+                fields=["repo_id", "test_id", "timestamp"],
+            ),
+            models.Index(
                 name="ta_ts__commit_i",
                 fields=["repo_id", "commit_sha", "timestamp"],
             ),
@@ -299,8 +303,7 @@ class TestAggregateHourly(
     __test__ = False
     bucket_hourly = models.DateTimeField(primary_key=True)
     repo_id = models.IntegerField()
-    name = models.TextField()
-    classname = models.TextField()
+    test_id = models.BinaryField()
     testsuite = models.TextField()
     computed_name = models.TextField()
     failing_commits = ArrayField(models.TextField(), default=list)
@@ -316,7 +319,10 @@ class TestAggregateHourly(
 
     __repr__ = sane_repr(
         "bucket_hourly",
+        "repo_id",
+        "test_id",
         "computed_name",
+        "testsuite",
         "pass_count",
         "fail_count",
         "skip_count",
@@ -337,8 +343,7 @@ class TestAggregateDaily(
     __test__ = False
     bucket_daily = models.DateTimeField(primary_key=True)
     repo_id = models.IntegerField()
-    name = models.TextField()
-    classname = models.TextField()
+    test_id = models.BinaryField()
     testsuite = models.TextField()
     computed_name = models.TextField()
     failing_commits = ArrayField(models.TextField(), default=list)
@@ -354,7 +359,10 @@ class TestAggregateDaily(
 
     __repr__ = sane_repr(
         "bucket_daily",
+        "repo_id",
+        "test_id",
         "computed_name",
+        "testsuite",
         "pass_count",
         "fail_count",
         "skip_count",
@@ -376,8 +384,7 @@ class BranchTestAggregateHourly(
     bucket_hourly = models.DateTimeField(primary_key=True)
     repo_id = models.IntegerField()
     branch = models.TextField()
-    name = models.TextField()
-    classname = models.TextField()
+    test_id = models.BinaryField()
     testsuite = models.TextField()
     computed_name = models.TextField()
     failing_commits = ArrayField(models.TextField(), default=list)
@@ -394,7 +401,10 @@ class BranchTestAggregateHourly(
     __repr__ = sane_repr(
         "bucket_hourly",
         "branch",
+        "repo_id",
+        "test_id",
         "computed_name",
+        "testsuite",
         "pass_count",
         "fail_count",
         "skip_count",
@@ -416,8 +426,7 @@ class BranchTestAggregateDaily(
     bucket_daily = models.DateTimeField(primary_key=True)
     repo_id = models.IntegerField()
     branch = models.TextField()
-    name = models.TextField()
-    classname = models.TextField()
+    test_id = models.BinaryField()
     testsuite = models.TextField()
     computed_name = models.TextField()
     failing_commits = ArrayField(models.TextField(), default=list)
@@ -434,7 +443,10 @@ class BranchTestAggregateDaily(
     __repr__ = sane_repr(
         "bucket_daily",
         "branch",
+        "repo_id",
+        "test_id",
         "computed_name",
+        "testsuite",
         "pass_count",
         "fail_count",
         "skip_count",

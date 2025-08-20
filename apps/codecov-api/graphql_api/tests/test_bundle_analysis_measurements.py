@@ -1,5 +1,7 @@
+from datetime import UTC, datetime
+
 import pytest
-from django.test import TestCase
+from django.test import TransactionTestCase
 
 from reports.models import CommitReport
 from reports.tests.factories import CommitReportFactory
@@ -11,13 +13,14 @@ from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
+from timeseries.helpers import refresh_measurement_summaries
 from timeseries.tests.factories import MeasurementFactory
 
 from .helper import GraphQLTestHelper
 
 
 @pytest.mark.usefixtures("mock_storage_cls")
-class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
+class TestBundleAnalysisMeasurements(GraphQLTestHelper, TransactionTestCase):
     databases = {"default", "timeseries"}
 
     def setUp(self):
@@ -83,6 +86,11 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
                 timestamp=item[2],
                 value=item[3],
             )
+
+        refresh_measurement_summaries(
+            start_date=datetime(2024, 1, 1, tzinfo=UTC),
+            end_date=datetime(2025, 1, 1, tzinfo=UTC),
+        )
 
     def test_bundle_report_measurements(self):
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
@@ -2179,6 +2187,11 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
                 value=item[3],
             )
 
+        refresh_measurement_summaries(
+            start_date=datetime(2024, 1, 1, tzinfo=UTC),
+            end_date=datetime(2025, 1, 1, tzinfo=UTC),
+        )
+
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
                 repo_key=ArchiveService.get_archive_hash(self.repo),
@@ -2435,6 +2448,11 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
                 timestamp=item[2],
                 value=item[3],
             )
+
+        refresh_measurement_summaries(
+            start_date=datetime(2024, 1, 1, tzinfo=UTC),
+            end_date=datetime(2025, 1, 1, tzinfo=UTC),
+        )
 
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(
@@ -2706,6 +2724,11 @@ class TestBundleAnalysisMeasurements(GraphQLTestHelper, TestCase):
                 timestamp=item[2],
                 value=item[3],
             )
+
+        refresh_measurement_summaries(
+            start_date=datetime(2024, 1, 1, tzinfo=UTC),
+            end_date=datetime(2025, 1, 1, tzinfo=UTC),
+        )
 
         with open("./services/tests/samples/bundle_with_uuid.sqlite", "rb") as f:
             storage_path = StoragePaths.bundle_report.path(

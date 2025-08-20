@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 from django.conf import settings
-from django.test import TestCase
+from django.test import TransactionTestCase
 from freezegun import freeze_time
 from freezegun.api import FakeDatetime
 
@@ -29,7 +29,7 @@ from timeseries.models import Dataset, Interval, MeasurementName
 @pytest.mark.skipif(
     not settings.TIMESERIES_ENABLED, reason="requires timeseries data storage"
 )
-class RefreshMeasurementSummariesTest(TestCase):
+class RefreshMeasurementSummariesTest(TransactionTestCase):
     databases = {"timeseries"}
 
     @patch("django.db.backends.utils.CursorWrapper.execute")
@@ -51,7 +51,7 @@ class RefreshMeasurementSummariesTest(TestCase):
 @pytest.mark.skipif(
     not settings.TIMESERIES_ENABLED, reason="requires timeseries data storage"
 )
-class RepositoryCoverageMeasurementsTest(TestCase):
+class RepositoryCoverageMeasurementsTest(TransactionTestCase):
     databases = {"default", "timeseries"}
 
     def setUp(self):
@@ -99,6 +99,11 @@ class RepositoryCoverageMeasurementsTest(TestCase):
         )
 
     def test_coverage_measurements(self):
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
+        )
+
         res = coverage_measurements(
             Interval.INTERVAL_1_DAY,
             start_date=datetime(2021, 12, 30, 0, 0, 0),
@@ -128,7 +133,7 @@ class RepositoryCoverageMeasurementsTest(TestCase):
 @pytest.mark.skipif(
     not settings.TIMESERIES_ENABLED, reason="requires timeseries data storage"
 )
-class FillSparseMeasurementsTest(TestCase):
+class FillSparseMeasurementsTest(TransactionTestCase):
     databases = {"default", "timeseries"}
 
     def setUp(self):
@@ -139,7 +144,7 @@ class FillSparseMeasurementsTest(TestCase):
             owner_id=self.repo.author_id,
             repo_id=self.repo.pk,
             measurable_id=str(self.repo.pk),
-            timestamp=datetime(2022, 1, 1, 1, 0, 0),
+            timestamp=datetime(2022, 1, 1, 1, 0, 0, tzinfo=UTC),
             value=80.0,
             branch="main",
             commit_sha="commit1",
@@ -149,7 +154,7 @@ class FillSparseMeasurementsTest(TestCase):
             owner_id=self.repo.author_id,
             repo_id=self.repo.pk,
             measurable_id=str(self.repo.pk),
-            timestamp=datetime(2022, 1, 1, 2, 0, 0),
+            timestamp=datetime(2022, 1, 1, 2, 0, 0, tzinfo=UTC),
             value=85.0,
             branch="main",
             commit_sha="commit2",
@@ -159,7 +164,7 @@ class FillSparseMeasurementsTest(TestCase):
             owner_id=self.repo.author_id,
             repo_id=self.repo.pk,
             measurable_id=str(self.repo.pk),
-            timestamp=datetime(2022, 1, 1, 3, 0, 0),
+            timestamp=datetime(2022, 1, 1, 3, 0, 0, tzinfo=UTC),
             value=90.0,
             branch="other",
             commit_sha="commit3",
@@ -169,7 +174,7 @@ class FillSparseMeasurementsTest(TestCase):
             owner_id=self.repo.author_id,
             repo_id=self.repo.pk,
             measurable_id=str(self.repo.pk),
-            timestamp=datetime(2022, 1, 2, 1, 0, 0),
+            timestamp=datetime(2022, 1, 2, 1, 0, 0, tzinfo=UTC),
             value=80.0,
             branch="main",
             commit_sha="commit4",
@@ -178,6 +183,10 @@ class FillSparseMeasurementsTest(TestCase):
     def test_fill_sparse_measurements(self):
         start_date = datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC)
         end_date = datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC)
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
+        )
         measurements = coverage_measurements(
             Interval.INTERVAL_1_DAY,
             start_date=start_date,
@@ -219,6 +228,10 @@ class FillSparseMeasurementsTest(TestCase):
 
     def test_fill_sparse_measurements_no_start_date(self):
         end_date = datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC)
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2022, 3, 1, 0, 0, 0, tzinfo=UTC),
+        )
         measurements = coverage_measurements(
             Interval.INTERVAL_1_DAY,
             end_date=end_date,
@@ -254,6 +267,10 @@ class FillSparseMeasurementsTest(TestCase):
     @freeze_time("2022-01-03T00:00:00")
     def test_fill_sparse_measurements_no_end_date(self):
         start_date = datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC)
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
+        )
         measurements = coverage_measurements(
             Interval.INTERVAL_1_DAY,
             start_date=start_date,
@@ -316,6 +333,10 @@ class FillSparseMeasurementsTest(TestCase):
 
         start_date = datetime(2021, 12, 31, 0, 0, 0, tzinfo=UTC)
         end_date = datetime(2022, 1, 3, 0, 0, 0, tzinfo=UTC)
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
+        )
         measurements = coverage_measurements(
             Interval.INTERVAL_1_DAY,
             start_date=start_date,
@@ -363,7 +384,7 @@ class FillSparseMeasurementsTest(TestCase):
 @pytest.mark.skipif(
     not settings.TIMESERIES_ENABLED, reason="requires timeseries data storage"
 )
-class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
+class RepositoryCoverageMeasurementsWithFallbackTest(TransactionTestCase):
     databases = {"default", "timeseries"}
 
     def setUp(self):
@@ -417,6 +438,11 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
         DatasetFactory(
             name=MeasurementName.COVERAGE.value,
             repository_id=self.repo.pk,
+        )
+
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
         )
 
         res = repository_coverage_measurements_with_fallback(
@@ -492,6 +518,11 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
             repository_id=self.repo.pk,
         )
 
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
+        )
+
         res = repository_coverage_measurements_with_fallback(
             self.repo,
             Interval.INTERVAL_1_DAY,
@@ -553,6 +584,11 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
         DatasetFactory(
             name=MeasurementName.COVERAGE.value,
             repository_id=self.repo.pk,
+        )
+
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
         )
 
         res = repository_coverage_measurements_with_fallback(
@@ -618,6 +654,11 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
         DatasetFactory(
             name=MeasurementName.COVERAGE.value,
             repository_id=self.repo.pk,
+        )
+
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
         )
 
         res = repository_coverage_measurements_with_fallback(
@@ -777,7 +818,7 @@ class RepositoryCoverageMeasurementsWithFallbackTest(TestCase):
 @pytest.mark.skipif(
     not settings.TIMESERIES_ENABLED, reason="requires timeseries data storage"
 )
-class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
+class OwnerCoverageMeasurementsWithFallbackTest(TransactionTestCase):
     databases = {"default", "timeseries"}
 
     def setUp(self):
@@ -880,6 +921,11 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             repository_id=self.repo2.pk,
         )
 
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
+        )
+
         res = owner_coverage_measurements_with_fallback(
             owner=self.owner,
             repo_ids=[self.repo1.pk, self.repo2.pk],
@@ -903,6 +949,11 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
                 "max": 90.0,
             },
         ]
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
+        )
+
         res = owner_coverage_measurements_with_fallback(
             owner=self.owner,
             repo_ids=[self.repo1.pk],
@@ -1006,6 +1057,11 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
             repository_id=self.repo2.pk,
         )
 
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
+        )
+
         res = owner_coverage_measurements_with_fallback(
             owner=self.owner,
             repo_ids=[self.repo1.pk, self.repo2.pk],
@@ -1029,6 +1085,11 @@ class OwnerCoverageMeasurementsWithFallbackTest(TestCase):
                 "max": 90.0,
             },
         ]
+        refresh_measurement_summaries(
+            start_date=datetime(2021, 1, 1, 0, 0, 0, tzinfo=UTC),
+            end_date=datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
+        )
+
         res = owner_coverage_measurements_with_fallback(
             owner=self.owner,
             repo_ids=[self.repo1.pk],
