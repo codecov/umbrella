@@ -126,6 +126,7 @@ def test_pr_comment_failures():
     assert failure["failure_message"] == "failure_message"
     assert failure["duration_seconds"] == 1.0
     assert failure["upload_id"] == 1
+    assert failure["flags"] == ["flag1", "flag2"]
 
 
 @pytest.mark.django_db(databases=["ta_timeseries"])

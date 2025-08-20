@@ -90,18 +90,20 @@ class TestInstance(TypedDict):
     failure_message: str
     upload_id: int
     duration_seconds: float | None
+    flags: list[str]
 
 
 def get_pr_comment_failures(repo_id: int, commit_sha: str) -> list[TestInstance]:
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(
             """
-            SELECT 
+            SELECT
                 test_id,
                 LAST(computed_name, timestamp) as computed_name,
                 LAST(failure_message, timestamp) as failure_message,
                 LAST(upload_id, timestamp) as upload_id,
-                LAST(duration_seconds, timestamp) as duration_seconds
+                LAST(duration_seconds, timestamp) as duration_seconds,
+                LAST(flags, timestamp) as flags
             FROM ta_timeseries_testrun
             WHERE repo_id = %s AND commit_sha = %s AND outcome IN ('failure', 'flaky_fail')
             GROUP BY test_id
@@ -115,8 +117,9 @@ def get_pr_comment_failures(repo_id: int, commit_sha: str) -> list[TestInstance]
                 "failure_message": failure_message,
                 "upload_id": upload_id,
                 "duration_seconds": duration_seconds,
+                "flags": flags,
             }
-            for test_id, computed_name, failure_message, upload_id, duration_seconds in cursor.fetchall()
+            for test_id, computed_name, failure_message, upload_id, duration_seconds, flags in cursor.fetchall()
         ]
 
 
@@ -131,7 +134,7 @@ def get_pr_comment_agg(repo_id: int, commit_sha: str) -> PRCommentAgg:
         cursor.execute(
             """
             SELECT outcome, count(*) FROM (
-                SELECT 
+                SELECT
                     test_id,
                     LAST(outcome, timestamp) as outcome
                 FROM ta_timeseries_testrun
