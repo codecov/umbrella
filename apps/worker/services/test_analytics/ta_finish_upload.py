@@ -20,7 +20,7 @@ from services.test_analytics.ta_metrics import (
 )
 from services.test_analytics.ta_process_flakes import KEY_NAME
 from services.test_analytics.ta_timeseries import (
-    TestInstance,
+    FailedTestInstance,
     get_flaky_tests_dict,
     get_pr_comment_agg,
     get_pr_comment_failures,
@@ -84,7 +84,7 @@ def get_upload_error(upload_ids: list[int]) -> ErrorPayload | None:
 
 
 def transform_failures(
-    uploads: dict[int, ReportSession], failures: list[TestInstance]
+    uploads: dict[int, ReportSession], failures: list[FailedTestInstance]
 ) -> list[TestResultsNotificationFailure[bytes]]:
     notif_failures = []
     for failure in failures:

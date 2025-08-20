@@ -132,6 +132,7 @@ T = TypeVar("T", str, bytes)
 
 @dataclass
 class TestResultsNotificationFailure[T: (str, bytes)]:
+    __test__ = False
     failure_message: str
     display_name: str
     envs: list[str]

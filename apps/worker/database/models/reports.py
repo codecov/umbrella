@@ -179,6 +179,7 @@ class CompareComponent(MixinBaseClass, CodecovBaseModel):
 
 class Test(CodecovBaseModel):
     __tablename__ = "reports_test"
+    __test__ = False
     # the reason we aren't using the regular primary key
     # in this case is because we want to be able to compute/predict
     # the primary key of a Test object ourselves in the processor
@@ -225,6 +226,7 @@ class Test(CodecovBaseModel):
 
 class TestInstance(CodecovBaseModel, MixinBaseClass):
     __tablename__ = "reports_testinstance"
+    __test__ = False
     test_id = Column(types.Text, ForeignKey("reports_test.id"))
     test = relationship(Test, backref=backref("testinstances"))
     duration_seconds = Column(types.Float, nullable=False)
@@ -244,6 +246,7 @@ class TestInstance(CodecovBaseModel, MixinBaseClass):
 
 class TestResultReportTotals(CodecovBaseModel, MixinBaseClass):
     __tablename__ = "reports_testresultreporttotals"
+    __test__ = False
     report_id = Column(types.BigInteger, ForeignKey("reports_commitreport.id"))
     report = relationship("CommitReport", foreign_keys=[report_id])
     passed = Column(types.Integer)
@@ -325,6 +328,7 @@ class DailyTestRollup(CodecovBaseModel, MixinBaseClassNoExternalID):
 
 class TestFlagBridge(CodecovBaseModel):
     __tablename__ = "reports_test_results_flag_bridge"
+    __test__ = False
 
     id_ = Column("id", types.BigInteger, primary_key=True)
 
