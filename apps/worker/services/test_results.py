@@ -31,6 +31,11 @@ from shared.plan.constants import TierName
 from shared.yaml import UserYaml
 
 
+class NotifierTaskResult(TypedDict):
+    attempted: bool
+    succeeded: bool
+
+
 class FinisherResult(TypedDict):
     notify_attempted: bool
     notify_succeeded: bool

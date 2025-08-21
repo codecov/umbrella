@@ -69,6 +69,10 @@ test_results_finisher_task_name = (
     f"app.tasks.{TaskConfigGroup.test_results.value}.TestResultsFinisherTask"
 )
 
+test_analytics_notifier_task_name = (
+    f"app.tasks.{TaskConfigGroup.test_results.value}.TestAnalyticsNotifier"
+)
+
 sync_test_results_task_name = (
     f"app.tasks.{TaskConfigGroup.test_results.value}.SyncTestResultsTask"
 )
