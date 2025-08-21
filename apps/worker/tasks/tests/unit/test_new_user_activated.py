@@ -17,9 +17,9 @@ from tests.helpers import mock_all_plans_and_tiers
 @pytest.fixture
 def pull(dbsession):
     repository = RepositoryFactory.create(
-        owner__username="codecov-test",
-        owner__unencrypted_oauth_token="testtlxuu2kfef3km1fbecdlmnb2nvpikvmoadi3bb",
-        owner__plan="users-pr-inappm",
+        author__username="codecov-test",
+        author__unencrypted_oauth_token="testtlxuu2kfef3km1fbecdlmnb2nvpikvmoadi3bb",
+        author__plan="users-pr-inappm",
         name="example-python",
         image_token="abcdefghij",
         private=True,
@@ -117,10 +117,10 @@ class TestNewUserActivatedTaskUnit:
 
     @pytest.mark.django_db
     def test_org_not_on_pr_plan(self, mocker, dbsession, pull):
-        pull.repository.owner.plan = "users-inappm"
+        pull.repository.author.plan = "users-inappm"
         dbsession.flush()
         res = NewUserActivatedTask().run_impl(
-            dbsession, pull.repository.owner.ownerid, pull.author.ownerid
+            dbsession, pull.repository.author.ownerid, pull.author.ownerid
         )
         assert res == {
             "notifies_scheduled": False,
@@ -134,7 +134,7 @@ class TestNewUserActivatedTaskUnit:
             "tasks.new_user_activated.NewUserActivatedTask.possibly_resend_notifications"
         )
         res = NewUserActivatedTask().run_impl(
-            dbsession, pull.repository.owner.ownerid, pull.author.ownerid
+            dbsession, pull.repository.author.ownerid, pull.author.ownerid
         )
         assert res == {
             "notifies_scheduled": False,
@@ -150,7 +150,7 @@ class TestNewUserActivatedTaskUnit:
             "tasks.new_user_activated.NewUserActivatedTask.possibly_resend_notifications"
         )
         res = NewUserActivatedTask().run_impl(
-            dbsession, pull.repository.owner.ownerid, pull.author.ownerid
+            dbsession, pull.repository.author.ownerid, pull.author.ownerid
         )
         assert res == {
             "notifies_scheduled": False,
@@ -179,7 +179,7 @@ class TestNewUserActivatedTaskUnit:
         dbsession.flush()
 
         res = NewUserActivatedTask().run_impl(
-            dbsession, pull.repository.owner.ownerid, pull.author.ownerid
+            dbsession, pull.repository.author.ownerid, pull.author.ownerid
         )
         assert res == {
             "notifies_scheduled": False,
@@ -213,7 +213,7 @@ class TestNewUserActivatedTaskUnit:
         )
 
         res = NewUserActivatedTask().run_impl(
-            dbsession, pull.repository.owner.ownerid, pull.author.ownerid
+            dbsession, pull.repository.author.ownerid, pull.author.ownerid
         )
 
         assert res == {

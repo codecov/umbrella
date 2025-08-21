@@ -93,7 +93,7 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
         )
         assert commit, "Commit not found in database."
         installation_name_to_use = get_installation_name_for_owner_for_task(
-            self.name, commit.repository.owner
+            self.name, commit.repository.author
         )
         repository_service = self.get_repo_service(commit, installation_name_to_use)
         if repository_service is None:

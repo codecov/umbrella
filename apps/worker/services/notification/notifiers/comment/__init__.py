@@ -150,7 +150,7 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
             message,
             service=self.repository.service,
             notification_type="comment",
-            org_name=self.repository.owner.name,
+            org_name=self.repository.author.name,
         )
 
         behavior = self.notifier_yaml_settings.get("behavior", "default")
@@ -351,19 +351,19 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
 
         if (
             not self.repository.private
-            and self.repository.owner.createstamp
-            and self.repository.owner.createstamp > introduction_date
+            and self.repository.author.createstamp
+            and self.repository.author.createstamp > introduction_date
         ):
             # public repos, only if they signed up after introduction date
             return True
 
         if (
             not (
-                self.repository.owner.plan == PlanName.TEAM_MONTHLY.value
-                or self.repository.owner.plan == PlanName.TEAM_YEARLY.value
+                self.repository.author.plan == PlanName.TEAM_MONTHLY.value
+                or self.repository.author.plan == PlanName.TEAM_YEARLY.value
             )
-            and self.repository.owner.createstamp
-            and self.repository.owner.createstamp > introduction_date
+            and self.repository.author.createstamp
+            and self.repository.author.createstamp > introduction_date
         ):
             # private repos excluding those on team plans, only if they signed up after introduction date
             return True

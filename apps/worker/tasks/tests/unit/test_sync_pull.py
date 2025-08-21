@@ -24,7 +24,7 @@ here = Path(__file__)
 
 @pytest.fixture
 def repository(dbsession) -> Repository:
-    repository = RepositoryFactory.create(owner__plan="users-inappm")
+    repository = RepositoryFactory.create(author__plan="users-inappm")
     dbsession.add(repository)
     dbsession.flush()
     return repository
@@ -437,7 +437,7 @@ def test_cache_changes_stores_changed_files_in_redis_if_owner_is_whitelisted(
     head_commit,
     pull,
 ):
-    os.environ["OWNERS_WITH_CACHED_CHANGES"] = f"{pull.repository.owner.ownerid}"
+    os.environ["OWNERS_WITH_CACHED_CHANGES"] = f"{pull.repository.author.ownerid}"
 
     changes = [Change(path="f.py")]
     mocker.patch(
@@ -452,8 +452,8 @@ def test_cache_changes_stores_changed_files_in_redis_if_owner_is_whitelisted(
         "/".join(
             (
                 "compare-changed-files",
-                pull.repository.owner.service,
-                pull.repository.owner.username,
+                pull.repository.author.service,
+                pull.repository.author.username,
                 pull.repository.name,
                 f"{pull.pullid}",
             )

@@ -393,7 +393,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                     extra={
                         "pullid": pull.database_pull.pullid,
                         "service": repo.service,
-                        "slug": f"{repo.owner.username}/{repo.name}",
+                        "slug": f"{repo.author.username}/{repo.name}",
                     },
                 )
             notifier_result = notifier.notify()

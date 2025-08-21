@@ -43,7 +43,7 @@ class TestBackfillOwnersWithIntegrationWithoutGHApp:
             repo_data = repo["repo"]
             dbsession.add(
                 RepositoryFactory(
-                    owner=owner,
+                    author=owner,
                     name=repo_data["name"],
                     service_id=repo_data["service_id"],
                 )
@@ -88,7 +88,7 @@ class TestBackfillOwnersWithIntegrationWithoutGHApp:
         repo_name = "test-456"
         repo_service_id = "164948070"
         repo = RepositoryFactory(
-            owner=owner, name=repo_name, service_id=repo_service_id
+            author=owner, name=repo_name, service_id=repo_service_id
         )
 
         mock_repos = [

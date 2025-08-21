@@ -72,7 +72,7 @@ class TestCommentMesage:
                 </details>
                 """).format(
                 pullid=enriched_pull.database_pull.pullid,
-                owner=head_commit.repository.owner.username,
+                owner=head_commit.repository.author.username,
                 repo=head_commit.repository.name,
             )
         )

@@ -69,7 +69,7 @@ class NotificationService:
         self.plan = None  # used for caching the plan / tier information
 
     def _should_use_status_notifier(self, status_type: StatusType) -> bool:
-        owner: Owner = self.repository.owner
+        owner: Owner = self.repository.author
 
         if not self.plan:
             self.plan = Plan.objects.select_related("tier").get(name=owner.plan)
@@ -87,7 +87,7 @@ class NotificationService:
         if checks_yaml_field is False:
             return False
 
-        owner: Owner = self.repository.owner
+        owner: Owner = self.repository.author
         if owner.service not in ["github", "github_enterprise"]:
             return False
 
@@ -113,8 +113,8 @@ class NotificationService:
         # DEPRECATED FLOW
         return (
             self.repository.using_integration
-            and self.repository.owner.integration_id
-            and (self.repository.owner.service in ["github", "github_enterprise"])
+            and self.repository.author.integration_id
+            and (self.repository.author.service in ["github", "github_enterprise"])
         )
 
     def _use_status_and_possibly_checks_notifiers(

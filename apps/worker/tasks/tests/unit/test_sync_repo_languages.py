@@ -66,7 +66,7 @@ class TestSyncRepoLanguages:
         owner = OwnerFactory.create(service="github")
         dbsession.add(owner)
         repo = RepositoryFactory.create(
-            owner=owner, languages_last_updated=None, languages=[]
+            author=owner, languages_last_updated=None, languages=[]
         )
         dbsession.add(repo)
         dbsession.flush()
@@ -84,7 +84,7 @@ class TestSyncRepoLanguages:
         owner = OwnerFactory.create(service="gitlab")
         dbsession.add(owner)
         repo = RepositoryFactory.create(
-            owner=owner, languages_last_updated=None, languages=[]
+            author=owner, languages_last_updated=None, languages=[]
         )
         dbsession.add(repo)
         dbsession.flush()
@@ -102,7 +102,7 @@ class TestSyncRepoLanguages:
         owner = OwnerFactory.create(service="bitbucket")
         dbsession.add(owner)
         repo = RepositoryFactory.create(
-            owner=owner,
+            author=owner,
             languages_last_updated=None,
             languages=[],
             language="javascript",

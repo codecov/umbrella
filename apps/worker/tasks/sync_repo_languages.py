@@ -55,7 +55,7 @@ class SyncRepoLanguagesTask(BaseCodecovTask, name=sync_repo_languages_task_name)
         log.info("Syncing repository languages", extra=log_extra)
 
         installation_name_to_use = get_installation_name_for_owner_for_task(
-            self.name, repository.owner
+            self.name, repository.author
         )
         repository_service = get_repo_provider_service(
             repository, installation_name_to_use=installation_name_to_use
@@ -68,8 +68,8 @@ class SyncRepoLanguagesTask(BaseCodecovTask, name=sync_repo_languages_task_name)
             return {"successful": False, "error": "no_repo_service"}
 
         is_bitbucket_call = (
-            repository.owner.service == "bitbucket"
-            or repository.owner.service == "bitbucket_server"
+            repository.author.service == "bitbucket"
+            or repository.author.service == "bitbucket_server"
         )
         try:
             if is_bitbucket_call:

@@ -101,7 +101,7 @@ class NewUserActivatedTask(BaseCodecovTask, name=new_user_activated_task_name):
         pulls = (
             db_session.query(Pull)
             .join(Pull.repository)
-            .join(Repository.owner)
+            .join(Repository.author)
             .filter(
                 Pull.updatestamp > ten_days_ago,
                 Repository.ownerid == org_ownerid,

@@ -17,7 +17,7 @@ def create_db_records(dbsession):
     dbsession.add(owner)
 
     repo = RepositoryFactory.create(
-        owner=owner,
+        author=owner,
         yaml={"codecov": {"max_report_age": "1y ago"}},
         name="example-python",
     )

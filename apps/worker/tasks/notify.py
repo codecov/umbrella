@@ -252,7 +252,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
 
         try:
             installation_name_to_use = get_installation_name_for_owner_for_task(
-                self.name, commit.repository.owner
+                self.name, commit.repository.author
             )
             repository_service = get_repo_provider_service_for_specific_commit(
                 commit, installation_name_to_use
@@ -377,7 +377,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 filter(
                     lambda obj: obj.name == installation_name_to_use
                     and obj.is_configured(),
-                    commit.repository.owner.github_app_installations or [],
+                    commit.repository.author.github_app_installations or [],
                 )
             )
             rely_on_webhook_ghapp = ghapp_default_installations != [] and any(
@@ -968,7 +968,7 @@ def get_repo_provider_service_for_specific_commit(
         return repository_provider
 
     ghapp_details = get_specific_github_app_details(
-        repository.owner, int(installation_for_commit), commit.commitid
+        repository.author, int(installation_for_commit), commit.commitid
     )
     token, _ = get_github_app_token(Service(repository.service), ghapp_details)
 
@@ -981,9 +981,9 @@ def get_repo_provider_service_for_specific_commit(
             private=repository.private,
         ),
         owner=OwnerInfo(
-            service_id=repository.owner.service_id,
+            service_id=repository.author.service_id,
             ownerid=repository.ownerid,
-            username=repository.owner.username,
+            username=repository.author.username,
         ),
         installation=ghapp_details,
         fallback_installations=None,
