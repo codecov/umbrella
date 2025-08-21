@@ -16,6 +16,7 @@ from database.models import Commit, Owner, Pull, Repository
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from helpers.save_commit_error import save_commit_error
 from helpers.token_refresh import get_token_refresh_callback
+from services.owner import clear_identical_owners
 from services.yaml import read_yaml_field, save_repo_yaml_to_database_if_needed
 from services.yaml.fetcher import fetch_commit_yaml_from_provider
 from shared.bots import get_adapter_auth_information
@@ -295,7 +296,8 @@ def upsert_author(
     if author:
         needs_update = False
         db_session.begin(nested=True)
-        if author.username != username and username is not None:
+        if not author.username or author.username.lower() != username.lower():
+            clear_identical_owners(db_session, author, username, service)
             author.username = username
             needs_update = True
         if author.name != name and name is not None:

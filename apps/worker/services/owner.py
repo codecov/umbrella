@@ -1,6 +1,9 @@
 import logging
 
+from sqlalchemy.orm import Session
+
 import shared.torngit as torngit
+from database.models import LoginSession, Owner
 from helpers.token_refresh import get_token_refresh_callback
 from shared.bots import get_adapter_auth_information
 from shared.config import get_config, get_verify_ssl
@@ -53,3 +56,33 @@ def get_owner_provider_service(
 
 def _get_owner_provider_service_instance(service_name, **adapter_params):
     return torngit.get(service_name, **adapter_params)
+
+
+def clear_identical_owners(
+    db_session: Session, curr_owner: Owner, username: str, service: str
+):
+    other_owner = (
+        db_session.query(Owner)
+        .filter(
+            Owner.service == service,
+            Owner.username == username,
+            Owner.ownerid != curr_owner.ownerid,
+        )
+        .first()
+    )
+
+    if other_owner:
+        log.warning(
+            "clear_identical_owners: Username already exists for another owner",
+            extra={
+                "service": service,
+                "service_id": curr_owner.service_id,
+                "username": username,
+                "other_ownerid": other_owner.ownerid,
+                "current_ownerid": curr_owner.ownerid,
+            },
+        )
+        other_owner.username = None
+        db_session.query(LoginSession).filter(
+            LoginSession.ownerid == other_owner.ownerid
+        ).delete()
