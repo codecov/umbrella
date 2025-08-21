@@ -94,8 +94,12 @@ def get_github_jwt_token(
         "iat": now,
         # JWT expiration time (max 10 minutes)
         "exp": now + int(get_config(service, "integration", "expires", default=500)),
-        # Integration's GitHub identifier
-        "iss": app_id or get_config(service, "integration", "id"),
+        # NOTE: the Sentry app github app installations explicitly defines the app_id
+        # and pem_path so those will get passed down no matter what and we won't fall back
+        # to the default config value. We're essentially treating Sentry apps like the custom
+        # ones that are defined through the database, by including the app id and pem path when
+        # creating the DB object in the webhook handler.
+        "iss": app_id or get_config(service, "integration", "id"),  # github app ID
     }
     pem_kwargs = {"pem_path": pem_path} if pem_path else {"pem_name": service}
     return jwt.encode(payload, get_pem(**pem_kwargs), algorithm="RS256")
