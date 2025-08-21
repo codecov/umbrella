@@ -162,6 +162,10 @@ _load.self-hosted:
 	docker load --input ${APP_DIR}/self-hosted-runtime.tar
 	docker load --input ${APP_DIR}/self-hosted.tar
 
+# Load an exported production image (e.g. from GHA's cache)
+_load.app:
+	docker load --input ${APP_DIR}/app.tar
+
 # Export a production image.
 _save.app:
 	docker save -o ${APP_DIR}/app.tar ${AR_REPO}:${VERSION}
