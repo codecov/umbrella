@@ -174,7 +174,7 @@ class ReportService(BaseReportService):
             CommitReport: The CommitReport for that commit
         """
         db_session = commit.get_db_session()
-        
+
         # First try to get an existing report
         current_report_row = (
             db_session.query(CommitReport)
@@ -185,7 +185,7 @@ class ReportService(BaseReportService):
             )
             .first()
         )
-        
+
         created = False
         if not current_report_row:
             # Use a try/except block to handle race conditions
@@ -215,7 +215,7 @@ class ReportService(BaseReportService):
                 if not current_report_row:
                     # If we still can't find it, there's a different problem
                     raise
-        
+
         # If the report already exists but doesn't have a report_type set, update it
         if not created and current_report_row.report_type is None:
             current_report_row.report_type = ReportType.COVERAGE.value
