@@ -31,6 +31,11 @@ from shared.plan.constants import TierName
 from shared.yaml import UserYaml
 
 
+class NotifierTaskResult(TypedDict):
+    attempted: bool
+    succeeded: bool
+
+
 class FinisherResult(TypedDict):
     notify_attempted: bool
     notify_succeeded: bool
@@ -132,6 +137,7 @@ T = TypeVar("T", str, bytes)
 
 @dataclass
 class TestResultsNotificationFailure[T: (str, bytes)]:
+    __test__ = False
     failure_message: str
     display_name: str
     envs: list[str]

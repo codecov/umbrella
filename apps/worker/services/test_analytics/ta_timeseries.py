@@ -84,7 +84,7 @@ def insert_testrun(
     Testrun.objects.bulk_create(testruns_to_create)
 
 
-class TestInstance(TypedDict):
+class FailedTestInstance(TypedDict):
     test_id: bytes
     computed_name: str
     failure_message: str
@@ -93,7 +93,7 @@ class TestInstance(TypedDict):
     flags: list[str]
 
 
-def get_pr_comment_failures(repo_id: int, commit_sha: str) -> list[TestInstance]:
+def get_pr_comment_failures(repo_id: int, commit_sha: str) -> list[FailedTestInstance]:
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(
             """
