@@ -550,11 +550,13 @@ async def resolve_flake_aggregates(
 async def resolve_test_suites(
     repository: Repository, info: GraphQLResolveInfo, term: str | None = None, **_: Any
 ) -> list[str]:
-    return await sync_to_async(get_test_suites)(repository.repoid, term)
+    result = await sync_to_async(get_test_suites)(repository.repoid, term)
+    return sorted(result)
 
 
 @test_analytics_bindable.field("flags")
 async def resolve_flags(
     repository: Repository, info: GraphQLResolveInfo, term: str | None = None, **_: Any
 ) -> list[str]:
-    return await sync_to_async(get_flags)(repository.repoid, term)
+    result = await sync_to_async(get_flags)(repository.repoid, term)
+    return sorted(result)
