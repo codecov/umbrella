@@ -12,7 +12,7 @@ from app import celery_app
 from services.test_analytics.ta_metrics import process_flakes_summary
 from services.test_analytics.ta_process_flakes import fetch_current_flakes
 from shared.celery_config import detect_flakes_task_name
-from shared.django_apps.ta_timeseries.models import Testrun
+from shared.django_apps.prevent_timeseries.models import Testrun
 from shared.django_apps.test_analytics.models import Flake, TAUpload
 from tasks.base import BaseCodecovTask
 

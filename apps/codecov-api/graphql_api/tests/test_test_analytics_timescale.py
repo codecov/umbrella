@@ -6,8 +6,17 @@ from django.db import connections
 
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.django_apps.core.tests.factories import RepositoryFactory
-from shared.django_apps.ta_timeseries.models import Testrun
-from utils.timescale_test_results import get_test_results_queryset
+from shared.django_apps.prevent_timeseries.models import (
+    Testrun as PreventTestrun,
+)
+from shared.django_apps.prevent_timeseries.models import (
+    calc_test_id as prevent_calc_test_id,
+)
+from shared.django_apps.ta_timeseries.models import (
+    Testrun,
+    calc_test_id,
+)
+from utils.timescale.test_results import get_test_results_queryset
 
 from .helper import GraphQLTestHelper
 
@@ -36,13 +45,14 @@ def populate_timescale(repository):
         [
             Testrun(
                 repo_id=repository.repoid,
-                timestamp=datetime.now(UTC) - timedelta(days=5 - i),
+                timestamp=datetime.now(UTC) - timedelta(days=10 - i),
                 testsuite=f"testsuite{i}",
                 classname="",
                 name=f"name{i}",
                 computed_name=f"name{i}",
+                test_id=calc_test_id(f"name{i}", "", f"testsuite{i}"),
                 outcome="pass" if i % 2 == 0 else "failure",
-                duration_seconds=i,
+                duration_seconds=i * 2,
                 commit_sha=f"test_commit {i}",
                 flags=["flag1", "flag2"] if i % 2 == 0 else ["flag3"],
                 branch="feature",
@@ -60,6 +70,7 @@ def populate_timescale(repository):
                 classname="",
                 name=f"name{i}",
                 computed_name=f"name{i}",
+                test_id=calc_test_id(f"name{i}", "", f"testsuite{i}"),
                 outcome="pass" if i % 2 == 0 else "failure",
                 duration_seconds=i,
                 commit_sha=f"test_commit {i}",
@@ -79,6 +90,7 @@ def populate_timescale(repository):
                 classname="",
                 name="name5",
                 computed_name="name5",
+                test_id=calc_test_id("name5", "", "testsuite5"),
                 outcome="skip",
                 duration_seconds=0,
                 commit_sha="test_commit_skip",
@@ -90,17 +102,31 @@ def populate_timescale(repository):
 
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_branch_summary_1day', %s, %s)",
+            "CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_hourly', %s, %s)",
             [
                 (datetime.now(UTC) - timedelta(days=60)),
-                datetime.now(UTC),
+                None,
             ],
         )
         cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_summary_1day', %s, %s)",
+            "CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_daily', %s, %s)",
             [
                 (datetime.now(UTC) - timedelta(days=60)),
-                datetime.now(UTC),
+                None,
+            ],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_hourly', %s, %s)",
+            [
+                (datetime.now(UTC) - timedelta(days=60)),
+                None,
+            ],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_daily', %s, %s)",
+            [
+                (datetime.now(UTC) - timedelta(days=60)),
+                None,
             ],
         )
 
@@ -119,7 +145,16 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
 
         assert result.count() == 6
         assert snapshot("json") == [
-            {k: v for k, v in row.items() if k != "updated_at"} for row in result
+            {
+                k: (
+                    bytes(v).hex()
+                    if k == "test_id" and isinstance(v, memoryview)
+                    else v
+                )
+                for k, v in row.items()
+                if k != "updated_at"
+            }
+            for row in result
         ]
 
     def test_gql_query_test_results_timescale(
@@ -319,17 +354,62 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
 
         assert snapshot("json") == result
 
-    def test_gql_query_testsuites_and_flags_resolvers(
-        self, repository, populate_timescale, snapshot
+    def test_test_results_uses_prevent_when_should_use_prevent(
+        self, repository, mocker
     ):
+        # Arrange: create data in both prevent and ta tables for a non-precomputed branch
+        now = datetime.now(UTC)
+
+        PreventTestrun.objects.create(
+            repo_id=repository.repoid,
+            timestamp=now,
+            testsuite="ts-prevent",
+            classname="",
+            name="prevent-name",
+            computed_name="prevent-name",
+            test_id=prevent_calc_test_id("prevent-name", "", "ts-prevent"),
+            outcome="pass",
+            duration_seconds=1.0,
+            commit_sha="sha-prevent",
+            flags=["x"],
+            branch="feature",
+        )
+
+        Testrun.objects.create(
+            repo_id=repository.repoid,
+            timestamp=now,
+            testsuite="ts-ta",
+            classname="",
+            name="ta-name",
+            computed_name="ta-name",
+            test_id=calc_test_id("ta-name", "", "ts-ta"),
+            outcome="pass",
+            duration_seconds=1.0,
+            commit_sha="sha-ta",
+            flags=["y"],
+            branch="feature",
+        )
+
+        # Force the resolver to use prevent tables regardless of feature flags
+        mocker.patch(
+            "graphql_api.types.test_analytics.test_analytics.should_use_prevent",
+            return_value=True,
+        )
+
         query = f"""
             query {{
                 owner(username: "{repository.author.username}") {{
                     repository(name: "{repository.name}") {{
                         ... on Repository {{
                             testAnalytics {{
-                                testSuites
-                                flags
+                                testResults(filters: {{branch: "feature"}}) {{
+                                    totalCount
+                                    edges {{
+                                        node {{
+                                            name
+                                        }}
+                                    }}
+                                }}
                             }}
                         }}
                     }}
@@ -337,28 +417,18 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
             }}
         """
 
+        # Act
         result = self.gql_request(query, owner=repository.author)
 
-        assert snapshot("json") == result
-
-    def test_gql_query_testsuites_and_flags_resolvers_with_term(
-        self, repository, populate_timescale, snapshot
-    ):
-        query = f"""
-            query {{
-                owner(username: "{repository.author.username}") {{
-                    repository(name: "{repository.name}") {{
-                        ... on Repository {{
-                            testAnalytics {{
-                                testSuites(term: "testsuite1")
-                                flags(term: "flag1")
-                            }}
-                        }}
-                    }}
-                }}
-            }}
-        """
-
-        result = self.gql_request(query, owner=repository.author)
-
-        assert snapshot("json") == result
+        # Assert: only the prevent row should be returned
+        names = [
+            edge["node"]["name"]
+            for edge in result["owner"]["repository"]["testAnalytics"]["testResults"][
+                "edges"
+            ]
+        ]
+        assert (
+            result["owner"]["repository"]["testAnalytics"]["testResults"]["totalCount"]
+            == 1
+        )
+        assert names == ["prevent-name"]
