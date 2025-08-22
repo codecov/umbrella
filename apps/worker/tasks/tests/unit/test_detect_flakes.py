@@ -6,7 +6,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from django.utils import timezone
 
 from shared.django_apps.core.tests.factories import RepositoryFactory
-from shared.django_apps.ta_timeseries.models import Testrun
+from shared.django_apps.prevent_timeseries.models import Testrun
 from shared.django_apps.test_analytics.models import Flake, TAUpload
 from tasks import detect_flakes as df
 
