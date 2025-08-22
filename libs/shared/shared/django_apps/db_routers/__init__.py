@@ -21,6 +21,8 @@ class MultiDatabaseRouter:
                     return "timeseries"
             case "ta_timeseries":
                 return "ta_timeseries"
+            case "prevent_timeseries":
+                return "ta_timeseries"
             case _:
                 if settings.DATABASE_READ_REPLICA_ENABLED:
                     return "default_read"
@@ -32,6 +34,8 @@ class MultiDatabaseRouter:
             case "timeseries":
                 return "timeseries"
             case "ta_timeseries":
+                return "ta_timeseries"
+            case "prevent_timeseries":
                 return "ta_timeseries"
             case _:
                 return "default"
@@ -47,9 +51,13 @@ class MultiDatabaseRouter:
             case "ta_timeseries":
                 if not settings.TA_TIMESERIES_ENABLED:
                     return False
-                return app_label == "ta_timeseries"
+                return app_label in {"ta_timeseries", "prevent_timeseries"}
             case _:
-                return app_label not in {"timeseries", "ta_timeseries"}
+                return app_label not in {
+                    "timeseries",
+                    "ta_timeseries",
+                    "prevent_timeseries",
+                }
 
     def allow_relation(self, obj1, obj2, **hints):
         obj1_app = obj1._meta.app_label

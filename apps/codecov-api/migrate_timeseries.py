@@ -29,25 +29,31 @@ def run_migrate_commands():
     for app, setting in [
         ("timeseries", settings.TIMESERIES_ENABLED),
         ("ta_timeseries", settings.TA_TIMESERIES_ENABLED),
+        ("prevent_timeseries", settings.TA_TIMESERIES_ENABLED),
     ]:
         try:
             if setting and (
                 f"shared.django_apps.{app}" in settings.INSTALLED_APPS
                 or app in settings.INSTALLED_APPS
             ):
-                logger.info(f"Running {app} migrations")
-                with connections[app].cursor() as cursor:
+                db_alias = (
+                    "ta_timeseries"
+                    if app in ("ta_timeseries", "prevent_timeseries")
+                    else app
+                )
+                logger.info(f"Running {app} migrations on database {db_alias}")
+                with connections[db_alias].cursor() as cursor:
                     cursor.execute(
                         "SELECT _timescaledb_internal.stop_background_workers();"
                     )
                 call_command(
                     "migrate",
-                    database=app,
+                    database=db_alias,
                     app_label=app,
                     settings=os.environ["DJANGO_SETTINGS_MODULE"],
                     verbosity=1,
                 )
-                with connections[app].cursor() as cursor:
+                with connections[db_alias].cursor() as cursor:
                     cursor.execute(
                         "SELECT _timescaledb_internal.start_background_workers();"
                     )
