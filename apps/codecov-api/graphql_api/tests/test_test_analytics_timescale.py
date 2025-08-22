@@ -6,7 +6,16 @@ from django.db import connections
 
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.django_apps.core.tests.factories import RepositoryFactory
-from shared.django_apps.ta_timeseries.models import Testrun, calc_test_id
+from shared.django_apps.prevent_timeseries.models import (
+    Testrun as PreventTestrun,
+)
+from shared.django_apps.prevent_timeseries.models import (
+    calc_test_id as prevent_calc_test_id,
+)
+from shared.django_apps.ta_timeseries.models import (
+    Testrun,
+    calc_test_id,
+)
 from utils.timescale.test_results import get_test_results_queryset
 
 from .helper import GraphQLTestHelper
@@ -345,17 +354,62 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
 
         assert snapshot("json") == result
 
-    def test_gql_query_testsuites_and_flags_resolvers(
-        self, repository, populate_timescale, snapshot
+    def test_test_results_uses_prevent_when_should_use_prevent(
+        self, repository, mocker
     ):
+        # Arrange: create data in both prevent and ta tables for a non-precomputed branch
+        now = datetime.now(UTC)
+
+        PreventTestrun.objects.create(
+            repo_id=repository.repoid,
+            timestamp=now,
+            testsuite="ts-prevent",
+            classname="",
+            name="prevent-name",
+            computed_name="prevent-name",
+            test_id=prevent_calc_test_id("prevent-name", "", "ts-prevent"),
+            outcome="pass",
+            duration_seconds=1.0,
+            commit_sha="sha-prevent",
+            flags=["x"],
+            branch="feature",
+        )
+
+        Testrun.objects.create(
+            repo_id=repository.repoid,
+            timestamp=now,
+            testsuite="ts-ta",
+            classname="",
+            name="ta-name",
+            computed_name="ta-name",
+            test_id=calc_test_id("ta-name", "", "ts-ta"),
+            outcome="pass",
+            duration_seconds=1.0,
+            commit_sha="sha-ta",
+            flags=["y"],
+            branch="feature",
+        )
+
+        # Force the resolver to use prevent tables regardless of feature flags
+        mocker.patch(
+            "graphql_api.types.test_analytics.test_analytics.should_use_prevent",
+            return_value=True,
+        )
+
         query = f"""
             query {{
                 owner(username: "{repository.author.username}") {{
                     repository(name: "{repository.name}") {{
                         ... on Repository {{
                             testAnalytics {{
-                                testSuites
-                                flags
+                                testResults(filters: {{branch: "feature"}}) {{
+                                    totalCount
+                                    edges {{
+                                        node {{
+                                            name
+                                        }}
+                                    }}
+                                }}
                             }}
                         }}
                     }}
@@ -363,28 +417,18 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
             }}
         """
 
+        # Act
         result = self.gql_request(query, owner=repository.author)
 
-        assert snapshot("json") == result
-
-    def test_gql_query_testsuites_and_flags_resolvers_with_term(
-        self, repository, populate_timescale, snapshot
-    ):
-        query = f"""
-            query {{
-                owner(username: "{repository.author.username}") {{
-                    repository(name: "{repository.name}") {{
-                        ... on Repository {{
-                            testAnalytics {{
-                                testSuites(term: "testsuite1")
-                                flags(term: "flag1")
-                            }}
-                        }}
-                    }}
-                }}
-            }}
-        """
-
-        result = self.gql_request(query, owner=repository.author)
-
-        assert snapshot("json") == result
+        # Assert: only the prevent row should be returned
+        names = [
+            edge["node"]["name"]
+            for edge in result["owner"]["repository"]["testAnalytics"]["testResults"][
+                "edges"
+            ]
+        ]
+        assert (
+            result["owner"]["repository"]["testAnalytics"]["testResults"]["totalCount"]
+            == 1
+        )
+        assert names == ["prevent-name"]

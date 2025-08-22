@@ -20,9 +20,11 @@ def get_repo_aggregates_via_ca(
     branch: Literal["main", "master", "develop"] | None,
     start_date: datetime,
     end_date: datetime,
+    *,
+    use_prevent: bool = False,
 ):
     test_data, repo_data = get_daily_aggregate_querysets(
-        repoid, branch, start_date, end_date
+        repoid, branch, start_date, end_date, use_prevent=use_prevent
     )
 
     daily_aggregates = repo_data.aggregate(
@@ -71,7 +73,12 @@ get_test_result_aggregates_histogram = Histogram(
 
 @get_test_result_aggregates_histogram.time()
 def get_test_results_aggregates_from_timescale(
-    repoid: int, branch: str | None, start_date: datetime, end_date: datetime
+    repoid: int,
+    branch: str | None,
+    start_date: datetime,
+    end_date: datetime,
+    *,
+    use_prevent: bool = False,
 ) -> TestResultsAggregates | None:
     if not _should_use_precomputed_aggregates(branch):
         return None
@@ -81,11 +88,17 @@ def get_test_results_aggregates_from_timescale(
     comparison_end_date = start_date
 
     curr_aggregates, curr_slow_test_duration, curr_slow_test_num = (
-        get_repo_aggregates_via_ca(repoid, branch, start_date, end_date)
+        get_repo_aggregates_via_ca(
+            repoid, branch, start_date, end_date, use_prevent=use_prevent
+        )
     )
     past_aggregates, past_slow_test_duration, past_slow_test_num = (
         get_repo_aggregates_via_ca(
-            repoid, branch, comparison_start_date, comparison_end_date
+            repoid,
+            branch,
+            comparison_start_date,
+            comparison_end_date,
+            use_prevent=use_prevent,
         )
     )
     return TestResultsAggregates(
