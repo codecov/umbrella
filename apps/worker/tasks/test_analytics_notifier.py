@@ -16,15 +16,15 @@ from services.repository import (
     fetch_pull_request_information,
     get_repo_provider_service,
 )
-from services.test_analytics.ta_metrics import (
-    read_failures_summary,
-    read_tests_totals_summary,
-)
-from services.test_analytics.ta_timeseries import (
+from services.test_analytics.prevent_timeseries import (
     FailedTestInstance,
     get_flaky_tests_dict,
     get_pr_comment_agg,
     get_pr_comment_failures,
+)
+from services.test_analytics.ta_metrics import (
+    read_failures_summary,
+    read_tests_totals_summary,
 )
 from services.test_results import (
     NotifierTaskResult,

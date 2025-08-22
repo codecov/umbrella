@@ -7,7 +7,7 @@ import test_results_parser
 from sentry_sdk import capture_exception
 
 from app import celery_app
-from services.test_analytics.ta_timeseries import (
+from services.test_analytics.prevent_timeseries import (
     get_flaky_tests_set,
     insert_testrun,
 )

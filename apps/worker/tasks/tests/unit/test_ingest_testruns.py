@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
-from shared.django_apps.ta_timeseries.models import Testrun
+from shared.django_apps.prevent_timeseries.models import Testrun
 from shared.django_apps.test_analytics.models import TAUpload
 from shared.plan.constants import PlanName
 from shared.storage.exceptions import FileNotInStorageError

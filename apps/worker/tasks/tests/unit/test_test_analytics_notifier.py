@@ -7,14 +7,17 @@ from django.utils import timezone
 from database.models import Test, TestInstance
 from helpers.notifier import NotifierResult
 from services.lock_manager import LockRetry
-from services.test_analytics.ta_timeseries import FailedTestInstance, insert_testrun
+from services.test_analytics.prevent_timeseries import (
+    FailedTestInstance,
+    insert_testrun,
+)
 from services.test_results import (
     NotifierTaskResult,
     TestResultsNotificationFailure,
     generate_test_id,
 )
 from shared.django_apps.core.tests.factories import RepositoryFactory
-from shared.django_apps.ta_timeseries.models import Testrun
+from shared.django_apps.prevent_timeseries.models import Testrun
 from shared.torngit.response_types import ProviderPull
 from shared.upload.types import TAUploadContext, UploadPipeline
 from shared.yaml.user_yaml import UserYaml
