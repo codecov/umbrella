@@ -176,7 +176,7 @@ class IngestTestruns(BaseCodecovTask, name=ingest_testruns_task_name):
 
         upload_id = None
         if not_private_and_free_or_team(repo):
-            upload_row = TAUpload.objects.create(repo_id=repoid)
+            upload_row = TAUpload.objects.create(repo_id=repoid, state="pending")
             upload_id = upload_row.id
 
         testruns_written = _ingest_parsing_infos(
