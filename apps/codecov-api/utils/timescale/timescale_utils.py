@@ -3,12 +3,8 @@ from typing import Literal, TypeIs
 
 from django.db.models import Aggregate, Func
 
-from shared.django_apps.ta_timeseries.models import (
-    AggregateDaily,
-    BranchAggregateDaily,
-    BranchTestAggregateDaily,
-    TestAggregateDaily,
-)
+from shared.django_apps.prevent_timeseries import models as prevent_ts_models
+from shared.django_apps.ta_timeseries import models as ta_ts_models
 
 PRECOMPUTED_BRANCHES: tuple[str, str, str] = ("main", "master", "develop")
 
@@ -59,26 +55,30 @@ def get_daily_aggregate_querysets(
     branch: Literal["main", "master", "develop"] | None,
     start_date: datetime,
     end_date: datetime,
+    *,
+    use_prevent: bool = False,
 ):
+    models = prevent_ts_models if use_prevent else ta_ts_models
+
     if branch is None:
-        test_data = TestAggregateDaily.objects.filter(
+        test_data = models.TestAggregateDaily.objects.filter(  # type: ignore[attr-defined]
             repo_id=repoid,
             bucket_daily__gt=start_date,
             bucket_daily__lte=end_date,
         )
-        repo_data = AggregateDaily.objects.filter(
+        repo_data = models.AggregateDaily.objects.filter(  # type: ignore[attr-defined]
             repo_id=repoid,
             bucket_daily__gt=start_date,
             bucket_daily__lte=end_date,
         )
     else:
-        test_data = BranchTestAggregateDaily.objects.filter(
+        test_data = models.BranchTestAggregateDaily.objects.filter(  # type: ignore[attr-defined]
             repo_id=repoid,
             branch=branch,
             bucket_daily__gt=start_date,
             bucket_daily__lte=end_date,
         )
-        repo_data = BranchAggregateDaily.objects.filter(
+        repo_data = models.BranchAggregateDaily.objects.filter(  # type: ignore[attr-defined]
             repo_id=repoid,
             branch=branch,
             bucket_daily__gt=start_date,

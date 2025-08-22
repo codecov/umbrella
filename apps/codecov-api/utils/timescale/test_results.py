@@ -18,7 +18,8 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce, RowNumber
 
-from shared.django_apps.ta_timeseries.models import Testrun
+from shared.django_apps.prevent_timeseries import models as prevent_ts_models
+from shared.django_apps.ta_timeseries import models as ta_ts_models
 
 from .timescale_utils import (
     ArrayMergeDedupe,
@@ -37,8 +38,12 @@ def get_test_data_queryset_via_ca(
     end_date: datetime,
     parameter: Literal["flaky_tests", "failed_tests", "slowest_tests", "skipped_tests"]
     | None = None,
+    *,
+    use_prevent: bool = False,
 ):
-    test_data, _ = get_daily_aggregate_querysets(repoid, branch, start_date, end_date)
+    test_data, _ = get_daily_aggregate_querysets(
+        repoid, branch, start_date, end_date, use_prevent=use_prevent
+    )
 
     test_data = test_data.values("test_id").annotate(  # type: ignore[assignment]
         total_pass_count=Sum("pass_count"),
@@ -126,8 +131,11 @@ def get_test_data_queryset_via_testrun(
     end_date: datetime,
     parameter: Literal["flaky_tests", "failed_tests", "slowest_tests", "skipped_tests"]
     | None = None,
+    *,
+    use_prevent: bool = False,
 ):
-    test_data = Testrun.objects.filter(
+    models = prevent_ts_models if use_prevent else ta_ts_models
+    test_data = models.Testrun.objects.filter(
         repo_id=repoid,
         branch=branch,
         timestamp__gt=start_date,
@@ -228,14 +236,16 @@ def get_test_results_queryset(
     testsuites: list[str] | None = None,
     flags: list[str] | None = None,
     term: str | None = None,
+    *,
+    use_prevent: bool = False,
 ):
     if _should_use_precomputed_aggregates(branch):
         test_data = get_test_data_queryset_via_ca(
-            repoid, branch, start_date, end_date, parameter
+            repoid, branch, start_date, end_date, parameter, use_prevent=use_prevent
         )
     else:
         test_data = get_test_data_queryset_via_testrun(
-            repoid, branch, start_date, end_date, parameter
+            repoid, branch, start_date, end_date, parameter, use_prevent=use_prevent
         )
 
     match parameter:
