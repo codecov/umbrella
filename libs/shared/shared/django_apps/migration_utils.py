@@ -289,6 +289,14 @@ def ts_add_retention_policy(relation_name: str, drop_after: str) -> migrations.R
     return migrations.RunSQL(forward_sql, reverse_sql=reverse_sql)
 
 
+def ts_remove_retention_policy(
+    relation_name: str, *, reverse_drop_after: str
+) -> migrations.RunSQL:
+    forward_sql = f"SELECT remove_retention_policy('{relation_name}');"
+    reverse_sql = f"SELECT add_retention_policy('{relation_name}', INTERVAL '{reverse_drop_after}');"
+    return migrations.RunSQL(forward_sql, reverse_sql=reverse_sql)
+
+
 def ts_refresh_continuous_aggregate(
     view_name: str,
     start_expr_sql: str,
@@ -312,3 +320,77 @@ def ts_refresh_continuous_aggregate(
         return RiskyRunSQL(forward_sql)
     else:
         return migrations.RunSQL(forward_sql)
+
+
+def create_table_ttl_retention(
+    *,
+    table_name: str,
+    schedule_interval: str = "1 hour",
+) -> list[migrations.RunSQL]:
+    identifier = table_name.replace(".", "_")
+    proc_name = f"ttl_cleanup_{identifier}"
+
+    proc_sql_body = f"""
+DECLARE
+    target_table text;
+BEGIN
+    target_table := '{table_name}';
+    EXECUTE format('DELETE FROM %s WHERE ttl IS NOT NULL AND ttl < NOW()', target_table);
+END""".strip()
+
+    create_proc_sql = f"""
+        CREATE OR REPLACE PROCEDURE {proc_name}(job_id int, config jsonb)
+        LANGUAGE plpgsql
+        AS $$
+        {proc_sql_body}
+        $$;
+    """.strip()
+
+    drop_proc_sql = f"DROP PROCEDURE IF EXISTS {proc_name}(int, jsonb);"
+    add_job_sql = f"SELECT add_job('{proc_name}', '{schedule_interval}');"
+
+    return [
+        migrations.RunSQL(create_proc_sql, reverse_sql=drop_proc_sql),
+        migrations.RunSQL(add_job_sql, reverse_sql=""),
+    ]
+
+
+def create_ca_ttl_retention(
+    *,
+    ca_name: str,
+    schedule_interval: str = "1 hour",
+) -> list[migrations.RunSQL]:
+    identifier = ca_name.replace(".", "_")
+    proc_name = f"ttl_cleanup_{identifier}"
+
+    proc_sql_body = f"""
+DECLARE
+    target_table text;
+BEGIN
+    SELECT
+        quote_ident(materialized_hypertable_schema) || '.' || quote_ident(materialized_hypertable_name)
+    INTO target_table
+    FROM timescaledb_information.continuous_aggregates
+    WHERE (view_schema || '.' || view_name) = '{ca_name}' OR view_name = '{ca_name}'
+    LIMIT 1;
+    IF target_table IS NULL THEN
+        RAISE EXCEPTION 'Could not resolve materialized hypertable for CA %', '{ca_name}';
+    END IF;
+    EXECUTE format('DELETE FROM %s WHERE ttl IS NOT NULL AND ttl < NOW()', target_table);
+END""".strip()
+
+    create_proc_sql = f"""
+        CREATE OR REPLACE PROCEDURE {proc_name}(job_id int, config jsonb)
+        LANGUAGE plpgsql
+        AS $$
+        {proc_sql_body}
+        $$;
+    """.strip()
+
+    drop_proc_sql = f"DROP PROCEDURE IF EXISTS {proc_name}(int, jsonb);"
+    add_job_sql = f"SELECT add_job('{proc_name}', '{schedule_interval}');"
+
+    return [
+        migrations.RunSQL(create_proc_sql, reverse_sql=drop_proc_sql),
+        migrations.RunSQL(add_job_sql, reverse_sql=""),
+    ]
