@@ -42,6 +42,7 @@ class Testrun(ExportModelOperationsMixin("prevent_timeseries.testrun"), models.M
     upload_id = models.BigIntegerField(null=True)
 
     properties = models.JSONField(null=True)
+    ttl = models.DateTimeField(null=True)
 
     __repr__ = sane_repr("timestamp", "test_id", "name", "outcome", "flags")  # type: ignore
 

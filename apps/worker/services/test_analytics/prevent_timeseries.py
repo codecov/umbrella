@@ -75,6 +75,7 @@ def insert_testrun(
                 branch=branch,
                 flags=flags,
                 upload_id=upload_id,
+                ttl=timestamp + timedelta(days=60),
             )
         )
     Testrun.objects.bulk_create(testruns_to_create)
