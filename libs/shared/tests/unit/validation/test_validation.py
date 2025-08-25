@@ -890,6 +890,18 @@ class TestUserYamlValidation:
         result = validate_yaml(user_input)
         assert result == expected_result
 
+    def test_validate_lcov_partials_as_hits_true(self):
+        user_input = {"parsers": {"lcov": {"partials_as_hits": True}}}
+        expected_result = {"parsers": {"lcov": {"partials_as_hits": True}}}
+        result = validate_yaml(user_input)
+        assert result == expected_result
+
+    def test_validate_lcov_partials_as_hits_false(self):
+        user_input = {"parsers": {"lcov": {"partials_as_hits": False}}}
+        expected_result = {"parsers": {"lcov": {"partials_as_hits": False}}}
+        result = validate_yaml(user_input)
+        assert result == expected_result
+
     @pytest.mark.parametrize(
         "input, expected",
         [
