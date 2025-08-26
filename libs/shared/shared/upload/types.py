@@ -14,7 +14,7 @@ class UploadPipeline(StrEnum):
 
 class TAUploadContext(TypedDict):
     commit_sha: str
-    branch: str
+    branch: str | None
     merged: bool
     pipeline: UploadPipeline
     pull_id: int | None

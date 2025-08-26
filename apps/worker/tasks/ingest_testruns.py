@@ -7,7 +7,7 @@ import test_results_parser
 from sentry_sdk import capture_exception
 
 from app import celery_app
-from services.test_analytics.ta_timeseries import (
+from services.test_analytics.prevent_timeseries import (
     get_flaky_tests_set,
     insert_testrun,
 )
@@ -75,7 +75,7 @@ def _parse_payload_bytes(
 def _ingest_parsing_infos(
     repoid: int,
     commit_sha: str,
-    branch: str,
+    branch: str | None,
     parsing_infos: list[test_results_parser.ParsingInfo],
     now_ts: datetime,
     flaky_set: set[bytes],
