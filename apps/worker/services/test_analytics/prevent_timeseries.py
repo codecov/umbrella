@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TypedDict
 
 import test_results_parser
 from django.db import connections
-from django.db.models import Q
 
 from services.test_results import FlakeInfo
-from shared.django_apps.ta_timeseries.models import (
+from shared.django_apps.prevent_timeseries.models import (
     Testrun,
     calc_test_id,
 )
 from shared.django_apps.test_analytics.models import Flake
+
+LOWER_BOUND_NUM_DAYS = 60
 
 
 def get_flaky_tests_set(repo_id: int) -> set[bytes]:
@@ -88,6 +89,10 @@ class FailedTestInstance(TypedDict):
     flags: list[str]
 
 
+def timestamp_lower_bound():
+    return datetime.now() - timedelta(days=LOWER_BOUND_NUM_DAYS)
+
+
 def get_pr_comment_failures(repo_id: int, commit_sha: str) -> list[FailedTestInstance]:
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(
@@ -99,7 +104,7 @@ def get_pr_comment_failures(repo_id: int, commit_sha: str) -> list[FailedTestIns
                 LAST(upload_id, timestamp) as upload_id,
                 LAST(duration_seconds, timestamp) as duration_seconds,
                 LAST(flags, timestamp) as flags
-            FROM ta_timeseries_testrun
+            FROM prevent_timeseries_testrun
             WHERE repo_id = %s AND commit_sha = %s AND outcome IN ('failure', 'flaky_fail')
             GROUP BY test_id
             """,
@@ -132,7 +137,7 @@ def get_pr_comment_agg(repo_id: int, commit_sha: str) -> PRCommentAgg:
                 SELECT
                     test_id,
                     LAST(outcome, timestamp) as outcome
-                FROM ta_timeseries_testrun
+                FROM prevent_timeseries_testrun
                 WHERE repo_id = %s AND commit_sha = %s
                 GROUP BY test_id
             ) AS t
@@ -148,27 +153,3 @@ def get_pr_comment_agg(repo_id: int, commit_sha: str) -> PRCommentAgg:
             + outcome_dict.get("flaky_fail", 0),
             "skipped": outcome_dict.get("skip", 0),
         }
-
-
-def get_testruns_for_flake_detection(
-    upload_id: int,
-    flaky_test_ids: set[bytes],
-) -> list[Testrun]:
-    return list(
-        Testrun.objects.filter(
-            Q(upload_id=upload_id)
-            & (
-                Q(outcome="failure")
-                | Q(outcome="flaky_fail")
-                | (Q(outcome="pass") & Q(test_id__in=flaky_test_ids))
-            )
-        )
-    )
-
-
-def update_testrun_to_flaky(timestamp: datetime, test_id: bytes):
-    with connections["ta_timeseries"].cursor() as cursor:
-        cursor.execute(
-            "UPDATE ta_timeseries_testrun SET outcome = %s WHERE timestamp = %s AND test_id = %s",
-            ["flaky_fail", timestamp, test_id],
-        )
