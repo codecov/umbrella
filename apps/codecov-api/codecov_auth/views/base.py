@@ -471,7 +471,7 @@ class LoginMixin:
         # Store user's login session info after logging in
         http_x_forwarded_for = self.request.META.get("HTTP_X_FORWARDED_FOR")
         if http_x_forwarded_for:
-            ip = http_x_forwarded_for.split(",")[0]
+            ip = http_x_forwarded_for.split(",")[-2]
         else:
             ip = self.request.META.get("REMOTE_ADDR")
 
