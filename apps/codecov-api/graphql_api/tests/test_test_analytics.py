@@ -21,8 +21,6 @@ from shared.helpers.redis import get_redis_connection
 from shared.storage import get_appropriate_storage_service
 from shared.storage.exceptions import BucketAlreadyExistsError
 from utils.test_results import (
-    NEW_TA_TASKS_CUTOFF_DATE,
-    _has_commits_before_cutoff,
     dedup_table,
 )
 
@@ -189,79 +187,27 @@ def cursor(row: dict) -> str:
 def repository(db):
     owner = OwnerFactory(username="codecov-user")
     repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
-
+    CommitFactory(repository=repo, timestamp=datetime.datetime(2025, 1, 1))
     return repo
 
 
 @pytest.fixture
-def repository_with_old_commit(db):
-    """Repository with a commit before the cutoff date to force old implementation"""
-    owner = OwnerFactory(username="codecov-user")
-    repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
-
-    # Create a commit before the cutoff date to ensure old implementation is used
-    CommitFactory(
-        repository=repo,
-        timestamp=NEW_TA_TASKS_CUTOFF_DATE - datetime.timedelta(days=1),
-    )
-
-    return repo
-
-
-@pytest.fixture
-def repository_with_new_commit(db):
-    """Repository with only commits after the cutoff date to force new implementation"""
-    owner = OwnerFactory(username="codecov-user")
-    repo = RepositoryFactory(author=owner, name="testRepoName", active=True)
-
-    # Create a commit after the cutoff date to ensure new implementation is used
-    CommitFactory(
-        repository=repo,
-        timestamp=NEW_TA_TASKS_CUTOFF_DATE + datetime.timedelta(days=1),
-    )
-
-    return repo
-
-
-@pytest.fixture
-def store_in_redis(repository_with_old_commit, mocker):
-    """Store data in Redis and ensure old implementation is used"""
-    # Mock the rollout to return False to ensure old implementation
-    mocker.patch(
-        "graphql_api.types.test_analytics.test_analytics.use_new_impl",
-        return_value=False,
-    )
-    mocker.patch(
-        "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
-        return_value=False,
-    )
-
+def store_in_redis(repository, mocker):
     redis = get_redis_connection()
     redis.set(
-        f"test_results:{repository_with_old_commit.repoid}:{repository_with_old_commit.branch}:30",
+        f"test_results:{repository.repoid}:{repository.branch}:30",
         test_results_table.write_ipc(None).getvalue(),
     )
 
     yield
 
     redis.delete(
-        f"test_results:{repository_with_old_commit.repoid}:{repository_with_old_commit.branch}:30",
+        f"test_results:{repository.repoid}:{repository.branch}:30",
     )
 
 
 @pytest.fixture
-def store_in_storage(repository_with_old_commit, mocker):
-    """Store data in storage and ensure old implementation is used"""
-    # Mock the rollout to return False to ensure old implementation
-    mocker.patch(
-        "graphql_api.types.test_analytics.test_analytics.use_new_impl",
-        return_value=False,
-    )
-    mocker.patch(
-        "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
-        return_value=False,
-    )
-
+def store_in_storage(repository, mocker):
     storage = get_appropriate_storage_service()
 
     try:
@@ -271,7 +217,7 @@ def store_in_storage(repository_with_old_commit, mocker):
 
     storage.write_file(
         settings.GCS_BUCKET_NAME,
-        f"test_results/rollups/{repository_with_old_commit.repoid}/{repository_with_old_commit.branch}/30",
+        f"test_results/rollups/{repository.repoid}/{repository.branch}/30",
         test_results_table.write_ipc(None).getvalue(),
     )
 
@@ -279,33 +225,22 @@ def store_in_storage(repository_with_old_commit, mocker):
 
     storage.delete_file(
         settings.GCS_BUCKET_NAME,
-        f"test_results/rollups/{repository_with_old_commit.repoid}/{repository_with_old_commit.branch}/30",
+        f"test_results/rollups/{repository.repoid}/{repository.branch}/30",
     )
 
 
 @pytest.fixture
-def store_in_redis_with_duplicate_names(repository_with_old_commit, mocker):
-    """Store duplicate names data in Redis and ensure old implementation is used"""
-    # Mock the rollout to return False to ensure old implementation
-    mocker.patch(
-        "graphql_api.types.test_analytics.test_analytics.use_new_impl",
-        return_value=False,
-    )
-    mocker.patch(
-        "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
-        return_value=False,
-    )
-
+def store_in_redis_with_duplicate_names(repository, mocker):
     redis = get_redis_connection()
     redis.set(
-        f"test_results:{repository_with_old_commit.repoid}:{repository_with_old_commit.branch}:30",
+        f"test_results:{repository.repoid}:{repository.branch}:30",
         test_results_table_with_duplicate_names.write_ipc(None).getvalue(),
     )
 
     yield
 
     redis.delete(
-        f"test_results:{repository_with_old_commit.repoid}:{repository_with_old_commit.branch}:30",
+        f"test_results:{repository.repoid}:{repository.branch}:30",
     )
 
 
@@ -313,13 +248,11 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
     def test_get_test_results(
         self,
         db,
-        repository_with_old_commit,
+        repository,
         store_in_redis,
         store_in_storage,
     ):
-        results = get_results(
-            repository_with_old_commit.repoid, repository_with_old_commit.branch, 30
-        )
+        results = get_results(repository.repoid, repository.branch, 30)
         assert results is not None
 
         assert results.equals(dedup_table(test_results_table))
@@ -327,25 +260,17 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
     def test_get_test_results_no_storage(self, db, repository):
         assert get_results(repository.repoid, repository.branch, 30) is None
 
-    def test_get_test_results_no_redis(
-        self, mocker, db, repository_with_old_commit, store_in_storage
-    ):
+    def test_get_test_results_no_redis(self, mocker, db, repository, store_in_storage):
         m = mocker.patch("services.task.TaskService.cache_test_results_redis")
-        results = get_results(
-            repository_with_old_commit.repoid, repository_with_old_commit.branch, 30
-        )
+        results = get_results(repository.repoid, repository.branch, 30)
         assert results is not None
         assert results.equals(dedup_table(test_results_table))
 
-        m.assert_called_once_with(
-            repository_with_old_commit.repoid, repository_with_old_commit.branch
-        )
+        m.assert_called_once_with(repository.repoid, repository.branch)
 
-    def test_test_results(
-        self, db, repository_with_old_commit, store_in_redis, snapshot
-    ):
+    def test_test_results(self, db, repository, store_in_redis, snapshot):
         test_results = generate_test_results(
-            repoid=repository_with_old_commit.repoid,
+            repoid=repository.repoid,
             ordering=TestResultsOrderingParameter.UPDATED_AT,
             ordering_direction=OrderingDirection.DESC,
             measurement_interval=MeasurementInterval.INTERVAL_30_DAY,
@@ -364,11 +289,9 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             if isinstance(row["node"], TestResultsRow)
         ]
 
-    def test_test_results_asc(
-        self, db, repository_with_old_commit, store_in_redis, snapshot
-    ):
+    def test_test_results_asc(self, db, repository, store_in_redis, snapshot):
         test_results = generate_test_results(
-            repoid=repository_with_old_commit.repoid,
+            repoid=repository.repoid,
             ordering=TestResultsOrderingParameter.UPDATED_AT,
             ordering_direction=OrderingDirection.ASC,
             measurement_interval=MeasurementInterval.INTERVAL_30_DAY,
@@ -475,12 +398,12 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
         expected_rows,
         start_cursor,
         end_cursor,
-        repository_with_old_commit,
+        repository,
         store_in_redis,
         snapshot,
     ):
         test_results = generate_test_results(
-            repoid=repository_with_old_commit.repoid,
+            repoid=repository.repoid,
             ordering=TestResultsOrderingParameter.UPDATED_AT,
             ordering_direction=OrderingDirection.DESC,
             measurement_interval=MeasurementInterval.INTERVAL_30_DAY,
@@ -590,12 +513,12 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
         expected_rows,
         start_cursor,
         end_cursor,
-        repository_with_old_commit,
+        repository,
         store_in_redis,
         snapshot,
     ):
         test_results = generate_test_results(
-            repoid=repository_with_old_commit.repoid,
+            repoid=repository.repoid,
             ordering=TestResultsOrderingParameter.UPDATED_AT,
             ordering_direction=OrderingDirection.ASC,
             measurement_interval=MeasurementInterval.INTERVAL_30_DAY,
@@ -617,11 +540,9 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             if isinstance(row["node"], TestResultsRow)
         ]
 
-    def test_test_analytics_term_filter(
-        self, repository_with_old_commit, store_in_redis, snapshot
-    ):
+    def test_test_analytics_term_filter(self, repository, store_in_redis, snapshot):
         test_results = generate_test_results(
-            repoid=repository_with_old_commit.repoid,
+            repoid=repository.repoid,
             term=rows[0]["name"][2:],
             ordering=TestResultsOrderingParameter.UPDATED_AT,
             ordering_direction=OrderingDirection.DESC,
@@ -642,10 +563,10 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
         ]
 
     def test_test_analytics_testsuite_filter(
-        self, repository_with_old_commit, store_in_redis, snapshot
+        self, repository, store_in_redis, snapshot
     ):
         test_results = generate_test_results(
-            repoid=repository_with_old_commit.repoid,
+            repoid=repository.repoid,
             testsuites=[rows[0]["testsuite"]],
             ordering=TestResultsOrderingParameter.UPDATED_AT,
             ordering_direction=OrderingDirection.DESC,
@@ -665,11 +586,9 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             if isinstance(row["node"], TestResultsRow)
         ]
 
-    def test_test_analytics_flag_filter(
-        self, repository_with_old_commit, store_in_redis, snapshot
-    ):
+    def test_test_analytics_flag_filter(self, repository, store_in_redis, snapshot):
         test_results = generate_test_results(
-            repoid=repository_with_old_commit.repoid,
+            repoid=repository.repoid,
             flags=[rows[0]["flags"][0]],
             ordering=TestResultsOrderingParameter.UPDATED_AT,
             ordering_direction=OrderingDirection.DESC,
@@ -690,10 +609,10 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             if isinstance(row["node"], TestResultsRow)
         ]
 
-    def test_gql_query(self, repository_with_old_commit, store_in_redis):
+    def test_gql_query(self, repository, store_in_redis):
         query = base_gql_query % (
-            repository_with_old_commit.author.username,
-            repository_with_old_commit.name,
+            repository.author.username,
+            repository.name,
             """
             testResults(ordering: { parameter: UPDATED_AT, direction: DESC } ) {
                 totalCount
@@ -718,7 +637,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             """,
         )
 
-        result = self.gql_request(query, owner=repository_with_old_commit.author)
+        result = self.gql_request(query, owner=repository.author)
 
         assert (
             result["owner"]["repository"]["testAnalytics"]["testResults"]["totalCount"]
@@ -735,11 +654,11 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
         ]
 
     def test_gql_query_with_duplicate_names(
-        self, repository_with_old_commit, store_in_redis_with_duplicate_names
+        self, repository, store_in_redis_with_duplicate_names
     ):
         query = base_gql_query % (
-            repository_with_old_commit.author.username,
-            repository_with_old_commit.name,
+            repository.author.username,
+            repository.name,
             """
             testResults(ordering: { parameter: UPDATED_AT, direction: DESC } ) {
                 totalCount
@@ -764,7 +683,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             """,
         )
 
-        result = self.gql_request(query, owner=repository_with_old_commit.author)
+        result = self.gql_request(query, owner=repository.author)
 
         assert (
             result["owner"]["repository"]["testAnalytics"]["testResults"]["totalCount"]
@@ -780,10 +699,10 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             for row in dedup(rows_with_duplicate_names)
         ]
 
-    def test_gql_query_aggregates(self, repository_with_old_commit, store_in_redis):
+    def test_gql_query_aggregates(self, repository, store_in_redis):
         query = base_gql_query % (
-            repository_with_old_commit.author.username,
-            repository_with_old_commit.name,
+            repository.author.username,
+            repository.name,
             """
             testResultsAggregates {
                 totalDuration
@@ -795,7 +714,7 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             """,
         )
 
-        result = self.gql_request(query, owner=repository_with_old_commit.author)
+        result = self.gql_request(query, owner=repository.author)
 
         assert result["owner"]["repository"]["testAnalytics"][
             "testResultsAggregates"
@@ -807,12 +726,10 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             "totalSlowTests": 1,
         }
 
-    def test_gql_query_flake_aggregates(
-        self, repository_with_old_commit, store_in_redis
-    ):
+    def test_gql_query_flake_aggregates(self, repository, store_in_redis):
         query = base_gql_query % (
-            repository_with_old_commit.author.username,
-            repository_with_old_commit.name,
+            repository.author.username,
+            repository.name,
             """
             flakeAggregates {
                 flakeRate
@@ -821,23 +738,23 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             """,
         )
 
-        result = self.gql_request(query, owner=repository_with_old_commit.author)
+        result = self.gql_request(query, owner=repository.author)
 
         assert result["owner"]["repository"]["testAnalytics"]["flakeAggregates"] == {
             "flakeRate": 0.1,
             "flakeCount": 1,
         }
 
-    def test_gql_query_test_suites(self, repository_with_old_commit, store_in_redis):
+    def test_gql_query_test_suites(self, repository, store_in_redis):
         query = base_gql_query % (
-            repository_with_old_commit.author.username,
-            repository_with_old_commit.name,
+            repository.author.username,
+            repository.name,
             """
             testSuites
             """,
         )
 
-        result = self.gql_request(query, owner=repository_with_old_commit.author)
+        result = self.gql_request(query, owner=repository.author)
 
         assert sorted(result["owner"]["repository"]["testAnalytics"]["testSuites"]) == [
             "testsuite1",
@@ -847,45 +764,17 @@ class TestAnalyticsTestCase(GraphQLTestHelper):
             "testsuite5",
         ]
 
-    def test_gql_query_test_suites_term(
-        self, repository_with_old_commit, store_in_redis
-    ):
+    def test_gql_query_test_suites_term(self, repository, store_in_redis):
         query = base_gql_query % (
-            repository_with_old_commit.author.username,
-            repository_with_old_commit.name,
+            repository.author.username,
+            repository.name,
             """
             testSuites(term: "testsuite1")
             """,
         )
 
-        result = self.gql_request(query, owner=repository_with_old_commit.author)
+        result = self.gql_request(query, owner=repository.author)
 
         assert result["owner"]["repository"]["testAnalytics"]["testSuites"] == [
             "testsuite1",
         ]
-
-    def test_has_commits_before_cutoff_with_old_commits(self, db):
-        repository = RepositoryFactory()
-        CommitFactory(
-            repository=repository,
-            timestamp=NEW_TA_TASKS_CUTOFF_DATE - datetime.timedelta(days=1),
-        )
-
-        result = _has_commits_before_cutoff(repository.repoid)
-        assert result is True
-
-    def test_has_commits_before_cutoff_with_only_new_commits(self, db):
-        repository = RepositoryFactory()
-        CommitFactory(
-            repository=repository,
-            timestamp=NEW_TA_TASKS_CUTOFF_DATE + datetime.timedelta(days=1),
-        )
-
-        result = _has_commits_before_cutoff(repository.repoid)
-        assert result is False
-
-    def test_has_commits_before_cutoff_with_no_commits(self, db):
-        repository = RepositoryFactory()
-
-        result = _has_commits_before_cutoff(repository.repoid)
-        assert result is False
