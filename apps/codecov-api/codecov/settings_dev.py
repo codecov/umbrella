@@ -1,3 +1,5 @@
+import socket
+
 from .settings_base import *
 
 # Remove CSP headers from local development build to allow GQL Playground
@@ -13,6 +15,26 @@ ALLOWED_HOSTS = get_config(
 )
 
 WEBHOOK_URL = ""  # NGROK TUNNEL HERE
+
+# Django debug toolbar configuration
+INSTALLED_APPS.append("debug_toolbar")
+MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
+SHOW_TOOLBAR_CALLBACK = "debug_toolbar.middleware.show_toolbar_with_docker"
+
+
+def get_internal_ips() -> list[str]:
+    ips = ["127.0.0.1"]
+    try:
+        # Dynamically resolve gateway hostname to IP
+        gateway_ip = socket.gethostbyname("gateway")
+        ips.append(gateway_ip)
+    except socket.gaierror:
+        # If hostname resolution fails, only use localhost
+        pass
+    return ips
+
+
+INTERNAL_IPS = get_internal_ips()
 
 STRIPE_API_KEY = get_config("services", "stripe", "api_key", default="default")
 STRIPE_ENDPOINT_SECRET = get_config(
