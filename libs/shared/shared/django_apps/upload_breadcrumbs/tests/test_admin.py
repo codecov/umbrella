@@ -640,3 +640,280 @@ class ErrorFilterTest(TestCase):
                 else:
                     # Should return original queryset
                     self.assertEqual(result, queryset)
+
+
+class UploadBreadcrumbAdminSearchTest(TestCase):
+    """Test cases for the custom search functionality in UploadBreadcrumbAdmin."""
+
+    def setUp(self):
+        self.admin = UploadBreadcrumbAdmin(UploadBreadcrumb, AdminSite())
+        self.request = MagicMock()
+
+        self.repo1 = RepositoryFactory()
+        self.repo2 = RepositoryFactory()
+
+        self.breadcrumb1 = UploadBreadcrumbFactory(
+            repo_id=12345,
+            commit_sha="cf36f4c203c44887afbf251974c30d26ec98f269",
+            sentry_trace_id="abc123def456789012345678901234ab",
+        )
+        self.breadcrumb2 = UploadBreadcrumbFactory(
+            repo_id=67890,
+            commit_sha="abcdef1234567890abcdef1234567890abcdef12",
+            sentry_trace_id="def456789012345678901234567890cd",
+        )
+        self.breadcrumb3 = UploadBreadcrumbFactory(
+            repo_id=12345,
+            commit_sha="1234567890abcdef1234567890abcdef12345678",
+            sentry_trace_id=None,
+        )
+
+    def test_get_search_results_empty_search_term(self):
+        """Test that empty search terms return the original queryset."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        # Empty string
+        result, use_distinct = self.admin.get_search_results(self.request, queryset, "")
+        self.assertEqual(result, queryset)
+        self.assertFalse(use_distinct)
+
+        # Whitespace only
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "   "
+        )
+        self.assertEqual(result, queryset)
+        self.assertFalse(use_distinct)
+
+    def test_get_search_results_repo_id_only(self):
+        """Test searching by repo_id only."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "12345"
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        expected_ids = [
+            self.breadcrumb1.id,
+            self.breadcrumb3.id,
+        ]
+        self.assertCountEqual(result_ids, expected_ids)
+
+    def test_get_search_results_full_commit_sha(self):
+        """Test searching by full commit SHA (40 characters)."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "cf36f4c203c44887afbf251974c30d26ec98f269"
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [self.breadcrumb1.id])
+
+    def test_get_search_results_sentry_trace_id(self):
+        """Test searching by sentry trace ID (32 characters)."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "abc123def456789012345678901234ab"
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [self.breadcrumb1.id])
+
+    def test_get_search_results_combined_repo_and_commit(self):
+        """Test searching by both repo_id and commit SHA (AND logic)."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        # Search for repo_id AND specific commit SHA
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "67890 abcdef1234567890abcdef1234567890abcdef12"
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [self.breadcrumb2.id])
+
+        # Different repo_id
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "12345 abcdef1234567890abcdef1234567890abcdef12"
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [])
+
+    def test_get_search_results_combined_repo_and_sentry(self):
+        """Test searching by repo_id and sentry trace ID."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "12345 abc123def456789012345678901234ab"
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [self.breadcrumb1.id])
+
+    def test_get_search_results_combined_commit_and_sentry(self):
+        """Test searching by commit SHA and sentry trace ID."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request,
+            queryset,
+            "cf36f4c203c44887afbf251974c30d26ec98f269 abc123def456789012345678901234ab",
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [self.breadcrumb1.id])
+
+    def test_get_search_results_three_fields(self):
+        """Test searching by all three fields."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request,
+            queryset,
+            "12345 cf36f4c203c44887afbf251974c30d26ec98f269 abc123def456789012345678901234ab",
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [self.breadcrumb1.id])
+
+    def test_get_search_results_non_matching_repo_id(self):
+        """Test searching for a repo_id that doesn't exist."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "99999"
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [])
+
+    def test_get_search_results_non_matching_commit_sha(self):
+        """Test searching for a commit SHA that doesn't exist."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [])
+
+    def test_get_search_results_non_matching_sentry_trace(self):
+        """Test searching for a sentry trace ID that doesn't exist."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "ffffffffffffffffffffffffffffffff"
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [])
+
+    def test_get_search_results_mixed_case_hex(self):
+        """Test that hex string search requires exact case match."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        # Should not match due to case sensitivity
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "CF36F4C203C44887AFBF251974C30D26EC98F269"
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [])
+
+    def test_get_search_results_invalid_patterns(self):
+        """Test that invalid patterns return no results."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        invalid_patterns = [
+            "12345abc",  # Mixed digit and non-digit but too short
+            "abc123def456789012345678901234abc",  # 33 chars (not 32 or 40)
+            "abcdef1234567890abcdef12345678901234567890123456",  # Too long
+            "not-hexadecimal",
+        ]
+
+        for pattern in invalid_patterns:
+            with self.subTest(pattern=pattern):
+                result, use_distinct = self.admin.get_search_results(
+                    self.request, queryset, pattern
+                )
+                # Invalid patterns should return (queryset.none(), False)
+                self.assertFalse(use_distinct)
+                self.assertEqual(list(result), [])
+
+    def test_get_search_results_very_large_number(self):
+        """Test searching with a very large number."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        # Should still work as repo_id is BigIntegerField
+        large_number = "999999999999999999999"
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, large_number
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [])
+
+    def test_get_search_results_multiple_spaces(self):
+        """Test that multiple spaces between search terms are handled correctly."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "12345    cf36f4c203c44887afbf251974c30d26ec98f269"
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertEqual(result_ids, [self.breadcrumb1.id])
+
+    def test_get_search_results_leading_trailing_spaces(self):
+        """Test that leading and trailing spaces are handled correctly."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "  12345  "
+        )
+
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        expected_ids = [self.breadcrumb1.id, self.breadcrumb3.id]
+        self.assertCountEqual(result_ids, expected_ids)
+
+    def test_get_search_results_all_digits(self):
+        """Test that all-digit strings are validated correctly."""
+        queryset = UploadBreadcrumb.objects.all()
+
+        test_breadcrumb = UploadBreadcrumbFactory(
+            repo_id=99999,
+            commit_sha="1111111111111111111111111111111111111111",
+            sentry_trace_id="22222222222222222222222222222222",
+        )
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "1111111111111111111111111111111111111111"
+        )
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertIn(test_breadcrumb.id, result_ids)
+
+        result, use_distinct = self.admin.get_search_results(
+            self.request, queryset, "22222222222222222222222222222222"
+        )
+        self.assertTrue(use_distinct)
+        result_ids = list(result.values_list("id", flat=True))
+        self.assertIn(test_breadcrumb.id, result_ids)
