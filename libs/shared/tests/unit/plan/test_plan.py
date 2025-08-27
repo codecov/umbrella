@@ -394,18 +394,21 @@ class PlanServiceTests(TestCase):
         current_org = OwnerFactory(plan=DEFAULT_FREE_PLAN, plan_user_count=5, free=3)
         plan_service = PlanService(current_org=current_org)
         assert plan_service.plan_user_count == 8
+        assert plan_service.free_seat_count == 3
 
     def test_plan_service_plan_user_count_only_free_seats(self):
         """Test plan_user_count when there are only free seats"""
         current_org = OwnerFactory(plan=DEFAULT_FREE_PLAN, plan_user_count=0, free=5)
         plan_service = PlanService(current_org=current_org)
         assert plan_service.plan_user_count == 5
+        assert plan_service.free_seat_count == 5
 
     def test_plan_service_plan_user_count_only_plan_seats(self):
         """Test plan_user_count when there are only plan seats"""
         current_org = OwnerFactory(plan=DEFAULT_FREE_PLAN, plan_user_count=5, free=0)
         plan_service = PlanService(current_org=current_org)
         assert plan_service.plan_user_count == 5
+        assert plan_service.free_seat_count == 0
 
     def test_plan_service_plan_user_count_with_account(self):
         """Test plan_user_count when owner has an account"""
