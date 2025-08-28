@@ -280,6 +280,13 @@ CACHES = {
 
 
 # Session configuration
+
+# Controls how the X-Forwarded-For header is processed to get client IP addresses.
+# Set to how many trusted proxies you have in front of the application (must be
+# a positive integer). Defaults to trusting all proxies (this is unsafe unless
+# your ingress proxy strips X-Forwarded-For headers).
+TRUSTED_PROXY_DEPTH = get_config("setup", "http", "trusted_proxy_depth", default=0)
+
 SESSION_COOKIE_DOMAIN = get_config(
     "setup", "http", "cookies_domain", default=".codecov.io"
 )
