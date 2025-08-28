@@ -219,7 +219,10 @@ def ts_create_index(
     the state will diverge: the index will be created in the DB, but Django will not
     know about it. You should use ts_create_index_managed_hypertable instead.
     """
-    column_exprs: list[str] = [str(col) for col in columns]
+    column_exprs: list[str] = [
+        (str(col)[1:] + " DESC") if str(col).startswith("-") else str(col)
+        for col in columns
+    ]
 
     cols_sql = ", ".join(column_exprs)
     forward_sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({cols_sql}) WITH (timescaledb.transaction_per_chunk);"
@@ -238,7 +241,10 @@ def ts_create_index_managed_hypertable(
     Create an index on a table that is managed by Django. This will ensure that the
     index is created in the DB and Django will know about it.
     """
-    column_exprs: list[str] = [str(col) for col in columns]
+    column_exprs: list[str] = [
+        (str(col)[1:] + " DESC") if str(col).startswith("-") else str(col)
+        for col in columns
+    ]
 
     cols_sql = ", ".join(column_exprs)
     forward_sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({cols_sql}) WITH (timescaledb.transaction_per_chunk);"
