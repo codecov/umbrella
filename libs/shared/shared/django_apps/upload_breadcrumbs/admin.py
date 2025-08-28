@@ -1,11 +1,12 @@
 import json
+import re
 from collections.abc import Iterator
 from typing import Any
 
 from django.conf import settings
 from django.contrib import admin
 from django.contrib.admin.views.main import ChangeList
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.http import HttpRequest
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
@@ -19,6 +20,9 @@ from shared.django_apps.upload_breadcrumbs.models import (
     UploadBreadcrumb,
 )
 from shared.django_apps.utils.paginator import EstimatedCountPaginator
+
+# Regex pattern for hexadecimal string validation
+HEX_PATTERN = re.compile(r"^[0-9a-fA-F]+$")
 
 
 class PresentDataFilter(admin.SimpleListFilter):
@@ -161,12 +165,6 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         "formatted_commit_sha",
     )  # Limit sorting options to indexed columns
     show_full_result_count = False
-    search_fields = (
-        "repo_id__startswith",
-        "commit_sha__startswith",
-        "sentry_trace_id__startswith",
-    )
-    search_help_text = "Search by repository ID, commit SHA, and/or Sentry trace ID (all prefix match). Separate multiple values with spaces to AND search (E.g. '<repo_id> <commit_sha>')."
     list_filter = [
         PresentDataFilter,
         MilestoneFilter,
@@ -186,6 +184,49 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
     list_max_show_all = 200
     show_full_result_count = False  # Disable full result count for performance
     paginator = EstimatedCountPaginator
+    search_fields = ("repo_id", "commit_sha", "sentry_trace_id")
+    search_help_text = "Search by repository ID, commit SHA, and/or Sentry trace ID (all exact match). Separate multiple values with spaces to AND search (E.g. '<repo_id> <commit_sha>')."
+
+    def get_search_results(
+        self, request: HttpRequest, queryset: QuerySet, search_term: str
+    ) -> tuple[QuerySet, bool]:
+        """
+        Custom search logic to determine field types and use exact matches for
+        query performance.
+
+        This allows us to take advantage of the indexes defined on the model
+        by only searching the appropriate field based on the search term type.
+        """
+        search_terms = search_term.strip().split()
+        if not search_terms:
+            return queryset, False
+
+        q_objects = []
+
+        for term in search_terms:
+            term_q = Q()
+
+            # Looks like a repo_id (integer)
+            if term.isdigit():
+                repo_id = int(term)
+                term_q |= Q(repo_id=repo_id)
+
+            if HEX_PATTERN.match(term):
+                # Looks like a commit SHA (40-character hex string)
+                if len(term) == 40:
+                    term_q |= Q(commit_sha__exact=term)
+                # Looks like a sentry_trace_id (32-character hex string)
+                elif len(term) == 32:
+                    term_q |= Q(sentry_trace_id__exact=term)
+
+            if not term_q:
+                # If it doesn't match expected patterns, return no results
+                return queryset.none(), False
+
+            q_objects.append(term_q)
+
+        queryset = queryset.filter(*q_objects)
+        return queryset, True
 
     @admin.display(description="Repository", ordering="repo_id")
     def formatted_repo_id(self, obj: UploadBreadcrumb) -> str:
