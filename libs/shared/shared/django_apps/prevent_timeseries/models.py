@@ -5,31 +5,18 @@ from django_prometheus.models import ExportModelOperationsMixin
 
 from shared.django_apps.db import sane_repr
 
-TA_TIMESERIES_APP_LABEL = "ta_timeseries"
+PREVENT_TIMESERIES_APP_LABEL = "prevent_timeseries"
 
 
 def calc_test_id(name: str, classname: str, testsuite: str) -> bytes:
-    """
-    Calculate a test ID hash from test name, classname, and testsuite.
-
-    Args:
-        name: Test name
-        classname: Test class name
-        testsuite: Test suite name
-
-    Returns:
-        bytes: Hash digest as bytes
-    """
-    h = mmh3.mmh3_x64_128()  # assumes we're running on x64 machines
+    h = mmh3.mmh3_x64_128()
     h.update(testsuite.encode("utf-8"))
     h.update(classname.encode("utf-8"))
     h.update(name.encode("utf-8"))
-    test_id_hash = h.digest()
-
-    return test_id_hash
+    return h.digest()
 
 
-class Testrun(ExportModelOperationsMixin("ta_timeseries.testrun"), models.Model):
+class Testrun(ExportModelOperationsMixin("prevent_timeseries.testrun"), models.Model):
     __test__ = False
     timestamp = models.DateTimeField(null=False, primary_key=True)
 
@@ -59,42 +46,42 @@ class Testrun(ExportModelOperationsMixin("ta_timeseries.testrun"), models.Model)
     __repr__ = sane_repr("timestamp", "test_id", "name", "outcome", "flags")  # type: ignore
 
     class Meta:
-        app_label = TA_TIMESERIES_APP_LABEL
+        app_label = PREVENT_TIMESERIES_APP_LABEL
+        db_table = "prevent_timeseries_testrun"
         indexes = [
             models.Index(
-                name="ta_ts__branch_test_i",
+                name="prevent_ts__branch_test_i",
                 fields=["repo_id", "branch", "test_id", "timestamp"],
             ),
             models.Index(
-                name="ta_ts__repo_test_time_idx",
+                name="prevent_ts__repo_test_time_idx",
                 fields=["repo_id", "test_id", "timestamp"],
             ),
             models.Index(
-                name="ta_ts__commit_i",
+                name="prevent_ts__commit_i",
                 fields=["repo_id", "commit_sha", "timestamp"],
             ),
             models.Index(
-                name="ta_ts__upload_i",
+                name="prevent_ts__upload_i",
                 fields=["upload_id", "outcome"],
             ),
             models.Index(
-                name="ta_ts_upload_outcome_test_idx",
+                name="prevent_ts_upload_outcome_test_idx",
                 fields=["upload_id", "outcome", "test_id"],
             ),
             models.Index(
-                name="ta_ts__repo_timestamp_idx",
+                name="prevent_ts__repo_timestamp_idx",
                 fields=["repo_id", "timestamp"],
             ),
             models.Index(
-                name="ta_ts__repo_branch_time_idx",
+                name="prevent_ts__repo_branch_time_idx",
                 fields=["repo_id", "branch", "timestamp"],
             ),
         ]
 
 
 class AggregateHourly(
-    ExportModelOperationsMixin("ta_timeseries.aggregate_hourly"),
-    models.Model,
+    ExportModelOperationsMixin("prevent_timeseries.aggregate_hourly"), models.Model
 ):
     __test__ = False
 
@@ -118,14 +105,13 @@ class AggregateHourly(
     )  # type: ignore
 
     class Meta:
-        app_label = TA_TIMESERIES_APP_LABEL
-        db_table = "ta_timeseries_aggregate_hourly"
+        app_label = PREVENT_TIMESERIES_APP_LABEL
+        db_table = "prevent_timeseries_aggregate_hourly"
         managed = False
 
 
 class AggregateDaily(
-    ExportModelOperationsMixin("ta_timeseries.aggregate_daily"),
-    models.Model,
+    ExportModelOperationsMixin("prevent_timeseries.aggregate_daily"), models.Model
 ):
     __test__ = False
 
@@ -149,13 +135,13 @@ class AggregateDaily(
     )  # type: ignore
 
     class Meta:
-        app_label = TA_TIMESERIES_APP_LABEL
-        db_table = "ta_timeseries_aggregate_daily"
+        app_label = PREVENT_TIMESERIES_APP_LABEL
+        db_table = "prevent_timeseries_aggregate_daily"
         managed = False
 
 
 class BranchAggregateHourly(
-    ExportModelOperationsMixin("ta_timeseries.branch_aggregate_hourly"),
+    ExportModelOperationsMixin("prevent_timeseries.branch_aggregate_hourly"),
     models.Model,
 ):
     __test__ = False
@@ -182,13 +168,13 @@ class BranchAggregateHourly(
     )  # type: ignore
 
     class Meta:
-        app_label = TA_TIMESERIES_APP_LABEL
-        db_table = "ta_timeseries_branch_aggregate_hourly"
+        app_label = PREVENT_TIMESERIES_APP_LABEL
+        db_table = "prevent_timeseries_branch_aggregate_hourly"
         managed = False
 
 
 class BranchAggregateDaily(
-    ExportModelOperationsMixin("ta_timeseries.branch_aggregate_daily"),
+    ExportModelOperationsMixin("prevent_timeseries.branch_aggregate_daily"),
     models.Model,
 ):
     __test__ = False
@@ -215,13 +201,13 @@ class BranchAggregateDaily(
     )  # type: ignore
 
     class Meta:
-        app_label = TA_TIMESERIES_APP_LABEL
-        db_table = "ta_timeseries_branch_aggregate_daily"
+        app_label = PREVENT_TIMESERIES_APP_LABEL
+        db_table = "prevent_timeseries_branch_aggregate_daily"
         managed = False
 
 
 class TestAggregateHourly(
-    ExportModelOperationsMixin("ta_timeseries.test_aggregate_hourly"),
+    ExportModelOperationsMixin("prevent_timeseries.test_aggregate_hourly"),
     models.Model,
 ):
     __test__ = False
@@ -255,13 +241,13 @@ class TestAggregateHourly(
     )  # type: ignore
 
     class Meta:
-        app_label = TA_TIMESERIES_APP_LABEL
-        db_table = "ta_timeseries_test_aggregate_hourly"
+        app_label = PREVENT_TIMESERIES_APP_LABEL
+        db_table = "prevent_timeseries_test_aggregate_hourly"
         managed = False
 
 
 class TestAggregateDaily(
-    ExportModelOperationsMixin("ta_timeseries.test_aggregate_daily"),
+    ExportModelOperationsMixin("prevent_timeseries.test_aggregate_daily"),
     models.Model,
 ):
     __test__ = False
@@ -295,13 +281,13 @@ class TestAggregateDaily(
     )  # type: ignore
 
     class Meta:
-        app_label = TA_TIMESERIES_APP_LABEL
-        db_table = "ta_timeseries_test_aggregate_daily"
+        app_label = PREVENT_TIMESERIES_APP_LABEL
+        db_table = "prevent_timeseries_test_aggregate_daily"
         managed = False
 
 
 class BranchTestAggregateHourly(
-    ExportModelOperationsMixin("ta_timeseries.branch_test_aggregate_hourly"),
+    ExportModelOperationsMixin("prevent_timeseries.branch_test_aggregate_hourly"),
     models.Model,
 ):
     __test__ = False
@@ -337,13 +323,13 @@ class BranchTestAggregateHourly(
     )  # type: ignore
 
     class Meta:
-        app_label = TA_TIMESERIES_APP_LABEL
-        db_table = "ta_timeseries_branch_test_aggregate_hourly"
+        app_label = PREVENT_TIMESERIES_APP_LABEL
+        db_table = "prevent_timeseries_branch_test_aggregate_hourly"
         managed = False
 
 
 class BranchTestAggregateDaily(
-    ExportModelOperationsMixin("ta_timeseries.branch_test_aggregate_daily"),
+    ExportModelOperationsMixin("prevent_timeseries.branch_test_aggregate_daily"),
     models.Model,
 ):
     __test__ = False
@@ -379,6 +365,6 @@ class BranchTestAggregateDaily(
     )  # type: ignore
 
     class Meta:
-        app_label = TA_TIMESERIES_APP_LABEL
-        db_table = "ta_timeseries_branch_test_aggregate_daily"
+        app_label = PREVENT_TIMESERIES_APP_LABEL
+        db_table = "prevent_timeseries_branch_test_aggregate_daily"
         managed = False

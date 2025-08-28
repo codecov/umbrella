@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "shared.django_apps.codecov_metrics",
     "shared.django_apps.bundle_analysis",
     "shared.django_apps.ta_timeseries",
+    "shared.django_apps.prevent_timeseries",
     "shared.django_apps.upload_breadcrumbs",
 ]
 

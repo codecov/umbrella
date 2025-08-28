@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.db import migrations
+from django.db import migrations, models
 
 """
 These classes can be used to skip altering DB state while maintaining the state of migrations.
@@ -214,12 +214,47 @@ def ts_create_index(
     table_name: str,
     columns: list[str],
 ) -> migrations.RunSQL:
+    """
+    Create an index on a table. Not suitable for hypertables managed by Django, because
+    the state will diverge: the index will be created in the DB, but Django will not
+    know about it. You should use ts_create_index_managed_hypertable instead.
+    """
     column_exprs: list[str] = [str(col) for col in columns]
 
     cols_sql = ", ".join(column_exprs)
     forward_sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({cols_sql}) WITH (timescaledb.transaction_per_chunk);"
     reverse_sql = f"DROP INDEX IF EXISTS {index_name};"
     return migrations.RunSQL(forward_sql, reverse_sql=reverse_sql)
+
+
+def ts_create_index_managed_hypertable(
+    index_name: str,
+    table_name: str,
+    columns: list[str],
+    *,
+    model_name: str,
+) -> migrations.SeparateDatabaseAndState:
+    """
+    Create an index on a table that is managed by Django. This will ensure that the
+    index is created in the DB and Django will know about it.
+    """
+    column_exprs: list[str] = [str(col) for col in columns]
+
+    cols_sql = ", ".join(column_exprs)
+    forward_sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({cols_sql}) WITH (timescaledb.transaction_per_chunk);"
+    reverse_sql = f"DROP INDEX IF EXISTS {index_name};"
+
+    return migrations.SeparateDatabaseAndState(
+        database_operations=[
+            migrations.RunSQL(forward_sql, reverse_sql=reverse_sql),
+        ],
+        state_operations=[
+            migrations.AddIndex(
+                model_name=model_name,
+                index=models.Index(fields=columns, name=index_name),
+            ),
+        ],
+    )
 
 
 def ts_add_continuous_aggregate_policy(
