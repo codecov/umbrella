@@ -26,6 +26,7 @@ from sentry_sdk import capture_exception
 
 from codecov.commands.exceptions import BaseException
 from codecov.commands.executor import get_executor_from_request
+from codecov_auth.helpers import get_client_ip_address
 from codecov_auth.middleware import jwt_middleware
 from services import ServiceException
 from shared.helpers.redis import get_redis_connection
@@ -422,12 +423,7 @@ class AsyncGraphqlView(GraphQLAsyncView):
         return False
 
     def get_client_ip(self, request: WSGIRequest) -> str:
-        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(",")[-2]
-        else:
-            ip = request.META.get("REMOTE_ADDR")
-        return ip
+        return get_client_ip_address(request)
 
 
 BaseAriadneView = AsyncGraphqlView.as_view()

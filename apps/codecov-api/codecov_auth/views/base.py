@@ -15,6 +15,7 @@ from django.http.response import HttpResponse
 from django.utils import timezone
 from django.utils.timezone import now
 
+from codecov_auth.helpers import get_client_ip_address
 from codecov_auth.models import Owner, OwnerProfile, Session, User
 from services.analytics import AnalyticsService
 from services.refresh import RefreshService
@@ -469,11 +470,7 @@ class LoginMixin:
 
     def store_login_session(self, owner: Owner) -> None:
         # Store user's login session info after logging in
-        http_x_forwarded_for = self.request.META.get("HTTP_X_FORWARDED_FOR")
-        if http_x_forwarded_for:
-            ip = http_x_forwarded_for.split(",")[-2]
-        else:
-            ip = self.request.META.get("REMOTE_ADDR")
+        ip = get_client_ip_address(self.request)
 
         login_session = DjangoSession.objects.filter(
             session_key=self.request.session.session_key

@@ -1,9 +1,14 @@
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from django.contrib.admin.models import LogEntry
+from django.test import override_settings
 
-from codecov_auth.helpers import History, current_user_part_of_org
+from codecov_auth.helpers import (
+    History,
+    current_user_part_of_org,
+    get_client_ip_address,
+)
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 
 
@@ -33,6 +38,58 @@ def test_current_user_part_of_org_when_user_has_org():
     current_user = OwnerFactory(organizations=[org.ownerid])
     current_user.save()
     assert current_user_part_of_org(current_user, current_user) is True
+
+
+def test_client_ip_from_x_forwarded_for_default_depth():
+    request = Mock()
+    request.META = {"HTTP_X_FORWARDED_FOR": "127.0.0.1,blah", "REMOTE_ADDR": "lol"}
+
+    result = get_client_ip_address(request)
+    assert result == "127.0.0.1"
+
+
+@override_settings(TRUSTED_PROXY_DEPTH=2)
+def test_client_ip_from_x_forwarded_for_custom_depth():
+    request = Mock()
+    request.META = {
+        "HTTP_X_FORWARDED_FOR": "attacker_spoof,real_ip,another_ip",
+        "REMOTE_ADDR": "lol",
+    }
+
+    result = get_client_ip_address(request)
+    assert result == "real_ip"
+
+
+@override_settings(TRUSTED_PROXY_DEPTH=5)
+def test_client_ip_from_x_forwarded_for_overflow_depth():
+    request = Mock()
+    request.META = {
+        "HTTP_X_FORWARDED_FOR": "attacker_spoof,real_ip,another_ip",
+        "REMOTE_ADDR": "lol",
+    }
+
+    result = get_client_ip_address(request)
+    assert result == "attacker_spoof"
+
+
+@override_settings(TRUSTED_PROXY_DEPTH=1)
+def test_client_ip_from_x_forwarded_for_whitespace():
+    request = Mock()
+    request.META = {
+        "HTTP_X_FORWARDED_FOR": "attacker_spoof,real_ip, another_ip ",
+        "REMOTE_ADDR": "lol",
+    }
+
+    result = get_client_ip_address(request)
+    assert result == "another_ip"
+
+
+def test_client_ip_from_remote_addr():
+    request = Mock()
+    request.META = {"HTTP_X_FORWARDED_FOR": None, "REMOTE_ADDR": "lol"}
+
+    result = get_client_ip_address(request)
+    assert result == "lol"
 
 
 @pytest.mark.django_db
