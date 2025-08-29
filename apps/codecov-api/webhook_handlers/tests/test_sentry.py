@@ -14,7 +14,7 @@ from rest_framework.test import APIClient
 from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov_auth.models import Owner
 from codecov_auth.permissions import JWTAuthenticationPermission
-from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
+from shared.django_apps.codecov_auth.tests.factories import AccountFactory, OwnerFactory
 from shared.django_apps.core.tests.factories import RepositoryFactory
 from webhook_handlers.constants import GitHubHTTPHeaders
 
@@ -423,6 +423,81 @@ class TestSentryWebhook:
         )
 
         assert response.status_code == status.HTTP_200_OK
+
+    def test_repository_event_processed_when_owner_has_sentry_account(
+        self, client, url
+    ):
+        account = AccountFactory(sentry_org_id=424242)
+        owner = OwnerFactory(service="github", account=account)
+        repo = RepositoryFactory(author=owner, private=True, activated=True)
+        token = jwt.encode(
+            {
+                "exp": int(time.time()) + 3600,
+                "iat": int(time.time()),
+                "iss": "https://sentry.io",
+                "g_p": "github",
+            },
+            "test-shared-secret",
+            algorithm="HS256",
+        )
+
+        with patch(
+            "webhook_handlers.views.sentry.ROLLBACK_SENTRY_WEBHOOK.check_value",
+            return_value=False,
+        ):
+            response = client.post(
+                url,
+                data={
+                    "action": "publicized",
+                    "repository": {
+                        "id": repo.service_id,
+                        "owner": {"id": owner.service_id},
+                    },
+                },
+                format="json",
+                HTTP_AUTHORIZATION=f"Bearer {token}",
+                **{GitHubHTTPHeaders.EVENT: "repository"},
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        repo.refresh_from_db()
+        assert repo.private is False
+        assert repo.activated is False
+
+    def test_repository_event_ignored_when_owner_has_no_sentry_account(
+        self, client, url
+    ):
+        owner = OwnerFactory(service="github")
+        repo = RepositoryFactory(author=owner, private=True, activated=True)
+        token = jwt.encode(
+            {
+                "exp": int(time.time()) + 3600,
+                "iat": int(time.time()),
+                "iss": "https://sentry.io",
+                "g_p": "github",
+            },
+            "test-shared-secret",
+            algorithm="HS256",
+        )
+
+        response = client.post(
+            url,
+            data={
+                "action": "publicized",
+                "repository": {
+                    "id": repo.service_id,
+                    "owner": {"id": owner.service_id},
+                },
+            },
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            **{GitHubHTTPHeaders.EVENT: "repository"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        repo.refresh_from_db()
+        assert repo.private is True
+        assert repo.activated is True
 
     def test_e2e_valid_jwt_authentication_live_server(
         self,
