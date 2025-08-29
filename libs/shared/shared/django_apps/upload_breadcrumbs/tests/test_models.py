@@ -193,11 +193,13 @@ class TestBreadcrumbData:
         data = BreadcrumbData(
             milestone=Milestones.FETCHING_COMMIT_DETAILS,
             endpoint=Endpoints.CREATE_COMMIT,
+            uploader="codecov-cli",
             error=Errors.UNKNOWN,
             error_text="An unknown error occurred.",
         )
         assert data.milestone == Milestones.FETCHING_COMMIT_DETAILS
         assert data.endpoint == Endpoints.CREATE_COMMIT
+        assert data.uploader == "codecov-cli"
         assert data.error == Errors.UNKNOWN
         assert data.error_text == "An unknown error occurred."
 
@@ -208,6 +210,7 @@ class TestBreadcrumbData:
         )
         assert data.milestone == Milestones.FETCHING_COMMIT_DETAILS
         assert data.endpoint is None
+        assert data.uploader is None
         assert data.error is None
         assert data.error_text is None
 
@@ -252,6 +255,7 @@ class TestBreadcrumbData:
                 {
                     "milestone": Milestones.FETCHING_COMMIT_DETAILS,
                     "endpoint": Endpoints.CREATE_COMMIT,
+                    "uploader": "uploader",
                     "error": Errors.UNKNOWN,
                 },
                 "'error_text' must be provided when 'error' is UNKNOWN.",
@@ -276,6 +280,7 @@ class TestBreadcrumbData:
         data = BreadcrumbData(
             milestone=Milestones.FETCHING_COMMIT_DETAILS,
             endpoint=Endpoints.CREATE_COMMIT,
+            uploader="codecov-cli",
             error=Errors.UNKNOWN,
             error_text="An unknown error occurred.",
         )
@@ -283,6 +288,7 @@ class TestBreadcrumbData:
         expected_data = {
             "milestone": Milestones.FETCHING_COMMIT_DETAILS.value,
             "endpoint": Endpoints.CREATE_COMMIT.value,
+            "uploader": "codecov-cli",
             "error": Errors.UNKNOWN.value,
             "error_text": "An unknown error occurred.",
         }
@@ -305,6 +311,7 @@ class TestBreadcrumbData:
         data = BreadcrumbData(
             milestone=Milestones.FETCHING_COMMIT_DETAILS,
             endpoint=Endpoints.CREATE_COMMIT,
+            uploader="codecov-cli",
             error=Errors.UNKNOWN,
             error_text="An unknown error occurred.",
         )
@@ -345,6 +352,7 @@ class TestUploadBreadcrumb:
                 breadcrumb_data={
                     "milestone": Milestones.FETCHING_COMMIT_DETAILS,
                     "endpoint": Endpoints.CREATE_COMMIT,
+                    "uploader": "codecov-cli",
                     "error": Errors.UNKNOWN,
                     "error_text": "An unknown error occurred.",
                 },
@@ -360,6 +368,7 @@ class TestUploadBreadcrumb:
                 {
                     "milestone": Milestones.UPLOAD_COMPLETE,
                     "endpoint": "random_endpoint",
+                    "uploader": "uploader",
                     "error": Errors.UNSUPPORTED_FORMAT,
                 },
                 ValidationError,

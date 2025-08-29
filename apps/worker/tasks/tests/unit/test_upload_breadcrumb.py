@@ -24,6 +24,11 @@ class TestUploadBreadcrumbTask:
                 1,
             ),
             CounterAssertion(
+                "upload_breadcrumbs_uploader_total",
+                {"uploader": "codecov-cli"},
+                1,
+            ),
+            CounterAssertion(
                 "upload_breadcrumbs_milestone_total",
                 {"milestone": Milestones.FETCHING_COMMIT_DETAILS.label},
                 1,
@@ -38,6 +43,7 @@ class TestUploadBreadcrumbTask:
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.FETCHING_COMMIT_DETAILS,
                     endpoint=Endpoints.CREATE_COMMIT,
+                    uploader="codecov-cli/5.5.0",
                 ),
                 upload_ids=[1, 2],
                 sentry_trace_id="trace123",
@@ -52,6 +58,7 @@ class TestUploadBreadcrumbTask:
         assert row.repo_id == 1
         assert row.breadcrumb_data["milestone"] == Milestones.FETCHING_COMMIT_DETAILS
         assert row.breadcrumb_data["endpoint"] == Endpoints.CREATE_COMMIT
+        assert row.breadcrumb_data["uploader"] == "codecov-cli/5.5.0"
         assert row.upload_ids == [1, 2]
         assert row.sentry_trace_id == "trace123"
 
@@ -104,6 +111,11 @@ class TestUploadBreadcrumbTask:
                 1,
             ),
             CounterAssertion(
+                "upload_breadcrumbs_uploader_total",
+                {"uploader": "github-action-uploader"},
+                1,
+            ),
+            CounterAssertion(
                 "upload_breadcrumbs_error_total",
                 {"error": Errors.UNSUPPORTED_FORMAT.label},
                 1,
@@ -123,6 +135,7 @@ class TestUploadBreadcrumbTask:
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.PROCESSING_UPLOAD,
                     endpoint=Endpoints.DO_UPLOAD,
+                    uploader="github-action-2.1.0-uploader-0.8.0",
                     error=Errors.UNSUPPORTED_FORMAT,
                 ),
             )

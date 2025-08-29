@@ -138,6 +138,8 @@ class BreadcrumbData(
     :type milestone: Milestones, optional
     :param endpoint: The endpoint of the upload process.
     :type endpoint: Endpoints, optional
+    :param uploader: The uploader and version used for the upload process.
+    :type uploader: str, optional
     :param error: The error encountered during the upload process.
     :type error: Errors, optional
     :param error_text: Additional text describing the error.
@@ -152,6 +154,7 @@ class BreadcrumbData(
 
     milestone: Milestones | None = None
     endpoint: Endpoints | None = None
+    uploader: str | None = None
     error: Errors | None = None
     error_text: str | None = None
 
@@ -168,6 +171,7 @@ class BreadcrumbData(
             [
                 self.milestone,
                 self.endpoint,
+                self.uploader,
                 self.error,
                 self.error_text,
             ]

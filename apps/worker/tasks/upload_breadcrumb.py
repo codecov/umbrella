@@ -1,4 +1,5 @@
 import logging
+import re
 
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,12 @@ UPLOAD_BREADCRUMB_ENDPOINT_COUNTER = Counter(
     "upload_breadcrumbs_endpoint_total",
     "Number of upload breadcrumbs by endpoint",
     ["endpoint"],
+)
+
+UPLOAD_BREADCRUMB_UPLOADER_COUNTER = Counter(
+    "upload_breadcrumbs_uploader_total",
+    "Number of upload breadcrumbs by uploader",
+    ["uploader"],
 )
 
 UPLOAD_BREADCRUMB_MILESTONE_COUNTER = Counter(
@@ -56,6 +63,22 @@ class UploadBreadcrumbTask(BaseCodecovTask, name=upload_breadcrumb_task_name):
             inc_counter(
                 UPLOAD_BREADCRUMB_ENDPOINT_COUNTER,
                 labels={"endpoint": Endpoints(breadcrumb_data.endpoint).label},
+            )
+
+        if breadcrumb_data.uploader:
+            # Strip version(s) from the uploader string (max 2 versions)
+            # Handles patterns like: uploader-1.0.0, py2.1.13, node-v3.8.3,
+            # codecov-cli/0.4.1, codecov-circleci-orb-1.2.3-1.0.6,
+            # github-action-2.1.0-uploader-0.8.0
+            uploader_without_version = re.sub(
+                r"([/]?v?\d+(?:\.\d+)*(?:[-./](?!$))?){1,2}",
+                "",
+                breadcrumb_data.uploader,
+            ).strip("-")
+
+            inc_counter(
+                UPLOAD_BREADCRUMB_UPLOADER_COUNTER,
+                labels={"uploader": uploader_without_version},
             )
 
         if breadcrumb_data.error:
