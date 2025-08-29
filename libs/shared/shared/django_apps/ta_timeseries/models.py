@@ -109,6 +109,8 @@ class AggregateHourly(
     skip_count = models.IntegerField()
     flaky_fail_count = models.IntegerField()
 
+    ttl = models.DateTimeField(null=True)
+
     __repr__ = sane_repr(
         "bucket_hourly",
         "repo_id",
@@ -139,6 +141,8 @@ class AggregateDaily(
     fail_count = models.IntegerField()
     skip_count = models.IntegerField()
     flaky_fail_count = models.IntegerField()
+
+    ttl = models.DateTimeField(null=True)
 
     __repr__ = sane_repr(
         "bucket_daily",
@@ -172,6 +176,8 @@ class BranchAggregateHourly(
     skip_count = models.IntegerField()
     flaky_fail_count = models.IntegerField()
 
+    ttl = models.DateTimeField(null=True)
+
     __repr__ = sane_repr(
         "bucket_hourly",
         "repo_id",
@@ -204,6 +210,8 @@ class BranchAggregateDaily(
     fail_count = models.IntegerField()
     skip_count = models.IntegerField()
     flaky_fail_count = models.IntegerField()
+
+    ttl = models.DateTimeField(null=True)
 
     __repr__ = sane_repr(
         "bucket_daily",
@@ -242,6 +250,8 @@ class TestAggregateHourly(
     last_outcome = models.TextField()
     updated_at = models.DateTimeField()
     flags = ArrayField(models.TextField(), null=True)
+
+    ttl = models.DateTimeField(null=True)
 
     __repr__ = sane_repr(
         "bucket_hourly",
@@ -282,6 +292,8 @@ class TestAggregateDaily(
     last_outcome = models.TextField()
     updated_at = models.DateTimeField()
     flags = ArrayField(models.TextField(), null=True)
+
+    ttl = models.DateTimeField(null=True)
 
     __repr__ = sane_repr(
         "bucket_daily",
@@ -324,6 +336,8 @@ class BranchTestAggregateHourly(
     updated_at = models.DateTimeField()
     flags = ArrayField(models.TextField(), null=True)
 
+    ttl = models.DateTimeField(null=True)
+
     __repr__ = sane_repr(
         "bucket_hourly",
         "branch",
@@ -365,6 +379,8 @@ class BranchTestAggregateDaily(
     last_outcome = models.TextField()
     updated_at = models.DateTimeField()
     flags = ArrayField(models.TextField(), null=True)
+
+    ttl = models.DateTimeField(null=True)
 
     __repr__ = sane_repr(
         "bucket_daily",
