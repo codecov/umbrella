@@ -60,6 +60,7 @@ class Service(models.TextChoices):
     GITHUB_ENTERPRISE = "github_enterprise"
     GITLAB_ENTERPRISE = "gitlab_enterprise"
     BITBUCKET_SERVER = "bitbucket_server"
+    TO_BE_DELETED = "to_be_deleted"
 
 
 class PlanProviders(models.TextChoices):
