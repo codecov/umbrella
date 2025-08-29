@@ -18,6 +18,7 @@ from django.utils import timezone
 from jwt import PyJWKClient, PyJWTError
 from redis import Redis
 from rest_framework.exceptions import NotFound, Throttled, ValidationError
+from rest_framework.request import Request
 
 from codecov_auth.models import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
@@ -51,7 +52,7 @@ from utils import is_uuid
 from utils.config import get_config
 from utils.encryption import encryptor
 
-from .constants import ci, global_upload_token_providers
+from .constants import CLI_UPLOADER, ci, global_upload_token_providers
 
 is_pull_noted_in_branch = re.compile(r".*(pull|pr)\/(\d+).*")
 
@@ -587,6 +588,7 @@ def validate_upload(
     repository: Repository,
     redis: Redis,
     endpoint: Endpoints,
+    uploader: str | None,
 ) -> None:
     """
     Make sure the upload can proceed and, if so, activate the repository if needed.
@@ -597,6 +599,7 @@ def validate_upload(
         "repo_id": repository.repoid,
         "milestone": Milestones.FETCHING_COMMIT_DETAILS,
         "endpoint": endpoint,
+        "uploader": uploader,
     }
 
     with upload_breadcrumb_context(
@@ -819,6 +822,28 @@ def validate_activated_repo(repository: Repository) -> None:
         )
 
 
+def is_cli_request(request: Request) -> bool:
+    """
+    Check if the request is coming from a CLI client.
+
+    :param request: The HTTP request to check.
+    :return: True if the request is from a CLI client, False otherwise.
+    """
+    return bool(request.data.get("cli_args"))
+
+
+def get_cli_uploader_string(request: Request) -> str | None:
+    """
+    Get the CLI uploader string from the request.
+
+    :param request: The HTTP request to check.
+    :return: The CLI uploader string if present, None otherwise.
+    """
+    if is_cli_request(request):
+        return f"{CLI_UPLOADER}-{request.data.get('version')}".strip("-")
+    return None
+
+
 # headers["User-Agent"] should look something like this: codecov-cli/0.4.7 or codecov-uploader/0.7.1
 def get_agent_and_version(headers: HttpHeaders) -> tuple[str, str]:
     try:
@@ -885,6 +910,7 @@ def upload_breadcrumb_context(
     repo_id: int | None,
     milestone: Milestones | None = None,
     endpoint: Endpoints | None = None,
+    uploader: str | None = None,
     error: Errors | None = None,
 ) -> Generator[None]:
     """
@@ -900,6 +926,7 @@ def upload_breadcrumb_context(
     :param repo_id: The repository ID for the upload breadcrumb.
     :param milestone: Optional milestone for the upload breadcrumb.
     :param endpoint: Optional endpoint for the upload breadcrumb.
+    :param uploader: Optional uploader and version for the upload breadcrumb.
     :param error: Optional error for the upload breadcrumb. If not provided,
         the error will be set to Errors.UNKNOWN and details will be provided in
         the error_text field.
@@ -913,6 +940,7 @@ def upload_breadcrumb_context(
                 breadcrumb_data=BreadcrumbData(
                     milestone=milestone,
                     endpoint=endpoint,
+                    uploader=uploader if uploader else None,
                 ),
             )
 
@@ -926,6 +954,7 @@ def upload_breadcrumb_context(
                 breadcrumb_data=BreadcrumbData(
                     milestone=milestone,
                     endpoint=endpoint,
+                    uploader=uploader if uploader else None,
                     error=error if error else Errors.UNKNOWN,
                     error_text=repr(e) if not error else None,
                 ),

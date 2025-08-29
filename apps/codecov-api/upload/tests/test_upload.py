@@ -55,7 +55,15 @@ from upload.helpers import (
 from upload.tokenless.tokenless import TokenlessUploadHandler
 from utils.encryption import encryptor
 
+EXAMPLE_UPLOADER = "ruby-1.1.1"
+
 FETCHING_COMMIT_BREADCRUMB_DATA = BreadcrumbData(
+    milestone=Milestones.FETCHING_COMMIT_DETAILS,
+    endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+    uploader=EXAMPLE_UPLOADER,
+)
+
+FETCHING_COMMIT_BREADCRUMB_DATA_NO_UPLOADER = BreadcrumbData(
     milestone=Milestones.FETCHING_COMMIT_DETAILS,
     endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
 )
@@ -63,9 +71,21 @@ FETCHING_COMMIT_BREADCRUMB_DATA = BreadcrumbData(
 COMMIT_PROCESSED_BREADCRUMB_DATA = BreadcrumbData(
     milestone=Milestones.COMMIT_PROCESSED,
     endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+    uploader=EXAMPLE_UPLOADER,
+)
+
+COMMIT_PROCESSED_BREADCRUMB_DATA_NO_UPLOADER = BreadcrumbData(
+    milestone=Milestones.COMMIT_PROCESSED,
+    endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
 )
 
 PREPARING_FOR_REPORT_BREADCRUMB_DATA = BreadcrumbData(
+    milestone=Milestones.PREPARING_FOR_REPORT,
+    endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+    uploader=EXAMPLE_UPLOADER,
+)
+
+PREPARING_FOR_REPORT_BREADCRUMB_DATA_NO_UPLOADER = BreadcrumbData(
     milestone=Milestones.PREPARING_FOR_REPORT,
     endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
 )
@@ -73,9 +93,21 @@ PREPARING_FOR_REPORT_BREADCRUMB_DATA = BreadcrumbData(
 READY_FOR_REPORT_BREADCRUMB_DATA = BreadcrumbData(
     milestone=Milestones.READY_FOR_REPORT,
     endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+    uploader=EXAMPLE_UPLOADER,
+)
+
+READY_FOR_REPORT_BREADCRUMB_DATA_NO_UPLOADER = BreadcrumbData(
+    milestone=Milestones.READY_FOR_REPORT,
+    endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
 )
 
 WAITING_FOR_COVERAGE_UPLOAD_BREADCRUMB_DATA = BreadcrumbData(
+    milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
+    endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+    uploader=EXAMPLE_UPLOADER,
+)
+
+WAITING_FOR_COVERAGE_UPLOAD_BREADCRUMB_DATA_NO_UPLOADER = BreadcrumbData(
     milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
     endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
 )
@@ -750,6 +782,7 @@ class UploadHandlerHelpersTest(TestCase):
                 repo,
                 redis,
                 Endpoints.LEGACY_UPLOAD_COVERAGE,
+                EXAMPLE_UPLOADER,
             )
 
         assert (
@@ -769,6 +802,7 @@ class UploadHandlerHelpersTest(TestCase):
                     breadcrumb_data=BreadcrumbData(
                         milestone=Milestones.FETCHING_COMMIT_DETAILS,
                         endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                        uploader=EXAMPLE_UPLOADER,
                         error=Errors.REPO_NOT_FOUND,
                     ),
                 ),
@@ -783,7 +817,11 @@ class UploadHandlerHelpersTest(TestCase):
         commit = CommitFactory(totals=None, repository=repo)
 
         validate_upload(
-            {"commit": commit.commitid}, repo, redis, Endpoints.LEGACY_UPLOAD_COVERAGE
+            {"commit": commit.commitid},
+            repo,
+            redis,
+            Endpoints.LEGACY_UPLOAD_COVERAGE,
+            EXAMPLE_UPLOADER,
         )
         repo.refresh_from_db()
         assert repo.activated == True
@@ -811,6 +849,7 @@ class UploadHandlerHelpersTest(TestCase):
                 repo,
                 redis,
                 Endpoints.LEGACY_UPLOAD_COVERAGE,
+                EXAMPLE_UPLOADER,
             )
         assert err.exception.detail[0] == "Too many uploads to this commit."
         mock_upload_breadcrumb.assert_has_calls(
@@ -826,6 +865,7 @@ class UploadHandlerHelpersTest(TestCase):
                     breadcrumb_data=BreadcrumbData(
                         milestone=Milestones.FETCHING_COMMIT_DETAILS,
                         endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                        uploader=EXAMPLE_UPLOADER,
                         error=Errors.COMMIT_UPLOAD_LIMIT,
                     ),
                 ),
@@ -845,6 +885,7 @@ class UploadHandlerHelpersTest(TestCase):
                 repo,
                 redis,
                 Endpoints.LEGACY_UPLOAD_COVERAGE,
+                EXAMPLE_UPLOADER,
             )
         assert (
             err.exception.detail[0]
@@ -863,6 +904,7 @@ class UploadHandlerHelpersTest(TestCase):
                     breadcrumb_data=BreadcrumbData(
                         milestone=Milestones.FETCHING_COMMIT_DETAILS,
                         endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                        uploader=EXAMPLE_UPLOADER,
                         error=Errors.REPO_BLACKLISTED,
                     ),
                 ),
@@ -885,6 +927,7 @@ class UploadHandlerHelpersTest(TestCase):
                 repo,
                 redis,
                 Endpoints.LEGACY_UPLOAD_COVERAGE,
+                EXAMPLE_UPLOADER,
             )
         assert (
             err.exception.detail[0]
@@ -903,6 +946,7 @@ class UploadHandlerHelpersTest(TestCase):
                     breadcrumb_data=BreadcrumbData(
                         milestone=Milestones.FETCHING_COMMIT_DETAILS,
                         endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                        uploader=EXAMPLE_UPLOADER,
                         error=Errors.OWNER_UPLOAD_LIMIT,
                     ),
                 ),
@@ -935,6 +979,7 @@ class UploadHandlerHelpersTest(TestCase):
                 repo,
                 redis,
                 Endpoints.LEGACY_UPLOAD_COVERAGE,
+                EXAMPLE_UPLOADER,
             )
         assert (
             err.exception.detail[0]
@@ -953,6 +998,7 @@ class UploadHandlerHelpersTest(TestCase):
                     breadcrumb_data=BreadcrumbData(
                         milestone=Milestones.FETCHING_COMMIT_DETAILS,
                         endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                        uploader=EXAMPLE_UPLOADER,
                         error=Errors.OWNER_UPLOAD_LIMIT,
                     ),
                 ),
@@ -982,6 +1028,7 @@ class UploadHandlerHelpersTest(TestCase):
                 repo,
                 redis,
                 Endpoints.LEGACY_UPLOAD_COVERAGE,
+                EXAMPLE_UPLOADER,
             )
             assert mock_segment_event.called
 
@@ -1010,6 +1057,7 @@ class UploadHandlerHelpersTest(TestCase):
                 repo,
                 redis,
                 Endpoints.LEGACY_UPLOAD_COVERAGE,
+                EXAMPLE_UPLOADER,
             )
             assert not mock_segment_event.called
 
@@ -1211,22 +1259,22 @@ class UploadHandlerRouteTest(APITestCase):
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA,
+                    breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+                    breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=READY_FOR_REPORT_BREADCRUMB_DATA,
+                    breadcrumb_data=READY_FOR_REPORT_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
             ]
         )
@@ -1314,22 +1362,22 @@ class UploadHandlerRouteTest(APITestCase):
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA,
+                    breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+                    breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=READY_FOR_REPORT_BREADCRUMB_DATA,
+                    breadcrumb_data=READY_FOR_REPORT_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
             ]
         )
@@ -1488,7 +1536,7 @@ class UploadHandlerRouteTest(APITestCase):
             "branch": "",
             "flags": "",
             "build": "40293802",
-            "package": "",
+            "package": "ruby-1.1.1",
         }
 
         response = self._post(
@@ -1587,27 +1635,27 @@ class UploadHandlerRouteTest(APITestCase):
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA,
+                    breadcrumb_data=FETCHING_COMMIT_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA,
+                    breadcrumb_data=COMMIT_PROCESSED_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA,
+                    breadcrumb_data=PREPARING_FOR_REPORT_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=READY_FOR_REPORT_BREADCRUMB_DATA,
+                    breadcrumb_data=READY_FOR_REPORT_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
                 call(
                     commit_sha=query_params["commit"],
                     repo_id=self.repo.repoid,
-                    breadcrumb_data=WAITING_FOR_COVERAGE_UPLOAD_BREADCRUMB_DATA,
+                    breadcrumb_data=WAITING_FOR_COVERAGE_UPLOAD_BREADCRUMB_DATA_NO_UPLOADER,
                 ),
             ]
         )

@@ -91,6 +91,7 @@ class UploadBreadcrumbAdminTest(TestCase):
         breadcrumb_data = {
             "milestone": Milestones.COMMIT_PROCESSED.value,
             "endpoint": Endpoints.CREATE_COMMIT.value,
+            "uploader": "test_uploader",
             "error": Errors.BAD_REQUEST.value,
             "error_text": "This is a test error message that is very long and should be truncated",
         }
@@ -101,6 +102,7 @@ class UploadBreadcrumbAdminTest(TestCase):
         self.assertIsInstance(result, SafeString)
         self.assertIn("📍", result)  # milestone emoji
         self.assertIn("🔗", result)  # endpoint emoji
+        self.assertIn("⬆️", result)  # uploader emoji
         self.assertIn("❌", result)  # error emoji
         self.assertIn("💬", result)  # error text emoji
         self.assertIn(str(Milestones.COMMIT_PROCESSED.label), result)
@@ -123,25 +125,31 @@ class UploadBreadcrumbAdminTest(TestCase):
                 {"milestone": Milestones.COMMIT_PROCESSED.value},
                 "📍",
                 str(Milestones.COMMIT_PROCESSED.label),
-                ["🔗", "❌", "💬"],
+                ["🔗", "⬆️", "❌", "💬"],
             ),
             (
                 {"endpoint": Endpoints.CREATE_COMMIT.value},
                 "🔗",
                 str(Endpoints.CREATE_COMMIT.label),
-                ["📍", "❌", "💬"],
+                ["📍", "⬆️", "❌", "💬"],
+            ),
+            (
+                {"uploader": "test_uploader"},
+                "⬆️",
+                "test_uploader",
+                ["📍", "🔗", "❌", "💬"],
             ),
             (
                 {"error": Errors.BAD_REQUEST.value},
                 "❌",
                 str(Errors.BAD_REQUEST.label),
-                ["📍", "🔗", "💬"],
+                ["📍", "🔗", "⬆️", "💬"],
             ),
             (
                 {"error_text": "Short error"},
                 "💬",
                 "Short error",
-                ["📍", "🔗", "❌"],
+                ["📍", "🔗", "⬆️", "❌"],
             ),
         ]
 
@@ -166,6 +174,7 @@ class UploadBreadcrumbAdminTest(TestCase):
         breadcrumb_data = {
             "milestone": Milestones.COMMIT_PROCESSED.value,
             "endpoint": Endpoints.CREATE_COMMIT.value,
+            "uploader": "test_uploader",
             "error": Errors.BAD_REQUEST.value,
             "error_text": "Test error",
         }
@@ -176,6 +185,7 @@ class UploadBreadcrumbAdminTest(TestCase):
         self.assertIsInstance(result, SafeString)
         self.assertIn("📍 Milestone:", result)
         self.assertIn("🔗 Endpoint:", result)
+        self.assertIn("⬆️ Uploader:", result)
         self.assertIn("❌ Error:", result)
         self.assertIn("💬 Error Text:", result)
         self.assertIn("Raw JSON Data", result)
@@ -216,6 +226,14 @@ class UploadBreadcrumbAdminTest(TestCase):
         self.assertIn("🔗 Endpoint:", result)
         self.assertIn(str(Endpoints.CREATE_COMMIT.label), result)
         self.assertIn(Endpoints.CREATE_COMMIT.name, result)
+
+        # Test uploader only
+        breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data={"uploader": "test_uploader"}
+        )
+        result = self.admin.formatted_breadcrumb_data_detail(breadcrumb)
+        self.assertIn("⬆️ Uploader:", result)
+        self.assertIn("test_uploader", result)
 
         # Test error only
         breadcrumb = UploadBreadcrumbFactory(
@@ -442,6 +460,7 @@ class PresentDataFilterTest(TestCase):
         expected = [
             ("has_milestone", "Has Milestone"),
             ("has_endpoint", "Has Endpoint"),
+            ("has_uploader", "Has Uploader"),
             ("has_error", "Has Error"),
             ("has_error_text", "Has Error Text"),
             ("has_upload_ids", "Has Upload IDs"),
@@ -467,7 +486,7 @@ class PresentDataFilterTest(TestCase):
         with patch.object(
             self.filter,
             "value",
-            return_value="has_milestone,has_endpoint,has_error,has_error_text,has_upload_ids,has_sentry_trace",
+            return_value="has_milestone,has_endpoint,has_uploader,has_error,has_error_text,has_upload_ids,has_sentry_trace",
         ):
             result = self.filter.queryset(request, queryset)
 
@@ -483,7 +502,7 @@ class PresentDataFilterTest(TestCase):
             choices = list(self.filter.choices(changelist))
 
         # Should have "All" option plus all filter options
-        self.assertEqual(len(choices), 7)  # 1 "All" + 6 filter options
+        self.assertEqual(len(choices), 8)  # 1 "All" + 7 filter options
 
         # Check that selected items have checkmarks
         milestone_choice = next(c for c in choices if "Has Milestone" in c["display"])
@@ -506,6 +525,7 @@ class PresentDataFilterTest(TestCase):
         filter_types = [
             "has_milestone",
             "has_endpoint",
+            "has_uploader",
             "has_error",
             "has_error_text",
             "has_upload_ids",

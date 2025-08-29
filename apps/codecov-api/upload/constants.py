@@ -220,3 +220,5 @@ global_upload_token_providers = [
     "bitbucket",
     "bitbucket_server",
 ]
+
+CLI_UPLOADER = "codecov-cli"
