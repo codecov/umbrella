@@ -260,7 +260,11 @@ def test_validate_upload_too_many_uploads_for_commit(
         UploadFactory.create(report=report)
     with pytest.raises(ValidationError) if should_raise else nullcontext():
         validate_upload(
-            {"commit": commit.commitid}, repo, redis, Endpoints.LEGACY_UPLOAD_COVERAGE
+            {"commit": commit.commitid},
+            repo,
+            redis,
+            Endpoints.LEGACY_UPLOAD_COVERAGE,
+            "py2.1.3",
         )
 
     calls = [
@@ -270,6 +274,7 @@ def test_validate_upload_too_many_uploads_for_commit(
             breadcrumb_data=BreadcrumbData(
                 milestone=Milestones.FETCHING_COMMIT_DETAILS,
                 endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                uploader="py2.1.3",
             ),
         )
     ]
@@ -281,6 +286,7 @@ def test_validate_upload_too_many_uploads_for_commit(
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.FETCHING_COMMIT_DETAILS,
                     endpoint=Endpoints.LEGACY_UPLOAD_COVERAGE,
+                    uploader="py2.1.3",
                     error=Errors.COMMIT_UPLOAD_LIMIT,
                 ),
             )

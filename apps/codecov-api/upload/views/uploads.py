@@ -45,6 +45,7 @@ from shared.upload.utils import insert_coverage_measurement
 from upload.helpers import (
     dispatch_upload_task,
     generate_upload_prometheus_metrics_labels,
+    get_cli_uploader_string,
     upload_breadcrumb_context,
     validate_activated_repo,
 )
@@ -64,6 +65,7 @@ def create_upload(
     is_shelter_request: bool,
     analytics_token: str,
     endpoint: Endpoints,
+    uploader: str | None,
 ) -> ReportSession:
     version: str | None = (
         serializer.validated_data["version"]
@@ -76,6 +78,7 @@ def create_upload(
         repo_id=repository.repoid,
         milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
         endpoint=endpoint,
+        uploader=uploader,
     ):
         archive_service = ArchiveService(repository)
         # only Shelter requests are allowed to set their own `storage_path`
@@ -245,6 +248,7 @@ class UploadViews(GetterMixin, CreateAPIView):
 
     def perform_create(self, serializer: BaseSerializer) -> None:
         endpoint = Endpoints.DO_UPLOAD
+        uploader = get_cli_uploader_string(self.request)
         milestone = Milestones.WAITING_FOR_COVERAGE_UPLOAD
         inc_counter(
             API_UPLOAD_COUNTER,
@@ -264,6 +268,7 @@ class UploadViews(GetterMixin, CreateAPIView):
             repo_id=repository.repoid,
             milestone=milestone,
             endpoint=endpoint,
+            uploader=uploader,
             error=Errors.REPO_DEACTIVATED,
         ):
             validate_activated_repo(repository)
@@ -274,6 +279,7 @@ class UploadViews(GetterMixin, CreateAPIView):
             repo_id=repository.repoid,
             milestone=milestone,
             endpoint=endpoint,
+            uploader=uploader,
             error=Errors.COMMIT_NOT_FOUND,
         ):
             commit: Commit = self.get_commit(repository)
@@ -284,6 +290,7 @@ class UploadViews(GetterMixin, CreateAPIView):
             repo_id=repository.repoid,
             milestone=milestone,
             endpoint=endpoint,
+            uploader=uploader,
             error=Errors.REPORT_NOT_FOUND,
         ):
             report: CommitReport = self.get_report(commit)
@@ -307,14 +314,14 @@ class UploadViews(GetterMixin, CreateAPIView):
             self.is_shelter_request(),
             get_token_for_analytics(commit, self.request),
             endpoint,
+            uploader,
         )
 
         TaskService().upload_breadcrumb(
             commit_sha=commit.commitid,
             repo_id=repository.repoid,
             breadcrumb_data=BreadcrumbData(
-                milestone=milestone,
-                endpoint=endpoint,
+                milestone=milestone, endpoint=endpoint, uploader=uploader
             ),
         )
 

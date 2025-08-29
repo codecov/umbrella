@@ -114,6 +114,7 @@ class UploadHandler(ShelterMixin, APIView):
         )
 
         package = request_params.get("package")
+        uploader = package if package else None
         if package is not None:
             package_format = r"((codecov-cli/)|((.+-)?uploader-))(\d+.\d+.\d+)"
             match = re.fullmatch(package_format, package)
@@ -173,7 +174,7 @@ class UploadHandler(ShelterMixin, APIView):
 
         # Validate the upload to make sure the org has enough repo credits and is allowed to upload for this commit
         redis = get_redis_connection()
-        validate_upload(upload_params, repository, redis, endpoint)
+        validate_upload(upload_params, repository, redis, endpoint, uploader)
         log.info(
             "Upload was determined to be valid", extra={"repoid": repository.repoid}
         )
@@ -203,6 +204,7 @@ class UploadHandler(ShelterMixin, APIView):
             repo_id=repository.repoid,
             milestone=Milestones.COMMIT_PROCESSED,
             endpoint=endpoint,
+            uploader=uploader,
             error=Errors.OWNER_UPLOAD_LIMIT,
         ):
             check_commit_upload_constraints(commit)
@@ -213,14 +215,18 @@ class UploadHandler(ShelterMixin, APIView):
             commit_sha=commitid,
             repo_id=repository.repoid,
             breadcrumb_data=BreadcrumbData(
-                milestone=Milestones.PREPARING_FOR_REPORT, endpoint=endpoint
+                milestone=Milestones.PREPARING_FOR_REPORT,
+                endpoint=endpoint,
+                uploader=uploader,
             ),
         )
         TaskService().upload_breadcrumb(
             commit_sha=commitid,
             repo_id=repository.repoid,
             breadcrumb_data=BreadcrumbData(
-                milestone=Milestones.READY_FOR_REPORT, endpoint=endpoint
+                milestone=Milestones.READY_FOR_REPORT,
+                endpoint=endpoint,
+                uploader=uploader,
             ),
         )
 
@@ -328,6 +334,7 @@ class UploadHandler(ShelterMixin, APIView):
                     breadcrumb_data=BreadcrumbData(
                         milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
                         endpoint=endpoint,
+                        uploader=uploader,
                         error=Errors.UNKNOWN,
                         error_text=repr(e),
                     ),
@@ -349,6 +356,7 @@ class UploadHandler(ShelterMixin, APIView):
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
                     endpoint=endpoint,
+                    uploader=uploader,
                 ),
             )
 

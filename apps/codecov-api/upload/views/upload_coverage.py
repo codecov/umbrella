@@ -26,7 +26,10 @@ from shared.django_apps.upload_breadcrumbs.models import (
     Milestones,
 )
 from shared.metrics import inc_counter
-from upload.helpers import generate_upload_prometheus_metrics_labels
+from upload.helpers import (
+    generate_upload_prometheus_metrics_labels,
+    get_cli_uploader_string,
+)
 from upload.metrics import API_UPLOAD_COUNTER
 from upload.serializers import (
     CommitReportSerializer,
@@ -78,6 +81,7 @@ class UploadCoverageView(GetterMixin, APIView):
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         self.emit_metrics(position="start")
         endpoint = Endpoints.UPLOAD_COVERAGE
+        uploader = get_cli_uploader_string(request)
 
         # Create commit
         create_commit_data = {
@@ -94,7 +98,7 @@ class UploadCoverageView(GetterMixin, APIView):
 
         repository = self.get_repo()
         self.emit_metrics(position="create_commit")
-        commit = create_commit(commit_serializer, repository, endpoint)
+        commit = create_commit(commit_serializer, repository, endpoint, uploader)
 
         log.info(
             "Request to create new coverage upload",
@@ -111,6 +115,7 @@ class UploadCoverageView(GetterMixin, APIView):
             breadcrumb_data=BreadcrumbData(
                 milestone=Milestones.PREPARING_FOR_REPORT,
                 endpoint=endpoint,
+                uploader=uploader,
             ),
         )
         commit_report_data = {
@@ -124,6 +129,7 @@ class UploadCoverageView(GetterMixin, APIView):
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.PREPARING_FOR_REPORT,
                     endpoint=endpoint,
+                    uploader=uploader,
                     error=Errors.BAD_REQUEST,
                 ),
             )
@@ -132,7 +138,9 @@ class UploadCoverageView(GetterMixin, APIView):
             )
 
         self.emit_metrics(position="create_report")
-        report = create_report(commit_report_serializer, repository, commit, endpoint)
+        report = create_report(
+            commit_report_serializer, repository, commit, endpoint, uploader
+        )
 
         # Do upload
         upload_data = {
@@ -156,6 +164,7 @@ class UploadCoverageView(GetterMixin, APIView):
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
                     endpoint=endpoint,
+                    uploader=uploader,
                     error=Errors.BAD_REQUEST,
                 ),
             )
@@ -172,6 +181,7 @@ class UploadCoverageView(GetterMixin, APIView):
             self.is_shelter_request(),
             get_token_for_analytics(commit, self.request),
             endpoint,
+            uploader,
         )
 
         self.emit_metrics(position="end")
@@ -195,6 +205,7 @@ class UploadCoverageView(GetterMixin, APIView):
             breadcrumb_data=BreadcrumbData(
                 milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
                 endpoint=endpoint,
+                uploader=uploader,
             ),
         )
 

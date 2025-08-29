@@ -228,6 +228,7 @@ def test_upload_coverage_post(db, mocker):
             "branch": "branch",
             "ci_service": "ci_service",
             "ci_url": "ci_url",
+            "cli_args": "blah",
             "code": "default",
             "commitid": commit.commitid,
             "flags": ["flag1", "flag2"],
@@ -307,6 +308,7 @@ def test_upload_coverage_post(db, mocker):
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.FETCHING_COMMIT_DETAILS,
                     endpoint=Endpoints.UPLOAD_COVERAGE,
+                    uploader="codecov-cli-version",
                 ),
             ),
             call(
@@ -322,6 +324,7 @@ def test_upload_coverage_post(db, mocker):
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.PREPARING_FOR_REPORT,
                     endpoint=Endpoints.UPLOAD_COVERAGE,
+                    uploader="codecov-cli-version",
                 ),
             ),
             call(
@@ -330,6 +333,7 @@ def test_upload_coverage_post(db, mocker):
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.WAITING_FOR_COVERAGE_UPLOAD,
                     endpoint=Endpoints.UPLOAD_COVERAGE,
+                    uploader="codecov-cli-version",
                 ),
             ),
         ]

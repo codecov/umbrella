@@ -35,6 +35,7 @@ from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitClientError, TorngitClientGeneralError
 from upload.helpers import (
     generate_upload_prometheus_metrics_labels,
+    get_cli_uploader_string,
     try_to_get_best_possible_bot_token,
     upload_breadcrumb_context,
 )
@@ -99,6 +100,7 @@ class EmptyUploadView(GetterMixin, CreateAPIView):
 
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         endpoint = Endpoints.EMPTY_UPLOAD
+        uploader = get_cli_uploader_string(self.request)
         milestone = Milestones.NOTIFICATIONS_TRIGGERED
         inc_counter(
             API_UPLOAD_COUNTER,
@@ -123,6 +125,7 @@ class EmptyUploadView(GetterMixin, CreateAPIView):
             repo_id=repo.repoid,
             milestone=milestone,
             endpoint=endpoint,
+            uploader=uploader,
             error=Errors.COMMIT_NOT_FOUND,
         ):
             commit = self.get_commit(repo)
@@ -137,6 +140,7 @@ class EmptyUploadView(GetterMixin, CreateAPIView):
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.NOTIFICATIONS_TRIGGERED,
                     endpoint=endpoint,
+                    uploader=uploader,
                 ),
             )
             return Response(
@@ -162,6 +166,7 @@ class EmptyUploadView(GetterMixin, CreateAPIView):
             repo_id=repo.repoid,
             milestone=milestone,
             endpoint=endpoint,
+            uploader=uploader,
             error=Errors.GIT_CLIENT_ERROR,
         ):
             pull_id = commit.pullid
@@ -211,6 +216,7 @@ class EmptyUploadView(GetterMixin, CreateAPIView):
                 breadcrumb_data=BreadcrumbData(
                     milestone=Milestones.NOTIFICATIONS_TRIGGERED,
                     endpoint=endpoint,
+                    uploader=uploader,
                 ),
             )
             return Response(
@@ -231,6 +237,7 @@ class EmptyUploadView(GetterMixin, CreateAPIView):
             breadcrumb_data=BreadcrumbData(
                 milestone=Milestones.NOTIFICATIONS_TRIGGERED,
                 endpoint=endpoint,
+                uploader=uploader,
             ),
         )
 

@@ -35,6 +35,7 @@ class PresentDataFilter(admin.SimpleListFilter):
         return [
             ("has_milestone", "Has Milestone"),
             ("has_endpoint", "Has Endpoint"),
+            ("has_uploader", "Has Uploader"),
             ("has_error", "Has Error"),
             ("has_error_text", "Has Error Text"),
             ("has_upload_ids", "Has Upload IDs"),
@@ -93,6 +94,8 @@ class PresentDataFilter(admin.SimpleListFilter):
                 queryset = queryset.filter(breadcrumb_data__milestone__isnull=False)
             elif filter_type == "has_endpoint":
                 queryset = queryset.filter(breadcrumb_data__endpoint__isnull=False)
+            elif filter_type == "has_uploader":
+                queryset = queryset.filter(breadcrumb_data__uploader__isnull=False)
             elif filter_type == "has_error":
                 queryset = queryset.filter(breadcrumb_data__error__isnull=False)
             elif filter_type == "has_error_text":
@@ -153,6 +156,7 @@ class ErrorFilter(admin.SimpleListFilter):
 @admin.register(UploadBreadcrumb)
 class UploadBreadcrumbAdmin(admin.ModelAdmin):
     list_display = (
+        "created_at",
         "id",
         "repo_id",
         "formatted_commit_sha",
@@ -160,6 +164,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         "formatted_upload_ids",
         "formatted_sentry_trace_id",
     )
+    list_display_links = ("created_at", "id")
     sortable_by = (
         "repo_id",
         "formatted_commit_sha",
@@ -273,6 +278,10 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             endpoint_label = Endpoints(data["endpoint"]).label
             parts.append(f"🔗 {endpoint_label}")
 
+        if data.get("uploader"):
+            uploader_label = data["uploader"]
+            parts.append(f"⬆️ {uploader_label}")
+
         if data.get("error"):
             error_label = Errors(data["error"]).label
             parts.append(f"❌ {error_label}")
@@ -310,6 +319,12 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             endpoint_name = Endpoints(data["endpoint"]).name
             html_parts.append(
                 f"<div><strong>🔗 Endpoint:</strong> {endpoint_label} <span>({data['endpoint']} / {endpoint_name})</span></div>"
+            )
+
+        if data.get("uploader"):
+            uploader_label = data["uploader"]
+            html_parts.append(
+                f"<div><strong>⬆️ Uploader:</strong> {uploader_label}</div>"
             )
 
         if data.get("error"):
