@@ -32,6 +32,7 @@ from tasks.hourly_check import hourly_check_task
 from tasks.http_request import http_request_task
 from tasks.ingest_testruns import ingest_testruns_task
 from tasks.manual_trigger import manual_trigger_task
+from tasks.mark_owner_for_deletion import mark_owner_for_deletion_task
 from tasks.new_user_activated import new_user_activated_task
 from tasks.notify import notify_task
 from tasks.notify_error import notify_error_task

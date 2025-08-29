@@ -33,6 +33,7 @@ class TaskConfigGroup(Enum):
     flush_repo = "flush_repo"
     healthcheck = "healthcheck"
     http_request = "http_request"
+    mark_owner_for_deletion = "mark_owner_for_deletion"
     new_user_activated = "new_user_activated"
     notify = "notify"
     profiling = "profiling"
