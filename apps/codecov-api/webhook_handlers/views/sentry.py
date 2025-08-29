@@ -10,6 +10,7 @@ from codecov_auth.permissions import JWTAuthenticationPermission
 from rollouts import ROLLBACK_SENTRY_WEBHOOK
 from shared.metrics import Counter
 from webhook_handlers.constants import GitHubHTTPHeaders
+from webhook_handlers.helpers import HANDLER, should_process
 from webhook_handlers.views.github import GithubWebhookHandler
 
 from . import WEBHOOKS_RECEIVED
@@ -61,6 +62,12 @@ class SentryWebhookHandler(APIView):
             raise ParseError("Missing event header")
 
         action = request.data.get("action", "")
+
+        handlers = should_process(
+            request.data, event, self.github_webhook_handler.service_name
+        )
+        if HANDLER.SENTRY not in handlers:
+            return Response()
 
         handler = self.event_handlers.get(event)
         if handler is None:
