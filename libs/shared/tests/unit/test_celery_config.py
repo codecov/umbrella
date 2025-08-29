@@ -35,6 +35,7 @@ def test_celery_config():
         "app.tasks.delete_owner.DeleteOwner",
         "app.tasks.flakes.*",
         "app.tasks.flush_repo.FlushRepo",
+        "app.tasks.mark_owner_for_deletion.MarkOwnerForDeletion",
         "app.tasks.new_user_activated.NewUserActivated",
         "app.tasks.notify.Notify",
         "app.tasks.profiling.*",
