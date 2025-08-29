@@ -75,7 +75,7 @@ def _parse_payload_bytes(
 def _ingest_parsing_infos(
     repoid: int,
     commit_sha: str,
-    branch: str,
+    branch: str | None,
     parsing_infos: list[test_results_parser.ParsingInfo],
     now_ts: datetime,
     flaky_set: set[bytes],

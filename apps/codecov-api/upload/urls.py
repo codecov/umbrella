@@ -9,6 +9,7 @@ from upload.views.test_results import TestResultsView
 from upload.views.transplant_report import TransplantReportView
 from upload.views.upload_completion import UploadCompletionView
 from upload.views.upload_coverage import UploadCoverageView
+from upload.views.upload_test_analytics import TAUploadView
 from upload.views.uploads import UploadViews
 
 urlpatterns = [
@@ -16,6 +17,11 @@ urlpatterns = [
         "test_results/v1",
         TestResultsView.as_view(),
         name="upload-test-results",
+    ),
+    path(
+        "test_analytics/v1",
+        TAUploadView.as_view(),
+        name="upload-test-analytics",
     ),
     path(
         "bundle_analysis/v1",

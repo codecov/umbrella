@@ -227,6 +227,89 @@ def test_flush_repo(mocker):
     )
 
 
+@pytest.mark.parametrize(
+    "upload_context, expect_notify",
+    [
+        (
+            {
+                "commit_sha": "abcdef1234567890",
+                "branch": "main",
+                "storage_path": "test_results/v1/raw/path",
+            },
+            True,
+        ),
+        (
+            {
+                "commit_sha": "abcdef1234567890",
+                "branch": None,
+                "storage_path": "test_results/v1/raw/path",
+            },
+            False,
+        ),
+    ],
+)
+@freeze_time("2023-06-13T10:01:01.000123")
+def test_queue_ta_upload(mocker, upload_context, expect_notify):
+    signature_mock = mocker.patch("services.task.task.signature")
+    chain_mock = mocker.patch("services.task.task.chain")
+    group_mock = mocker.patch("services.task.task.group")
+    mock_route_task = mocker.patch(
+        "services.task.task.route_task", return_value={"queue": "celery"}
+    )
+
+    ingest_sig = MagicMock(name="ingest_sig")
+    detect_sig = MagicMock(name="detect_sig")
+    notify_sig = MagicMock(name="notify_sig")
+    signature_mock.side_effect = [ingest_sig, detect_sig, notify_sig]
+
+    TaskService().queue_ta_upload(repo_id=42, upload_context=upload_context)
+
+    assert mock_route_task.call_count == (3 if expect_notify else 2)
+
+    signature_mock.assert_any_call(
+        celery_config.ingest_testruns_task_name,
+        args=None,
+        kwargs={"repoid": 42, "upload_context": upload_context},
+        app=celery_app,
+        queue="celery",
+        soft_time_limit=None,
+        time_limit=None,
+        headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
+        immutable=False,
+    )
+    signature_mock.assert_any_call(
+        celery_config.detect_flakes_task_name,
+        args=None,
+        kwargs={"repo_id": 42},
+        app=celery_app,
+        queue="celery",
+        soft_time_limit=None,
+        time_limit=None,
+        headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
+        immutable=False,
+    )
+
+    if expect_notify:
+        signature_mock.assert_any_call(
+            celery_config.test_analytics_notifier_task_name,
+            args=None,
+            kwargs={"repoid": 42, "upload_context": upload_context},
+            app=celery_app,
+            queue="celery",
+            soft_time_limit=None,
+            time_limit=None,
+            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
+            immutable=False,
+        )
+        group_mock.assert_called_once_with([detect_sig, notify_sig])
+        chain_mock.assert_called_once_with(ingest_sig, group_mock.return_value)
+    else:
+        group_mock.assert_not_called()
+        chain_mock.assert_called_once_with(ingest_sig, detect_sig)
+
+    chain_mock.return_value.apply_async.assert_called_once_with()
+
+
 @freeze_time("2023-06-13T10:01:01.000123")
 def test_update_commit_task(mocker):
     signature_mock = mocker.patch("services.task.task.signature")

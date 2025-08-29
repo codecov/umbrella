@@ -10,6 +10,7 @@ from core.models import Repository
 from services.task.task_router import route_task
 from shared import celery_config
 from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData
+from shared.upload.types import TAUploadContext
 from shared.utils.pydantic_serializer import PydanticModelDump, register_preserializer
 from shared.utils.sentry import current_sentry_trace_id
 from timeseries.models import Dataset, MeasurementName
@@ -175,6 +176,38 @@ class TaskService:
         self._create_signature(
             celery_config.pulls_task_name, kwargs={"repoid": repoid, "pullid": pullid}
         ).apply_async()
+
+    def queue_ta_upload(
+        self,
+        repo_id: int,
+        upload_context: TAUploadContext,
+    ):
+        ingest_sig = self._create_signature(
+            celery_config.ingest_testruns_task_name,
+            kwargs={"repoid": repo_id, "upload_context": upload_context},
+        )
+
+        detect_flakes_sig = self._create_signature(
+            celery_config.detect_flakes_task_name,
+            kwargs={"repo_id": repo_id},
+        )
+
+        notify = (
+            upload_context.get("commit_sha") is not None
+            and upload_context.get("pr") is None
+            and upload_context.get("branch") is not None
+        )
+
+        if notify:
+            notify_sig = self._create_signature(
+                celery_config.test_analytics_notifier_task_name,
+                kwargs={"repoid": repo_id, "upload_context": upload_context},
+            )
+            chain_to_call = [ingest_sig, group([detect_flakes_sig, notify_sig])]
+        else:
+            chain_to_call = [ingest_sig, detect_flakes_sig]
+
+        return chain(*chain_to_call).apply_async()
 
     def detect_flakes(self, repo_id: int):
         self._create_signature(
