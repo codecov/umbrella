@@ -30,6 +30,7 @@ from shared.django_apps.upload_breadcrumbs.models import (
 from shared.metrics import inc_counter
 from upload.helpers import (
     generate_upload_prometheus_metrics_labels,
+    get_cli_uploader_string,
     upload_breadcrumb_context,
     validate_activated_repo,
 )
@@ -46,6 +47,7 @@ def create_report(
     repository: Repository,
     commit: Commit,
     endpoint: Endpoints,
+    uploader: str,
 ) -> CommitReport:
     code = serializer.validated_data.get("code")
     if code == "default":
@@ -63,6 +65,7 @@ def create_report(
             breadcrumb_data=BreadcrumbData(
                 milestone=Milestones.READY_FOR_REPORT,
                 endpoint=endpoint,
+                uploader=uploader,
             ),
         )
     return instance
@@ -87,6 +90,7 @@ class ReportViews(GetterMixin, CreateAPIView):
 
     def perform_create(self, serializer: BaseSerializer) -> None:
         endpoint = Endpoints.CREATE_REPORT
+        uploader = get_cli_uploader_string(self.request)
         milestone = Milestones.PREPARING_FOR_REPORT
         inc_counter(
             API_UPLOAD_COUNTER,
@@ -106,6 +110,7 @@ class ReportViews(GetterMixin, CreateAPIView):
             repo_id=repository.repoid,
             milestone=milestone,
             endpoint=endpoint,
+            uploader=uploader,
             error=Errors.REPO_DEACTIVATED,
         ):
             validate_activated_repo(repository)
@@ -116,6 +121,7 @@ class ReportViews(GetterMixin, CreateAPIView):
             repo_id=repository.repoid,
             milestone=milestone,
             endpoint=endpoint,
+            uploader=uploader,
             error=Errors.COMMIT_NOT_FOUND,
         ):
             commit = self.get_commit(repository)
@@ -125,7 +131,11 @@ class ReportViews(GetterMixin, CreateAPIView):
             extra={"repo": repository.name, "commit": commit.commitid},
         )
         create_report(
-            cast(CommitReportSerializer, serializer), repository, commit, endpoint
+            cast(CommitReportSerializer, serializer),
+            repository,
+            commit,
+            endpoint,
+            uploader,
         )
 
         inc_counter(

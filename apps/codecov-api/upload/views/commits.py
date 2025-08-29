@@ -19,14 +19,11 @@ from codecov_auth.authentication.repo_auth import (
     repo_auth_custom_exception_handler,
 )
 from core.models import Commit, Repository
-from shared.django_apps.upload_breadcrumbs.models import (
-    Endpoints,
-    Errors,
-    Milestones,
-)
+from shared.django_apps.upload_breadcrumbs.models import Endpoints, Errors, Milestones
 from shared.metrics import inc_counter
 from upload.helpers import (
     generate_upload_prometheus_metrics_labels,
+    get_cli_uploader_string,
     upload_breadcrumb_context,
     validate_activated_repo,
 )
@@ -39,7 +36,10 @@ log = logging.getLogger(__name__)
 
 
 def create_commit(
-    serializer: CommitSerializer, repository: Repository, endpoint: Endpoints
+    serializer: CommitSerializer,
+    repository: Repository,
+    endpoint: Endpoints,
+    uploader: str | None,
 ) -> Commit:
     with upload_breadcrumb_context(
         initial_breadcrumb=True,
@@ -47,6 +47,7 @@ def create_commit(
         repo_id=repository.repoid,
         milestone=Milestones.FETCHING_COMMIT_DETAILS,
         endpoint=endpoint,
+        uploader=uploader,
         error=Errors.REPO_DEACTIVATED,
     ):
         validate_activated_repo(repository)
@@ -87,6 +88,7 @@ class CommitViews(GetterMixin, ListCreateAPIView):
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer: BaseSerializer) -> None:
+        uploader = get_cli_uploader_string(self.request)
         inc_counter(
             API_UPLOAD_COUNTER,
             labels=generate_upload_prometheus_metrics_labels(
@@ -99,7 +101,10 @@ class CommitViews(GetterMixin, ListCreateAPIView):
         )
         repository = self.get_repo()
         commit = create_commit(
-            cast(CommitSerializer, serializer), repository, Endpoints.CREATE_COMMIT
+            cast(CommitSerializer, serializer),
+            repository,
+            Endpoints.CREATE_COMMIT,
+            uploader,
         )
 
         log.info(

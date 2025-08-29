@@ -26,6 +26,7 @@ from shared.django_apps.upload_breadcrumbs.models import (
 from shared.metrics import inc_counter
 from upload.helpers import (
     generate_upload_prometheus_metrics_labels,
+    get_cli_uploader_string,
     upload_breadcrumb_context,
 )
 from upload.metrics import API_UPLOAD_COUNTER
@@ -52,6 +53,7 @@ class UploadCompletionView(GetterMixin, CreateAPIView):
 
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         endpoint = Endpoints.UPLOAD_COMPLETION
+        uploader = get_cli_uploader_string(request)
         milestone = Milestones.NOTIFICATIONS_TRIGGERED
         inc_counter(
             API_UPLOAD_COUNTER,
@@ -71,6 +73,7 @@ class UploadCompletionView(GetterMixin, CreateAPIView):
             repo_id=repo.repoid,
             milestone=milestone,
             endpoint=endpoint,
+            uploader=uploader,
             error=Errors.COMMIT_NOT_FOUND,
         ):
             commit = self.get_commit(repo)
@@ -95,6 +98,7 @@ class UploadCompletionView(GetterMixin, CreateAPIView):
                 breadcrumb_data=BreadcrumbData(
                     milestone=milestone,
                     endpoint=endpoint,
+                    uploader=uploader,
                     error=Errors.UPLOAD_NOT_FOUND,
                 ),
             )
@@ -124,6 +128,7 @@ class UploadCompletionView(GetterMixin, CreateAPIView):
             breadcrumb_data=BreadcrumbData(
                 milestone=milestone,
                 endpoint=endpoint,
+                uploader=uploader,
             ),
         )
         inc_counter(
