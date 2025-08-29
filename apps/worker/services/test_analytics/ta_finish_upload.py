@@ -34,7 +34,7 @@ from services.test_results import (
     TestResultsNotifier,
     should_do_flaky_detection,
 )
-from shared.celery_config import cache_test_rollups_task_name, process_flakes_task_name
+from shared.celery_config import process_flakes_task_name
 from shared.django_apps.reports.models import ReportSession, UploadError
 from shared.helpers.redis import get_redis_connection
 from shared.reports.types import UploadType
@@ -126,16 +126,6 @@ def queue_followup_tasks(
             kwargs={
                 "repo_id": repo.repoid,
                 "commit_id": commit.commitid,
-                "impl_type": impl_type,
-            },
-        )
-
-    if commit.branch is not None:
-        celery_app.send_task(
-            cache_test_rollups_task_name,
-            kwargs={
-                "repo_id": repo.repoid,
-                "branch": commit.branch,
                 "impl_type": impl_type,
             },
         )
