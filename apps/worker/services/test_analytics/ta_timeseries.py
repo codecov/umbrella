@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TypedDict
 
 import test_results_parser
@@ -74,6 +74,7 @@ def insert_testrun(
                 branch=branch,
                 flags=flags,
                 upload_id=upload_id,
+                ttl=timestamp + timedelta(days=60),  # Set TTL to 60 days from testrun timestamp
             )
         )
     Testrun.objects.bulk_create(testruns_to_create)

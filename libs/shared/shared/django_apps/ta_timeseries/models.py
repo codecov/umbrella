@@ -54,6 +54,8 @@ class Testrun(ExportModelOperationsMixin("ta_timeseries.testrun"), models.Model)
     flags = ArrayField(models.TextField(), null=True)
     upload_id = models.BigIntegerField(null=True)
 
+    ttl = models.DateTimeField(null=True)
+
     properties = models.JSONField(null=True)
 
     __repr__ = sane_repr("timestamp", "test_id", "name", "outcome", "flags")  # type: ignore
