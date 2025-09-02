@@ -174,6 +174,8 @@ class ReportService(BaseReportService):
             CommitReport: The CommitReport for that commit
         """
         db_session = commit.get_db_session()
+
+        # First try to get an existing report
         current_report_row = (
             db_session.query(CommitReport)
             .filter_by(commit_id=commit.id_, code=None)
@@ -183,17 +185,43 @@ class ReportService(BaseReportService):
             )
             .first()
         )
+
+        created = False
         if not current_report_row:
-            # This happens if the commit report is being created for the first time
-            # or backfilled
-            current_report_row = CommitReport(
-                commit_id=commit.id_,
-                code=None,
-                report_type=ReportType.COVERAGE.value,
-            )
-            db_session.add(current_report_row)
+            # Use a try/except block to handle race conditions
+            # when multiple processes try to create the same CommitReport
+            try:
+                current_report_row = CommitReport(
+                    commit_id=commit.id_,
+                    code=None,
+                    report_type=ReportType.COVERAGE.value,
+                )
+                db_session.add(current_report_row)
+                db_session.flush()
+                created = True
+            except Exception:
+                # If another process created the record between our query and insert,
+                # rollback and try to get it again
+                db_session.rollback()
+                current_report_row = (
+                    db_session.query(CommitReport)
+                    .filter_by(commit_id=commit.id_, code=None)
+                    .filter(
+                        (CommitReport.report_type == None)  # noqa: E711
+                        | (CommitReport.report_type == ReportType.COVERAGE.value)
+                    )
+                    .first()
+                )
+                if not current_report_row:
+                    # If we still can't find it, there's a different problem
+                    raise
+
+        # If the report already exists but doesn't have a report_type set, update it
+        if not created and current_report_row.report_type is None:
+            current_report_row.report_type = ReportType.COVERAGE.value
             db_session.flush()
 
+        if created:
             actual_report = self.get_existing_report_for_commit(commit)
             if actual_report is not None:
                 log.info(
