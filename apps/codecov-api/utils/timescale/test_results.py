@@ -153,10 +153,7 @@ def get_test_data_queryset_via_testrun(
             distinct=True,
         ),
         total_count=(
-            F("total_pass_count")
-            + F("total_fail_count")
-            + F("total_skip_count")
-            + F("total_flaky_fail_count")
+            F("total_pass_count") + F("total_fail_count") + F("total_flaky_fail_count")
         ),
         failure_rate=Case(
             When(
