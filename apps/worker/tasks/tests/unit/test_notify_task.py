@@ -1598,7 +1598,7 @@ class TestNotifyTask:
         all_tests_passed, ta_error_msg = get_ta_relevant_context(dbsession, report)
 
         assert all_tests_passed is False
-        assert snapshot("txt") == ta_error_msg
+        assert ta_error_msg is None
 
     def test_ta_relevant_context_no_error(self, mocker, dbsession):
         report = ReportFactory(report_type="test_results")

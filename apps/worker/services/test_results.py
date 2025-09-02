@@ -321,11 +321,12 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
 
         message = []
 
-        if self.error:
-            message.append(specific_error_message(self.error))
+        # commenting out the upload error code because we it's too noisy and confusing for now
+        # if self.error:
+        #     message.append(specific_error_message(self.error))
 
-        if self.error and self.payload.info:
-            message += ["", "---", ""]
+        # if self.error and self.payload.info:
+        #     message += ["", "---", ""]
 
         if self.payload.info:
             message.append(f"### :x: {self.payload.failed} Tests Failed:")
