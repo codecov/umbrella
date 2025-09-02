@@ -25,14 +25,29 @@ class LcovProcessor(BaseLanguageProcessor):
 
 def from_txt(reports: bytes, report_builder_session: ReportBuilderSession) -> None:
     # http://ltp.sourceforge.net/coverage/lcov/geninfo.1.php
+
+    # Add partials_as_hits configuration
+    partials_as_hits_raw = report_builder_session.yaml_field(
+        ("parsers", "lcov", "partials_as_hits"), False
+    )
+    # Cast to boolean to handle string values like "false", "False", "true", "True"
+    if isinstance(partials_as_hits_raw, str):
+        partials_as_hits = partials_as_hits_raw.lower() not in ("false", "0", "")
+    else:
+        partials_as_hits = bool(partials_as_hits_raw)
+
     # merge same files
     for string in reports.split(b"\nend_of_record"):
-        if (_file := _process_file(string, report_builder_session)) is not None:
+        if (
+            _file := _process_file(string, report_builder_session, partials_as_hits)
+        ) is not None:
             report_builder_session.append(_file)
 
 
 def _process_file(
-    doc: bytes, report_builder_session: ReportBuilderSession
+    doc: bytes,
+    report_builder_session: ReportBuilderSession,
+    partials_as_hits: bool = False,
 ) -> ReportFile | None:
     branches: dict[str, dict[str, int]] = defaultdict(dict)
     fn_lines: set[str] = set()  # lines of function definitions
@@ -174,6 +189,13 @@ def _process_file(
         coverage_type = (
             CoverageType.method if line_str in fn_lines else CoverageType.branch
         )
+
+        # Add partials_as_hits conversion
+        if partials_as_hits and branch_sum > 0 and branch_sum < branch_num:
+            # This is a partial branch, convert to hit
+            coverage = 1
+            missing_branches = None  # Clear missing branches for hits
+            # Keep coverage_type as branch to maintain proper branch counting
 
         _line = report_builder_session.create_coverage_line(
             coverage,
