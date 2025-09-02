@@ -6,8 +6,11 @@ from django.db import connections
 
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.django_apps.core.tests.factories import RepositoryFactory
-from shared.django_apps.ta_timeseries.models import Testrun
-from utils.timescale_test_results import get_test_results_queryset
+from shared.django_apps.ta_timeseries.models import (
+    Testrun,
+    calc_test_id,
+)
+from utils.timescale.test_results import get_test_results_queryset
 
 from .helper import GraphQLTestHelper
 
@@ -36,13 +39,14 @@ def populate_timescale(repository):
         [
             Testrun(
                 repo_id=repository.repoid,
-                timestamp=datetime.now(UTC) - timedelta(days=5 - i),
+                timestamp=datetime.now(UTC) - timedelta(days=10 - i),
                 testsuite=f"testsuite{i}",
                 classname="",
                 name=f"name{i}",
                 computed_name=f"name{i}",
+                test_id=calc_test_id(f"name{i}", "", f"testsuite{i}"),
                 outcome="pass" if i % 2 == 0 else "failure",
-                duration_seconds=i,
+                duration_seconds=i * 2,
                 commit_sha=f"test_commit {i}",
                 flags=["flag1", "flag2"] if i % 2 == 0 else ["flag3"],
                 branch="feature",
@@ -60,6 +64,7 @@ def populate_timescale(repository):
                 classname="",
                 name=f"name{i}",
                 computed_name=f"name{i}",
+                test_id=calc_test_id(f"name{i}", "", f"testsuite{i}"),
                 outcome="pass" if i % 2 == 0 else "failure",
                 duration_seconds=i,
                 commit_sha=f"test_commit {i}",
@@ -79,6 +84,7 @@ def populate_timescale(repository):
                 classname="",
                 name="name5",
                 computed_name="name5",
+                test_id=calc_test_id("name5", "", "testsuite5"),
                 outcome="skip",
                 duration_seconds=0,
                 commit_sha="test_commit_skip",
@@ -90,17 +96,31 @@ def populate_timescale(repository):
 
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_branch_summary_1day', %s, %s)",
+            "CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_hourly', %s, %s)",
             [
                 (datetime.now(UTC) - timedelta(days=60)),
-                datetime.now(UTC),
+                None,
             ],
         )
         cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_summary_1day', %s, %s)",
+            "CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_daily', %s, %s)",
             [
                 (datetime.now(UTC) - timedelta(days=60)),
-                datetime.now(UTC),
+                None,
+            ],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_hourly', %s, %s)",
+            [
+                (datetime.now(UTC) - timedelta(days=60)),
+                None,
+            ],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_daily', %s, %s)",
+            [
+                (datetime.now(UTC) - timedelta(days=60)),
+                None,
             ],
         )
 
@@ -119,7 +139,16 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
 
         assert result.count() == 6
         assert snapshot("json") == [
-            {k: v for k, v in row.items() if k != "updated_at"} for row in result
+            {
+                k: (
+                    bytes(v).hex()
+                    if k == "test_id" and isinstance(v, memoryview)
+                    else v
+                )
+                for k, v in row.items()
+                if k != "updated_at"
+            }
+            for row in result
         ]
 
     def test_gql_query_test_results_timescale(

@@ -6,7 +6,7 @@ from django.db import connections
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.django_apps.core.tests.factories import RepositoryFactory
 from shared.django_apps.ta_timeseries.models import Testrun, calc_test_id
-from utils.timescale_test_results import get_test_results_aggregates_from_timescale
+from utils.timescale.test_aggregates import get_test_results_aggregates_from_timescale
 
 from .helper import GraphQLTestHelper
 
@@ -78,11 +78,19 @@ def populate_timescale_test_results_aggregates(repository):
 
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_branch_summary_1day', %s, %s)",
+            "CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_hourly', %s, %s)",
             [min_timestamp, max_timestamp],
         )
         cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_testrun_summary_1day', %s, %s)",
+            "CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_daily', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_hourly', %s, %s)",
+            [min_timestamp, max_timestamp],
+        )
+        cursor.execute(
+            "CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_daily', %s, %s)",
             [min_timestamp, max_timestamp],
         )
         cursor.execute(
