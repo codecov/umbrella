@@ -171,7 +171,7 @@ def test_ta_finish_upload(
     result = run_task()
 
     assert_result(False, False, False)
-    assert_tasks(["flakes", "cache_rollup"])
+    assert_tasks(["flakes"])
 
     # no failures or errors
     commit_yaml = UserYaml({})
