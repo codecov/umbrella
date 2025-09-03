@@ -83,9 +83,9 @@ class AccountLinkViewTests(TestCase):
 
         # Verify existing account was used
         account = Account.objects.get(sentry_org_id="123456789")
-        self.assertEqual(account.plan, PlanName.SENTRY_MERGE_PLAN.value)
         self.assertEqual(account.id, existing_account.id)
         self.assertEqual(account.name, "Existing Sentry Org")  # Name should not change
+        self.assertEqual(account.plan, PlanName.USERS_DEVELOPER.value)
 
         # Verify Owner was created and linked to existing account
         owner = Owner.objects.get(service_id="456789123", service="github")
