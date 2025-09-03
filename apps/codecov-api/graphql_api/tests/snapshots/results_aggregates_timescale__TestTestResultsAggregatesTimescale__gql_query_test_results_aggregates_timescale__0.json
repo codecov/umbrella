@@ -8,10 +8,10 @@
           "totalFails": 1,
           "totalSkips": 0,
           "totalSlowTests": 1,
-          "totalDurationPercentChange": 0.0,
-          "slowestTestsDurationPercentChange": 0.0,
+          "totalDurationPercentChange": -0.42857142857142855,
+          "slowestTestsDurationPercentChange": -0.4444444444444444,
           "totalFailsPercentChange": 0.0,
-          "totalSkipsPercentChange": 0.0,
+          "totalSkipsPercentChange": -1.0,
           "totalSlowTestsPercentChange": 0.0
         }
       }
