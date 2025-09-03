@@ -135,6 +135,7 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
             - timedelta(days=30),
             datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0),
             "main",
+            is_from_sentry=False,
         )
 
         assert result.count() == 6

@@ -358,6 +358,10 @@ test_results_histogram = Histogram(
     "Time it takes to get the test results",
 )
 
+DEFAULT_FILTERS = {
+    "interval": MeasurementInterval.INTERVAL_30_DAY,
+}
+
 
 @test_analytics_bindable.field("testResults")
 async def resolve_test_results(
@@ -372,11 +376,19 @@ async def resolve_test_results(
 ) -> TestResultConnection:
     if await should_use_new_test_analytics(repository, info):
         with test_results_histogram.time():
-            measurement_interval = (
-                filters.get("interval", MeasurementInterval.INTERVAL_30_DAY)
-                if filters
-                else MeasurementInterval.INTERVAL_30_DAY
-            )
+
+            # if filters is None, we assume that its an empty dict
+            # then we merge it with the default filters
+            # meaning that any default filters are overridden by the values in filters
+
+            filters = DEFAULT_FILTERS | (filters or {})
+            measurement_interval = filters.get("interval")
+            branch = filters.get("branch")
+            parameter_enum = filters.get("parameter")
+            testsuites = filters.get("test_suites")
+            flags = filters.get("flags")
+            term = filters.get("term")
+
             end_date = datetime.now(UTC)
             start_date = end_date - timedelta(days=measurement_interval.value)
             ordering_param = (
@@ -390,23 +402,29 @@ async def resolve_test_results(
                 else OrderingDirection.DESC
             )
 
-            filters = filters or {}
-            branch = filters.get("branch")
-            parameter_enum = filters.get("parameter")
-            testsuites = filters.get("test_suites")
-            flags = filters.get("flags")
-            term = filters.get("term")
-
             parameter = parameter_enum.value if parameter_enum else None
+            is_from_sentry = is_called_from_sentry_app(info)
+
+            if is_from_sentry:
+                if ordering_param == TestResultsOrderingParameter.COMMITS_WHERE_FAIL:
+                    raise ValidationError(
+                        "COMMITS_WHERE_FAIL ordering is not supported for Sentry requests"
+                    )
+                if flags:
+                    raise ValidationError(
+                        "Flag filtering is not supported for Sentry requests"
+                    )
+
             aggregated_queryset = await sync_to_async(get_test_results_queryset)(
                 repoid=repository.repoid,
                 start_date=start_date,
                 end_date=end_date,
-                branch=branch,
+                branch=branch,  # Keep None when branch is not specified
                 parameter=parameter,
                 testsuites=testsuites,
                 flags=flags,
                 term=term,
+                is_from_sentry=is_from_sentry,
             )
 
             connection = await queryset_to_connection(
