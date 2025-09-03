@@ -60,6 +60,7 @@ class Service(models.TextChoices):
     GITHUB_ENTERPRISE = "github_enterprise"
     GITLAB_ENTERPRISE = "gitlab_enterprise"
     BITBUCKET_SERVER = "bitbucket_server"
+    TO_BE_DELETED = "to_be_deleted"
 
 
 class PlanProviders(models.TextChoices):
@@ -1123,3 +1124,17 @@ class Tier(BaseModel):
 
     def __str__(self):
         return self.tier_name
+
+
+class OwnerToBeDeleted(BaseModel):
+    """
+    Model to track owner ids that still need to be deleted from the database.
+    """
+
+    owner_id = models.IntegerField(null=False)
+
+    class Meta:
+        app_label = CODECOV_AUTH_APP_LABEL
+
+    def __str__(self):
+        return f"Owner to be deleted: {self.owner_id}"
