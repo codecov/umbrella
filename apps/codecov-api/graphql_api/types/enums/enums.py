@@ -31,6 +31,7 @@ class TestResultsOrderingParameter(enum.Enum):
     FAILURE_RATE = "failure_rate"
     FLAKE_RATE = "flake_rate"
     COMMITS_WHERE_FAIL = "commits_where_fail"
+    RUNS_FAILED = "runs_failed"
     UPDATED_AT = "updated_at"
 
 
