@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 from codecov_auth.models import Account
 from shared.django_apps.codecov_auth.models import GithubAppInstallation, Owner
 from shared.django_apps.codecov_auth.tests.factories import AccountFactory, OwnerFactory
+from shared.plan.constants import PlanName
 
 
 class AccountLinkViewTests(TestCase):
@@ -56,6 +57,7 @@ class AccountLinkViewTests(TestCase):
 
         # Verify Account was created
         account = Account.objects.get(sentry_org_id="123456789")
+        self.assertEqual(account.plan, PlanName.SENTRY_MERGE_PLAN.value)
         self.assertEqual(account.name, "Test Sentry Org")
 
         # Verify Owner was created
@@ -81,6 +83,7 @@ class AccountLinkViewTests(TestCase):
 
         # Verify existing account was used
         account = Account.objects.get(sentry_org_id="123456789")
+        self.assertEqual(account.plan, PlanName.SENTRY_MERGE_PLAN.value)
         self.assertEqual(account.id, existing_account.id)
         self.assertEqual(account.name, "Existing Sentry Org")  # Name should not change
 
@@ -104,6 +107,7 @@ class AccountLinkViewTests(TestCase):
 
         # Verify account was created
         account = Account.objects.get(sentry_org_id="123456789")
+        self.assertEqual(account.plan, PlanName.SENTRY_MERGE_PLAN.value)
 
         # Verify existing owner was updated to link to new account
         existing_owner.refresh_from_db()
