@@ -32,7 +32,7 @@ def get_repo_aggregates_via_ca(
     )
 
     unique_test_count = (
-        test_data.aggregate(unique_test_count=Count("computed_name", distinct=True))[
+        test_data.aggregate(unique_test_count=Count("test_id", distinct=True))[
             "unique_test_count"
         ]
         or 0
@@ -77,7 +77,7 @@ def get_test_results_aggregates_from_timescale(
     end_date: datetime,
 ) -> TestResultsAggregates | None:
     if not _should_use_precomputed_aggregates(branch):
-        return None
+        raise ValueError("Test results aggregates are not precomputed")
 
     interval_duration = end_date - start_date
     comparison_start_date = start_date - interval_duration

@@ -62,7 +62,7 @@ def get_flake_aggregates_from_timescale(
     end_date: datetime,
 ) -> FlakeAggregates | None:
     if not _should_use_precomputed_aggregates(branch):
-        return None
+        raise ValueError("Flake aggregates are not precomputed")
 
     interval_duration = end_date - start_date
     comparison_start_date = start_date - interval_duration
@@ -71,7 +71,12 @@ def get_flake_aggregates_from_timescale(
     curr_aggregates = get_flake_aggregates_via_ca(repoid, branch, start_date, end_date)
 
     if curr_aggregates["flake_count"] is None:
-        return None
+        return FlakeAggregates(
+            flake_count=0,
+            flake_rate=0,
+            flake_count_percent_change=0,
+            flake_rate_percent_change=0,
+        )
 
     past_aggregates = get_flake_aggregates_via_ca(
         repoid,
