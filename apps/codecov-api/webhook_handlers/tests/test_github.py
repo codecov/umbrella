@@ -1588,3 +1588,39 @@ class GithubWebhookHandlerTests(APITestCase):
             app_id=AI_FEATURES_GH_APP_ID,
         )
         assert response.data == {"auto_review_enabled": False}
+
+    def test_non_installation_event_routed_to_github_when_no_sentry_account(self):
+        self.repo.private = True
+        self.repo.activated = True
+        self.repo.save()
+
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.REPOSITORY,
+            data={
+                "action": "publicized",
+                "repository": {
+                    "id": self.repo.service_id,
+                    "owner": {"id": self.repo.author.service_id},
+                },
+            },
+        )
+        assert response.status_code == status.HTTP_200_OK
+        self.repo.refresh_from_db()
+        assert self.repo.private is False
+        assert self.repo.activated is False
+
+    def test_installation_event_processed_even_without_owner(self):
+        mock_all_plans_and_tiers()
+        response = self._post_event_data(
+            event=GitHubWebhookEvents.INSTALLATION,
+            data={
+                "installation": {
+                    "id": 987,
+                    "account": {"id": 123456, "login": "username"},
+                    "app_id": 15,
+                    "repository_selection": "all",
+                },
+                "sender": {"type": "User"},
+            },
+        )
+        assert response.status_code == status.HTTP_200_OK
