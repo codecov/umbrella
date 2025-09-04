@@ -2,6 +2,7 @@ type TestResult {
   updatedAt: DateTime!
   name: String!
   commitsFailed: Int!
+  runsFailed: Int!
   failureRate: Float!
   flakeRate: Float!
   totalDuration: Float!

@@ -80,7 +80,10 @@ def decode_cursor(
             | TestResultsOrderingParameter.TOTAL_DURATION
         ):
             return CursorValue(ordered_value=float(ordered_value), name=name)
-        case TestResultsOrderingParameter.COMMITS_WHERE_FAIL:
+        case (
+            TestResultsOrderingParameter.COMMITS_WHERE_FAIL
+            | TestResultsOrderingParameter.RUNS_FAILED
+        ):
             return CursorValue(ordered_value=int(ordered_value), name=name)
         case TestResultsOrderingParameter.UPDATED_AT:
             return CursorValue(

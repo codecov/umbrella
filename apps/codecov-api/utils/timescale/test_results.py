@@ -54,6 +54,7 @@ def get_test_data_queryset_via_ca(
             F("pass_count") + F("fail_count") + F("flaky_fail_count"),
             output_field=FloatField(),
         ),
+        runs_failed=Sum(F("fail_count") + F("flaky_fail_count")),
         failure_rate=Case(
             When(
                 Q(total_count=0),
@@ -146,6 +147,12 @@ def get_test_data_queryset_via_testrun(
         ),
         total_flaky_fail_count=Sum(
             Case(When(outcome="flaky_fail", then=Value(1)), default=Value(0))
+        ),
+        runs_failed=Sum(
+            Case(
+                When(outcome__in=["failure", "flaky_fail"], then=Value(1)),
+                default=Value(0),
+            )
         ),
         commits_where_fail=Count(
             "commit_sha",
