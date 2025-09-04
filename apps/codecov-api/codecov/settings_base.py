@@ -442,7 +442,7 @@ SENTRY_ORG_URL = get_config(
 
 if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(
-        get_config("services", "sentry", "sample_rate", default="0.1")
+        get_config("services", "sentry", "sample_rate", default="1.0")
     )
     sentry_sdk.init(
         dsn=SENTRY_DSN,
