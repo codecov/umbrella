@@ -38,6 +38,9 @@ sync_repo_languages_gql_task_name = (
 )
 
 delete_owner_task_name = f"app.tasks.{TaskConfigGroup.delete_owner.value}.DeleteOwner"
+process_owners_to_be_deleted_cron_task_name = (
+    f"app.tasks.{TaskConfigGroup.delete_owner.value}.ProcessOwnersToBeDeletedCron"
+)
 mark_owner_for_deletion_task_name = (
     f"app.tasks.{TaskConfigGroup.mark_owner_for_deletion.value}.MarkOwnerForDeletion"
 )
