@@ -13,6 +13,7 @@ from database.tests.factories import (
 from services.repository import EnrichedPull
 from services.test_analytics.ta_finish_upload import FinisherResult, new_impl
 from services.yaml import UserYaml
+from shared.django_apps.codecov_auth.tests.factories import AccountFactory
 from shared.django_apps.core.models import Commit as DjangoCommit
 from shared.django_apps.core.models import Repository as DjangoRepo
 from shared.django_apps.reports.tests.factories import (
@@ -36,9 +37,15 @@ def mock_repo_provider_comments(mocker):
         "helpers.notifier.get_repo_provider_service",
         return_value=m,
     )
+
+    def mock_get_repo_provider_service(
+        repo, installation_name_to_use=None, additional_data=None
+    ):
+        return m
+
     _ = mocker.patch(
         "services.test_analytics.ta_finish_upload.get_repo_provider_service",
-        return_value=m,
+        side_effect=mock_get_repo_provider_service,
     )
     return m
 
@@ -46,12 +53,19 @@ def mock_repo_provider_comments(mocker):
 @pytest.fixture
 @pytest.mark.django_db(databases=["default", "ta_timeseries"], transaction=True)
 def prepopulate(dbsession):
+    django_account = AccountFactory(sentry_org_id=12345)
+    django_owner = django_account.users.first().owners.first()
+    django_owner.service = "github"
+    django_owner.service_id = "123456"
+    django_owner.save()
+
     django_upload = DjangoUploadFactory(
         report__report_type=ReportType.TEST_RESULTS.value,
         report__commit__branch="main",
         report__commit__merged=True,
         report__commit__repository__branch="main",
         report__commit__repository__private=False,
+        report__commit__repository__author=django_owner,
     )
     django_upload.save()
 
@@ -73,6 +87,12 @@ def prepopulate(dbsession):
         commitid=django_upload.report.commit.commitid
     )
 
+    sql_alc_account = AccountFactory(sentry_org_id=12345)
+    sql_alc_owner = sql_alc_account.users.first().owners.first()
+    sql_alc_owner.service = "github"
+    sql_alc_owner.service_id = "123456"
+    sql_alc_owner.save()
+
     sql_alc_upload = UploadFactory(
         report__report_type=ReportType.TEST_RESULTS.value,
         report__commit__commitid=django_commit.commitid,
@@ -82,13 +102,41 @@ def prepopulate(dbsession):
         report__commit__repository__private=django_repo.private,
         report__commit__repository__branch=django_repo.branch,
         report__commit__repository__name="test-repo",
-        report__commit__repository__author__service="github",
-        report__commit__repository__author__username="test-user",
+        report__commit__repository__author=sql_alc_owner,
     )
     dbsession.add(sql_alc_upload)
     dbsession.commit()
 
     return django_upload, sql_alc_upload, testrun
+
+
+@pytest.fixture
+def setup_mocks(mocker, mock_repo_provider_comments):
+    mock_send_task = mocker.patch(
+        "services.test_analytics.ta_finish_upload.celery_app.send_task",
+    )
+
+    mocker.patch(
+        "services.test_analytics.ta_finish_upload.GITHUB_APP_INSTALLATION_DEFAULT_NAME",
+        "codecov_app_installation",
+    )
+    mocker.patch("django.conf.settings.GITHUB_SENTRY_APP_NAME", "sentry_app")
+
+    mock_get_repo_provider_service = mocker.patch(
+        "services.test_analytics.ta_finish_upload.get_repo_provider_service"
+    )
+    mock_get_repo_provider_service.return_value = mock_repo_provider_comments
+
+    mocker.patch(
+        "services.test_analytics.ta_finish_upload.fetch_and_update_pull_request_information_from_commit",
+        return_value=mocker.Mock(spec=EnrichedPull),
+    )
+    mocker.patch(
+        "services.test_analytics.ta_finish_upload.check_seat_activation",
+        return_value=False,
+    )
+
+    return mock_get_repo_provider_service
 
 
 @pytest.mark.django_db(databases=["default", "ta_timeseries"], transaction=True)
@@ -104,6 +152,12 @@ def test_ta_finish_upload(
     mock_send_task = mocker.patch(
         "services.test_analytics.ta_finish_upload.celery_app.send_task",
     )
+
+    mocker.patch(
+        "services.test_analytics.ta_finish_upload.GITHUB_APP_INSTALLATION_DEFAULT_NAME",
+        "codecov_app_installation",
+    )
+    mocker.patch("django.conf.settings.GITHUB_SENTRY_APP_NAME", "sentry_app")
 
     def run_task() -> FinisherResult:
         result = new_impl(
@@ -278,3 +332,61 @@ def test_ta_finish_upload(
     assert_result(True, True, False)
     assert_tasks([])
     assert_comment_snapshot()
+
+
+@pytest.mark.django_db(databases=["default", "ta_timeseries"], transaction=True)
+def test_ta_finish_upload_with_sentry_account(dbsession, prepopulate, setup_mocks):
+    mock_all_plans_and_tiers()
+
+    django_upload, sql_alc_upload, testrun = prepopulate
+    repo = sql_alc_upload.report.commit.repository
+    commit = sql_alc_upload.report.commit
+
+    testrun.outcome = "failure"
+    testrun.save()
+    django_transaction.commit()
+
+    commit_yaml = UserYaml({})
+
+    result = new_impl(
+        db_session=dbsession,
+        repo=repo,
+        commit=commit,
+        commit_yaml=commit_yaml,
+        impl_type="new",
+    )
+
+    setup_mocks.assert_called_once()
+    call_args = setup_mocks.call_args
+    assert call_args[1]["installation_name_to_use"] == "sentry_app"
+
+
+@pytest.mark.django_db(databases=["default", "ta_timeseries"], transaction=True)
+def test_ta_finish_upload_without_sentry_account(dbsession, prepopulate, setup_mocks):
+    mock_all_plans_and_tiers()
+
+    django_upload, sql_alc_upload, testrun = prepopulate
+    repo = sql_alc_upload.report.commit.repository
+    commit = sql_alc_upload.report.commit
+
+    if repo.author.account:
+        repo.author.account.sentry_org_id = None
+        repo.author.account.save()
+
+    testrun.outcome = "failure"
+    testrun.save()
+    django_transaction.commit()
+
+    commit_yaml = UserYaml({})
+
+    result = new_impl(
+        db_session=dbsession,
+        repo=repo,
+        commit=commit,
+        commit_yaml=commit_yaml,
+        impl_type="new",
+    )
+
+    setup_mocks.assert_called_once()
+    call_args = setup_mocks.call_args
+    assert call_args[1]["installation_name_to_use"] == "codecov_app_installation"

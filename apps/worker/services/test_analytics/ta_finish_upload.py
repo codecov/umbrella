@@ -3,10 +3,12 @@ from typing import Literal
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
+from django.conf import settings
 from sqlalchemy.orm import Session
 
 from app import celery_app
 from database.models import Commit, Repository
+from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from helpers.notifier import NotifierResult
 from helpers.string import shorten_file_paths
 from services.repository import (
@@ -178,7 +180,17 @@ def new_impl(
         }
 
     additional_data: AdditionalData = {"upload_type": UploadType.TEST_RESULTS}
-    repo_service = get_repo_provider_service(repo, additional_data=additional_data)
+
+    installation_name_to_use = GITHUB_APP_INSTALLATION_DEFAULT_NAME
+    owner = repo.author
+    if owner.account and owner.account.sentry_org_id:
+        installation_name_to_use = settings.GITHUB_SENTRY_APP_NAME
+
+    repo_service = get_repo_provider_service(
+        repo,
+        installation_name_to_use=installation_name_to_use,
+        additional_data=additional_data,
+    )
     pull = async_to_sync(fetch_and_update_pull_request_information_from_commit)(
         repo_service, commit, commit_yaml
     )

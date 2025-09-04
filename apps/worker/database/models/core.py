@@ -69,6 +69,7 @@ class Account(CodecovBaseModel, MixinBaseClassNoExternalID):
     free_seat_count = Column(types.SmallInteger, nullable=False, default=0)
     plan_auto_activate = Column(types.Boolean, nullable=False, default=True)
     is_delinquent = Column(types.Boolean, nullable=False, default=False)
+    sentry_org_id = Column(types.BigInteger, nullable=True)
 
     users = relationship(
         "User", secondary="codecov_auth_accountsusers", back_populates="accounts"
