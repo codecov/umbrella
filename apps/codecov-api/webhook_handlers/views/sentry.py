@@ -36,6 +36,7 @@ class SentryWebhookHandler(APIView):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.github_webhook_handler = GithubWebhookHandler()
+        self.github_webhook_handler.ignore_error = True
         self.event_handlers = {
             "repository": self.github_webhook_handler.repository,
             "delete": self.github_webhook_handler.delete,
