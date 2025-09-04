@@ -421,6 +421,10 @@ async def resolve_test_results(
 
         return connection
     else:
+        branch_for_old_impl = filters.get("branch") if filters else None
+        if branch_for_old_impl is None:
+            branch_for_old_impl = repository.branch
+
         queryset = await sync_to_async(generate_test_results)(
             ordering=ordering.get(
                 "parameter", TestResultsOrderingParameter.AVG_DURATION
@@ -440,7 +444,7 @@ async def resolve_test_results(
             after=after,
             last=last,
             before=before,
-            branch=filters.get("branch") if filters else None,
+            branch=branch_for_old_impl,
             parameter=filters.get("parameter") if filters else None,
             testsuites=filters.get("test_suites") if filters else None,
             flags=filters.get("flags") if filters else None,
@@ -457,23 +461,26 @@ async def resolve_test_results_aggregates(
     interval: MeasurementInterval | None = None,
     **_: Any,
 ) -> TestResultsAggregates | None:
+    measurement_interval = interval if interval else MeasurementInterval.INTERVAL_30_DAY
     if await should_use_new_test_analytics(repository, info):
-        measurement_interval = (
-            interval if interval else MeasurementInterval.INTERVAL_30_DAY
-        )
         end_date = datetime.now(UTC)
         start_date = end_date - timedelta(days=measurement_interval.value)
         return await sync_to_async(get_test_results_aggregates_from_timescale)(
             repoid=repository.repoid,
-            branch=repository.branch,
+            branch=branch,
             start_date=start_date,
             end_date=end_date,
         )
-    return await sync_to_async(generate_test_results_aggregates)(
-        repoid=repository.repoid,
-        branch=repository.branch,
-        interval=interval if interval else MeasurementInterval.INTERVAL_30_DAY,
-    )
+    else:
+        branch_for_old_impl = branch
+        if branch_for_old_impl is None:
+            branch_for_old_impl = repository.branch
+
+        return await sync_to_async(generate_test_results_aggregates)(
+            repoid=repository.repoid,
+            branch=branch_for_old_impl,
+            interval=interval if interval else MeasurementInterval.INTERVAL_30_DAY,
+        )
 
 
 @test_analytics_bindable.field("flakeAggregates")
@@ -484,24 +491,26 @@ async def resolve_flake_aggregates(
     interval: MeasurementInterval | None = None,
     **_: Any,
 ) -> FlakeAggregates | None:
+    measurement_interval = interval if interval else MeasurementInterval.INTERVAL_30_DAY
     if await should_use_new_test_analytics(repository, info):
-        measurement_interval = (
-            interval if interval else MeasurementInterval.INTERVAL_30_DAY
-        )
         end_date = datetime.now(UTC)
         start_date = end_date - timedelta(days=measurement_interval.value)
         return await sync_to_async(get_flake_aggregates_from_timescale)(
             repoid=repository.repoid,
-            branch=repository.branch,
+            branch=branch,
             start_date=start_date,
             end_date=end_date,
         )
+    else:
+        branch_for_old_impl = branch
+        if branch_for_old_impl is None:
+            branch_for_old_impl = repository.branch
 
-    return await sync_to_async(generate_flake_aggregates)(
-        repoid=repository.repoid,
-        branch=repository.branch,
-        interval=interval if interval else MeasurementInterval.INTERVAL_30_DAY,
-    )
+        return await sync_to_async(generate_flake_aggregates)(
+            repoid=repository.repoid,
+            branch=branch_for_old_impl,
+            interval=measurement_interval,
+        )
 
 
 @test_analytics_bindable.field("testSuites")
@@ -516,5 +525,7 @@ async def resolve_test_suites(
 async def resolve_flags(
     repository: Repository, info: GraphQLResolveInfo, term: str | None = None, **_: Any
 ) -> list[str]:
+    is_from_sentry = is_called_from_sentry_app(info)
+    assert not is_from_sentry, "get_flags should not be called from Sentry app"
     result = await sync_to_async(get_flags)(repository.repoid, term)
     return sorted(result)
