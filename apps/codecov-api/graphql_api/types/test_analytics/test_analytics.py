@@ -303,7 +303,7 @@ def get_test_suites_old(
 def get_test_suites(
     repoid: int, term: str | None = None, interval: int = 30
 ) -> list[str]:
-    if READ_NEW_TA.check_value(repoid) or use_new_impl(repoid):
+    if should_use_new_test_analytics(repoid):
         return get_test_suites_new(repoid, term, interval)
     else:
         return get_test_suites_old(repoid, term, interval)
@@ -327,7 +327,7 @@ def get_flags_old(
 
 
 def get_flags(repoid: int, term: str | None = None, interval: int = 30) -> list[str]:
-    if READ_NEW_TA.check_value(repoid) or use_new_impl(repoid):
+    if should_use_new_test_analytics(repoid):
         return get_flags_new(repoid, term, interval)
     else:
         return get_flags_old(repoid, term, interval)
