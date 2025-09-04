@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from codecov_auth.models import Account
 from codecov_auth.permissions import JWTAuthenticationPermission
 from shared.django_apps.codecov_auth.models import GithubAppInstallation, Owner, Service
+from shared.plan.constants import PlanName
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +58,8 @@ def account_link(request, *args, **kwargs):
     sentry_org_name = serializer.validated_data["sentry_org_name"]
 
     account, _created = Account.objects.get_or_create(
-        sentry_org_id=sentry_org_id, defaults={"name": sentry_org_name}
+        sentry_org_id=sentry_org_id,
+        defaults={"name": sentry_org_name, "plan": PlanName.SENTRY_MERGE_PLAN.value},
     )
 
     for org_data in serializer.validated_data["organizations"]:
