@@ -1,10 +1,16 @@
+import logging
+
 from ariadne import UnionType
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import RedisError
 
 from graphql_api.helpers.mutation import (
     resolve_union_error_type,
     wrap_error_handling_mutation,
 )
 from services.refresh import RefreshService
+
+log = logging.getLogger(__name__)
 
 
 @wrap_error_handling_mutation
@@ -18,8 +24,21 @@ async def resolve_sync_repos(_, info):
     """
     command = info.context["executor"].get_command("owner")
     await command.trigger_sync(using_integration=True)
-    current_owner_id = info.context["request"].current_owner.ownerid
-    return {"is_syncing": RefreshService().is_refreshing(current_owner_id)}
+
+    current_owner = info.context["request"].current_owner
+    if not current_owner:
+        return {"is_syncing": False}
+
+    try:
+        refresh_service = RefreshService()
+        is_syncing = refresh_service.is_refreshing(current_owner.ownerid)
+        return {"is_syncing": is_syncing}
+    except (RedisConnectionError, RedisError):
+        log.warning(
+            "Redis error while checking sync status",
+            extra={"ownerid": current_owner.ownerid},
+        )
+        return {"is_syncing": False}
 
 
 error_sync_repos = UnionType("SyncReposError")
