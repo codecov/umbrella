@@ -4,6 +4,7 @@ from graphql_api.helpers.mutation import (
     resolve_union_error_type,
     wrap_error_handling_mutation,
 )
+from services.refresh import RefreshService
 
 
 @wrap_error_handling_mutation
@@ -17,7 +18,8 @@ async def resolve_sync_repos(_, info):
     """
     command = info.context["executor"].get_command("owner")
     await command.trigger_sync(using_integration=True)
-    return {"is_syncing": True}
+    current_owner_id = info.context["request"].current_owner.ownerid
+    return {"is_syncing": RefreshService().is_refreshing(current_owner_id)}
 
 
 error_sync_repos = UnionType("SyncReposError")
