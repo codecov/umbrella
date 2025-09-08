@@ -1,7 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from django.db import connections
 
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.django_apps.core.tests.factories import RepositoryFactory
@@ -9,7 +8,8 @@ from shared.django_apps.ta_timeseries.models import (
     Testrun,
     calc_test_id,
 )
-from utils.timescale.test_results import get_test_results_queryset
+from utils.ta_timescale.test_results import get_test_results_queryset
+from utils.ta_timescale.utils import refresh_ta_timeseries_aggregates
 
 from .helper import GraphQLTestHelper
 
@@ -22,14 +22,6 @@ def repository():
     )
 
     return repo
-
-
-@pytest.fixture
-def new_ta_enabled(mocker):
-    mocker.patch(
-        "graphql_api.types.test_analytics.test_analytics.READ_NEW_TA.check_value",
-        return_value=True,
-    )
 
 
 @pytest.fixture
@@ -93,41 +85,12 @@ def populate_timescale(repository):
         ]
     )
 
-    with connections["ta_timeseries"].cursor() as cursor:
-        cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_hourly', %s, %s)",
-            [
-                (datetime.now(UTC) - timedelta(days=60)),
-                None,
-            ],
-        )
-        cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_daily', %s, %s)",
-            [
-                (datetime.now(UTC) - timedelta(days=60)),
-                None,
-            ],
-        )
-        cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_hourly', %s, %s)",
-            [
-                (datetime.now(UTC) - timedelta(days=60)),
-                None,
-            ],
-        )
-        cursor.execute(
-            "CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_daily', %s, %s)",
-            [
-                (datetime.now(UTC) - timedelta(days=60)),
-                None,
-            ],
-        )
+    refresh_ta_timeseries_aggregates()
 
 
-@pytest.mark.usefixtures("new_ta_enabled")
 @pytest.mark.django_db(databases=["default", "ta_timeseries"], transaction=True)
 class TestAnalyticsTestCaseNew(GraphQLTestHelper):
-    def test_gql_query(self, repository, populate_timescale, new_ta_enabled, snapshot):
+    def test_gql_query(self, repository, populate_timescale, snapshot):
         result = get_test_results_queryset(
             repository.repoid,
             datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)

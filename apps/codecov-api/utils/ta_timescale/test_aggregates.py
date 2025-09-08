@@ -5,9 +5,8 @@ from django.db.models import Count, F, FloatField, Sum, Window
 from django.db.models.functions import RowNumber
 
 from shared.metrics import Histogram
-from utils.ta_types import TestResultsAggregates
-
-from .timescale_utils import (
+from utils.ta_timescale.types import TestResultsAggregates
+from utils.ta_timescale.utils import (
     _calculate_slow_test_num,
     _pct_change,
     _should_use_precomputed_aggregates,
@@ -70,7 +69,7 @@ get_test_result_aggregates_histogram = Histogram(
 
 
 @get_test_result_aggregates_histogram.time()
-def get_test_results_aggregates_from_timescale(
+def get_test_results_aggregates(
     repoid: int,
     branch: str | None,
     start_date: datetime,
