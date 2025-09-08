@@ -363,7 +363,9 @@ class BaseCodecovTask(celery_app.Task):
     ) -> TorngitBaseAdapter | None:
         try:
             return get_repo_provider_service(
-                repository, installation_name_to_use, additional_data
+                repository.repoid,
+                installation_name_to_use,
+                additional_data,
             )
         except RepositoryWithoutValidBotError:
             if commit:

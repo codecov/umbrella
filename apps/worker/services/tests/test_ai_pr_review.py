@@ -177,7 +177,7 @@ async def test_perform_initial_review(
 
     archive = ArchiveService(repository)
 
-    await perform_review(repository, 40)
+    await perform_review(repository, 40, db_session=dbsession)
 
     assert json.loads(
         mock_storage.read_file(
@@ -220,7 +220,7 @@ async def test_perform_duplicate_review(
     perform = mocker.patch("services.ai_pr_review.Review.perform")
     perform.return_value = None
 
-    await perform_review(repository, 40)
+    await perform_review(repository, 40, db_session=dbsession)
 
     # noop - we already made a review for this sha
     assert not perform.called
@@ -254,7 +254,7 @@ async def test_perform_new_commit(
         ),
     )
 
-    await perform_review(repository, 40)
+    await perform_review(repository, 40, db_session=dbsession)
 
     assert json.loads(
         mock_storage.read_file(

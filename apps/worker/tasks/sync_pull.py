@@ -120,7 +120,8 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                 self.name, repository.author
             )
             repository_service = get_repo_provider_service(
-                repository, installation_name_to_use=installation_name_to_use
+                repository.repoid,
+                installation_name_to_use=installation_name_to_use,
             )
         except RepositoryWithoutValidBotError:
             log.warning(

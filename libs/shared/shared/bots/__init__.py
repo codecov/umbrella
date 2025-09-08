@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 from shared.bots.github_apps import get_github_app_info_for_owner
 from shared.bots.owner_bots import get_owner_appropriate_bot_token
@@ -16,13 +15,10 @@ from shared.typings.torngit import GithubInstallationInfo
 
 log = logging.getLogger(__name__)
 
-SQLAlchemyOwner = Any
-SQLAlchemyRepository = Any
-
 
 def get_adapter_auth_information(
-    owner: Owner | SQLAlchemyOwner,
-    repository: Repository | SQLAlchemyRepository | None = None,
+    owner: Owner,
+    repository: Repository | None = None,
     *,
     ignore_installations: bool = False,
     installation_name_to_use: str = GITHUB_APP_INSTALLATION_DEFAULT_NAME,

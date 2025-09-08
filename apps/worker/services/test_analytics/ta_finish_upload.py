@@ -173,7 +173,9 @@ def ta_finish_upload(
         }
 
     additional_data: AdditionalData = {"upload_type": UploadType.TEST_RESULTS}
-    repo_service = get_repo_provider_service(repo, additional_data=additional_data)
+    repo_service = get_repo_provider_service(
+        repo.repoid, additional_data=additional_data
+    )
     pull = async_to_sync(fetch_and_update_pull_request_information_from_commit)(
         repo_service, commit, commit_yaml
     )

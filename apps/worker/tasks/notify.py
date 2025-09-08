@@ -960,7 +960,8 @@ def get_repo_provider_service_for_specific_commit(
     installation_for_commit = get_github_app_for_commit(commit)
     if installation_for_commit is None:
         repository_provider = get_repo_provider_service(
-            repository, fallback_installation_name
+            repository.repoid,
+            fallback_installation_name,
         )
         _possibly_pin_commit_to_github_app(commit, repository_provider)
         return repository_provider

@@ -17,7 +17,7 @@ class TestRepositoryServiceIntegration:
         )
         dbsession.add(repo)
         dbsession.flush()
-        service = get_repo_provider_service(repo)
+        service = get_repo_provider_service(repo.repoid)
         expected_result = {
             "author": {
                 "id": None,
@@ -51,7 +51,7 @@ class TestRepositoryServiceIntegration:
         )
         dbsession.add(repo)
         dbsession.flush()
-        service = get_repo_provider_service(repo)
+        service = get_repo_provider_service(repo.repoid)
         commit = await service.get_commit("6895b64")
         expected_result = {
             "author": {
@@ -85,7 +85,7 @@ class TestRepositoryServiceIntegration:
         )
         dbsession.add(repo)
         dbsession.flush()
-        service = get_repo_provider_service(repo)
+        service = get_repo_provider_service(repo.repoid)
         commit = await service.get_commit("0028015f7fa260f5fd68f78c0deffc15183d955e")
         expected_result = {
             "author": {

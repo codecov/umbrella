@@ -17,8 +17,17 @@ log = logging.getLogger(__name__)
 
 
 def get_owner_provider_service(
-    owner, *, ignore_installation=False, additional_data=None
+    ownerid: int,
+    *,
+    ignore_installation=False,
+    additional_data=None,
 ):
+    # Look up owner by ID using Django ORM
+    try:
+        owner = Owner.objects.get(ownerid=ownerid)
+    except Owner.DoesNotExist:
+        raise ValueError(f"Owner with ID {ownerid} not found")
+
     _timeouts = [
         get_config("setup", "http", "timeouts", "connect", default=15),
         get_config("setup", "http", "timeouts", "receive", default=30),

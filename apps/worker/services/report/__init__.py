@@ -345,7 +345,7 @@ class ReportService(BaseReportService):
     ) -> Report:
         try:
             provider_service = get_repo_provider_service(
-                repository=head_commit.repository,
+                repository=head_commit.repository.repoid,
                 installation_name_to_use=self.gh_app_installation_name,
             )
             diff = async_to_sync(provider_service.get_compare)(

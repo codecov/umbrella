@@ -30,7 +30,7 @@ class TestWebhookNotifier:
             notifier_site_settings=True,
             current_yaml={},
             repository_service=get_repo_provider_service(
-                sample_comparison.head.commit.repository
+                sample_comparison.head.commit.repository.repoid
             ),
         )
         repository = base_commit.repository
@@ -93,7 +93,7 @@ class TestWebhookNotifier:
             notifier_site_settings=True,
             current_yaml={},
             repository_service=get_repo_provider_service(
-                sample_comparison.head.commit.repository
+                sample_comparison.head.commit.repository.repoid
             ),
         )
         repository = base_commit.repository
@@ -203,7 +203,7 @@ class TestWebhookNotifier:
             notifier_site_settings=True,
             current_yaml={},
             repository_service=get_repo_provider_service(
-                sample_comparison.head.commit.repository
+                sample_comparison.head.commit.repository.repoid
             ),
         )
         repository = base_commit.repository
@@ -329,7 +329,7 @@ class TestWebhookNotifier:
             notifier_site_settings=True,
             current_yaml={"coverage": {"precision": 5, "round": "up"}},
             repository_service=get_repo_provider_service(
-                sample_comparison.head.commit.repository
+                sample_comparison.head.commit.repository.repoid
             ),
         )
         repository = base_commit.repository

@@ -43,7 +43,8 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
                 self.name, repository.author
             )
             repository_service = get_repo_provider_service(
-                repository, installation_name_to_use=installation_name_to_use
+                repository.repoid,
+                installation_name_to_use=installation_name_to_use,
             )
             was_updated = possibly_update_commit_from_provider_info(
                 commit, repository_service

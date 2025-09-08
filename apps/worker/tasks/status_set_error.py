@@ -34,7 +34,7 @@ class StatusSetErrorTask(BaseCodecovTask, name=status_set_error_task_name):
         )
         commit = commits.first()
         assert commit, "Commit not found in database."
-        repo_service = get_repo_provider_service(commit.repository)
+        repo_service = get_repo_provider_service(commit.repository.repoid)
         current_yaml = async_to_sync(get_current_yaml)(commit, repo_service)
         settings = read_yaml_field(current_yaml, ("coverage", "status"))
 

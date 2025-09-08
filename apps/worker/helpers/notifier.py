@@ -85,7 +85,12 @@ class BaseNotifier:
 
     def get_repo_service(self) -> TorngitBaseAdapter:
         if self._repo_service is None:
-            self._repo_service = get_repo_provider_service(self.repo)
+            db_session = (
+                getattr(self.commit, "get_db_session", lambda: None)()
+                if hasattr(self.commit, "get_db_session")
+                else None
+            )
+            self._repo_service = get_repo_provider_service(self.repo.repoid)
 
         return self._repo_service
 

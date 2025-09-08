@@ -329,8 +329,8 @@ class Review:
             return res["id"], head_commit_sha
 
 
-async def perform_review(repository: Repository, pullid: int):
-    repository_service = get_repo_provider_service(repository)
+async def perform_review(repository: Repository, pullid: int, db_session=None):
+    repository_service = get_repo_provider_service(repository.repoid)
     pull_wrapper = PullWrapper(repository_service, pullid)
 
     archive = ArchiveService(repository)

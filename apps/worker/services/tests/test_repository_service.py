@@ -68,7 +68,7 @@ def pull(dbsession, repo) -> Pull:
 
 
 def test_get_repo_provider_service_github(dbsession, repo):
-    res = get_repo_provider_service(repo)
+    res = get_repo_provider_service(repo.repoid)
     expected_data = {
         "owner": {
             "ownerid": repo.author.ownerid,
@@ -100,7 +100,9 @@ def test_get_repo_provider_service_github(dbsession, repo):
 
 def test_get_repo_provider_service_additional_data(dbsession, repo):
     additional_data: AdditionalData = {"upload_type": UploadType.TEST_RESULTS}
-    res = get_repo_provider_service(repo, additional_data=additional_data)
+    res = get_repo_provider_service(
+        repo.repoid, additional_data=additional_data, db_session=dbsession
+    )
     expected_data = {
         "owner": {
             "ownerid": repo.author.ownerid,
@@ -150,7 +152,9 @@ def test_get_repo_provider_service_github_with_installations(dbsession, mocker, 
     repo.author.github_app_installations = [installation_0, installation_1]
     dbsession.add_all([repo, installation_0, installation_1])
     dbsession.flush()
-    res = get_repo_provider_service(repo, installation_name_to_use="my_app")
+    res = get_repo_provider_service(
+        repo.repoid, installation_name_to_use="my_app", db_session=dbsession
+    )
     expected_data = {
         "owner": {
             "ownerid": repo.author.ownerid,
@@ -201,7 +205,7 @@ def test_get_repo_provider_service_bitbucket(dbsession):
     )
     dbsession.add(repo)
     dbsession.flush()
-    res = get_repo_provider_service(repo)
+    res = get_repo_provider_service(repo.repoid)
     expected_data = {
         "owner": {
             "ownerid": repo.author.ownerid,
@@ -238,7 +242,7 @@ def test_get_repo_provider_service_with_token_refresh_callback(dbsession):
     )
     dbsession.add(repo)
     dbsession.flush()
-    res = get_repo_provider_service(repo)
+    res = get_repo_provider_service(repo.repoid)
     expected_data = {
         "owner": {
             "ownerid": repo.author.ownerid,
@@ -276,7 +280,7 @@ def test_get_repo_provider_service_repo_bot(dbsession, mock_configuration):
     )
     dbsession.add(repo)
     dbsession.flush()
-    res = get_repo_provider_service(repo)
+    res = get_repo_provider_service(repo.repoid)
     expected_data = {
         "owner": {
             "ownerid": repo.author.ownerid,
@@ -313,7 +317,7 @@ async def test_token_refresh_callback(dbsession):
     )
     dbsession.add(repo)
     dbsession.flush()
-    res = get_repo_provider_service(repo)
+    res = get_repo_provider_service(repo.repoid)
     new_token = {"key": "new_access_token", "refresh_token": "new_refresh_token"}
     await res._on_token_refresh(new_token)
     owner = dbsession.query(Owner).filter_by(ownerid=repo.author.ownerid).first()
@@ -334,7 +338,7 @@ def test_get_repo_provider_service_different_bot(dbsession):
     dbsession.add(repo)
     dbsession.add(bot)
     dbsession.flush()
-    res = get_repo_provider_service(repo)
+    res = get_repo_provider_service(repo.repoid)
     expected_data = {
         "owner": {
             "ownerid": repo.author.ownerid,
@@ -374,7 +378,7 @@ def test_get_repo_provider_service_no_bot(dbsession):
     dbsession.add(repo)
     dbsession.add(owner_bot)
     dbsession.flush()
-    res = get_repo_provider_service(repo)
+    res = get_repo_provider_service(repo.repoid)
     expected_data = {
         "owner": {
             "ownerid": repo.author.ownerid,
@@ -1169,7 +1173,7 @@ async def test_get_repo_gh_no_integration(dbsession, mocker):
     dbsession.add(repo)
     dbsession.flush()
 
-    res = get_repo_provider_service_by_id(dbsession, repo.repoid)
+    res = get_repo_provider_service_by_id(repo.repoid)
 
     expected_data = {
         "owner": {

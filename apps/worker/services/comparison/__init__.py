@@ -84,7 +84,7 @@ class ComparisonProxy:
                 self._repository_service = self.context.repository_service
             else:
                 self._repository_service = get_repo_provider_service(
-                    self.comparison.head.commit.repository,
+                    self.comparison.head.commit.repository.repoid,
                     installation_name_to_use=self.context.gh_app_installation_name,
                 )
         return self._repository_service

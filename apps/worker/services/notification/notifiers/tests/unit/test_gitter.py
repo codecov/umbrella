@@ -16,7 +16,7 @@ def test_build_payload_without_special_config(
         notifier_site_settings=True,
         current_yaml={},
         repository_service=get_repo_provider_service(
-            sample_comparison.head.commit.repository
+            sample_comparison.head.commit.repository.repoid
         ),
     )
     result = notifier.build_payload(comparison)

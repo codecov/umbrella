@@ -621,7 +621,8 @@ def load_commit_diff(commit: Commit, task_name: str | None = None) -> dict | Non
         )
         log.info("load_commit_diff: Getting repository service")
         repository_service = get_repo_provider_service(
-            repository, installation_name_to_use=installation_name_to_use
+            repository.repoid,
+            installation_name_to_use=installation_name_to_use,
         )
         log.info("load_commit_diff: Getting commit diff")
         return async_to_sync(repository_service.get_commit_diff)(commitid)

@@ -14,7 +14,7 @@ class TestOwnerServiceTestCase:
         )
         dbsession.add(owner)
         dbsession.flush()
-        res = get_owner_provider_service(owner)
+        res = get_owner_provider_service(owner.ownerid)
         expected_data = {
             "owner": {
                 "ownerid": owner.ownerid,
@@ -51,7 +51,7 @@ class TestOwnerServiceTestCase:
         )
         dbsession.add(installation)
         dbsession.flush()
-        res = get_owner_provider_service(owner)
+        res = get_owner_provider_service(owner.ownerid)
         expected_data = {
             "owner": {
                 "ownerid": owner.ownerid,
@@ -84,7 +84,7 @@ class TestOwnerServiceTestCase:
         )
         dbsession.add(owner)
         dbsession.flush()
-        res = get_owner_provider_service(owner)
+        res = get_owner_provider_service(owner.ownerid)
         expected_data = {
             "owner": {
                 "ownerid": owner.ownerid,

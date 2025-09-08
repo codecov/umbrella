@@ -97,7 +97,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
                 blocking_timeout=5,
             ):
                 git = get_owner_provider_service(
-                    owner,
+                    owner.ownerid,
                     ignore_installation=(not using_integration),
                 )
                 sync_repos_output = {}

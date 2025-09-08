@@ -39,7 +39,7 @@ class SyncRepoLanguagesGQLTask(BaseCodecovTask, name=sync_repo_languages_gql_tas
         org_db_repositories: list[Repository] = (
             db_session.query(Repository).filter(Repository.ownerid == org.ownerid).all()
         )
-        owner_service = get_owner_provider_service(owner=current_owner)
+        owner_service = get_owner_provider_service(owner=current_owner.ownerid)
 
         try:
             repos_in_github: dict[str, list[str]] = async_to_sync(

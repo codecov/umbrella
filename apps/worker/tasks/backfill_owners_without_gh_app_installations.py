@@ -59,7 +59,7 @@ class BackfillOwnersWithoutGHAppInstallations(
         for owner in owners:
             ownerid = owner.ownerid
             try:
-                owner_service = get_owner_provider_service(owner=owner)
+                owner_service = get_owner_provider_service(owner=owner.ownerid)
 
                 # Create new GH app installation and add all repos the gh app has access to
                 log.info(
