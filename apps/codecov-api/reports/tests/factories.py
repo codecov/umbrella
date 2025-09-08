@@ -1,11 +1,8 @@
-from datetime import date, datetime
-
 import factory
 from factory.django import DjangoModelFactory
 
 from graphql_api.types.enums import UploadErrorEnum
 from reports import models
-from reports.models import TestInstance
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 
 
@@ -75,59 +72,3 @@ class UploadErrorFactory(DjangoModelFactory):
             UploadErrorEnum.REPORT_EXPIRED,
         ]
     )
-
-
-class TestFactory(factory.django.DjangoModelFactory):
-    class Meta:
-        model = models.Test
-
-    id = factory.Sequence(lambda n: f"{n}")
-    name = factory.Sequence(lambda n: f"{n}")
-    repository = factory.SubFactory(RepositoryFactory)
-    computed_name = None
-
-
-class TestInstanceFactory(factory.django.DjangoModelFactory):
-    __test__ = False
-
-    class Meta:
-        model = models.TestInstance
-
-    test = factory.SubFactory(TestFactory)
-    duration_seconds = 1.0
-    outcome = TestInstance.Outcome.FAILURE.value
-    failure_message = "Test failed"
-    branch = "master"
-    repoid = factory.SelfAttribute("test.repository.repoid")
-    commitid = "123456"
-    upload = factory.SubFactory(UploadFactory)
-
-
-class DailyTestRollupFactory(factory.django.DjangoModelFactory):
-    class Meta:
-        model = models.DailyTestRollup
-
-    test = factory.SubFactory(TestFactory)
-
-    repoid = factory.SelfAttribute("test.repository.repoid")
-    branch = "main"
-
-    last_duration_seconds = 1.0
-    avg_duration_seconds = 0.5
-    pass_count = 1
-    skip_count = 2
-    fail_count = 3
-    flaky_fail_count = 0
-
-    latest_run = datetime.now()
-    date = date.today()
-
-    commits_where_fail = ["123", "456", "789"]
-
-
-class TestFlagBridgeFactory(factory.django.DjangoModelFactory):
-    class Meta:
-        model = models.TestFlagBridge
-
-    test = factory.SubFactory(TestFactory)
-    flag = factory.SubFactory(RepositoryFlagFactory)

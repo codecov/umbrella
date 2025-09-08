@@ -196,7 +196,7 @@ async def resolve_flake_aggregates(
 async def resolve_test_suites(
     repository: Repository, info: GraphQLResolveInfo, term: str | None = None, **_: Any
 ) -> list[str]:
-    result = await sync_to_async(get_test_suites)(repository, info, term)
+    result = await sync_to_async(get_test_suites)(repository, term)
     return sorted(result)
 
 
@@ -204,5 +204,5 @@ async def resolve_test_suites(
 async def resolve_flags(
     repository: Repository, info: GraphQLResolveInfo, term: str | None = None, **_: Any
 ) -> list[str]:
-    result = await sync_to_async(get_flags)(repository, info, term)
+    result = await sync_to_async(get_flags)(repository, term)
     return sorted(result)
