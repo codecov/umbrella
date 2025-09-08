@@ -1,5 +1,4 @@
 import logging
-from typing import Literal
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
@@ -110,7 +109,6 @@ def queue_followup_tasks(
     repo: Repository,
     commit: Commit,
     commit_yaml: UserYaml,
-    impl_type: Literal["new", "both"] = "both",
 ):
     if (
         should_do_flaky_detection(repo, commit_yaml)
@@ -126,18 +124,16 @@ def queue_followup_tasks(
             kwargs={
                 "repo_id": repo.repoid,
                 "commit_id": commit.commitid,
-                "impl_type": impl_type,
             },
         )
 
 
 @sentry_sdk.trace
-def new_impl(
+def ta_finish_upload(
     db_session: Session,  # only used for seat activation, for now
     repo: Repository,  # using sqlalchemy models for now
     commit: Commit,
     commit_yaml: UserYaml,
-    impl_type: Literal["new", "both"] = "both",
 ) -> FinisherResult:
     repoid = repo.repoid
     commitid = commit.commitid
@@ -145,12 +141,11 @@ def new_impl(
     extra = {
         "repo_id": repoid,
         "commit_id": commitid,
-        "impl_type": impl_type,
     }
 
-    log.info("Starting new_impl of TA finisher", extra=extra)
+    log.info("Starting TA finisher", extra=extra)
 
-    queue_followup_tasks(repo, commit, commit_yaml, impl_type)
+    queue_followup_tasks(repo, commit, commit_yaml)
 
     if not commit_yaml.read_yaml_field("comment", _else=True):
         log.info("Comment is disabled, not posting comment", extra=extra)

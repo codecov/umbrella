@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from services.processing.types import UploadArguments
-from services.test_analytics.ta_processor import ta_processor_impl
+from services.test_analytics.ta_processor import ta_processor
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports.models import UploadError
 from shared.django_apps.reports.tests.factories import (
@@ -26,14 +26,14 @@ def sample_test_json_path():
 
 @pytest.mark.django_db(databases=["default", "ta_timeseries"])
 @pytest.mark.parametrize("update_state", [True, False])
-def test_ta_processor_impl_no_upload_id(update_state):
+def test_ta_processor_no_upload_id(update_state):
     repository = RepositoryFactory.create()
     commit = CommitFactory.create(repository=repository, branch="main")
     commit_yaml = {}
 
     argument: UploadArguments = {}
 
-    result = ta_processor_impl(
+    result = ta_processor(
         repository.repoid,
         commit.commitid,
         commit_yaml,
@@ -46,7 +46,7 @@ def test_ta_processor_impl_no_upload_id(update_state):
 
 @pytest.mark.django_db(databases=["default", "ta_timeseries"])
 @pytest.mark.parametrize("update_state", [True, False])
-def test_ta_processor_impl_already_processed(update_state):
+def test_ta_processor_already_processed(update_state):
     repository = RepositoryFactory.create()
     commit = CommitFactory.create(repository=repository, branch="main")
     upload = UploadFactory.create(report__commit=commit, state="processed")
@@ -54,7 +54,7 @@ def test_ta_processor_impl_already_processed(update_state):
 
     argument: UploadArguments = {"upload_id": upload.id}
 
-    result = ta_processor_impl(
+    result = ta_processor(
         repository.repoid,
         commit.commitid,
         commit_yaml,
@@ -66,7 +66,7 @@ def test_ta_processor_impl_already_processed(update_state):
 
 
 @pytest.mark.django_db(databases=["default", "ta_timeseries"])
-def test_ta_processor_impl_no_storage_path(mock_storage):
+def test_ta_processor_no_storage_path(mock_storage):
     repository = RepositoryFactory.create()
     commit = CommitFactory.create(repository=repository, branch="main")
     upload = UploadFactory.create(
@@ -76,7 +76,7 @@ def test_ta_processor_impl_no_storage_path(mock_storage):
 
     argument: UploadArguments = {"upload_id": upload.id}
 
-    result = ta_processor_impl(
+    result = ta_processor(
         repository.repoid, commit.commitid, commit_yaml, argument, update_state=True
     )
 
@@ -92,7 +92,7 @@ def test_ta_processor_impl_no_storage_path(mock_storage):
 
 @pytest.mark.parametrize("storage_path", [None, "path/to/nonexistent.xml"])
 @pytest.mark.django_db(databases=["default", "ta_timeseries"])
-def test_ta_processor_impl_file_not_found(mock_storage, storage_path):
+def test_ta_processor_file_not_found(mock_storage, storage_path):
     repository = RepositoryFactory.create()
     commit = CommitFactory.create(repository=repository, branch="main")
     upload = UploadFactory.create(
@@ -104,7 +104,7 @@ def test_ta_processor_impl_file_not_found(mock_storage, storage_path):
 
     argument: UploadArguments = {"upload_id": upload.id}
 
-    result = ta_processor_impl(
+    result = ta_processor(
         repository.repoid, commit.commitid, commit_yaml, argument, update_state=True
     )
 
@@ -119,7 +119,7 @@ def test_ta_processor_impl_file_not_found(mock_storage, storage_path):
 
 
 @pytest.mark.django_db(databases=["default", "ta_timeseries"])
-def test_ta_processor_impl_parsing_error(mock_storage):
+def test_ta_processor_parsing_error(mock_storage):
     repository = RepositoryFactory.create()
     commit = CommitFactory.create(repository=repository, branch="main")
     upload = UploadFactory.create(
@@ -131,7 +131,7 @@ def test_ta_processor_impl_parsing_error(mock_storage):
 
     mock_storage.write_file("archive", "path/to/invalid.xml", b"invalid xml content")
 
-    result = ta_processor_impl(
+    result = ta_processor(
         repository.repoid, commit.commitid, commit_yaml, argument, update_state=True
     )
 
@@ -148,7 +148,7 @@ def test_ta_processor_impl_parsing_error(mock_storage):
 
 
 @pytest.mark.django_db(databases=["default", "ta_timeseries"])
-def test_ta_processor_impl_warning(mock_storage, snapshot):
+def test_ta_processor_warning(mock_storage, snapshot):
     repository = RepositoryFactory.create()
     commit = CommitFactory.create(repository=repository, branch="main")
     upload = UploadFactory.create(
@@ -180,7 +180,7 @@ def test_ta_processor_impl_warning(mock_storage, snapshot):
         "archive", "path/to/invalid.xml", json.dumps(sample_content)
     )
 
-    result = ta_processor_impl(
+    result = ta_processor(
         repository.repoid, commit.commitid, commit_yaml, argument, update_state=True
     )
 
@@ -197,7 +197,7 @@ def test_ta_processor_impl_warning(mock_storage, snapshot):
 
 
 @pytest.mark.django_db(databases=["default", "ta_timeseries"])
-def test_ta_processor_impl_success_delete_archive(mock_storage, sample_test_json_path):
+def test_ta_processor_success_delete_archive(mock_storage, sample_test_json_path):
     repository = RepositoryFactory.create()
     commit = CommitFactory.create(repository=repository, branch="main")
     upload = UploadFactory.create(
@@ -218,7 +218,7 @@ def test_ta_processor_impl_success_delete_archive(mock_storage, sample_test_json
 
     mock_storage.write_file("archive", "path/to/valid.json", sample_content)
 
-    result = ta_processor_impl(
+    result = ta_processor(
         repository.repoid, commit.commitid, commit_yaml, argument, update_state=True
     )
 
@@ -235,7 +235,7 @@ def test_ta_processor_impl_success_delete_archive(mock_storage, sample_test_json
 
 
 @pytest.mark.django_db(databases=["default", "ta_timeseries"])
-def test_ta_processor_impl_success_keep_archive(mock_storage, sample_test_json_path):
+def test_ta_processor_success_keep_archive(mock_storage, sample_test_json_path):
     repository = RepositoryFactory.create()
     commit = CommitFactory.create(repository=repository, branch="main")
     upload = UploadFactory.create(
@@ -256,7 +256,7 @@ def test_ta_processor_impl_success_keep_archive(mock_storage, sample_test_json_p
 
     mock_storage.write_file("archive", "path/to/valid.json", sample_content)
 
-    result = ta_processor_impl(
+    result = ta_processor(
         repository.repoid, commit.commitid, commit_yaml, argument, update_state=True
     )
 
