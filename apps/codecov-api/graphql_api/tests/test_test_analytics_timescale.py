@@ -1,7 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from django.conf import settings
 from django.db import connections
 
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
@@ -310,8 +309,6 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
     def test_gql_query_test_results_timescale_slowest_parameter(
         self, repository, populate_timescale, snapshot
     ):
-        settings.DEBUG = True
-
         query = f"""
             query {{
                 owner(username: "{repository.author.username}") {{
