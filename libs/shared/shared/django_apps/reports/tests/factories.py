@@ -1,20 +1,12 @@
 import enum
 
 import factory
-from django.utils import timezone
 from factory.django import DjangoModelFactory
 
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports import models
 from shared.django_apps.reports.models import (
-    DailyTestRollup,
-    Flake,
-    LastCacheRollupDate,
-    ReducedError,
     ReportResults,
-    Test,
-    TestFlagBridge,
-    TestInstance,
 )
 
 
@@ -106,84 +98,3 @@ class ReportResultsFactory(DjangoModelFactory):
             ReportResults.ReportResultsStates.COMPLETED,
         ]
     )
-
-
-class ReducedErrorFactory(DjangoModelFactory):
-    class Meta:
-        model = ReducedError
-
-    message = factory.Sequence(lambda n: f"message_{n}")
-
-
-class TestFactory(DjangoModelFactory):
-    class Meta:
-        model = Test
-
-    repository = factory.SubFactory(RepositoryFactory)
-    name = factory.Sequence(lambda n: f"test_{n}")
-    id = factory.Sequence(lambda n: f"test_{n}")
-
-
-class TestInstanceFactory(DjangoModelFactory):
-    class Meta:
-        model = TestInstance
-
-    test = factory.SubFactory(TestFactory)
-    upload = factory.SubFactory(UploadFactory)
-    duration_seconds = factory.Faker("pyint", min_value=0, max_value=1000)
-
-    repoid = factory.SelfAttribute("test.repository.repoid")
-    commitid = factory.SelfAttribute("upload.report.commit.commitid")
-
-    branch = "main"
-
-
-class FlakeFactory(DjangoModelFactory):
-    class Meta:
-        model = Flake
-
-    repository = factory.SubFactory(RepositoryFactory)
-    test = factory.SubFactory(TestFactory)
-    reduced_error = factory.SubFactory(ReducedErrorFactory)
-
-    recent_passes_count = 0
-    count = 0
-    fail_count = 0
-    start_date = timezone.now()
-
-
-class DailyTestRollupFactory(DjangoModelFactory):
-    class Meta:
-        model = DailyTestRollup
-
-    test = factory.SubFactory(TestFactory)
-    date = timezone.now().date()
-    repoid = factory.SelfAttribute("test.repository.repoid")
-    branch = "main"
-
-    pass_count = 0
-    fail_count = 0
-    skip_count = 0
-    flaky_fail_count = 0
-
-    last_duration_seconds = 0.0
-    avg_duration_seconds = 0.0
-    latest_run = timezone.now()
-    commits_where_fail: list[str] = []
-
-
-class TestFlagBridgeFactory(DjangoModelFactory):
-    class Meta:
-        model = TestFlagBridge
-
-    test = factory.SubFactory(TestFactory)
-    flag = factory.SubFactory(RepositoryFlagFactory)
-
-
-class LastCacheRollupDateFactory(DjangoModelFactory):
-    class Meta:
-        model = LastCacheRollupDate
-
-    repository = factory.SubFactory(RepositoryFactory)
-    branch = "main"
-    last_rollup_date = timezone.now().date()
