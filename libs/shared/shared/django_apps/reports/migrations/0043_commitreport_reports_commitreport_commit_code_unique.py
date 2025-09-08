@@ -4,16 +4,17 @@ from django.db import migrations, models
 from shared.django_apps.migration_utils import RiskyAddConstraint
 
 
-
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('reports', '0042_alter_testflagbridge_id'),
+        ("reports", "0042_alter_testflagbridge_id"),
     ]
 
     operations = [
         RiskyAddConstraint(
-            model_name='commitreport',
-            constraint=models.UniqueConstraint(fields=('commit', 'code'), name='reports_commitreport_commit_code_unique'),
+            model_name="commitreport",
+            constraint=models.UniqueConstraint(
+                fields=("commit", "code"),
+                name="reports_commitreport_commit_code_unique",
+            ),
         ),
     ]
