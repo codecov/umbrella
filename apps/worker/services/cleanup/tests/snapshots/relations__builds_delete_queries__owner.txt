@@ -50,26 +50,6 @@ WHERE "codecov_auth_usertoken"."ownerid" IN (%s);
 -- [123]
 
 
--- TestInstance
-DELETE
-FROM "reports_testinstance"
-WHERE "reports_testinstance"."repoid" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
-
-
--- DailyTestRollup
-DELETE
-FROM "reports_dailytestrollups"
-WHERE "reports_dailytestrollups"."repoid" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
-
-
 -- CacheConfig
 DELETE
 FROM "bundle_analysis_cacheconfig"
@@ -297,22 +277,6 @@ WHERE "reports_uploadleveltotals"."upload_id" IN
 -- [123]
 
 
--- TestResultReportTotals
-DELETE
-FROM "reports_testresultreporttotals"
-WHERE "reports_testresultreporttotals"."report_id" IN
-    (SELECT W0."id"
-     FROM "reports_commitreport" W0
-     WHERE W0."commit_id" IN
-         (SELECT V0."id"
-          FROM "commits" V0
-          WHERE V0."repoid" IN
-              (SELECT U0."repoid"
-               FROM "repos" U0
-               WHERE U0."ownerid" IN (%s))));
--- [123]
-
-
 -- StaticAnalysisSuiteFilepath
 DELETE
 FROM "staticanalysis_staticanalysissuitefilepath"
@@ -330,39 +294,6 @@ WHERE "staticanalysis_staticanalysissuitefilepath"."file_snapshot_id" IN
 DELETE
 FROM "pulls"
 WHERE "pulls"."repoid" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
-
-
--- TestFlagBridge
-DELETE
-FROM "reports_test_results_flag_bridge"
-WHERE "reports_test_results_flag_bridge"."test_id" IN
-    (SELECT V0."id"
-     FROM "reports_test" V0
-     WHERE V0."repoid" IN
-         (SELECT U0."repoid"
-          FROM "repos" U0
-          WHERE U0."ownerid" IN (%s)));
--- [123]
-
-
--- Flake
-DELETE
-FROM "reports_flake"
-WHERE "reports_flake"."repoid" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
-
-
--- LastCacheRollupDate
-DELETE
-FROM "reports_lastrollupdate"
-WHERE "reports_lastrollupdate"."repoid" IN
     (SELECT U0."repoid"
      FROM "repos" U0
      WHERE U0."ownerid" IN (%s));
@@ -422,6 +353,16 @@ WHERE "labelanalysis_labelanalysisrequest"."head_commit_id" IN
 -- [123]
 
 
+-- RepositoryFlag
+DELETE
+FROM "reports_repositoryflag"
+WHERE "reports_repositoryflag"."repository_id" IN
+    (SELECT U0."repoid"
+     FROM "repos" U0
+     WHERE U0."ownerid" IN (%s));
+-- [123]
+
+
 -- ReportSession
 DELETE
 FROM "reports_upload"
@@ -455,36 +396,6 @@ WHERE "staticanalysis_staticanalysissuite"."commit_id" IN
 DELETE
 FROM "staticanalysis_staticanalysissinglefilesnapshot"
 WHERE "staticanalysis_staticanalysissinglefilesnapshot"."repository_id" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
-
-
--- RepositoryFlag
-DELETE
-FROM "reports_repositoryflag"
-WHERE "reports_repositoryflag"."repository_id" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
-
-
--- Test
-DELETE
-FROM "reports_test"
-WHERE "reports_test"."repoid" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
-
-
--- ReducedError
-DELETE
-FROM "reports_reducederror"
-WHERE "reports_reducederror"."repoid" IN
     (SELECT U0."repoid"
      FROM "repos" U0
      WHERE U0."ownerid" IN (%s));

@@ -23,7 +23,7 @@ from shared.storage.exceptions import FileNotInStorageError
 log = logging.getLogger(__name__)
 
 
-def ta_processor_impl(
+def ta_processor(
     repoid: int,
     commitid: str,
     commit_yaml: dict[str, Any],
