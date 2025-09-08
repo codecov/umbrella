@@ -97,7 +97,7 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
             - timedelta(days=30),
             datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0),
             "main",
-        )
+        ).order_by("computed_name")
 
         assert result.count() == 6
         assert snapshot("json") == [
@@ -110,7 +110,7 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
                 for k, v in row.items()
                 if k != "updated_at"
             }
-            for row in result.order_by("test_id")
+            for row in result
         ]
 
     def test_gql_query_test_results_timescale(
@@ -341,6 +341,49 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
                             testAnalytics {{
                                 testSuites(term: "testsuite1")
                                 flags(term: "flag1")
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        """
+
+        result = self.gql_request(query, owner=repository.author)
+
+        assert snapshot("json") == result
+
+    def test_gql_query_test_results_timescale_with_sentry_app(
+        self, repository, populate_timescale, snapshot, mocker
+    ):
+        mocker.patch(
+            "graphql_api.types.test_analytics.test_analytics.is_called_from_sentry_app",
+            return_value=True,
+        )
+
+        query = f"""
+            query {{
+                owner(username: "{repository.author.username}") {{
+                    repository(name: "{repository.name}") {{
+                        ... on Repository {{
+                            testAnalytics {{
+                                testResults {{
+                                    totalCount
+                                    edges {{
+                                        cursor
+                                        node {{
+                                            name
+                                            failureRate
+                                            flakeRate
+                                            avgDuration
+                                            totalDuration
+                                            totalFailCount
+                                            totalFlakyFailCount
+                                            totalPassCount
+                                            totalSkipCount
+                                            lastDuration
+                                        }}
+                                    }}
+                                }}
                             }}
                         }}
                     }}

@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError
 from graphql.type.definition import GraphQLResolveInfo
 
 from graphql_api.helpers.connection import queryset_to_connection
+from graphql_api.helpers.mutation import is_called_from_sentry_app
 from graphql_api.types.enums import (
     OrderingDirection,
     TestResultsFilterParameter,
@@ -126,6 +127,12 @@ async def resolve_test_results(
         flags = filters.get("flags")
         term = filters.get("term")
 
+        # merging arrays is an expensive operation so we'd like to avoid doing
+        # we know we can avoid computing these if we get the request from Sentry
+        # merge_arrays tells the lower level function whether to compute the aggregates
+        # that require us merging arrays or not
+        merge_arrays = not is_called_from_sentry_app(info)
+
         parameter = parameter_enum.value if parameter_enum else None
         aggregated_queryset = await sync_to_async(get_test_results_queryset)(
             repoid=repository.repoid,
@@ -136,6 +143,7 @@ async def resolve_test_results(
             testsuites=testsuites,
             flags=flags,
             term=term,
+            merge_arrays=merge_arrays,
         )
 
         connection = await queryset_to_connection(
