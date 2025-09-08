@@ -38,6 +38,9 @@ sync_repo_languages_gql_task_name = (
 )
 
 delete_owner_task_name = f"app.tasks.{TaskConfigGroup.delete_owner.value}.DeleteOwner"
+mark_owner_for_deletion_task_name = (
+    f"app.tasks.{TaskConfigGroup.mark_owner_for_deletion.value}.MarkOwnerForDeletion"
+)
 activate_account_user_task_name = (
     f"app.tasks.{TaskConfigGroup.sync_account.value}.ActivateAccountUser"
 )
@@ -69,9 +72,19 @@ test_results_finisher_task_name = (
     f"app.tasks.{TaskConfigGroup.test_results.value}.TestResultsFinisherTask"
 )
 
+test_analytics_notifier_task_name = (
+    f"app.tasks.{TaskConfigGroup.test_results.value}.TestAnalyticsNotifier"
+)
+
 sync_test_results_task_name = (
     f"app.tasks.{TaskConfigGroup.test_results.value}.SyncTestResultsTask"
 )
+
+ingest_testruns_task_name = (
+    f"app.tasks.{TaskConfigGroup.test_results.value}.IngestTestruns"
+)
+
+detect_flakes_task_name = f"app.tasks.{TaskConfigGroup.flakes.value}.DetectFlakes"
 
 # Cache rollup tasks
 cache_test_rollups_task_name = (
@@ -250,6 +263,10 @@ class BaseCeleryConfig:
             "soft_time_limit": 4 * task_soft_time_limit,
             "time_limit": 4 * task_time_limit,
         },
+        mark_owner_for_deletion_task_name: {
+            "soft_time_limit": 2 * task_soft_time_limit,
+            "time_limit": 2 * task_time_limit,
+        },
         notify_task_name: {
             "soft_time_limit": notify_soft_time_limit,
             "time_limit": notify_soft_time_limit + 20,
@@ -318,6 +335,15 @@ class BaseCeleryConfig:
                 "setup",
                 "tasks",
                 TaskConfigGroup.delete_owner.value,
+                "queue",
+                default=task_default_queue,
+            )
+        },
+        mark_owner_for_deletion_task_name: {
+            "queue": get_config(
+                "setup",
+                "tasks",
+                TaskConfigGroup.mark_owner_for_deletion.value,
                 "queue",
                 default=task_default_queue,
             )

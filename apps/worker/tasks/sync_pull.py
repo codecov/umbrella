@@ -117,7 +117,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         extra_info = {"pullid": pullid, "repoid": repoid}
         try:
             installation_name_to_use = get_installation_name_for_owner_for_task(
-                self.name, repository.owner
+                self.name, repository.author
             )
             repository_service = get_repo_provider_service(
                 repository, installation_name_to_use=installation_name_to_use
@@ -153,12 +153,12 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                 "reason": "no_configured_apps_available",
             }
         context = OwnerContext(
-            owner_onboarding_date=repository.owner.createstamp,
-            owner_plan=repository.owner.plan,
+            owner_onboarding_date=repository.author.createstamp,
+            owner_plan=repository.author.plan,
             ownerid=repository.ownerid,
         )
         current_yaml = UserYaml.get_final_yaml(
-            owner_yaml=repository.owner.yaml,
+            owner_yaml=repository.author.yaml,
             repo_yaml=repository.yaml,
             owner_context=context,
         )
@@ -262,7 +262,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             for ownerid in os.getenv("OWNERS_WITH_CACHED_CHANGES", "").split(",")
             if ownerid != ""
         ]
-        if pull.repository.owner.ownerid in owners_with_cached_changes:
+        if pull.repository.author.ownerid in owners_with_cached_changes:
             log.info(
                 "Caching files with changes",
                 extra={"pullid": pull.pullid, "repoid": pull.repoid},
@@ -271,8 +271,8 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             key = "/".join(
                 (
                     "compare-changed-files",
-                    pull.repository.owner.service,
-                    pull.repository.owner.username,
+                    pull.repository.author.service,
+                    pull.repository.author.username,
                     pull.repository.name,
                     f"{pull.pullid}",
                 )
@@ -321,7 +321,9 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         pull = enriched_pull.database_pull
         pull_dict = enriched_pull.provider_pull
         repository = pull.repository
-        key = ":".join((repository.service, repository.owner.username, repository.name))
+        key = ":".join(
+            (repository.service, repository.author.username, repository.name)
+        )
         if pull.state == "merged":
             base_branch = pull_dict["base"]["branch"]
             if base_branch:

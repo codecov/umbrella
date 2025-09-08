@@ -9,11 +9,10 @@ import polars as pl
 from ariadne import ObjectType
 from asgiref.sync import sync_to_async
 from django.core.exceptions import ValidationError
-from django.db import connections
-from django.db.models import Q
 from graphql.type.definition import GraphQLResolveInfo
 
 from graphql_api.helpers.connection import queryset_to_connection
+from graphql_api.helpers.mutation import is_called_from_sentry_app
 from graphql_api.types.enums import (
     OrderingDirection,
     TestResultsFilterParameter,
@@ -28,14 +27,15 @@ from graphql_api.types.test_results_aggregates.test_results_aggregates import (
 )
 from rollouts import READ_NEW_TA
 from shared.django_apps.core.models import Repository
-from shared.django_apps.ta_timeseries.models import TestrunSummary
+from shared.metrics import Histogram
 from utils.ta_types import FlakeAggregates, TestResultsAggregates, TestResultsRow
 from utils.test_results import get_results, use_new_impl
-from utils.timescale_test_results import (
-    get_flake_aggregates_from_timescale,
+from utils.timescale.flake_aggregates import get_flake_aggregates_from_timescale
+from utils.timescale.metadata import get_flags_new, get_test_suites_new
+from utils.timescale.test_aggregates import (
     get_test_results_aggregates_from_timescale,
-    get_test_results_queryset,
 )
+from utils.timescale.test_results import get_test_results_queryset
 
 log = logging.getLogger(__name__)
 
@@ -121,6 +121,23 @@ def validate(
 
     if after is not None and before is not None:
         raise ValidationError("After and before can not be used at the same time")
+
+
+async def should_use_new_test_analytics(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool:
+    """Determine if we should use the new test analytics implementation.
+
+    Uses new implementation if:
+    1. READ_NEW_TA rollout is enabled for the repo
+    2. The repo is configured to use the new implementation
+    3. The request is coming from a Sentry app
+    """
+    return (
+        await sync_to_async(READ_NEW_TA.check_value)(repository.repoid)
+        or await sync_to_async(use_new_impl)(repository.repoid)
+        or is_called_from_sentry_app(info)
+    )
 
 
 def ordering_expression(
@@ -283,30 +300,6 @@ def get_test_suites_old(
     return testsuites.to_series().drop_nulls().to_list() or []
 
 
-def get_test_suites_new(
-    repoid: int, term: str | None = None, interval: int = 30
-) -> list[str]:
-    end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-    start_date = end_date - timedelta(days=interval)
-
-    q_filter = (
-        Q(repo_id=repoid)
-        & Q(timestamp_bin__gte=start_date)
-        & Q(timestamp_bin__lt=end_date)
-    )
-
-    if term:
-        q_filter &= Q(testsuite__istartswith=term)
-
-    testsuites = (
-        TestrunSummary.objects.filter(q_filter)
-        .values_list("testsuite", flat=True)
-        .distinct()[:200]
-    )
-
-    return list(testsuites)
-
-
 def get_test_suites(
     repoid: int, term: str | None = None, interval: int = 30
 ) -> list[str]:
@@ -333,46 +326,6 @@ def get_flags_old(
     return flags.to_series().drop_nulls().to_list() or []
 
 
-def get_flags_new(
-    repoid: int, term: str | None = None, interval: int = 30
-) -> list[str]:
-    end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-    start_date = end_date - timedelta(days=interval)
-
-    with connections["ta_timeseries"].cursor() as cursor:
-        if term:
-            base_query = """
-                SELECT DISTINCT flag
-                FROM (
-                    SELECT unnest(flags) as flag
-                    FROM ta_timeseries_testrun_summary_1day 
-                    WHERE repo_id = %s 
-                    AND timestamp_bin >= %s 
-                    AND timestamp_bin < %s 
-                    AND flags IS NOT NULL
-                ) unnested_flags
-                WHERE flag ILIKE %s
-                ORDER BY flag LIMIT 200
-            """
-            params = [repoid, start_date, end_date, f"{term}%"]
-        else:
-            base_query = """
-                SELECT DISTINCT unnest(flags) as flag
-                FROM ta_timeseries_testrun_summary_1day 
-                WHERE repo_id = %s 
-                AND timestamp_bin >= %s 
-                AND timestamp_bin < %s 
-                AND flags IS NOT NULL
-                ORDER BY flag LIMIT 200
-            """
-            params = [repoid, start_date, end_date]
-
-        cursor.execute(base_query, params)
-        flags = [row[0] for row in cursor.fetchall()]
-
-    return flags
-
-
 def get_flags(repoid: int, term: str | None = None, interval: int = 30) -> list[str]:
     if READ_NEW_TA.check_value(repoid) or use_new_impl(repoid):
         return get_flags_new(repoid, term, interval)
@@ -397,6 +350,11 @@ class GQLTestResultsFilters(TypedDict):
 # Bindings for GraphQL types
 test_analytics_bindable: ObjectType = ObjectType("TestAnalytics")
 
+test_results_histogram = Histogram(
+    "get_test_results_timescale",
+    "Time it takes to get the test results",
+)
+
 
 @test_analytics_bindable.field("testResults")
 async def resolve_test_results(
@@ -409,53 +367,57 @@ async def resolve_test_results(
     last: int | None = None,
     before: str | None = None,
 ) -> TestResultConnection:
-    if await sync_to_async(READ_NEW_TA.check_value)(
-        repository.repoid
-    ) or await sync_to_async(use_new_impl)(repository.repoid):
-        measurement_interval = (
-            filters.get("interval", MeasurementInterval.INTERVAL_30_DAY)
-            if filters
-            else MeasurementInterval.INTERVAL_30_DAY
-        )
-        end_date = datetime.now(UTC)
-        start_date = end_date - timedelta(days=measurement_interval.value)
-        ordering_param = (
-            ordering.get("parameter", TestResultsOrderingParameter.AVG_DURATION)
-            if ordering
-            else TestResultsOrderingParameter.AVG_DURATION
-        )
-        ordering_direction = (
-            ordering.get("direction", OrderingDirection.DESC)
-            if ordering
-            else OrderingDirection.DESC
-        )
-        branch = filters.get("branch") if filters else None
-        parameter_enum = filters.get("parameter") if filters else None
-        parameter = parameter_enum.value if parameter_enum else None
-        testsuites = filters.get("test_suites") if filters else None
-        flags = filters.get("flags") if filters else None
-        term = filters.get("term") if filters else None
+    if await should_use_new_test_analytics(repository, info):
+        with test_results_histogram.time():
+            measurement_interval = (
+                filters.get("interval", MeasurementInterval.INTERVAL_30_DAY)
+                if filters
+                else MeasurementInterval.INTERVAL_30_DAY
+            )
+            end_date = datetime.now(UTC)
+            start_date = end_date - timedelta(days=measurement_interval.value)
+            ordering_param = (
+                ordering.get("parameter", TestResultsOrderingParameter.AVG_DURATION)
+                if ordering
+                else TestResultsOrderingParameter.AVG_DURATION
+            )
+            ordering_direction = (
+                ordering.get("direction", OrderingDirection.DESC)
+                if ordering
+                else OrderingDirection.DESC
+            )
 
-        aggregated_queryset = await sync_to_async(get_test_results_queryset)(
-            repoid=repository.repoid,
-            start_date=start_date,
-            end_date=end_date,
-            branch=branch,
-            parameter=parameter,
-            testsuites=testsuites,
-            flags=flags,
-            term=term,
-        )
+            filters = filters or {}
+            branch = filters.get("branch")
+            parameter_enum = filters.get("parameter")
+            testsuites = filters.get("test_suites")
+            flags = filters.get("flags")
+            term = filters.get("term")
 
-        connection = await queryset_to_connection(
-            aggregated_queryset,
-            ordering=(ordering_param, "name"),
-            ordering_direction=(ordering_direction, OrderingDirection.ASC),
-            first=first,
-            after=after,
-            last=last,
-            before=before,
-        )
+            parameter = parameter_enum.value if parameter_enum else None
+            aggregated_queryset = await sync_to_async(get_test_results_queryset)(
+                repoid=repository.repoid,
+                start_date=start_date,
+                end_date=end_date,
+                branch=branch,
+                parameter=parameter,
+                testsuites=testsuites,
+                flags=flags,
+                term=term,
+            )
+
+            connection = await queryset_to_connection(
+                aggregated_queryset,
+                ordering=(ordering_param, "name"),
+                ordering_direction=(ordering_direction, OrderingDirection.ASC),
+                first=first,
+                after=after,
+                last=last,
+                before=before,
+            )
+
+            # so we can measure the time it takes to get the edges
+            connection.edges
 
         return connection
     else:
@@ -495,9 +457,7 @@ async def resolve_test_results_aggregates(
     interval: MeasurementInterval | None = None,
     **_: Any,
 ) -> TestResultsAggregates | None:
-    if await sync_to_async(READ_NEW_TA.check_value)(
-        repository.repoid
-    ) or await sync_to_async(use_new_impl)(repository.repoid):
+    if await should_use_new_test_analytics(repository, info):
         measurement_interval = (
             interval if interval else MeasurementInterval.INTERVAL_30_DAY
         )
@@ -524,9 +484,7 @@ async def resolve_flake_aggregates(
     interval: MeasurementInterval | None = None,
     **_: Any,
 ) -> FlakeAggregates | None:
-    if await sync_to_async(READ_NEW_TA.check_value)(
-        repository.repoid
-    ) or await sync_to_async(use_new_impl)(repository.repoid):
+    if await should_use_new_test_analytics(repository, info):
         measurement_interval = (
             interval if interval else MeasurementInterval.INTERVAL_30_DAY
         )
@@ -550,11 +508,13 @@ async def resolve_flake_aggregates(
 async def resolve_test_suites(
     repository: Repository, info: GraphQLResolveInfo, term: str | None = None, **_: Any
 ) -> list[str]:
-    return await sync_to_async(get_test_suites)(repository.repoid, term)
+    result = await sync_to_async(get_test_suites)(repository.repoid, term)
+    return sorted(result)
 
 
 @test_analytics_bindable.field("flags")
 async def resolve_flags(
     repository: Repository, info: GraphQLResolveInfo, term: str | None = None, **_: Any
 ) -> list[str]:
-    return await sync_to_async(get_flags)(repository.repoid, term)
+    result = await sync_to_async(get_flags)(repository.repoid, term)
+    return sorted(result)

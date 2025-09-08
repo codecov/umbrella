@@ -7,6 +7,8 @@ from shared.django_apps.ta_timeseries import models
 
 
 class TestrunFactory(DjangoModelFactory):
+    __test__ = False
+
     class Meta:
         model = models.Testrun
 

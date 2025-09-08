@@ -60,8 +60,18 @@ class TAPullComment(BaseModel):
         ]
 
 
+STATE_CHOICES = (
+    ("pending", "pending"),
+    ("processed", "processed"),
+)
+
+
 class TAUpload(ExportModelOperationsMixin("test_analytics.taupload"), BaseModel):
     repo_id = models.BigIntegerField(null=False)
+    state = models.CharField(
+        max_length=32, choices=STATE_CHOICES, default="pending", null=False
+    )
+    task_token = models.CharField(max_length=36, null=True)
 
     __repr__ = sane_repr("id", "repo_id", "created_at", "updated_at")  # type: ignore
 
@@ -70,15 +80,7 @@ class TAUpload(ExportModelOperationsMixin("test_analytics.taupload"), BaseModel)
         db_table = "test_analytics_upload"
         indexes = [
             models.Index(
-                name="ta_upload_repo_idx",
-                fields=["repo_id"],
-            ),
-            models.Index(
-                name="ta_upload_time_idx",
-                fields=["created_at"],
-            ),
-            models.Index(
-                name="ta_upload_repo_time_idx",
-                fields=["repo_id", "created_at"],
+                name="ta_upload_repo_state_time_idx",
+                fields=["repo_id", "state", "created_at"],
             ),
         ]

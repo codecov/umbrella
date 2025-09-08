@@ -19,12 +19,12 @@ log = logging.getLogger(__name__)
 
 def get_repo_yaml(repository: Repository):
     context = OwnerContext(
-        owner_onboarding_date=repository.owner.createstamp,
-        owner_plan=repository.owner.plan,
+        owner_onboarding_date=repository.author.createstamp,
+        owner_plan=repository.author.plan,
         ownerid=repository.ownerid,
     )
     return UserYaml.get_final_yaml(
-        owner_yaml=repository.owner.yaml,
+        owner_yaml=repository.author.yaml,
         repo_yaml=repository.yaml,
         owner_context=context,
     )
@@ -103,12 +103,12 @@ async def get_current_yaml(commit: Commit, repository_service) -> UserYaml:
             exc_info=True,
         )
     context = OwnerContext(
-        owner_onboarding_date=repository.owner.createstamp,
-        owner_plan=repository.owner.plan,
+        owner_onboarding_date=repository.author.createstamp,
+        owner_plan=repository.author.plan,
         ownerid=repository.ownerid,
     )
     return UserYaml.get_final_yaml(
-        owner_yaml=repository.owner.yaml,
+        owner_yaml=repository.author.yaml,
         repo_yaml=repository.yaml,
         commit_yaml=commit_yaml,
         owner_context=context,
@@ -146,7 +146,7 @@ def maybe_update_repo_bot(
     new_bot_owner_username = read_yaml_field(new_yaml, ("codecov", "bot"))
     if new_bot_owner_username:
         bot_owner_id = get_ownerid_if_member(
-            repository.owner.service, new_bot_owner_username, repository.ownerid
+            repository.author.service, new_bot_owner_username, repository.ownerid
         )
         if bot_owner_id and bot_owner_id != repository.bot_id:
             repository.bot_id = bot_owner_id

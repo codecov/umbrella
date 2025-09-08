@@ -51,7 +51,7 @@ def test_seat_billing_plan(dbsession):
     dbsession.flush()
 
     pull.repository.private = True
-    pull.repository.owner.plan = PlanName.CODECOV_PRO_MONTHLY_LEGACY.value
+    pull.repository.author.plan = PlanName.CODECOV_PRO_MONTHLY_LEGACY.value
     dbsession.flush()
 
     enriched_pull = EnrichedPull(
@@ -72,7 +72,7 @@ def test_seat_no_author(dbsession):
     dbsession.flush()
 
     pull.repository.private = True
-    pull.repository.owner.plan = PlanName.CODECOV_PRO_MONTHLY.value
+    pull.repository.author.plan = PlanName.CODECOV_PRO_MONTHLY.value
     dbsession.flush()
 
     enriched_pull = EnrichedPull(
@@ -93,15 +93,15 @@ def test_seat_author_in_org(dbsession):
     dbsession.flush()
 
     pull.repository.private = True
-    pull.repository.owner.plan = PlanName.CODECOV_PRO_MONTHLY.value
-    pull.repository.owner.service = "github"
+    pull.repository.author.plan = PlanName.CODECOV_PRO_MONTHLY.value
+    pull.repository.author.service = "github"
     dbsession.flush()
 
     author = OwnerFactory(service="github", service_id=100)
     dbsession.add(author)
     dbsession.flush()
 
-    pull.repository.owner.plan_activated_users = [author.ownerid]
+    pull.repository.author.plan_activated_users = [author.ownerid]
     dbsession.flush()
 
     enriched_pull = EnrichedPull(
@@ -122,8 +122,8 @@ def test_seat_author_not_in_org(dbsession):
     dbsession.flush()
 
     pull.repository.private = True
-    pull.repository.owner.plan = PlanName.CODECOV_PRO_MONTHLY.value
-    pull.repository.owner.service = "github"
+    pull.repository.author.plan = PlanName.CODECOV_PRO_MONTHLY.value
+    pull.repository.author.service = "github"
     dbsession.flush()
 
     author = OwnerFactory(service="github", service_id=100)
@@ -148,9 +148,9 @@ def test_seat_author_auto_activate(dbsession):
     dbsession.flush()
 
     pull.repository.private = True
-    pull.repository.owner.plan = PlanName.CODECOV_PRO_MONTHLY.value
-    pull.repository.owner.plan_auto_activate = True
-    pull.repository.owner.service = "github"
+    pull.repository.author.plan = PlanName.CODECOV_PRO_MONTHLY.value
+    pull.repository.author.plan_auto_activate = True
+    pull.repository.author.service = "github"
     dbsession.flush()
 
     author = OwnerFactory(service="github", service_id=100)

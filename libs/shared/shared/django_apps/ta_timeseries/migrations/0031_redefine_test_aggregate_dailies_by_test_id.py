@@ -1,11 +1,11 @@
 from django.db import migrations
 
 from shared.django_apps.migration_utils import (
-    add_continuous_aggregate_policy,
-    create_continuous_aggregate,
-    create_index,
-    drop_materialized_view,
-    refresh_continuous_aggregate,
+    ts_add_continuous_aggregate_policy,
+    ts_create_continuous_aggregate,
+    ts_create_index,
+    ts_drop_materialized_view,
+    ts_refresh_continuous_aggregate,
 )
 
 
@@ -17,11 +17,11 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        drop_materialized_view("ta_timeseries_test_aggregate_daily"),
-        drop_materialized_view("ta_timeseries_branch_test_aggregate_daily"),
-        drop_materialized_view("ta_timeseries_test_aggregate_hourly"),
-        drop_materialized_view("ta_timeseries_branch_test_aggregate_hourly"),
-        create_continuous_aggregate(
+        ts_drop_materialized_view("ta_timeseries_test_aggregate_daily"),
+        ts_drop_materialized_view("ta_timeseries_branch_test_aggregate_daily"),
+        ts_drop_materialized_view("ta_timeseries_test_aggregate_hourly"),
+        ts_drop_materialized_view("ta_timeseries_branch_test_aggregate_hourly"),
+        ts_create_continuous_aggregate(
             "ta_timeseries_test_aggregate_hourly",
             select_sql="""
                 SELECT
@@ -44,7 +44,7 @@ class Migration(migrations.Migration):
                 GROUP BY repo_id, test_id, bucket_hourly
             """,
         ),
-        create_continuous_aggregate(
+        ts_create_continuous_aggregate(
             "ta_timeseries_branch_test_aggregate_hourly",
             select_sql="""
                 SELECT
@@ -69,17 +69,17 @@ class Migration(migrations.Migration):
                 GROUP BY repo_id, branch, test_id, bucket_hourly
             """,
         ),
-        create_index(
+        ts_create_index(
             "ta_ts_test_aggregate_hourly_repo_test_bucket_idx",
             "ta_timeseries_test_aggregate_hourly",
             ["repo_id", "test_id", "bucket_hourly DESC"],
         ),
-        create_index(
+        ts_create_index(
             "ta_ts_branch_test_aggregate_hourly_repo_branch_test_bucket_idx",
             "ta_timeseries_branch_test_aggregate_hourly",
             ["repo_id", "branch", "test_id", "bucket_hourly DESC"],
         ),
-        create_continuous_aggregate(
+        ts_create_continuous_aggregate(
             "ta_timeseries_test_aggregate_daily",
             select_sql="""
                 SELECT
@@ -102,7 +102,7 @@ class Migration(migrations.Migration):
                 GROUP BY repo_id, test_id, bucket_daily
             """,
         ),
-        create_continuous_aggregate(
+        ts_create_continuous_aggregate(
             "ta_timeseries_branch_test_aggregate_daily",
             select_sql="""
                 SELECT
@@ -126,59 +126,59 @@ class Migration(migrations.Migration):
                 GROUP BY repo_id, branch, test_id, bucket_daily
             """,
         ),
-        create_index(
+        ts_create_index(
             "ta_ts_test_aggregate_daily_repo_id_bucket_idx",
             "ta_timeseries_test_aggregate_daily",
             ["repo_id", "bucket_daily DESC"],
         ),
-        create_index(
+        ts_create_index(
             "ta_ts_branch_test_aggregate_daily_repo_branch_bucket_idx",
             "ta_timeseries_branch_test_aggregate_daily",
             ["repo_id", "branch", "bucket_daily DESC"],
         ),
-        refresh_continuous_aggregate(
+        ts_refresh_continuous_aggregate(
             "ta_timeseries_test_aggregate_hourly",
             "NOW() - INTERVAL '60 days'",
             None,
             risky=True,
         ),
-        refresh_continuous_aggregate(
+        ts_refresh_continuous_aggregate(
             "ta_timeseries_branch_test_aggregate_hourly",
             "NOW() - INTERVAL '60 days'",
             None,
             risky=True,
         ),
-        refresh_continuous_aggregate(
+        ts_refresh_continuous_aggregate(
             "ta_timeseries_test_aggregate_daily",
             "NOW() - INTERVAL '60 days'",
             None,
             risky=True,
         ),
-        refresh_continuous_aggregate(
+        ts_refresh_continuous_aggregate(
             "ta_timeseries_branch_test_aggregate_daily",
             "NOW() - INTERVAL '60 days'",
             None,
             risky=True,
         ),
-        add_continuous_aggregate_policy(
+        ts_add_continuous_aggregate_policy(
             "ta_timeseries_test_aggregate_hourly",
             start_offset="2 hours",
             end_offset=None,
             schedule_interval="1 hour",
         ),
-        add_continuous_aggregate_policy(
+        ts_add_continuous_aggregate_policy(
             "ta_timeseries_branch_test_aggregate_hourly",
             start_offset="2 hours",
             end_offset=None,
             schedule_interval="1 hour",
         ),
-        add_continuous_aggregate_policy(
+        ts_add_continuous_aggregate_policy(
             "ta_timeseries_test_aggregate_daily",
             start_offset="2 days",
             end_offset=None,
             schedule_interval="1 day",
         ),
-        add_continuous_aggregate_policy(
+        ts_add_continuous_aggregate_policy(
             "ta_timeseries_branch_test_aggregate_daily",
             start_offset="2 days",
             end_offset=None,

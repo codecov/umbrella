@@ -102,7 +102,7 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
             }
 
         installation_name_to_use = get_installation_name_for_owner_for_task(
-            self.name, commit.repository.owner
+            self.name, commit.repository.author
         )
         notifier = BundleAnalysisNotifyService(
             commit, commit_yaml, gh_app_installation_name=installation_name_to_use

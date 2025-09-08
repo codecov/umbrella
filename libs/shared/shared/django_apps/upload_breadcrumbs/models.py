@@ -138,6 +138,8 @@ class BreadcrumbData(
     :type milestone: Milestones, optional
     :param endpoint: The endpoint of the upload process.
     :type endpoint: Endpoints, optional
+    :param uploader: The uploader and version used for the upload process.
+    :type uploader: str, optional
     :param error: The error encountered during the upload process.
     :type error: Errors, optional
     :param error_text: Additional text describing the error.
@@ -152,6 +154,7 @@ class BreadcrumbData(
 
     milestone: Milestones | None = None
     endpoint: Endpoints | None = None
+    uploader: str | None = None
     error: Errors | None = None
     error_text: str | None = None
 
@@ -168,6 +171,7 @@ class BreadcrumbData(
             [
                 self.milestone,
                 self.endpoint,
+                self.uploader,
                 self.error,
                 self.error_text,
             ]
@@ -251,8 +255,9 @@ class UploadBreadcrumb(
                 fields=["-created_at", "-id"], name="%(app_label)s_created_id"
             ),
             models.Index(fields=["commit_sha"], name="%(app_label)s_commit_sha"),
+            models.Index(fields=["sentry_trace_id"], name="%(app_label)s_sentry_trc"),
             models.Index(
-                fields=["commit_sha", "repo_id"], name="%(app_label)s_sha_repo"
+                fields=["repo_id", "commit_sha"], name="%(app_label)s_repo_sha"
             ),
             GinIndex(fields=["upload_ids"], name="%(app_label)s_upload_ids"),
         ]

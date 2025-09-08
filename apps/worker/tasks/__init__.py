@@ -23,13 +23,16 @@ from tasks.commit_update import commit_update_task
 from tasks.compute_comparison import compute_comparison_task
 from tasks.compute_component_comparison import compute_component_comparison_task
 from tasks.delete_owner import delete_owner_task
+from tasks.detect_flakes import detect_flakes_task
 from tasks.flush_repo import flush_repo
 from tasks.github_app_webhooks_check import gh_webhook_check_task
 from tasks.github_marketplace import ghm_sync_plans_task
 from tasks.health_check import health_check_task
 from tasks.hourly_check import hourly_check_task
 from tasks.http_request import http_request_task
+from tasks.ingest_testruns import ingest_testruns_task
 from tasks.manual_trigger import manual_trigger_task
+from tasks.mark_owner_for_deletion import mark_owner_for_deletion_task
 from tasks.new_user_activated import new_user_activated_task
 from tasks.notify import notify_task
 from tasks.notify_error import notify_error_task
@@ -46,6 +49,7 @@ from tasks.sync_repo_languages import sync_repo_language_task
 from tasks.sync_repo_languages_gql import sync_repo_languages_gql_task
 from tasks.sync_repos import sync_repos_task
 from tasks.sync_teams import sync_teams_task
+from tasks.test_analytics_notifier import test_analytics_notifier_task
 from tasks.test_results_finisher import test_results_finisher_task
 from tasks.test_results_processor import test_results_processor_task
 from tasks.timeseries_backfill import (

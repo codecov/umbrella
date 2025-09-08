@@ -91,9 +91,9 @@ def mock_self_app(mocker, celery_app):
 @pytest.fixture
 def enriched_pull(dbsession):
     repository = RepositoryFactory.create(
-        owner__username="codecov",
-        owner__unencrypted_oauth_token="testtlxuu2kfef3km1fbecdlmnb2nvpikvmoadi3",
-        owner__plan="users-pr-inappm",
+        author__username="codecov",
+        author__unencrypted_oauth_token="testtlxuu2kfef3km1fbecdlmnb2nvpikvmoadi3",
+        author__plan="users-pr-inappm",
         name="example-python",
         image_token="abcdefghij",
         private=True,
@@ -138,10 +138,10 @@ class TestNotifyTaskHelpers:
             username="ThiagoCodecov",
         )
         repository = RepositoryFactory.create(
-            owner=owner, yaml={"codecov": {"max_report_age": "1y ago"}}
+            author=owner, yaml={"codecov": {"max_report_age": "1y ago"}}
         )
         different_repository = RepositoryFactory.create(
-            owner=owner, yaml={"codecov": {"max_report_age": "1y ago"}}
+            author=owner, yaml={"codecov": {"max_report_age": "1y ago"}}
         )
         dbsession.add(repository)
         right_parent_commit = CommitFactory.create(
@@ -219,7 +219,7 @@ class TestNotifyTaskHelpers:
             decoration_type=Decoration.upgrade,
             reason="User must be activated",
             should_attempt_author_auto_activation=True,
-            activation_org_ownerid=enriched_pull.database_pull.repository.owner.ownerid,
+            activation_org_ownerid=enriched_pull.database_pull.repository.author.ownerid,
             activation_author_ownerid=pr_author.ownerid,
         )
         mock_determine_decoration_details = mocker.patch(
@@ -231,7 +231,7 @@ class TestNotifyTaskHelpers:
         mock_determine_decoration_details.assert_called_with(enriched_pull, None)
         mock_activate_user.assert_called_with(
             dbsession,
-            enriched_pull.database_pull.repository.owner.ownerid,
+            enriched_pull.database_pull.repository.author.ownerid,
             pr_author.ownerid,
         )
         assert not mock_schedule_new_user_activated_task.called
@@ -254,7 +254,7 @@ class TestNotifyTaskHelpers:
             decoration_type=Decoration.upgrade,
             reason="User must be activated",
             should_attempt_author_auto_activation=True,
-            activation_org_ownerid=enriched_pull.database_pull.repository.owner.ownerid,
+            activation_org_ownerid=enriched_pull.database_pull.repository.author.ownerid,
             activation_author_ownerid=pr_author.ownerid,
         )
         mock_determine_decoration_details = mocker.patch(
@@ -269,7 +269,7 @@ class TestNotifyTaskHelpers:
         mock_determine_decoration_details.assert_called_with(enriched_pull, None)
         mock_activate_user.assert_called_with(
             dbsession,
-            enriched_pull.database_pull.repository.owner.ownerid,
+            enriched_pull.database_pull.repository.author.ownerid,
             pr_author.ownerid,
         )
         assert mocked_send_task.call_count == 2
@@ -280,7 +280,7 @@ class TestNotifyTaskHelpers:
             new_user_activated_task_name,
             args=None,
             kwargs={
-                "org_ownerid": enriched_pull.database_pull.repository.owner.ownerid,
+                "org_ownerid": enriched_pull.database_pull.repository.author.ownerid,
                 "user_ownerid": pr_author.ownerid,
             },
         )
@@ -288,7 +288,7 @@ class TestNotifyTaskHelpers:
             activate_account_user_task_name,
             None,
             {
-                "org_ownerid": enriched_pull.database_pull.repository.owner.ownerid,
+                "org_ownerid": enriched_pull.database_pull.repository.author.ownerid,
                 "user_ownerid": pr_author.ownerid,
             },
         )
@@ -297,12 +297,12 @@ class TestNotifyTaskHelpers:
     def test__possibly_refresh_previous_selection(
         self, cached_id, app_to_save, mocker, dbsession
     ):
-        commit = CommitFactory(repository__owner__service="github")
+        commit = CommitFactory(repository__author__service="github")
         app = GithubAppInstallationFactory(
-            id_=12, owner=commit.repository.owner, installation_id=123
+            id_=12, owner=commit.repository.author, installation_id=123
         )
         other_app = GithubAppInstallationFactory(
-            id_=24, owner=commit.repository.owner, installation_id=123
+            id_=24, owner=commit.repository.author, installation_id=123
         )
         commit_notifications = [
             CommitNotification(
@@ -333,7 +333,7 @@ class TestNotifyTaskHelpers:
         mock_set_gh_app_for_commit.assert_called_with(app_to_save, commit)
 
     def test__possibly_refresh_previous_selection_false(self, mocker, dbsession):
-        commit = CommitFactory(repository__owner__service="github")
+        commit = CommitFactory(repository__author__service="github")
         dbsession.add(commit)
         dbsession.flush()
         mocker.patch("tasks.notify.get_github_app_for_commit", return_value=None)
@@ -346,8 +346,8 @@ class TestNotifyTaskHelpers:
     def test_possibly_pin_commit_to_github_app_not_github_or_no_installation(
         self, mocker, dbsession
     ):
-        commit = CommitFactory(repository__owner__service="gitlab")
-        commit_from_gh = CommitFactory(repository__owner__service="github")
+        commit = CommitFactory(repository__author__service="gitlab")
+        commit_from_gh = CommitFactory(repository__author__service="github")
         dbsession.add_all([commit, commit_from_gh])
         dbsession.flush()
         mock_refresh_selection = mocker.patch(
@@ -366,7 +366,7 @@ class TestNotifyTaskHelpers:
         mock_refresh_selection.assert_called_with(commit_from_gh)
 
     def test_possibly_pin_commit_to_github_app_new_selection(self, mocker, dbsession):
-        commit = CommitFactory(repository__owner__service="github")
+        commit = CommitFactory(repository__author__service="github")
         dbsession.add(commit)
         dbsession.flush()
         mock_refresh_selection = mocker.patch(
@@ -384,7 +384,7 @@ class TestNotifyTaskHelpers:
 
     def test_get_gitlab_extra_shas(self, dbsession):
         commit = CommitFactory(
-            repository__owner__service="gitlab", repository__service_id=1000
+            repository__author__service="gitlab", repository__service_id=1000
         )
         dbsession.add(commit)
         report = ReportFactory(commit=commit)
@@ -502,7 +502,7 @@ class TestNotifyTask:
             branch="test-branch-1",
             commitid="649eaaf2924e92dc7fd8d370ddb857033231e67a",
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         mocked_fetch_yaml = mocker.patch(
             "services.yaml.fetch_commit_yaml_from_provider"
@@ -651,7 +651,7 @@ class TestNotifyTask:
         )
         mocked_fetch_pull.return_value = None
         commit = CommitFactory.create(
-            message="", pullid=None, repository__owner__service="github"
+            message="", pullid=None, repository__author__service="github"
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -1598,7 +1598,7 @@ class TestNotifyTask:
         all_tests_passed, ta_error_msg = get_ta_relevant_context(dbsession, report)
 
         assert all_tests_passed is False
-        assert snapshot("txt") == ta_error_msg
+        assert ta_error_msg is None
 
     def test_ta_relevant_context_no_error(self, mocker, dbsession):
         report = ReportFactory(report_type="test_results")

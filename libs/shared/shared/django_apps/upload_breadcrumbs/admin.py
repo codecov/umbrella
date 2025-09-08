@@ -1,11 +1,12 @@
 import json
+import re
 from collections.abc import Iterator
 from typing import Any
 
 from django.conf import settings
 from django.contrib import admin
 from django.contrib.admin.views.main import ChangeList
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.http import HttpRequest
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
@@ -20,6 +21,9 @@ from shared.django_apps.upload_breadcrumbs.models import (
 )
 from shared.django_apps.utils.paginator import EstimatedCountPaginator
 
+# Regex pattern for hexadecimal string validation
+HEX_PATTERN = re.compile(r"^[0-9a-fA-F]+$")
+
 
 class PresentDataFilter(admin.SimpleListFilter):
     title = "Present Data"
@@ -31,6 +35,7 @@ class PresentDataFilter(admin.SimpleListFilter):
         return [
             ("has_milestone", "Has Milestone"),
             ("has_endpoint", "Has Endpoint"),
+            ("has_uploader", "Has Uploader"),
             ("has_error", "Has Error"),
             ("has_error_text", "Has Error Text"),
             ("has_upload_ids", "Has Upload IDs"),
@@ -89,6 +94,8 @@ class PresentDataFilter(admin.SimpleListFilter):
                 queryset = queryset.filter(breadcrumb_data__milestone__isnull=False)
             elif filter_type == "has_endpoint":
                 queryset = queryset.filter(breadcrumb_data__endpoint__isnull=False)
+            elif filter_type == "has_uploader":
+                queryset = queryset.filter(breadcrumb_data__uploader__isnull=False)
             elif filter_type == "has_error":
                 queryset = queryset.filter(breadcrumb_data__error__isnull=False)
             elif filter_type == "has_error_text":
@@ -149,6 +156,7 @@ class ErrorFilter(admin.SimpleListFilter):
 @admin.register(UploadBreadcrumb)
 class UploadBreadcrumbAdmin(admin.ModelAdmin):
     list_display = (
+        "created_at",
         "id",
         "repo_id",
         "formatted_commit_sha",
@@ -156,17 +164,12 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         "formatted_upload_ids",
         "formatted_sentry_trace_id",
     )
+    list_display_links = ("created_at", "id")
     sortable_by = (
         "repo_id",
         "formatted_commit_sha",
     )  # Limit sorting options to indexed columns
     show_full_result_count = False
-    search_fields = (
-        "repo_id__startswith",
-        "commit_sha__startswith",
-        "sentry_trace_id__startswith",
-    )
-    search_help_text = "Search by repository ID, commit SHA, and/or Sentry trace ID (all prefix match). Separate multiple values with spaces to AND search (E.g. '<repo_id> <commit_sha>')."
     list_filter = [
         PresentDataFilter,
         MilestoneFilter,
@@ -186,6 +189,49 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
     list_max_show_all = 200
     show_full_result_count = False  # Disable full result count for performance
     paginator = EstimatedCountPaginator
+    search_fields = ("repo_id", "commit_sha", "sentry_trace_id")
+    search_help_text = "Search by repository ID, commit SHA, and/or Sentry trace ID (all exact match). Separate multiple values with spaces to AND search (E.g. '<repo_id> <commit_sha>')."
+
+    def get_search_results(
+        self, request: HttpRequest, queryset: QuerySet, search_term: str
+    ) -> tuple[QuerySet, bool]:
+        """
+        Custom search logic to determine field types and use exact matches for
+        query performance.
+
+        This allows us to take advantage of the indexes defined on the model
+        by only searching the appropriate field based on the search term type.
+        """
+        search_terms = search_term.strip().split()
+        if not search_terms:
+            return queryset, False
+
+        q_objects = []
+
+        for term in search_terms:
+            term_q = Q()
+
+            # Looks like a repo_id (integer)
+            if term.isdigit():
+                repo_id = int(term)
+                term_q |= Q(repo_id=repo_id)
+
+            if HEX_PATTERN.match(term):
+                # Looks like a commit SHA (40-character hex string)
+                if len(term) == 40:
+                    term_q |= Q(commit_sha__exact=term)
+                # Looks like a sentry_trace_id (32-character hex string)
+                elif len(term) == 32:
+                    term_q |= Q(sentry_trace_id__exact=term)
+
+            if not term_q:
+                # If it doesn't match expected patterns, return no results
+                return queryset.none(), False
+
+            q_objects.append(term_q)
+
+        queryset = queryset.filter(*q_objects)
+        return queryset, True
 
     @admin.display(description="Repository", ordering="repo_id")
     def formatted_repo_id(self, obj: UploadBreadcrumb) -> str:
@@ -232,6 +278,10 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             endpoint_label = Endpoints(data["endpoint"]).label
             parts.append(f"🔗 {endpoint_label}")
 
+        if data.get("uploader"):
+            uploader_label = data["uploader"]
+            parts.append(f"⬆️ {uploader_label}")
+
         if data.get("error"):
             error_label = Errors(data["error"]).label
             parts.append(f"❌ {error_label}")
@@ -269,6 +319,12 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             endpoint_name = Endpoints(data["endpoint"]).name
             html_parts.append(
                 f"<div><strong>🔗 Endpoint:</strong> {endpoint_label} <span>({data['endpoint']} / {endpoint_name})</span></div>"
+            )
+
+        if data.get("uploader"):
+            uploader_label = data["uploader"]
+            html_parts.append(
+                f"<div><strong>⬆️ Uploader:</strong> {uploader_label}</div>"
             )
 
         if data.get("error"):
@@ -440,6 +496,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
                             Note that if "{Milestones.NOTIFICATIONS_TRIGGERED.label}" is not present, then "{Milestones.NOTIFICATIONS_SENT.label}" will also not be present. Outside of this, all coverage uploads should have every milestone.
                         </li>
                         <li><strong>Endpoint:</strong> API endpoint that triggered this breadcrumb. This is helpful to determine if there is an issue related to a specific endpoint.</li>
+                        <li><strong>Uploader:</strong> Uploader tool (e.g. codecov-cli) that made the request.</li>
                         <li><strong>Error:</strong> Any errors encountered during processing. This will either be a pre-defined error or "Unknown" for anything else. Not every error is indicative of total failure (such as retries), but they give insight into potential issues.</li>
                         <li><strong>Error Text:</strong> If the error was not a known error, additional context will be provided here.</li>
                         <li><strong>Upload IDs:</strong> Associated upload identifiers generated from worker. These indicate how an upload gets batched and processed with other uploads.</li>

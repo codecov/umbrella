@@ -8,10 +8,10 @@ from tasks.status_set_error import StatusSetErrorTask
 class TestStatusSetErrorTask:
     def test_set_error(self, dbsession, mocker, mock_configuration, codecov_vcr):
         repository = RepositoryFactory.create(
-            owner__username="ThiagoCodecov",
-            owner__service="github",
+            author__username="ThiagoCodecov",
+            author__service="github",
             name="example-python",
-            owner__unencrypted_oauth_token="909b86f2e90668589666e2b5b76966797cee4b24",
+            author__unencrypted_oauth_token="909b86f2e90668589666e2b5b76966797cee4b24",
             yaml={"coverage": {"status": {"project": {"default": {"target": 100}}}}},
         )
         dbsession.add(repository)

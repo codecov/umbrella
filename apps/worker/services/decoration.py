@@ -23,6 +23,8 @@ BOT_USER_EMAILS = [
     "198982749+Copilot@users.noreply.github.com",
     "devin-ai-integration@users.noreply.github.com",
     "199848969+devin-ai-integration@users.noreply.github.com",
+    "devin-ai-integration[bot]@users.noreply.github.com",
+    "158243242+devin-ai-integration[bot]@users.noreply.github.com",
 ]
 BOT_USER_IDS = [
     "49699333",
@@ -30,7 +32,8 @@ BOT_USER_IDS = [
     "157164994",
     "198982749",
     "199848969",
-]  # dependabot[bot], renovate[bot], sentry-autofix[bot], copilot-swe-agent[bot], devin-ai-integration
+    "158243242",
+]  # dependabot[bot], renovate[bot], sentry-autofix[bot], copilot-swe-agent[bot], devin-ai-integration, devin-ai-integration[bot]
 USER_BASIC_LIMIT_UPLOAD = 250
 
 
@@ -98,13 +101,13 @@ def determine_decoration_details(
                 decoration_type=Decoration.standard, reason="Public repo"
             )
 
-        org = db_pull.repository.owner
+        org = db_pull.repository.author
 
         db_session = db_pull.get_db_session()
 
         # do not access plan directly - only through PlanService
         org_plan = PlanService(current_org=org)
-        # use the org that has the plan - for GL this is the root_org rather than the repository.owner org
+        # use the org that has the plan - for GL this is the root_org rather than the repository.author org
         org = org_plan.current_org
 
         if not org_plan.is_pr_billing_plan:

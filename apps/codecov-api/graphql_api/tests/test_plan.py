@@ -102,6 +102,7 @@ class TestPlanType(GraphQLTestHelper, TestCase):
         self.current_org.account = AccountFactory(
             plan=PlanName.CODECOV_PRO_YEARLY.value,
             plan_seat_count=25,
+            free_seat_count=4,
         )
         self.current_org.save()
         query = f"""{{
@@ -113,6 +114,7 @@ class TestPlanType(GraphQLTestHelper, TestCase):
                         billingRate
                         baseUnitPrice
                         planUserCount
+                        freeSeatCount
                         isEnterprisePlan
                         isFreePlan
                         isProPlan
@@ -130,7 +132,8 @@ class TestPlanType(GraphQLTestHelper, TestCase):
             "tierName": "pro",
             "billingRate": "annually",
             "baseUnitPrice": 10,
-            "planUserCount": 25,
+            "planUserCount": 29,
+            "freeSeatCount": 4,
             "isEnterprisePlan": False,
             "isFreePlan": False,
             "isProPlan": True,

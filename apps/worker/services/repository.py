@@ -12,14 +12,17 @@ from sqlalchemy.orm import Query, Session, lazyload
 
 import shared.torngit as torngit
 from database.enums import CommitErrorTypes
-from database.models import Commit, Owner, Pull, Repository
+from database.models import Commit, Owner, Pull
+from database.models import Repository as SQLAlchemyRepository
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from helpers.save_commit_error import save_commit_error
 from helpers.token_refresh import get_token_refresh_callback
+from services.owner import clear_identical_owners
 from services.yaml import read_yaml_field, save_repo_yaml_to_database_if_needed
 from services.yaml.fetcher import fetch_commit_yaml_from_provider
 from shared.bots import get_adapter_auth_information
 from shared.config import get_config, get_verify_ssl
+from shared.django_apps.core.models import Repository
 from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import (
     TorngitClientError,
@@ -44,12 +47,12 @@ merged_pull = re.compile(r".*Merged in [^\s]+ \(pull request \#(\d+)\).*").match
 
 @sentry_sdk.trace
 def get_repo_provider_service(
-    repository: Repository,
+    repository: Repository | SQLAlchemyRepository,
     installation_name_to_use: str = GITHUB_APP_INSTALLATION_DEFAULT_NAME,
     additional_data: AdditionalData | None = None,
 ) -> TorngitBaseAdapter:
     adapter_auth_info = get_adapter_auth_information(
-        repository.owner,
+        repository.author,
         repository=repository,
         installation_name_to_use=installation_name_to_use,
     )
@@ -66,9 +69,9 @@ def get_repo_provider_service(
             private=repository.private,
         ),
         owner=OwnerInfo(
-            service_id=repository.owner.service_id,
-            ownerid=repository.ownerid,
-            username=repository.owner.username,
+            service_id=repository.author.service_id,
+            ownerid=repository.author.ownerid,
+            username=repository.author.username,
         ),
         installation=adapter_auth_info["selected_installation_info"],
         fallback_installations=adapter_auth_info["fallback_installations"],
@@ -295,7 +298,8 @@ def upsert_author(
     if author:
         needs_update = False
         db_session.begin(nested=True)
-        if author.username != username and username is not None:
+        if not author.username or author.username.lower() != username.lower():
+            clear_identical_owners(db_session, author, username, service)
             author.username = username
             needs_update = True
         if author.name != name and name is not None:
@@ -432,7 +436,11 @@ async def gitlab_webhook_update(repository_service, hookid, secret):
 
 
 def get_repo_provider_service_by_id(db_session, repoid, commitid=None):
-    repo = db_session.query(Repository).filter(Repository.repoid == int(repoid)).first()
+    repo = (
+        db_session.query(SQLAlchemyRepository)
+        .filter(SQLAlchemyRepository.repoid == int(repoid))
+        .first()
+    )
 
     assert repo, "repo-not-found"
 
@@ -660,12 +668,12 @@ def fetch_commit_yaml_and_possibly_store(
         )
         commit_yaml = None
     context = OwnerContext(
-        owner_onboarding_date=repository.owner.createstamp,
-        owner_plan=repository.owner.plan,
+        owner_onboarding_date=repository.author.createstamp,
+        owner_plan=repository.author.plan,
         ownerid=repository.ownerid,
     )
     return UserYaml.get_final_yaml(
-        owner_yaml=repository.owner.yaml,
+        owner_yaml=repository.author.yaml,
         repo_yaml=repository.yaml,
         commit_yaml=commit_yaml,
         owner_context=context,

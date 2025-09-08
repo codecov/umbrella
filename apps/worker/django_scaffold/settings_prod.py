@@ -74,6 +74,8 @@ TEMPLATES = [
     }
 ]
 
+GITHUB_SENTRY_APP_NAME = "sentry_app"
+
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
 AUTH_PASSWORD_VALIDATORS = []

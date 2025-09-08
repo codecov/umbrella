@@ -50,8 +50,8 @@ from tasks.notify import get_repo_provider_service_for_specific_commit
 @pytest.fixture
 def repo(dbsession) -> Repository:
     repo = RepositoryFactory.create(
-        owner__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
-        owner__service="github",
+        author__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
+        author__service="github",
         name="example-python",
     )
     dbsession.add(repo)
@@ -71,9 +71,9 @@ def test_get_repo_provider_service_github(dbsession, repo):
     res = get_repo_provider_service(repo)
     expected_data = {
         "owner": {
-            "ownerid": repo.owner.ownerid,
-            "service_id": repo.owner.service_id,
-            "username": repo.owner.username,
+            "ownerid": repo.author.ownerid,
+            "service_id": repo.author.service_id,
+            "username": repo.author.username,
         },
         "repo": {
             "name": "example-python",
@@ -87,14 +87,14 @@ def test_get_repo_provider_service_github(dbsession, repo):
         "additional_data": {},
     }
     assert res.data == expected_data
-    assert repo.owner.service == "github"
+    assert repo.author.service == "github"
     assert res._on_token_refresh is not None
     assert inspect.isawaitable(res._on_token_refresh(None))
     assert res.token == {
-        "username": repo.owner.username,
+        "username": repo.author.username,
         "key": "testyftq3ovzkb3zmt823u3t04lkrt9w",
         "secret": None,
-        "entity_name": owner_key_name(repo.owner.ownerid),
+        "entity_name": owner_key_name(repo.author.ownerid),
     }
 
 
@@ -103,9 +103,9 @@ def test_get_repo_provider_service_additional_data(dbsession, repo):
     res = get_repo_provider_service(repo, additional_data=additional_data)
     expected_data = {
         "owner": {
-            "ownerid": repo.owner.ownerid,
-            "service_id": repo.owner.service_id,
-            "username": repo.owner.username,
+            "ownerid": repo.author.ownerid,
+            "service_id": repo.author.service_id,
+            "username": repo.author.username,
         },
         "repo": {
             "name": "example-python",
@@ -119,14 +119,14 @@ def test_get_repo_provider_service_additional_data(dbsession, repo):
         "additional_data": {"upload_type": UploadType.TEST_RESULTS},
     }
     assert res.data == expected_data
-    assert repo.owner.service == "github"
+    assert repo.author.service == "github"
     assert res._on_token_refresh is not None
     assert inspect.isawaitable(res._on_token_refresh(None))
     assert res.token == {
-        "username": repo.owner.username,
+        "username": repo.author.username,
         "key": "testyftq3ovzkb3zmt823u3t04lkrt9w",
         "secret": None,
-        "entity_name": owner_key_name(repo.owner.ownerid),
+        "entity_name": owner_key_name(repo.author.ownerid),
     }
 
 
@@ -138,24 +138,24 @@ def test_get_repo_provider_service_github_with_installations(dbsession, mocker, 
     installation_0 = GithubAppInstallationFactory(
         installation_id=1200,
         app_id=200,
-        owner=repo.owner,
+        owner=repo.author,
     )
     installation_1 = GithubAppInstallationFactory(
         name="my_app",
         installation_id=1300,
         app_id=300,
         pem_path="path",
-        owner=repo.owner,
+        owner=repo.author,
     )
-    repo.owner.github_app_installations = [installation_0, installation_1]
+    repo.author.github_app_installations = [installation_0, installation_1]
     dbsession.add_all([repo, installation_0, installation_1])
     dbsession.flush()
     res = get_repo_provider_service(repo, installation_name_to_use="my_app")
     expected_data = {
         "owner": {
-            "ownerid": repo.owner.ownerid,
-            "service_id": repo.owner.service_id,
-            "username": repo.owner.username,
+            "ownerid": repo.author.ownerid,
+            "service_id": repo.author.service_id,
+            "username": repo.author.username,
         },
         "repo": {
             "name": "example-python",
@@ -181,7 +181,7 @@ def test_get_repo_provider_service_github_with_installations(dbsession, mocker, 
         "additional_data": {},
     }
     assert res.data == expected_data
-    assert repo.owner.service == "github"
+    assert repo.author.service == "github"
     assert res._on_token_refresh is None
     assert res.token == {
         "key": "installation_token",
@@ -195,8 +195,8 @@ def test_get_repo_provider_service_github_with_installations(dbsession, mocker, 
 
 def test_get_repo_provider_service_bitbucket(dbsession):
     repo = RepositoryFactory.create(
-        owner__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
-        owner__service="bitbucket",
+        author__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
+        author__service="bitbucket",
         name="example-python",
     )
     dbsession.add(repo)
@@ -204,9 +204,9 @@ def test_get_repo_provider_service_bitbucket(dbsession):
     res = get_repo_provider_service(repo)
     expected_data = {
         "owner": {
-            "ownerid": repo.owner.ownerid,
-            "service_id": repo.owner.service_id,
-            "username": repo.owner.username,
+            "ownerid": repo.author.ownerid,
+            "service_id": repo.author.service_id,
+            "username": repo.author.username,
         },
         "repo": {
             "name": "example-python",
@@ -220,20 +220,20 @@ def test_get_repo_provider_service_bitbucket(dbsession):
         "additional_data": {},
     }
     assert res.data == expected_data
-    assert repo.owner.service == "bitbucket"
+    assert repo.author.service == "bitbucket"
     assert res._on_token_refresh is None
     assert res.token == {
-        "username": repo.owner.username,
+        "username": repo.author.username,
         "key": "testyftq3ovzkb3zmt823u3t04lkrt9w",
         "secret": None,
-        "entity_name": owner_key_name(repo.owner.ownerid),
+        "entity_name": owner_key_name(repo.author.ownerid),
     }
 
 
 def test_get_repo_provider_service_with_token_refresh_callback(dbsession):
     repo = RepositoryFactory.create(
-        owner__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
-        owner__service="gitlab",
+        author__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
+        author__service="gitlab",
         name="example-python",
     )
     dbsession.add(repo)
@@ -241,9 +241,9 @@ def test_get_repo_provider_service_with_token_refresh_callback(dbsession):
     res = get_repo_provider_service(repo)
     expected_data = {
         "owner": {
-            "ownerid": repo.owner.ownerid,
-            "service_id": repo.owner.service_id,
-            "username": repo.owner.username,
+            "ownerid": repo.author.ownerid,
+            "service_id": repo.author.service_id,
+            "username": repo.author.username,
         },
         "repo": {
             "name": "example-python",
@@ -260,17 +260,17 @@ def test_get_repo_provider_service_with_token_refresh_callback(dbsession):
     assert res._on_token_refresh is not None
     assert inspect.isawaitable(res._on_token_refresh(None))
     assert res.token == {
-        "username": repo.owner.username,
+        "username": repo.author.username,
         "key": "testyftq3ovzkb3zmt823u3t04lkrt9w",
         "secret": None,
-        "entity_name": owner_key_name(repo.owner.ownerid),
+        "entity_name": owner_key_name(repo.author.ownerid),
     }
 
 
 def test_get_repo_provider_service_repo_bot(dbsession, mock_configuration):
     repo = RepositoryFactory.create(
-        owner__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
-        owner__service="gitlab",
+        author__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
+        author__service="gitlab",
         name="example-python",
         private=False,
     )
@@ -279,9 +279,9 @@ def test_get_repo_provider_service_repo_bot(dbsession, mock_configuration):
     res = get_repo_provider_service(repo)
     expected_data = {
         "owner": {
-            "ownerid": repo.owner.ownerid,
-            "service_id": repo.owner.service_id,
-            "username": repo.owner.username,
+            "ownerid": repo.author.ownerid,
+            "service_id": repo.author.service_id,
+            "username": repo.author.username,
         },
         "repo": {
             "name": "example-python",
@@ -296,10 +296,10 @@ def test_get_repo_provider_service_repo_bot(dbsession, mock_configuration):
     }
     assert res.data == expected_data
     assert res.token == {
-        "username": repo.owner.username,
+        "username": repo.author.username,
         "key": "testyftq3ovzkb3zmt823u3t04lkrt9w",
         "secret": None,
-        "entity_name": owner_key_name(repo.owner.ownerid),
+        "entity_name": owner_key_name(repo.author.ownerid),
     }
     assert res._on_token_refresh is not None
 
@@ -307,8 +307,8 @@ def test_get_repo_provider_service_repo_bot(dbsession, mock_configuration):
 @pytest.mark.asyncio
 async def test_token_refresh_callback(dbsession):
     repo = RepositoryFactory.create(
-        owner__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
-        owner__service="gitlab",
+        author__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
+        author__service="gitlab",
         name="example-python",
     )
     dbsession.add(repo)
@@ -316,7 +316,7 @@ async def test_token_refresh_callback(dbsession):
     res = get_repo_provider_service(repo)
     new_token = {"key": "new_access_token", "refresh_token": "new_refresh_token"}
     await res._on_token_refresh(new_token)
-    owner = dbsession.query(Owner).filter_by(ownerid=repo.owner.ownerid).first()
+    owner = dbsession.query(Owner).filter_by(ownerid=repo.author.ownerid).first()
     encryptor = get_encryptor_from_configuration()
     saved_token = encryptor.decrypt_token(owner.oauth_token)
     assert saved_token["key"] == "new_access_token"
@@ -327,7 +327,7 @@ def test_get_repo_provider_service_different_bot(dbsession):
     bot_token = "bcaa0dc0c66b4a8c8c65ac919a1a91aa"
     bot = OwnerFactory.create(unencrypted_oauth_token=bot_token)
     repo = RepositoryFactory.create(
-        owner__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
+        author__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
         bot=bot,
         name="example-python",
     )
@@ -337,9 +337,9 @@ def test_get_repo_provider_service_different_bot(dbsession):
     res = get_repo_provider_service(repo)
     expected_data = {
         "owner": {
-            "ownerid": repo.owner.ownerid,
-            "service_id": repo.owner.service_id,
-            "username": repo.owner.username,
+            "ownerid": repo.author.ownerid,
+            "service_id": repo.author.service_id,
+            "username": repo.author.username,
         },
         "repo": {
             "name": "example-python",
@@ -366,8 +366,8 @@ def test_get_repo_provider_service_no_bot(dbsession):
     bot_token = "bcaa0dc0c66b4a8c8c65ac919a1a91aa"
     owner_bot = OwnerFactory.create(unencrypted_oauth_token=bot_token)
     repo = RepositoryFactory.create(
-        owner__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
-        owner__bot=owner_bot,
+        author__unencrypted_oauth_token="testyftq3ovzkb3zmt823u3t04lkrt9w",
+        author__bot=owner_bot,
         bot=None,
         name="example-python",
     )
@@ -377,9 +377,9 @@ def test_get_repo_provider_service_no_bot(dbsession):
     res = get_repo_provider_service(repo)
     expected_data = {
         "owner": {
-            "ownerid": repo.owner.ownerid,
-            "service_id": repo.owner.service_id,
-            "username": repo.owner.username,
+            "ownerid": repo.author.ownerid,
+            "service_id": repo.author.service_id,
+            "username": repo.author.username,
         },
         "repo": {
             "name": "example-python",
@@ -394,10 +394,10 @@ def test_get_repo_provider_service_no_bot(dbsession):
     }
     assert res.data == expected_data
     assert res.token == {
-        "username": repo.owner.bot.username,
+        "username": repo.author.bot.username,
         "key": bot_token,
         "secret": None,
-        "entity_name": owner_key_name(repo.owner.bot.ownerid),
+        "entity_name": owner_key_name(repo.author.bot.ownerid),
     }
 
 
@@ -1069,7 +1069,7 @@ async def test_update_commit_from_provider_info_pull_from_fork(
         "head": {"branch": "main", "slug": f"some-guy/{commit.repository.name}"},
         "base": {
             "branch": "main",
-            "slug": f"{commit.repository.owner.username}/{commit.repository.name}",
+            "slug": f"{commit.repository.author.username}/{commit.repository.name}",
         },
     }
     repository_service = mocker.MagicMock(
@@ -1098,7 +1098,7 @@ async def test_update_commit_from_provider_info_bitbucket_merge(
     possible_parent_commit = CommitFactory.create(
         message="possible_parent_commit",
         pullid=None,
-        repository__owner__service="bitbucket",
+        repository__author__service="bitbucket",
     )
     commit = CommitFactory.create(
         message="",
@@ -1164,7 +1164,7 @@ async def test_get_repo_gh_no_integration(dbsession, mocker):
         name="pytest",
         using_integration=False,
         service_id="123456",
-        owner=owner,
+        author=owner,
     )
     dbsession.add(repo)
     dbsession.flush()
@@ -1194,7 +1194,7 @@ async def test_get_repo_gh_no_integration(dbsession, mocker):
         "username": "1nf1n1t3l00p",
         "key": "bcaa0dc0c66b4a8c8c65ac919a1a91aa",
         "secret": None,
-        "entity_name": owner_key_name(repo.owner.ownerid),
+        "entity_name": owner_key_name(repo.author.ownerid),
     }
 
 
@@ -1216,7 +1216,7 @@ class TestGetRepoProviderServiceForSpecificCommit:
     def test_get_repo_provider_service_for_specific_commit_not_gh(
         self, dbsession, mock_get_repo_provider_service, mock_redis
     ):
-        commit = CommitFactory(repository__owner__service="gitlab")
+        commit = CommitFactory(repository__author__service="gitlab")
         mock_get_repo_provider_service.return_value = "the TorngitAdapter"
         response = get_repo_provider_service_for_specific_commit(commit, "some_name")
         assert response == "the TorngitAdapter"
@@ -1228,7 +1228,7 @@ class TestGetRepoProviderServiceForSpecificCommit:
     def test_get_repo_provider_service_for_specific_commit_no_specific_app_for_commit(
         self, mock_pin, dbsession, mock_get_repo_provider_service, mock_redis
     ):
-        commit = CommitFactory(repository__owner__service="github")
+        commit = CommitFactory(repository__author__service="github")
         assert commit.id not in [10000, 15000]
         redis_keys = {
             "app_to_use_for_commit_15000": b"1200",
@@ -1257,13 +1257,13 @@ class TestGetRepoProviderServiceForSpecificCommit:
         mock_get_repo_provider_service,
         mock_redis,
     ):
-        commit = CommitFactory(repository__owner__service="github")
+        commit = CommitFactory(repository__author__service="github")
         app = GithubAppInstallationFactory(
-            owner=commit.repository.owner, app_id=12, installation_id=1200
+            owner=commit.repository.author, app_id=12, installation_id=1200
         )
         dbsession.add_all([commit, app])
         dbsession.flush()
-        assert commit.repository.owner.github_app_installations == [app]
+        assert commit.repository.author.github_app_installations == [app]
         redis_keys = {
             f"app_to_use_for_commit_{commit.id}": str(app.id).encode(),
         }
@@ -1281,9 +1281,9 @@ class TestGetRepoProviderServiceForSpecificCommit:
                 private=commit.repository.private,
             ),
             owner=OwnerInfo(
-                service_id=commit.repository.owner.service_id,
+                service_id=commit.repository.author.service_id,
                 ownerid=commit.repository.ownerid,
-                username=commit.repository.owner.username,
+                username=commit.repository.author.username,
             ),
             installation=GithubInstallationInfo(
                 id=app.id, app_id=12, installation_id=1200, pem_path=None
@@ -2247,7 +2247,7 @@ def test_fetch_commit_yaml_and_possibly_store_commit_yaml_no_commit_yaml(
 ):
     mock_configuration.set_params({"site": {"coverage": {"round": "up"}}})
     commit = CommitFactory.create(
-        repository__owner__yaml={"coverage": {"precision": 2}},
+        repository__author__yaml={"coverage": {"precision": 2}},
         repository__yaml={"codecov": {"max_report_age": "1y ago"}},
         repository__branch="supeduperbranch",
         branch="supeduperbranch",
@@ -2272,9 +2272,9 @@ def test_fetch_commit_yaml_and_possibly_store_commit_yaml_invalid_commit_yaml(
 ):
     mock_configuration.set_params({"site": {"comment": {"behavior": "new"}}})
     commit = CommitFactory.create(
-        repository__owner__yaml={"coverage": {"precision": 2}},
+        repository__author__yaml={"coverage": {"precision": 2}},
         # User needs to be less than PATCH_CENTRIC_DEFAULT_TIME_START
-        repository__owner__createstamp=datetime.fromisoformat(
+        repository__author__createstamp=datetime.fromisoformat(
             "2024-03-30 00:00:00.000+00:00"
         ),
         repository__yaml={"codecov": {"max_report_age": "1y ago"}},

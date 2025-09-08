@@ -23,7 +23,10 @@ def test_shelter_repo_sync(dbsession, mock_configuration, mocker):
 
     # this triggers the publish via SQLAlchemy events (after_insert)
     repo = RepositoryFactory(
-        repoid=91728376, name="test-123", owner=OwnerFactory(ownerid=123), private=False
+        repoid=91728376,
+        name="test-123",
+        author=OwnerFactory(ownerid=123),
+        private=False,
     )
     dbsession.add(repo)
     dbsession.commit()
@@ -50,7 +53,7 @@ def test_shelter_repo_sync(dbsession, mock_configuration, mocker):
     assert len(publish_calls) == 2
 
     # Triggers call when owner is changed
-    repo.owner = OwnerFactory(ownerid=456)
+    repo.author = OwnerFactory(ownerid=456)
     dbsession.commit()
     dbsession.refresh(repo)
     assert len(publish_calls) == 3

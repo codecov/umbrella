@@ -1,8 +1,10 @@
 from traceback import format_stack
 
 import requests
+from django.conf import settings
 from django.contrib.admin.models import CHANGE, LogEntry
 from django.contrib.contenttypes.models import ContentType
+from django.http import HttpRequest
 
 from codecov_auth.constants import GITLAB_BASE_URL
 
@@ -30,6 +32,26 @@ def current_user_part_of_org(owner, org):
     # owner is a direct member of the org
     orgs_of_user = owner.organizations or []
     return org.ownerid in orgs_of_user
+
+
+def get_client_ip_address(request: HttpRequest) -> str:
+    """
+    Get the client's IP address from the request, parsing the X-Forwarded-For
+    header if it exists with a configured proxy depth or Remote-Addr otherwise.
+
+    :param request: The HTTP request object
+    :return: The client's IP address as a string
+    """
+    x_forwarded_for: str | None = request.META.get("HTTP_X_FORWARDED_FOR")
+    if x_forwarded_for:
+        ips = x_forwarded_for.split(",")
+        depth = min(
+            settings.TRUSTED_PROXY_DEPTH, len(ips)
+        )  # Ensure we don't go out of bounds
+        ip = ips[-depth].strip()
+    else:
+        ip = request.META.get("REMOTE_ADDR")
+    return ip
 
 
 # https://stackoverflow.com/questions/7905106/adding-a-log-entry-for-an-action-by-a-user-in-a-django-ap

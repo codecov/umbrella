@@ -53,9 +53,9 @@ class TestUploadTestProcessorTask:
         commit = CommitFactory.create(
             message="hello world",
             commitid="cd76b0821854a780b60012aed85af0a8263004ad",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="joseph-sentry",
-            repository__owner__service="github",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="joseph-sentry",
+            repository__author__service="github",
             repository__name="codecov-demo",
         )
         dbsession.add(commit)
@@ -134,9 +134,9 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
         commit = CommitFactory.create(
             message="hello world",
             commitid="cd76b0821854a780b60012aed85af0a8263004ad",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="joseph-sentry",
-            repository__owner__service="github",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="joseph-sentry",
+            repository__author__service="github",
             repository__name="codecov-demo",
         )
 
@@ -186,9 +186,9 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
         commit = CommitFactory.create(
             message="hello world",
             commitid="cd76b0821854a780b60012aed85af0a8263004ad",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="joseph-sentry",
-            repository__owner__service="github",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="joseph-sentry",
+            repository__author__service="github",
             repository__name="codecov-demo",
         )
 
@@ -254,9 +254,9 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
         commit = CommitFactory.create(
             message="hello world",
             commitid="cd76b0821854a780b60012aed85af0a8263004ad",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="joseph-sentry",
-            repository__owner__service="github",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="joseph-sentry",
+            repository__author__service="github",
             repository__name="codecov-demo",
         )
 
@@ -305,9 +305,9 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
         commit = CommitFactory.create(
             message="hello world",
             commitid="cd76b0821854a780b60012aed85af0a8263004ad",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="joseph-sentry",
-            repository__owner__service="github",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="joseph-sentry",
+            repository__author__service="github",
             repository__name="codecov-demo",
         )
         dbsession.add(commit)
@@ -393,9 +393,9 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
         commit = CommitFactory.create(
             message="hello world",
             commitid="cd76b0821854a780b60012aed85af0a8263004ad",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="joseph-sentry",
-            repository__owner__service="github",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="joseph-sentry",
+            repository__author__service="github",
             repository__name="codecov-demo",
         )
         dbsession.add(commit)
@@ -479,9 +479,9 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
             first_commit = CommitFactory.create(
                 message="hello world",
                 commitid="cd76b0821854a780b60012aed85af0a8263004ad",
-                repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-                repository__owner__username="joseph-sentry",
-                repository__owner__service="github",
+                repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+                repository__author__username="joseph-sentry",
+                repository__author__service="github",
                 repository__name="codecov-demo",
                 branch="first_branch",
             )
@@ -655,9 +655,9 @@ api/temp/calculator/test_calculator.py:30: AssertionError</failure></testcase></
         commit = CommitFactory.create(
             message="hello world",
             commitid="cd76b0821854a780b60012aed85af0a8263004ad",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="joseph-sentry",
-            repository__owner__service="github",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="joseph-sentry",
+            repository__author__service="github",
             repository__name="codecov-demo",
         )
         dbsession.add(commit)
@@ -733,9 +733,9 @@ def test_test_results_processor_new_impl_fail(
     commit = CommitFactory.create(
         message="hello world",
         commitid="cd76b0821854a780b60012aed85af0a8263004ad",
-        repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-        repository__owner__username="joseph-sentry",
-        repository__owner__service="github",
+        repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+        repository__author__username="joseph-sentry",
+        repository__author__service="github",
         repository__name="codecov-demo",
     )
     dbsession.add(commit)

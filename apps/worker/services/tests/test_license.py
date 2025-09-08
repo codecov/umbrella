@@ -115,7 +115,7 @@ class TestLicenseService:
         dbsession.add(owner)
         dbsession.flush()
         for i in range(21):
-            repo = RepositoryFactory.create(updatestamp=datetime.now(), owner=owner)
+            repo = RepositoryFactory.create(updatestamp=datetime.now(), author=owner)
             dbsession.add(repo)
         dbsession.flush()
         encrypted_license = "0dRbhbzp8TVFQp7P4e2ES9lSfyQlTo8J7LQ/N51yeAE/KcRBCnU+QsVvVMDuLL4xNGXGGk9p4ZTmIl0II3cMr0tIoPHe9Re2UjommalyFYuP8JjjnNR/Ql2DnjOzEnTzsE2Poq9xlNHcIU4F9gC2WOYPnazR6U+t4CelcvIAbEpbOMOiw34nVyd3OEmWusquMNrwkNkk/lwjwCJmj6bTXQ=="
@@ -135,7 +135,7 @@ class TestLicenseService:
         dbsession.add(owner)
         dbsession.flush()
         for i in range(18):
-            repo = RepositoryFactory.create(updatestamp=datetime.now(), owner=owner)
+            repo = RepositoryFactory.create(updatestamp=datetime.now(), author=owner)
             dbsession.add(repo)
         dbsession.flush()
         encrypted_license = "0dRbhbzp8TVFQp7P4e2ES9lSfyQlTo8J7LQ/N51yeAE/KcRBCnU+QsVvVMDuLL4xNGXGGk9p4ZTmIl0II3cMr0tIoPHe9Re2UjommalyFYuP8JjjnNR/Ql2DnjOzEnTzsE2Poq9xlNHcIU4F9gC2WOYPnazR6U+t4CelcvIAbEpbOMOiw34nVyd3OEmWusquMNrwkNkk/lwjwCJmj6bTXQ=="
@@ -151,7 +151,7 @@ class TestLicenseService:
         dbsession.add(owner)
         dbsession.flush()
         for i in range(18):
-            repo = RepositoryFactory.create(updatestamp=datetime.now(), owner=owner)
+            repo = RepositoryFactory.create(updatestamp=datetime.now(), author=owner)
             dbsession.add(repo)
         dbsession.flush()
         encrypted_license = "0dRbhbzp8TVFQp7P4e2ES9lSfyQlTo8J7LQ/N51yeAE/KcRBCnU+QsVvVMDuLL4xNGXGGk9p4ZTmIl0II3cMr0tIoPHe9Re2UjommalyFYuP8JjjnNR/Ql2DnjOzEnTzsE2Poq9xlNHcIU4F9gC2WOYPnazR6U+t4CelcvIAbEpbOMOiw34nVyd3OEmWusquMNrwkNkk/lwjwCJmj6bTXQ=="

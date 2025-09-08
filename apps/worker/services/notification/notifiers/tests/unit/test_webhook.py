@@ -12,7 +12,7 @@ class TestWebhookNotifier:
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         repository = RepositoryFactory.create(
-            owner__username="TestWebhookNotifier", name="test_build_payload"
+            author__username="TestWebhookNotifier", name="test_build_payload"
         )
         dbsession.add(repository)
         dbsession.flush()
@@ -135,8 +135,8 @@ class TestWebhookNotifier:
         self, dbsession, mock_configuration, sample_report
     ):
         repository = RepositoryFactory.create(
-            owner__username="test_build_commit_payload_no_author",
-            owner__service="github",
+            author__username="test_build_commit_payload_no_author",
+            author__service="github",
         )
         dbsession.add(repository)
         dbsession.flush()
@@ -185,7 +185,7 @@ class TestWebhookNotifier:
     def test_build_payload(self, dbsession, mock_configuration, sample_comparison):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         repository = RepositoryFactory.create(
-            owner__username="TestWebhookNotifier", name="test_build_payload"
+            author__username="TestWebhookNotifier", name="test_build_payload"
         )
         dbsession.add(repository)
         dbsession.flush()
@@ -283,8 +283,8 @@ class TestWebhookNotifier:
                 "notation": "+",
             },
             "owner": {
-                "username": repository.owner.username,
-                "service_id": repository.owner.service_id,
+                "username": repository.author.username,
+                "service_id": repository.author.service_id,
                 "service": "github",
             },
             "pull": {
@@ -311,7 +311,7 @@ class TestWebhookNotifier:
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = "test.example.br"
         repository = RepositoryFactory.create(
-            owner__username="TestWebhookNotifier", name="test_build_payload"
+            author__username="TestWebhookNotifier", name="test_build_payload"
         )
         dbsession.add(repository)
         dbsession.flush()
@@ -409,8 +409,8 @@ class TestWebhookNotifier:
                 "notation": "+",
             },
             "owner": {
-                "username": repository.owner.username,
-                "service_id": repository.owner.service_id,
+                "username": repository.author.username,
+                "service_id": repository.author.service_id,
                 "service": "github",
             },
             "pull": {
@@ -526,8 +526,8 @@ class TestWebhookNotifier:
                 "notation": "+",
             },
             "owner": {
-                "username": repository.owner.username,
-                "service_id": repository.owner.service_id,
+                "username": repository.author.username,
+                "service_id": repository.author.service_id,
                 "service": "github",
             },
             "pull": None,
@@ -625,8 +625,8 @@ class TestWebhookNotifier:
                 "notation": "",
             },
             "owner": {
-                "username": repository.owner.username,
-                "service_id": repository.owner.service_id,
+                "username": repository.author.username,
+                "service_id": repository.author.service_id,
                 "service": "github",
             },
             "pull": {
@@ -715,8 +715,8 @@ class TestWebhookNotifier:
                 "notation": "",
             },
             "owner": {
-                "username": repository.owner.username,
-                "service_id": repository.owner.service_id,
+                "username": repository.author.username,
+                "service_id": repository.author.service_id,
                 "service": "github",
             },
             "pull": {

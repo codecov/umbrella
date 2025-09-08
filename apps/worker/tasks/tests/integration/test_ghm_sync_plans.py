@@ -176,7 +176,7 @@ class TestGHMarketplaceSyncPlansTask:
             using_integration=False,
             service_id="159090647",
             activated=True,
-            owner=owner,
+            author=owner,
         )
         repo_pytest = RepositoryFactory.create(
             private=False,
@@ -184,7 +184,7 @@ class TestGHMarketplaceSyncPlansTask:
             using_integration=False,
             service_id="159089634",
             activated=True,
-            owner=owner,
+            author=owner,
         )
         repo_spack = RepositoryFactory.create(
             private=False,
@@ -192,7 +192,7 @@ class TestGHMarketplaceSyncPlansTask:
             using_integration=False,
             service_id="164948070",
             activated=True,
-            owner=owner,
+            author=owner,
         )
         dbsession.add(repo_pub)
         dbsession.add(repo_pytest)

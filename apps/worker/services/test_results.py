@@ -31,6 +31,11 @@ from shared.plan.constants import TierName
 from shared.yaml import UserYaml
 
 
+class NotifierTaskResult(TypedDict):
+    attempted: bool
+    succeeded: bool
+
+
 class FinisherResult(TypedDict):
     notify_attempted: bool
     notify_succeeded: bool
@@ -132,6 +137,7 @@ T = TypeVar("T", str, bytes)
 
 @dataclass
 class TestResultsNotificationFailure[T: (str, bytes)]:
+    __test__ = False
     failure_message: str
     display_name: str
     envs: list[str]
@@ -315,11 +321,12 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
 
         message = []
 
-        if self.error:
-            message.append(specific_error_message(self.error))
+        # commenting out the upload error code because we it's too noisy and confusing for now
+        # if self.error:
+        #     message.append(specific_error_message(self.error))
 
-        if self.error and self.payload.info:
-            message += ["", "---", ""]
+        # if self.error and self.payload.info:
+        #     message += ["", "---", ""]
 
         if self.payload.info:
             message.append(f"### :x: {self.payload.failed} Tests Failed:")
@@ -501,7 +508,7 @@ def get_test_summary_for_commit(
 
 
 def not_private_and_free_or_team(repo: Repository):
-    plan = Plan.objects.select_related("tier").get(name=repo.owner.plan)
+    plan = Plan.objects.select_related("tier").get(name=repo.author.plan)
 
     return not (
         repo.private

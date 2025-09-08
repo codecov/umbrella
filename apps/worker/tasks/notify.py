@@ -14,7 +14,6 @@ from database.models import (
     Pull,
     TestResultReportTotals,
     Upload,
-    UploadError,
 )
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME, CompareCommit
 from helpers.checkpoint_logger.flows import UploadFlow
@@ -42,7 +41,6 @@ from services.repository import (
     fetch_and_update_pull_request_information_from_commit,
     get_repo_provider_service,
 )
-from services.test_results import ErrorPayload, short_error_message
 from services.yaml import get_current_yaml, read_yaml_field
 from shared.bots.github_apps import (
     get_github_app_token,
@@ -252,7 +250,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
 
         try:
             installation_name_to_use = get_installation_name_for_owner_for_task(
-                self.name, commit.repository.owner
+                self.name, commit.repository.author
             )
             repository_service = get_repo_provider_service_for_specific_commit(
                 commit, installation_name_to_use
@@ -377,7 +375,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 filter(
                     lambda obj: obj.name == installation_name_to_use
                     and obj.is_configured(),
-                    commit.repository.owner.github_app_installations or [],
+                    commit.repository.author.github_app_installations or [],
                 )
             )
             rely_on_webhook_ghapp = ghapp_default_installations != [] and any(
@@ -968,7 +966,7 @@ def get_repo_provider_service_for_specific_commit(
         return repository_provider
 
     ghapp_details = get_specific_github_app_details(
-        repository.owner, int(installation_for_commit), commit.commitid
+        repository.author, int(installation_for_commit), commit.commitid
     )
     token, _ = get_github_app_token(Service(repository.service), ghapp_details)
 
@@ -981,9 +979,9 @@ def get_repo_provider_service_for_specific_commit(
             private=repository.private,
         ),
         owner=OwnerInfo(
-            service_id=repository.owner.service_id,
+            service_id=repository.author.service_id,
             ownerid=repository.ownerid,
-            username=repository.owner.username,
+            username=repository.author.username,
         ),
         installation=ghapp_details,
         fallback_installations=None,
@@ -1010,33 +1008,36 @@ def get_ta_relevant_context(
             .filter(Upload.report_id == ta_commit_report.id_)
             .subquery()
         )
-        upload_error = (
-            db_session.query(UploadError)
-            .filter(UploadError.upload_id.in_(ta_upload_ids.select()))
-            .first()
-        )
+
+        # commenting out the upload error code because we it's too noisy and confusing for now
+        # upload_error = (
+        #     db_session.query(UploadError)
+        #     .filter(UploadError.upload_id.in_(ta_upload_ids.select()))
+        #     .first()
+        # )
 
         totals: TestResultReportTotals | None = ta_commit_report.test_result_totals
 
-        if upload_error:
-            match upload_error.error_code:
-                case "unsupported_file_format":
-                    error_message = upload_error.error_params.get("error_message")
-                case "warning":
-                    error_message = upload_error.error_params.get("warning_message")
-                case "file_not_in_storage":
-                    error_message = None
-                case _:
-                    sentry_sdk.capture_message(
-                        f"Unrecognized error code: {upload_error.error_code}",
-                        level="error",
-                    )
-                    error_message = None
-            error_payload = ErrorPayload(
-                error_code=upload_error.error_code,
-                error_message=error_message,
-            )
-            ta_error_msg = short_error_message(error_payload)
+        # commenting out the upload error code because we it's too noisy and confusing for now
+        # if upload_error:
+        #     match upload_error.error_code:
+        #         case "unsupported_file_format":
+        #             error_message = upload_error.error_params.get("error_message")
+        #         case "warning":
+        #             error_message = upload_error.error_params.get("warning_message")
+        #         case "file_not_in_storage":
+        #             error_message = None
+        #         case _:
+        #             sentry_sdk.capture_message(
+        #                 f"Unrecognized error code: {upload_error.error_code}",
+        #                 level="error",
+        #             )
+        #             error_message = None
+        #     error_payload = ErrorPayload(
+        #         error_code=upload_error.error_code,
+        #         error_message=error_message,
+        #     )
+        #     ta_error_msg = short_error_message(error_payload)
 
         all_tests_passed = False
         if totals:

@@ -195,14 +195,14 @@ class TestUploadTaskIntegration:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="ThiagoCodecov",
-            repository__owner__service="github",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="ThiagoCodecov",
+            repository__author__service="github",
             repository__yaml={"codecov": {"max_report_age": "1y ago"}},
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -336,14 +336,14 @@ class TestUploadTaskIntegration:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
-            repository__owner__username="ThiagoCodecov",
-            repository__owner__service="github",
+            repository__author__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
+            repository__author__username="ThiagoCodecov",
+            repository__author__service="github",
             repository__yaml={"codecov": {"max_report_age": "1y ago"}},
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -441,14 +441,14 @@ class TestUploadTaskIntegration:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
-            repository__owner__username="ThiagoCodecov",
-            repository__owner__service="github",
+            repository__author__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
+            repository__author__username="ThiagoCodecov",
+            repository__author__service="github",
             repository__yaml={"codecov": {"max_report_age": "1y ago"}},
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -552,14 +552,14 @@ class TestUploadTaskIntegration:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
-            repository__owner__username="ThiagoCodecov",
-            repository__owner__service="github",
+            repository__author__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
+            repository__author__username="ThiagoCodecov",
+            repository__author__service="github",
             repository__yaml={"codecov": {"max_report_age": "1y ago"}},
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -667,14 +667,14 @@ class TestUploadTaskIntegration:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
-            repository__owner__username="ThiagoCodecov",
-            repository__owner__service="github",
+            repository__author__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
+            repository__author__username="ThiagoCodecov",
+            repository__author__service="github",
             repository__yaml={"codecov": {"max_report_age": "1y ago"}},
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
             branch="main",
         )
         dbsession.add(commit)
@@ -782,14 +782,14 @@ class TestUploadTaskIntegration:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
-            repository__owner__username="ThiagoCodecov",
-            repository__owner__service="github",
+            repository__author__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
+            repository__author__username="ThiagoCodecov",
+            repository__author__service="github",
             repository__yaml={"codecov": {"max_report_age": "1y ago"}},
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -887,8 +887,8 @@ class TestUploadTaskIntegration:
             parent_commit_id=None,
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={"codecov": {"max_report_age": "1y ago"}},
             repository__name="example-python",
             pullid=1,
@@ -952,8 +952,8 @@ class TestUploadTaskIntegration:
             parent_commit_id=None,
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={"codecov": {"max_report_age": "1y ago"}},
             repository__name="example-python",
             pullid=1,
@@ -1027,8 +1027,8 @@ class TestUploadTaskIntegration:
             parent_commit_id=None,
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={"codecov": {"max_report_age": "1y ago"}},
             repository__name="example-python",
             pullid=1,
@@ -1112,8 +1112,8 @@ class TestUploadTaskIntegration:
             parent_commit_id=None,
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={"codecov": {"max_report_age": "1y ago"}},
             repository__name="example-python",
             pullid=1,
@@ -1185,14 +1185,14 @@ class TestUploadTaskIntegration:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="ThiagoCodecov",
-            repository__owner__service="github",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="ThiagoCodecov",
+            repository__author__service="github",
             repository__yaml={"codecov": {"max_report_age": "1y ago"}},
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -1309,7 +1309,7 @@ class TestUploadTaskIntegration:
         dbsession.add(owner)
 
         repo = RepositoryFactory.create(
-            owner=owner,
+            author=owner,
             yaml={"codecov": {"max_report_age": "1y ago"}},
             name="example-python",
         )
@@ -1413,12 +1413,12 @@ class TestUploadTaskIntegration:
             message="",
             parent_commit_id=None,
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
             repository__name="example-python",
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -1506,12 +1506,12 @@ class TestUploadTaskIntegration:
         commit = CommitFactory.create(
             message="",
             parent_commit_id=None,
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
             repository__name="example-python",
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()
@@ -1600,11 +1600,11 @@ class TestUploadTaskIntegration:
         commit = CommitFactory.create(
             message="",
             parent_commit_id=None,
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         mock_repo_provider.data = {"repo": {"repoid": commit.repoid}}
         dbsession.add(commit)
@@ -1683,11 +1683,11 @@ class TestUploadTaskIntegration:
         commit = CommitFactory.create(
             message="",
             parent_commit_id=None,
-            repository__owner__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
-            repository__owner__username="ThiagoCodecov",
+            repository__author__unencrypted_oauth_token="test7lk5ndmtqzxlx06rip65nac9c7epqopclnoy",
+            repository__author__username="ThiagoCodecov",
             repository__yaml={"codecov": {"max_report_age": "764y ago"}},
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         report = CommitReport(commit_id=commit.id_)
         upload = Upload(
@@ -2111,7 +2111,7 @@ class TestUploadTaskUnit:
         mock_configuration.set_params({"github": {"bot": {"key": "somekey"}}})
         commit = CommitFactory.create(
             repository__private=False,
-            repository__owner__unencrypted_oauth_token="aaaaabbbbhhhh",
+            repository__author__unencrypted_oauth_token="aaaaabbbbhhhh",
         )
         task = UploadTask()
         mock_repo_provider.data = mocker.MagicMock()
@@ -2135,7 +2135,7 @@ class TestUploadTaskUnit:
         )
         ghapp = GithubAppInstallationFactory(
             installation_id=1234,
-            owner=commit.repository.owner,
+            owner=commit.repository.author,
         )
         dbsession.add(ghapp)
         dbsession.flush()
@@ -2436,14 +2436,14 @@ class TestUploadTaskUnit:
         commit = CommitFactory.create(
             message="",
             commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            repository__owner__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
-            repository__owner__username="ThiagoCodecov",
-            repository__owner__service="github",
+            repository__author__oauth_token="GHTZB+Mi+kbl/ubudnSKTJYb/fgN4hRJVJYSIErtidEsCLDJBb8DZzkbXqLujHAnv28aKShXddE/OffwRuwKug==",
+            repository__author__username="ThiagoCodecov",
+            repository__author__service="github",
             repository__yaml={"codecov": {"max_report_age": "1y ago"}},
             repository__name="example-python",
             pullid=1,
             # Setting the time to _before_ patch centric default YAMLs start date of 2024-04-30
-            repository__owner__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
+            repository__author__createstamp=datetime(2023, 1, 1, tzinfo=UTC),
         )
         dbsession.add(commit)
         dbsession.flush()

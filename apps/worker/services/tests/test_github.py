@@ -14,7 +14,7 @@ from services.github import get_github_app_for_commit, set_github_app_for_commit
 
 class TestGetSetGithubAppsToCommits:
     def _get_commit(self, dbsession):
-        commit = CommitFactory(repository__owner__service="github")
+        commit = CommitFactory(repository__author__service="github")
         dbsession.add(commit)
         dbsession.flush()
         return commit
@@ -41,7 +41,7 @@ class TestGetSetGithubAppsToCommits:
 
     def test_set_app_for_commit_redis_success(self, mock_redis, dbsession):
         commit = self._get_commit(dbsession)
-        app = self._get_app(commit.repository.owner, dbsession)
+        app = self._get_app(commit.repository.author, dbsession)
         assert set_github_app_for_commit(app.id, commit) == True
         mock_redis.set.assert_called_with(
             f"app_to_use_for_commit_{commit.id}", str(app.id), ex=(60 * 60 * 2)
@@ -56,9 +56,9 @@ class TestGetSetGithubAppsToCommits:
         )
 
     def test_get_app_for_commit(self, mock_redis, dbsession):
-        repo_github = RepositoryFactory(owner__service="github")
-        repo_ghe = RepositoryFactory(owner__service="github_enterprise")
-        repo_gitlab = RepositoryFactory(owner__service="gitlab")
+        repo_github = RepositoryFactory(author__service="github")
+        repo_ghe = RepositoryFactory(author__service="github_enterprise")
+        repo_gitlab = RepositoryFactory(author__service="gitlab")
         redis_keys = {
             "app_to_use_for_commit_12": b"1200",
             "app_to_use_for_commit_10": b"1000",
@@ -84,7 +84,7 @@ class TestGetSetGithubAppsToCommits:
         assert get_github_app_for_commit(fake_commit_gitlab) is None
 
     def test_get_app_for_commit_error(self, mock_redis):
-        repo_github = RepositoryFactory(owner__service="github")
+        repo_github = RepositoryFactory(author__service="github")
         mock_redis.get.side_effect = RedisError
         fake_commit_12 = MagicMock(
             name="fake_commit", **{"id": 12, "repository": repo_github}

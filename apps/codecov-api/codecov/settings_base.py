@@ -280,6 +280,13 @@ CACHES = {
 
 
 # Session configuration
+
+# Controls how the X-Forwarded-For header is processed to get client IP addresses.
+# Set to how many trusted proxies you have in front of the application (must be
+# a positive integer). Defaults to trusting all proxies (this is unsafe unless
+# your ingress proxy strips X-Forwarded-For headers).
+TRUSTED_PROXY_DEPTH = get_config("setup", "http", "trusted_proxy_depth", default=0)
+
 SESSION_COOKIE_DOMAIN = get_config(
     "setup", "http", "cookies_domain", default=".codecov.io"
 )
@@ -435,7 +442,7 @@ SENTRY_ORG_URL = get_config(
 
 if SENTRY_DSN is not None:
     SENTRY_SAMPLE_RATE = float(
-        get_config("services", "sentry", "sample_rate", default="0.1")
+        get_config("services", "sentry", "sample_rate", default="1.0")
     )
     sentry_sdk.init(
         dsn=SENTRY_DSN,

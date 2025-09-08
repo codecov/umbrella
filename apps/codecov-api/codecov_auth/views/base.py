@@ -15,6 +15,7 @@ from django.http.response import HttpResponse
 from django.utils import timezone
 from django.utils.timezone import now
 
+from codecov_auth.helpers import get_client_ip_address
 from codecov_auth.models import Owner, OwnerProfile, Session, User
 from services.analytics import AnalyticsService
 from services.refresh import RefreshService
@@ -378,6 +379,27 @@ class LoginMixin:
             defaults={"createstamp": timezone.now()},
         )
         if login_data["login"] != owner.username:
+            if login_data["login"] is not None:
+                other_owner = Owner.objects.filter(
+                    service=f"{self.service}",
+                    username=login_data["login"],
+                ).first()
+                if other_owner:
+                    log.warning(
+                        "_get_or_create_owner: Username already exists for another owner",
+                        extra={
+                            "service": self.service,
+                            "service_id": login_data["id"],
+                            "ownerid": owner.ownerid,
+                            "other_ownerid": other_owner.ownerid,
+                        },
+                    )
+
+                    other_owner.username = None
+                    other_owner.save(update_fields=["username"])
+
+                    Session.objects.filter(owner=other_owner).delete()
+
             fields_to_update.append("username")
             owner.username = login_data["login"]
 
@@ -448,11 +470,7 @@ class LoginMixin:
 
     def store_login_session(self, owner: Owner) -> None:
         # Store user's login session info after logging in
-        http_x_forwarded_for = self.request.META.get("HTTP_X_FORWARDED_FOR")
-        if http_x_forwarded_for:
-            ip = http_x_forwarded_for.split(",")[0]
-        else:
-            ip = self.request.META.get("REMOTE_ADDR")
+        ip = get_client_ip_address(self.request)
 
         login_session = DjangoSession.objects.filter(
             session_key=self.request.session.session_key

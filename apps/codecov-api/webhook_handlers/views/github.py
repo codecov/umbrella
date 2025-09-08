@@ -31,6 +31,7 @@ from webhook_handlers.constants import (
     GitHubWebhookEvents,
     WebhookHandlerErrorMessages,
 )
+from webhook_handlers.helpers import HANDLER, should_process
 
 from . import WEBHOOKS_ERRORED, WEBHOOKS_RECEIVED
 
@@ -709,6 +710,10 @@ class GithubWebhookHandler(APIView):
             },
         )
         self.validate_signature(request)
+
+        handlers = should_process(request.data, self.event, self.service_name)
+        if HANDLER.GITHUB not in handlers:
+            return Response()
 
         if handler := getattr(self, self.event, None):
             self._inc_recv()

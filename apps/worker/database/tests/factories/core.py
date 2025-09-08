@@ -73,7 +73,7 @@ class RepositoryFactory(Factory):
     using_integration = False
     service_id = factory.Sequence(lambda n: f"id_{n}")
 
-    owner = factory.SubFactory(OwnerFactory)
+    author = factory.SubFactory(OwnerFactory)
     bot = None
     updatestamp = factory.LazyAttribute(lambda o: datetime.now(tz=UTC))
     languages = []

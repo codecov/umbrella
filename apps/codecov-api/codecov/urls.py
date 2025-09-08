@@ -1,9 +1,13 @@
+import logging
+
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path, re_path
 
 from api.internal.constants import INTERNAL_API_PREFIX
 from codecov import views
+
+log = logging.getLogger(__name__)
 
 urlpatterns = [
     path("billing/", include("billing.urls")),
@@ -39,3 +43,11 @@ urlpatterns = [
     path("monitoring/", include("django_prometheus.urls")),
     path("gen_ai/", include("api.gen_ai.urls")),
 ]
+
+if settings.IS_DEV or settings.RUN_ENV == "TESTING":
+    try:
+        from debug_toolbar.toolbar import debug_toolbar_urls
+
+        urlpatterns += debug_toolbar_urls()
+    except ImportError:
+        log.warning("debug_toolbar could not be imported")

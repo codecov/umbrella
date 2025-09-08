@@ -136,7 +136,7 @@ class Owner(CodecovBaseModel):
     bot = relationship("Owner", remote_side=[ownerid])
     repositories = relationship(
         "Repository",
-        back_populates="owner",
+        back_populates="author",
         foreign_keys="Repository.ownerid",
         cascade="all, delete",
         passive_deletes=True,
@@ -230,7 +230,7 @@ class Repository(CodecovBaseModel):
     # DEPRECATED - prefer GithubAppInstallation.is_repo_covered_by_integration
     using_integration = Column(types.Boolean)
 
-    owner = relationship(Owner, foreign_keys=[ownerid], back_populates="repositories")
+    author = relationship(Owner, foreign_keys=[ownerid], back_populates="repositories")
     bot = relationship(Owner, foreign_keys=[bot_id])
 
     __table_args__ = (
@@ -240,11 +240,11 @@ class Repository(CodecovBaseModel):
 
     @property
     def slug(self):
-        return f"{self.owner.slug}/{self.name}"
+        return f"{self.author.slug}/{self.name}"
 
     @property
     def service(self):
-        return self.owner.service
+        return self.author.service
 
     def __repr__(self):
         return f"Repo<{self.repoid}>"
@@ -427,9 +427,9 @@ class Commit(CodecovBaseModel):
         return self.commitid
 
     def should_write_to_storage(self: object) -> bool:
-        if self.repository is None or self.repository.owner is None:
+        if self.repository is None or self.repository.author is None:
             return False
-        is_codecov_repo = self.repository.owner.username == "codecov"
+        is_codecov_repo = self.repository.author.username == "codecov"
         return should_write_data_to_storage_config_check(
             "commit_report", is_codecov_repo, self.repository.repoid
         )
@@ -502,9 +502,9 @@ class Pull(CodecovBaseModel):
     )
 
     def should_write_to_storage(self: object) -> bool:
-        if self.repository is None or self.repository.owner is None:
+        if self.repository is None or self.repository.author is None:
             return False
-        is_codecov_repo = self.repository.owner.username == "codecov"
+        is_codecov_repo = self.repository.author.username == "codecov"
         return should_write_data_to_storage_config_check(
             master_switch_key="pull_flare",
             is_codecov_repo=is_codecov_repo,
