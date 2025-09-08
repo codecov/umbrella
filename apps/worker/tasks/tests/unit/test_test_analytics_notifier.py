@@ -4,17 +4,15 @@ import pytest
 from celery.exceptions import Retry
 from django.utils import timezone
 
-from database.models import Test, TestInstance
 from helpers.notifier import NotifierResult
 from services.lock_manager import LockRetry
 from services.test_analytics.ta_timeseries import FailedTestInstance, insert_testrun
 from services.test_results import (
     NotifierTaskResult,
     TestResultsNotificationFailure,
-    generate_test_id,
 )
 from shared.django_apps.core.tests.factories import RepositoryFactory
-from shared.django_apps.ta_timeseries.models import Testrun
+from shared.django_apps.ta_timeseries.models import Testrun, calc_test_id
 from shared.torngit.response_types import ProviderPull
 from shared.upload.types import TAUploadContext, UploadPipeline
 from shared.yaml.user_yaml import UserYaml
@@ -68,65 +66,10 @@ def test_setup(mocker, dbsession):
     test_name = "test_example"
     test_suite = "test_suite"
 
-    test_id1 = generate_test_id(repo_id, test_name + "_1", test_suite, "flag0")
-    test1 = Test(
-        id_=test_id1,
-        repoid=repo_id,
-        name=test_name + "_1",
-        testsuite=test_suite,
-        flags_hash="flag0",
-    )
-    dbsession.add(test1)
-
-    test_id2 = generate_test_id(repo_id, test_name + "_2", test_suite, "flag1")
-    test2 = Test(
-        id_=test_id2,
-        repoid=repo_id,
-        name=test_name + "_2",
-        testsuite=test_suite,
-        flags_hash="flag1",
-    )
-    dbsession.add(test2)
-
-    test_id3 = generate_test_id(repo_id, test_name + "_3", test_suite, "")
-    test3 = Test(
-        id_=test_id3,
-        repoid=repo_id,
-        name=test_name + "_3",
-        testsuite=test_suite,
-        flags_hash="",
-    )
-    dbsession.add(test3)
-
-    test_instances = [
-        TestInstance(
-            test_id=test_id1,
-            outcome="failure",
-            failure_message="/very/long/path/to/test.py:10\nTraceback (most recent call last):\nAssertionError: Test failed\r\n",
-            duration_seconds=1.5,
-            upload_id=12345,  # Random upload ID
-            repoid=repo_id,
-            commitid=commit_sha,
-        ),
-        TestInstance(
-            test_id=test_id2,
-            outcome="failure",
-            failure_message="Another failure message\r\nwith carriage returns",
-            duration_seconds=2.0,
-            upload_id=67890,  # Random upload ID
-            repoid=repo_id,
-            commitid=commit_sha,
-        ),
-        TestInstance(
-            test_id=test_id3,
-            outcome="failure",
-            failure_message=None,  # Test case with no failure message
-            duration_seconds=0.5,
-            upload_id=11111,  # Random upload ID
-            repoid=repo_id,
-            commitid=commit_sha,
-        ),
-    ]
+    # Calculate test IDs directly using calc_test_id
+    test_id1 = calc_test_id(test_name + "_1", "test_classname", test_suite)
+    test_id2 = calc_test_id(test_name + "_2", "test_classname", test_suite)
+    test_id3 = calc_test_id(test_name + "_3", "test_classname", test_suite)
 
     upload_context = TAUploadContext(
         commit_sha=commit_sha,
@@ -135,29 +78,55 @@ def test_setup(mocker, dbsession):
         pipeline=UploadPipeline.CODECOV,
     )
 
-    for instance in test_instances:
+    # Insert test data into timeseries
+    test_data = [
+        {
+            "test_id": test_id1,
+            "outcome": "failure",
+            "failure_message": "/very/long/path/to/test.py:10\nTraceback (most recent call last):\nAssertionError: Test failed\r\n",
+            "duration_seconds": 1.5,
+            "upload_id": 12345,
+            "flags": ["flag0"],
+        },
+        {
+            "test_id": test_id2,
+            "outcome": "failure",
+            "failure_message": "Another failure message\r\nwith carriage returns",
+            "duration_seconds": 2.0,
+            "upload_id": 67890,
+            "flags": ["flag1"],
+        },
+        {
+            "test_id": test_id3,
+            "outcome": "failure",
+            "failure_message": None,
+            "duration_seconds": 0.5,
+            "upload_id": 11111,
+            "flags": [""],
+        },
+    ]
+
+    for data in test_data:
         insert_testrun(
             timestamp=timezone.now(),
             repo_id=repo_id,
             commit_sha=commit_sha,
             branch=upload_context["branch"],
-            upload_id=instance.upload_id,
-            flags=[
-                test.flags_hash
-                for test in [test1, test2, test3]
-                if test.id_ == instance.test_id
-            ],
+            upload_id=data["upload_id"],
+            flags=data["flags"],
             parsing_info={
                 "framework": "Pytest",
                 "testruns": [
                     {
-                        "name": instance.test_id,
+                        "name": data["test_id"].decode("utf-8")
+                        if isinstance(data["test_id"], bytes)
+                        else str(data["test_id"]),
                         "classname": "test_classname",
                         "computed_name": "computed_name",
-                        "duration": instance.duration_seconds,
-                        "outcome": instance.outcome,
+                        "duration": data["duration_seconds"],
+                        "outcome": data["outcome"],
                         "testsuite": test_suite,
-                        "failure_message": instance.failure_message,
+                        "failure_message": data["failure_message"],
                         "filename": "test_filename",
                         "build_url": None,
                     }
@@ -165,14 +134,12 @@ def test_setup(mocker, dbsession):
             },
         )
 
-        dbsession.add(instance)
-
     dbsession.flush()
 
     return {
         "repository": repository,
         "upload_context": upload_context,
-        "test_instances": test_instances,
+        "test_data": test_data,
         "commit_sha": commit_sha,
     }
 

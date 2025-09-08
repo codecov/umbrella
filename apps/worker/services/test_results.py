@@ -6,9 +6,6 @@ from hashlib import sha256
 from typing import Literal, TypedDict, TypeVar
 
 import sentry_sdk
-from sqlalchemy import desc, func
-from sqlalchemy.orm import joinedload
-from sqlalchemy.orm.session import Session
 
 from database.enums import ReportType
 from database.models import (
@@ -16,7 +13,6 @@ from database.models import (
     CommitReport,
     Repository,
     RepositoryFlag,
-    TestInstance,
     Upload,
 )
 from helpers.notifier import BaseNotifier
@@ -451,60 +447,6 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
             return (False, "torngit_error")
 
         return (True, "comment_posted")
-
-
-def latest_failures_for_commit(
-    db_session: Session, repo_id: int, commit_sha: str
-) -> list[TestInstance]:
-    """
-    This will result in a SQL query that looks something like this:
-
-    SELECT DISTINCT ON (rti.test_id) rti.id, ...
-    FROM reports_testinstance rti
-    JOIN reports_upload ru ON ru.id = rti.upload_id
-    LEFT OUTER JOIN reports_test rt ON rt.id = rti.test_id
-    WHERE ...
-    ORDER BY rti.test_id, ru.created_at DESC
-
-    The goal of this query is to return:
-    > the latest test instance failure for each unique test based on upload creation time
-
-    The `DISTINCT ON` test_id with the order by test_id, enforces that we are only fetching one test instance for each test.
-
-    The ordering by `upload.create_at DESC` enforces that we get the latest test instance for that unique test.
-    """
-
-    return (
-        db_session.query(TestInstance)
-        .join(TestInstance.upload)
-        .options(joinedload(TestInstance.test))
-        .filter(TestInstance.repoid == repo_id, TestInstance.commitid == commit_sha)
-        .filter(TestInstance.outcome.in_(["failure", "error"]))
-        .order_by(TestInstance.test_id)
-        .order_by(desc(Upload.created_at))
-        .distinct(TestInstance.test_id)
-        .all()
-    )
-
-
-def get_test_summary_for_commit(
-    db_session: Session, repo_id: int, commit_sha: str
-) -> dict[str, int]:
-    cte = (
-        db_session.query(TestInstance)
-        .join(TestInstance.upload)
-        .options(joinedload(TestInstance.test))
-        .filter(TestInstance.repoid == repo_id, TestInstance.commitid == commit_sha)
-        .order_by(TestInstance.test_id)
-        .order_by(desc(Upload.created_at))
-        .distinct(TestInstance.test_id)
-        .cte(name="latest_test_instances")
-    )
-    return dict(
-        db_session.query(cte.c.outcome, func.count(cte.c.test_id))
-        .group_by(cte.c.outcome)
-        .all()
-    )
 
 
 def not_private_and_free_or_team(repo: Repository):

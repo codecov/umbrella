@@ -11,7 +11,7 @@ from database.tests.factories import (
     UploadFactory,
 )
 from services.repository import EnrichedPull
-from services.test_analytics.ta_finish_upload import FinisherResult, new_impl
+from services.test_analytics.ta_finish_upload import FinisherResult, ta_finish_upload
 from services.yaml import UserYaml
 from shared.django_apps.core.models import Commit as DjangoCommit
 from shared.django_apps.core.models import Repository as DjangoRepo
@@ -106,12 +106,11 @@ def test_ta_finish_upload(
     )
 
     def run_task() -> FinisherResult:
-        result = new_impl(
+        result = ta_finish_upload(
             db_session=dbsession,
             repo=repo,
             commit=commit,
             commit_yaml=commit_yaml,
-            impl_type="new",
         )
         return result
 
