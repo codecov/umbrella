@@ -2,10 +2,12 @@ from datetime import datetime
 from typing import Literal
 
 from django.db.models import (
+    Aggregate,
     Case,
     Count,
     F,
     FloatField,
+    Func,
     IntegerField,
     Max,
     Min,
@@ -18,16 +20,34 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce, RowNumber
 
-from shared.django_apps.ta_timeseries import models as ta_ts_models
-
-from .timescale_utils import (
-    ArrayMergeDedupe,
-    Cardinality,
-    Last,
+from shared.django_apps.ta_timeseries.models import Testrun
+from utils.ta_timescale.utils import (
     _calculate_slow_test_num,
     _should_use_precomputed_aggregates,
     get_daily_aggregate_querysets,
 )
+
+
+class ArrayMergeDedupe(Aggregate):
+    function = "array_merge_dedup_agg"
+    template = "%(function)s(%(expressions)s)"
+
+
+class Last(Aggregate):
+    """
+    Custom aggregate for TimescaleDB's last() function.
+
+    Requires two arguments: value column and time column.
+    Usage: Last('value_column', 'time_column', output_field=FloatField())
+    """
+
+    function = "last"
+    template = "%(function)s(%(expressions)s)"
+
+
+class Cardinality(Func):
+    function = "cardinality"
+    template = "%(function)s(%(expressions)s)"
 
 
 def get_test_data_queryset_via_ca(
@@ -128,7 +148,7 @@ def get_test_data_queryset_via_testrun(
     parameter: Literal["flaky_tests", "failed_tests", "slowest_tests", "skipped_tests"]
     | None = None,
 ):
-    test_data = ta_ts_models.Testrun.objects.filter(
+    test_data = Testrun.objects.filter(
         repo_id=repoid,
         branch=branch,
         timestamp__gt=start_date,

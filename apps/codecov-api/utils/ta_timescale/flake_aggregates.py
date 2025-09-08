@@ -4,9 +4,8 @@ from typing import Literal
 from django.db.models import Case, Count, F, FloatField, Sum, Value, When
 
 from shared.metrics import Histogram
-from utils.ta_types import FlakeAggregates
-
-from .timescale_utils import (
+from utils.ta_timescale.types import FlakeAggregates
+from utils.ta_timescale.utils import (
     _pct_change,
     _should_use_precomputed_aggregates,
     get_daily_aggregate_querysets,
@@ -55,7 +54,7 @@ get_flake_aggregates_histogram = Histogram(
 
 
 @get_flake_aggregates_histogram.time()
-def get_flake_aggregates_from_timescale(
+def get_flake_aggregates(
     repoid: int,
     branch: str | None,
     start_date: datetime,

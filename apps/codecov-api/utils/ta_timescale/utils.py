@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal, TypeIs
 
-from django.db.models import Aggregate, Func
+from django.db import connections
 
 from shared.django_apps.ta_timeseries.models import (
     AggregateDaily,
@@ -17,28 +17,6 @@ def _should_use_precomputed_aggregates(
     branch: str | None,
 ) -> TypeIs[Literal["main", "master", "develop"] | None]:
     return branch in PRECOMPUTED_BRANCHES or branch is None
-
-
-class ArrayMergeDedupe(Aggregate):
-    function = "array_merge_dedup_agg"
-    template = "%(function)s(%(expressions)s)"
-
-
-class Last(Aggregate):
-    """
-    Custom aggregate for TimescaleDB's last() function.
-
-    Requires two arguments: value column and time column.
-    Usage: Last('value_column', 'time_column', output_field=FloatField())
-    """
-
-    function = "last"
-    template = "%(function)s(%(expressions)s)"
-
-
-class Cardinality(Func):
-    function = "cardinality"
-    template = "%(function)s(%(expressions)s)"
 
 
 def _calculate_slow_test_num(total_tests: int) -> int:
@@ -86,3 +64,35 @@ def get_daily_aggregate_querysets(
         )
 
     return test_data, repo_data
+
+
+def refresh_ta_timeseries_aggregates(
+    min_timestamp: datetime | None = None,
+    max_timestamp: datetime | None = None,
+    connection_name: str = "ta_timeseries",
+) -> None:
+    with connections[connection_name].cursor() as cursor:
+        cursor.execute(
+            """
+            DO $$
+            DECLARE
+                min_timestamp TIMESTAMP WITH TIME ZONE;
+                max_timestamp TIMESTAMP WITH TIME ZONE;
+            BEGIN
+                min_timestamp := %s;
+                max_timestamp := %s;
+                
+                CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_hourly', min_timestamp, max_timestamp, true);
+                CALL refresh_continuous_aggregate('ta_timeseries_test_aggregate_daily', min_timestamp, max_timestamp, true);
+                CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_hourly', min_timestamp, max_timestamp, true);
+                CALL refresh_continuous_aggregate('ta_timeseries_branch_test_aggregate_daily', min_timestamp, max_timestamp, true);
+
+                CALL refresh_continuous_aggregate('ta_timeseries_aggregate_hourly', min_timestamp, max_timestamp, true);
+                CALL refresh_continuous_aggregate('ta_timeseries_aggregate_daily', min_timestamp, max_timestamp, true);
+                CALL refresh_continuous_aggregate('ta_timeseries_branch_aggregate_hourly', min_timestamp, max_timestamp, true);
+                CALL refresh_continuous_aggregate('ta_timeseries_branch_aggregate_daily', min_timestamp, max_timestamp, true);
+            END;
+            $$;
+            """,
+            [min_timestamp, max_timestamp],
+        )
