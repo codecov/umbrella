@@ -34,6 +34,15 @@ def resolve_commits_failed(
     return test.commits_where_fail
 
 
+@test_result_bindable.field("runsFailed")
+def resolve_runs_failed(
+    test: TestResultsRow | dict[str, Any], _: GraphQLResolveInfo
+) -> int:
+    if isinstance(test, dict):
+        return test["runs_failed"]
+    return test.runs_failed
+
+
 @test_result_bindable.field("failureRate")
 def resolve_failure_rate(
     test: TestResultsRow | dict[str, Any], _: GraphQLResolveInfo
