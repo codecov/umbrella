@@ -110,7 +110,7 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
                 for k, v in row.items()
                 if k != "updated_at"
             }
-            for row in result
+            for row in result.order_by("test_id")
         ]
 
     def test_gql_query_test_results_timescale(
