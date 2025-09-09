@@ -15,14 +15,12 @@ from database.tests.factories import (
     OwnerFactory,
     PullFactory,
     RepositoryFactory,
-    UploadErrorFactory,
 )
 from database.tests.factories.core import (
     GithubAppInstallationFactory,
     ReportFactory,
     UploadFactory,
 )
-from database.tests.factories.reports import TestResultReportTotalsFactory
 from helpers.checkpoint_logger import _kwargs_key
 from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
@@ -39,6 +37,9 @@ from shared.celery_config import (
     activate_account_user_task_name,
     new_user_activated_task_name,
     upload_breadcrumb_task_name,
+)
+from shared.django_apps.ta_timeseries.tests.factories import (
+    TestrunFactory,
 )
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
@@ -59,7 +60,6 @@ from tasks.notify import (
     NotifyTask,
     _possibly_pin_commit_to_github_app,
     _possibly_refresh_previous_selection,
-    get_ta_relevant_context,
 )
 from tests.helpers import mock_all_plans_and_tiers
 
@@ -85,6 +85,14 @@ def mock_self_app(mocker, celery_app):
         NotifyTask,
         "app",
         mock_app,
+    )
+
+
+@pytest.fixture
+def mock_no_failures(mocker):
+    return mocker.patch(
+        "tasks.notify.get_pr_comment_agg",
+        return_value={"passed": 0, "failed": 0, "skipped": 0},
     )
 
 
@@ -430,7 +438,13 @@ class TestNotifyTaskHelpers:
 
 class TestNotifyTask:
     def test_simple_call_no_notifications(
-        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
+        self,
+        dbsession,
+        mocker,
+        mock_storage,
+        mock_configuration,
+        mock_self_app,
+        mock_no_failures,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
@@ -483,6 +497,7 @@ class TestNotifyTask:
         mock_configuration,
         mock_repo_provider,
         mock_self_app,
+        mock_no_failures,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
@@ -543,6 +558,7 @@ class TestNotifyTask:
         mock_repo_provider,
         mock_self_app,
         enriched_pull,
+        mock_no_failures,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
@@ -614,6 +630,7 @@ class TestNotifyTask:
         mock_configuration,
         mock_checkpoint_submit,
         mock_self_app,
+        mock_no_failures,
     ):
         fake_notifier = mocker.MagicMock(
             AbstractBaseNotifier,
@@ -710,7 +727,13 @@ class TestNotifyTask:
         )
 
     def test_simple_call_no_pullrequest_found(
-        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
+        self,
+        dbsession,
+        mocker,
+        mock_storage,
+        mock_configuration,
+        mock_self_app,
+        mock_no_failures,
     ):
         mocked_submit_third_party_notifications = mocker.patch.object(
             NotifyTask, "submit_third_party_notifications"
@@ -762,7 +785,13 @@ class TestNotifyTask:
         )
 
     def test_simple_call_should_delay(
-        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
+        self,
+        dbsession,
+        mocker,
+        mock_storage,
+        mock_configuration,
+        mock_self_app,
+        mock_no_failures,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
@@ -813,7 +842,13 @@ class TestNotifyTask:
         )
 
     def test_simple_call_should_delay_using_integration(
-        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
+        self,
+        dbsession,
+        mocker,
+        mock_storage,
+        mock_configuration,
+        mock_self_app,
+        mock_no_failures,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
@@ -865,7 +900,13 @@ class TestNotifyTask:
         )
 
     def test_simple_call_not_able_fetch_ci(
-        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
+        self,
+        dbsession,
+        mocker,
+        mock_storage,
+        mock_configuration,
+        mock_self_app,
+        mock_no_failures,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
@@ -911,7 +952,13 @@ class TestNotifyTask:
         )
 
     def test_simple_call_not_able_fetch_ci_server_issues(
-        self, dbsession, mocker, mock_storage, mock_configuration, mock_self_app
+        self,
+        dbsession,
+        mocker,
+        mock_storage,
+        mock_configuration,
+        mock_self_app,
+        mock_no_failures,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
@@ -998,7 +1045,9 @@ class TestNotifyTask:
         res = task.should_send_notifications(current_yaml, commit, True, mock_report)
         assert not res
 
-    def test_notify_task_no_bot(self, dbsession, mocker, mock_self_app):
+    def test_notify_task_no_bot(
+        self, dbsession, mocker, mock_self_app, mock_no_failures
+    ):
         get_repo_provider_service = mocker.patch(
             "tasks.notify.get_repo_provider_service"
         )
@@ -1044,7 +1093,7 @@ class TestNotifyTask:
 
     @freeze_time("2024-04-22T11:15:00")
     def test_notify_task_no_ghapp_available_one_rate_limited(
-        self, dbsession, mocker, mock_self_app
+        self, dbsession, mocker, mock_self_app, mock_no_failures
     ):
         get_repo_provider_service = mocker.patch(
             "tasks.notify.get_repo_provider_service"
@@ -1103,7 +1152,7 @@ class TestNotifyTask:
 
     @freeze_time("2024-04-22T11:15:00")
     def test_notify_task_no_ghapp_available_all_suspended(
-        self, dbsession, mocker, mock_self_app
+        self, dbsession, mocker, mock_self_app, mock_no_failures
     ):
         get_repo_provider_service = mocker.patch(
             "tasks.notify.get_repo_provider_service"
@@ -1276,7 +1325,7 @@ class TestNotifyTask:
         )
 
     def test_notify_task_max_retries_exceeded(
-        self, dbsession, mocker, mock_repo_provider, mock_self_app
+        self, dbsession, mocker, mock_repo_provider, mock_self_app, mock_no_failures
     ):
         mocker.patch.object(NotifyTask, "should_wait_longer", return_value=True)
         mocker.patch.object(NotifyTask, "retry", side_effect=MaxRetriesExceededError())
@@ -1471,7 +1520,13 @@ class TestNotifyTask:
         )
 
     def test_checkpoints_not_logged_outside_upload_flow(
-        self, dbsession, mock_redis, mocker, mock_checkpoint_submit, mock_configuration
+        self,
+        dbsession,
+        mock_redis,
+        mocker,
+        mock_checkpoint_submit,
+        mock_configuration,
+        mock_no_failures,
     ):
         fake_notifier = mocker.MagicMock(
             AbstractBaseNotifier,
@@ -1580,64 +1635,47 @@ class TestNotifyTask:
             == expected_response
         )
 
-    def test_ta_relevant_context(self, mocker, dbsession, snapshot):
-        report = ReportFactory(report_type="test_results")
-        dbsession.add(report)
-        dbsession.flush()
-
-        upload = UploadFactory(report=report)
-        dbsession.add(upload)
-        dbsession.flush()
-
-        upload_error = UploadErrorFactory(
-            report_upload=upload, error_code="file_not_in_storage"
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"], transaction=True)
+    def test_exits_early_when_test_failures_detected(
+        self, mocker, dbsession, mock_configuration, mock_self_app
+    ):
+        mock_configuration.params["setup"]["codecov_dashboard_url"] = (
+            "https://codecov.io"
         )
-        dbsession.add(upload_error)
+
+        mocked_fetch_and_update_whether_ci_passed = mocker.patch.object(
+            NotifyTask, "fetch_and_update_whether_ci_passed"
+        )
+        mocked_fetch_and_update_whether_ci_passed.return_value = True
+
+        commit = CommitFactory.create(
+            message="",
+            pullid=None,
+            branch="test-branch-1",
+            commitid="649eaaf2924e92dc7fd8d370ddb857033231e67a",
+        )
+        dbsession.add(commit)
         dbsession.flush()
 
-        all_tests_passed, ta_error_msg = get_ta_relevant_context(dbsession, report)
+        for i in range(5):
+            TestrunFactory.create(
+                repo_id=commit.repoid, commit_sha=commit.commitid, outcome="pass"
+            )
+        for i in range(3):
+            TestrunFactory.create(
+                repo_id=commit.repoid, commit_sha=commit.commitid, outcome="failure"
+            )
+        TestrunFactory.create(
+            repo_id=commit.repoid, commit_sha=commit.commitid, outcome="skip"
+        )
 
-        assert all_tests_passed is False
-        assert ta_error_msg is None
+        task = NotifyTask()
+        result = task.run_impl_within_lock(
+            dbsession, repoid=commit.repoid, commitid=commit.commitid, current_yaml={}
+        )
 
-    def test_ta_relevant_context_no_error(self, mocker, dbsession):
-        report = ReportFactory(report_type="test_results")
-        dbsession.add(report)
-        dbsession.flush()
-
-        upload = UploadFactory(report=report)
-        dbsession.add(upload)
-        dbsession.flush()
-
-        all_tests_passed, ta_error_msg = get_ta_relevant_context(dbsession, report)
-
-        assert all_tests_passed is False
-        assert ta_error_msg is None
-
-    def test_ta_relevant_context_totals(self, mocker, dbsession):
-        report = ReportFactory(report_type="test_results")
-        dbsession.add(report)
-        dbsession.flush()
-
-        totals = TestResultReportTotalsFactory(report=report, failed=1)
-        dbsession.add(totals)
-        dbsession.flush()
-
-        all_tests_passed, ta_error_msg = get_ta_relevant_context(dbsession, report)
-
-        assert all_tests_passed is False
-        assert ta_error_msg is None
-
-    def test_ta_relevant_context_totals_passed(self, mocker, dbsession):
-        report = ReportFactory(report_type="test_results")
-        dbsession.add(report)
-        dbsession.flush()
-
-        totals = TestResultReportTotalsFactory(report=report, failed=0)
-        dbsession.add(totals)
-        dbsession.flush()
-
-        all_tests_passed, ta_error_msg = get_ta_relevant_context(dbsession, report)
-
-        assert all_tests_passed is True
-        assert ta_error_msg is None
+        assert result == {
+            "notified": False,
+            "notifications": None,
+            "reason": "test_failures_detected",
+        }

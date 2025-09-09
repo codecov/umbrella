@@ -10,10 +10,7 @@ from app import celery_app
 from database.enums import CommitErrorTypes, Decoration, NotificationState, ReportType
 from database.models import (
     Commit,
-    CommitReport,
     Pull,
-    TestResultReportTotals,
-    Upload,
 )
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME, CompareCommit
 from helpers.checkpoint_logger.flows import UploadFlow
@@ -41,6 +38,7 @@ from services.repository import (
     fetch_and_update_pull_request_information_from_commit,
     get_repo_provider_service,
 )
+from services.test_analytics.ta_timeseries import get_pr_comment_agg
 from services.yaml import get_current_yaml, read_yaml_field
 from shared.bots.github_apps import (
     get_github_app_token,
@@ -229,13 +227,18 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         commit: Commit = commits_query.first()
         assert commit, "Commit not found in database."
 
-        test_result_commit_report = commit.commit_report(ReportType.TEST_RESULTS)
-        if (
-            test_result_commit_report is not None
-            and test_result_commit_report.test_result_totals is not None
-            and not test_result_commit_report.test_result_totals.error
-            and test_result_commit_report.test_result_totals.failed > 0
-        ):
+        test_results_agg = get_pr_comment_agg(commit.repoid, commit.commitid)
+
+        failed_tests = test_results_agg.get("failed", 0)
+        passed_tests = test_results_agg.get("passed", 0)
+        if failed_tests > 0:
+            log.info(
+                "Test failures detected, skipping notifications",
+                extra={
+                    "failed_tests": failed_tests,
+                    "passed_tests": passed_tests,
+                },
+            )
             self._call_upload_breadcrumb_task(
                 commit_sha=commit.commitid,
                 repo_id=commit.repoid,
@@ -486,9 +489,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 },
             )
 
-            all_tests_passed, ta_error_msg = get_ta_relevant_context(
-                db_session, test_result_commit_report
-            )
+            all_tests_passed = failed_tests == 0 and passed_tests > 0
 
             notifications = self.submit_third_party_notifications(
                 current_yaml,
@@ -500,7 +501,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 repository_service,
                 empty_upload,
                 all_tests_passed=all_tests_passed,
-                test_results_error=ta_error_msg,
+                test_results_error=None,
                 installation_name_to_use=installation_name_to_use,
                 gh_is_using_codecov_commenter=self.is_using_codecov_commenter(
                     repository_service
@@ -994,55 +995,3 @@ def get_repo_provider_service_for_specific_commit(
         **data,
     )
     return _get_repo_provider_service_instance(repository.service, adapter_params)
-
-
-def get_ta_relevant_context(
-    db_session: Session, ta_commit_report: CommitReport | None
-) -> tuple[bool, str | None]:
-    all_tests_passed: bool = False
-    ta_error_msg: str | None = None
-
-    if ta_commit_report:
-        ta_upload_ids = (
-            db_session.query(Upload.id_)
-            .filter(Upload.report_id == ta_commit_report.id_)
-            .subquery()
-        )
-
-        # commenting out the upload error code because we it's too noisy and confusing for now
-        # upload_error = (
-        #     db_session.query(UploadError)
-        #     .filter(UploadError.upload_id.in_(ta_upload_ids.select()))
-        #     .first()
-        # )
-
-        totals: TestResultReportTotals | None = ta_commit_report.test_result_totals
-
-        # commenting out the upload error code because we it's too noisy and confusing for now
-        # if upload_error:
-        #     match upload_error.error_code:
-        #         case "unsupported_file_format":
-        #             error_message = upload_error.error_params.get("error_message")
-        #         case "warning":
-        #             error_message = upload_error.error_params.get("warning_message")
-        #         case "file_not_in_storage":
-        #             error_message = None
-        #         case _:
-        #             sentry_sdk.capture_message(
-        #                 f"Unrecognized error code: {upload_error.error_code}",
-        #                 level="error",
-        #             )
-        #             error_message = None
-        #     error_payload = ErrorPayload(
-        #         error_code=upload_error.error_code,
-        #         error_message=error_message,
-        #     )
-        #     ta_error_msg = short_error_message(error_payload)
-
-        all_tests_passed = False
-        if totals:
-            no_error = ta_error_msg is None
-            no_test_failures = totals.failed == 0
-            all_tests_passed = no_error and no_test_failures
-
-    return all_tests_passed, ta_error_msg
