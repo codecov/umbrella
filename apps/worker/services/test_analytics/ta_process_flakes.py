@@ -6,7 +6,6 @@ from django.db.models import Q, QuerySet
 from django.utils import timezone
 from redis.exceptions import LockError
 
-from services.test_analytics.ta_metrics import process_flakes_summary
 from shared.django_apps.reports.models import CommitReport, ReportSession
 from shared.django_apps.ta_timeseries.models import Testrun
 from shared.django_apps.test_analytics.models import Flake
@@ -149,8 +148,7 @@ def process_flakes_for_repo(repo_id: int):
         with redis_client.lock(lock_name, timeout=300, blocking_timeout=3):
             while commit_ids := redis_client.lpop(key_name, 10):
                 for commit_id in commit_ids:
-                    with process_flakes_summary.labels("new").time():
-                        process_flakes_for_commit(repo_id, commit_id.decode())
+                    process_flakes_for_commit(repo_id, commit_id.decode())
             return True
     except LockError:
         log.warning("Failed to acquire lock for repo %s", repo_id)

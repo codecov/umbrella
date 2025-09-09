@@ -9,7 +9,6 @@ from django.db.models import Q, QuerySet
 from django.utils import timezone
 
 from app import celery_app
-from services.test_analytics.ta_metrics import process_flakes_summary
 from services.test_analytics.ta_process_flakes import fetch_current_flakes
 from shared.celery_config import detect_flakes_task_name
 from shared.django_apps.ta_timeseries.models import Testrun
@@ -93,37 +92,32 @@ def process_flakes_for_repo(repo_id: int, upload_ids: list[int]):
 
     for upload_id in upload_ids:
         with transaction.atomic():
-            with process_flakes_summary.labels("new").time():
-                # updates testruns and flake objects
-                process_single_upload(upload_id, curr_flakes, repo_id)
-                new_test_ids = [
-                    test_id
-                    for test_id, flake in curr_flakes.items()
-                    if flake.id is None
-                ]
+            # updates testruns and flake objects
+            process_single_upload(upload_id, curr_flakes, repo_id)
+            new_test_ids = [
+                test_id for test_id, flake in curr_flakes.items() if flake.id is None
+            ]
 
-                Flake.objects.bulk_create(
-                    curr_flakes.values(),
-                    update_conflicts=True,
-                    unique_fields=["id"],
-                    update_fields=[
-                        "end_date",
-                        "count",
-                        "recent_passes_count",
-                        "fail_count",
-                    ],
-                )
+            Flake.objects.bulk_create(
+                curr_flakes.values(),
+                update_conflicts=True,
+                unique_fields=["id"],
+                update_fields=[
+                    "end_date",
+                    "count",
+                    "recent_passes_count",
+                    "fail_count",
+                ],
+            )
 
-                if new_test_ids:
-                    created = Flake.objects.filter(
-                        repoid=repo_id, test_id__in=new_test_ids
-                    )
-                    for flake in created:
-                        curr_flakes[bytes(flake.test_id)] = flake
+            if new_test_ids:
+                created = Flake.objects.filter(repoid=repo_id, test_id__in=new_test_ids)
+                for flake in created:
+                    curr_flakes[bytes(flake.test_id)] = flake
 
-                TAUpload.objects.filter(id=upload_id).update(
-                    state="processed", task_token=None
-                )
+            TAUpload.objects.filter(id=upload_id).update(
+                state="processed", task_token=None
+            )
 
 
 class DetectFlakes(BaseCodecovTask, name=detect_flakes_task_name):

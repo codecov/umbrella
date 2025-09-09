@@ -16,10 +16,6 @@ from services.repository import (
     fetch_pull_request_information,
     get_repo_provider_service,
 )
-from services.test_analytics.ta_metrics import (
-    read_failures_summary,
-    read_tests_totals_summary,
-)
 from services.test_analytics.ta_timeseries import (
     FailedTestInstance,
     get_flaky_tests_dict,
@@ -245,8 +241,7 @@ class TestAnalyticsNotifierTask(
         # TODO: Add upload errors in a compliant way
 
         # TODO: Remove impl label
-        with read_tests_totals_summary.labels(impl="new").time():
-            summary = get_pr_comment_agg(repo_id, upload_context["commit_sha"])
+        summary = get_pr_comment_agg(repo_id, upload_context["commit_sha"])
 
         if summary["failed"] == 0:
             log.info(
@@ -290,8 +285,7 @@ class TestAnalyticsNotifierTask(
 
         # TODO: Seat activation
 
-        with read_failures_summary.labels(impl="new").time():
-            failures = get_pr_comment_failures(repo_id, upload_context["commit_sha"])
+        failures = get_pr_comment_failures(repo_id, upload_context["commit_sha"])
 
         notif_failures = transform_failures(failures)
 

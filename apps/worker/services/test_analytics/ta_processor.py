@@ -8,7 +8,6 @@ from test_results_parser import parse_raw_upload
 
 from rollouts import ALLOW_VITEST_EVALS
 from services.processing.types import UploadArguments
-from services.test_analytics.ta_metrics import write_tests_summary
 from services.test_analytics.ta_processing import (
     get_ta_processing_info,
     handle_file_not_found,
@@ -23,7 +22,7 @@ from shared.storage.exceptions import FileNotInStorageError
 log = logging.getLogger(__name__)
 
 
-def ta_processor_impl(
+def ta_processor(
     repoid: int,
     commitid: str,
     commit_yaml: dict[str, Any],
@@ -101,10 +100,9 @@ def ta_processor_impl(
             ]
         )
 
-    with write_tests_summary.labels("new").time():
-        insert_testruns_timeseries(
-            repoid, commitid, ta_proc_info.branch, upload, parsing_infos
-        )
+    insert_testruns_timeseries(
+        repoid, commitid, ta_proc_info.branch, upload, parsing_infos
+    )
 
     if update_state:
         upload.state = "processed"

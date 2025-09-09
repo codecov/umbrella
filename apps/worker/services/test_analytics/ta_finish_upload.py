@@ -1,5 +1,4 @@
 import logging
-from typing import Literal
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
@@ -14,10 +13,6 @@ from services.repository import (
     get_repo_provider_service,
 )
 from services.seats import check_seat_activation
-from services.test_analytics.ta_metrics import (
-    read_failures_summary,
-    read_tests_totals_summary,
-)
 from services.test_analytics.ta_process_flakes import KEY_NAME
 from services.test_analytics.ta_timeseries import (
     FailedTestInstance,
@@ -110,7 +105,6 @@ def queue_followup_tasks(
     repo: Repository,
     commit: Commit,
     commit_yaml: UserYaml,
-    impl_type: Literal["new", "both"] = "both",
 ):
     if (
         should_do_flaky_detection(repo, commit_yaml)
@@ -126,18 +120,16 @@ def queue_followup_tasks(
             kwargs={
                 "repo_id": repo.repoid,
                 "commit_id": commit.commitid,
-                "impl_type": impl_type,
             },
         )
 
 
 @sentry_sdk.trace
-def new_impl(
+def ta_finish_upload(
     db_session: Session,  # only used for seat activation, for now
     repo: Repository,  # using sqlalchemy models for now
     commit: Commit,
     commit_yaml: UserYaml,
-    impl_type: Literal["new", "both"] = "both",
 ) -> FinisherResult:
     repoid = repo.repoid
     commitid = commit.commitid
@@ -145,12 +137,11 @@ def new_impl(
     extra = {
         "repo_id": repoid,
         "commit_id": commitid,
-        "impl_type": impl_type,
     }
 
-    log.info("Starting new_impl of TA finisher", extra=extra)
+    log.info("Starting TA finisher", extra=extra)
 
-    queue_followup_tasks(repo, commit, commit_yaml, impl_type)
+    queue_followup_tasks(repo, commit, commit_yaml)
 
     if not commit_yaml.read_yaml_field("comment", _else=True):
         log.info("Comment is disabled, not posting comment", extra=extra)
@@ -163,8 +154,7 @@ def new_impl(
     upload_ids = get_relevant_upload_ids(commitid)
     error = get_upload_error(list(upload_ids.keys()))
 
-    with read_tests_totals_summary.labels(impl="new").time():
-        summary = get_pr_comment_agg(repoid, commitid)
+    summary = get_pr_comment_agg(repoid, commitid)
 
     if not summary["failed"] and error is None:
         log.info(
@@ -225,8 +215,7 @@ def new_impl(
             "queue_notify": True,
         }
 
-    with read_failures_summary.labels(impl="new").time():
-        failures = get_pr_comment_failures(repoid, commitid)
+    failures = get_pr_comment_failures(repoid, commitid)
 
     notif_failures = transform_failures(upload_ids, failures)
 

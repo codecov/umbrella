@@ -5,7 +5,7 @@ import orjson
 import pytest
 
 from services.processing.types import UploadArguments
-from services.test_analytics.ta_processor import ta_processor_impl
+from services.test_analytics.ta_processor import ta_processor
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports.tests.factories import UploadFactory
 from shared.django_apps.ta_timeseries.models import Testrun
@@ -62,7 +62,7 @@ def test_ta_stores_vitest_evals(mocker, mock_storage):
     )
     mock_storage.write_file("archive", "path/to/valid.json", upload_contents)
 
-    result = ta_processor_impl(
+    result = ta_processor(
         repository.repoid, commit.commitid, {}, argument, update_state=True
     )
 

@@ -37,7 +37,6 @@ from services.repository import (
     gitlab_webhook_update,
     possibly_update_commit_from_provider_info,
 )
-from services.test_analytics.ta_metrics import new_ta_tasks_repo_summary
 from services.test_results import TestResultsReportService
 from shared.celery_config import upload_task_name
 from shared.config import get_config
@@ -894,7 +893,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
             if commit_before_cutoff is None:
                 new_ta_tasks = "new"
-                new_ta_tasks_repo_summary.inc()
 
         task_group = [
             test_results_processor_task.s(
@@ -902,7 +900,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 commitid=commit.commitid,
                 commit_yaml=commit_yaml,
                 arguments_list=list(chunk),
-                impl_type=new_ta_tasks,
             )
             for chunk in itertools.batched(argument_list, CHUNK_SIZE)
         ]
@@ -913,7 +910,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             "repoid": commit.repoid,
             "commitid": commit.commitid,
             "commit_yaml": commit_yaml,
-            "impl_type": new_ta_tasks,
         }
         finisher_kwargs = TestResultsFlow.save_to_kwargs(finisher_kwargs)
         task_group.append(

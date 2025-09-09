@@ -4,7 +4,6 @@ from typing import Literal
 from django.db.models import Count, F, FloatField, Sum, Window
 from django.db.models.functions import RowNumber
 
-from shared.metrics import Histogram
 from utils.ta_types import TestResultsAggregates
 
 from .timescale_utils import (
@@ -63,13 +62,6 @@ def get_repo_aggregates_via_ca(
     return daily_aggregates, slowest_tests_duration, slow_test_num
 
 
-get_test_result_aggregates_histogram = Histogram(
-    "get_test_result_aggregates_timescale",
-    "Time it takes to get the test result aggregates from the database",
-)
-
-
-@get_test_result_aggregates_histogram.time()
 def get_test_results_aggregates_from_timescale(
     repoid: int,
     branch: str | None,

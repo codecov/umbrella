@@ -27,7 +27,6 @@ from graphql_api.types.test_results_aggregates.test_results_aggregates import (
 )
 from rollouts import READ_NEW_TA
 from shared.django_apps.core.models import Repository
-from shared.metrics import Histogram
 from utils.ta_types import FlakeAggregates, TestResultsAggregates, TestResultsRow
 from utils.test_results import get_results, use_new_impl
 from utils.timescale.flake_aggregates import get_flake_aggregates_from_timescale
@@ -350,11 +349,6 @@ class GQLTestResultsFilters(TypedDict):
 # Bindings for GraphQL types
 test_analytics_bindable: ObjectType = ObjectType("TestAnalytics")
 
-test_results_histogram = Histogram(
-    "get_test_results_timescale",
-    "Time it takes to get the test results",
-)
-
 
 @test_analytics_bindable.field("testResults")
 async def resolve_test_results(
@@ -368,56 +362,55 @@ async def resolve_test_results(
     before: str | None = None,
 ) -> TestResultConnection:
     if await should_use_new_test_analytics(repository, info):
-        with test_results_histogram.time():
-            measurement_interval = (
-                filters.get("interval", MeasurementInterval.INTERVAL_30_DAY)
-                if filters
-                else MeasurementInterval.INTERVAL_30_DAY
-            )
-            end_date = datetime.now(UTC)
-            start_date = end_date - timedelta(days=measurement_interval.value)
-            ordering_param = (
-                ordering.get("parameter", TestResultsOrderingParameter.AVG_DURATION)
-                if ordering
-                else TestResultsOrderingParameter.AVG_DURATION
-            )
-            ordering_direction = (
-                ordering.get("direction", OrderingDirection.DESC)
-                if ordering
-                else OrderingDirection.DESC
-            )
+        measurement_interval = (
+            filters.get("interval", MeasurementInterval.INTERVAL_30_DAY)
+            if filters
+            else MeasurementInterval.INTERVAL_30_DAY
+        )
+        end_date = datetime.now(UTC)
+        start_date = end_date - timedelta(days=measurement_interval.value)
+        ordering_param = (
+            ordering.get("parameter", TestResultsOrderingParameter.AVG_DURATION)
+            if ordering
+            else TestResultsOrderingParameter.AVG_DURATION
+        )
+        ordering_direction = (
+            ordering.get("direction", OrderingDirection.DESC)
+            if ordering
+            else OrderingDirection.DESC
+        )
 
-            filters = filters or {}
-            branch = filters.get("branch")
-            parameter_enum = filters.get("parameter")
-            testsuites = filters.get("test_suites")
-            flags = filters.get("flags")
-            term = filters.get("term")
+        filters = filters or {}
+        branch = filters.get("branch")
+        parameter_enum = filters.get("parameter")
+        testsuites = filters.get("test_suites")
+        flags = filters.get("flags")
+        term = filters.get("term")
 
-            parameter = parameter_enum.value if parameter_enum else None
-            aggregated_queryset = await sync_to_async(get_test_results_queryset)(
-                repoid=repository.repoid,
-                start_date=start_date,
-                end_date=end_date,
-                branch=branch,
-                parameter=parameter,
-                testsuites=testsuites,
-                flags=flags,
-                term=term,
-            )
+        parameter = parameter_enum.value if parameter_enum else None
+        aggregated_queryset = await sync_to_async(get_test_results_queryset)(
+            repoid=repository.repoid,
+            start_date=start_date,
+            end_date=end_date,
+            branch=branch,
+            parameter=parameter,
+            testsuites=testsuites,
+            flags=flags,
+            term=term,
+        )
 
-            connection = await queryset_to_connection(
-                aggregated_queryset,
-                ordering=(ordering_param, "name"),
-                ordering_direction=(ordering_direction, OrderingDirection.ASC),
-                first=first,
-                after=after,
-                last=last,
-                before=before,
-            )
+        connection = await queryset_to_connection(
+            aggregated_queryset,
+            ordering=(ordering_param, "name"),
+            ordering_direction=(ordering_direction, OrderingDirection.ASC),
+            first=first,
+            after=after,
+            last=last,
+            before=before,
+        )
 
-            # so we can measure the time it takes to get the edges
-            connection.edges
+        # so we can measure the time it takes to get the edges
+        connection.edges
 
         return connection
     else:

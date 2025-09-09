@@ -26,6 +26,14 @@ def is_not_first_pull(mocker):
     )
 
 
+@pytest.fixture
+def mock_no_failures(mocker):
+    return mocker.patch(
+        "tasks.notify.get_pr_comment_agg",
+        return_value={"passed": 0, "failed": 0, "skipped": 0},
+    )
+
+
 @pytest.mark.integration
 class TestNotifyTask:
     @pytest.fixture(autouse=True)
@@ -33,7 +41,7 @@ class TestNotifyTask:
         mock_all_plans_and_tiers()
 
     @patch("requests.post")
-    @pytest.mark.django_db
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"], transaction=True)
     def test_simple_call_no_notifiers(
         self,
         mock_requests_post,
@@ -165,6 +173,7 @@ class TestNotifyTask:
         codecov_vcr,
         mock_storage,
         mock_configuration,
+        mock_no_failures,
     ):
         mock_post_request.return_value.status_code = 200
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
@@ -359,6 +368,7 @@ class TestNotifyTask:
         codecov_vcr,
         mock_storage,
         mock_configuration,
+        mock_no_failures,
     ):
         mock_post_request.return_value.status_code = 200
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
@@ -574,6 +584,7 @@ class TestNotifyTask:
         codecov_vcr,
         mock_storage,
         mock_configuration,
+        mock_no_failures,
     ):
         mock_post_request.return_value.status_code = 200
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
@@ -788,6 +799,7 @@ class TestNotifyTask:
         mock_storage,
         mock_configuration,
         is_not_first_pull,
+        mock_no_failures,
     ):
         mock_post_request.return_value.status_code = 200
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
@@ -1248,7 +1260,13 @@ class TestNotifyTask:
 
     @pytest.mark.django_db
     def test_notifier_call_no_head_commit_report(
-        self, dbsession, mocker, codecov_vcr, mock_storage, mock_configuration
+        self,
+        dbsession,
+        mocker,
+        codecov_vcr,
+        mock_storage,
+        mock_configuration,
+        mock_no_failures,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"
@@ -1312,6 +1330,7 @@ class TestNotifyTask:
         mock_storage,
         mock_configuration,
         mock_repo_provider,
+        mock_no_failures,
     ):
         mock_configuration.params["setup"]["codecov_dashboard_url"] = (
             "https://codecov.io"

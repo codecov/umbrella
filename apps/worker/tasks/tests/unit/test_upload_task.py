@@ -594,14 +594,12 @@ class TestUploadTaskIntegration:
                     "upload_pk": upload.id,
                 }
             ],
-            impl_type="old",
         )
         kwargs = {
             "repoid": commit.repoid,
             "commitid": commit.commitid,
             "commit_yaml": {"codecov": {"max_report_age": "1y ago"}},
             "checkpoints_TestResultsFlow": None,
-            "impl_type": "old",
         }
 
         kwargs[_kwargs_key(TestResultsFlow)] = mocker.ANY
@@ -722,14 +720,12 @@ class TestUploadTaskIntegration:
                     "upload_pk": upload.id,
                 }
             ],
-            impl_type="both",
         )
         kwargs = {
             "repoid": commit.repoid,
             "commitid": commit.commitid,
             "commit_yaml": {"codecov": {"max_report_age": "1y ago"}},
             "checkpoints_TestResultsFlow": None,
-            "impl_type": "both",
         }
 
         kwargs[_kwargs_key(TestResultsFlow)] = mocker.ANY
@@ -833,14 +829,12 @@ class TestUploadTaskIntegration:
                     "upload_pk": upload.id,
                 }
             ],
-            impl_type="new",
         )
         kwargs = {
             "repoid": commit.repoid,
             "commitid": commit.commitid,
             "commit_yaml": {"codecov": {"max_report_age": "1y ago"}},
             "checkpoints_TestResultsFlow": None,
-            "impl_type": "new",
         }
 
         kwargs[_kwargs_key(TestResultsFlow)] = mocker.ANY

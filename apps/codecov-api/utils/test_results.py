@@ -7,16 +7,11 @@ from django.conf import settings
 from core.models import Commit
 from services.task import TaskService
 from shared.helpers.redis import get_redis_connection
-from shared.metrics import Summary
 from shared.storage import get_appropriate_storage_service
 from shared.storage.exceptions import FileNotInStorageError
 
 # Date after which commits are considered for new TA tasks implementation
 NEW_TA_TASKS_CUTOFF_DATE = datetime(2025, 6, 20, tzinfo=UTC)
-
-get_results_summary = Summary(
-    "test_results_get_results", "Time it takes to download results from GCS", ["impl"]
-)
 
 
 def redis_key(
@@ -117,8 +112,7 @@ def get_results(
             cache to redis
     deserialize
     """
-    with get_results_summary.labels("old").time():
-        return old_get_results(repoid, branch, interval_start, interval_end)
+    return old_get_results(repoid, branch, interval_start, interval_end)
 
 
 def old_get_results(
