@@ -126,21 +126,20 @@ def validate(
         raise ValidationError("After and before can not be used at the same time")
 
 
+def should_use_new_test_analytics_sync(
+    repository: Repository, info: GraphQLResolveInfo
+) -> bool:
+    return (
+        READ_NEW_TA.check_value(repository.repoid)
+        or use_new_impl(repository.repoid)
+        or is_called_from_sentry_app(info)
+    )
+
+
 async def should_use_new_test_analytics(
     repository: Repository, info: GraphQLResolveInfo
 ) -> bool:
-    """Determine if we should use the new test analytics implementation.
-
-    Uses new implementation if:
-    1. READ_NEW_TA rollout is enabled for the repo
-    2. The repo is configured to use the new implementation
-    3. The request is coming from a Sentry app
-    """
-    return (
-        await sync_to_async(READ_NEW_TA.check_value)(repository.repoid)
-        or await sync_to_async(use_new_impl)(repository.repoid)
-        or is_called_from_sentry_app(info)
-    )
+    return await sync_to_async(should_use_new_test_analytics_sync)(repository, info)
 
 
 def ordering_expression(
@@ -304,20 +303,23 @@ def get_test_suites_old(
 
 
 def get_test_suites(
-    repoid: int, term: str | None = None, interval: int = 30
+    repository: Repository,
+    info: GraphQLResolveInfo,
+    term: str | None = None,
+    interval: int = 30,
 ) -> list[str]:
-    if READ_NEW_TA.check_value(repoid) or use_new_impl(repoid):
-        return get_test_suites_new(repoid, term, interval)
+    if should_use_new_test_analytics_sync(repository, info):
+        return get_test_suites_new(repository.repoid, term, interval)
     else:
-        return get_test_suites_old(repoid, term, interval)
+        return get_test_suites_old(repository.repoid, term, interval)
 
 
 def get_flags_old(
-    repoid: int, term: str | None = None, interval: int = 30
+    repository: Repository, term: str | None = None, interval: int = 30
 ) -> list[str]:
-    repo = Repository.objects.get(repoid=repoid)
+    repo = Repository.objects.get(repoid=repository.repoid)
 
-    table = get_results(repoid, repo.branch, interval)
+    table = get_results(repository.repoid, repo.branch, interval)
     if table is None:
         return []
 
@@ -329,11 +331,16 @@ def get_flags_old(
     return flags.to_series().drop_nulls().to_list() or []
 
 
-def get_flags(repoid: int, term: str | None = None, interval: int = 30) -> list[str]:
-    if READ_NEW_TA.check_value(repoid) or use_new_impl(repoid):
-        return get_flags_new(repoid, term, interval)
+def get_flags(
+    repository: Repository,
+    info: GraphQLResolveInfo,
+    term: str | None = None,
+    interval: int = 30,
+) -> list[str]:
+    if should_use_new_test_analytics_sync(repository, info):
+        return get_flags_new(repository.repoid, term, interval)
     else:
-        return get_flags_old(repoid, term, interval)
+        return get_flags_old(repository.repoid, term, interval)
 
 
 class GQLTestResultsOrdering(TypedDict):
@@ -511,7 +518,7 @@ async def resolve_flake_aggregates(
 async def resolve_test_suites(
     repository: Repository, info: GraphQLResolveInfo, term: str | None = None, **_: Any
 ) -> list[str]:
-    result = await sync_to_async(get_test_suites)(repository.repoid, term)
+    result = await sync_to_async(get_test_suites)(repository, info, term)
     return sorted(result)
 
 
@@ -519,5 +526,5 @@ async def resolve_test_suites(
 async def resolve_flags(
     repository: Repository, info: GraphQLResolveInfo, term: str | None = None, **_: Any
 ) -> list[str]:
-    result = await sync_to_async(get_flags)(repository.repoid, term)
+    result = await sync_to_async(get_flags)(repository, info, term)
     return sorted(result)
