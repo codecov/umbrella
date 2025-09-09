@@ -1,6 +1,7 @@
 import datetime
 
 import pytest
+from django.test import override_settings
 
 from shared.bots.exceptions import NoConfiguredAppsAvailable, RequestedGithubAppNotFound
 from shared.bots.github_apps import (
@@ -10,6 +11,7 @@ from shared.bots.github_apps import (
 )
 from shared.django_apps.codecov_auth.models import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+    Account,
     GithubAppInstallation,
     Owner,
     Service,
@@ -132,6 +134,31 @@ class TestGetSpecificGithubAppDetails:
         assert exp.value.apps_count == 1
         assert exp.value.suspended_count == int(app.is_suspended)
         assert exp.value.rate_limited_count == int(is_rate_limited)
+
+    @pytest.mark.django_db
+    @override_settings(GITHUB_SENTRY_APP_NAME="test_sentry_app")
+    def test_sentry_org_id_overrides_installation_name(self, mocker):
+        owner = OwnerFactory(service="github")
+        account = Account.objects.create(name="test_account", sentry_org_id=12345)
+        owner.account = account
+        owner.save()
+
+        sentry_app = GithubAppInstallation(
+            owner=owner,
+            installation_id=2000,
+            app_id=20,
+            name="test_sentry_app",
+            pem_path="sentry_pem",
+        )
+        sentry_app.save()
+
+        result = get_github_app_info_for_owner(
+            owner, installation_name=GITHUB_APP_INSTALLATION_DEFAULT_NAME
+        )
+
+        assert len(result) == 1
+        assert result[0]["installation_id"] == 2000
+        assert result[0]["app_id"] == 20
 
 
 class TestGettingGitHubAppTokenSideEffect:

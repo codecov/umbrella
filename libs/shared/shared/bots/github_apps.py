@@ -2,6 +2,8 @@ import logging
 import random
 from datetime import UTC, datetime
 
+from django.conf import settings
+
 from shared.bots.exceptions import NoConfiguredAppsAvailable, RequestedGithubAppNotFound
 from shared.bots.types import TokenWithOwner
 from shared.django_apps.codecov_auth.models import (
@@ -261,8 +263,11 @@ def get_github_app_info_for_owner(
         owner (Owner): The owner to get GitHub App info for.
         repository (Repository | None): The repo that we will interact with.
             Any GitHub App info returned needs to cover this repo
-        installation_name (str): The installation name to search for in the available apps.
+        installation_name (str | None): The installation name to search for in the available apps.
             GitHubAppInstallation.name must be equal to installation_name for it to be returned.
+            If the owner has a sentry_org_id linked through their account, this parameter will be
+            overridden and the sentry app will be used instead. If None and no sentry_org_id exists,
+            the installation name will be determined automatically.
 
     Returns:
         (ordered) List[GithubInstallationInfo]: where index 0 is the main app and the others are fallback options
@@ -270,6 +275,9 @@ def get_github_app_info_for_owner(
     Raises:
         NoConfiguredAppsAvailable: Owner has app installations available, but they are all currently rate limited.
     """
+    if owner.account and owner.account.sentry_org_id is not None:
+        installation_name = settings.GITHUB_SENTRY_APP_NAME
+
     extra_info_to_log = {
         "ownerid": owner.ownerid,
         "repoid": getattr(repository, "repoid", None),
