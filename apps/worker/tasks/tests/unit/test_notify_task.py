@@ -15,14 +15,12 @@ from database.tests.factories import (
     OwnerFactory,
     PullFactory,
     RepositoryFactory,
-    UploadErrorFactory,
 )
 from database.tests.factories.core import (
     GithubAppInstallationFactory,
     ReportFactory,
     UploadFactory,
 )
-from database.tests.factories.reports import TestResultReportTotalsFactory
 from helpers.checkpoint_logger import _kwargs_key
 from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
@@ -40,6 +38,7 @@ from shared.celery_config import (
     new_user_activated_task_name,
     upload_breadcrumb_task_name,
 )
+from shared.django_apps.ta_timeseries.tests.factories import TestrunFactory
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
     Errors,
@@ -59,7 +58,7 @@ from tasks.notify import (
     NotifyTask,
     _possibly_pin_commit_to_github_app,
     _possibly_refresh_previous_selection,
-    get_ta_relevant_context,
+    get_test_status,
 )
 from tests.helpers import mock_all_plans_and_tiers
 
@@ -74,6 +73,9 @@ def _start_upload_flow(mocker):
     UploadFlow.log(UploadFlow.INITIAL_PROCESSING_COMPLETE)
     UploadFlow.log(UploadFlow.BATCH_PROCESSING_COMPLETE)
     UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
+
+
+pytestmark = pytest.mark.django_db(databases=["default", "ta_timeseries"])
 
 
 @pytest.fixture
@@ -128,6 +130,12 @@ def enriched_pull(dbsession):
         "title": "Creating new code for reasons no one knows",
     }
     return EnrichedPull(database_pull=pull, provider_pull=provider_pull)
+
+
+@pytest.fixture
+def mock_test_status_no_failures_no_passes(mocker):
+    """Fixture that mocks get_test_status to return any_failures=False, all_passed=False"""
+    return mocker.patch("tasks.notify.get_test_status", return_value=(False, False))
 
 
 class TestNotifyTaskHelpers:
@@ -1580,64 +1588,121 @@ class TestNotifyTask:
             == expected_response
         )
 
-    def test_ta_relevant_context(self, mocker, dbsession, snapshot):
-        report = ReportFactory(report_type="test_results")
-        dbsession.add(report)
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
+    def test_get_test_status_with_failures_no_passes(self, dbsession):
+        repository = RepositoryFactory.create()
+        dbsession.add(repository)
         dbsession.flush()
 
-        upload = UploadFactory(report=report)
-        dbsession.add(upload)
-        dbsession.flush()
-
-        upload_error = UploadErrorFactory(
-            report_upload=upload, error_code="file_not_in_storage"
+        commit = CommitFactory.create(
+            repository=repository, commitid="test_commit_123", branch="main"
         )
-        dbsession.add(upload_error)
+        dbsession.add(commit)
         dbsession.flush()
 
-        all_tests_passed, ta_error_msg = get_ta_relevant_context(dbsession, report)
+        testrun1 = TestrunFactory.create(
+            repo_id=repository.repoid,
+            commit_sha=commit.commitid,
+            outcome="failure",
+            name="test1",
+            classname="TestClass",
+            testsuite="test_suite",
+        )
+        testrun2 = TestrunFactory.create(
+            repo_id=repository.repoid,
+            commit_sha=commit.commitid,
+            outcome="failure",
+            name="test2",
+            classname="TestClass",
+            testsuite="test_suite",
+        )
 
-        assert all_tests_passed is False
-        assert ta_error_msg is None
+        any_failures, all_passed = get_test_status(repository.repoid, commit.commitid)
 
-    def test_ta_relevant_context_no_error(self, mocker, dbsession):
-        report = ReportFactory(report_type="test_results")
-        dbsession.add(report)
+        assert any_failures is True
+        assert all_passed is False
+
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
+    def test_get_test_status_with_passes_no_failures(self, dbsession):
+        repository = RepositoryFactory.create()
+        dbsession.add(repository)
         dbsession.flush()
 
-        upload = UploadFactory(report=report)
-        dbsession.add(upload)
+        commit = CommitFactory.create(
+            repository=repository, commitid="test_commit_123", branch="main"
+        )
+        dbsession.add(commit)
         dbsession.flush()
 
-        all_tests_passed, ta_error_msg = get_ta_relevant_context(dbsession, report)
+        testrun1 = TestrunFactory.create(
+            repo_id=repository.repoid,
+            commit_sha=commit.commitid,
+            outcome="pass",
+            name="test1",
+            classname="TestClass",
+            testsuite="test_suite",
+        )
+        testrun2 = TestrunFactory.create(
+            repo_id=repository.repoid,
+            commit_sha=commit.commitid,
+            outcome="pass",
+            name="test2",
+            classname="TestClass",
+            testsuite="test_suite",
+        )
 
-        assert all_tests_passed is False
-        assert ta_error_msg is None
+        any_failures, all_passed = get_test_status(repository.repoid, commit.commitid)
 
-    def test_ta_relevant_context_totals(self, mocker, dbsession):
-        report = ReportFactory(report_type="test_results")
-        dbsession.add(report)
+        assert any_failures is False
+        assert all_passed is True
+
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
+    def test_get_test_status_with_passes_and_failures(self, dbsession):
+        repository = RepositoryFactory.create()
+        dbsession.add(repository)
         dbsession.flush()
 
-        totals = TestResultReportTotalsFactory(report=report, failed=1)
-        dbsession.add(totals)
+        commit = CommitFactory.create(
+            repository=repository, commitid="test_commit_123", branch="main"
+        )
+        dbsession.add(commit)
         dbsession.flush()
 
-        all_tests_passed, ta_error_msg = get_ta_relevant_context(dbsession, report)
+        testrun1 = TestrunFactory.create(
+            repo_id=repository.repoid,
+            commit_sha=commit.commitid,
+            outcome="pass",
+            name="test1",
+            classname="TestClass",
+            testsuite="test_suite",
+        )
+        testrun2 = TestrunFactory.create(
+            repo_id=repository.repoid,
+            commit_sha=commit.commitid,
+            outcome="failure",
+            name="test2",
+            classname="TestClass",
+            testsuite="test_suite",
+        )
 
-        assert all_tests_passed is False
-        assert ta_error_msg is None
+        any_failures, all_passed = get_test_status(repository.repoid, commit.commitid)
 
-    def test_ta_relevant_context_totals_passed(self, mocker, dbsession):
-        report = ReportFactory(report_type="test_results")
-        dbsession.add(report)
+        assert any_failures is True
+        assert all_passed is False
+
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
+    def test_get_test_status_no_tests(self, dbsession):
+        repository = RepositoryFactory.create()
+        dbsession.add(repository)
         dbsession.flush()
 
-        totals = TestResultReportTotalsFactory(report=report, failed=0)
-        dbsession.add(totals)
+        commit = CommitFactory.create(
+            repository=repository, commitid="test_commit_123", branch="main"
+        )
+        dbsession.add(commit)
         dbsession.flush()
 
-        all_tests_passed, ta_error_msg = get_ta_relevant_context(dbsession, report)
+        any_failures, all_passed = get_test_status(repository.repoid, commit.commitid)
 
-        assert all_tests_passed is True
-        assert ta_error_msg is None
+        assert any_failures is False
+        assert all_passed is False

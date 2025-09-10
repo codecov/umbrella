@@ -33,7 +33,7 @@ class TestNotifyTask:
         mock_all_plans_and_tiers()
 
     @patch("requests.post")
-    @pytest.mark.django_db
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
     def test_simple_call_no_notifiers(
         self,
         mock_requests_post,
@@ -156,7 +156,7 @@ class TestNotifyTask:
         }
 
     @patch("requests.post")
-    @pytest.mark.django_db
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
     def test_simple_call_only_status_notifiers(
         self,
         mock_post_request,
@@ -350,7 +350,7 @@ class TestNotifyTask:
         }
 
     @patch("requests.post")
-    @pytest.mark.django_db
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
     def test_simple_call_only_status_notifiers_no_pull_request(
         self,
         mock_post_request,
@@ -565,7 +565,7 @@ class TestNotifyTask:
         }
 
     @patch("requests.post")
-    @pytest.mark.django_db
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
     def test_simple_call_only_status_notifiers_with_pull_request(
         self,
         mock_post_request,
@@ -778,7 +778,7 @@ class TestNotifyTask:
         }
 
     @patch("requests.post")
-    @pytest.mark.django_db
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
     def test_simple_call_status_and_notifiers(
         self,
         mock_post_request,
@@ -1246,7 +1246,7 @@ class TestNotifyTask:
         pull = dbsession.query(Pull).filter_by(pullid=9, repoid=commit.repoid).first()
         assert pull.commentid == "1699669573"
 
-    @pytest.mark.django_db
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
     def test_notifier_call_no_head_commit_report(
         self, dbsession, mocker, codecov_vcr, mock_storage, mock_configuration
     ):
@@ -1301,7 +1301,7 @@ class TestNotifyTask:
         }
         assert result == expected_result
 
-    @pytest.mark.django_db
+    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
     @patch("requests.post")
     def test_notifier_call_no_head_commit_report_empty_upload(
         self,
