@@ -182,17 +182,20 @@ class CommitReportSerializer(serializers.ModelSerializer):
         return None
 
     def create(self, validated_data: dict[str, Any]) -> tuple[CommitReport, bool]:
-        report = (
-            CommitReport.objects.coverage_reports()
-            .filter(
-                code=validated_data.get("code"),
-                commit_id=validated_data.get("commit_id"),
-            )
-            .first()
+        # Use get_or_create to handle race conditions atomically
+        report, created = CommitReport.objects.get_or_create(
+            commit_id=validated_data.get("commit_id"),
+            code=validated_data.get("code"),
+            defaults={
+                "report_type": validated_data.get(
+                    "report_type", CommitReport.ReportType.COVERAGE
+                ),
+            },
         )
-        if report:
-            if report.report_type is None:
-                report.report_type = CommitReport.ReportType.COVERAGE
-                report.save()
-            return report, False
-        return super().create(validated_data), True
+
+        # If the report already exists but doesn't have a report_type set, update it
+        if not created and report.report_type is None:
+            report.report_type = CommitReport.ReportType.COVERAGE
+            report.save()
+
+        return report, created
