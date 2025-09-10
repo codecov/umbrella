@@ -107,21 +107,22 @@ def account_link(request, *args, **kwargs):
         account.is_active = True
         account.save()
     else:
-        # Check if there's an existing account with this sentry_org_id
-        try:
-            account = Account.objects.get(sentry_org_id=sentry_org_id)
-            # Update existing account
+        # Get or create account with this sentry_org_id
+        account, created = Account.objects.get_or_create(
+            sentry_org_id=sentry_org_id,
+            defaults={
+                "name": sentry_org_name,
+                "plan": PlanName.SENTRY_MERGE_PLAN.value,
+                "is_active": True,
+            },
+        )
+
+        # If account already existed, update it with new values
+        if not created:
             account.name = sentry_org_name
             account.plan = PlanName.SENTRY_MERGE_PLAN.value
             account.is_active = True
             account.save()
-        except Account.DoesNotExist:
-            account = Account.objects.create(
-                sentry_org_id=sentry_org_id,
-                name=sentry_org_name,
-                plan=PlanName.SENTRY_MERGE_PLAN.value,
-                is_active=True,
-            )
 
     for org_data in github_orgs:
         owner, _owner_created = Owner.objects.get_or_create(
