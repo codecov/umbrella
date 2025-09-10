@@ -1,7 +1,7 @@
 import logging
 
 from django.conf import settings
-from rest_framework import serializers
+from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -57,11 +57,10 @@ def account_link(request, *args, **kwargs):
     sentry_org_id = serializer.validated_data["sentry_org_id"]
     sentry_org_name = serializer.validated_data["sentry_org_name"]
 
-    account, _created = Account.objects.get_or_create(
-        sentry_org_id=sentry_org_id,
-        defaults={"name": sentry_org_name, "plan": PlanName.SENTRY_MERGE_PLAN.value},
-    )
+    account_to_reactivate = None
+    github_orgs = []  # list of organizations to link to the account. Only GitHub organizations are allowed.
 
+    # First pass: Check for conflicts and non-github organizations and check for inactive account to reactivate.
     for org_data in serializer.validated_data["organizations"]:
         if org_data["provider"] != Service.GITHUB.value:
             log.warning(
@@ -69,6 +68,61 @@ def account_link(request, *args, **kwargs):
             )
             continue
 
+        github_orgs.append(org_data)
+
+        try:
+            existing_owner = Owner.objects.get(
+                service_id=org_data["external_id"], service=org_data["provider"]
+            )
+            # If the organization is already linked to an active Sentry account, return an error
+            # If the organization is linked to an inactive Sentry account, set it to reactivate later
+            if (
+                existing_owner.account
+                and existing_owner.account.plan == PlanName.SENTRY_MERGE_PLAN.value
+            ):
+                if existing_owner.account.is_active:
+                    return Response(
+                        {
+                            "message": f"Organization {org_data['slug']} is already linked to an active Sentry account"
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                elif account_to_reactivate is None:
+                    account_to_reactivate = existing_owner.account
+        except Owner.DoesNotExist:
+            pass
+
+    if not github_orgs:
+        return Response(
+            {"message": "No GitHub organizations found to link"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Second pass: Account linking step, either reactivate or create a new account if there is no inactive account to reactivate
+    if account_to_reactivate:
+        account = account_to_reactivate
+        account.sentry_org_id = sentry_org_id
+        account.name = sentry_org_name
+        account.plan = PlanName.SENTRY_MERGE_PLAN.value
+        account.is_active = True
+        account.save()
+    else:
+        account, created = Account.objects.get_or_create(
+            sentry_org_id=sentry_org_id,
+            defaults={
+                "name": sentry_org_name,
+                "plan": PlanName.SENTRY_MERGE_PLAN.value,
+                "is_active": True,
+            },
+        )
+
+        if not created:
+            account.name = sentry_org_name
+            account.plan = PlanName.SENTRY_MERGE_PLAN.value
+            account.is_active = True
+            account.save()
+
+    for org_data in github_orgs:
         owner, _owner_created = Owner.objects.get_or_create(
             service_id=org_data["external_id"],
             service=org_data["provider"],
@@ -79,7 +133,6 @@ def account_link(request, *args, **kwargs):
             },
         )
 
-        # Update the owner to link to the account.
         owner.account = account
         owner.save()
 
@@ -99,3 +152,24 @@ def account_link(request, *args, **kwargs):
             "message": "Account linked successfully",
         }
     )
+
+
+@api_view(["POST"])
+@permission_classes([JWTAuthenticationPermission])
+def account_unlink(request, *args, **kwargs):
+    serializer = SentryAccountLinkSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    sentry_org_id = serializer.validated_data["sentry_org_id"]
+
+    try:
+        account = Account.objects.get(sentry_org_id=sentry_org_id)
+    except Account.DoesNotExist:
+        return Response(
+            {"message": "Account not found"}, status=status.HTTP_404_NOT_FOUND
+        )
+
+    account.is_active = False
+    account.save()
+
+    return Response({"message": "Account unlinked successfully"})
