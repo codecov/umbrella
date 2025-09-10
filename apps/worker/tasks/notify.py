@@ -2,7 +2,7 @@ import logging
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
+from celery.exceptions import MaxRetriesExceededError
 from sqlalchemy import and_
 from sqlalchemy.orm.session import Session
 
@@ -10,10 +10,7 @@ from app import celery_app
 from database.enums import CommitErrorTypes, Decoration, NotificationState, ReportType
 from database.models import (
     Commit,
-    CommitReport,
     Pull,
-    TestResultReportTotals,
-    Upload,
 )
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME, CompareCommit
 from helpers.checkpoint_logger.flows import UploadFlow
@@ -41,6 +38,7 @@ from services.repository import (
     fetch_and_update_pull_request_information_from_commit,
     get_repo_provider_service,
 )
+from services.test_analytics.ta_timeseries import get_pr_comment_agg
 from services.yaml import get_current_yaml, read_yaml_field
 from shared.bots.github_apps import (
     get_github_app_token,
@@ -69,9 +67,18 @@ log = logging.getLogger(__name__)
 GENERIC_TA_ERROR_MSG = "Test Analytics upload error: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format."
 
 
-class NotifyTask(BaseCodecovTask, name=notify_task_name):
-    throws = (SoftTimeLimitExceeded,)
+def get_test_status(repo_id: int, commit_sha: str) -> tuple[bool, bool]:
+    pr_comment_agg = get_pr_comment_agg(repo_id, commit_sha)
+    failed = pr_comment_agg.get("failed", 0)
+    passed = pr_comment_agg.get("passed", 0)
 
+    any_failures = failed > 0
+    all_passed = passed > 0 and failed == 0
+
+    return any_failures, all_passed
+
+
+class NotifyTask(BaseCodecovTask, name=notify_task_name):
     def run_impl(
         self,
         db_session: Session,
@@ -229,13 +236,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         commit: Commit = commits_query.first()
         assert commit, "Commit not found in database."
 
-        test_result_commit_report = commit.commit_report(ReportType.TEST_RESULTS)
-        if (
-            test_result_commit_report is not None
-            and test_result_commit_report.test_result_totals is not None
-            and not test_result_commit_report.test_result_totals.error
-            and test_result_commit_report.test_result_totals.failed > 0
-        ):
+        any_failures, all_tests_passed = get_test_status(commit.repoid, commit.commitid)
+
+        # This functionality is disabled for now because it's too noisy for customers
+        ta_error_msg = None
+
+        if any_failures and not all_tests_passed:
             self._call_upload_breadcrumb_task(
                 commit_sha=commit.commitid,
                 repo_id=commit.repoid,
@@ -484,10 +490,6 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     "repoid": commit.repoid,
                     "current_yaml": current_yaml.to_dict(),
                 },
-            )
-
-            all_tests_passed, ta_error_msg = get_ta_relevant_context(
-                db_session, test_result_commit_report
             )
 
             notifications = self.submit_third_party_notifications(
@@ -994,55 +996,3 @@ def get_repo_provider_service_for_specific_commit(
         **data,
     )
     return _get_repo_provider_service_instance(repository.service, adapter_params)
-
-
-def get_ta_relevant_context(
-    db_session: Session, ta_commit_report: CommitReport | None
-) -> tuple[bool, str | None]:
-    all_tests_passed: bool = False
-    ta_error_msg: str | None = None
-
-    if ta_commit_report:
-        ta_upload_ids = (
-            db_session.query(Upload.id_)
-            .filter(Upload.report_id == ta_commit_report.id_)
-            .subquery()
-        )
-
-        # commenting out the upload error code because we it's too noisy and confusing for now
-        # upload_error = (
-        #     db_session.query(UploadError)
-        #     .filter(UploadError.upload_id.in_(ta_upload_ids.select()))
-        #     .first()
-        # )
-
-        totals: TestResultReportTotals | None = ta_commit_report.test_result_totals
-
-        # commenting out the upload error code because we it's too noisy and confusing for now
-        # if upload_error:
-        #     match upload_error.error_code:
-        #         case "unsupported_file_format":
-        #             error_message = upload_error.error_params.get("error_message")
-        #         case "warning":
-        #             error_message = upload_error.error_params.get("warning_message")
-        #         case "file_not_in_storage":
-        #             error_message = None
-        #         case _:
-        #             sentry_sdk.capture_message(
-        #                 f"Unrecognized error code: {upload_error.error_code}",
-        #                 level="error",
-        #             )
-        #             error_message = None
-        #     error_payload = ErrorPayload(
-        #         error_code=upload_error.error_code,
-        #         error_message=error_message,
-        #     )
-        #     ta_error_msg = short_error_message(error_payload)
-
-        all_tests_passed = False
-        if totals:
-            no_error = ta_error_msg is None
-            no_test_failures = totals.failed == 0
-            all_tests_passed = no_error and no_test_failures
-
-    return all_tests_passed, ta_error_msg
