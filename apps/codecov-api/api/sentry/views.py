@@ -107,7 +107,6 @@ def account_link(request, *args, **kwargs):
         account.is_active = True
         account.save()
     else:
-        # Get or create account with this sentry_org_id
         account, created = Account.objects.get_or_create(
             sentry_org_id=sentry_org_id,
             defaults={
@@ -117,7 +116,6 @@ def account_link(request, *args, **kwargs):
             },
         )
 
-        # If account already existed, update it with new values
         if not created:
             account.name = sentry_org_name
             account.plan = PlanName.SENTRY_MERGE_PLAN.value
@@ -172,8 +170,6 @@ def account_unlink(request, *args, **kwargs):
         )
 
     account.is_active = False
-    # Don't set name to None as it violates not-null constraint
-    # Keep the name but mark as inactive
     account.save()
 
     return Response({"message": "Account unlinked successfully"})
