@@ -1,0 +1,20 @@
+{
+  "owner": {
+    "repository": {
+      "testAnalytics": {
+        "testResultsAggregates": {
+          "totalDuration": 0.0,
+          "slowestTestsDuration": 0.0,
+          "totalFails": 0,
+          "totalSkips": 0,
+          "totalSlowTests": 0,
+          "totalDurationPercentChange": -1.0,
+          "slowestTestsDurationPercentChange": -1.0,
+          "totalFailsPercentChange": -1.0,
+          "totalSkipsPercentChange": -1.0,
+          "totalSlowTestsPercentChange": -1.0
+        }
+      }
+    }
+  }
+}

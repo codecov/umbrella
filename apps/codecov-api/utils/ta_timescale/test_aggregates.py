@@ -1,9 +1,10 @@
 from datetime import datetime
 from typing import Literal
 
-from django.db.models import Count, F, FloatField, Sum, Window
+from django.db.models import Case, Count, F, FloatField, Sum, Value, When, Window
 from django.db.models.functions import RowNumber
 
+from shared.django_apps.ta_timeseries.models import Testrun
 from shared.metrics import Histogram
 from utils.ta_timescale.types import TestResultsAggregates
 from utils.ta_timescale.utils import (
@@ -62,6 +63,59 @@ def get_repo_aggregates_via_ca(
     return daily_aggregates, slowest_tests_duration, slow_test_num
 
 
+def get_repo_aggregates_via_testrun(
+    repoid: int,
+    branch: str,
+    start_date: datetime,
+    end_date: datetime,
+):
+    test_data = Testrun.objects.filter(
+        repo_id=repoid,
+        timestamp__gt=start_date,
+        timestamp__lte=end_date,
+    )
+    if branch is not None:
+        test_data = test_data.filter(branch=branch)
+
+    daily_aggregates = test_data.aggregate(
+        total_duration=Sum(F("duration_seconds"), output_field=FloatField()),
+        fails=Sum(
+            Case(
+                When(outcome__in=["failure", "flaky_fail"], then=Value(1)),
+                default=Value(0),
+            )
+        ),
+        skips=Sum(Case(When(outcome="skip", then=Value(1)), default=Value(0))),
+    )
+
+    unique_test_count = (
+        test_data.aggregate(unique_test_count=Count("test_id", distinct=True))[
+            "unique_test_count"
+        ]
+        or 0
+    )
+
+    slow_test_num = _calculate_slow_test_num(unique_test_count)
+
+    slow_tests = (
+        test_data.values("test_id")
+        .annotate(
+            total_duration=Sum(F("duration_seconds"), output_field=FloatField()),
+            row_num=Window(
+                expression=RowNumber(),
+                order_by=F("total_duration").desc(),
+            ),
+        )
+        .filter(row_num__lte=slow_test_num)
+    )
+
+    result = slow_tests.aggregate(slowest_tests_duration=Sum("total_duration"))
+
+    slowest_tests_duration = result["slowest_tests_duration"] or 0.0
+
+    return daily_aggregates, slowest_tests_duration, slow_test_num
+
+
 get_test_result_aggregates_histogram = Histogram(
     "get_test_result_aggregates_timescale",
     "Time it takes to get the test result aggregates from the database",
@@ -75,24 +129,34 @@ def get_test_results_aggregates(
     start_date: datetime,
     end_date: datetime,
 ) -> TestResultsAggregates | None:
-    if not _should_use_precomputed_aggregates(branch):
-        raise ValueError("Test results aggregates are not precomputed")
-
     interval_duration = end_date - start_date
     comparison_start_date = start_date - interval_duration
     comparison_end_date = start_date
 
-    curr_aggregates, curr_slow_test_duration, curr_slow_test_num = (
-        get_repo_aggregates_via_ca(repoid, branch, start_date, end_date)
-    )
-    past_aggregates, past_slow_test_duration, past_slow_test_num = (
-        get_repo_aggregates_via_ca(
-            repoid,
-            branch,
-            comparison_start_date,
-            comparison_end_date,
+    if _should_use_precomputed_aggregates(branch):
+        curr_aggregates, curr_slow_test_duration, curr_slow_test_num = (
+            get_repo_aggregates_via_ca(repoid, branch, start_date, end_date)
         )
-    )
+        past_aggregates, past_slow_test_duration, past_slow_test_num = (
+            get_repo_aggregates_via_ca(
+                repoid,
+                branch,
+                comparison_start_date,
+                comparison_end_date,
+            )
+        )
+    else:
+        curr_aggregates, curr_slow_test_duration, curr_slow_test_num = (
+            get_repo_aggregates_via_testrun(repoid, branch, start_date, end_date)
+        )
+        past_aggregates, past_slow_test_duration, past_slow_test_num = (
+            get_repo_aggregates_via_testrun(
+                repoid,
+                branch,
+                comparison_start_date,
+                comparison_end_date,
+            )
+        )
     return TestResultsAggregates(
         total_duration=curr_aggregates["total_duration"] or 0,
         fails=int(curr_aggregates["fails"] or 0),

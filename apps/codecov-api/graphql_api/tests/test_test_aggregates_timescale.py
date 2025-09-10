@@ -161,7 +161,6 @@ class TestTestResultsAggregatesTimescale(GraphQLTestHelper):
 
         assert snapshot("json") == result
 
-    @pytest.mark.skip(reason="Temporarily only fetching default branch data")
     def test_test_results_aggregates_timescale_non_precomputed_branch(
         self, repository, populate_timescale_test_results_aggregates, snapshot
     ):
@@ -192,6 +191,4 @@ class TestTestResultsAggregatesTimescale(GraphQLTestHelper):
 
         result = self.gql_request(query, owner=repository.author)
 
-        assert result == {
-            "owner": {"repository": {"testAnalytics": {"testResultsAggregates": None}}}
-        }
+        assert snapshot("json") == result
