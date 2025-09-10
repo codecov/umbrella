@@ -107,12 +107,21 @@ def account_link(request, *args, **kwargs):
         account.is_active = True
         account.save()
     else:
-        account = Account.objects.create(
-            sentry_org_id=sentry_org_id,
-            name=sentry_org_name,
-            plan=PlanName.SENTRY_MERGE_PLAN.value,
-            is_active=True,
-        )
+        # Check if there's an existing account with this sentry_org_id
+        try:
+            account = Account.objects.get(sentry_org_id=sentry_org_id)
+            # Update existing account
+            account.name = sentry_org_name
+            account.plan = PlanName.SENTRY_MERGE_PLAN.value
+            account.is_active = True
+            account.save()
+        except Account.DoesNotExist:
+            account = Account.objects.create(
+                sentry_org_id=sentry_org_id,
+                name=sentry_org_name,
+                plan=PlanName.SENTRY_MERGE_PLAN.value,
+                is_active=True,
+            )
 
     for org_data in github_orgs:
         owner, _owner_created = Owner.objects.get_or_create(
@@ -162,6 +171,8 @@ def account_unlink(request, *args, **kwargs):
         )
 
     account.is_active = False
+    # Don't set name to None as it violates not-null constraint
+    # Keep the name but mark as inactive
     account.save()
 
     return Response({"message": "Account unlinked successfully"})
