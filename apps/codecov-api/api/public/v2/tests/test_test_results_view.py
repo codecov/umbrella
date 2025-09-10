@@ -14,7 +14,7 @@ def org():
 
 @pytest.fixture
 def repo(org):
-    return RepositoryFactory(author=org)
+    return RepositoryFactory(author=org, repoid=1)
 
 
 @pytest.fixture
