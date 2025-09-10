@@ -60,12 +60,6 @@ class CommitReport(
 
     class Meta:
         app_label = REPORTS_APP_LABEL
-        constraints = [
-            models.UniqueConstraint(
-                fields=["commit", "code"],
-                name="reports_commitreport_commit_code_unique",
-            ),
-        ]
 
     objects = CommitReportManager()
 
