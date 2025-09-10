@@ -24,6 +24,7 @@ from services.repository import (
     fetch_and_update_pull_request_information,
     get_repo_provider_service,
 )
+from services.test_analytics.ta_process_flakes import KEY_NAME
 from services.test_results import should_do_flaky_detection
 from services.yaml.reader import read_yaml_field
 from shared.celery_config import (
@@ -556,6 +557,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         if should_do_flaky_detection(repository, current_yaml):
             redis_client = get_redis_connection()
             redis_client.set(f"flake_uploads:{repository.repoid}", 0)
+            redis_client.lpush(KEY_NAME.format(repository.repoid), pull_head)
             self.app.tasks[process_flakes_task_name].apply_async(
                 kwargs={"repo_id": repository.repoid, "commit_id": pull_head}
             )

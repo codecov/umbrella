@@ -10,7 +10,6 @@ from redis.exceptions import LockError
 
 from database.models import Commit, Pull, Repository
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
-from database.tests.factories.reports import TestFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from services.repository import EnrichedPull
 from services.yaml import UserYaml
@@ -557,10 +556,6 @@ def test_trigger_process_flakes(dbsession, mocker, flake_detection, repository):
     apply_async: MagicMock = mocker.patch.object(
         task.app.tasks["app.tasks.flakes.ProcessFlakesTask"], "apply_async"
     )
-
-    if flake_detection:
-        TestFactory.create(repository=repository)
-        dbsession.flush()
 
     task.trigger_process_flakes(
         dbsession,
