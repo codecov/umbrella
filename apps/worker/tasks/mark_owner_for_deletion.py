@@ -1,6 +1,7 @@
 import logging
 
 from celery.exceptions import SoftTimeLimitExceeded
+from django.db import transaction
 
 from app import celery_app
 from shared.celery_config import mark_owner_for_deletion_task_name
@@ -49,31 +50,32 @@ class MarkOwnerForDeletionTask(BaseCodecovTask, name=mark_owner_for_deletion_tas
     acks_late = True  # retry the task when the worker dies for whatever reason
     max_retries = None  # aka, no limit on retries
 
-    def run_impl(self, _db_session, owner_id: int) -> dict:
+    def run_impl(self, _db_session, ownerid: int) -> dict:
         try:
-            log.info(f"Starting to mark owner {owner_id} for deletion")
+            log.info(f"Starting to mark owner {ownerid} for deletion")
 
-            try:
-                owner = Owner.objects.select_for_update().get(ownerid=owner_id)
-            except Owner.DoesNotExist:
-                log.error(f"Owner {owner_id} not found")
-                raise ValueError(f"Owner {owner_id} not found")
+            with transaction.atomic():
+                try:
+                    owner = Owner.objects.select_for_update().get(ownerid=ownerid)
+                except Owner.DoesNotExist:
+                    log.error(f"Owner {ownerid} not found")
+                    raise ValueError(f"Owner {ownerid} not found")
 
-            # Check if owner is already marked for deletion
-            if OwnerToBeDeleted.objects.filter(owner_id=owner_id).exists():
-                log.info(f"Owner {owner_id} is already marked for deletion")
-                return {"status": "already_marked", "ownerid": owner_id}
+                # Check if owner is already marked for deletion
+                if OwnerToBeDeleted.objects.filter(owner_id=ownerid).exists():
+                    log.info(f"Owner {ownerid} is already marked for deletion")
+                    return {"status": "already_marked", "ownerid": ownerid}
 
-            obfuscate_owner_data(owner)
-            log.info(f"Obfuscated data for owner {owner_id}")
+                obfuscate_owner_data(owner)
+                log.info(f"Obfuscated data for owner {ownerid}")
 
-            OwnerToBeDeleted.objects.create(owner_id=owner_id)
-            log.info(f"Added owner {owner_id} to OwnerToBeDeleted table")
+                OwnerToBeDeleted.objects.create(owner_id=ownerid)
+                log.info(f"Added owner {ownerid} to OwnerToBeDeleted table")
 
             return {
                 "status": "success",
-                "ownerid": owner_id,
-                "message": f"Owner {owner_id} marked for deletion and data obfuscated",
+                "ownerid": ownerid,
+                "message": f"Owner {ownerid} marked for deletion and data obfuscated",
             }
 
         except SoftTimeLimitExceeded:
