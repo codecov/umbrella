@@ -5,6 +5,7 @@ from freezegun import freeze_time
 
 from services.test_analytics.ta_timeseries import (
     get_pr_comment_agg,
+    get_pr_comment_duration,
     get_pr_comment_failures,
     get_testruns_for_flake_detection,
     insert_testrun,
@@ -103,3 +104,61 @@ def test_update_testrun_to_flaky():
     )
     testrun = Testrun.objects.get(test_id=testrun.test_id)
     assert testrun.outcome == "flaky_fail"
+
+
+def test_get_pr_comment_duration_no_testruns():
+    duration = get_pr_comment_duration(1, "nonexistent_commit")
+    assert duration is None
+
+
+def test_get_pr_comment_duration_single_testrun():
+    testrun = TestrunFactory.create(duration_seconds=5.5)
+    duration = get_pr_comment_duration(1, testrun.commit_sha)
+    assert duration == 5.5
+
+
+def test_get_pr_comment_duration_multiple_testruns_same_test():
+    base_time = datetime.now()
+
+    testrun1 = TestrunFactory.create(
+        timestamp=base_time, commit_sha="same_commit", duration_seconds=10.0
+    )
+    testrun2 = TestrunFactory.create(
+        timestamp=base_time.replace(second=base_time.second + 1),
+        commit_sha="same_commit",
+        duration_seconds=15.0,
+    )
+
+    duration = get_pr_comment_duration(1, "same_commit")
+    assert duration == 25.0
+
+
+def test_get_pr_comment_duration_multiple_different_tests():
+    TestrunFactory.create(
+        commit_sha="multi_test_commit",
+        duration_seconds=10.0,
+    )
+    TestrunFactory.create(
+        commit_sha="multi_test_commit",
+        duration_seconds=20.0,
+    )
+
+    duration = get_pr_comment_duration(1, "multi_test_commit")
+    assert duration == 30.0
+
+
+def test_get_pr_comment_duration_with_null_duration():
+    TestrunFactory.create(commit_sha="commit_sha", duration_seconds=None)
+
+    duration = get_pr_comment_duration(1, "commit_sha")
+    assert duration is None
+
+
+def test_get_pr_comment_duration_different_repo_commit():
+    TestrunFactory.create(commit_sha="commit_a", duration_seconds=10.0)
+    TestrunFactory.create(repo_id=2, commit_sha="commit_a", duration_seconds=20.0)
+    TestrunFactory.create(commit_sha="commit_b", duration_seconds=30.0)
+
+    assert get_pr_comment_duration(1, "commit_a") == 10.0
+    assert get_pr_comment_duration(2, "commit_a") == 20.0
+    assert get_pr_comment_duration(1, "commit_b") == 30.0
