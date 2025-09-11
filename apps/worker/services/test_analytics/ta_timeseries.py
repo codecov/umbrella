@@ -102,7 +102,7 @@ def get_pr_comment_failures(repo_id: int, commit_sha: str) -> list[FailedTestIns
             FROM ta_timeseries_testrun
             WHERE repo_id = %s AND commit_sha = %s AND outcome IN ('failure', 'flaky_fail')
             GROUP BY test_id
-            ORDER BY LAST(computed_name, timestamp) ASC
+            ORDER BY computed_name ASC
             """,
             [repo_id, commit_sha],
         )
