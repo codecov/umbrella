@@ -5,7 +5,7 @@ from django.db.models import Q
 
 from services.cleanup.cleanup import cleanup_queryset
 from services.cleanup.utils import CleanupSummary, cleanup_context
-from shared.django_apps.codecov_auth.models import Owner, OwnerProfile
+from shared.django_apps.codecov_auth.models import Owner, OwnerProfile, OwnerToBeDeleted
 from shared.django_apps.core.models import Commit, Pull, Repository
 
 log = logging.getLogger(__name__)
@@ -21,6 +21,8 @@ def cleanup_owner(owner_id: int) -> CleanupSummary:
     with cleanup_context() as context:
         cleanup_queryset(owner_query, context)
         summary = context.summary
+
+    OwnerToBeDeleted.objects.filter(owner_id=owner_id).delete()
 
     log.info("Owner cleanup finished", extra={"summary": summary})
     return summary
