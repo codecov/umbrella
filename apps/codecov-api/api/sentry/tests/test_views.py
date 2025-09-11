@@ -26,7 +26,7 @@ class AccountLinkViewTests(TestCase):
             "organizations": [
                 {
                     "installation_id": "987654321",
-                    "external_id": "456789123",
+                    "service_id": "456789123",
                     "slug": "test-org",
                     "provider": "github",
                 }
@@ -140,7 +140,7 @@ class AccountLinkViewTests(TestCase):
             "organizations": [
                 {
                     "installation_id": "987654321",
-                    "external_id": "456789123",
+                    "service_id": "456789123",
                     "slug": "test-org",
                     "provider": "github",
                 }
@@ -180,7 +180,7 @@ class AccountLinkViewTests(TestCase):
                 "organizations": [
                     {
                         "installation_id": "987654321",
-                        "external_id": "456789123",
+                        "service_id": "456789123",
                         "slug": "test-org",
                         "provider": "github",
                     },
@@ -239,7 +239,7 @@ class AccountLinkViewTests(TestCase):
             "organizations": [
                 {
                     "installation_id": "987654321",
-                    "external_id": "456789123",
+                    "service_id": "456789123",
                     "slug": "test-org",
                     "provider": "github",
                 }
@@ -258,7 +258,7 @@ class AccountLinkViewTests(TestCase):
             "organizations": [
                 {
                     "installation_id": "987654321",
-                    "external_id": "456789123",
+                    "service_id": "456789123",
                     "slug": "test-org",
                     "provider": "github",
                 }
@@ -287,7 +287,7 @@ class AccountLinkViewTests(TestCase):
             "organizations": [
                 {
                     "installation_id": "987654321",
-                    # Missing external_id, slug, provider
+                    # Missing service_id, slug, provider
                 }
             ],
         }
@@ -295,7 +295,7 @@ class AccountLinkViewTests(TestCase):
         response = self._make_authenticated_request(data=data)
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("external_id", response.data["organizations"][0])
+        self.assertIn("service_id", response.data["organizations"][0])
         self.assertIn("slug", response.data["organizations"][0])
         self.assertIn("provider", response.data["organizations"][0])
 
@@ -330,19 +330,19 @@ class AccountLinkViewTests(TestCase):
             "organizations": [
                 {
                     "installation_id": "987654321",
-                    "external_id": "456789123",
+                    "service_id": "456789123",
                     "slug": "github-org",
                     "provider": "github",
                 },
                 {
                     "installation_id": "987654322",
-                    "external_id": "456789124",
+                    "service_id": "456789124",
                     "slug": "gitlab-org",
                     "provider": "gitlab",
                 },
                 {
                     "installation_id": "987654323",
-                    "external_id": "456789125",
+                    "service_id": "456789125",
                     "slug": "bitbucket-org",
                     "provider": "bitbucket",
                 },
@@ -390,19 +390,19 @@ class AccountLinkViewTests(TestCase):
             "organizations": [
                 {
                     "installation_id": "987654321",
-                    "external_id": "456789123",
+                    "service_id": "456789123",
                     "slug": "github-org-1",
                     "provider": "github",
                 },
                 {
                     "installation_id": "987654322",
-                    "external_id": "456789124",
+                    "service_id": "456789124",
                     "slug": "github-org-2",
                     "provider": "github",
                 },
                 {
                     "installation_id": "987654323",
-                    "external_id": "456789125",
+                    "service_id": "456789125",
                     "slug": "gitlab-org",
                     "provider": "gitlab",
                 },
@@ -518,7 +518,7 @@ class AccountUnlinkViewTests(TestCase):
             "organizations": [
                 {
                     "installation_id": "987654321",
-                    "external_id": "456789123",
+                    "service_id": "456789123",
                     "slug": "test-org",
                     "provider": "github",
                 }
