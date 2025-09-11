@@ -403,8 +403,11 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
 
         return True, "comment_posted"
 
-    def all_passed_comment(self):
-        message = ":white_check_mark: All tests passed"
+    def all_passed_comment(self, duration_seconds: float | None):
+        if duration_seconds is not None:
+            message = f":white_check_mark: All tests passed in {duration_seconds:.2f}s"
+        else:
+            message = ":white_check_mark: All tests passed"
 
         pull = self.get_pull()
         if pull is None:
