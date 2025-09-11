@@ -385,9 +385,6 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
         return "\n".join(message)
 
     def error_comment(self):
-        """
-        This is no longer used in the new TA finisher task, but this is what used to display the error comment
-        """
         message: str
 
         if self.error is None:
@@ -401,6 +398,19 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
 
         sent_to_provider = self.send_to_provider(pull, message)
 
+        if sent_to_provider is False:
+            return (False, "torngit_error")
+
+        return (True, "comment_posted")
+
+    def all_passed_comment(self):
+        message = ":white_check_mark: All tests passed"
+
+        pull = self.get_pull()
+        if pull is None:
+            return False, "no_pull"
+
+        sent_to_provider = self.send_to_provider(pull, message)
         if sent_to_provider is False:
             return (False, "torngit_error")
 
