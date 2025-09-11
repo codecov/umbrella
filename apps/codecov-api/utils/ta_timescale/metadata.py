@@ -6,7 +6,7 @@ from django.db.models import Q
 from shared.django_apps.ta_timeseries.models import TestAggregateDaily
 
 
-def get_test_suites_new(
+def get_test_suites(
     repoid: int, term: str | None = None, interval: int = 30
 ) -> list[str]:
     end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -30,9 +30,7 @@ def get_test_suites_new(
     return list(testsuites)
 
 
-def get_flags_new(
-    repoid: int, term: str | None = None, interval: int = 30
-) -> list[str]:
+def get_flags(repoid: int, term: str | None = None, interval: int = 30) -> list[str]:
     end_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     start_date = end_date - timedelta(days=interval)
 
