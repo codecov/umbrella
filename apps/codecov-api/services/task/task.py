@@ -235,7 +235,7 @@ class TaskService:
     def delete_owner(self, ownerid):
         log.info(f"Triggering delete_owner task for owner: {ownerid}")
         self._create_signature(
-            celery_config.delete_owner_task_name, kwargs={"ownerid": ownerid}
+            celery_config.mark_owner_for_deletion_task_name, kwargs={"ownerid": ownerid}
         ).apply_async()
 
     def backfill_repo(
