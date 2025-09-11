@@ -18,8 +18,8 @@ class OrganizationIntegrationSerializer(serializers.Serializer):
         help_text="Installation ID for the integration",
         required=True,
     )
-    external_id = serializers.CharField(
-        help_text="External ID for the integration. This is the ID of the organization in the provider.",
+    service_id = serializers.CharField(
+        help_text="Service ID for the provider org.",
         required=True,
     )
     slug = serializers.CharField(
@@ -72,7 +72,7 @@ def account_link(request, *args, **kwargs):
 
         try:
             existing_owner = Owner.objects.get(
-                service_id=org_data["external_id"], service=org_data["provider"]
+                service_id=org_data["service_id"], service=org_data["provider"]
             )
             # If the organization is already linked to an active Sentry account, return an error
             # If the organization is linked to an inactive Sentry account, set it to reactivate later
