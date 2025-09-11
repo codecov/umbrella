@@ -124,7 +124,7 @@ def account_link(request, *args, **kwargs):
 
     for org_data in github_orgs:
         owner, _owner_created = Owner.objects.get_or_create(
-            service_id=org_data["external_id"],
+            service_id=org_data["service_id"],
             service=org_data["provider"],
             defaults={
                 "account": account,
