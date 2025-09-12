@@ -57,6 +57,7 @@ def get_test_data_queryset_via_ca(
     end_date: datetime,
     parameter: Literal["flaky_tests", "failed_tests", "slowest_tests", "skipped_tests"]
     | None = None,
+    merge_arrays: bool = False,
 ):
     test_data, _ = get_daily_aggregate_querysets(repoid, branch, start_date, end_date)
 
@@ -65,11 +66,6 @@ def get_test_data_queryset_via_ca(
         total_fail_count=Sum("fail_count"),
         total_flaky_fail_count=Sum("flaky_fail_count"),
         total_skip_count=Sum("skip_count"),
-        commits_where_fail=Coalesce(
-            Cardinality(ArrayMergeDedupe("failing_commits")),
-            0,
-            output_field=IntegerField(),
-        ),
         total_count=Sum(
             F("pass_count") + F("fail_count") + F("flaky_fail_count"),
             output_field=FloatField(),
@@ -109,11 +105,20 @@ def get_test_data_queryset_via_ca(
         ),
         last_outcome=Last("last_outcome", "updated_at", output_field=TextField()),
         updated_at=Max("updated_at"),
-        flags=ArrayMergeDedupe("flags"),
         computed_name=Min("computed_name"),
         name=F("computed_name"),
         testsuite=Min("testsuite"),
     )
+
+    if merge_arrays:
+        test_data = test_data.annotate(
+            commits_where_fail=Coalesce(
+                Cardinality(ArrayMergeDedupe("failing_commits")),
+                0,
+                output_field=IntegerField(),
+            ),
+            flags=ArrayMergeDedupe("flags"),
+        )
 
     match parameter:
         case "failed_tests":
@@ -147,6 +152,7 @@ def get_test_data_queryset_via_testrun(
     end_date: datetime,
     parameter: Literal["flaky_tests", "failed_tests", "slowest_tests", "skipped_tests"]
     | None = None,
+    merge_arrays: bool = False,
 ):
     test_data = Testrun.objects.filter(
         repo_id=repoid,
@@ -173,11 +179,6 @@ def get_test_data_queryset_via_testrun(
                 When(outcome__in=["failure", "flaky_fail"], then=Value(1)),
                 default=Value(0),
             )
-        ),
-        commits_where_fail=Count(
-            "commit_sha",
-            filter=Q(outcome__in=["failure", "flaky_fail"]),
-            distinct=True,
         ),
         total_count=(
             F("total_pass_count") + F("total_fail_count") + F("total_flaky_fail_count")
@@ -211,11 +212,20 @@ def get_test_data_queryset_via_testrun(
         last_duration=Last("duration_seconds", "timestamp", output_field=FloatField()),
         last_outcome=Last("outcome", "timestamp", output_field=TextField()),
         updated_at=Max("timestamp"),
-        flags=ArrayMergeDedupe("flags"),
         computed_name=Min("computed_name"),
         name=F("computed_name"),
         testsuite=Min("testsuite"),
     )
+
+    if merge_arrays:
+        test_data = test_data.annotate(
+            commits_where_fail=Count(
+                "commit_sha",
+                filter=Q(outcome__in=["failure", "flaky_fail"]),
+                distinct=True,
+            ),
+            flags=ArrayMergeDedupe("flags"),
+        )
 
     match parameter:
         case "failed_tests":
@@ -252,14 +262,15 @@ def get_test_results_queryset(
     testsuites: list[str] | None = None,
     flags: list[str] | None = None,
     term: str | None = None,
+    merge_arrays: bool = False,
 ):
     if _should_use_precomputed_aggregates(branch):
         test_data = get_test_data_queryset_via_ca(
-            repoid, branch, start_date, end_date, parameter
+            repoid, branch, start_date, end_date, parameter, merge_arrays
         )
     else:
         test_data = get_test_data_queryset_via_testrun(
-            repoid, branch, start_date, end_date, parameter
+            repoid, branch, start_date, end_date, parameter, merge_arrays
         )
 
     if term:
@@ -267,6 +278,7 @@ def get_test_results_queryset(
     if testsuites:
         test_data = test_data.filter(testsuite__in=testsuites)
     if flags:
+        assert merge_arrays, "flags are only supported when merge_arrays is True"
         test_data = test_data.filter(flags__overlap=flags)
 
     return test_data

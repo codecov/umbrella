@@ -1,0 +1,103 @@
+{
+  "owner": {
+    "repository": {
+      "testAnalytics": {
+        "testResults": {
+          "totalCount": 6,
+          "edges": [
+            {
+              "cursor": "Ni4wfG5hbWU0",
+              "node": {
+                "name": "name4",
+                "failureRate": 0.0,
+                "flakeRate": 0.0,
+                "avgDuration": 6.0,
+                "totalDuration": 12.0,
+                "totalFailCount": 0,
+                "totalFlakyFailCount": 0,
+                "totalPassCount": 2,
+                "totalSkipCount": 0,
+                "lastDuration": 4.0
+              }
+            },
+            {
+              "cursor": "NC41fG5hbWUz",
+              "node": {
+                "name": "name3",
+                "failureRate": 1.0,
+                "flakeRate": 0.0,
+                "avgDuration": 4.5,
+                "totalDuration": 9.0,
+                "totalFailCount": 2,
+                "totalFlakyFailCount": 0,
+                "totalPassCount": 0,
+                "totalSkipCount": 0,
+                "lastDuration": 3.0
+              }
+            },
+            {
+              "cursor": "My4wfG5hbWUy",
+              "node": {
+                "name": "name2",
+                "failureRate": 0.0,
+                "flakeRate": 0.0,
+                "avgDuration": 3.0,
+                "totalDuration": 6.0,
+                "totalFailCount": 0,
+                "totalFlakyFailCount": 0,
+                "totalPassCount": 2,
+                "totalSkipCount": 0,
+                "lastDuration": 2.0
+              }
+            },
+            {
+              "cursor": "MS41fG5hbWUx",
+              "node": {
+                "name": "name1",
+                "failureRate": 1.0,
+                "flakeRate": 0.0,
+                "avgDuration": 1.5,
+                "totalDuration": 3.0,
+                "totalFailCount": 2,
+                "totalFlakyFailCount": 0,
+                "totalPassCount": 0,
+                "totalSkipCount": 0,
+                "lastDuration": 1.0
+              }
+            },
+            {
+              "cursor": "MC4wfG5hbWUw",
+              "node": {
+                "name": "name0",
+                "failureRate": 0.0,
+                "flakeRate": 0.0,
+                "avgDuration": 0.0,
+                "totalDuration": 0.0,
+                "totalFailCount": 0,
+                "totalFlakyFailCount": 0,
+                "totalPassCount": 2,
+                "totalSkipCount": 0,
+                "lastDuration": 0.0
+              }
+            },
+            {
+              "cursor": "MC4wfG5hbWU1",
+              "node": {
+                "name": "name5",
+                "failureRate": 0.0,
+                "flakeRate": 0.0,
+                "avgDuration": 0.0,
+                "totalDuration": 0.0,
+                "totalFailCount": 0,
+                "totalFlakyFailCount": 0,
+                "totalPassCount": 0,
+                "totalSkipCount": 1,
+                "lastDuration": 0.0
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
