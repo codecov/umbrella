@@ -138,6 +138,7 @@ def ta_finish_upload(
 ) -> FinisherResult:
     repoid = repo.repoid
     commitid = commit.commitid
+    commit_timestamp = commit.timestamp
 
     extra = {
         "repo_id": repoid,
@@ -160,7 +161,7 @@ def ta_finish_upload(
     error = get_upload_error(list(upload_ids.keys()))
 
     with read_tests_totals_summary.labels(impl="new").time():
-        summary = get_pr_comment_agg(repoid, commitid)
+        summary = get_pr_comment_agg(repoid, commitid, commit_timestamp)
 
     if all(value == 0 for value in summary.values()) and error is None:
         log.info(
@@ -222,7 +223,7 @@ def ta_finish_upload(
         }
     elif summary["failed"] == 0 and sum(summary.values()) > 0:
         log.info("No failures, posting all passed comment", extra=extra)
-        duration_seconds = get_pr_comment_duration(repoid, commitid)
+        duration_seconds = get_pr_comment_duration(repoid, commitid, commit_timestamp)
         notifier.all_passed_comment(duration_seconds)
         return {
             "notify_attempted": True,
@@ -231,7 +232,7 @@ def ta_finish_upload(
         }
 
     with read_failures_summary.labels(impl="new").time():
-        failures = get_pr_comment_failures(repoid, commitid)
+        failures = get_pr_comment_failures(repoid, commitid, commit_timestamp)
 
     notif_failures = transform_failures(upload_ids, failures)
 

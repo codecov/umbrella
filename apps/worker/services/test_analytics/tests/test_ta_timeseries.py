@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from freezegun import freeze_time
@@ -162,3 +162,78 @@ def test_get_pr_comment_duration_different_repo_commit():
     assert get_pr_comment_duration(1, "commit_a") == 10.0
     assert get_pr_comment_duration(2, "commit_a") == 20.0
     assert get_pr_comment_duration(1, "commit_b") == 30.0
+
+
+@pytest.mark.django_db(databases=["ta_timeseries"])
+def test_get_pr_comment_duration_with_timestamp_filter():
+    base_time = datetime.now()
+
+    TestrunFactory.create(
+        timestamp=base_time - timedelta(hours=1),
+        commit_sha="duration_commit",
+        duration_seconds=10.0,
+    )
+
+    TestrunFactory.create(
+        timestamp=base_time,
+        commit_sha="duration_commit",
+        duration_seconds=20.0,
+    )
+
+    duration_all = get_pr_comment_duration(1, "duration_commit")
+    assert duration_all == 30.0
+
+    duration_filtered = get_pr_comment_duration(1, "duration_commit", base_time)
+    assert duration_filtered == 20.0
+
+
+@pytest.mark.django_db(databases=["ta_timeseries"])
+def test_pr_comment_agg_with_timestamp_filter():
+    base_time = datetime.now()
+
+    TestrunFactory.create(
+        timestamp=base_time - timedelta(hours=1),
+        commit_sha="commit_sha",
+        outcome="pass",
+    )
+
+    TestrunFactory.create(
+        timestamp=base_time,
+        commit_sha="commit_sha",
+        outcome="pass",
+    )
+
+    agg_all = get_pr_comment_agg(1, "commit_sha")
+    assert agg_all["passed"] == 2
+
+    agg_filtered = get_pr_comment_agg(1, "commit_sha", base_time)
+    assert agg_filtered["passed"] == 1
+
+
+@pytest.mark.django_db(databases=["ta_timeseries"])
+def test_pr_comment_failures_with_timestamp_filter():
+    base_time = datetime.now()
+
+    TestrunFactory.create(
+        timestamp=base_time - timedelta(hours=1),
+        commit_sha="commit_sha",
+        outcome="failure",
+        failure_message="old failure message",
+        computed_name="old_computed_name",
+    )
+
+    TestrunFactory.create(
+        timestamp=base_time,
+        commit_sha="commit_sha",
+        outcome="failure",
+        failure_message="new failure message",
+        computed_name="new_computed_name",
+    )
+
+    failures_all = get_pr_comment_failures(1, "commit_sha")
+    assert len(failures_all) == 2
+
+    failures_filtered = get_pr_comment_failures(1, "commit_sha", base_time)
+    assert len(failures_filtered) == 1
+    assert failures_filtered[0]["computed_name"] == "new_computed_name"
+    assert failures_filtered[0]["failure_message"] == "new failure message"
