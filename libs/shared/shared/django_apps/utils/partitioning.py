@@ -7,7 +7,6 @@ from psqlextra.partitioning import (
 from psqlextra.partitioning.config import PostgresPartitioningConfig
 
 from shared.config import get_config
-from shared.django_apps.reports.models import DailyTestRollup
 from shared.django_apps.upload_breadcrumbs.models import UploadBreadcrumb
 from shared.django_apps.user_measurements.models import UserMeasurement
 
@@ -36,17 +35,6 @@ manager = PostgresPartitioningManager(
                 size=PostgresTimePartitionSize(months=1),
                 count=12,
                 max_age=relativedelta(months=12),
-            ),
-        ),
-        # 3 partitions ahead, each partition is one month
-        # Delete partitions older than 3 months
-        # Partitions will be named `[table_name]_[year]_[3-letter month name]`
-        PostgresPartitioningConfig(
-            model=DailyTestRollup,
-            strategy=PostgresCurrentTimePartitioningStrategy(
-                size=PostgresTimePartitionSize(months=1),
-                count=3,
-                max_age=relativedelta(months=3),
             ),
         ),
         # 3 partitions ahead, each partition is one 1 week
