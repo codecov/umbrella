@@ -509,7 +509,7 @@ class GithubWebhookHandler(APIView):
                 "GithubAppInstallation name decided",
                 extra={
                     "ghapp_installation": ghapp_installation,
-                    "name": ghapp_installation.name,
+                    "install_name": ghapp_installation.name,
                 },
             )
 

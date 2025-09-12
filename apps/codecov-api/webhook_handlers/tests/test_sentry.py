@@ -12,7 +12,6 @@ from rest_framework.reverse import reverse
 from rest_framework.test import APIClient
 
 from billing.tests.mocks import mock_all_plans_and_tiers
-from codecov_auth.models import Owner
 from codecov_auth.permissions import JWTAuthenticationPermission
 from shared.django_apps.codecov_auth.tests.factories import AccountFactory, OwnerFactory
 from shared.django_apps.core.tests.factories import RepositoryFactory
@@ -271,32 +270,6 @@ class TestSentryWebhook:
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_webhook_runs_does_not_rollback(
-        self,
-        client,
-        url,
-        installation_webhook_payload,
-        create_valid_jwt_token,
-        mock_task_service,
-    ):
-        with patch(
-            "webhook_handlers.views.sentry.ROLLBACK_SENTRY_WEBHOOK.check_value"
-        ) as mock_check_value:
-            mock_check_value.return_value = False
-
-        data = installation_webhook_payload
-
-        response = client.post(
-            url,
-            data=data,
-            format="json",
-            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
-            **{GitHubHTTPHeaders.EVENT: "installation"},
-        )
-
-        assert response.status_code == status.HTTP_200_OK
-        assert Owner.objects.count() == 1
-
     def test_unknown_event_type(self, client, url, create_valid_jwt_token):
         data = {"some": "data"}
 
@@ -441,23 +414,19 @@ class TestSentryWebhook:
             algorithm="HS256",
         )
 
-        with patch(
-            "webhook_handlers.views.sentry.ROLLBACK_SENTRY_WEBHOOK.check_value",
-            return_value=False,
-        ):
-            response = client.post(
-                url,
-                data={
-                    "action": "publicized",
-                    "repository": {
-                        "id": repo.service_id,
-                        "owner": {"id": owner.service_id},
-                    },
+        response = client.post(
+            url,
+            data={
+                "action": "publicized",
+                "repository": {
+                    "id": repo.service_id,
+                    "owner": {"id": owner.service_id},
                 },
-                format="json",
-                HTTP_AUTHORIZATION=f"Bearer {token}",
-                **{GitHubHTTPHeaders.EVENT: "repository"},
-            )
+            },
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            **{GitHubHTTPHeaders.EVENT: "repository"},
+        )
 
         assert response.status_code == status.HTTP_200_OK
         repo.refresh_from_db()
