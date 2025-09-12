@@ -102,7 +102,7 @@ def get_pr_comment_failures(repo_id: int, commit_sha: str) -> list[FailedTestIns
             FROM ta_timeseries_testrun
             WHERE repo_id = %s AND commit_sha = %s AND outcome IN ('failure', 'flaky_fail')
             GROUP BY test_id
-            ORDER BY LAST(computed_name, timestamp) ASC
+            ORDER BY computed_name ASC
             """,
             [repo_id, commit_sha],
         )
@@ -123,6 +123,30 @@ class PRCommentAgg(TypedDict):
     passed: int
     failed: int
     skipped: int
+
+
+def get_pr_comment_duration(repo_id: int, commit_sha: str) -> float | None:
+    with connections["ta_timeseries"].cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                SUM(duration_seconds) as duration_seconds
+            FROM (
+                SELECT
+                    test_id,
+                    LAST(duration_seconds, timestamp) as duration_seconds
+                FROM ta_timeseries_testrun
+                WHERE repo_id = %s AND commit_sha = %s
+                GROUP BY test_id
+                ) AS t
+            """,
+            [repo_id, commit_sha],
+        )
+        result = cursor.fetchone()
+        if result is None:
+            return None
+        duration = result[0]
+        return duration
 
 
 def get_pr_comment_agg(repo_id: int, commit_sha: str) -> PRCommentAgg:

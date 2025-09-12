@@ -22,6 +22,7 @@ from services.test_analytics.ta_timeseries import (
     FailedTestInstance,
     get_flaky_tests_dict,
     get_pr_comment_agg,
+    get_pr_comment_duration,
     get_pr_comment_failures,
 )
 from services.test_results import (
@@ -161,7 +162,7 @@ def ta_finish_upload(
     with read_tests_totals_summary.labels(impl="new").time():
         summary = get_pr_comment_agg(repoid, commitid)
 
-    if not summary["failed"] and error is None:
+    if all(value == 0 for value in summary.values()) and error is None:
         log.info(
             "No failures and no error so not posting comment but still queueing notify",
             extra=extra,
@@ -209,14 +210,23 @@ def ta_finish_upload(
             "queue_notify": False,
         }
 
-    if summary["failed"] == 0:
-        # no failures, only error
-        log.info("No failures, posting error comment", extra=extra)
+    if all(value == 0 for value in summary.values()):
+        # no values, only error
+        log.info("No relevant results, posting error comment", extra=extra)
         notifier.error_comment()
 
         return {
             "notify_attempted": True,
             "notify_succeeded": False,
+            "queue_notify": True,
+        }
+    elif summary["failed"] == 0 and sum(summary.values()) > 0:
+        log.info("No failures, posting all passed comment", extra=extra)
+        duration_seconds = get_pr_comment_duration(repoid, commitid)
+        notifier.all_passed_comment(duration_seconds)
+        return {
+            "notify_attempted": True,
+            "notify_succeeded": True,
             "queue_notify": True,
         }
 
