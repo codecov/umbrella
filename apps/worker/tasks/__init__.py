@@ -40,6 +40,9 @@ from tasks.partition_management import partition_management_task
 from tasks.plan_manager_task import daily_plan_manager_task_name
 from tasks.preprocess_upload import preprocess_upload_task
 from tasks.process_flakes import process_flakes_task
+from tasks.process_owners_to_be_deleted_cron import (
+    process_owners_to_be_deleted_cron_task,
+)
 from tasks.regular_cleanup import regular_cleanup_task
 from tasks.save_commit_measurements import save_commit_measurements_task
 from tasks.send_email import send_email
