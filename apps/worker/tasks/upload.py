@@ -902,7 +902,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 commitid=commit.commitid,
                 commit_yaml=commit_yaml,
                 arguments_list=list(chunk),
-                impl_type=new_ta_tasks,
             )
             for chunk in itertools.batched(argument_list, CHUNK_SIZE)
         ]
@@ -913,7 +912,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             "repoid": commit.repoid,
             "commitid": commit.commitid,
             "commit_yaml": commit_yaml,
-            "impl_type": new_ta_tasks,
         }
         finisher_kwargs = TestResultsFlow.save_to_kwargs(finisher_kwargs)
         task_group.append(

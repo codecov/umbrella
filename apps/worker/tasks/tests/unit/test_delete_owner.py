@@ -11,16 +11,10 @@ from shared.django_apps.core.models import Branch, Commit, Pull, Repository
 from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
 from shared.django_apps.reports.models import (
     CommitReport,
-    DailyTestRollup,
-    Test,
-    TestInstance,
 )
 from shared.django_apps.reports.models import ReportSession as Upload
 from shared.django_apps.reports.tests.factories import (
     CommitReportFactory,
-    DailyTestRollupFactory,
-    TestFactory,
-    TestInstanceFactory,
     UploadFactory,
 )
 from tasks.delete_owner import DeleteOwnerTask
@@ -66,21 +60,21 @@ def test_delete_owner_deletes_owner_with_commit_compares(mock_storage):
 
     report = CommitReportFactory(commit=base_commit)
     upload = UploadFactory(report=report)
-    test = TestFactory(repository=repo)
-    TestInstanceFactory(test=test, upload=upload)
-    DailyTestRollupFactory(test=test, repoid=repo.repoid)
 
-    # This test factory implicitly creates:
-    # - Test with a Repository and an Owner,
-    # - An Upload with a CommitReport, a Commit that has a different Owner and
-    #   one more Repository with yet another different Owner.
-    # And then also a Branch and a Pull via DB triggers because of the Commit.
-    remaining = TestInstanceFactory()
+    user2 = OwnerFactory()
+    repo2 = RepositoryFactory(author=user2)
+
+    base_commit2 = CommitFactory(repository=repo2, author=user2)
+    compare_commit2 = CommitFactory(repository=repo2, author=user2)
+    CommitComparisonFactory(base_commit=base_commit2, compare_commit=compare_commit2)
+
+    report2 = CommitReportFactory(commit=base_commit2)
+    upload2 = UploadFactory(report=report2)
 
     res = DeleteOwnerTask().run_impl({}, user.ownerid)
 
     assert res == CleanupSummary(
-        CleanupResult(12),
+        CleanupResult(9),
         {
             "Branch": CleanupResult(1),
             "Commit": CleanupResult(2),
@@ -90,24 +84,17 @@ def test_delete_owner_deletes_owner_with_commit_compares(mock_storage):
             "Repository": CleanupResult(1),
             "CommitReport": CleanupResult(1),
             "ReportSession": CleanupResult(1),
-            "Test": CleanupResult(1),
-            "TestInstance": CleanupResult(1),
-            "DailyTestRollup": CleanupResult(1),
         },
     )
 
-    assert list(TestInstance.objects.all()) == [remaining]
-    # See the comment above why we have all of these objects
     assert Branch.objects.count() == 1
-    assert Commit.objects.count() == 1
-    assert CommitComparison.objects.count() == 0
-    assert Owner.objects.count() == 3
+    assert Commit.objects.count() == 2
+    assert CommitComparison.objects.count() == 1
+    assert Owner.objects.count() == 1
     assert Pull.objects.count() == 1
-    assert Repository.objects.count() == 2
+    assert Repository.objects.count() == 1
     assert CommitReport.objects.count() == 1
     assert Upload.objects.count() == 1
-    assert Test.objects.count() == 1
-    assert DailyTestRollup.objects.count() == 0
 
 
 @pytest.mark.django_db(databases=["timeseries", "default"])

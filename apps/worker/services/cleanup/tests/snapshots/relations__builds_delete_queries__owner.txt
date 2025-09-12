@@ -50,26 +50,6 @@ WHERE "codecov_auth_usertoken"."ownerid" IN (%s);
 -- [123]
 
 
--- TestInstance
-DELETE
-FROM "reports_testinstance"
-WHERE "reports_testinstance"."repoid" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
-
-
--- DailyTestRollup
-DELETE
-FROM "reports_dailytestrollups"
-WHERE "reports_dailytestrollups"."repoid" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
-
-
 -- CacheConfig
 DELETE
 FROM "bundle_analysis_cacheconfig"
@@ -297,6 +277,19 @@ WHERE "reports_uploadleveltotals"."upload_id" IN
 -- [123]
 
 
+-- TestInstance
+DELETE
+FROM "reports_testinstance"
+WHERE "reports_testinstance"."test_id" IN
+    (SELECT V0."id"
+     FROM "reports_test" V0
+     WHERE V0."repoid" IN
+         (SELECT U0."repoid"
+          FROM "repos" U0
+          WHERE U0."ownerid" IN (%s)));
+-- [123]
+
+
 -- TestResultReportTotals
 DELETE
 FROM "reports_testresultreporttotals"
@@ -356,6 +349,19 @@ WHERE "reports_flake"."repoid" IN
     (SELECT U0."repoid"
      FROM "repos" U0
      WHERE U0."ownerid" IN (%s));
+-- [123]
+
+
+-- DailyTestRollup
+DELETE
+FROM "reports_dailytestrollups"
+WHERE "reports_dailytestrollups"."test_id" IN
+    (SELECT V0."id"
+     FROM "reports_test" V0
+     WHERE V0."repoid" IN
+         (SELECT U0."repoid"
+          FROM "repos" U0
+          WHERE U0."ownerid" IN (%s)));
 -- [123]
 
 
@@ -471,20 +477,20 @@ WHERE "reports_repositoryflag"."repository_id" IN
 -- [123]
 
 
--- Test
+-- ReducedError
 DELETE
-FROM "reports_test"
-WHERE "reports_test"."repoid" IN
+FROM "reports_reducederror"
+WHERE "reports_reducederror"."repoid" IN
     (SELECT U0."repoid"
      FROM "repos" U0
      WHERE U0."ownerid" IN (%s));
 -- [123]
 
 
--- ReducedError
+-- Test
 DELETE
-FROM "reports_reducederror"
-WHERE "reports_reducederror"."repoid" IN
+FROM "reports_test"
+WHERE "reports_test"."repoid" IN
     (SELECT U0."repoid"
      FROM "repos" U0
      WHERE U0."ownerid" IN (%s));

@@ -6,17 +6,12 @@ from functools import partial
 import sentry_sdk
 from django.db.models import Model, Q, QuerySet
 
-from services.cleanup.relations import reverse_filter
 from services.cleanup.utils import CleanupContext
 from shared.api_archive.archive import ArchiveService, MinioEndpoints
 from shared.bundle_analysis import StoragePaths
 from shared.django_apps.compare.models import CommitComparison
 from shared.django_apps.core.models import Commit, Pull, Repository
-from shared.django_apps.reports.models import (
-    CommitReport,
-    DailyTestRollup,
-    TestInstance,
-)
+from shared.django_apps.reports.models import CommitReport
 from shared.django_apps.reports.models import ReportSession as Upload
 from shared.django_apps.staticanalysis.models import StaticAnalysisSingleFileSnapshot
 from shared.django_apps.timeseries.models import Dataset, Measurement
@@ -222,22 +217,6 @@ def cleanup_repository(context: CleanupContext, query: QuerySet):
     context.add_progress(cleaned_models)
 
 
-def unroll_subquery(context: CleanupContext, query: QuerySet):
-    reversed_query = reverse_filter(query)
-    if not reversed_query:
-        cleaned_models = query._raw_delete(query.db)
-        context.add_progress(cleaned_models)
-        return
-
-    field, subquery = reversed_query
-
-    for parent in subquery:
-        cleaned_models = query.model.objects.filter(**{field: parent.pk})._raw_delete(
-            query.db
-        )
-        context.add_progress(cleaned_models)
-
-
 # All the models that need custom python code for deletions so a bulk `DELETE` query does not work.
 MANUAL_CLEANUP: dict[type[Model], Callable[[CleanupContext, QuerySet], None]] = {
     Commit: partial(cleanup_archivefield, "report"),
@@ -249,6 +228,4 @@ MANUAL_CLEANUP: dict[type[Model], Callable[[CleanupContext, QuerySet], None]] = 
         cleanup_with_storage_field, "content_location"
     ),
     Repository: cleanup_repository,
-    TestInstance: unroll_subquery,
-    DailyTestRollup: unroll_subquery,
 }

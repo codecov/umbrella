@@ -4,7 +4,6 @@ from graphlib import TopologicalSorter
 
 from django.db.models import Model
 from django.db.models.expressions import Col, Expression
-from django.db.models.fields import Field
 from django.db.models.lookups import Exact, In
 from django.db.models.query import QuerySet
 
@@ -12,7 +11,6 @@ from database.models import Upload
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.codecov_auth.models import Owner, OwnerProfile
 from shared.django_apps.core.models import Commit, Pull, Repository
-from shared.django_apps.reports.models import DailyTestRollup, TestInstance
 from shared.django_apps.test_analytics.models import TAPullComment, TAUpload
 from shared.django_apps.upload_breadcrumbs.models import UploadBreadcrumb
 from shared.django_apps.user_measurements.models import UserMeasurement
@@ -29,8 +27,6 @@ IGNORE_RELATIONS: set[tuple[type[Model], str, type[Model]]] = {
 
 # Relations which have no proper foreign key:
 UNDOCUMENTED_RELATIONS: list[tuple[type[Model], str, type[Model]]] = [
-    (Repository, "repoid", TestInstance),
-    (Repository, "repoid", DailyTestRollup),
     (Commit, "commit_id", UserMeasurement),
     (Owner, "owner_id", UserMeasurement),
     (Repository, "repo_id", UserMeasurement),
@@ -199,28 +195,3 @@ def simplified_lookup(queryset: QuerySet) -> QuerySet | list[int]:
             return condition.rhs
 
     return queryset
-
-
-def reverse_filter(queryset: QuerySet) -> None | tuple[str, QuerySet]:
-    if queryset.query.is_sliced:
-        return None
-
-    where = queryset.query.where
-    if len(where.children) != 1:
-        return None
-
-    condition = where.children[0]
-    if (
-        not isinstance(condition, In)
-        or not isinstance(condition.lhs, Col)
-        or not isinstance(condition.lhs.target, Field)
-        or condition.rhs_is_direct_value()
-    ):
-        return None
-
-    column = condition.lhs.target.name
-
-    query = condition.rhs
-    model = query.model
-
-    return (column, QuerySet(model=model, query=query))
