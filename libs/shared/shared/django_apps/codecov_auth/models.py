@@ -493,7 +493,9 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     @property
     def orgs(self):
         if self.organizations:
-            return Owner.objects.filter(ownerid__in=self.organizations)
+            return Owner.objects.filter(ownerid__in=self.organizations).exclude(
+                service=Service.TO_BE_DELETED.value
+            )
         return Owner.objects.none()
 
     @property
