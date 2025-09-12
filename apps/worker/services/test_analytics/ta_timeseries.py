@@ -88,24 +88,42 @@ class FailedTestInstance(TypedDict):
     flags: list[str]
 
 
-def get_pr_comment_failures(repo_id: int, commit_sha: str) -> list[FailedTestInstance]:
+def get_pr_comment_failures(
+    repo_id: int, commit_sha: str, lower_bound_timestamp: datetime | None = None
+) -> list[FailedTestInstance]:
     with connections["ta_timeseries"].cursor() as cursor:
-        cursor.execute(
+        if lower_bound_timestamp is not None:
+            query = """
+                SELECT
+                    test_id,
+                    LAST(computed_name, timestamp) as computed_name,
+                    LAST(failure_message, timestamp) as failure_message,
+                    LAST(upload_id, timestamp) as upload_id,
+                    LAST(duration_seconds, timestamp) as duration_seconds,
+                    LAST(flags, timestamp) as flags
+                FROM ta_timeseries_testrun
+                WHERE repo_id = %s AND commit_sha = %s AND outcome IN ('failure', 'flaky_fail') AND timestamp >= %s
+                GROUP BY test_id
+                ORDER BY computed_name ASC
             """
-            SELECT
-                test_id,
-                LAST(computed_name, timestamp) as computed_name,
-                LAST(failure_message, timestamp) as failure_message,
-                LAST(upload_id, timestamp) as upload_id,
-                LAST(duration_seconds, timestamp) as duration_seconds,
-                LAST(flags, timestamp) as flags
-            FROM ta_timeseries_testrun
-            WHERE repo_id = %s AND commit_sha = %s AND outcome IN ('failure', 'flaky_fail')
-            GROUP BY test_id
-            ORDER BY computed_name ASC
-            """,
-            [repo_id, commit_sha],
-        )
+            params = [repo_id, commit_sha, lower_bound_timestamp]
+        else:
+            query = """
+                SELECT
+                    test_id,
+                    LAST(computed_name, timestamp) as computed_name,
+                    LAST(failure_message, timestamp) as failure_message,
+                    LAST(upload_id, timestamp) as upload_id,
+                    LAST(duration_seconds, timestamp) as duration_seconds,
+                    LAST(flags, timestamp) as flags
+                FROM ta_timeseries_testrun
+                WHERE repo_id = %s AND commit_sha = %s AND outcome IN ('failure', 'flaky_fail')
+                GROUP BY test_id
+                ORDER BY computed_name ASC
+            """
+            params = [repo_id, commit_sha]
+
+        cursor.execute(query, params)
         return [
             {
                 "test_id": bytes(test_id),
@@ -125,23 +143,40 @@ class PRCommentAgg(TypedDict):
     skipped: int
 
 
-def get_pr_comment_duration(repo_id: int, commit_sha: str) -> float | None:
+def get_pr_comment_duration(
+    repo_id: int, commit_sha: str, lower_bound_timestamp: datetime | None = None
+) -> float | None:
     with connections["ta_timeseries"].cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT
-                SUM(duration_seconds) as duration_seconds
-            FROM (
+        if lower_bound_timestamp is not None:
+            query = """
                 SELECT
-                    test_id,
-                    LAST(duration_seconds, timestamp) as duration_seconds
-                FROM ta_timeseries_testrun
-                WHERE repo_id = %s AND commit_sha = %s
-                GROUP BY test_id
-                ) AS t
-            """,
-            [repo_id, commit_sha],
-        )
+                    SUM(duration_seconds) as duration_seconds
+                FROM (
+                    SELECT
+                        test_id,
+                        LAST(duration_seconds, timestamp) as duration_seconds
+                    FROM ta_timeseries_testrun
+                    WHERE repo_id = %s AND commit_sha = %s AND timestamp >= %s
+                    GROUP BY test_id
+                    ) AS t
+            """
+            params = [repo_id, commit_sha, lower_bound_timestamp]
+        else:
+            query = """
+                SELECT
+                    SUM(duration_seconds) as duration_seconds
+                FROM (
+                    SELECT
+                        test_id,
+                        LAST(duration_seconds, timestamp) as duration_seconds
+                    FROM ta_timeseries_testrun
+                    WHERE repo_id = %s AND commit_sha = %s
+                    GROUP BY test_id
+                    ) AS t
+            """
+            params = [repo_id, commit_sha]
+
+        cursor.execute(query, params)
         result = cursor.fetchone()
         if result is None:
             return None
@@ -149,22 +184,38 @@ def get_pr_comment_duration(repo_id: int, commit_sha: str) -> float | None:
         return duration
 
 
-def get_pr_comment_agg(repo_id: int, commit_sha: str) -> PRCommentAgg:
+def get_pr_comment_agg(
+    repo_id: int, commit_sha: str, lower_bound_timestamp: datetime | None = None
+) -> PRCommentAgg:
     with connections["ta_timeseries"].cursor() as cursor:
-        cursor.execute(
+        if lower_bound_timestamp is not None:
+            query = """
+                SELECT outcome, count(*) FROM (
+                    SELECT
+                        test_id,
+                        LAST(outcome, timestamp) as outcome
+                    FROM ta_timeseries_testrun
+                    WHERE repo_id = %s AND commit_sha = %s AND timestamp >= %s
+                    GROUP BY test_id
+                ) AS t
+                GROUP BY outcome
             """
-            SELECT outcome, count(*) FROM (
-                SELECT
-                    test_id,
-                    LAST(outcome, timestamp) as outcome
-                FROM ta_timeseries_testrun
-                WHERE repo_id = %s AND commit_sha = %s
-                GROUP BY test_id
-            ) AS t
-            GROUP BY outcome
-            """,
-            [repo_id, commit_sha],
-        )
+            params = [repo_id, commit_sha, lower_bound_timestamp]
+        else:
+            query = """
+                SELECT outcome, count(*) FROM (
+                    SELECT
+                        test_id,
+                        LAST(outcome, timestamp) as outcome
+                    FROM ta_timeseries_testrun
+                    WHERE repo_id = %s AND commit_sha = %s
+                    GROUP BY test_id
+                ) AS t
+                GROUP BY outcome
+            """
+            params = [repo_id, commit_sha]
+
+        cursor.execute(query, params)
         outcome_dict = dict(cursor.fetchall())
 
         return {
