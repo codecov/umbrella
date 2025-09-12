@@ -1,13 +1,11 @@
 import logging
 
 import sentry_sdk
-from django.db import transaction
 from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from codecov_auth.permissions import JWTAuthenticationPermission
-from rollouts import ROLLBACK_SENTRY_WEBHOOK
 from shared.metrics import Counter
 from webhook_handlers.constants import GitHubHTTPHeaders
 from webhook_handlers.helpers import HANDLER, should_process
@@ -48,13 +46,7 @@ class SentryWebhookHandler(APIView):
         }
 
     def post(self, request):
-        if ROLLBACK_SENTRY_WEBHOOK.check_value(0, True):
-            with transaction.atomic():
-                result = self.handle_installation(request)
-                transaction.set_rollback(True)
-                return result
-        else:
-            return self.handle_installation(request)
+        return self.handle_installation(request)
 
     def handle_installation(self, request):
         event = request.META.get(GitHubHTTPHeaders.EVENT)

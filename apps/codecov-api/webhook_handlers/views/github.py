@@ -405,6 +405,18 @@ class GithubWebhookHandler(APIView):
         installation_id = request.data["installation"]["id"]
         action = request.data.get("action")
 
+        log.info(
+            "Handling installation events",
+            extra={
+                "github_webhook_event": self.event,
+                "service_id": service_id,
+                "username": username,
+                "app_id": app_id,
+                "installation_id": installation_id,
+                "action": action,
+            },
+        )
+
         owner, _ = Owner.objects.get_or_create(
             service=self.service_name,
             service_id=service_id,
@@ -445,6 +457,17 @@ class GithubWebhookHandler(APIView):
                     defaults={"owner": owner},
                 )
             )
+
+            log.info(
+                "GithubAppInstallation created",
+                extra={
+                    "ghapp_installation": ghapp_installation,
+                    app_id: app_id,
+                    installation_id: installation_id,
+                    "was_created": was_created,
+                },
+            )
+
             if was_created:
                 installer_username = request.data.get("sender", {}).get("login", None)
                 installer = (
@@ -481,6 +504,14 @@ class GithubWebhookHandler(APIView):
 
             # Either update or set
             ghapp_installation.name = self._decide_app_name(ghapp_installation)
+
+            log.info(
+                "GithubAppInstallation name decided",
+                extra={
+                    "ghapp_installation": ghapp_installation,
+                    "name": ghapp_installation.name,
+                },
+            )
 
             all_repos_affected = (
                 request.data["installation"].get("repository_selection")
