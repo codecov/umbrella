@@ -82,34 +82,34 @@ GCS_BUCKET_NAME = "archive"
 
 TEST = True
 
-# Database
-# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
-DATABASES = {
-    "default": {
-        "ENGINE": "psqlextra.backend",
-        "NAME": "postgres",
-        "USER": "postgres",
-        "PASSWORD": "password",
-        "HOST": "postgres",
-        "PORT": 5432,
-    },
-    "timeseries": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "postgres",
-        "USER": "postgres",
-        "PASSWORD": "postgres",
-        "HOST": "timescale",
-        "PORT": 5432,
-    },
-    "ta_timeseries": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "test_analytics",
-        "USER": "postgres",
-        "PASSWORD": "postgres",
-        "HOST": "timescale",
-        "PORT": 5432,
-    },
-}
+# # Database
+# # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
+# DATABASES = {
+#     "default": {
+#         "ENGINE": "psqlextra.backend",
+#         "NAME": "postgres",
+#         "USER": "postgres",
+#         "PASSWORD": "password",
+#         "HOST": "postgres",
+#         "PORT": 5432,
+#     },
+#     "timeseries": {
+#         "ENGINE": "django.db.backends.postgresql",
+#         "NAME": "postgres",
+#         "USER": "postgres",
+#         "PASSWORD": "postgres",
+#         "HOST": "timescale",
+#         "PORT": 5432,
+#     },
+#     "ta_timeseries": {
+#         "ENGINE": "django.db.backends.postgresql",
+#         "NAME": "test_analytics",
+#         "USER": "postgres",
+#         "PASSWORD": "postgres",
+#         "HOST": "timescale",
+#         "PORT": 5432,
+#     },
+# }
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
