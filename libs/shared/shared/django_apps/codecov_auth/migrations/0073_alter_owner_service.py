@@ -2,6 +2,8 @@
 
 from django.db import migrations, models
 
+from shared.django_apps.migration_utils import RiskyRunSQL
+
 
 class Migration(migrations.Migration):
     dependencies = [
@@ -9,7 +11,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
+        RiskyRunSQL(
             sql="ALTER TYPE service ADD VALUE IF NOT EXISTS 'to_be_deleted';",
             reverse_sql=migrations.RunSQL.noop,
         ),
