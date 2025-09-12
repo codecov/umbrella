@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.utils import timezone
 from rest_framework import status
@@ -8,6 +9,7 @@ from rest_framework.test import APITestCase
 
 from codecov_auth.tests.factories import DjangoSessionFactory
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory, SessionFactory
+from shared.torngit.exceptions import TorngitUnauthorizedError
 from utils.test_utils import APIClient
 
 
@@ -492,7 +494,13 @@ class UserSessionViewSetTests(APITestCase):
         self.org.save()
         self.client = APIClient()
 
-    def test_not_part_of_org(self):
+    @patch("api.shared.permissions.get_provider")
+    def test_not_part_of_org(self, mock_get_provider):
+        mock_adapter = mock_get_provider.return_value
+        mock_adapter.get_is_admin.side_effect = TorngitUnauthorizedError(
+            response_data={}, message="User is not authorized"
+        )
+
         self.current_owner = OwnerFactory(service="github", organizations=[])
         self.client.force_login_owner(self.current_owner)
 
@@ -501,7 +509,13 @@ class UserSessionViewSetTests(APITestCase):
         )
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_not_admin_of_org(self):
+    @patch("api.shared.permissions.get_provider")
+    def test_not_admin_of_org(self, mock_get_provider):
+        mock_adapter = mock_get_provider.return_value
+        mock_adapter.get_is_admin.side_effect = TorngitUnauthorizedError(
+            response_data={}, message="User is not authorized"
+        )
+
         self.not_in_org_owner = OwnerFactory(
             service="github", organizations=[self.org.pk]
         )
