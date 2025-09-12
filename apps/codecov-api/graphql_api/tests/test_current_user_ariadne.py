@@ -5,6 +5,7 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from codecov_auth.models import OwnerProfile
+from shared.django_apps.codecov_auth.models import Service
 from shared.django_apps.codecov_auth.tests.factories import (
     AccountFactory,
     OktaSettingsFactory,
@@ -536,6 +537,41 @@ class ArianeTestCase(GraphQLTestHelper, TestCase):
         orgs = paginate_connection(data["me"]["myOrganizations"])
 
         assert orgs == [{"username": "spotify"}]
+
+    def test_fetching_my_orgs_excludes_to_be_deleted_service(self):
+        """Test that organizations with TO_BE_DELETED service are excluded from myOrganizations."""
+        # Create a deleted organization
+        deleted_org = OwnerFactory(
+            username="deleted-org",
+            service=Service.TO_BE_DELETED.value,
+        )
+
+        # Add the deleted org to current user's organizations
+        self.owner.organizations.append(deleted_org.ownerid)
+        self.owner.save()
+
+        query = """{
+            me {
+                myOrganizations {
+                    edges {
+                        node {
+                            username
+                        }
+                    }
+                }
+            }
+        }
+        """
+        data = self.gql_request(query, owner=self.owner)
+        orgs = paginate_connection(data["me"]["myOrganizations"])
+
+        # Should not include the deleted organization
+        org_usernames = [org["username"] for org in orgs]
+        assert "deleted-org" not in org_usernames
+        # Should still include normal organizations
+        assert "spotify" in org_usernames
+        assert "facebook" in org_usernames
+        assert "codecov" in org_usernames
 
     def test_sync_repo_not_authenticated(self):
         mutation = """
