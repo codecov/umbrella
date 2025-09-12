@@ -17,10 +17,8 @@ class TestrunFactory(DjangoModelFactory):
     name = factory.Sequence(lambda n: f"test_{n}")
     classname = factory.Sequence(lambda n: f"class_{n}")
     testsuite = factory.Sequence(lambda n: f"suite_{n}")
-    computed_name = factory.Sequence(lambda n: f"computed_{n}")
-    outcome = factory.fuzzy.FuzzyChoice(
-        choices=["pass", "failure", "flaky_failure", "skip"]
-    )
+    computed_name = factory.LazyAttribute(lambda obj: f"{obj.classname}::{obj.name}")
+    outcome = "pass"
     duration_seconds = factory.fuzzy.FuzzyFloat(low=0.0, high=100.0)
     failure_message = factory.LazyAttribute(
         lambda obj: f"failure_message_{obj.outcome}"
