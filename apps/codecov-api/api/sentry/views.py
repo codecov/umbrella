@@ -34,7 +34,7 @@ class OrganizationIntegrationSerializer(serializers.Serializer):
 
 
 class SentryAccountLinkSerializer(serializers.Serializer):
-    """Serializer for linking Sentry accounts to Codecov users."""
+    """Serializer for linking Sentry organizations to Codecov organizations"""
 
     sentry_org_id = serializers.CharField(help_text="The Sentry organization ID")
     sentry_org_name = serializers.CharField(
@@ -46,6 +46,12 @@ class SentryAccountLinkSerializer(serializers.Serializer):
         help_text="List of organizations/integrations tied to the account.",
         required=True,
     )
+
+
+class SentryAccountUnlinkSerializer(serializers.Serializer):
+    """Serializer for unlinking Sentry organizations from Codecov organizations."""
+
+    sentry_org_id = serializers.CharField(help_text="The Sentry organization ID")
 
 
 @api_view(["POST"])
@@ -157,7 +163,7 @@ def account_link(request, *args, **kwargs):
 @api_view(["POST"])
 @permission_classes([JWTAuthenticationPermission])
 def account_unlink(request, *args, **kwargs):
-    serializer = SentryAccountLinkSerializer(data=request.data)
+    serializer = SentryAccountUnlinkSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
     sentry_org_id = serializer.validated_data["sentry_org_id"]
