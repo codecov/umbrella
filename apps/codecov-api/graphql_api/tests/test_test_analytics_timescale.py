@@ -327,6 +327,7 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
         """
 
         result = self.gql_request(query, owner=repository.author)
+
         assert snapshot("json") == result
 
     def test_gql_query_testsuites_and_flags_resolvers_with_term(
@@ -348,4 +349,5 @@ class TestAnalyticsTestCaseNew(GraphQLTestHelper):
         """
 
         result = self.gql_request(query, owner=repository.author)
+
         assert snapshot("json") == result
