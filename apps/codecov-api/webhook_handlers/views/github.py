@@ -462,8 +462,8 @@ class GithubWebhookHandler(APIView):
                 "GithubAppInstallation created",
                 extra={
                     "ghapp_installation": ghapp_installation,
-                    app_id: app_id,
-                    installation_id: installation_id,
+                    "app_id": app_id,
+                    "installation_id": installation_id,
                     "was_created": was_created,
                 },
             )
