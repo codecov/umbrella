@@ -75,6 +75,9 @@ TEMPLATES = [
 ]
 
 GITHUB_SENTRY_APP_NAME = "sentry_app"
+GITHUB_SENTRY_APP_ID = get_config("github", "sentry_merge_app_id")
+GITHUB_SENTRY_APP_PEM = get_config("github", "sentry_merge_app_pem")
+
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
