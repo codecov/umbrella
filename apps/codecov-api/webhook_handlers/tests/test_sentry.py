@@ -6,12 +6,14 @@ from urllib.parse import urljoin
 import jwt
 import pytest
 import requests
+from django.conf import settings
 from django.test import RequestFactory, override_settings
 from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APIClient
 
 from billing.tests.mocks import mock_all_plans_and_tiers
+from codecov_auth.models import GithubAppInstallation
 from codecov_auth.permissions import JWTAuthenticationPermission
 from shared.django_apps.codecov_auth.tests.factories import AccountFactory, OwnerFactory
 from shared.django_apps.core.tests.factories import RepositoryFactory
@@ -489,3 +491,42 @@ class TestSentryWebhook:
 
         assert response.status_code == status.HTTP_200_OK
         assert response.json() == {"status": "ok"}
+
+    @pytest.mark.django_db(databases=["default"], transaction=True)
+    @override_settings(
+        GITHUB_SENTRY_APP_ID=98765,
+        GITHUB_SENTRY_APP_NAME="sentry-test-app",
+        GITHUB_SENTRY_APP_PEM="/path/to/sentry/pem",
+    )
+    def test_sentry_app_installation_settings_applied(
+        self,
+        client,
+        url,
+        owner,
+        repo,
+        create_valid_jwt_token,
+        mock_task_service,
+        installation_webhook_payload,
+    ):
+        installation_webhook_payload["installation"]["app_id"] = (
+            settings.GITHUB_SENTRY_APP_ID
+        )
+        data = installation_webhook_payload
+
+        response = client.post(
+            url,
+            data=data,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "installation"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data == {"status": "ok"}
+
+        ghapp_installation = GithubAppInstallation.objects.get(
+            installation_id=12345, app_id=settings.GITHUB_SENTRY_APP_ID
+        )
+        assert ghapp_installation.app_id == settings.GITHUB_SENTRY_APP_ID
+        assert ghapp_installation.name == settings.GITHUB_SENTRY_APP_NAME
+        assert ghapp_installation.pem_path is None

@@ -6,6 +6,7 @@ from datetime import datetime
 from hashlib import md5
 from typing import Optional, Self
 
+from django.conf import settings
 from django.contrib.postgres.fields import ArrayField, CITextField
 from django.contrib.sessions.models import Session as DjangoSession
 from django.db import models
@@ -756,21 +757,35 @@ class GithubAppInstallation(
         app_label = CODECOV_AUTH_APP_LABEL
         unique_together = ("app_id", "installation_id")
 
+    def default_installation_app_ids(self) -> set[str]:
+        installation_default_app_id = get_config("github", "integration", "id")
+        sentry_app_id = settings.GITHUB_SENTRY_APP_ID
+
+        return set(
+            map(
+                str,
+                filter(
+                    lambda x: x is not None,
+                    [installation_default_app_id, sentry_app_id],
+                ),
+            )
+        )
+
     def is_configured(self) -> bool:
         """Returns whether this installation is properly configured and can be used"""
         if self.app_id is not None and self.pem_path is not None:
             return True
         if self.name == "unconfigured_app":
             return False
-        # The default app is configured in the installation YAML
-        installation_default_app_id = get_config("github", "integration", "id")
-        if installation_default_app_id is None:
+
+        if len(self.default_installation_app_ids()) == 0:
             log.error(
-                "Can't find default app ID in the YAML. Assuming installation is configured to prevent the app from breaking itself.",
+                "Can't find default app IDs in the YAML. Assuming installation is configured to prevent the app from breaking itself.",
                 extra={"installation_id": self.id, "installation_name": self.name},
             )
             return True
-        return str(self.app_id) == str(installation_default_app_id)
+
+        return str(self.app_id) in self.default_installation_app_ids()
 
     def repository_queryset(self) -> BaseManager[Repository]:
         """Returns a QuerySet of repositories covered by this installation"""
