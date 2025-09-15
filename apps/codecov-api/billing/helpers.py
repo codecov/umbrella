@@ -18,7 +18,8 @@ def get_admins_for_owners(owners: QuerySet[Owner]) -> list[Owner]:
     owner_ids: set[int] = set()
     for owner in owners:
         owner_ids.add(owner.ownerid)
-        owner_ids.update(owner.admins)
+        if owner.admins:
+            owner_ids.update(owner.admins)
 
     if not owner_ids:
         return []
