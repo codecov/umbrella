@@ -55,6 +55,8 @@ def prepopulate(dbsession):
     )
     django_upload.save()
 
+    TestrunFactory.reset_sequence()
+
     testrun = TestrunFactory(
         repo_id=django_upload.report.commit.repository.repoid,
         commit_sha=django_upload.report.commit.commitid,
