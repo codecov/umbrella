@@ -2,9 +2,10 @@
 | Tests completed | Failed | Passed | Skipped |
 |---|---|---|---|
 | 1 | 1 | 0 | 0 |
-<details><summary>View the top 1 failed test(s) by shortest run time</summary>
+<details><summary>View the full list of 1 :snowflake: flaky tests</summary>
 
 > <pre><code class="language-python">computed_0</code></pre>
+> **Flake rate in main:** 100.00% (Passed 0 times, Failed 10 times)
 > <details><summary>Stack Traces | 100s run time</summary>
 > 
 > > <pre><code class="language-python">No failure message available</code></pre>

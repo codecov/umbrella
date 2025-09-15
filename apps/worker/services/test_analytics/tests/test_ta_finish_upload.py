@@ -55,19 +55,6 @@ def prepopulate(dbsession):
     )
     django_upload.save()
 
-    TestrunFactory.reset_sequence()
-
-    testrun = TestrunFactory(
-        repo_id=django_upload.report.commit.repository.repoid,
-        commit_sha=django_upload.report.commit.commitid,
-        upload_id=django_upload.id,
-        outcome="pass",
-        test_id=b"test-id",
-        duration_seconds=100.0,
-    )
-    testrun.save()
-    django_transaction.commit()
-
     django_repo = DjangoRepo.objects.get(
         repoid=django_upload.report.commit.repository.repoid
     )
@@ -90,7 +77,7 @@ def prepopulate(dbsession):
     dbsession.add(sql_alc_upload)
     dbsession.commit()
 
-    return django_upload, sql_alc_upload, testrun
+    return django_upload, sql_alc_upload
 
 
 @pytest.mark.django_db(databases=["default", "ta_timeseries"], transaction=True)
@@ -99,7 +86,7 @@ def test_ta_finish_upload(
 ):
     mock_all_plans_and_tiers()
 
-    django_upload, sql_alc_upload, testrun = prepopulate
+    django_upload, sql_alc_upload = prepopulate
     repo = sql_alc_upload.report.commit.repository
     commit = sql_alc_upload.report.commit
 
@@ -225,6 +212,25 @@ def test_ta_finish_upload(
     result = run_task()
 
     assert_result(True, False, True)
+    assert_tasks([])
+    assert_comment_snapshot()
+
+    # error with all passing
+    TestrunFactory.reset_sequence()
+    testrun = TestrunFactory(
+        repo_id=django_upload.report.commit.repository.repoid,
+        commit_sha=django_upload.report.commit.commitid,
+        upload_id=django_upload.id,
+        outcome="pass",
+        test_id=b"test-id",
+        duration_seconds=100.0,
+    )
+    testrun.save()
+    django_transaction.commit()
+
+    result = run_task()
+
+    assert_result(True, True, True)
     assert_tasks([])
     assert_comment_snapshot()
 
