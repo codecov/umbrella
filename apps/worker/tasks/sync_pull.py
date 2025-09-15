@@ -616,7 +616,6 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                 (Commit.pullid.is_(None) | (Commit.pullid != pull.pullid)),
                 Commit.deleted == False,
             )
-            .order_by(Commit.timestamp.desc())
             .limit(100)
             .all()
         )
