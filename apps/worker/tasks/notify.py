@@ -19,6 +19,7 @@ from helpers.comparison import minimal_totals
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.save_commit_error import save_commit_error
+from helpers.ta_status import get_test_status
 from services.activation import activate_user
 from services.commit_status import RepositoryCIFilter
 from services.comparison import (
@@ -38,7 +39,6 @@ from services.repository import (
     fetch_and_update_pull_request_information_from_commit,
     get_repo_provider_service,
 )
-from services.test_analytics.ta_timeseries import get_pr_comment_agg
 from services.yaml import get_current_yaml, read_yaml_field
 from shared.bots.github_apps import (
     get_github_app_token,
@@ -65,17 +65,6 @@ from tasks.upload_processor import UPLOAD_PROCESSING_LOCK_NAME
 log = logging.getLogger(__name__)
 
 GENERIC_TA_ERROR_MSG = "Test Analytics upload error: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format."
-
-
-def get_test_status(repo_id: int, commit_sha: str) -> tuple[bool, bool]:
-    pr_comment_agg = get_pr_comment_agg(repo_id, commit_sha)
-    failed = pr_comment_agg.get("failed", 0)
-    passed = pr_comment_agg.get("passed", 0)
-
-    any_failures = failed > 0
-    all_passed = passed > 0 and failed == 0
-
-    return any_failures, all_passed
 
 
 class NotifyTask(BaseCodecovTask, name=notify_task_name):

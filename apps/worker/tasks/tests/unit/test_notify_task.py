@@ -38,7 +38,6 @@ from shared.celery_config import (
     new_user_activated_task_name,
     upload_breadcrumb_task_name,
 )
-from shared.django_apps.ta_timeseries.tests.factories import TestrunFactory
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
     Errors,
@@ -58,7 +57,6 @@ from tasks.notify import (
     NotifyTask,
     _possibly_pin_commit_to_github_app,
     _possibly_refresh_previous_selection,
-    get_test_status,
 )
 from tests.helpers import mock_all_plans_and_tiers
 
@@ -134,8 +132,9 @@ def enriched_pull(dbsession):
 
 @pytest.fixture
 def mock_test_status_no_failures_no_passes(mocker):
-    """Fixture that mocks get_test_status to return any_failures=False, all_passed=False"""
-    return mocker.patch("tasks.notify.get_test_status", return_value=(False, False))
+    return mocker.patch(
+        "helpers.ta_status.get_test_status", return_value=(False, False)
+    )
 
 
 class TestNotifyTaskHelpers:
@@ -1587,122 +1586,3 @@ class TestNotifyTask:
             task.is_using_codecov_commenter(mock_repository_service)
             == expected_response
         )
-
-    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
-    def test_get_test_status_with_failures_no_passes(self, dbsession):
-        repository = RepositoryFactory.create()
-        dbsession.add(repository)
-        dbsession.flush()
-
-        commit = CommitFactory.create(
-            repository=repository, commitid="test_commit_123", branch="main"
-        )
-        dbsession.add(commit)
-        dbsession.flush()
-
-        testrun1 = TestrunFactory.create(
-            repo_id=repository.repoid,
-            commit_sha=commit.commitid,
-            outcome="failure",
-            name="test1",
-            classname="TestClass",
-            testsuite="test_suite",
-        )
-        testrun2 = TestrunFactory.create(
-            repo_id=repository.repoid,
-            commit_sha=commit.commitid,
-            outcome="failure",
-            name="test2",
-            classname="TestClass",
-            testsuite="test_suite",
-        )
-
-        any_failures, all_passed = get_test_status(repository.repoid, commit.commitid)
-
-        assert any_failures is True
-        assert all_passed is False
-
-    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
-    def test_get_test_status_with_passes_no_failures(self, dbsession):
-        repository = RepositoryFactory.create()
-        dbsession.add(repository)
-        dbsession.flush()
-
-        commit = CommitFactory.create(
-            repository=repository, commitid="test_commit_123", branch="main"
-        )
-        dbsession.add(commit)
-        dbsession.flush()
-
-        testrun1 = TestrunFactory.create(
-            repo_id=repository.repoid,
-            commit_sha=commit.commitid,
-            outcome="pass",
-            name="test1",
-            classname="TestClass",
-            testsuite="test_suite",
-        )
-        testrun2 = TestrunFactory.create(
-            repo_id=repository.repoid,
-            commit_sha=commit.commitid,
-            outcome="pass",
-            name="test2",
-            classname="TestClass",
-            testsuite="test_suite",
-        )
-
-        any_failures, all_passed = get_test_status(repository.repoid, commit.commitid)
-
-        assert any_failures is False
-        assert all_passed is True
-
-    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
-    def test_get_test_status_with_passes_and_failures(self, dbsession):
-        repository = RepositoryFactory.create()
-        dbsession.add(repository)
-        dbsession.flush()
-
-        commit = CommitFactory.create(
-            repository=repository, commitid="test_commit_123", branch="main"
-        )
-        dbsession.add(commit)
-        dbsession.flush()
-
-        testrun1 = TestrunFactory.create(
-            repo_id=repository.repoid,
-            commit_sha=commit.commitid,
-            outcome="pass",
-            name="test1",
-            classname="TestClass",
-            testsuite="test_suite",
-        )
-        testrun2 = TestrunFactory.create(
-            repo_id=repository.repoid,
-            commit_sha=commit.commitid,
-            outcome="failure",
-            name="test2",
-            classname="TestClass",
-            testsuite="test_suite",
-        )
-
-        any_failures, all_passed = get_test_status(repository.repoid, commit.commitid)
-
-        assert any_failures is True
-        assert all_passed is False
-
-    @pytest.mark.django_db(databases=["default", "ta_timeseries"])
-    def test_get_test_status_no_tests(self, dbsession):
-        repository = RepositoryFactory.create()
-        dbsession.add(repository)
-        dbsession.flush()
-
-        commit = CommitFactory.create(
-            repository=repository, commitid="test_commit_123", branch="main"
-        )
-        dbsession.add(commit)
-        dbsession.flush()
-
-        any_failures, all_passed = get_test_status(repository.repoid, commit.commitid)
-
-        assert any_failures is False
-        assert all_passed is False
