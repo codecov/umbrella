@@ -3,10 +3,16 @@ from time import time
 from unittest.mock import patch
 
 import pytest
+from django.test import override_settings
 from freezegun import freeze_time
 
 # This import here avoids a circular import issue
-from shared.github import InvalidInstallationError, get_github_jwt_token, get_pem
+from shared.github import (
+    InvalidInstallationError,
+    get_github_jwt_token,
+    get_pem,
+    get_pem_overrides,
+)
 from shared.utils.test_utils import mock_config_helper
 
 
@@ -66,3 +72,45 @@ def test_get_github_jwt_token(mock_jwt, mocker):
         "--------BEGIN RSA PRIVATE KEY-----...",
         algorithm="RS256",
     )
+
+
+@freeze_time("2024-02-21T00:00:00")
+@patch("shared.github.jwt")
+def test_get_github_jwt_token_with_override(mock_jwt, mocker):
+    mock_jwt.encode.return_value = "encoded_jwt"
+    configs = {"github.integration.expires": 300}
+    mock_config_helper(mocker, configs, {})
+
+    test_app_id = "test_sentry_app_id"
+    test_pem = "--------BEGIN OVERRIDE PRIVATE KEY-----..."
+
+    with override_settings(
+        GITHUB_SENTRY_APP_ID=test_app_id, GITHUB_SENTRY_APP_PEM=test_pem
+    ):
+        token = get_github_jwt_token("github", app_id=test_app_id)
+        assert token == "encoded_jwt"
+        mock_jwt.encode.assert_called_with(
+            {
+                "iat": int(time()),
+                "exp": int(time()) + 300,
+                "iss": test_app_id,
+            },
+            test_pem,
+            algorithm="RS256",
+        )
+
+
+def test_get_pem_overrides_empty():
+    with override_settings(GITHUB_SENTRY_APP_ID=None, GITHUB_SENTRY_APP_PEM=None):
+        result = get_pem_overrides()
+        assert result == {}
+
+
+def test_get_pem_overrides_with_settings():
+    test_app_id = "test_app_123"
+    test_pem = "test_pem_content"
+    with override_settings(
+        GITHUB_SENTRY_APP_ID=test_app_id, GITHUB_SENTRY_APP_PEM=test_pem
+    ):
+        result = get_pem_overrides()
+        assert result == {test_app_id: test_pem}

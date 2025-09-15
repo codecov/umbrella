@@ -67,6 +67,9 @@ TEMPLATES = [
 ]
 
 GITHUB_SENTRY_APP_NAME = "sentry_app"
+GITHUB_SENTRY_APP_ID = get_config("github", "sentry_merge_app_id")
+GITHUB_SENTRY_APP_PEM = get_config("github", "sentry_merge_app_pem")
+
 SENTRY_ORG_URL = "https://test.sentry.io"
 
 TELEMETRY_VANILLA_DB = "default"

@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 import jwt
 import requests
+from django.conf import settings
 
 import shared.torngit as torngit
 from shared.config import get_config, load_file_from_path_at_config
@@ -13,6 +14,14 @@ from shared.helpers.cache import cache
 log = logging.getLogger(__name__)
 
 loaded_pems = None
+
+
+def get_pem_overrides():
+    pem_overrides = {}
+    if settings.GITHUB_SENTRY_APP_ID:
+        pem_overrides[settings.GITHUB_SENTRY_APP_ID] = settings.GITHUB_SENTRY_APP_PEM
+    return pem_overrides
+
 
 pem_paths = {
     "github": ("github", "integration", "pem"),
@@ -101,8 +110,18 @@ def get_github_jwt_token(
         # creating the DB object in the webhook handler.
         "iss": app_id or get_config(service, "integration", "id"),  # github app ID
     }
-    pem_kwargs = {"pem_path": pem_path} if pem_path else {"pem_name": service}
-    return jwt.encode(payload, get_pem(**pem_kwargs), algorithm="RS256")
+
+    # if the app ID is in overrides, directly fetch the overriden value
+    # else check the pem path of the installation
+    #   if the pem path exists, load the pem from the file at that path
+    #   otherwise use one of the defaults based on the service value
+    if app_id in get_pem_overrides():
+        pem = get_pem_overrides()[app_id]
+    else:
+        pem_kwargs = {"pem_path": pem_path} if pem_path else {"pem_name": service}
+        pem = get_pem(**pem_kwargs)
+
+    return jwt.encode(payload, pem, algorithm="RS256")
 
 
 # The integration tokens are valid for 1h
