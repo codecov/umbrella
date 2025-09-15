@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.db import IntegrityError
 from django.forms import ValidationError
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from pytest import LogCaptureFixture
 
 from shared.django_apps.codecov_auth.models import (
@@ -771,6 +771,7 @@ class TestGitHubAppInstallationNoDefaultAppIdConfig(TestCase):
     def mock_no_default_app_id(self, mocker):
         mock_config_helper(mocker, configs={"github.integration.id": None})
 
+    @override_settings(GITHUB_SENTRY_APP_ID=None)
     def test_is_configured_no_default(self):
         owner = OwnerFactory()
         installation_default = GithubAppInstallationFactory(

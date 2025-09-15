@@ -1087,7 +1087,9 @@ class GithubWebhookHandlerTests(APITestCase):
         assert mock_refresh.call_count == 0
 
     @override_settings(
-        GITHUB_SENTRY_APP_ID=424242, GITHUB_SENTRY_APP_PEM="/tmp/sentry_app.pem"
+        GITHUB_SENTRY_APP_NAME="sentry_app",
+        GITHUB_SENTRY_APP_ID=424242,
+        GITHUB_SENTRY_APP_PEM="/tmp/sentry_app.pem",
     )
     @patch(
         "services.task.TaskService.refresh",
@@ -1130,8 +1132,9 @@ class GithubWebhookHandlerTests(APITestCase):
         )
         assert ghapp_installations_set.count() == 1
         installation = ghapp_installations_set.first()
+        assert installation.name == "sentry_app"
         assert installation.app_id == 424242
-        assert installation.pem_path == "/tmp/sentry_app.pem"
+        assert installation.pem_path is None
 
     @patch("services.task.TaskService.refresh")
     def test_organization_with_removed_action_removes_user_from_org_and_activated_user_list(

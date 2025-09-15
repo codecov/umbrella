@@ -497,12 +497,12 @@ class GithubWebhookHandler(APIView):
                         ghapp_installation, owner, request, app_id, installation_id
                     )
 
+            # handle sentry app specifically
             sentry_app_id = settings.GITHUB_SENTRY_APP_ID
             if sentry_app_id is not None and ghapp_installation.app_id == sentry_app_id:
                 ghapp_installation.app_id = app_id
-                ghapp_installation.pem_path = settings.GITHUB_SENTRY_APP_PEM
+                ghapp_installation.name = settings.GITHUB_SENTRY_APP_NAME
 
-            # Either update or set
             ghapp_installation.name = self._decide_app_name(ghapp_installation)
 
             log.info(
