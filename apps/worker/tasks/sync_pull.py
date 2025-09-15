@@ -4,7 +4,7 @@ import os
 import time
 from collections import deque
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import sentry_sdk
@@ -607,12 +607,14 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
             return
 
         # Look for recent commits on the same branch for context
+        recent_cutoff = head_commit.timestamp - timedelta(days=30)
+
         related_commits = (
             db_session.query(Commit)
             .filter(
                 Commit.repoid == repoid,
                 Commit.branch == head_commit.branch,
-                Commit.timestamp < head_commit.timestamp,
+                Commit.timestamp.between(recent_cutoff, head_commit.timestamp),
                 (Commit.pullid.is_(None) | (Commit.pullid != pull.pullid)),
                 Commit.deleted == False,
             )
