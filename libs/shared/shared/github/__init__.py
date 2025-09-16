@@ -16,11 +16,13 @@ log = logging.getLogger(__name__)
 loaded_pems = None
 
 
-def get_pem_overrides():
-    pem_overrides = {}
-    if settings.GITHUB_SENTRY_APP_ID:
-        pem_overrides[settings.GITHUB_SENTRY_APP_ID] = settings.GITHUB_SENTRY_APP_PEM
-    return pem_overrides
+def get_pem_overrides(app_id: str) -> tuple[str, ...] | None:
+    if settings.GITHUB_SENTRY_APP_ID is not None and str(app_id) == str(
+        settings.GITHUB_SENTRY_APP_ID
+    ):
+        return ("github", "sentry_merge_app_pem")
+
+    return None
 
 
 pem_paths = {
@@ -39,12 +41,20 @@ def load_pem_from_path(pem_path: str) -> str:
     raise Exception("Unknown schema to load PEM")
 
 
-def get_pem(pem_name: str | None = None, pem_path: str | None = None) -> str:
+def get_pem(app_id: str, service: str, pem_path: str | None = None) -> str:
+    # load from pem path if provided
+    # otherwise check if the app id is in overrides
+    # otherwise use the default pem name from the service
+    # if none of the above, raise an error
     if pem_path:
         return load_pem_from_path(pem_path)
-    if pem_name:
-        path = pem_paths[pem_name]
-        return load_file_from_path_at_config(*path)
+
+    if override_pem_path := get_pem_overrides(app_id):
+        return load_file_from_path_at_config(*override_pem_path)
+
+    if service:
+        return load_file_from_path_at_config(*pem_paths[service])
+
     raise Exception("No PEM provided to get installation token")
 
 
@@ -96,6 +106,9 @@ def decide_installation_error_cause(
 def get_github_jwt_token(
     service: str, app_id: str | None = None, pem_path: str | None = None
 ) -> str:
+    if app_id is None:
+        app_id = get_config(service, "integration", "id")
+
     # https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/about-authentication-with-a-github-app
     now = int(time())
     payload = {
@@ -108,20 +121,10 @@ def get_github_jwt_token(
         # to the default config value. We're essentially treating Sentry apps like the custom
         # ones that are defined through the database, by including the app id and pem path when
         # creating the DB object in the webhook handler.
-        "iss": app_id or get_config(service, "integration", "id"),  # github app ID
+        "iss": app_id,  # github app ID
     }
 
-    # if the app ID is in overrides, directly fetch the overriden value
-    # else check the pem path of the installation
-    #   if the pem path exists, load the pem from the file at that path
-    #   otherwise use one of the defaults based on the service value
-    if app_id in get_pem_overrides():
-        pem = get_pem_overrides()[app_id]
-    else:
-        pem_kwargs = {"pem_path": pem_path} if pem_path else {"pem_name": service}
-        pem = get_pem(**pem_kwargs)
-
-    return jwt.encode(payload, pem, algorithm="RS256")
+    return jwt.encode(payload, get_pem(app_id, service, pem_path), algorithm="RS256")
 
 
 # The integration tokens are valid for 1h
