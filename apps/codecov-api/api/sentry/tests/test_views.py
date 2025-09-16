@@ -454,10 +454,12 @@ class AccountLinkViewTests(TestCase):
             username="test-org",
         )
 
+        unlink_data = {"sentry_org_ids": ["123456789"]}
         unlink_response = self._make_authenticated_request(
-            url=self.unlink_url, data=self.valid_data
+            url=self.unlink_url, data=unlink_data
         )
         self.assertEqual(unlink_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(unlink_response.data["message"], "Unlinked 1 of 1 accounts")
 
         account.refresh_from_db()
         self.assertFalse(account.is_active)
@@ -511,19 +513,8 @@ class AccountUnlinkViewTests(TestCase):
         self.client = APIClient()
         self.url = reverse("account-unlink")
 
-        # Sample valid data
-        self.valid_data = {
-            "sentry_org_id": "123456789",
-            "sentry_org_name": "Test Sentry Org",
-            "organizations": [
-                {
-                    "installation_id": "987654321",
-                    "service_id": "456789123",
-                    "slug": "test-org",
-                    "provider": "github",
-                }
-            ],
-        }
+        # Sample valid data for unlinking
+        self.valid_data = {"sentry_org_ids": ["123456789"]}
 
     def _make_authenticated_request(self, data, jwt_payload=None):
         """Helper method to make an authenticated request with JWT payload"""
@@ -558,6 +549,7 @@ class AccountUnlinkViewTests(TestCase):
         response = self._make_authenticated_request(data=self.valid_data)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["message"], "Unlinked 1 of 1 accounts")
 
         account.refresh_from_db()
         self.assertFalse(account.is_active)
@@ -569,11 +561,79 @@ class AccountUnlinkViewTests(TestCase):
         self.assertEqual(owner.account, account)
 
     def test_account_unlink_not_found(self):
-        """Test unlinking fails when account doesn't exist"""
+        """Test unlinking when account doesn't exist (should succeed with warning log)"""
         response = self._make_authenticated_request(data=self.valid_data)
 
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-        self.assertEqual(response.data["message"], "Account not found")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["message"], "Unlinked 0 of 1 accounts")
+
+    def test_account_unlink_mixed_existing_and_nonexisting(self):
+        """Test unlinking mix of existing and non-existing organizations"""
+        # Create only one account
+        account = AccountFactory(
+            sentry_org_id="123456789", name="Test Sentry Org", is_active=True
+        )
+        owner = OwnerFactory(
+            service_id="456789123",
+            service="github",
+            account=account,
+            name="test-org",
+            username="test-org",
+        )
+
+        # Try to unlink existing and non-existing organizations
+        unlink_data = {"sentry_org_ids": ["123456789", "999999999", "888888888"]}
+
+        with patch("api.sentry.views.log") as mock_log:
+            response = self._make_authenticated_request(data=unlink_data)
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(response.data["message"], "Unlinked 1 of 3 accounts")
+
+            # Verify existing account is now inactive
+            account.refresh_from_db()
+            self.assertFalse(account.is_active)
+
+            # Verify owner relationship is still intact
+            owner.refresh_from_db()
+            self.assertEqual(owner.account, account)
+
+            # Verify warning logs were called for non-existing accounts
+            self.assertEqual(mock_log.warning.call_count, 2)
+            warning_calls = mock_log.warning.call_args_list
+            self.assertIn("999999999", str(warning_calls[0]))
+            self.assertIn("888888888", str(warning_calls[1]))
+            self.assertIn("not found", str(warning_calls[0]))
+            self.assertIn("not found", str(warning_calls[1]))
+
+    def test_account_unlink_multiple_organizations_success(self):
+        """Test successful unlinking of multiple organizations"""
+        # Create multiple accounts
+        account1 = AccountFactory(
+            sentry_org_id="123456789", name="Test Sentry Org 1", is_active=True
+        )
+        account2 = AccountFactory(
+            sentry_org_id="987654321", name="Test Sentry Org 2", is_active=True
+        )
+        account3 = AccountFactory(
+            sentry_org_id="555666777", name="Test Sentry Org 3", is_active=True
+        )
+
+        # Unlink multiple organizations
+        unlink_data = {"sentry_org_ids": ["123456789", "987654321", "555666777"]}
+        response = self._make_authenticated_request(data=unlink_data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["message"], "Unlinked 3 of 3 accounts")
+
+        # Verify all accounts are now inactive
+        account1.refresh_from_db()
+        account2.refresh_from_db()
+        account3.refresh_from_db()
+
+        self.assertFalse(account1.is_active)
+        self.assertFalse(account2.is_active)
+        self.assertFalse(account3.is_active)
 
     def test_account_unlink_authentication_failure(self):
         """Test account unlinking fails without proper authentication"""

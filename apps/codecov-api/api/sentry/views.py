@@ -51,7 +51,11 @@ class SentryAccountLinkSerializer(serializers.Serializer):
 class SentryAccountUnlinkSerializer(serializers.Serializer):
     """Serializer for unlinking Sentry organizations from Codecov organizations."""
 
-    sentry_org_id = serializers.CharField(help_text="The Sentry organization ID")
+    sentry_org_ids = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="List of Sentry organization IDs to unlink",
+        min_length=1,
+    )
 
 
 @api_view(["POST"])
@@ -166,16 +170,22 @@ def account_unlink(request, *args, **kwargs):
     serializer = SentryAccountUnlinkSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
-    sentry_org_id = serializer.validated_data["sentry_org_id"]
+    sentry_org_ids = serializer.validated_data["sentry_org_ids"]
+    successfully_unlinked = 0
+    total_requested = len(sentry_org_ids)
 
-    try:
-        account = Account.objects.get(sentry_org_id=sentry_org_id)
-    except Account.DoesNotExist:
-        return Response(
-            {"message": "Account not found"}, status=status.HTTP_404_NOT_FOUND
-        )
+    for sentry_org_id in sentry_org_ids:
+        try:
+            account = Account.objects.get(sentry_org_id=sentry_org_id)
+            account.is_active = False
+            account.save()
+            successfully_unlinked += 1
+        except Account.DoesNotExist:
+            log.warning(
+                f"Account with Sentry organization ID {sentry_org_id} not found"
+            )
+            pass
 
-    account.is_active = False
-    account.save()
-
-    return Response({"message": "Account unlinked successfully"})
+    return Response(
+        {"message": f"Unlinked {successfully_unlinked} of {total_requested} accounts"}
+    )
