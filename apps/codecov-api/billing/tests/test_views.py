@@ -656,7 +656,9 @@ class StripeWebhookHandlerTests(APITestCase):
         self.owner.refresh_from_db()
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert self.owner.delinquent is True
-        assert self.owner.admins == [admin_1.ownerid, admin_2.ownerid]
+        assert admin_1.ownerid in self.owner.admins
+        assert admin_2.ownerid in self.owner.admins
+        assert admin_3.ownerid not in self.owner.admins
 
         expected_calls = [
             call(
