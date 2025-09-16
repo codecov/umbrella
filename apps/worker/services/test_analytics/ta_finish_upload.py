@@ -222,13 +222,24 @@ def ta_finish_upload(
             "queue_notify": True,
         }
     elif summary["failed"] == 0 and num_testruns > 0:
-        log.info("No failures, posting all passed comment", extra=extra)
-        notifier.all_passed_comment()
-        return {
-            "notify_attempted": True,
-            "notify_succeeded": True,
-            "queue_notify": True,
-        }
+        if pull.database_pull.commentid is not None:
+            log.info("No failures, editing existing all passed comment", extra=extra)
+            notifier.all_passed_comment()
+            return {
+                "notify_attempted": True,
+                "notify_succeeded": True,
+                "queue_notify": True,
+            }
+        else:
+            log.info(
+                "No failures but no existing comment, skipping comment update",
+                extra=extra,
+            )
+            return {
+                "notify_attempted": False,
+                "notify_succeeded": True,
+                "queue_notify": True,
+            }
 
     with read_failures_summary.labels(impl="new").time():
         failures = get_pr_comment_failures(repoid, commitid)

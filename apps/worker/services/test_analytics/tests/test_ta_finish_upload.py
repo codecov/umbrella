@@ -234,6 +234,45 @@ def test_ta_finish_upload(
     assert_tasks([])
     assert_comment_snapshot()
 
+    mock_pull(
+        mocker.Mock(
+            spec=EnrichedPull,
+            provider_pull={
+                "author": {
+                    "username": "test-user",
+                },
+            },
+            database_pull=PullFactory(
+                repository=repo,
+                author=commit.repository.author,
+                commentid=None,  # No existing comment
+            ),
+        )
+    )
+
+    result = run_task()
+
+    assert_result(False, True, True)
+    assert_tasks([])
+    mock_repo_provider_comments.edit_comment.assert_not_called()
+    mock_repo_provider_comments.post_comment.assert_not_called()
+
+    mock_pull(
+        mocker.Mock(
+            spec=EnrichedPull,
+            provider_pull={
+                "author": {
+                    "username": "test-user",
+                },
+            },
+            database_pull=PullFactory(
+                repository=repo,
+                author=commit.repository.author,
+                commentid=1,
+            ),
+        )
+    )
+
     # no flake detection
 
     testrun.outcome = "failure"
