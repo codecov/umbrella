@@ -460,6 +460,8 @@ class AccountLinkViewTests(TestCase):
         )
         self.assertEqual(unlink_response.status_code, status.HTTP_200_OK)
         self.assertEqual(unlink_response.data["message"], "Unlinked 1 of 1 accounts")
+        self.assertEqual(unlink_response.data["successfully_unlinked"], 1)
+        self.assertEqual(unlink_response.data["total_requested"], 1)
 
         account.refresh_from_db()
         self.assertFalse(account.is_active)
@@ -550,6 +552,8 @@ class AccountUnlinkViewTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["message"], "Unlinked 1 of 1 accounts")
+        self.assertEqual(response.data["successfully_unlinked"], 1)
+        self.assertEqual(response.data["total_requested"], 1)
 
         account.refresh_from_db()
         self.assertFalse(account.is_active)
@@ -566,6 +570,8 @@ class AccountUnlinkViewTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["message"], "Unlinked 0 of 1 accounts")
+        self.assertEqual(response.data["successfully_unlinked"], 0)
+        self.assertEqual(response.data["total_requested"], 1)
 
     def test_account_unlink_mixed_existing_and_nonexisting(self):
         """Test unlinking mix of existing and non-existing organizations"""
@@ -589,6 +595,8 @@ class AccountUnlinkViewTests(TestCase):
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(response.data["message"], "Unlinked 1 of 3 accounts")
+            self.assertEqual(response.data["successfully_unlinked"], 1)
+            self.assertEqual(response.data["total_requested"], 3)
 
             # Verify existing account is now inactive
             account.refresh_from_db()
@@ -625,6 +633,8 @@ class AccountUnlinkViewTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["message"], "Unlinked 3 of 3 accounts")
+        self.assertEqual(response.data["successfully_unlinked"], 3)
+        self.assertEqual(response.data["total_requested"], 3)
 
         # Verify all accounts are now inactive
         account1.refresh_from_db()

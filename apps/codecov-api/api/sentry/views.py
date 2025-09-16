@@ -187,5 +187,9 @@ def account_unlink(request, *args, **kwargs):
             pass
 
     return Response(
-        {"message": f"Unlinked {successfully_unlinked} of {total_requested} accounts"}
+        {
+            "message": f"Unlinked {successfully_unlinked} of {total_requested} accounts",
+            "successfully_unlinked": successfully_unlinked,
+            "total_requested": total_requested,
+        }
     )
