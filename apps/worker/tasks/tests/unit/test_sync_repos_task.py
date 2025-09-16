@@ -498,6 +498,7 @@ class TestSyncReposTaskUnit:
         dbsession,
         mock_owner_provider,
         mock_redis,
+        mock_config,
     ):
         mock_all_plans_and_tiers()
         user = OwnerFactory.create(
@@ -522,6 +523,7 @@ class TestSyncReposTaskUnit:
             repository_service_ids=["555555555"],
             owner=user,
         )
+        mock_config(ghapp.app_id, "github", "integration", "id")
         dbsession.add(ghapp)
         user.github_app_installations = [ghapp]
 

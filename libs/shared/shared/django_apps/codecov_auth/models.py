@@ -759,7 +759,7 @@ class GithubAppInstallation(
 
     def default_installation_app_ids(self) -> set[str]:
         installation_default_app_id = get_config("github", "integration", "id")
-        sentry_app_id = settings.GITHUB_SENTRY_APP_ID
+        sentry_app_id = getattr(settings, "GITHUB_SENTRY_APP_ID", None)
 
         return set(
             map(
@@ -773,19 +773,11 @@ class GithubAppInstallation(
 
     def is_configured(self) -> bool:
         """Returns whether this installation is properly configured and can be used"""
-        if self.app_id is not None and self.pem_path is not None:
-            return True
-        if self.name == "unconfigured_app":
-            return False
-
-        if len(self.default_installation_app_ids()) == 0:
-            log.error(
-                "Can't find default app IDs in the YAML. Assuming installation is configured to prevent the app from breaking itself.",
-                extra={"installation_id": self.id, "installation_name": self.name},
-            )
+        if str(self.app_id) in self.default_installation_app_ids():
+            # The default app is configured in the installation YAML
             return True
 
-        return str(self.app_id) in self.default_installation_app_ids()
+        return self.app_id is not None and self.pem_path is not None
 
     def repository_queryset(self) -> BaseManager[Repository]:
         """Returns a QuerySet of repositories covered by this installation"""

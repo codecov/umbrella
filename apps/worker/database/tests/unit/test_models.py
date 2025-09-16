@@ -454,12 +454,13 @@ class TestGithubAppInstallationModel:
         assert installation_obj.repository_queryset(dbsession).count() == 1
         assert list(installation_obj.repository_queryset(dbsession).all()) == [repo]
 
-    def test_is_configured(self, dbsession: Session):
+    def test_is_configured(self, dbsession: Session, mock_config):
         owner = OwnerFactory()
         installation_obj_default = GithubAppInstallationFactory(
             owner=owner,
             installation_id=100,
         )
+        mock_config(installation_obj_default.app_id, "github", "integration", "id")
         installation_obj_configured = GithubAppInstallationFactory(
             owner=owner,
             name="my_installation",

@@ -5,6 +5,7 @@ from datetime import datetime
 from functools import cached_property
 from typing import Optional
 
+from django.conf import settings
 from django.utils import timezone
 from sqlalchemy import Column, ForeignKey, Index, UniqueConstraint, types
 from sqlalchemy.dialects import postgresql
@@ -15,6 +16,7 @@ import database.models
 from database.base import CodecovBaseModel, MixinBaseClass, MixinBaseClassNoExternalID
 from database.enums import Decoration, Notification, NotificationState, ReportType
 from database.utils import ArchiveField
+from shared.config import get_config
 from shared.django_apps.utils.config import should_write_data_to_storage_config_check
 from shared.plan.constants import DEFAULT_FREE_PLAN
 
@@ -306,11 +308,26 @@ class GithubAppInstallation(CodecovBaseModel, MixinBaseClass):
             return repo.ownerid == self.ownerid
         return repo.service_id in self.repository_service_ids
 
+    def default_installation_app_ids(self) -> set[str]:
+        installation_default_app_id = get_config("github", "integration", "id")
+        sentry_app_id = getattr(settings, "GITHUB_SENTRY_APP_ID", None)
+
+        return set(
+            map(
+                str,
+                filter(
+                    lambda x: x is not None,
+                    [installation_default_app_id, sentry_app_id],
+                ),
+            )
+        )
+
     def is_configured(self) -> bool:
         """Returns whether this installation is properly configured and can be used"""
-        if self.name == GITHUB_APP_INSTALLATION_DEFAULT_NAME:
+        if str(self.app_id) in self.default_installation_app_ids():
             # The default app is configured in the installation YAML
             return True
+
         return self.app_id is not None and self.pem_path is not None
 
 

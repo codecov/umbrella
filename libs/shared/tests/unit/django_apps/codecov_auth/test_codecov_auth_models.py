@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.db import IntegrityError
 from django.forms import ValidationError
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TestCase, TransactionTestCase
 from pytest import LogCaptureFixture
 
 from shared.django_apps.codecov_auth.models import (
@@ -626,7 +626,7 @@ class TestOrganizationLevelTokenModel(TestCase):
         assert OrganizationLevelToken.objects.filter(owner=owner).count() == 0
 
 
-class TestGithubAppInstallationModel(TestCase):
+class TestGithubAppInstallationModel:
     DEFAULT_APP_ID = 12345
 
     @pytest.fixture(autouse=True)
@@ -635,6 +635,7 @@ class TestGithubAppInstallationModel(TestCase):
             mocker, configs={"github.integration.id": self.DEFAULT_APP_ID}
         )
 
+    @pytest.mark.django_db
     def test_covers_all_repos(self):
         owner = OwnerFactory()
         repo1 = RepositoryFactory(author=owner)
@@ -663,6 +664,7 @@ class TestGithubAppInstallationModel(TestCase):
             repo3,
         }
 
+    @pytest.mark.django_db
     def test_covers_some_repos(self):
         owner = OwnerFactory()
         repo = RepositoryFactory(author=owner)
@@ -689,7 +691,8 @@ class TestGithubAppInstallationModel(TestCase):
         assert installation_obj.repository_queryset().exists()
         assert list(installation_obj.repository_queryset().all()) == [repo]
 
-    def test_is_configured(self):
+    @pytest.mark.django_db
+    def test_is_configured(self, mock_config):
         owner = OwnerFactory()
 
         # Default installation with default app ID
@@ -749,10 +752,11 @@ class TestGithubAppInstallationModel(TestCase):
         assert installation_default.is_configured() == True
 
         # Unconfigured apps are not configured
-        installation_default.name = "unconfigured_app"
+        installation_default.app_id = 123456  # random non-default app id
         installation_default.save()
         assert installation_default.is_configured() == False
 
+        mock_config(installation_default.app_id, "github", "integration", "id")
         assert installation_configured.is_configured() == True
         assert installation_not_configured.is_configured() == False
         assert installation_default_name_not_configured.app_id != self.DEFAULT_APP_ID
@@ -764,25 +768,6 @@ class TestGithubAppInstallationModel(TestCase):
         assert (
             installation_default_name_not_default_id_configured.is_configured() == True
         )
-
-
-class TestGitHubAppInstallationNoDefaultAppIdConfig(TestCase):
-    @pytest.fixture(autouse=True)
-    def mock_no_default_app_id(self, mocker):
-        mock_config_helper(mocker, configs={"github.integration.id": None})
-
-    @override_settings(GITHUB_SENTRY_APP_ID=None)
-    def test_is_configured_no_default(self):
-        owner = OwnerFactory()
-        installation_default = GithubAppInstallationFactory(
-            owner=owner,
-            repository_service_ids=None,
-            installation_id=123,
-            app_id=1200,
-            name=GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-        )
-
-        assert installation_default.is_configured() == True
 
 
 class TestAccountModel(TransactionTestCase):
