@@ -6,7 +6,6 @@ from datetime import datetime
 from hashlib import md5
 from typing import Optional, Self
 
-from django.conf import settings
 from django.contrib.postgres.fields import ArrayField, CITextField
 from django.contrib.sessions.models import Session as DjangoSession
 from django.db import models
@@ -30,6 +29,7 @@ from shared.django_apps.codecov_auth.helpers import get_gitlab_url
 from shared.django_apps.codecov_auth.managers import OwnerManager
 from shared.django_apps.core.managers import RepositoryManager
 from shared.django_apps.core.models import DateTimeWithoutTZField, Repository
+from shared.helpers.github_apps import is_configured
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TierName, TrialDaysAmount
 
 # Added to avoid 'doesn't declare an explicit app_label and isn't in an application in INSTALLED_APPS' error\
@@ -757,27 +757,8 @@ class GithubAppInstallation(
         app_label = CODECOV_AUTH_APP_LABEL
         unique_together = ("app_id", "installation_id")
 
-    def default_installation_app_ids(self) -> set[str]:
-        installation_default_app_id = get_config("github", "integration", "id")
-        sentry_app_id = getattr(settings, "GITHUB_SENTRY_APP_ID", None)
-
-        return set(
-            map(
-                str,
-                filter(
-                    lambda x: x is not None,
-                    [installation_default_app_id, sentry_app_id],
-                ),
-            )
-        )
-
     def is_configured(self) -> bool:
-        """Returns whether this installation is properly configured and can be used"""
-        if str(self.app_id) in self.default_installation_app_ids():
-            # The default app is configured in the installation YAML
-            return True
-
-        return self.app_id is not None and self.pem_path is not None
+        return is_configured(self.app_id, self.pem_path)
 
     def repository_queryset(self) -> BaseManager[Repository]:
         """Returns a QuerySet of repositories covered by this installation"""
