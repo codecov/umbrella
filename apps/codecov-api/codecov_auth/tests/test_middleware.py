@@ -194,15 +194,20 @@ async def test_sentry_jwt_valid_token_existing_owner(
     """Test middleware behavior with valid JWT token and existing owner"""
     request = request_factory.get("/", HTTP_AUTHORIZATION=f"Bearer {valid_jwt_token}")
 
-    with patch("codecov_auth.middleware.Owner.objects.get") as mock_get:
-        mock_get.return_value = mock_owner
+    with patch(
+        "codecov_auth.middleware.Owner.objects.select_related"
+    ) as mock_select_related:
+        mock_queryset = MagicMock()
+        mock_select_related.return_value = mock_queryset
+        mock_queryset.get.return_value = mock_owner
 
         response = await sentry_jwt_middleware_instance(request)
 
         assert not isinstance(response, HttpResponseForbidden)
         assert not isinstance(response, HttpResponseNotFound)
         assert request.current_owner == mock_owner
-        mock_get.assert_called_once_with(
+        mock_select_related.assert_called_once_with("user")
+        mock_queryset.get.assert_called_once_with(
             username="sentry_middleware_check", service="github"
         )
 
@@ -214,14 +219,44 @@ async def test_sentry_jwt_valid_token_missing_owner(
     """Test middleware behavior with valid JWT token and missing owner"""
     request = request_factory.get("/", HTTP_AUTHORIZATION=f"Bearer {valid_jwt_token}")
 
-    with patch("codecov_auth.middleware.Owner.objects.get") as mock_get_or_create:
-        mock_get_or_create.side_effect = Owner.DoesNotExist
+    with patch(
+        "codecov_auth.middleware.Owner.objects.select_related"
+    ) as mock_select_related:
+        mock_queryset = MagicMock()
+        mock_select_related.return_value = mock_queryset
+        mock_queryset.get.side_effect = Owner.DoesNotExist
 
         response = await sentry_jwt_middleware_instance(request)
 
         assert isinstance(response, HttpResponseNotFound)
         assert response.content.decode() == "Account not found"
         assert request.current_owner is None
-        mock_get_or_create.assert_called_once_with(
+        mock_select_related.assert_called_once_with("user")
+        mock_queryset.get.assert_called_once_with(
             username="sentry_middleware_check", service="github"
         )
+
+
+@pytest.mark.asyncio
+async def test_sentry_jwt_prefetches_user_relationship(
+    request_factory, sentry_jwt_middleware_instance, valid_jwt_token
+):
+    """Test that JWT middleware prefetches user relationship to prevent async context errors"""
+    request = request_factory.get("/", HTTP_AUTHORIZATION=f"Bearer {valid_jwt_token}")
+
+    mock_owner_with_user = MagicMock(spec=Owner)
+    mock_user = MagicMock()
+    mock_owner_with_user.user = mock_user
+
+    with patch(
+        "codecov_auth.middleware.Owner.objects.select_related"
+    ) as mock_select_related:
+        mock_queryset = MagicMock()
+        mock_select_related.return_value = mock_queryset
+        mock_queryset.get.return_value = mock_owner_with_user
+
+        await sentry_jwt_middleware_instance(request)
+        mock_select_related.assert_called_once_with("user")
+
+        assert request.current_owner == mock_owner_with_user
+        assert request.current_owner.user == mock_user
