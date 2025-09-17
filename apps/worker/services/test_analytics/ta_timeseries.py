@@ -125,6 +125,30 @@ class PRCommentAgg(TypedDict):
     skipped: int
 
 
+def get_pr_comment_duration(repo_id: int, commit_sha: str) -> float | None:
+    with connections["ta_timeseries"].cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                SUM(duration_seconds) as duration_seconds
+            FROM (
+                SELECT
+                    test_id,
+                    LAST(duration_seconds, timestamp) as duration_seconds
+                FROM ta_timeseries_testrun
+                WHERE repo_id = %s AND commit_sha = %s
+                GROUP BY test_id
+                ) AS t
+            """,
+            [repo_id, commit_sha],
+        )
+        result = cursor.fetchone()
+        if result is None:
+            return None
+        duration = result[0]
+        return duration
+
+
 def get_pr_comment_agg(repo_id: int, commit_sha: str) -> PRCommentAgg:
     with connections["ta_timeseries"].cursor() as cursor:
         cursor.execute(

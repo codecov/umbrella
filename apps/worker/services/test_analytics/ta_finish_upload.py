@@ -22,6 +22,7 @@ from services.test_analytics.ta_timeseries import (
     FailedTestInstance,
     get_flaky_tests_dict,
     get_pr_comment_agg,
+    get_pr_comment_duration,
     get_pr_comment_failures,
 )
 from services.test_results import (
@@ -224,7 +225,8 @@ def ta_finish_upload(
     elif summary["failed"] == 0 and num_testruns > 0:
         if pull.database_pull.commentid is not None:
             log.info("No failures, editing existing all passed comment", extra=extra)
-            notifier.all_passed_comment()
+            duration_seconds = get_pr_comment_duration(repoid, commitid)
+            notifier.all_passed_comment(duration_seconds)
             return {
                 "notify_attempted": True,
                 "notify_succeeded": True,
