@@ -200,7 +200,7 @@ class AccountLinkViewTests(TestCase):
             self.url, data=json.dumps(self.valid_data), content_type="application/json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_account_link_invalid_jwt(self):
         """Test account linking fails with invalid JWT"""
@@ -215,7 +215,7 @@ class AccountLinkViewTests(TestCase):
                 content_type="application/json",
             )
 
-            self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_account_link_expired_jwt(self):
         """Test account linking fails with expired JWT"""
@@ -230,7 +230,7 @@ class AccountLinkViewTests(TestCase):
                 content_type="application/json",
             )
 
-            self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_account_link_missing_sentry_org_id(self):
         """Test account linking fails with missing sentry_org_id"""
@@ -651,4 +651,4 @@ class AccountUnlinkViewTests(TestCase):
             self.url, data=json.dumps(self.valid_data), content_type="application/json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
