@@ -269,12 +269,11 @@ def specific_error_message(error: ErrorPayload) -> str:
         ]
         description = "\n".join(message)
     elif error.error_code == "file_not_in_storage":
-        title = "### :warning: File not in storage"
+        title = "### :warning: JUnit XML file not found"
         description = "\n".join(
             [
-                "No result to display due to the CLI not being able to find the file.",
-                "Please ensure the file contains `junit` in the name and automated file search is enabled,",
-                "or the desired file specified by the `file` and `search_dir` arguments of the CLI.",
+                "The CLI was unable to find any JUnit XML files to upload.",
+                "For more help, visit our [troubleshooting guide](https://docs.codecov.com/docs/test-analytics#troubleshooting).",
             ]
         )
     elif error.error_code == "warning":
