@@ -2,7 +2,11 @@ import logging
 
 from django.conf import settings
 from rest_framework import serializers, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+)
 from rest_framework.response import Response
 
 from codecov_auth.models import Account
@@ -59,6 +63,7 @@ class SentryAccountUnlinkSerializer(serializers.Serializer):
 
 
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([JWTAuthenticationPermission])
 def account_link(request, *args, **kwargs):
     serializer = SentryAccountLinkSerializer(data=request.data)
@@ -165,6 +170,7 @@ def account_link(request, *args, **kwargs):
 
 
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([JWTAuthenticationPermission])
 def account_unlink(request, *args, **kwargs):
     serializer = SentryAccountUnlinkSerializer(data=request.data)
