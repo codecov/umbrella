@@ -16,6 +16,7 @@ from database.base import CodecovBaseModel, MixinBaseClass, MixinBaseClassNoExte
 from database.enums import Decoration, Notification, NotificationState, ReportType
 from database.utils import ArchiveField
 from shared.django_apps.utils.config import should_write_data_to_storage_config_check
+from shared.helpers.github_apps import is_configured
 from shared.plan.constants import DEFAULT_FREE_PLAN
 
 
@@ -307,11 +308,7 @@ class GithubAppInstallation(CodecovBaseModel, MixinBaseClass):
         return repo.service_id in self.repository_service_ids
 
     def is_configured(self) -> bool:
-        """Returns whether this installation is properly configured and can be used"""
-        if self.name == GITHUB_APP_INSTALLATION_DEFAULT_NAME:
-            # The default app is configured in the installation YAML
-            return True
-        return self.app_id is not None and self.pem_path is not None
+        return is_configured(self.app_id, self.pem_path)
 
 
 class OwnerInstallationNameToUseForTask(CodecovBaseModel, MixinBaseClass):

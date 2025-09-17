@@ -130,11 +130,14 @@ def test_get_repo_provider_service_additional_data(dbsession, repo):
     }
 
 
-def test_get_repo_provider_service_github_with_installations(dbsession, mocker, repo):
+def test_get_repo_provider_service_github_with_installations(
+    dbsession, mocker, repo, mock_config
+):
     mocker.patch(
         "shared.bots.github_apps.get_github_integration_token",
         return_value="installation_token",
     )
+    mock_config(200, "github", "integration", "id")
     installation_0 = GithubAppInstallationFactory(
         installation_id=1200,
         app_id=200,

@@ -148,12 +148,15 @@ class TestNotificationService:
         )
 
     @pytest.mark.django_db
-    def test_should_use_checks_notifier_ghapp_all_repos_covered(self, dbsession):
+    def test_should_use_checks_notifier_ghapp_all_repos_covered(
+        self, dbsession, mock_config
+    ):
         repository = RepositoryFactory.create(author__service="github")
         ghapp_installation = GithubAppInstallationFactory(
             installation_id=456789,
             owner=repository.author,
         )
+        mock_config(ghapp_installation.app_id, "github", "integration", "id")
         dbsession.add(ghapp_installation)
         dbsession.flush()
         current_yaml = {"github_checks": True}
@@ -168,6 +171,7 @@ class TestNotificationService:
     def test_use_checks_notifier_for_team_plan(
         self,
         dbsession,
+        mock_config,
     ):
         repository = RepositoryFactory.create(
             author__service="github", author__plan=PlanName.TEAM_MONTHLY.value
@@ -176,6 +180,7 @@ class TestNotificationService:
             installation_id=456789,
             owner=repository.author,
         )
+        mock_config(ghapp_installation.app_id, "github", "integration", "id")
         dbsession.add(ghapp_installation)
         dbsession.flush()
         current_yaml = {"github_checks": True}
@@ -195,7 +200,7 @@ class TestNotificationService:
         )
 
     @pytest.mark.django_db
-    def test_use_status_notifier_for_team_plan(self, dbsession):
+    def test_use_status_notifier_for_team_plan(self, dbsession, mock_config):
         repository = RepositoryFactory.create(
             author__service="github", author__plan=PlanName.TEAM_MONTHLY.value
         )
@@ -203,6 +208,7 @@ class TestNotificationService:
             installation_id=456789,
             owner=repository.author,
         )
+        mock_config(ghapp_installation.app_id, "github", "integration", "id")
         dbsession.add(ghapp_installation)
         dbsession.flush()
         current_yaml = {"github_checks": True}
@@ -222,7 +228,7 @@ class TestNotificationService:
         )
 
     @pytest.mark.django_db
-    def test_use_status_notifier_for_non_team_plan(self, dbsession):
+    def test_use_status_notifier_for_non_team_plan(self, dbsession, mock_config):
         repository = RepositoryFactory.create(
             author__service="github", author__plan=PlanName.CODECOV_PRO_MONTHLY.value
         )
@@ -230,6 +236,7 @@ class TestNotificationService:
             installation_id=456789,
             owner=repository.author,
         )
+        mock_config(ghapp_installation.app_id, "github", "integration", "id")
         dbsession.add(ghapp_installation)
         dbsession.flush()
         current_yaml = {"github_checks": True}

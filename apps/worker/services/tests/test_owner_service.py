@@ -34,7 +34,9 @@ class TestOwnerServiceTestCase:
             "entity_name": owner_key_name(owner.ownerid),
         }
 
-    def test_get_owner_provider_service_with_installation(self, dbsession, mocker):
+    def test_get_owner_provider_service_with_installation(
+        self, dbsession, mocker, mock_config
+    ):
         mocker.patch(
             "shared.bots.github_apps.get_github_integration_token",
             return_value="integration_token",
@@ -49,6 +51,7 @@ class TestOwnerServiceTestCase:
             installation_id=1500,
             owner=owner,
         )
+        mock_config(installation.app_id, "github", "integration", "id")
         dbsession.add(installation)
         dbsession.flush()
         res = get_owner_provider_service(owner)
