@@ -8,7 +8,7 @@ from django.conf import settings
 from django.test import TestCase
 
 from codecov_auth.models import Owner
-from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
+from shared.django_apps.codecov_auth.tests.factories import OwnerFactory, UserFactory
 
 
 @pytest.mark.django_db
@@ -30,9 +30,18 @@ class TestSentryAriadneView(TestCase):
         }
         return jwt.encode(payload, settings.SENTRY_JWT_SHARED_SECRET, algorithm="HS256")
 
+    def _create_test_user(self):
+        """Create a test user with known properties"""
+        return UserFactory(name="Sentry Test User", email="sentry@example.com")
+
     def _create_mock_owner(self):
+        """Create a mock owner linked to a test user"""
+        user = self._create_test_user()
         owner = OwnerFactory(
-            username="sentry_ariadne_check", service="github", service_id="1234567890"
+            username="sentry_ariadne_check",
+            service="github",
+            service_id="1234567890",
+            user=user,
         )
         owner.save()
         return owner
@@ -53,15 +62,24 @@ class TestSentryAriadneView(TestCase):
 
     def test_sentry_ariadne_view_valid_token(self):
         """Test sentry_ariadne_view with valid JWT token"""
-        with patch("codecov_auth.middleware.Owner.objects.get") as mock_get:
-            mock_get.return_value = self.mock_owner
+        with patch(
+            "codecov_auth.middleware.Owner.objects.select_related"
+        ) as mock_select_related:
+            mock_queryset = mock_select_related.return_value
+            mock_queryset.get.return_value = self.mock_owner
             response = self.do_query(query=self.query, token=self.valid_jwt_token)
 
             assert response.status_code == 200
             assert response.json() == {
                 "data": {"me": {"owner": {"username": str(self.mock_owner.username)}}}
             }
-            mock_get.assert_called_once_with(
+
+            assert self.mock_owner.user is not None
+            assert self.mock_owner.user.name == "Sentry Test User"
+            assert self.mock_owner.user.email == "sentry@example.com"
+
+            mock_select_related.assert_called_once_with("user")
+            mock_queryset.get.assert_called_once_with(
                 username="sentry_ariadne_check", service="github"
             )
 
@@ -98,8 +116,11 @@ class TestSentryAriadneView(TestCase):
 
     def test_sentry_ariadne_view_owner_creation_error(self):
         """Test sentry_ariadne_view when owner does not exist"""
-        with patch("codecov_auth.middleware.Owner.objects.get") as mock_get_or_create:
-            mock_get_or_create.side_effect = Owner.DoesNotExist
+        with patch(
+            "codecov_auth.middleware.Owner.objects.select_related"
+        ) as mock_select_related:
+            mock_queryset = mock_select_related.return_value
+            mock_queryset.get.side_effect = Owner.DoesNotExist
 
             response = self.do_query(query=self.query, token=self.valid_jwt_token)
 
