@@ -37,6 +37,9 @@ These instructions assume you're using macOS (or at least a POSIX-y platform) bu
 
 ### `tools/devenv/config/codecov.yml`
 
+> [!WARNING]  
+> A few engineers have missed the below step during setup, don't be next.
+
 `umbrella` needs a configuration file at `tools/devenv/config/codecov.yml` to run. This is sometimes called the "install yaml".
 
 If you work here, you should have access to the "Codecov Engineering" 1Password vault; copy the contents of the "umbrella secrets" item to `tools/devenv/config/codecov.yml`. Otherwise, try copying [our example self-hosted configuration](https://github.com/codecov/self-hosted/blob/main/config/codecov.yml) or following our [self-hosted configuration guide](https://docs.codecov.com/docs/configuration).
