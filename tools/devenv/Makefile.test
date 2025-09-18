@@ -20,8 +20,7 @@ devenv.upload.worker:
 
 .PHONY: devenv.test.api
 devenv.test.api:
-	docker exec -e COVERAGE_CORE=sysmon -e RUN_ENV=TESTING -e CODECOV_YML=${TEST_YML} -e DJANGO_SETTINGS_MODULE=codecov.settings_test -it umbrella-api-1 pytest graphql_api/tests/test_sentry_view.py --cov=./ --cov-report=xml:coverage.xml --junitxml=junit.xml -o junit_family=legacy --rootdir=/app -c pytest.ini $(EXTRA_PYTEST_ARGS)
-	
+	docker exec -e COVERAGE_CORE=sysmon -e RUN_ENV=TESTING -e CODECOV_YML=${TEST_YML} -e DJANGO_SETTINGS_MODULE=codecov.settings_test -it umbrella-api-1 pytest --cov=./ --cov-report=xml:coverage.xml --junitxml=junit.xml -o junit_family=legacy --rootdir=/app -c pytest.ini $(EXTRA_PYTEST_ARGS)
 
 .PHONY: devenv.upload.api
 devenv.upload.api:
