@@ -18,7 +18,7 @@ from django.db.models import (
     When,
     Window,
 )
-from django.db.models.functions import Coalesce, RowNumber
+from django.db.models.functions import Cast, Coalesce, RowNumber
 
 from shared.django_apps.ta_timeseries.models import Testrun
 from utils.ta_timescale.utils import (
@@ -62,10 +62,10 @@ def get_test_data_queryset_via_ca(
     test_data, _ = get_daily_aggregate_querysets(repoid, branch, start_date, end_date)
 
     test_data = test_data.values("test_id").annotate(  # type: ignore[assignment]
-        total_pass_count=Sum("pass_count"),
-        total_fail_count=Sum("fail_count"),
-        total_flaky_fail_count=Sum("flaky_fail_count"),
-        total_skip_count=Sum("skip_count"),
+        total_pass_count=Sum("pass_count", output_field=FloatField()),
+        total_fail_count=Sum("fail_count", output_field=FloatField()),
+        total_flaky_fail_count=Sum("flaky_fail_count", output_field=FloatField()),
+        total_skip_count=Sum("skip_count", output_field=FloatField()),
         total_count=Sum(
             F("pass_count") + F("fail_count") + F("flaky_fail_count"),
             output_field=FloatField(),
@@ -163,16 +163,20 @@ def get_test_data_queryset_via_testrun(
 
     test_data = test_data.values("test_id").annotate(  # type: ignore[assignment]
         total_pass_count=Sum(
-            Case(When(outcome="pass", then=Value(1)), default=Value(0))
+            Case(When(outcome="pass", then=Value(1)), default=Value(0)),
+            output_field=FloatField(),
         ),
         total_fail_count=Sum(
-            Case(When(outcome="failure", then=Value(1)), default=Value(0))
+            Case(When(outcome="failure", then=Value(1)), default=Value(0)),
+            output_field=FloatField(),
         ),
         total_skip_count=Sum(
-            Case(When(outcome="skip", then=Value(1)), default=Value(0))
+            Case(When(outcome="skip", then=Value(1)), default=Value(0)),
+            output_field=FloatField(),
         ),
         total_flaky_fail_count=Sum(
-            Case(When(outcome="flaky_fail", then=Value(1)), default=Value(0))
+            Case(When(outcome="flaky_fail", then=Value(1)), default=Value(0)),
+            output_field=FloatField(),
         ),
         runs_failed=Sum(
             Case(
@@ -180,8 +184,13 @@ def get_test_data_queryset_via_testrun(
                 default=Value(0),
             )
         ),
-        total_count=(
-            F("total_pass_count") + F("total_fail_count") + F("total_flaky_fail_count")
+        total_count=Cast(
+            (
+                F("total_pass_count")
+                + F("total_fail_count")
+                + F("total_flaky_fail_count")
+            ),
+            output_field=FloatField(),
         ),
         failure_rate=Case(
             When(
