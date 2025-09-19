@@ -212,7 +212,7 @@ def generate_view_test_analytics_line(
     repo: Repository, commit_branch: str | None
 ) -> str:
     test_analytics_url = get_test_analytics_url(repo, commit_branch)
-    return f"\nTo view more test analytics, go to the [Test Analytics Dashboard]({test_analytics_url})\n<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/BpocVj23nhr2Y45G7) to help us improve Test Analytics.</sub>"
+    return f"\nTo view more test analytics, go to the [Test Analytics Dashboard]({test_analytics_url})\n<sub>📋 Got 3 mins? [Take this short survey](https://forms.gle/22i53Qa1CySZjA6c7) to help us improve Test Analytics.</sub>"
 
 
 def messagify_failure[T: (str, bytes)](
