@@ -6,10 +6,10 @@
 
 > <pre><code class="language-python">testname</code></pre>
 > <details><summary>Stack Traces | 1s run time</summary>
->
+> 
 > > <pre><code class="language-python">hello world</code></pre>
 > > [View](https://example.com/build_url) the CI Build
->
+> 
 > </details>
 
 </details>

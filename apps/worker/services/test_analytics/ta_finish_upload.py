@@ -22,7 +22,6 @@ from services.test_analytics.ta_timeseries import (
     FailedTestInstance,
     get_flaky_tests_dict,
     get_pr_comment_agg,
-    get_pr_comment_duration,
     get_pr_comment_failures,
 )
 from services.test_results import (
@@ -227,28 +226,17 @@ def ta_finish_upload(
             "notify_succeeded": False,
             "queue_notify": True,
         }
-    elif summary["failed"] == 0 and num_testruns > 0:
-        if pull.database_pull.commentid is not None:
-            log.info("No failures, editing existing all passed comment", extra=extra)
-            duration_seconds = get_pr_comment_duration(
-                repoid, commitid, commit_timestamp
-            )
-            notifier.all_passed_comment(duration_seconds)
-            return {
-                "notify_attempted": True,
-                "notify_succeeded": True,
-                "queue_notify": True,
-            }
-        else:
-            log.info(
-                "No failures but no existing comment, skipping comment update",
-                extra=extra,
-            )
-            return {
-                "notify_attempted": False,
-                "notify_succeeded": True,
-                "queue_notify": True,
-            }
+
+    if summary["failed"] == 0:
+        log.info("All tests passed, not posting comment", extra=extra)
+        if for_prevent:
+            notifier.all_passed_comment()
+
+        return {
+            "notify_attempted": False,
+            "notify_succeeded": True,
+            "queue_notify": True,
+        }
 
     with read_failures_summary.labels(impl="new").time():
         failures = get_pr_comment_failures(repoid, commitid, commit_timestamp)

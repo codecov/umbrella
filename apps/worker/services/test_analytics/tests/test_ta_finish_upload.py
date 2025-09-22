@@ -230,9 +230,42 @@ def test_ta_finish_upload(
 
     result = run_task()
 
-    assert_result(True, True, True)
+    assert_result(False, True, True)
+    assert_tasks([])
+    mock_repo_provider_comments.edit_comment.assert_not_called()
+    mock_repo_provider_comments.post_comment.assert_not_called()
+
+    mocker.patch(
+        "services.test_analytics.ta_finish_upload.owner_uses_sentry",
+        return_value=True,
+    )
+
+    mock_pull(
+        mocker.Mock(
+            spec=EnrichedPull,
+            provider_pull={
+                "author": {
+                    "username": "test-user",
+                },
+            },
+            database_pull=PullFactory(
+                repository=repo,
+                author=commit.repository.author,
+                commentid=1,
+            ),
+        )
+    )
+
+    result = run_task()
+
+    assert_result(False, True, True)
     assert_tasks([])
     assert_comment_snapshot()
+
+    mocker.patch(
+        "services.test_analytics.ta_finish_upload.owner_uses_sentry",
+        return_value=False,
+    )
 
     mock_pull(
         mocker.Mock(

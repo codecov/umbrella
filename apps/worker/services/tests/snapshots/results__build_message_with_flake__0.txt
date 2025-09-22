@@ -2,7 +2,7 @@
 | Tests completed | Failed | Passed | Skipped |
 |---|---|---|---|
 | 3 | 1 | 2 | 3 |
-<details><summary>View the full list of 1 :snowflake: flaky tests</summary>
+<details><summary>View the full list of 1 :snowflake: flaky test(s)</summary>
 
 > <pre><code class="language-python">testname</code></pre>
 > **Flake rate in main:** 33.33% (Passed 2 times, Failed 1 times)

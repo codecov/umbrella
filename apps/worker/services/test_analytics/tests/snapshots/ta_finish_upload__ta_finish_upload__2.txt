@@ -1,1 +1,1 @@
-:white_check_mark: All tests passed in 100.00s
+:white_check_mark: All tests passed.
