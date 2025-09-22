@@ -309,6 +309,7 @@ def specific_error_message(error: ErrorPayload) -> str:
 class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
     payload: TestResultsNotificationPayload[T] | None = None
     error: ErrorPayload | None = None
+    for_prevent: bool = False
 
     def build_message(self) -> str:
         if self.payload is None:
@@ -372,15 +373,16 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
 
                 message.append(flaky_section)
 
-            message.append(
-                generate_view_test_analytics_line(
-                    # TODO: Deprecate database-reliant code path after old TA pipeline is removed
-                    self.repo,
-                    self.commit.branch
-                    if isinstance(self.commit, Commit)
-                    else self.commit["branch"],
+            if not self.for_prevent:
+                message.append(
+                    generate_view_test_analytics_line(
+                        # TODO: Deprecate database-reliant code path after old TA pipeline is removed
+                        self.repo,
+                        self.commit.branch
+                        if isinstance(self.commit, Commit)
+                        else self.commit["branch"],
+                    )
                 )
-            )
         return "\n".join(message)
 
     def error_comment(self):

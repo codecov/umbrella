@@ -227,6 +227,33 @@ def test_build_message_with_flake(snapshot):
     assert snapshot("txt") == res
 
 
+def test_build_message_for_prevent(snapshot):
+    flags_hash = generate_flags_hash([])
+    test_id = generate_test_id(1, "testsuite", "testname", flags_hash)
+    fail = TestResultsNotificationFailure(
+        "hello world",
+        "testname",
+        [],
+        test_id,
+        1.0,
+        "https://example.com/build_url",
+    )
+    info = TACommentInDepthInfo(failures=[fail], flaky_tests={})
+    payload = TestResultsNotificationPayload(1, 2, 3, info)
+    commit = CommitFactory(
+        branch="thing/thing",
+        repository__author__username="username",
+        repository__author__service="github",
+        repository__name="name",
+    )
+    tn = TestResultsNotifier(
+        commit.repository, commit, None, None, None, payload, for_prevent=True
+    )
+    res = tn.build_message()
+
+    assert snapshot("txt") == res
+
+
 def test_notify_no_pull(mocker):
     commit = CommitFactory()
     tn = TestResultsNotifier(commit.repository, commit, None, _pull=None)
