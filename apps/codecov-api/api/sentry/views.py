@@ -75,6 +75,7 @@ def account_link(request, *args, **kwargs):
     account_to_reactivate = None
     github_orgs = []  # list of organizations to link to the account. Only GitHub organizations are allowed.
 
+    log.info("doing something")
     # First pass: Check for conflicts and non-github organizations and check for inactive account to reactivate.
     for org_data in serializer.validated_data["organizations"]:
         if org_data["provider"] != Service.GITHUB.value:
@@ -89,6 +90,7 @@ def account_link(request, *args, **kwargs):
             existing_owner = Owner.objects.get(
                 service_id=org_data["service_id"], service=org_data["provider"]
             )
+
             # If the organization is already linked to an active Sentry account, return an error
             # If the organization is linked to an inactive Sentry account, set it to reactivate later
             if (

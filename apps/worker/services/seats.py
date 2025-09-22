@@ -52,6 +52,7 @@ def determine_seat_activation(pull: EnrichedPull) -> SeatActivationInfo:
         )
         return SeatActivationInfo(reason="no_provider_pull")
 
+    log.info("doing something")
     if db_pull.repository.private is False:
         return SeatActivationInfo(reason="public_repo")
 
