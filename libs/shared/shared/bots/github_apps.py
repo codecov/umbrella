@@ -15,6 +15,7 @@ from shared.django_apps.codecov_auth.models import (
 from shared.django_apps.core.models import Repository
 from shared.github import InvalidInstallationError, get_github_integration_token
 from shared.helpers.redis import get_redis_connection
+from shared.helpers.sentry import owner_uses_sentry
 from shared.orms.owner_helper import DjangoSQLAlchemyOwnerWrapper
 from shared.rate_limits import determine_if_entity_is_rate_limited, gh_app_key_name
 from shared.typings.oauth_token_types import Token
@@ -275,7 +276,7 @@ def get_github_app_info_for_owner(
     Raises:
         NoConfiguredAppsAvailable: Owner has app installations available, but they are all currently rate limited.
     """
-    if owner.account and owner.account.sentry_org_id is not None:
+    if owner_uses_sentry(owner):
         installation_name = settings.GITHUB_SENTRY_APP_NAME
 
     extra_info_to_log = {
