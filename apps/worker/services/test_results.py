@@ -309,6 +309,7 @@ def specific_error_message(error: ErrorPayload) -> str:
 class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
     payload: TestResultsNotificationPayload[T] | None = None
     error: ErrorPayload | None = None
+    for_prevent: bool = False
 
     def build_message(self) -> str:
         if self.payload is None:
@@ -366,21 +367,22 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
                 ]
 
                 flaky_section = wrap_in_details(
-                    f"View the full list of {len(flaky_failures)} :snowflake: flaky tests",
+                    f"View the full list of {len(flaky_failures)} :snowflake: flaky test(s)",
                     "\n".join(flake_content),
                 )
 
                 message.append(flaky_section)
 
-            message.append(
-                generate_view_test_analytics_line(
-                    # TODO: Deprecate database-reliant code path after old TA pipeline is removed
-                    self.repo,
-                    self.commit.branch
-                    if isinstance(self.commit, Commit)
-                    else self.commit["branch"],
+            if not self.for_prevent:
+                message.append(
+                    generate_view_test_analytics_line(
+                        # TODO: Deprecate database-reliant code path after old TA pipeline is removed
+                        self.repo,
+                        self.commit.branch
+                        if isinstance(self.commit, Commit)
+                        else self.commit["branch"],
+                    )
                 )
-            )
         return "\n".join(message)
 
     def error_comment(self):
@@ -402,11 +404,14 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
 
         return True, "comment_posted"
 
-    def all_passed_comment(self, duration_seconds: float | None):
+    def all_passed_comment(self, duration_seconds: float | None = None):
+        # TODO: use something like:
+        # https://github.com/getsentry/sentry/blob/ca40c14646767fdcd06dd90a8089c116bd8f6cde/static/app/utils/duration/getDuration.tsx
+        # to format the duration nicely
         if duration_seconds is not None:
-            message = f":white_check_mark: All tests passed in {duration_seconds:.2f}s"
+            message = f":white_check_mark: All tests passed in {duration_seconds:.2f}s."
         else:
-            message = ":white_check_mark: All tests passed"
+            message = ":white_check_mark: All tests passed."
 
         pull = self.get_pull()
         if pull is None:

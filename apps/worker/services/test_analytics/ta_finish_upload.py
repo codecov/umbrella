@@ -22,7 +22,6 @@ from services.test_analytics.ta_timeseries import (
     FailedTestInstance,
     get_flaky_tests_dict,
     get_pr_comment_agg,
-    get_pr_comment_duration,
     get_pr_comment_failures,
 )
 from services.test_results import (
@@ -37,6 +36,7 @@ from services.test_results import (
 from shared.celery_config import process_flakes_task_name
 from shared.django_apps.reports.models import ReportSession, UploadError
 from shared.helpers.redis import get_redis_connection
+from shared.helpers.sentry import owner_uses_sentry
 from shared.reports.types import UploadType
 from shared.typings.torngit import AdditionalData
 from shared.yaml import UserYaml
@@ -190,6 +190,8 @@ def ta_finish_upload(
             "queue_notify": False,
         }
 
+    for_prevent = owner_uses_sentry(repo.author)
+
     notifier = TestResultsNotifier(
         repo,
         commit,
@@ -197,6 +199,7 @@ def ta_finish_upload(
         _pull=pull,
         _repo_service=repo_service,
         error=error,
+        for_prevent=for_prevent,
     )
 
     seat_needs_activation = check_seat_activation(db_session, pull)
@@ -223,28 +226,17 @@ def ta_finish_upload(
             "notify_succeeded": False,
             "queue_notify": True,
         }
-    elif summary["failed"] == 0 and num_testruns > 0:
-        if pull.database_pull.commentid is not None:
-            log.info("No failures, editing existing all passed comment", extra=extra)
-            duration_seconds = get_pr_comment_duration(
-                repoid, commitid, commit_timestamp
-            )
-            notifier.all_passed_comment(duration_seconds)
-            return {
-                "notify_attempted": True,
-                "notify_succeeded": True,
-                "queue_notify": True,
-            }
-        else:
-            log.info(
-                "No failures but no existing comment, skipping comment update",
-                extra=extra,
-            )
-            return {
-                "notify_attempted": False,
-                "notify_succeeded": True,
-                "queue_notify": True,
-            }
+
+    if summary["failed"] == 0:
+        log.info("All tests passed, not posting comment", extra=extra)
+        if for_prevent:
+            notifier.all_passed_comment()
+
+        return {
+            "notify_attempted": False,
+            "notify_succeeded": True,
+            "queue_notify": True,
+        }
 
     with read_failures_summary.labels(impl="new").time():
         failures = get_pr_comment_failures(repoid, commitid, commit_timestamp)

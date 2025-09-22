@@ -2,6 +2,7 @@ import logging
 from enum import Enum
 
 from codecov_auth.models import Owner
+from shared.helpers.sentry import owner_uses_sentry
 from webhook_handlers.constants import GitHubWebhookEvents
 
 log = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ def should_process(data, event: str, service_name: str) -> set[HANDLER]:
 
     owner = resolve_owner_from_webhook(data, service_name)
 
-    if owner and owner.account and owner.account.sentry_org_id:
+    if owner_uses_sentry(owner):
         return {HANDLER.SENTRY}
 
     return {HANDLER.GITHUB}
