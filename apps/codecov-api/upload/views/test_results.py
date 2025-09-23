@@ -26,7 +26,8 @@ from reports.models import CommitReport
 from shared.api_archive.archive import ArchiveService, MinioEndpoints
 from shared.events.amplitude import UNKNOWN_USER_OWNERID, AmplitudeEventPublisher
 from shared.helpers.redis import get_redis_connection
-from shared.metrics import inc_counter
+from shared.helpers.sentry import owner_uses_sentry
+from shared.metrics import Counter, inc_counter
 from upload.helpers import (
     dispatch_upload_task,
     generate_upload_prometheus_metrics_labels,
@@ -35,6 +36,16 @@ from upload.metrics import API_UPLOAD_COUNTER
 from upload.serializers import FlagListField
 from upload.views.base import ShelterMixin
 from upload.views.helpers import get_repository_from_string
+
+PREVENT_UPLOAD_COUNTER = Counter(
+    "prevent_upload_counter",
+    "Number of times prevent upload was made",
+)
+
+PREVENT_NEW_USER_COUNTER = Counter(
+    "prevent_new_user_counter",
+    "Number of times prevent new user was made",
+)
 
 log = logging.getLogger(__name__)
 
@@ -138,12 +149,21 @@ class TestResultsView(
                 },
             )
 
+        is_first_upload = False
+
         if not repo.test_analytics_enabled:
+            is_first_upload = True
             repo.test_analytics_enabled = True
             update_fields += ["test_analytics_enabled"]
 
         if update_fields:
             repo.save(update_fields=update_fields)
+
+        if owner_uses_sentry(repo.author):
+            if is_first_upload:
+                inc_counter(PREVENT_NEW_USER_COUNTER)
+
+            inc_counter(PREVENT_UPLOAD_COUNTER)
 
         inc_counter(
             API_UPLOAD_COUNTER,
