@@ -25,7 +25,6 @@ from shared.django_apps.utils.paginator import EstimatedCountPaginator
 # Regex pattern for hexadecimal string validation
 HEX_PATTERN = re.compile(r"^[0-9a-fA-F]+$")
 
-
 class PresentDataFilter(admin.SimpleListFilter):
     title = "Present Data"
     parameter_name = "present_data"
