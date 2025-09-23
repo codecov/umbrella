@@ -22,7 +22,6 @@ from database.models import Commit, CommitReport, Repository, RepositoryFlag, Up
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.github_installation import get_installation_name_for_owner_for_task
-from rollouts import NEW_TA_TASKS
 from services.bundle_analysis.report import BundleAnalysisReportService
 from services.processing.state import ProcessingState
 from services.processing.types import UploadArguments
@@ -37,14 +36,14 @@ from services.repository import (
     gitlab_webhook_update,
     possibly_update_commit_from_provider_info,
 )
-from services.test_analytics.ta_metrics import new_ta_tasks_repo_summary
 from services.test_results import TestResultsReportService
 from shared.celery_config import upload_task_name
 from shared.config import get_config
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.django_apps.user_measurements.models import UserMeasurement
 from shared.helpers.redis import get_redis_connection
-from shared.metrics import Histogram
+from shared.helpers.sentry import owner_uses_sentry
+from shared.metrics import Counter, Histogram, inc_counter
 from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
 from shared.upload.types import UploaderType
 from shared.upload.utils import bulk_insert_coverage_measurements
@@ -70,6 +69,11 @@ UPLOADS_PER_TASK_SCHEDULE = Histogram(
     "The number of individual uploads scheduled for processing",
     ["report_type"],
     buckets=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30, 40, 50],
+)
+
+
+TA_SCHEDULED_COUNTER = Counter(
+    "ta_scheduled_counter", "Number of TA pipelines scheduled", ["product"]
 )
 
 
@@ -877,24 +881,8 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         argument_list: list[UploadArguments],
         commit_report: CommitReport,
     ):
-        new_ta_tasks = NEW_TA_TASKS.check_value(commit.repoid, default="old")
         if not settings.TA_TIMESERIES_ENABLED:
-            new_ta_tasks = "old"
-        else:
-            db_session: Session = commit.get_db_session()  # type: ignore
-            commit_before_cutoff = (
-                db_session.query(Commit)
-                .filter(
-                    Commit.repoid == commit.repoid,
-                    Commit.timestamp < NEW_TA_TASKS_CUTOFF_DATE,
-                )
-                .limit(1)
-                .first()
-            )
-
-            if commit_before_cutoff is None:
-                new_ta_tasks = "new"
-                new_ta_tasks_repo_summary.inc()
+            raise ValueError("TA timeseries is not enabled")
 
         task_group = [
             test_results_processor_task.s(
@@ -917,6 +905,13 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         task_group.append(
             test_results_finisher_task.signature(kwargs=finisher_kwargs),
         )
+
+        product = (
+            "prevent" if owner_uses_sentry(commit.repository.author) else "codecov"
+        )
+
+        inc_counter(TA_SCHEDULED_COUNTER, labels={"product": product})
+
         chain_result = chain(*task_group).apply_async()
 
         return chain_result
