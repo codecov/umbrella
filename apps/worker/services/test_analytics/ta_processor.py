@@ -20,9 +20,25 @@ from shared.api_archive.archive import ArchiveService
 from shared.config import get_config
 from shared.django_apps.core.models import Commit, Repository
 from shared.django_apps.reports.models import ReportSession, UploadError
+from shared.helpers.sentry import owner_uses_sentry
+from shared.metrics import Counter, inc_counter
 from shared.storage.exceptions import FileNotInStorageError
 
 log = logging.getLogger(__name__)
+
+
+TA_PROCESSED_COUNTER = Counter(
+    "ta_processed_counter",
+    "Number of times TA was processed",
+    ["product"],
+)
+
+
+TA_FAILED_COUNTER = Counter(
+    "ta_failed_counter",
+    "Number of times TA failed",
+    ["product", "reason"],
+)
 
 
 def ta_processor(
@@ -30,22 +46,35 @@ def ta_processor(
     commitid: str,
     commit_yaml: dict[str, Any],
     argument: UploadArguments,
-    update_state: bool = False,
 ) -> bool:
     log.info("Processing single TA argument")
+    commit = Commit.objects.get(repoid=repoid, commitid=commitid)
 
+    product = "prevent" if owner_uses_sentry(commit.repository.author) else "codecov"
     upload_id = argument.get("upload_id")
+
     if upload_id is None:
+        inc_counter(
+            TA_FAILED_COUNTER,
+            labels={"product": product, "reason": "upload_id_is_none"},
+        )
         return False
 
     upload = ReportSession.objects.using("default").get(id=upload_id)
     if upload.state == "processed":
+        inc_counter(
+            TA_FAILED_COUNTER,
+            labels={"product": product, "reason": "already_processed"},
+        )
         # don't need to process again because the intermediate result should already be in redis
         return False
 
     if upload.storage_path is None:
-        if update_state:
-            handle_file_not_found(upload)
+        inc_counter(
+            TA_FAILED_COUNTER,
+            labels={"product": product, "reason": "storage_path_is_none"},
+        )
+        handle_file_not_found(upload)
         return False
 
     ta_proc_info = get_ta_processing_info(repoid, commitid, commit_yaml)
@@ -55,8 +84,11 @@ def ta_processor(
     try:
         payload_bytes = archive_service.read_file(upload.storage_path)
     except FileNotInStorageError:
-        if update_state:
-            handle_file_not_found(upload)
+        inc_counter(
+            TA_FAILED_COUNTER,
+            labels={"product": product, "reason": "file_not_in_storage"},
+        )
+        handle_file_not_found(upload)
         return False
 
     try:
@@ -79,35 +111,42 @@ def ta_processor(
         if not parsing_infos:
             parsing_infos, readable_file = parse_raw_upload(payload_bytes)
     except RuntimeError as exc:
-        if update_state:
-            handle_parsing_error(upload, exc)
+        inc_counter(
+            TA_FAILED_COUNTER,
+            labels={"product": product, "reason": "runtime_error"},
+        )
+        handle_parsing_error(upload, exc)
         return False
 
-    if update_state:
-        UploadError.objects.bulk_create(
-            [
-                UploadError(
-                    report_session=upload,
-                    error_code="warning",
-                    error_params={"warning_message": warning},
-                )
-                for info in parsing_infos
-                for warning in info["warnings"]
-            ]
-        )
+    UploadError.objects.bulk_create(
+        [
+            UploadError(
+                report_session=upload,
+                error_code="warning",
+                error_params={"warning_message": warning},
+            )
+            for info in parsing_infos
+            for warning in info["warnings"]
+        ]
+    )
 
     with write_tests_summary.labels("new").time():
         insert_testruns_timeseries(
             repoid, commitid, ta_proc_info.branch, upload, parsing_infos
         )
 
-    if update_state:
-        upload.state = "processed"
-        upload.save()
+    upload.state = "processed"
+    upload.save()
 
-        rewrite_or_delete_upload(
-            archive_service, ta_proc_info.user_yaml, upload, readable_file
-        )
+    rewrite_or_delete_upload(
+        archive_service, ta_proc_info.user_yaml, upload, readable_file
+    )
+
+    inc_counter(
+        TA_PROCESSED_COUNTER,
+        labels={"product": product},
+    )
+
     return True
 
 
