@@ -2,6 +2,7 @@ from unittest import mock
 
 import pytest
 
+from database.models import Account
 from database.tests.factories import CommitFactory, OwnerFactory, RepositoryFactory
 from helpers.notifier import NotifierResult
 from services.repository import EnrichedPull
@@ -246,6 +247,7 @@ def test_build_message_for_prevent(snapshot):
         repository__author__service="github",
         repository__name="name",
     )
+    commit.repository.author.account = Account(name="testaccount", is_active=True)
     tn = TestResultsNotifier(
         commit.repository, commit, None, None, None, payload, for_prevent=True
     )
