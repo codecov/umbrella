@@ -4,10 +4,11 @@ from collections.abc import Iterator
 from typing import Any
 
 from django.conf import settings
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.admin.views.main import ChangeList
 from django.db.models import Q, QuerySet
 from django.http import HttpRequest
+from django.shortcuts import redirect
 from django.utils.html import format_html
 from django.urls import path, reverse
 from django.utils.safestring import mark_safe
@@ -550,7 +551,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         )
     
     @admin.display(description="Resend Upload")
-    def resend_upload_actions(self, obj: UploadBreadcrumb) -> str:
+    def resend_upload_action(self, obj: UploadBreadcrumb) -> str:
         """Display resend actions in the detail view."""
         if not obj.pk:  # New object
             return "-"
