@@ -146,6 +146,12 @@ class DetectFlakes(BaseCodecovTask, name=detect_flakes_task_name):
     and releasing the lock is not atomic)
 
     to guard against this, the task that just released the lock must check again
+
+    ---
+    Experimental note: this task remains untested and is not production-ready. It
+    currently serves as part of the exploratory TA pipeline alongside the
+    experimental ingest-testruns and notifier tasks to validate the future
+    orchestration flow.
     """
 
     def run_impl(

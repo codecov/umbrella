@@ -55,6 +55,12 @@ class TestAnalyticsNotifierTask(
     """
     Send test analytics notifications while ensuring compliance with Sentry's
     data retention policies.
+
+    ---
+    Experimental note: this notifier remains an untested concept that depends on
+    the experimental ingest and detect-flakes tasks. Its purpose is to provide a
+    sandboxed flow for future TA pipeline development, and it should not be used
+    in production environments yet.
     """
 
     def run_impl(
@@ -282,7 +288,7 @@ class TestAnalyticsNotifierTask(
 
         notifier = TestResultsNotifier(
             repo,
-            upload_context,
+            upload_context,  # TODO: this won't work because test results notifier doesn't currently support the TAUpload Context
             commit_yaml,
             _pull=pull,
             _repo_service=repo_service,

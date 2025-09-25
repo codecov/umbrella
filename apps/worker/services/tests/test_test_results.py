@@ -22,7 +22,6 @@ from shared.django_apps.test_analytics.models import TAPullComment
 from shared.plan.constants import DEFAULT_FREE_PLAN
 from shared.torngit.exceptions import TorngitClientError
 from shared.torngit.response_types import ProviderPull
-from shared.upload.types import TAUploadContext
 from tests.helpers import mock_all_plans_and_tiers
 
 
@@ -46,31 +45,6 @@ def test_get_pull_none(mocker):
     res = tn.get_pull()
 
     assert res is None
-
-
-def test_get_pull_provider_pull(mocker):
-    provider_pull = ProviderPull(
-        id="1",
-        number="1",
-        title="Test PR",
-        state="open",
-        author={"username": "test_user"},
-        base={"branch": "main", "commitid": "base_commit"},
-        head={"branch": "feature", "commitid": "head_commit"},
-        merge_commit_sha=None,
-    )
-    mocker.patch(
-        "helpers.notifier.fetch_pull_request_information",
-        return_value=provider_pull,
-    )
-    repo = RepositoryFactory(repoid=12)
-    commit = TAUploadContext(commit_sha="abc123", branch="main", pull_id=1)
-    tn = TestResultsNotifier(repo, commit, None)
-    tn._repo_service = mock_repo_service()
-
-    res = tn.get_pull()
-
-    assert res == provider_pull
 
 
 def test_send_to_provider():

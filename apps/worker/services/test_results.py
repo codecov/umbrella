@@ -378,9 +378,7 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
                     generate_view_test_analytics_line(
                         # TODO: Deprecate database-reliant code path after old TA pipeline is removed
                         self.repo,
-                        self.commit.branch
-                        if isinstance(self.commit, Commit)
-                        else self.commit["branch"],
+                        self.commit.branch,
                     )
                 )
         return "\n".join(message)
