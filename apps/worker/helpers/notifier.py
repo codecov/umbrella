@@ -10,7 +10,6 @@ from database.models import Repository as SQLAlchemyRepository
 from services.repository import (
     EnrichedPull,
     fetch_and_update_pull_request_information_from_commit,
-    fetch_pull_request_information,
     get_repo_provider_service,
 )
 from services.yaml import UserYaml
@@ -19,7 +18,6 @@ from shared.django_apps.test_analytics.models import TAPullComment
 from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitClientError
 from shared.torngit.response_types import ProviderPull
-from shared.upload.types import TAUploadContext
 
 log = logging.getLogger(__name__)
 
@@ -38,17 +36,11 @@ class BaseNotifier:
 
     This class is responsible for building and sending notifications related to
     a specific commit.
-
-    Note that `commit` supports both a Commit object and a TAUploadContext
-    object so that it can be used in the new TA pipeline that is compliant with
-    Sentry's retention policies. Depending on which is passed in, a slightly
-    different code path is taken. Repository is also required as a parameter
-    since it is not given with TAUploadContext like it is with Commit.
     """
 
     repo: Repository | SQLAlchemyRepository
     # TODO: Deprecate database-reliant code path after old TA pipeline is removed
-    commit: Commit | TAUploadContext
+    commit: Commit
     commit_yaml: UserYaml | None
     _pull: EnrichedPull | ProviderPull | None | Literal[False] = False
     _repo_service: TorngitBaseAdapter | None = None
@@ -57,26 +49,15 @@ class BaseNotifier:
         repo_service = self.get_repo_service()
 
         if self._pull is False:
-            if isinstance(self.commit, Commit):
-                self._pull = async_to_sync(
-                    fetch_and_update_pull_request_information_from_commit
-                )(repo_service, self.commit, self.commit_yaml)
-            else:
-                self._pull = async_to_sync(fetch_pull_request_information)(
-                    repo_service,
-                    self.repo.repoid,
-                    self.commit["commit_sha"],
-                    self.commit["branch"],
-                    self.commit["pull_id"],
-                )
+            self._pull = async_to_sync(
+                fetch_and_update_pull_request_information_from_commit
+            )(repo_service, self.commit, self.commit_yaml)
 
         if self._pull is None and do_log:
             log.info(
                 "Not notifying since there is no pull request associated with this commit",
                 extra={
-                    "commitid": self.commit.commitid
-                    if isinstance(self.commit, Commit)
-                    else self.commit["commit_sha"],
+                    "commitid": self.commit.commitid,
                     "repoid": self.repo.repoid,
                 },
             )
@@ -133,12 +114,7 @@ class BaseNotifier:
         except TorngitClientError:
             log.error(
                 "Error creating/updating PR comment",
-                extra={
-                    "commitid": self.commit.commitid
-                    if isinstance(self.commit, Commit)
-                    else self.commit["commit_sha"],
-                    "pullid": pullid,
-                },
+                extra={"commitid": self.commit.commitid, "pullid": pullid},
             )
             return False
 
