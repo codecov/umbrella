@@ -5,6 +5,9 @@ from shared.config import get_config
 
 def default_installation_app_ids() -> set[str]:
     installation_default_app_id = get_config("github", "integration", "id")
+    enterprise_installation_default_app_id = get_config(
+        "github_enterprise", "integration", "id"
+    )
     sentry_app_id = getattr(settings, "GITHUB_SENTRY_APP_ID", None)
 
     return set(
@@ -12,7 +15,11 @@ def default_installation_app_ids() -> set[str]:
             str,
             filter(
                 lambda x: x is not None,
-                [installation_default_app_id, sentry_app_id],
+                [
+                    installation_default_app_id,
+                    sentry_app_id,
+                    enterprise_installation_default_app_id,
+                ],
             ),
         )
     )
