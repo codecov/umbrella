@@ -13,3 +13,5 @@
 > </details>
 
 </details>
+
+To view more test analytics, go to the [Prevent Tests Dashboard](https://testaccount.sentry.io/prevent/tests/?preventPeriod=30d&integratedOrgName=username&repository=name&branch=thing%2Fthing)
