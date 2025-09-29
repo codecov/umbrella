@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from collections.abc import Iterator
 from typing import Any
@@ -16,6 +17,7 @@ from django.utils.safestring import mark_safe
 from shared.config import get_config
 from shared.django_apps.core.models import Repository
 from shared.django_apps.upload_breadcrumbs.models import (
+    BreadcrumbData,
     Endpoints,
     Errors,
     Milestones,
@@ -25,6 +27,9 @@ from shared.django_apps.utils.paginator import EstimatedCountPaginator
 
 # Regex pattern for hexadecimal string validation
 HEX_PATTERN = re.compile(r"^[0-9a-fA-F]+$")
+
+# Get logger for this module
+log = logging.getLogger(__name__)
 
 class PresentDataFilter(admin.SimpleListFilter):
     title = "Present Data"
@@ -585,32 +590,23 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             return False
         
         data = obj.breadcrumb_data
-        
+        log.info(f"Data: {data}, Upload IDs: {obj.upload_ids}")
         # Check if there's an error
-        if data.get("error"):
-            error_code = data["error"]
-            # Define which errors indicate a failed upload that can be retried
-            retriable_errors = [
-                Errors.FILE_NOT_IN_STORAGE.value,
-                Errors.REPORT_EXPIRED.value, 
-                Errors.REPORT_EMPTY.value,
-                Errors.TASK_TIMED_OUT.value,
-                Errors.UNSUPPORTED_FORMAT.value,
-                Errors.UNKNOWN.value,
-            ]
-            return error_code in retriable_errors
-        
-        # Check if upload got stuck at certain milestones
-        milestone = data.get("milestone")
-        if milestone in [
-            Milestones.WAITING_FOR_COVERAGE_UPLOAD.value,
-            Milestones.COMPILING_UPLOADS.value,
-            Milestones.PROCESSING_UPLOAD.value,
-        ]:
-            # Additional logic: check if this breadcrumb is old (e.g., > 1 hour)
-            # and there are no newer successful breadcrumbs for the same commit
-            return True
-        
+        if data.get("milestone") == Milestones.PROCESSING_UPLOAD.value or data.get("milestone") == Milestones.COMPILING_UPLOADS.value:
+            if data.get("error"):
+                # error_code = data["error"]
+                # # Define which errors indicate a failed upload that can be retried
+                # retriable_errors = [
+                #     Errors.FILE_NOT_IN_STORAGE.value,
+                #     Errors.REPORT_EXPIRED.value, 
+                #     Errors.REPORT_EMPTY.value,
+                #     Errors.TASK_TIMED_OUT.value,
+                #     Errors.UNSUPPORTED_FORMAT.value,
+                #     Errors.UNKNOWN.value,
+                # ]
+                # return error_code in retriable_errors
+                return True
+                
         return False
     
     def resend_upload_view(self, request, object_id):
@@ -649,38 +645,30 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
     def _resend_upload(self, breadcrumb: UploadBreadcrumb, user) -> bool:
         """Actually trigger the upload resend."""
         try:
+            # Import TaskService locally to avoid circular imports
+            from services.task import TaskService
+            
             # Create a TaskService instance and trigger a new upload task
             task_service = TaskService()
             
-            # Create task arguments - you may need to reconstruct some of this
-            # based on what's available in the breadcrumb
             task_arguments = {
                 "commit": breadcrumb.commit_sha,
-                # Note: You might need to get these from the original upload record
-                # if they're not stored in the breadcrumb
-                "reportid": None,  # May need to look this up
-                "version": "v4",   # Default to v4
+                "reportid": None,
             }
             
             # Dispatch the upload task
             task_service.upload(
                 repoid=breadcrumb.repo_id,
                 commitid=breadcrumb.commit_sha,
-                report_type="coverage",  # May need to determine this
+                report_type="coverage",
                 arguments=task_arguments,
                 countdown=0,  # Process immediately
             )
             
             # Create a new breadcrumb to track the resend
-            task_service.upload_breadcrumb(
-                commit_sha=breadcrumb.commit_sha,
-                repo_id=breadcrumb.repo_id,
-                breadcrumb_data=BreadcrumbData(
-                    milestone=Milestones.COMPILING_UPLOADS,
-                    endpoint=Endpoints.ADMIN_RESEND,  # You may need to add this enum value
-                    uploader=f"admin-resend-{user.username}",
-                ),
-            )
+            # Use the same endpoint as the original breadcrumb if available
+            original_endpoint = breadcrumb.breadcrumb_data.get("endpoint") if breadcrumb.breadcrumb_data else None
+            resend_endpoint = original_endpoint if original_endpoint else Endpoints.CREATE_COMMIT.value
             
             return True
             
@@ -690,7 +678,6 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
                 "breadcrumb_id": breadcrumb.id,
                 "commit_sha": breadcrumb.commit_sha,
                 "repo_id": breadcrumb.repo_id,
-                "user": user.username,
                 "error": str(e)
             })
             return False
