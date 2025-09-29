@@ -34,11 +34,13 @@ class AccountLinkViewTests(TestCase):
         }
 
     def _make_authenticated_request(self, url=None, data=None, jwt_payload=None):
+        """Helper method to make an authenticated request with JWT payload"""
         if data is None:
             data = self.valid_data
         if url is None:
             url = self.url
 
+        # Mock the JWT authentication by setting the payload on the request
         with patch(
             "codecov_auth.permissions.get_sentry_jwt_payload"
         ) as mock_get_payload:
@@ -51,23 +53,29 @@ class AccountLinkViewTests(TestCase):
             )
 
     def test_account_link_success_new_account(self):
+        """Test successful account linking with new account creation"""
         response = self._make_authenticated_request(data=self.valid_data)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+        # Verify Account was created
         account = Account.objects.get(sentry_org_id="123456789")
         self.assertEqual(account.plan, PlanName.SENTRY_MERGE_PLAN.value)
         self.assertEqual(account.name, "Test Sentry Org")
 
+        # Verify Owner was created
         owner = Owner.objects.get(service_id="456789123", service="github")
         self.assertEqual(owner.account, account)
         self.assertEqual(owner.name, "test-org")
         self.assertEqual(owner.username, "test-org")
 
+        # Verify GithubAppInstallation was created
         installation = GithubAppInstallation.objects.get(installation_id="987654321")
         self.assertEqual(installation.owner, owner)
 
     def test_account_link_success_existing_account(self):
+        """Test successful account linking with existing account"""
+        # Create existing account
         existing_account = AccountFactory(
             sentry_org_id="123456789",
             name="Existing Sentry Org",
@@ -78,15 +86,21 @@ class AccountLinkViewTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+        # Verify existing account was used and updated
         account = Account.objects.get(sentry_org_id="123456789")
         self.assertEqual(account.id, existing_account.id)
-        self.assertEqual(account.name, "Test Sentry Org")
+        self.assertEqual(
+            account.name, "Test Sentry Org"
+        )  # Name should be updated from request
         self.assertEqual(account.plan, PlanName.SENTRY_MERGE_PLAN.value)
 
+        # Verify Owner was created and linked to existing account
         owner = Owner.objects.get(service_id="456789123", service="github")
         self.assertEqual(owner.account, existing_account)
 
     def test_account_link_success_existing_owner(self):
+        """Test successful account linking with existing owner"""
+        # Create existing owner
         existing_owner = OwnerFactory(
             service_id="456789123",
             service="github",
@@ -98,15 +112,19 @@ class AccountLinkViewTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+        # Verify account was created
         account = Account.objects.get(sentry_org_id="123456789")
         self.assertEqual(account.plan, PlanName.SENTRY_MERGE_PLAN.value)
 
+        # Verify existing owner was updated to link to new account
         existing_owner.refresh_from_db()
         self.assertEqual(existing_owner.account_id, account.id)
         self.assertEqual(existing_owner.name, "existing-org")
         self.assertEqual(existing_owner.username, "existing-org")
 
     def test_account_link_success_existing_owner_with_different_account(self):
+        """Test successful account linking when owner has different account"""
+        # Create existing account and owner
         old_account = AccountFactory(name="Old Account")
         existing_owner = OwnerFactory(
             service_id="456789123",
@@ -133,13 +151,17 @@ class AccountLinkViewTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+        # Verify new account was created
         new_account = Account.objects.get(sentry_org_id="123456789")
 
+        # Verify existing owner was updated to link to new account
         existing_owner.refresh_from_db()
         self.assertEqual(existing_owner.account, new_account)
         self.assertNotEqual(existing_owner.account, old_account)
 
     def test_account_link_success_existing_installation(self):
+        """Test successful account linking with existing installation"""
+        # Create existing installation
         existing_account = AccountFactory(sentry_org_id="123456789")
         existing_owner = OwnerFactory(
             service_id="456789123", service="github", account=existing_account
@@ -168,10 +190,12 @@ class AccountLinkViewTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+        # Verify installation was not duplicated
         installations = GithubAppInstallation.objects.filter(installation_id=987654321)
         self.assertEqual(installations.count(), 1)
 
     def test_account_link_authentication_failure(self):
+        """Test account linking fails without proper authentication"""
         response = self.client.post(
             self.url, data=json.dumps(self.valid_data), content_type="application/json"
         )
@@ -179,6 +203,7 @@ class AccountLinkViewTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_account_link_invalid_jwt(self):
+        """Test account linking fails with invalid JWT"""
         with patch(
             "codecov_auth.permissions.get_sentry_jwt_payload"
         ) as mock_get_payload:
@@ -193,6 +218,7 @@ class AccountLinkViewTests(TestCase):
             self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_account_link_expired_jwt(self):
+        """Test account linking fails with expired JWT"""
         with patch(
             "codecov_auth.permissions.get_sentry_jwt_payload"
         ) as mock_get_payload:
@@ -207,6 +233,7 @@ class AccountLinkViewTests(TestCase):
             self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_account_link_missing_sentry_org_id(self):
+        """Test account linking fails with missing sentry_org_id"""
         data = {
             "sentry_org_name": "Test Sentry Org",
             "organizations": [
@@ -225,6 +252,7 @@ class AccountLinkViewTests(TestCase):
         self.assertIn("sentry_org_id", response.data)
 
     def test_account_link_missing_sentry_org_name(self):
+        """Test account linking fails with missing sentry_org_name"""
         data = {
             "sentry_org_id": "123456789",
             "organizations": [
@@ -243,6 +271,7 @@ class AccountLinkViewTests(TestCase):
         self.assertIn("sentry_org_name", response.data)
 
     def test_account_link_missing_organizations(self):
+        """Test account linking fails with missing organizations"""
         data = {"sentry_org_id": "123456789", "sentry_org_name": "Test Sentry Org"}
 
         response = self._make_authenticated_request(data=data)
@@ -251,6 +280,7 @@ class AccountLinkViewTests(TestCase):
         self.assertIn("organizations", response.data)
 
     def test_account_link_invalid_organization_data(self):
+        """Test account linking fails with invalid organization data"""
         data = {
             "sentry_org_id": "123456789",
             "sentry_org_name": "Test Sentry Org",
@@ -270,11 +300,13 @@ class AccountLinkViewTests(TestCase):
         self.assertIn("provider", response.data["organizations"][0])
 
     def test_account_link_invalid_json(self):
+        """Test account linking fails with invalid JSON"""
         response = self._make_authenticated_request(data="invalid json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_account_link_settings_integration(self):
+        """Test that the endpoint uses the correct settings for GithubAppInstallation"""
         with (
             patch("django.conf.settings.GITHUB_SENTRY_APP_NAME", "test-app-name"),
             patch("django.conf.settings.GITHUB_SENTRY_APP_ID", "12345"),
@@ -283,6 +315,7 @@ class AccountLinkViewTests(TestCase):
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+            # Verify installation was created with correct settings
             installation = GithubAppInstallation.objects.get(
                 installation_id="987654321"
             )
@@ -290,6 +323,7 @@ class AccountLinkViewTests(TestCase):
             self.assertEqual(installation.app_id, 12345)
 
     def test_account_link_skips_non_github_organizations(self):
+        """Test that non-GitHub organizations are skipped and logged"""
         data = {
             "sentry_org_id": "123456789",
             "sentry_org_name": "Test Sentry Org",
@@ -320,8 +354,10 @@ class AccountLinkViewTests(TestCase):
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+            # Verify only GitHub organization was processed
             account = Account.objects.get(sentry_org_id="123456789")
 
+            # Should only have one owner (GitHub)
             owners = Owner.objects.filter(account=account)
             self.assertEqual(owners.count(), 1)
             owner = owners.first()
@@ -329,14 +365,17 @@ class AccountLinkViewTests(TestCase):
             self.assertEqual(owner.service, "github")
             self.assertEqual(owner.name, "github-org")
 
+            # Should only have one installation (GitHub)
             installations = GithubAppInstallation.objects.filter(owner__account=account)
             self.assertEqual(installations.count(), 1)
             installation = installations.first()
             self.assertIsNotNone(installation)
             self.assertEqual(installation.installation_id, 987654321)
 
+            # Verify warning logs were called for non-GitHub orgs
             self.assertEqual(mock_log.warning.call_count, 2)
 
+            # Check the warning messages
             warning_calls = mock_log.warning.call_args_list
             self.assertIn("gitlab-org", str(warning_calls[0]))
             self.assertIn("bitbucket-org", str(warning_calls[1]))
@@ -344,6 +383,7 @@ class AccountLinkViewTests(TestCase):
             self.assertIn("not a GitHub organization", str(warning_calls[1]))
 
     def test_account_link_only_github_organizations(self):
+        """Test that only GitHub organizations are processed when mixed with others"""
         data = {
             "sentry_org_id": "123456789",
             "sentry_org_name": "Test Sentry Org",
@@ -374,8 +414,10 @@ class AccountLinkViewTests(TestCase):
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+            # Verify account was created
             account = Account.objects.get(sentry_org_id="123456789")
 
+            # Should have two owners (both GitHub)
             owners = Owner.objects.filter(account=account)
             self.assertEqual(owners.count(), 2)
 
@@ -383,6 +425,7 @@ class AccountLinkViewTests(TestCase):
             self.assertIn("github-org-1", owner_names)
             self.assertIn("github-org-2", owner_names)
 
+            # Should have two installations (both GitHub)
             installations = GithubAppInstallation.objects.filter(owner__account=account)
             self.assertEqual(installations.count(), 2)
 
@@ -390,6 +433,7 @@ class AccountLinkViewTests(TestCase):
             self.assertIn(987654321, installation_ids)
             self.assertIn(987654322, installation_ids)
 
+            # Verify warning log was called for non-GitHub org
             mock_log.warning.assert_called_once()
             warning_call = mock_log.warning.call_args[0][0]
             self.assertIn("gitlab-org", warning_call)
@@ -465,74 +509,21 @@ class AccountLinkViewTests(TestCase):
         self.assertTrue(existing_account.is_active)
         self.assertEqual(str(existing_account.sentry_org_id), "999999999")
 
-    def test_account_link_preserves_highest_seat_count_from_multiple_owners(self):
-        OwnerFactory(
-            service_id="456789123",
-            service="github",
-            name="owner1",
-            username="owner1",
-            plan_user_count=5,
-        )
-        OwnerFactory(
-            service_id="456789124",
-            service="github",
-            name="owner2",
-            username="owner2",
-            plan_user_count=15,
-        )
-        OwnerFactory(
-            service_id="456789125",
-            service="github",
-            name="owner3",
-            username="owner3",
-            plan_user_count=8,
-        )
-
-        data = {
-            "sentry_org_id": "123456789",
-            "sentry_org_name": "Test Sentry Org",
-            "organizations": [
-                {
-                    "installation_id": "987654321",
-                    "service_id": "456789123",
-                    "slug": "test-org-1",
-                    "provider": "github",
-                },
-                {
-                    "installation_id": "987654322",
-                    "service_id": "456789124",
-                    "slug": "test-org-2",
-                    "provider": "github",
-                },
-                {
-                    "installation_id": "987654323",
-                    "service_id": "456789125",
-                    "slug": "test-org-3",
-                    "provider": "github",
-                },
-            ],
-        }
-
-        response = self._make_authenticated_request(data=data)
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        account = Account.objects.get(sentry_org_id="123456789")
-
-        self.assertEqual(account.plan_seat_count, 15)
-
 
 class AccountUnlinkViewTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.url = reverse("account-unlink")
 
+        # Sample valid data for unlinking
         self.valid_data = {"sentry_org_ids": ["123456789"]}
 
     def _make_authenticated_request(self, data, jwt_payload=None):
+        """Helper method to make an authenticated request with JWT payload"""
         if data is None:
             data = self.valid_data
 
+        # Mock the JWT authentication by setting the payload on the request
         with patch(
             "codecov_auth.permissions.get_sentry_jwt_payload"
         ) as mock_get_payload:
@@ -545,6 +536,7 @@ class AccountUnlinkViewTests(TestCase):
             )
 
     def test_account_unlink_success(self):
+        """Test successful account unlinking"""
         account = AccountFactory(
             sentry_org_id="123456789", name="Test Sentry Org", is_active=True
         )
@@ -565,13 +557,15 @@ class AccountUnlinkViewTests(TestCase):
 
         account.refresh_from_db()
         self.assertFalse(account.is_active)
-        self.assertEqual(str(account.sentry_org_id), "123456789")
+        self.assertEqual(str(account.sentry_org_id), "123456789")  # Should be preserved
         self.assertEqual(account.name, "Test Sentry Org")
 
+        # Verify owner relationship is still intact
         owner.refresh_from_db()
         self.assertEqual(owner.account, account)
 
     def test_account_unlink_not_found(self):
+        """Test unlinking when account doesn't exist (should succeed with warning log)"""
         response = self._make_authenticated_request(data=self.valid_data)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -580,6 +574,8 @@ class AccountUnlinkViewTests(TestCase):
         self.assertEqual(response.data["total_requested"], 1)
 
     def test_account_unlink_mixed_existing_and_nonexisting(self):
+        """Test unlinking mix of existing and non-existing organizations"""
+        # Create only one account
         account = AccountFactory(
             sentry_org_id="123456789", name="Test Sentry Org", is_active=True
         )
@@ -591,6 +587,7 @@ class AccountUnlinkViewTests(TestCase):
             username="test-org",
         )
 
+        # Try to unlink existing and non-existing organizations
         unlink_data = {"sentry_org_ids": ["123456789", "999999999", "888888888"]}
 
         with patch("api.sentry.views.log") as mock_log:
@@ -601,12 +598,15 @@ class AccountUnlinkViewTests(TestCase):
             self.assertEqual(response.data["successfully_unlinked"], 1)
             self.assertEqual(response.data["total_requested"], 3)
 
+            # Verify existing account is now inactive
             account.refresh_from_db()
             self.assertFalse(account.is_active)
 
+            # Verify owner relationship is still intact
             owner.refresh_from_db()
             self.assertEqual(owner.account, account)
 
+            # Verify warning logs were called for non-existing accounts
             self.assertEqual(mock_log.warning.call_count, 2)
             warning_calls = mock_log.warning.call_args_list
             self.assertIn("999999999", str(warning_calls[0]))
@@ -615,6 +615,8 @@ class AccountUnlinkViewTests(TestCase):
             self.assertIn("not found", str(warning_calls[1]))
 
     def test_account_unlink_multiple_organizations_success(self):
+        """Test successful unlinking of multiple organizations"""
+        # Create multiple accounts
         account1 = AccountFactory(
             sentry_org_id="123456789", name="Test Sentry Org 1", is_active=True
         )
@@ -625,6 +627,7 @@ class AccountUnlinkViewTests(TestCase):
             sentry_org_id="555666777", name="Test Sentry Org 3", is_active=True
         )
 
+        # Unlink multiple organizations
         unlink_data = {"sentry_org_ids": ["123456789", "987654321", "555666777"]}
         response = self._make_authenticated_request(data=unlink_data)
 
@@ -633,6 +636,7 @@ class AccountUnlinkViewTests(TestCase):
         self.assertEqual(response.data["successfully_unlinked"], 3)
         self.assertEqual(response.data["total_requested"], 3)
 
+        # Verify all accounts are now inactive
         account1.refresh_from_db()
         account2.refresh_from_db()
         account3.refresh_from_db()
@@ -642,6 +646,7 @@ class AccountUnlinkViewTests(TestCase):
         self.assertFalse(account3.is_active)
 
     def test_account_unlink_authentication_failure(self):
+        """Test account unlinking fails without proper authentication"""
         response = self.client.post(
             self.url, data=json.dumps(self.valid_data), content_type="application/json"
         )

@@ -137,7 +137,6 @@ def account_link(request, *args, **kwargs):
             account.is_active = True
             account.save()
 
-    max_seat_count = account.plan_seat_count
     for org_data in github_orgs:
         owner, _owner_created = Owner.objects.get_or_create(
             service_id=org_data["service_id"],
@@ -148,14 +147,6 @@ def account_link(request, *args, **kwargs):
                 "username": org_data["slug"],
             },
         )
-
-        # If the owner already exists and has a higher seat count, we need to preserve it (since the account seats is the SOT)
-        if (
-            not _owner_created
-            and owner.plan_user_count
-            and owner.plan_user_count > max_seat_count
-        ):
-            max_seat_count = owner.plan_user_count
 
         owner.account = account
         owner.save()
@@ -170,11 +161,6 @@ def account_link(request, *args, **kwargs):
                 "app_id": settings.GITHUB_SENTRY_APP_ID,
             },
         )
-
-    # Updates the account seat count if we found a higher value from existing owners
-    if max_seat_count > account.plan_seat_count:
-        account.plan_seat_count = max_seat_count
-        account.save()
 
     return Response(
         {
