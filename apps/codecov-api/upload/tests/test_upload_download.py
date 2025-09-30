@@ -147,3 +147,53 @@ class UploadDownloadHelperTest(APITestCase):
             data={"path": "shelter/github/codecovtest::::some-other-repo"},
         )
         assert response.status_code == 404
+
+    @patch("shared.storage.MinioStorageService.create_presigned_get")
+    def test_valid_shelter_path_with_colons(self, create_presigned_get):
+        """Test shelter path with :::: separator"""
+        create_presigned_get.return_value = "presigned-url"
+        response = self._get(
+            kwargs={
+                "service": "gh",
+                "owner_username": "codecovtest",
+                "repo_name": "upload-test-repo",
+            },
+            data={"path": "shelter/github/codecovtest::::upload-test-repo"},
+        )
+        assert response.status_code == 302
+        headers = response.headers
+        assert headers["location"] == "presigned-url"
+        create_presigned_get.assert_called_once_with(
+            "archive", "shelter/github/codecovtest::::upload-test-repo", expires=30
+        )
+
+    @patch("shared.storage.MinioStorageService.create_presigned_get")
+    def test_valid_shelter_v4_path_with_slashes(self, create_presigned_get):
+        """Test shelter v4 path with / separator"""
+        create_presigned_get.return_value = "presigned-url"
+        response = self._get(
+            kwargs={
+                "service": "gh",
+                "owner_username": "codecovtest",
+                "repo_name": "upload-test-repo",
+            },
+            data={"path": "shelter/v4/github/codecovtest/upload-test-repo"},
+        )
+        assert response.status_code == 302
+        headers = response.headers
+        assert headers["location"] == "presigned-url"
+        create_presigned_get.assert_called_once_with(
+            "archive", "shelter/v4/github/codecovtest/upload-test-repo", expires=30
+        )
+
+    def test_invalid_shelter_v4_path_with_slashes(self):
+        """Test shelter v4 path with / separator but invalid repo name"""
+        response = self._get(
+            kwargs={
+                "service": "gh",
+                "owner_username": "codecovtest",
+                "repo_name": "upload-test-repo",
+            },
+            data={"path": "shelter/v4/github/codecovtest/invalid-repo-name"},
+        )
+        assert response.status_code == 404
