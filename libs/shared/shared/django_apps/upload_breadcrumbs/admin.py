@@ -25,6 +25,14 @@ from shared.django_apps.upload_breadcrumbs.models import (
 )
 from shared.django_apps.utils.paginator import EstimatedCountPaginator
 
+# Import TaskService conditionally - it may not be available in all contexts
+try:
+    from services.task import TaskService
+    TASK_SERVICE_AVAILABLE = True
+except ImportError:
+    TaskService = None
+    TASK_SERVICE_AVAILABLE = False
+
 # Regex pattern for hexadecimal string validation
 HEX_PATTERN = re.compile(r"^[0-9a-fA-F]+$")
 
@@ -543,7 +551,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
     @admin.display(description="Actions", ordering=None)
     def resend_upload_button(self, obj: UploadBreadcrumb) -> str:
         """Display resend button in the list view for failed uploads."""
-        if not self._is_failed_upload(obj):
+        if not TASK_SERVICE_AVAILABLE or not self._is_failed_upload(obj):
             return "-"
         
         resend_url = reverse(
@@ -563,7 +571,11 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         
         html_parts = []
         
-        if self._is_failed_upload(obj):
+        if not TASK_SERVICE_AVAILABLE:
+            html_parts.append(
+                "<div>⚠️ Task service not available. Resend functionality is disabled.</div>"
+            )
+        elif self._is_failed_upload(obj):
             resend_url = reverse(
                 'admin:upload_breadcrumbs_uploadbreadcrumb_resend_upload',
                 args=[obj.id]
@@ -612,6 +624,10 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
     def resend_upload_view(self, request, object_id):
         """Handle the resend upload request."""
         try:
+            if not TASK_SERVICE_AVAILABLE:
+                messages.error(request, "Task service not available. Resend functionality is disabled.")
+                return redirect('admin:upload_breadcrumbs_uploadbreadcrumb_change', object_id)
+            
             breadcrumb = self.get_object(request, object_id)
             if not breadcrumb:
                 messages.error(request, "Upload breadcrumb not found.")
@@ -644,10 +660,15 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
     
     def _resend_upload(self, breadcrumb: UploadBreadcrumb, user) -> bool:
         """Actually trigger the upload resend."""
-        try:
-            # Import TaskService locally to avoid circular imports
-            from services.task import TaskService
+        if not TASK_SERVICE_AVAILABLE:
+            log.error("TaskService not available for resend upload", extra={
+                "breadcrumb_id": breadcrumb.id,
+                "commit_sha": breadcrumb.commit_sha,
+                "repo_id": breadcrumb.repo_id,
+            })
+            return False
             
+        try:
             # Create a TaskService instance and trigger a new upload task
             task_service = TaskService()
             
@@ -685,6 +706,10 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
     @admin.action(description="Resend selected failed uploads")
     def resend_failed_uploads(self, request, queryset):
         """Bulk action to resend multiple failed uploads."""
+        if not TASK_SERVICE_AVAILABLE:
+            messages.error(request, "Task service not available. Resend functionality is disabled.")
+            return
+            
         failed_uploads = [obj for obj in queryset if self._is_failed_upload(obj)]
         
         if not failed_uploads:
@@ -705,4 +730,3 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         
         if error_count:
             messages.error(request, f"Failed to resend {error_count} uploads.")
-
