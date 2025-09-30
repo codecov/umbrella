@@ -9,8 +9,13 @@ from rest_framework.test import APIClient
 
 from codecov_auth.models import Account
 from shared.django_apps.codecov_auth.models import GithubAppInstallation, Owner
-from shared.django_apps.codecov_auth.tests.factories import AccountFactory, OwnerFactory
-from shared.plan.constants import PlanName
+from shared.django_apps.codecov_auth.tests.factories import (
+    AccountFactory,
+    OwnerFactory,
+    PlanFactory,
+    TierFactory,
+)
+from shared.plan.constants import PlanName, TierName
 
 
 class AccountLinkViewTests(TestCase):
@@ -508,6 +513,246 @@ class AccountLinkViewTests(TestCase):
         existing_account.refresh_from_db()
         self.assertTrue(existing_account.is_active)
         self.assertEqual(str(existing_account.sentry_org_id), "999999999")
+
+    def test_account_link_blocks_pro_monthly_plan(self):
+        """Test that account linking is blocked for Pro Monthly plan"""
+        self._test_account_link_blocks_paid_plan(
+            PlanName.CODECOV_PRO_MONTHLY.value, TierName.PRO.value, True
+        )
+
+    def test_account_link_blocks_pro_yearly_plan(self):
+        """Test that account linking is blocked for Pro Yearly plan"""
+        self._test_account_link_blocks_paid_plan(
+            PlanName.CODECOV_PRO_YEARLY.value, TierName.PRO.value, True
+        )
+
+    def test_account_link_blocks_team_monthly_plan(self):
+        """Test that account linking is blocked for Team Monthly plan"""
+        self._test_account_link_blocks_paid_plan(
+            PlanName.TEAM_MONTHLY.value, TierName.TEAM.value, True
+        )
+
+    def test_account_link_blocks_team_yearly_plan(self):
+        """Test that account linking is blocked for Team Yearly plan"""
+        self._test_account_link_blocks_paid_plan(
+            PlanName.TEAM_YEARLY.value, TierName.TEAM.value, True
+        )
+
+    def test_account_link_blocks_enterprise_monthly_plan(self):
+        """Test that account linking is blocked for Enterprise Monthly plan"""
+        self._test_account_link_blocks_paid_plan(
+            PlanName.ENTERPRISE_CLOUD_MONTHLY.value, TierName.ENTERPRISE.value, True
+        )
+
+    def test_account_link_blocks_enterprise_yearly_plan(self):
+        """Test that account linking is blocked for Enterprise Yearly plan"""
+        self._test_account_link_blocks_paid_plan(
+            PlanName.ENTERPRISE_CLOUD_YEARLY.value, TierName.ENTERPRISE.value, True
+        )
+
+    def _test_account_link_blocks_paid_plan(self, plan_name, tier_name, paid_plan):
+        """Helper method to test that account linking is blocked for paid plans"""
+        # Create plan and tier
+        tier = TierFactory(tier_name=tier_name)
+        plan = PlanFactory(
+            name=plan_name,
+            tier=tier,
+            paid_plan=paid_plan,
+            marketing_name=f"{tier_name.title()} Plan",
+        )
+
+        # Derive org name from plan name
+        org_name = f"{plan_name.replace('users-', '').replace('-', '_')}_org"
+
+        # Create owner with the plan
+        existing_owner = OwnerFactory(
+            service_id="456789123",
+            service="github",
+            plan=plan_name,
+            name=org_name,
+            username=org_name,
+        )
+
+        # Update test data to use the correct org name
+        test_data = self.valid_data.copy()
+        test_data["organizations"][0]["slug"] = org_name
+
+        response = self._make_authenticated_request(data=test_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("already has an active paid plan", response.data["message"])
+        self.assertIn(org_name, response.data["message"])
+        self.assertIn(plan_name, response.data["message"])
+
+        # Verify no account was created
+        self.assertFalse(Account.objects.filter(sentry_org_id="123456789").exists())
+
+        # Verify owner plan was not changed
+        existing_owner.refresh_from_db()
+        self.assertEqual(existing_owner.plan, plan_name)
+
+    def test_account_link_allows_sentry_monthly_plan(self):
+        """Test that account linking is allowed for Sentry Monthly plan"""
+        self._test_account_link_allows_compatible_plan(
+            PlanName.SENTRY_MONTHLY.value, TierName.SENTRY.value, True
+        )
+
+    def test_account_link_allows_sentry_yearly_plan(self):
+        """Test that account linking is allowed for Sentry Yearly plan"""
+        self._test_account_link_allows_compatible_plan(
+            PlanName.SENTRY_YEARLY.value, TierName.SENTRY.value, True
+        )
+
+    def test_account_link_allows_developer_plan(self):
+        """Test that account linking is allowed for Developer plan"""
+        self._test_account_link_allows_compatible_plan(
+            PlanName.USERS_DEVELOPER.value, TierName.BASIC.value, False
+        )
+
+    def test_account_link_allows_free_plan(self):
+        """Test that account linking is allowed for Free plan"""
+        self._test_account_link_allows_compatible_plan(
+            PlanName.FREE_PLAN_NAME.value, TierName.BASIC.value, False
+        )
+
+    def _test_account_link_allows_compatible_plan(
+        self, plan_name, tier_name, paid_plan
+    ):
+        """Helper method to test that account linking is allowed for compatible plans"""
+        # Create plan and tier
+        tier = TierFactory(tier_name=tier_name)
+        plan = PlanFactory(
+            name=plan_name,
+            tier=tier,
+            paid_plan=paid_plan,
+            marketing_name=f"{tier_name.title()} Plan",
+        )
+
+        # Derive org name from plan name
+        org_name = f"{plan_name.replace('users-', '').replace('-', '_')}_org"
+
+        # Create owner with the plan
+        existing_owner = OwnerFactory(
+            service_id="456789123",
+            service="github",
+            plan=plan_name,
+            name=org_name,
+            username=org_name,
+        )
+
+        # Update test data to use the correct org name
+        test_data = self.valid_data.copy()
+        test_data["organizations"][0]["slug"] = org_name
+
+        response = self._make_authenticated_request(data=test_data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Verify account was created
+        account = Account.objects.get(sentry_org_id="123456789")
+        self.assertEqual(account.plan, PlanName.SENTRY_MERGE_PLAN.value)
+
+        # Verify owner was linked to new account
+        existing_owner.refresh_from_db()
+        self.assertEqual(existing_owner.account, account)
+
+    def test_account_link_blocks_legacy_pro_monthly_plan(self):
+        """Test that account linking is blocked for legacy Pro Monthly plan"""
+        self._test_account_link_blocks_legacy_paid_plan(
+            PlanName.CODECOV_PRO_MONTHLY.value
+        )
+
+    def test_account_link_blocks_legacy_pro_yearly_plan(self):
+        """Test that account linking is blocked for legacy Pro Yearly plan"""
+        self._test_account_link_blocks_legacy_paid_plan(
+            PlanName.CODECOV_PRO_YEARLY.value
+        )
+
+    def test_account_link_blocks_legacy_team_monthly_plan(self):
+        """Test that account linking is blocked for legacy Team Monthly plan"""
+        self._test_account_link_blocks_legacy_paid_plan(PlanName.TEAM_MONTHLY.value)
+
+    def test_account_link_blocks_legacy_team_yearly_plan(self):
+        """Test that account linking is blocked for legacy Team Yearly plan"""
+        self._test_account_link_blocks_legacy_paid_plan(PlanName.TEAM_YEARLY.value)
+
+    def test_account_link_blocks_legacy_enterprise_monthly_plan(self):
+        """Test that account linking is blocked for legacy Enterprise Monthly plan"""
+        self._test_account_link_blocks_legacy_paid_plan(
+            PlanName.ENTERPRISE_CLOUD_MONTHLY.value
+        )
+
+    def test_account_link_blocks_legacy_enterprise_yearly_plan(self):
+        """Test that account linking is blocked for legacy Enterprise Yearly plan"""
+        self._test_account_link_blocks_legacy_paid_plan(
+            PlanName.ENTERPRISE_CLOUD_YEARLY.value
+        )
+
+    def _test_account_link_blocks_legacy_paid_plan(self, plan_name):
+        """Helper method to test that account linking is blocked for legacy paid plans"""
+        # Derive org name from plan name
+        org_name = f"legacy_{plan_name.replace('users-', '').replace('-', '_')}_org"
+
+        # Create owner with legacy plan (not in Plan model)
+        existing_owner = OwnerFactory(
+            service_id="456789123",
+            service="github",
+            plan=plan_name,
+            name=org_name,
+            username=org_name,
+        )
+
+        # Update test data to use the correct org name
+        test_data = self.valid_data.copy()
+        test_data["organizations"][0]["slug"] = org_name
+
+        response = self._make_authenticated_request(data=test_data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("already has an active plan", response.data["message"])
+        self.assertIn(org_name, response.data["message"])
+        self.assertIn(plan_name, response.data["message"])
+
+        # Verify no account was created
+        self.assertFalse(Account.objects.filter(sentry_org_id="123456789").exists())
+
+    def test_account_link_allows_legacy_developer_plan(self):
+        """Test that account linking is allowed for legacy Developer plan"""
+        self._test_account_link_allows_legacy_free_plan(PlanName.USERS_DEVELOPER.value)
+
+    def test_account_link_allows_legacy_free_plan(self):
+        """Test that account linking is allowed for legacy Free plan"""
+        self._test_account_link_allows_legacy_free_plan(PlanName.FREE_PLAN_NAME.value)
+
+    def _test_account_link_allows_legacy_free_plan(self, plan_name):
+        """Helper method to test that account linking is allowed for legacy free plans"""
+        # Derive org name from plan name
+        org_name = f"legacy_{plan_name.replace('users-', '').replace('-', '_')}_org"
+
+        # Create owner with legacy plan (not in Plan model)
+        existing_owner = OwnerFactory(
+            service_id="456789123",
+            service="github",
+            plan=plan_name,
+            name=org_name,
+            username=org_name,
+        )
+
+        # Update test data to use the correct org name
+        test_data = self.valid_data.copy()
+        test_data["organizations"][0]["slug"] = org_name
+
+        response = self._make_authenticated_request(data=test_data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Verify account was created
+        account = Account.objects.get(sentry_org_id="123456789")
+        self.assertEqual(account.plan, PlanName.SENTRY_MERGE_PLAN.value)
+
+        # Verify owner was linked to new account
+        existing_owner.refresh_from_db()
+        self.assertEqual(existing_owner.account, account)
 
 
 class AccountUnlinkViewTests(TestCase):
