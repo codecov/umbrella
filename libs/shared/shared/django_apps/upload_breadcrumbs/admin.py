@@ -705,3 +705,4 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         
         if error_count:
             messages.error(request, f"Failed to resend {error_count} uploads.")
+
