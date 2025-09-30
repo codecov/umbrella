@@ -606,7 +606,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
                 # ]
                 # return error_code in retriable_errors
                 return True
-                
+
         return False
     
     def resend_upload_view(self, request, object_id):
@@ -705,4 +705,3 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         
         if error_count:
             messages.error(request, f"Failed to resend {error_count} uploads.")
-    
