@@ -207,6 +207,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
     paginator = EstimatedCountPaginator
     search_fields = ("repo_id", "commit_sha", "sentry_trace_id")
     search_help_text = "Search by repository ID, commit SHA, and/or Sentry trace ID (all exact match). Separate multiple values with spaces to AND search (E.g. '<repo_id> <commit_sha>')."
+    actions = ["resend_failed_uploads"]
 
     def get_search_results(
         self, request: HttpRequest, queryset: QuerySet, search_term: str
