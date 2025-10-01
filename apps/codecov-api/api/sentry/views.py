@@ -1,5 +1,6 @@
 import logging
 
+import sentry_sdk
 from django.conf import settings
 from rest_framework import serializers, status
 from rest_framework.decorators import (
@@ -104,7 +105,7 @@ def account_link(request, *args, **kwargs):
             if existing_owner.plan:
                 try:
                     plan_obj = Plan.objects.get(name=existing_owner.plan)
-                    if plan_obj.paid_plan and not plan_obj.is_sentry_plan:
+                    if plan_obj.paid_plan:
                         # This owner has a paid plan, we should not override
                         # it with Sentry merge plan
                         return Response(
@@ -119,30 +120,13 @@ def account_link(request, *args, **kwargs):
                             status=status.HTTP_400_BAD_REQUEST,
                         )
                 except Plan.DoesNotExist:
-                    # If plan doesn't exist in Plan model, assume it's a legacy
-                    # paid plan
-                    plans_not_to_override = [
-                        PlanName.CODECOV_PRO_MONTHLY.value,
-                        PlanName.CODECOV_PRO_YEARLY.value,
-                        PlanName.TEAM_MONTHLY.value,
-                        PlanName.TEAM_YEARLY.value,
-                        PlanName.ENTERPRISE_CLOUD_MONTHLY.value,
-                        PlanName.ENTERPRISE_CLOUD_YEARLY.value,
-                        PlanName.CODECOV_PRO_MONTHLY_LEGACY.value,
-                        PlanName.CODECOV_PRO_YEARLY_LEGACY.value,
-                    ]
-                    if existing_owner.plan in plans_not_to_override:
-                        return Response(
-                            {
-                                "message": (
-                                    f"Organization {org_data['slug']} already has an "
-                                    f"active plan ({existing_owner.plan}). Cannot link "
-                                    f"to Sentry account as it would override existing "
-                                    f"billing."
-                                )
-                            },
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
+                    sentry_sdk.capture_message(
+                        f"Owner {existing_owner.ownerid} has a plan {existing_owner.plan} that does not exist in Plan model",
+                        level="warning",
+                    )
+                    log.warning(
+                        f"Owner {existing_owner.ownerid} has a plan {existing_owner.plan} that does not exist in Plan model"
+                    )
 
             # If the organization is already linked to an active Sentry account,
             # return an error. If the organization is linked to an inactive
