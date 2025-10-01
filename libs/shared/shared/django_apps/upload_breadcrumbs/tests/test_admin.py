@@ -937,3 +937,547 @@ class UploadBreadcrumbAdminSearchTest(TestCase):
         self.assertTrue(use_distinct)
         result_ids = list(result.values_list("id", flat=True))
         self.assertIn(test_breadcrumb.id, result_ids)
+
+
+@override_settings(ROOT_URLCONF='shared.django_apps.upload_breadcrumbs.tests.test_urls')
+class UploadBreadcrumbAdminResendTest(TestCase):
+    """Test cases for the resend upload functionality in UploadBreadcrumbAdmin."""
+
+    def setUp(self):
+        self.user = UserFactory(is_staff=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.admin = UploadBreadcrumbAdmin(UploadBreadcrumb, AdminSite())
+        self.repo = RepositoryFactory()
+
+    def test_is_failed_upload_scenarios(self):
+        """Test _is_failed_upload with various scenarios."""
+        test_cases = [
+            # (breadcrumb_data, expected_result, description)
+            (
+                {
+                    "milestone": Milestones.PROCESSING_UPLOAD.value,
+                    "error": Errors.FILE_NOT_IN_STORAGE.value,
+                },
+                True,
+                "processing upload with FILE_NOT_IN_STORAGE error"
+            ),
+            (
+                {
+                    "milestone": Milestones.PROCESSING_UPLOAD.value,
+                    "error": Errors.REPORT_EXPIRED.value,
+                },
+                True,
+                "processing upload with REPORT_EXPIRED error"
+            ),
+            (
+                {
+                    "milestone": Milestones.COMPILING_UPLOADS.value,
+                    "error": Errors.REPORT_EXPIRED.value,
+                },
+                True,
+                "compiling uploads with REPORT_EXPIRED error"
+            ),
+            (
+                {
+                    "milestone": Milestones.COMPILING_UPLOADS.value,
+                    "error": Errors.UNKNOWN.value,
+                },
+                True,
+                "compiling uploads with UNKNOWN error"
+            ),
+            (
+                {
+                    "milestone": Milestones.PROCESSING_UPLOAD.value,
+                },
+                False,
+                "processing upload without error"
+            ),
+            (
+                {
+                    "milestone": Milestones.COMPILING_UPLOADS.value,
+                },
+                False,
+                "compiling uploads without error"
+            ),
+            (
+                {
+                    "milestone": Milestones.UPLOAD_COMPLETE.value,
+                    "error": Errors.BAD_REQUEST.value,
+                },
+                False,
+                "non-processing/compiling milestone with error"
+            ),
+            (
+                {
+                    "milestone": Milestones.WAITING_FOR_COVERAGE_UPLOAD.value,
+                    "error": Errors.FILE_NOT_IN_STORAGE.value,
+                },
+                False,
+                "non-processing/compiling milestone with error"
+            ),
+            (
+                None,
+                False,
+                "None breadcrumb_data"
+            ),
+            (
+                {},
+                False,
+                "empty breadcrumb_data"
+            ),
+        ]
+
+        for breadcrumb_data, expected_result, description in test_cases:
+            with self.subTest(description=description):
+                if breadcrumb_data is None:
+                    # Handle None case with a mock since the DB doesn't allow null breadcrumb_data
+                    breadcrumb = MagicMock()
+                    breadcrumb.breadcrumb_data = None
+                else:
+                    breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+                result = self.admin._is_failed_upload(breadcrumb)
+                self.assertEqual(result, expected_result, f"Failed for: {description}")
+
+    def test_resend_upload_button_scenarios(self):
+        """Test resend_upload_button with various scenarios."""
+        test_cases = [
+            # (task_service_available, breadcrumb_data, expected_contains, expected_type, description)
+            (
+                True,
+                {
+                    "milestone": Milestones.PROCESSING_UPLOAD.value,
+                    "error": Errors.FILE_NOT_IN_STORAGE.value,
+                },
+                ["🔄 Resend", 'class="button"', "onclick="],
+                SafeString,
+                "failed upload with TaskService available"
+            ),
+            (
+                True,
+                {
+                    "milestone": Milestones.COMPILING_UPLOADS.value,
+                    "error": Errors.REPORT_EXPIRED.value,
+                },
+                ["🔄 Resend", 'class="button"', "onclick="],
+                SafeString,
+                "failed compiling upload with TaskService available"
+            ),
+            (
+                False,
+                {
+                    "milestone": Milestones.PROCESSING_UPLOAD.value,
+                    "error": Errors.FILE_NOT_IN_STORAGE.value,
+                },
+                None,
+                str,
+                "failed upload with TaskService unavailable"
+            ),
+            (
+                True,
+                {
+                    "milestone": Milestones.UPLOAD_COMPLETE.value,
+                },
+                None,
+                str,
+                "successful upload"
+            ),
+            (
+                False,
+                {
+                    "milestone": Milestones.UPLOAD_COMPLETE.value,
+                },
+                None,
+                str,
+                "successful upload with TaskService unavailable"
+            ),
+        ]
+
+        for task_service_available, breadcrumb_data, expected_contains, expected_type, description in test_cases:
+            with self.subTest(description=description):
+                with patch('shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE', task_service_available):
+                    breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+                    result = self.admin.resend_upload_button(breadcrumb)
+
+                    if expected_contains is None:
+                        self.assertEqual(result, "-", f"Failed for: {description}")
+                    else:
+                        self.assertIsInstance(result, expected_type, f"Failed for: {description}")
+                        for expected_content in expected_contains:
+                            self.assertIn(expected_content, result, f"Failed for: {description}")
+
+    def test_resend_upload_action_scenarios(self):
+        """Test resend_upload_action with various scenarios."""
+        test_cases = [
+            # (task_service_available, breadcrumb_data, commit_sha, has_pk, expected_contains, description)
+            (
+                True,
+                {
+                    "milestone": Milestones.PROCESSING_UPLOAD.value,
+                    "error": Errors.REPORT_EXPIRED.value,
+                },
+                "abcdef1234567890",
+                True,
+                ["🔄 Resend Upload", 'class="button default"', "abcdef1", "⚠️ Note:"],
+                "failed upload with TaskService available"
+            ),
+            (
+                True,
+                {
+                    "milestone": Milestones.COMPILING_UPLOADS.value,
+                    "error": Errors.FILE_NOT_IN_STORAGE.value,
+                },
+                "1234567890abcdef",
+                True,
+                ["🔄 Resend Upload", 'class="button default"', "1234567", "⚠️ Note:"],
+                "failed compiling upload with TaskService available"
+            ),
+            (
+                False,
+                {
+                    "milestone": Milestones.PROCESSING_UPLOAD.value,
+                    "error": Errors.FILE_NOT_IN_STORAGE.value,
+                },
+                "abcdef1234567890",
+                True,
+                ["⚠️ Task service not available", "Resend functionality is disabled"],
+                "failed upload with TaskService unavailable"
+            ),
+            (
+                True,
+                {
+                    "milestone": Milestones.UPLOAD_COMPLETE.value,
+                },
+                "abcdef1234567890",
+                True,
+                ["✅ This upload does not appear to have failed", "Resend option is not available"],
+                "successful upload"
+            ),
+            (
+                False,
+                {
+                    "milestone": Milestones.UPLOAD_COMPLETE.value,
+                },
+                "abcdef1234567890",
+                True,
+                ["⚠️ Task service not available", "Resend functionality is disabled"],
+                "successful upload with TaskService unavailable"
+            ),
+            (
+                True,
+                {},
+                "abcdef1234567890",
+                False,
+                None,
+                "new object without pk"
+            ),
+        ]
+
+        for task_service_available, breadcrumb_data, commit_sha, has_pk, expected_contains, description in test_cases:
+            with self.subTest(description=description):
+                with patch('shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE', task_service_available):
+                    if has_pk:
+                        breadcrumb = UploadBreadcrumbFactory(
+                            breadcrumb_data=breadcrumb_data,
+                            commit_sha=commit_sha
+                        )
+                    else:
+                        breadcrumb = UploadBreadcrumb()  # No pk
+
+                    result = self.admin.resend_upload_action(breadcrumb)
+
+                    if expected_contains is None:
+                        self.assertEqual(result, "-", f"Failed for: {description}")
+                    else:
+                        self.assertIsInstance(result, SafeString, f"Failed for: {description}")
+                        for expected_content in expected_contains:
+                            self.assertIn(expected_content, result, f"Failed for: {description}")
+
+    @patch('shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE', False)
+    @patch('django.contrib.messages.error')
+    def test_resend_upload_view_with_task_service_unavailable(self, mock_messages_error):
+        """Test resend_upload_view handles TaskService unavailability."""
+        breadcrumb = UploadBreadcrumbFactory()
+        request = MagicMock()
+        request.user = self.user
+
+        with patch.object(self.admin, 'get_object', return_value=breadcrumb):
+            response = self.admin.resend_upload_view(request, str(breadcrumb.id))
+
+        mock_messages_error.assert_called_once_with(
+            request, "Task service not available. Resend functionality is disabled."
+        )
+
+    @patch('shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE', True)
+    @patch('django.contrib.messages.error')
+    def test_resend_upload_view_with_nonexistent_breadcrumb(self, mock_messages_error):
+        """Test resend_upload_view handles nonexistent breadcrumb."""
+        request = MagicMock()
+        request.user = self.user
+
+        with patch.object(self.admin, 'get_object', return_value=None):
+            response = self.admin.resend_upload_view(request, "999")
+
+        mock_messages_error.assert_called_once_with(
+            request, "Upload breadcrumb not found."
+        )
+
+    @patch('shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE', True)
+    @patch('django.contrib.messages.error')
+    def test_resend_upload_view_with_non_failed_upload(self, mock_messages_error):
+        """Test resend_upload_view handles non-failed uploads."""
+        breadcrumb_data = {
+            "milestone": Milestones.UPLOAD_COMPLETE.value,
+        }
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+        request = MagicMock()
+        request.user = self.user
+
+        with patch.object(self.admin, 'get_object', return_value=breadcrumb):
+            response = self.admin.resend_upload_view(request, str(breadcrumb.id))
+
+        mock_messages_error.assert_called_once_with(
+            request, "This upload does not appear to have failed."
+        )
+
+    @patch('shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE', True)
+    @patch('django.contrib.messages.success')
+    def test_resend_upload_view_successful_resend(self, mock_messages_success):
+        """Test resend_upload_view handles successful resend."""
+        breadcrumb_data = {
+            "milestone": Milestones.PROCESSING_UPLOAD.value,
+            "error": Errors.FILE_NOT_IN_STORAGE.value,
+        }
+        breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data=breadcrumb_data,
+            commit_sha="abcdef1234567890"
+        )
+        request = MagicMock()
+        request.user = self.user
+
+        with patch.object(self.admin, 'get_object', return_value=breadcrumb), \
+             patch.object(self.admin, '_resend_upload', return_value=True):
+            response = self.admin.resend_upload_view(request, str(breadcrumb.id))
+
+        mock_messages_success.assert_called_once()
+        success_message = mock_messages_success.call_args[0][1]
+        self.assertIn("Upload resend triggered successfully", success_message)
+        self.assertIn("abcdef1", success_message)
+
+    @patch('shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE', True)
+    @patch('django.contrib.messages.error')
+    def test_resend_upload_view_failed_resend(self, mock_messages_error):
+        """Test resend_upload_view handles failed resend."""
+        breadcrumb_data = {
+            "milestone": Milestones.PROCESSING_UPLOAD.value,
+            "error": Errors.FILE_NOT_IN_STORAGE.value,
+        }
+        breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data=breadcrumb_data,
+            commit_sha="abcdef1234567890"
+        )
+        request = MagicMock()
+        request.user = self.user
+
+        with patch.object(self.admin, 'get_object', return_value=breadcrumb), \
+             patch.object(self.admin, '_resend_upload', return_value=False):
+            response = self.admin.resend_upload_view(request, str(breadcrumb.id))
+
+        mock_messages_error.assert_called_once()
+        error_message = mock_messages_error.call_args[0][1]
+        self.assertIn("Failed to resend upload", error_message)
+        self.assertIn("abcdef1", error_message)
+
+    @patch('shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE', True)
+    @patch('django.contrib.messages.error')
+    def test_resend_upload_view_exception_handling(self, mock_messages_error):
+        """Test resend_upload_view handles exceptions gracefully."""
+        request = MagicMock()
+        request.user = self.user
+
+        with patch.object(self.admin, 'get_object', side_effect=Exception("Test error")):
+            response = self.admin.resend_upload_view(request, "123")
+
+        mock_messages_error.assert_called_once()
+        error_message = mock_messages_error.call_args[0][1]
+        self.assertIn("Error resending upload: Test error", error_message)
+
+    @patch('shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE', False)
+    def test_resend_upload_with_task_service_unavailable(self):
+        """Test _resend_upload returns False when TaskService unavailable."""
+        breadcrumb = UploadBreadcrumbFactory()
+
+        result = self.admin._resend_upload(breadcrumb, self.user)
+
+        self.assertFalse(result)
+
+    @patch('shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE', True)
+    @patch('shared.django_apps.upload_breadcrumbs.admin.TaskService')
+    def test_resend_upload_successful(self, mock_task_service_class):
+        """Test _resend_upload successfully triggers upload task."""
+        mock_task_service = MagicMock()
+        mock_task_service_class.return_value = mock_task_service
+        
+        breadcrumb = UploadBreadcrumbFactory(
+            repo_id=12345,
+            commit_sha="abcdef1234567890",
+            breadcrumb_data={"endpoint": Endpoints.CREATE_COMMIT.value}
+        )
+
+        result = self.admin._resend_upload(breadcrumb, self.user)
+
+        self.assertTrue(result)
+        mock_task_service.upload.assert_called_once_with(
+            repoid=12345,
+            commitid="abcdef1234567890",
+            report_type="coverage",
+            arguments={
+                "commit": "abcdef1234567890",
+                "reportid": None,
+            },
+            countdown=0,
+        )
+
+    @patch('shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE', True)
+    @patch('shared.django_apps.upload_breadcrumbs.admin.TaskService')
+    @patch('shared.django_apps.upload_breadcrumbs.admin.log')
+    def test_resend_upload_exception_handling(self, mock_log, mock_task_service_class):
+        """Test _resend_upload handles exceptions and logs them."""
+        mock_task_service = MagicMock()
+        mock_task_service.upload.side_effect = Exception("Upload failed")
+        mock_task_service_class.return_value = mock_task_service
+        
+        breadcrumb = UploadBreadcrumbFactory(
+            repo_id=12345,
+            commit_sha="abcdef1234567890"
+        )
+
+        result = self.admin._resend_upload(breadcrumb, self.user)
+
+        self.assertFalse(result)
+        mock_log.exception.assert_called_once_with(
+            "Failed to resend upload",
+            extra={
+                "breadcrumb_id": breadcrumb.id,
+                "commit_sha": "abcdef1234567890",
+                "repo_id": 12345,
+                "error": "Upload failed"
+            }
+        )
+
+
+    def test_bulk_resend_scenarios(self):
+        """Test bulk resend action with various scenarios."""
+        test_cases = [
+            # (task_service_available, breadcrumbs_data, resend_results, expected_messages, description)
+            (
+                False,
+                [],
+                [],
+                [("error", "Task service not available. Resend functionality is disabled.")],
+                "TaskService unavailable"
+            ),
+            (
+                True,
+                [
+                    {"milestone": Milestones.UPLOAD_COMPLETE.value},
+                    {"milestone": Milestones.UPLOAD_COMPLETE.value},
+                ],
+                [],
+                [("warning", "No failed uploads found in selection.")],
+                "no failed uploads in selection"
+            ),
+            (
+                True,
+                [
+                    {
+                        "milestone": Milestones.PROCESSING_UPLOAD.value,
+                        "error": Errors.FILE_NOT_IN_STORAGE.value,
+                    },
+                    {
+                        "milestone": Milestones.COMPILING_UPLOADS.value,
+                        "error": Errors.REPORT_EXPIRED.value,
+                    },
+                ],
+                [True, True],
+                [("success", "Successfully triggered resend for 2 uploads.")],
+                "all uploads successfully resent"
+            ),
+            (
+                True,
+                [
+                    {
+                        "milestone": Milestones.PROCESSING_UPLOAD.value,
+                        "error": Errors.FILE_NOT_IN_STORAGE.value,
+                    },
+                    {
+                        "milestone": Milestones.COMPILING_UPLOADS.value,
+                        "error": Errors.REPORT_EXPIRED.value,
+                    },
+                    {
+                        "milestone": Milestones.PROCESSING_UPLOAD.value,
+                        "error": Errors.UNKNOWN.value,
+                    },
+                ],
+                [True, False, True],  # First and third succeed, second fails
+                [
+                    ("success", "Successfully triggered resend for 2 uploads."),
+                    ("error", "Failed to resend 1 uploads.")
+                ],
+                "mixed success/failure results"
+            ),
+        ]
+
+        for task_service_available, breadcrumbs_data, resend_results, expected_messages, description in test_cases:
+            with self.subTest(description=description):
+                request = MagicMock()
+                
+                # Create breadcrumbs
+                breadcrumbs = []
+                for breadcrumb_data in breadcrumbs_data:
+                    breadcrumbs.append(UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data))
+                
+                queryset = UploadBreadcrumb.objects.filter(
+                    id__in=[b.id for b in breadcrumbs]
+                ) if breadcrumbs else UploadBreadcrumb.objects.none()
+
+                # Mock resend results
+                def mock_resend_side_effect(breadcrumb, user):
+                    try:
+                        index = [b.id for b in breadcrumbs].index(breadcrumb.id)
+                        return resend_results[index]
+                    except (ValueError, IndexError):
+                        return False
+
+                with patch('shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE', task_service_available), \
+                     patch.object(self.admin, '_resend_upload', side_effect=mock_resend_side_effect):
+                    
+                    # Mock the appropriate message methods
+                    with patch('django.contrib.messages.error') as mock_error, \
+                         patch('django.contrib.messages.warning') as mock_warning, \
+                         patch('django.contrib.messages.success') as mock_success:
+                        
+                        self.admin.resend_failed_uploads(request, queryset)
+                        
+                        # Verify expected messages were called
+                        for message_type, message_text in expected_messages:
+                            if message_type == "error":
+                                mock_error.assert_called_with(request, message_text)
+                            elif message_type == "warning":
+                                mock_warning.assert_called_with(request, message_text)
+                            elif message_type == "success":
+                                mock_success.assert_called_with(request, message_text)
+
+    def test_get_urls_includes_resend_url(self):
+        """Test that get_urls includes the resend upload URL pattern."""
+        urls = self.admin.get_urls()
+        
+        # Find the resend upload URL pattern
+        resend_url_pattern = None
+        for url_pattern in urls:
+            if hasattr(url_pattern, 'name') and url_pattern.name == 'upload_breadcrumbs_uploadbreadcrumb_resend_upload':
+                resend_url_pattern = url_pattern
+                break
+        
+        self.assertIsNotNone(resend_url_pattern)
+        self.assertIn('resend-upload/', str(resend_url_pattern.pattern))
