@@ -41,25 +41,25 @@ def get_daily_aggregate_querysets(
     if branch is None:
         test_data = TestAggregateDaily.objects.filter(  # type: ignore[attr-defined]
             repo_id=repoid,
-            bucket_daily__gt=start_date,
+            bucket_daily__gte=start_date,
             bucket_daily__lte=end_date,
         )
         repo_data = AggregateDaily.objects.filter(  # type: ignore[attr-defined]
             repo_id=repoid,
-            bucket_daily__gt=start_date,
+            bucket_daily__gte=start_date,
             bucket_daily__lte=end_date,
         )
     else:
         test_data = BranchTestAggregateDaily.objects.filter(  # type: ignore[attr-defined]
             repo_id=repoid,
             branch=branch,
-            bucket_daily__gt=start_date,
+            bucket_daily__gte=start_date,
             bucket_daily__lte=end_date,
         )
         repo_data = BranchAggregateDaily.objects.filter(  # type: ignore[attr-defined]
             repo_id=repoid,
             branch=branch,
-            bucket_daily__gt=start_date,
+            bucket_daily__gte=start_date,
             bucket_daily__lte=end_date,
         )
 
