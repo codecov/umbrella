@@ -1,5 +1,6 @@
 import logging
 
+import sentry_sdk
 from django.conf import settings
 from rest_framework import serializers, status
 from rest_framework.decorators import (
@@ -11,7 +12,12 @@ from rest_framework.response import Response
 
 from codecov_auth.models import Account
 from codecov_auth.permissions import JWTAuthenticationPermission
-from shared.django_apps.codecov_auth.models import GithubAppInstallation, Owner, Service
+from shared.django_apps.codecov_auth.models import (
+    GithubAppInstallation,
+    Owner,
+    Plan,
+    Service,
+)
 from shared.plan.constants import PlanName
 
 log = logging.getLogger(__name__)
@@ -89,8 +95,42 @@ def account_link(request, *args, **kwargs):
             existing_owner = Owner.objects.get(
                 service_id=org_data["service_id"], service=org_data["provider"]
             )
-            # If the organization is already linked to an active Sentry account, return an error
-            # If the organization is linked to an inactive Sentry account, set it to reactivate later
+
+            # Check if the organization has an existing paid plan that should
+            # be preserved
+            # FIXME: This is temporary (famous last words) and will be changed
+            # once you can actually purchase prevent plan in Sentry.
+            # At that point the plan is to _cancel_ existing codecov plans and
+            # just use the Sentry one.
+            if existing_owner.plan:
+                try:
+                    plan_obj = Plan.objects.get(name=existing_owner.plan)
+                    if plan_obj.paid_plan:
+                        # This owner has a paid plan, we should not override
+                        # it with Sentry merge plan
+                        return Response(
+                            {
+                                "message": (
+                                    f"Organization {org_data['slug']} already has an "
+                                    f"active paid plan ({existing_owner.plan}). "
+                                    f"Cannot link to Sentry account as it would "
+                                    f"override existing billing."
+                                )
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                except Plan.DoesNotExist:
+                    sentry_sdk.capture_message(
+                        f"Owner {existing_owner.ownerid} has a plan {existing_owner.plan} that does not exist in Plan model",
+                        level="warning",
+                    )
+                    log.warning(
+                        f"Owner {existing_owner.ownerid} has a plan {existing_owner.plan} that does not exist in Plan model"
+                    )
+
+            # If the organization is already linked to an active Sentry account,
+            # return an error. If the organization is linked to an inactive
+            # Sentry account, set it to reactivate later
             if (
                 existing_owner.account
                 and existing_owner.account.plan == PlanName.SENTRY_MERGE_PLAN.value
@@ -98,7 +138,10 @@ def account_link(request, *args, **kwargs):
                 if existing_owner.account.is_active:
                     return Response(
                         {
-                            "message": f"Organization {org_data['slug']} is already linked to an active Sentry account"
+                            "message": (
+                                f"Organization {org_data['slug']} is already linked to "
+                                f"an active Sentry account"
+                            )
                         },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
@@ -113,7 +156,8 @@ def account_link(request, *args, **kwargs):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Second pass: Account linking step, either reactivate or create a new account if there is no inactive account to reactivate
+    # Second pass: Account linking step, either reactivate or create a new
+    # account if there is no inactive account to reactivate
     if account_to_reactivate:
         account = account_to_reactivate
         account.sentry_org_id = sentry_org_id
