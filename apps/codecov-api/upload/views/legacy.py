@@ -459,6 +459,11 @@ class UploadDownloadHandler(View):
             archive_service = ArchiveService(repo)
             if cast(str, archive_service.storage_hash) not in self.path:
                 raise Http404(msg)
+        elif self.path.startswith("shelter/v4"):
+            if not self.path.startswith(
+                f"shelter/v4/{self.service}/{self.owner_username}/{self.repo_name}"
+            ):
+                raise Http404(msg)
         elif self.path.startswith("shelter/"):
             # Shelter upload
             if not self.path.startswith(
