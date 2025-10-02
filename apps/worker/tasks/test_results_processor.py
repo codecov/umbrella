@@ -31,7 +31,6 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
                 commitid=commitid,
                 commit_yaml=commit_yaml,
                 argument=argument,
-                update_state=True,
             )
         return True
 
