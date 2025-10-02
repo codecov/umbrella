@@ -10,14 +10,13 @@ from django.contrib.admin.views.main import ChangeList
 from django.db.models import Q, QuerySet
 from django.http import HttpRequest
 from django.shortcuts import redirect
-from django.utils.html import format_html
 from django.urls import path, reverse
+from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 
 from shared.config import get_config
 from shared.django_apps.core.models import Repository
 from shared.django_apps.upload_breadcrumbs.models import (
-    BreadcrumbData,
     Endpoints,
     Errors,
     Milestones,
@@ -28,6 +27,7 @@ from shared.django_apps.utils.paginator import EstimatedCountPaginator
 # Import TaskService conditionally - it may not be available in all contexts
 try:
     from services.task import TaskService
+
     TASK_SERVICE_AVAILABLE = True
 except ImportError:
     TaskService = None
@@ -38,6 +38,7 @@ HEX_PATTERN = re.compile(r"^[0-9a-fA-F]+$")
 
 # Get logger for this module
 log = logging.getLogger(__name__)
+
 
 class PresentDataFilter(admin.SimpleListFilter):
     title = "Present Data"
@@ -202,7 +203,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         "resend_upload_action",
     )
     list_per_page = 50
-    list_max_show_all = 200 
+    list_max_show_all = 200
     show_full_result_count = False  # Disable full result count for performance
     paginator = EstimatedCountPaginator
     search_fields = ("repo_id", "commit_sha", "sentry_trace_id")
@@ -542,48 +543,46 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path(
-                '<path:object_id>/resend-upload/',
+                "<path:object_id>/resend-upload/",
                 self.admin_site.admin_view(self.resend_upload_view),
-                name='upload_breadcrumbs_uploadbreadcrumb_resend_upload',
+                name="upload_breadcrumbs_uploadbreadcrumb_resend_upload",
             ),
         ]
         return custom_urls + urls
-    
+
     @admin.display(description="Actions", ordering=None)
     def resend_upload_button(self, obj: UploadBreadcrumb) -> str:
         """Display resend button in the list view for failed uploads."""
         if not TASK_SERVICE_AVAILABLE or not self._is_failed_upload(obj):
             return "-"
-        
+
         resend_url = reverse(
-            'admin:upload_breadcrumbs_uploadbreadcrumb_resend_upload',
-            args=[obj.id]
+            "admin:upload_breadcrumbs_uploadbreadcrumb_resend_upload", args=[obj.id]
         )
         return format_html(
             '<a class="button" href="{}" onclick="return confirm(\'Are you sure you want to resend this upload?\')">🔄 Resend</a>',
-            resend_url
+            resend_url,
         )
-    
+
     @admin.display(description="Resend Upload")
     def resend_upload_action(self, obj: UploadBreadcrumb) -> str:
         """Display resend actions in the detail view."""
         if not obj.pk:  # New object
             return "-"
-        
+
         html_parts = []
-        
+
         if not TASK_SERVICE_AVAILABLE:
             html_parts.append(
                 "<div>⚠️ Task service not available. Resend functionality is disabled.</div>"
             )
         elif self._is_failed_upload(obj):
             resend_url = reverse(
-                'admin:upload_breadcrumbs_uploadbreadcrumb_resend_upload',
-                args=[obj.id]
+                "admin:upload_breadcrumbs_uploadbreadcrumb_resend_upload", args=[obj.id]
             )
             html_parts.append(
                 f'<a class="button default" href="{resend_url}" '
-                f'onclick="return confirm(\'Are you sure you want to resend this upload for commit {obj.commit_sha[:7]}?\')">🔄 Resend Upload</a>'
+                f"onclick=\"return confirm('Are you sure you want to resend this upload for commit {obj.commit_sha[:7]}?')\">🔄 Resend Upload</a>"
             )
             html_parts.append("<br><br>")
             html_parts.append(
@@ -594,24 +593,27 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             html_parts.append(
                 "<div>✅ This upload does not appear to have failed. Resend option is not available.</div>"
             )
-        
-        return format_html(''.join(html_parts))
-    
+
+        return format_html("".join(html_parts))
+
     def _is_failed_upload(self, obj: UploadBreadcrumb) -> bool:
         """Check if this breadcrumb represents a failed upload."""
         if not obj.breadcrumb_data:
             return False
-        
+
         data = obj.breadcrumb_data
         log.info(f"Data: {data}, Upload IDs: {obj.upload_ids}")
         # Check if there's an error
-        if data.get("milestone") == Milestones.PROCESSING_UPLOAD.value or data.get("milestone") == Milestones.COMPILING_UPLOADS.value:
+        if (
+            data.get("milestone") == Milestones.PROCESSING_UPLOAD.value
+            or data.get("milestone") == Milestones.COMPILING_UPLOADS.value
+        ):
             if data.get("error"):
                 # error_code = data["error"]
                 # # Define which errors indicate a failed upload that can be retried
                 # retriable_errors = [
                 #     Errors.FILE_NOT_IN_STORAGE.value,
-                #     Errors.REPORT_EXPIRED.value, 
+                #     Errors.REPORT_EXPIRED.value,
                 #     Errors.REPORT_EMPTY.value,
                 #     Errors.TASK_TIMED_OUT.value,
                 #     Errors.UNSUPPORTED_FORMAT.value,
@@ -621,63 +623,73 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
                 return True
 
         return False
-    
+
     def resend_upload_view(self, request, object_id):
         """Handle the resend upload request."""
         try:
             if not TASK_SERVICE_AVAILABLE:
-                messages.error(request, "Task service not available. Resend functionality is disabled.")
-                return redirect('admin:upload_breadcrumbs_uploadbreadcrumb_change', object_id)
-            
+                messages.error(
+                    request,
+                    "Task service not available. Resend functionality is disabled.",
+                )
+                return redirect(
+                    "admin:upload_breadcrumbs_uploadbreadcrumb_change", object_id
+                )
+
             breadcrumb = self.get_object(request, object_id)
             if not breadcrumb:
                 messages.error(request, "Upload breadcrumb not found.")
-                return redirect('admin:upload_breadcrumbs_uploadbreadcrumb_changelist')
-            
+                return redirect("admin:upload_breadcrumbs_uploadbreadcrumb_changelist")
+
             if not self._is_failed_upload(breadcrumb):
                 messages.error(request, "This upload does not appear to have failed.")
-                return redirect('admin:upload_breadcrumbs_uploadbreadcrumb_change', object_id)
-            
+                return redirect(
+                    "admin:upload_breadcrumbs_uploadbreadcrumb_change", object_id
+                )
+
             # Trigger the resend
             success = self._resend_upload(breadcrumb, request.user)
-            
+
             if success:
                 messages.success(
-                    request, 
+                    request,
                     f"Upload resend triggered successfully for commit {breadcrumb.commit_sha[:7]}. "
-                    f"Check the upload breadcrumbs for progress updates."
+                    f"Check the upload breadcrumbs for progress updates.",
                 )
             else:
                 messages.error(
                     request,
                     f"Failed to resend upload for commit {breadcrumb.commit_sha[:7]}. "
-                    f"Please check the logs for more details."
+                    f"Please check the logs for more details.",
                 )
-        
+
         except Exception as e:
             messages.error(request, f"Error resending upload: {str(e)}")
-        
-        return redirect('admin:upload_breadcrumbs_uploadbreadcrumb_change', object_id)
-    
+
+        return redirect("admin:upload_breadcrumbs_uploadbreadcrumb_change", object_id)
+
     def _resend_upload(self, breadcrumb: UploadBreadcrumb, user) -> bool:
         """Actually trigger the upload resend."""
         if not TASK_SERVICE_AVAILABLE:
-            log.error("TaskService not available for resend upload", extra={
-                "breadcrumb_id": breadcrumb.id,
-                "commit_sha": breadcrumb.commit_sha,
-                "repo_id": breadcrumb.repo_id,
-            })
+            log.error(
+                "TaskService not available for resend upload",
+                extra={
+                    "breadcrumb_id": breadcrumb.id,
+                    "commit_sha": breadcrumb.commit_sha,
+                    "repo_id": breadcrumb.repo_id,
+                },
+            )
             return False
-            
+
         try:
             # Create a TaskService instance and trigger a new upload task
             task_service = TaskService()
-            
+
             task_arguments = {
                 "commit": breadcrumb.commit_sha,
                 "reportid": None,
             }
-            
+
             # Dispatch the upload task
             task_service.upload(
                 repoid=breadcrumb.repo_id,
@@ -686,48 +698,63 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
                 arguments=task_arguments,
                 countdown=0,  # Process immediately
             )
-            
+
             # Create a new breadcrumb to track the resend
             # Use the same endpoint as the original breadcrumb if available
-            original_endpoint = breadcrumb.breadcrumb_data.get("endpoint") if breadcrumb.breadcrumb_data else None
-            resend_endpoint = original_endpoint if original_endpoint else Endpoints.CREATE_COMMIT.value
-            
+            original_endpoint = (
+                breadcrumb.breadcrumb_data.get("endpoint")
+                if breadcrumb.breadcrumb_data
+                else None
+            )
+            resend_endpoint = (
+                original_endpoint
+                if original_endpoint
+                else Endpoints.CREATE_COMMIT.value
+            )
+
             return True
-            
+
         except Exception as e:
             # Log the error
-            log.exception("Failed to resend upload", extra={
-                "breadcrumb_id": breadcrumb.id,
-                "commit_sha": breadcrumb.commit_sha,
-                "repo_id": breadcrumb.repo_id,
-                "error": str(e)
-            })
+            log.exception(
+                "Failed to resend upload",
+                extra={
+                    "breadcrumb_id": breadcrumb.id,
+                    "commit_sha": breadcrumb.commit_sha,
+                    "repo_id": breadcrumb.repo_id,
+                    "error": str(e),
+                },
+            )
             return False
-    
+
     @admin.action(description="Resend selected failed uploads")
     def resend_failed_uploads(self, request, queryset):
         """Bulk action to resend multiple failed uploads."""
         if not TASK_SERVICE_AVAILABLE:
-            messages.error(request, "Task service not available. Resend functionality is disabled.")
+            messages.error(
+                request, "Task service not available. Resend functionality is disabled."
+            )
             return
-            
+
         failed_uploads = [obj for obj in queryset if self._is_failed_upload(obj)]
-        
+
         if not failed_uploads:
             messages.warning(request, "No failed uploads found in selection.")
             return
-        
+
         success_count = 0
         error_count = 0
-        
+
         for breadcrumb in failed_uploads:
             if self._resend_upload(breadcrumb, request.user):
                 success_count += 1
             else:
                 error_count += 1
-        
+
         if success_count:
-            messages.success(request, f"Successfully triggered resend for {success_count} uploads.")
-        
+            messages.success(
+                request, f"Successfully triggered resend for {success_count} uploads."
+            )
+
         if error_count:
             messages.error(request, f"Failed to resend {error_count} uploads.")
