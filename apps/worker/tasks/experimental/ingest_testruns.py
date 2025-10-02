@@ -137,6 +137,17 @@ def not_private_and_free_or_team(repo: Repository):
 
 
 class IngestTestruns(BaseCodecovTask, name=ingest_testruns_task_name):
+    """
+    The idea with test analytics is that it's a pipeline of tasks, so this is one
+    of the first tasks in that pipeline. It needs to be fast and reliable, and if
+    anything fails we should be able to retry it.
+
+    ---
+    Experimental note: this prototype is untested and not production-ready. It
+    emits `TAUpload` rows for the experimental detect-flakes task and drives the
+    draft notifier flow while we iterate on the future TA pipeline.
+    """
+
     def run_impl(
         self,
         _db_session,
