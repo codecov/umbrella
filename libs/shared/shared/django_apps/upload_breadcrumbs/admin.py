@@ -677,42 +677,23 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
 
         # Check if commit exists in database - this is required for upload task to run
         try:
-            try:
-                repository = Repository.objects.get(repoid=breadcrumb.repo_id)
-                log.info(f"Found repository: {repository.name}")
-            except Repository.DoesNotExist:
-                log.error(
-                    "Repository not found in database - cannot resend upload",
-                    extra={
-                        "repo_id": breadcrumb.repo_id,
-                        "breadcrumb_id": breadcrumb.id,
-                    },
-                )
-                return False
-
-            try:
-                commit = Commit.objects.get(
-                    repository_id=breadcrumb.repo_id, commitid=breadcrumb.commit_sha
-                )
-                log.info(f"Found existing commit: {commit.commitid}")
-            except Commit.DoesNotExist:
-                log.warning(
-                    "Commit not found in database - upload task will likely fail",
-                    extra={
-                        "repo_id": breadcrumb.repo_id,
-                        "commit_sha": breadcrumb.commit_sha,
-                        "breadcrumb_id": breadcrumb.id,
-                    },
-                )
-
-        except Exception as db_check_error:
+            repository = Repository.objects.get(repoid=breadcrumb.repo_id)
+            log.info(f"Found repository: {repository.name}")
+        except Repository.DoesNotExist:
             log.error(
-                "Failed to check database prerequisites",
+                "Repository not found in database - cannot resend upload",
                 extra={
-                    "error": str(db_check_error),
+                    "repo_id": breadcrumb.repo_id,
                     "breadcrumb_id": breadcrumb.id,
                 },
             )
+            return False
+
+        commit = Commit.objects.get(
+            repository_id=breadcrumb.repo_id, commitid=breadcrumb.commit_sha
+        )
+        if commit:
+            log.info(f"Found existing commit: {commit.commitid}")
 
         # Test Redis connection first
         try:
