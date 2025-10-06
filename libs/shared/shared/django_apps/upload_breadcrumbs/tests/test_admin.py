@@ -1469,54 +1469,6 @@ class UploadBreadcrumbAdminResendTest(TestCase):
             exc_info=True,
         )
 
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", True)
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
-    @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
-    def test_resend_upload_debug_no_log_mocking(
-        self,
-        mock_redis_connection,
-        mock_task_service_class,
-    ):
-        """DEBUG TEST: Run this to see actual log output without mocking the logger.
-
-        This test demonstrates the complete flow and shows where failures occur.
-        If this test fails, check the captured log output to see which step failed.
-        """
-        # Create real database objects
-        commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
-        commit_report = CommitReportFactory(commit=commit)
-        upload = UploadFactory(
-            report=commit_report,
-            external_id=1234567890,
-            storage_path="v4/raw/test-path",
-            build_code="test-build",
-            build_url="https://example.com/build",
-            job_code="test-job",
-            provider="github",
-        )
-
-        # Mock Redis
-        mock_redis = MagicMock()
-        mock_redis.ping.return_value = True
-        mock_pipeline = MagicMock()
-        mock_pipeline.execute.return_value = [1, True, True]
-        mock_redis.pipeline.return_value.__enter__.return_value = mock_pipeline
-        mock_redis_connection.return_value = mock_redis
-
-        # Mock TaskService
-        mock_task_service = MagicMock()
-        mock_task_service_class.return_value = mock_task_service
-
-        breadcrumb = UploadBreadcrumbFactory(
-            repo_id=self.repo.repoid,
-            commit_sha="abcdef1234567890",
-            upload_ids=[upload.id],
-        )
-
-        # Call without mocking log - output will show in "Captured log call" section
-        result = self.admin._resend_upload(breadcrumb, self.user)
-        self.assertTrue(result, "Check captured log output to see where it failed")
-
     def test_get_urls_includes_resend_url(self):
         """Test that get_urls includes the resend upload URL pattern."""
         urls = self.admin.get_urls()
