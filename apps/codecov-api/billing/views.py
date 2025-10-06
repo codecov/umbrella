@@ -138,7 +138,9 @@ class StripeWebhookHandler(APIView):
             "last_four": card.last4 if card else None,
             "cta_link": invoice.hosted_invoice_url,
             "date": datetime.now().strftime("%B %-d, %Y"),
-            "org_name": invoice.metadata.get("username"),
+            "org_name": invoice.subscription_details.get("metadata", {}).get(
+                "username"
+            ),
         }
 
         for admin in admins:
