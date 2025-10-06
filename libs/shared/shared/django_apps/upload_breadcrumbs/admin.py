@@ -652,9 +652,13 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             success = self._resend_upload(breadcrumb, request.user)
 
             if success:
+                upload_count = (
+                    len(breadcrumb.upload_ids) if breadcrumb.upload_ids else 0
+                )
                 messages.success(
                     request,
-                    f"Upload resend triggered successfully for commit {breadcrumb.commit_sha[:7]}. "
+                    f"Upload resend triggered successfully for commit {breadcrumb.commit_sha[:7]} "
+                    f"({upload_count} upload{'s' if upload_count != 1 else ''}). "
                     f"Check the upload breadcrumbs for progress updates.",
                 )
             else:
@@ -753,57 +757,66 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
                 )
                 return False
 
-            # Try to get original upload data if upload_ids are available
-            original_upload_data = {}
-            if breadcrumb.upload_ids:
-                try:
-                    # Get the first upload ID to retrieve original upload data
-                    upload_id = breadcrumb.upload_ids[0]
-                    upload = ReportSession.objects.filter(id=upload_id).first()
-
-                    if upload:
-                        log.info(
-                            f"Found original upload: {upload.id} with storage_path: {upload.storage_path}"
-                        )
-                        original_upload_data = {
-                            "upload_id": upload.id,  # CRITICAL: Include the upload_id so it reuses the existing upload
-                            "reportid": str(upload.external_id)
-                            if upload.external_id
-                            else None,
-                            "url": upload.storage_path,
-                            "build": upload.build_code,
-                            "build_url": upload.build_url,
-                            "job": upload.job_code,
-                            "service": upload.provider,
-                            "flags": [flag.flag_name for flag in upload.flags.all()]
-                            if upload.flags
-                            else [],
-                        }
-                        log.info(
-                            f"Retrieved original upload data: {original_upload_data}"
-                        )
-                    else:
-                        log.warning(f"Upload with ID {upload_id} not found")
-
-                except Exception as upload_lookup_error:
-                    log.warning(
-                        f"Failed to retrieve original upload data: {upload_lookup_error}",
-                        extra={"upload_ids": breadcrumb.upload_ids},
-                    )
-
-            task_arguments = {
-                "commit": breadcrumb.commit_sha,
+            # Try to get original upload data for all upload_ids
+            all_upload_arguments = []
+            resend_metadata = {
                 "resend_via_admin": True,  # Mark this as an admin resend
                 "resend_by": str(user.username)
                 if hasattr(user, "username")
                 else str(user),
                 "resend_timestamp": timezone.now().isoformat(),
-                **original_upload_data,  # Include original upload data if available
             }
 
-            log.info(f"Final task arguments: {task_arguments}")
+            if breadcrumb.upload_ids:
+                log.info(
+                    f"Collecting upload data for {len(breadcrumb.upload_ids)} uploads",
+                    extra={"upload_ids": breadcrumb.upload_ids},
+                )
 
-            # Store task arguments in Redis (this is the missing piece!)
+                for upload_id in breadcrumb.upload_ids:
+                    try:
+                        upload = ReportSession.objects.filter(id=upload_id).first()
+
+                        if upload:
+                            log.info(
+                                f"Found original upload: {upload.id} with storage_path: {upload.storage_path}"
+                            )
+                            upload_arguments = {
+                                "commit": breadcrumb.commit_sha,
+                                "upload_id": upload.id,  # CRITICAL: Include the upload_id so it reuses the existing upload
+                                "reportid": str(upload.external_id)
+                                if upload.external_id
+                                else None,
+                                "url": upload.storage_path,
+                                "build": upload.build_code,
+                                "build_url": upload.build_url,
+                                "job": upload.job_code,
+                                "service": upload.provider,
+                                "flags": [flag.flag_name for flag in upload.flags.all()]
+                                if upload.flags
+                                else [],
+                                **resend_metadata,  # Include resend metadata in each upload
+                            }
+                            all_upload_arguments.append(upload_arguments)
+                            log.info(
+                                f"Retrieved upload data for upload_id {upload_id}: {upload_arguments}"
+                            )
+                        else:
+                            log.warning(f"Upload with ID {upload_id} not found")
+
+                    except Exception as upload_lookup_error:
+                        log.warning(
+                            f"Failed to retrieve upload data for upload_id {upload_id}: {upload_lookup_error}",
+                            extra={"upload_id": upload_id},
+                        )
+
+            if not all_upload_arguments:
+                log.error("No valid upload data found to resend")
+                return False
+
+            log.info(f"Collected {len(all_upload_arguments)} uploads to resend")
+
+            # Store all upload arguments in Redis
             # This mimics the dispatch_upload_task function from upload/helpers.py
             cache_uploads_eta = get_config(("setup", "cache", "uploads"), default=86400)
             report_type = "coverage"  # Default to coverage for now
@@ -814,37 +827,45 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             )
 
             log.info(
-                "Storing task arguments in Redis",
+                "Storing all upload arguments in Redis",
                 extra={
                     "repo_queue_key": repo_queue_key,
                     "latest_upload_key": latest_upload_key,
-                    "task_arguments": task_arguments,
+                    "num_uploads": len(all_upload_arguments),
                 },
             )
 
             try:
                 with redis.pipeline() as pipeline:
-                    pipeline.rpush(repo_queue_key, dumps(task_arguments))
+                    # Push each upload's arguments to Redis
+                    for upload_args in all_upload_arguments:
+                        pipeline.rpush(repo_queue_key, dumps(upload_args))
+
                     pipeline.expire(
                         repo_queue_key,
                         cache_uploads_eta if cache_uploads_eta is not True else 86400,
                     )
                     pipeline.setex(latest_upload_key, 3600, timezone.now().timestamp())
                     result = pipeline.execute()
-                    log.info(f"Redis pipeline executed successfully: {result}")
+                    log.info(
+                        f"Redis pipeline executed successfully: pushed {len(all_upload_arguments)} uploads",
+                        extra={"pipeline_result": result},
+                    )
             except Exception as redis_store_error:
                 log.error(
-                    "Failed to store task arguments in Redis",
+                    "Failed to store upload arguments in Redis",
                     extra={
                         "error": str(redis_store_error),
                         "repo_queue_key": repo_queue_key,
-                        "task_arguments": task_arguments,
+                        "num_uploads": len(all_upload_arguments),
                     },
                 )
                 return False
 
             # Now dispatch the upload task
-            log.info("Dispatching upload task via TaskService")
+            log.info(
+                f"Dispatching single upload task for {len(all_upload_arguments)} uploads via TaskService"
+            )
 
             try:
                 # Use the same countdown logic as the original dispatch_upload_task
@@ -852,15 +873,20 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
                     4, int(get_config("setup", "upload_processing_delay", default=0))
                 )
 
-                log.info(f"Calling TaskService.upload with countdown={countdown}")
+                log.info(
+                    f"Calling TaskService.upload with countdown={countdown}",
+                    extra={"num_uploads": len(all_upload_arguments)},
+                )
                 task_service.upload(
                     repoid=breadcrumb.repo_id,
                     commitid=breadcrumb.commit_sha,
                     report_type=report_type,
-                    arguments=task_arguments,  # This gets passed to the task but not used
+                    arguments={},  # Arguments are in Redis, this param is not actually used
                     countdown=countdown,
                 )
-                log.info("TaskService.upload() called successfully")
+                log.info(
+                    f"TaskService.upload() called successfully for {len(all_upload_arguments)} uploads"
+                )
             except Exception as task_error:
                 log.error(
                     "Failed to dispatch upload task - likely Celery broker connection issue",
@@ -903,7 +929,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
                     "breadcrumb_id": breadcrumb.id,
                     "commit_sha": breadcrumb.commit_sha,
                     "repo_id": breadcrumb.repo_id,
-                    "task_arguments": task_arguments,
+                    "num_uploads": len(all_upload_arguments),
                     "resend_by": str(user),
                 },
             )
