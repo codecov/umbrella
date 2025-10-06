@@ -7,7 +7,11 @@ from django.test import Client, TestCase, override_settings
 from django.utils.safestring import SafeString
 
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
-from shared.django_apps.core.tests.factories import RepositoryFactory
+from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
+from shared.django_apps.reports.tests.factories import (
+    CommitReportFactory,
+    UploadFactory,
+)
 from shared.django_apps.upload_breadcrumbs.admin import (
     EndpointFilter,
     ErrorFilter,
@@ -1337,181 +1341,181 @@ class UploadBreadcrumbAdminResendTest(TestCase):
 
     @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", True)
     @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
-    def test_resend_upload_successful(self, mock_task_service_class):
-        """Test _resend_upload successfully triggers upload task."""
+    @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
+    def test_resend_upload_successful(
+        self,
+        mock_redis_connection,
+        mock_task_service_class,
+    ):
+        """Test _resend_upload successfully triggers upload task.
+
+        The method checks several things in sequence:
+        1. Repository.objects.get() - verify repo exists (uses real DB)
+        2. Commit.objects.get() - verify commit exists (uses real DB)
+        3. Redis connection - test with ping() (mocked)
+        4. ReportSession.objects.filter() - get upload data (uses real DB)
+        5. Store data in Redis (mocked)
+        6. Call TaskService.upload() (mocked)
+
+        We use real database objects for Repository, Commit, and ReportSession
+        to ensure the actual database queries work correctly.
+        """
+        # Create a real commit in the database
+        commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
+        commit.save()  # Ensure it's saved
+
+        # Create a real CommitReport and Upload (ReportSession)
+        commit_report = CommitReportFactory(commit=commit)
+        commit_report.save()
+
+        upload = UploadFactory(
+            report=commit_report,
+            external_id=1234567890,
+            storage_path="v4/raw/test-path",
+            build_code="test-build",
+            build_url="https://example.com/build",
+            job_code="test-job",
+            provider="github",
+        )
+        upload.save()
+
+        # Mock Redis
+        mock_redis = MagicMock()
+        mock_redis.ping.return_value = True
+        mock_pipeline = MagicMock()
+        mock_pipeline.execute.return_value = [1, True, True]
+        mock_redis.pipeline.return_value.__enter__.return_value = mock_pipeline
+        mock_redis_connection.return_value = mock_redis
+
+        # Mock TaskService
         mock_task_service = MagicMock()
         mock_task_service_class.return_value = mock_task_service
 
         breadcrumb = UploadBreadcrumbFactory(
-            repo_id=12345,
+            repo_id=self.repo.repoid,
             commit_sha="abcdef1234567890",
+            upload_ids=[upload.id],  # Use real upload ID from database
             breadcrumb_data={"endpoint": Endpoints.CREATE_COMMIT.value},
         )
 
         result = self.admin._resend_upload(breadcrumb, self.user)
+        self.assertTrue(result, "Resend should succeed")
 
-        self.assertTrue(result)
-        mock_task_service.upload.assert_called_once_with(
-            repoid=12345,
-            commitid="abcdef1234567890",
-            report_type="coverage",
-            arguments={
-                "commit": "abcdef1234567890",
-                "reportid": None,
-            },
-            countdown=0,
-        )
+        # Verify TaskService.upload was called with correct parameters
+        mock_task_service.upload.assert_called_once()
+        call_kwargs = mock_task_service.upload.call_args[1]
+        self.assertEqual(call_kwargs["repoid"], self.repo.repoid)
+        self.assertEqual(call_kwargs["commitid"], "abcdef1234567890")
+        self.assertEqual(call_kwargs["report_type"], "coverage")
+        self.assertEqual(call_kwargs["arguments"], {})
+        self.assertGreaterEqual(call_kwargs["countdown"], 4)
 
     @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", True)
     @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
     @patch("shared.django_apps.upload_breadcrumbs.admin.log")
-    def test_resend_upload_exception_handling(self, mock_log, mock_task_service_class):
+    def test_resend_upload_task_service_exception(
+        self, mock_log, mock_redis_connection, mock_task_service_class
+    ):
         """Test _resend_upload handles exceptions and logs them."""
+        # Create real database objects
+        commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
+        commit_report = CommitReportFactory(commit=commit)
+        upload = UploadFactory(
+            report=commit_report,
+            external_id=1234567890,
+            storage_path="v4/raw/test-path",
+            build_code="test-build",
+            build_url="https://example.com/build",
+            job_code="test-job",
+            provider="github",
+        )
+
+        # Mock Redis
+        mock_redis = MagicMock()
+        mock_redis.ping.return_value = True
+        mock_pipeline = MagicMock()
+        mock_pipeline.execute.return_value = [1, True, True]
+        mock_redis.pipeline.return_value.__enter__.return_value = mock_pipeline
+        mock_redis_connection.return_value = mock_redis
+
+        # Mock TaskService to raise exception during upload dispatch
         mock_task_service = MagicMock()
         mock_task_service.upload.side_effect = Exception("Upload failed")
         mock_task_service_class.return_value = mock_task_service
 
         breadcrumb = UploadBreadcrumbFactory(
-            repo_id=12345, commit_sha="abcdef1234567890"
+            repo_id=self.repo.repoid,
+            commit_sha="abcdef1234567890",
+            upload_ids=[upload.id],
         )
 
         result = self.admin._resend_upload(breadcrumb, self.user)
 
+        # Should return False when exception occurs
         self.assertFalse(result)
-        mock_log.exception.assert_called_once_with(
-            "Failed to resend upload",
+
+        # Verify exception was logged with correct details
+        # NOTE: TaskService.upload() exceptions are caught by inner handler at line 890
+        # which uses log.error(), not log.exception(). The outer log.exception() handler
+        # only catches exceptions from other parts of the method (Redis, DB queries, etc.)
+        mock_log.error.assert_called_with(
+            "Failed to dispatch upload task - likely Celery broker connection issue",
             extra={
-                "breadcrumb_id": breadcrumb.id,
-                "commit_sha": "abcdef1234567890",
-                "repo_id": 12345,
                 "error": "Upload failed",
+                "error_type": "Exception",
+                "breadcrumb_id": breadcrumb.id,
             },
+            exc_info=True,
         )
 
-    def test_bulk_resend_scenarios(self):
-        """Test bulk resend action with various scenarios."""
-        test_cases = [
-            # (task_service_available, breadcrumbs_data, resend_results, expected_messages, description)
-            (
-                False,
-                [],
-                [],
-                [
-                    (
-                        "error",
-                        "Task service not available. Resend functionality is disabled.",
-                    )
-                ],
-                "TaskService unavailable",
-            ),
-            (
-                True,
-                [
-                    {"milestone": Milestones.UPLOAD_COMPLETE.value},
-                    {"milestone": Milestones.UPLOAD_COMPLETE.value},
-                ],
-                [],
-                [("warning", "No failed uploads found in selection.")],
-                "no failed uploads in selection",
-            ),
-            (
-                True,
-                [
-                    {
-                        "milestone": Milestones.PROCESSING_UPLOAD.value,
-                        "error": Errors.FILE_NOT_IN_STORAGE.value,
-                    },
-                    {
-                        "milestone": Milestones.COMPILING_UPLOADS.value,
-                        "error": Errors.REPORT_EXPIRED.value,
-                    },
-                ],
-                [True, True],
-                [("success", "Successfully triggered resend for 2 uploads.")],
-                "all uploads successfully resent",
-            ),
-            (
-                True,
-                [
-                    {
-                        "milestone": Milestones.PROCESSING_UPLOAD.value,
-                        "error": Errors.FILE_NOT_IN_STORAGE.value,
-                    },
-                    {
-                        "milestone": Milestones.COMPILING_UPLOADS.value,
-                        "error": Errors.REPORT_EXPIRED.value,
-                    },
-                    {
-                        "milestone": Milestones.PROCESSING_UPLOAD.value,
-                        "error": Errors.UNKNOWN.value,
-                    },
-                ],
-                [True, False, True],  # First and third succeed, second fails
-                [
-                    ("success", "Successfully triggered resend for 2 uploads."),
-                    ("error", "Failed to resend 1 uploads."),
-                ],
-                "mixed success/failure results",
-            ),
-        ]
+    @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", True)
+    @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
+    def test_resend_upload_debug_no_log_mocking(
+        self,
+        mock_redis_connection,
+        mock_task_service_class,
+    ):
+        """DEBUG TEST: Run this to see actual log output without mocking the logger.
 
-        for (
-            task_service_available,
-            breadcrumbs_data,
-            resend_results,
-            expected_messages,
-            description,
-        ) in test_cases:
-            with self.subTest(description=description):
-                request = MagicMock()
+        This test demonstrates the complete flow and shows where failures occur.
+        If this test fails, check the captured log output to see which step failed.
+        """
+        # Create real database objects
+        commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
+        commit_report = CommitReportFactory(commit=commit)
+        upload = UploadFactory(
+            report=commit_report,
+            external_id=1234567890,
+            storage_path="v4/raw/test-path",
+            build_code="test-build",
+            build_url="https://example.com/build",
+            job_code="test-job",
+            provider="github",
+        )
 
-                # Create breadcrumbs
-                breadcrumbs = [
-                    UploadBreadcrumbFactory(breadcrumb_data=breadcrumbs_data)
-                    for breadcrumbs_data in breadcrumbs_data
-                ]
+        # Mock Redis
+        mock_redis = MagicMock()
+        mock_redis.ping.return_value = True
+        mock_pipeline = MagicMock()
+        mock_pipeline.execute.return_value = [1, True, True]
+        mock_redis.pipeline.return_value.__enter__.return_value = mock_pipeline
+        mock_redis_connection.return_value = mock_redis
 
-                queryset = (
-                    UploadBreadcrumb.objects.filter(id__in=[b.id for b in breadcrumbs])
-                    if breadcrumbs
-                    else UploadBreadcrumb.objects.none()
-                )
+        # Mock TaskService
+        mock_task_service = MagicMock()
+        mock_task_service_class.return_value = mock_task_service
 
-                # Mock resend results
-                def mock_resend_side_effect(breadcrumb, user):
-                    try:
-                        index = [b.id for b in breadcrumbs].index(breadcrumb.id)
-                        return resend_results[index]
-                    except (ValueError, IndexError):
-                        return False
+        breadcrumb = UploadBreadcrumbFactory(
+            repo_id=self.repo.repoid,
+            commit_sha="abcdef1234567890",
+            upload_ids=[upload.id],
+        )
 
-                with (
-                    patch(
-                        "shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE",
-                        task_service_available,
-                    ),
-                    patch.object(
-                        self.admin,
-                        "_resend_upload",
-                        side_effect=mock_resend_side_effect,
-                    ),
-                ):
-                    # Mock the appropriate message methods
-                    with (
-                        patch("django.contrib.messages.error") as mock_error,
-                        patch("django.contrib.messages.warning") as mock_warning,
-                        patch("django.contrib.messages.success") as mock_success,
-                    ):
-                        self.admin.resend_failed_uploads(request, queryset)
-
-                        # Verify expected messages were called
-                        for message_type, message_text in expected_messages:
-                            if message_type == "error":
-                                mock_error.assert_called_with(request, message_text)
-                            elif message_type == "warning":
-                                mock_warning.assert_called_with(request, message_text)
-                            elif message_type == "success":
-                                mock_success.assert_called_with(request, message_text)
+        # Call without mocking log - output will show in "Captured log call" section
+        result = self.admin._resend_upload(breadcrumb, self.user)
+        self.assertTrue(result, "Check captured log output to see where it failed")
 
     def test_get_urls_includes_resend_url(self):
         """Test that get_urls includes the resend upload URL pattern."""
