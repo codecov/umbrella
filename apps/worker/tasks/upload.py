@@ -256,6 +256,18 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         *args: Any,
         **kwargs: Any,
     ):
+        # DEBUG: Log that upload task is actually running
+        log.info(
+            "UPLOAD TASK STARTED - Upload task is running",
+            extra={
+                "repoid": repoid,
+                "commitid": commitid,
+                "report_type": report_type,
+                "task_args": args,
+                "task_kwargs": kwargs,
+            },
+        )
+
         upload_context = UploadContext(
             repoid=int(repoid), commitid=commitid, report_type=ReportType(report_type)
         )
@@ -551,6 +563,23 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             commit_report=commit_report,
             report_service=report_service,
         )
+
+        # FOR TESTING: Inject a retriable error for commits ending with 'test'
+        # This will create a FILE_NOT_IN_STORAGE error that can be resent from admin panel
+        # if True:
+        #     log.info("TESTING: Injecting FILE_NOT_IN_STORAGE error for admin panel testing")
+        #     # Get upload IDs for breadcrumb
+        #     upload_ids = [int(upload["upload_id"]) for upload in upload_argument_list]
+        #     self._call_upload_breadcrumb_task(
+        #         commit_sha=commit.commitid,
+        #         repo_id=commit.repoid,
+        #         milestone=Milestones.PROCESSING_UPLOAD,
+        #         upload_ids=upload_ids,
+        #         error=Errors.FILE_NOT_IN_STORAGE,
+        #         error_text="Testing: Simulated file not found error for admin resend testing"
+        #     )
+        #     # Return early to simulate the failure
+        #     return {"was_setup": was_setup, "was_updated": was_updated, "tasks_were_scheduled": False}
 
         if upload_argument_list:
             db_session.commit()
