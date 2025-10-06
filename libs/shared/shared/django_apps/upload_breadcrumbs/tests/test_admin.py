@@ -1040,39 +1040,26 @@ class UploadBreadcrumbAdminResendTest(TestCase):
     def test_resend_upload_button_scenarios(self):
         """Test resend_upload_button with various scenarios."""
         test_cases = [
-            # (task_service_available, breadcrumb_data, expected_contains, expected_type, description)
+            # (breadcrumb_data, expected_contains, expected_type, description)
             (
-                True,
                 {
                     "milestone": Milestones.PROCESSING_UPLOAD.value,
                     "error": Errors.FILE_NOT_IN_STORAGE.value,
                 },
                 ["🔄 Resend", 'class="button"', "onclick="],
                 SafeString,
-                "failed upload with TaskService available",
+                "failed upload",
             ),
             (
-                True,
                 {
                     "milestone": Milestones.COMPILING_UPLOADS.value,
                     "error": Errors.REPORT_EXPIRED.value,
                 },
                 ["🔄 Resend", 'class="button"', "onclick="],
                 SafeString,
-                "failed compiling upload with TaskService available",
+                "failed compiling upload",
             ),
             (
-                False,
-                {
-                    "milestone": Milestones.PROCESSING_UPLOAD.value,
-                    "error": Errors.FILE_NOT_IN_STORAGE.value,
-                },
-                None,
-                str,
-                "failed upload with TaskService unavailable",
-            ),
-            (
-                True,
                 {
                     "milestone": Milestones.UPLOAD_COMPLETE.value,
                 },
@@ -1080,51 +1067,34 @@ class UploadBreadcrumbAdminResendTest(TestCase):
                 str,
                 "successful upload",
             ),
-            (
-                False,
-                {
-                    "milestone": Milestones.UPLOAD_COMPLETE.value,
-                },
-                None,
-                str,
-                "successful upload with TaskService unavailable",
-            ),
         ]
 
         for (
-            task_service_available,
             breadcrumb_data,
             expected_contains,
             expected_type,
             description,
         ) in test_cases:
             with self.subTest(description=description):
-                with patch(
-                    "shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE",
-                    task_service_available,
-                ):
-                    breadcrumb = UploadBreadcrumbFactory(
-                        breadcrumb_data=breadcrumb_data
-                    )
-                    result = self.admin.resend_upload_button(breadcrumb)
+                breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+                result = self.admin.resend_upload_button(breadcrumb)
 
-                    if expected_contains is None:
-                        self.assertEqual(result, "-", f"Failed for: {description}")
-                    else:
-                        self.assertIsInstance(
-                            result, expected_type, f"Failed for: {description}"
+                if expected_contains is None:
+                    self.assertEqual(result, "-", f"Failed for: {description}")
+                else:
+                    self.assertIsInstance(
+                        result, expected_type, f"Failed for: {description}"
+                    )
+                    for expected_content in expected_contains:
+                        self.assertIn(
+                            expected_content, result, f"Failed for: {description}"
                         )
-                        for expected_content in expected_contains:
-                            self.assertIn(
-                                expected_content, result, f"Failed for: {description}"
-                            )
 
     def test_resend_upload_action_scenarios(self):
         """Test resend_upload_action with various scenarios."""
         test_cases = [
-            # (task_service_available, breadcrumb_data, commit_sha, has_pk, expected_contains, description)
+            # (breadcrumb_data, commit_sha, has_pk, expected_contains, description)
             (
-                True,
                 {
                     "milestone": Milestones.PROCESSING_UPLOAD.value,
                     "error": Errors.REPORT_EXPIRED.value,
@@ -1132,10 +1102,9 @@ class UploadBreadcrumbAdminResendTest(TestCase):
                 "abcdef1234567890",
                 True,
                 ["🔄 Resend Upload", 'class="button default"', "abcdef1", "⚠️ Note:"],
-                "failed upload with TaskService available",
+                "failed upload",
             ),
             (
-                True,
                 {
                     "milestone": Milestones.COMPILING_UPLOADS.value,
                     "error": Errors.FILE_NOT_IN_STORAGE.value,
@@ -1143,21 +1112,9 @@ class UploadBreadcrumbAdminResendTest(TestCase):
                 "1234567890abcdef",
                 True,
                 ["🔄 Resend Upload", 'class="button default"', "1234567", "⚠️ Note:"],
-                "failed compiling upload with TaskService available",
+                "failed compiling upload",
             ),
             (
-                False,
-                {
-                    "milestone": Milestones.PROCESSING_UPLOAD.value,
-                    "error": Errors.FILE_NOT_IN_STORAGE.value,
-                },
-                "abcdef1234567890",
-                True,
-                ["⚠️ Task service not available", "Resend functionality is disabled"],
-                "failed upload with TaskService unavailable",
-            ),
-            (
-                True,
                 {
                     "milestone": Milestones.UPLOAD_COMPLETE.value,
                 },
@@ -1169,21 +1126,10 @@ class UploadBreadcrumbAdminResendTest(TestCase):
                 ],
                 "successful upload",
             ),
-            (
-                False,
-                {
-                    "milestone": Milestones.UPLOAD_COMPLETE.value,
-                },
-                "abcdef1234567890",
-                True,
-                ["⚠️ Task service not available", "Resend functionality is disabled"],
-                "successful upload with TaskService unavailable",
-            ),
-            (True, {}, "abcdef1234567890", False, None, "new object without pk"),
+            ({}, "abcdef1234567890", False, None, "new object without pk"),
         ]
 
         for (
-            task_service_available,
             breadcrumb_data,
             commit_sha,
             has_pk,
@@ -1191,48 +1137,26 @@ class UploadBreadcrumbAdminResendTest(TestCase):
             description,
         ) in test_cases:
             with self.subTest(description=description):
-                with patch(
-                    "shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE",
-                    task_service_available,
-                ):
-                    if has_pk:
-                        breadcrumb = UploadBreadcrumbFactory(
-                            breadcrumb_data=breadcrumb_data, commit_sha=commit_sha
+                if has_pk:
+                    breadcrumb = UploadBreadcrumbFactory(
+                        breadcrumb_data=breadcrumb_data, commit_sha=commit_sha
+                    )
+                else:
+                    breadcrumb = UploadBreadcrumb()  # No pk
+
+                result = self.admin.resend_upload_action(breadcrumb)
+
+                if expected_contains is None:
+                    self.assertEqual(result, "-", f"Failed for: {description}")
+                else:
+                    self.assertIsInstance(
+                        result, SafeString, f"Failed for: {description}"
+                    )
+                    for expected_content in expected_contains:
+                        self.assertIn(
+                            expected_content, result, f"Failed for: {description}"
                         )
-                    else:
-                        breadcrumb = UploadBreadcrumb()  # No pk
 
-                    result = self.admin.resend_upload_action(breadcrumb)
-
-                    if expected_contains is None:
-                        self.assertEqual(result, "-", f"Failed for: {description}")
-                    else:
-                        self.assertIsInstance(
-                            result, SafeString, f"Failed for: {description}"
-                        )
-                        for expected_content in expected_contains:
-                            self.assertIn(
-                                expected_content, result, f"Failed for: {description}"
-                            )
-
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", False)
-    @patch("django.contrib.messages.error")
-    def test_resend_upload_view_with_task_service_unavailable(
-        self, mock_messages_error
-    ):
-        """Test resend_upload_view handles TaskService unavailability."""
-        breadcrumb = UploadBreadcrumbFactory()
-        request = MagicMock()
-        request.user = self.user
-
-        with patch.object(self.admin, "get_object", return_value=breadcrumb):
-            response = self.admin.resend_upload_view(request, str(breadcrumb.id))
-
-        mock_messages_error.assert_called_once_with(
-            request, "Task service not available. Resend functionality is disabled."
-        )
-
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", True)
     @patch("django.contrib.messages.error")
     def test_resend_upload_view_with_nonexistent_breadcrumb(self, mock_messages_error):
         """Test resend_upload_view handles nonexistent breadcrumb."""
@@ -1246,7 +1170,6 @@ class UploadBreadcrumbAdminResendTest(TestCase):
             request, "Upload breadcrumb not found."
         )
 
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", True)
     @patch("django.contrib.messages.error")
     def test_resend_upload_view_with_non_failed_upload(self, mock_messages_error):
         """Test resend_upload_view handles non-failed uploads."""
@@ -1264,7 +1187,6 @@ class UploadBreadcrumbAdminResendTest(TestCase):
             request, "This upload does not appear to have failed."
         )
 
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", True)
     @patch("django.contrib.messages.success")
     def test_resend_upload_view_successful_resend(self, mock_messages_success):
         """Test resend_upload_view handles successful resend."""
@@ -1289,7 +1211,6 @@ class UploadBreadcrumbAdminResendTest(TestCase):
         self.assertIn("Upload resend triggered successfully", success_message)
         self.assertIn("abcdef1", success_message)
 
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", True)
     @patch("django.contrib.messages.error")
     def test_resend_upload_view_failed_resend(self, mock_messages_error):
         """Test resend_upload_view handles failed resend."""
@@ -1314,7 +1235,6 @@ class UploadBreadcrumbAdminResendTest(TestCase):
         self.assertIn("Failed to resend upload", error_message)
         self.assertIn("abcdef1", error_message)
 
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", True)
     @patch("django.contrib.messages.error")
     def test_resend_upload_view_exception_handling(self, mock_messages_error):
         """Test resend_upload_view handles exceptions gracefully."""
@@ -1330,16 +1250,6 @@ class UploadBreadcrumbAdminResendTest(TestCase):
         error_message = mock_messages_error.call_args[0][1]
         self.assertIn("Error resending upload: Test error", error_message)
 
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", False)
-    def test_resend_upload_with_task_service_unavailable(self):
-        """Test _resend_upload returns False when TaskService unavailable."""
-        breadcrumb = UploadBreadcrumbFactory()
-
-        result = self.admin._resend_upload(breadcrumb, self.user)
-
-        self.assertFalse(result)
-
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", True)
     @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
     @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
     def test_resend_upload_successful(
@@ -1410,7 +1320,6 @@ class UploadBreadcrumbAdminResendTest(TestCase):
         self.assertEqual(call_kwargs["arguments"], {})
         self.assertGreaterEqual(call_kwargs["countdown"], 4)
 
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TASK_SERVICE_AVAILABLE", True)
     @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
     @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
     @patch("shared.django_apps.upload_breadcrumbs.admin.log")
