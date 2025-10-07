@@ -1164,7 +1164,7 @@ class UploadBreadcrumbAdminResendTest(TestCase):
         request.user = self.user
 
         with patch.object(self.admin, "get_object", return_value=None):
-            response = self.admin.resend_upload_view(request, "999")
+            response = self.admin.resend_upload_view(request, 998)
 
         mock_messages_error.assert_called_once_with(
             request, "Upload breadcrumb not found."
@@ -1257,19 +1257,8 @@ class UploadBreadcrumbAdminResendTest(TestCase):
         mock_redis_connection,
         mock_task_service_class,
     ):
-        """Test _resend_upload successfully triggers upload task.
+        """Test _resend_upload successfully triggers upload task."""
 
-        The method checks several things in sequence:
-        1. Repository.objects.get() - verify repo exists (uses real DB)
-        2. Commit.objects.get() - verify commit exists (uses real DB)
-        3. Redis connection - test with ping() (mocked)
-        4. ReportSession.objects.filter() - get upload data (uses real DB)
-        5. Store data in Redis (mocked)
-        6. Call TaskService.upload() (mocked)
-
-        We use real database objects for Repository, Commit, and ReportSession
-        to ensure the actual database queries work correctly.
-        """
         # Create a real commit in the database
         commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
         commit.save()  # Ensure it's saved
@@ -1320,6 +1309,26 @@ class UploadBreadcrumbAdminResendTest(TestCase):
         self.assertEqual(call_kwargs["arguments"], {})
         self.assertGreaterEqual(call_kwargs["countdown"], 4)
 
+    @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService", None)
+    @patch("shared.django_apps.upload_breadcrumbs.admin.log")
+    def test_resend_upload_task_service_unavailable(self, mock_log):
+        """Test _resend_upload handles when TaskService is not available."""
+        breadcrumb = UploadBreadcrumbFactory(
+            repo_id=self.repo.repoid,
+            commit_sha="abcdef1234567890",
+            upload_ids=[123],
+        )
+
+        result = self.admin._resend_upload(breadcrumb, self.user)
+
+        # Should return False when TaskService is unavailable
+        self.assertFalse(result)
+
+        # Verify error was logged
+        mock_log.error.assert_called_with(
+            "TaskService not available - cannot resend upload"
+        )
+
     @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
     @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
     @patch("shared.django_apps.upload_breadcrumbs.admin.log")
@@ -1365,9 +1374,6 @@ class UploadBreadcrumbAdminResendTest(TestCase):
         self.assertFalse(result)
 
         # Verify exception was logged with correct details
-        # NOTE: TaskService.upload() exceptions are caught by inner handler at line 890
-        # which uses log.error(), not log.exception(). The outer log.exception() handler
-        # only catches exceptions from other parts of the method (Redis, DB queries, etc.)
         mock_log.error.assert_called_with(
             "Failed to dispatch upload task - likely Celery broker connection issue",
             extra={
