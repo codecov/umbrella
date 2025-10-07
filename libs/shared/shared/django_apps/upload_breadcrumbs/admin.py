@@ -742,8 +742,9 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             id__in=breadcrumb.upload_ids
         ).prefetch_related("flags")
 
-        # Create a mapping for easy lookup
-        uploads_by_id = {upload.id: upload for upload in uploads}
+        if not uploads:
+            log.error("No uploads found to resend")
+            return False
 
         for upload in uploads:
             upload_arguments = {
