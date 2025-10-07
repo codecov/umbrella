@@ -1202,7 +1202,7 @@ class UploadBreadcrumbAdminResendTest(TestCase):
 
         with (
             patch.object(self.admin, "get_object", return_value=breadcrumb),
-            patch.object(self.admin, "_resend_upload", return_value=True),
+            patch.object(self.admin, "_resend_upload", return_value=(True, None)),
         ):
             response = self.admin.resend_upload_view(request, str(breadcrumb.id))
 
@@ -1226,7 +1226,9 @@ class UploadBreadcrumbAdminResendTest(TestCase):
 
         with (
             patch.object(self.admin, "get_object", return_value=breadcrumb),
-            patch.object(self.admin, "_resend_upload", return_value=False),
+            patch.object(
+                self.admin, "_resend_upload", return_value=(False, "Test error message")
+            ),
         ):
             response = self.admin.resend_upload_view(request, str(breadcrumb.id))
 
@@ -1234,6 +1236,7 @@ class UploadBreadcrumbAdminResendTest(TestCase):
         error_message = mock_messages_error.call_args[0][1]
         self.assertIn("Failed to resend upload", error_message)
         self.assertIn("abcdef1", error_message)
+        self.assertIn("Test error message", error_message)
 
     @patch("django.contrib.messages.error")
     def test_resend_upload_view_exception_handling(self, mock_messages_error):
@@ -1250,20 +1253,18 @@ class UploadBreadcrumbAdminResendTest(TestCase):
         error_message = mock_messages_error.call_args[0][1]
         self.assertIn("Error resending upload: Test error", error_message)
 
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task")
     @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
     def test_resend_upload_successful(
         self,
         mock_redis_connection,
-        mock_task_service_class,
+        mock_dispatch_upload_task,
     ):
         """Test _resend_upload successfully triggers upload task."""
 
-        # Create a real commit in the database
         commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
-        commit.save()  # Ensure it's saved
+        commit.save()
 
-        # Create a real CommitReport and Upload (ReportSession)
         commit_report = CommitReportFactory(commit=commit)
         commit_report.save()
 
@@ -1278,17 +1279,8 @@ class UploadBreadcrumbAdminResendTest(TestCase):
         )
         upload.save()
 
-        # Mock Redis
         mock_redis = MagicMock()
-        mock_redis.ping.return_value = True
-        mock_pipeline = MagicMock()
-        mock_pipeline.execute.return_value = [1, True, True]
-        mock_redis.pipeline.return_value.__enter__.return_value = mock_pipeline
         mock_redis_connection.return_value = mock_redis
-
-        # Mock TaskService
-        mock_task_service = MagicMock()
-        mock_task_service_class.return_value = mock_task_service
 
         breadcrumb = UploadBreadcrumbFactory(
             repo_id=self.repo.repoid,
@@ -1297,46 +1289,43 @@ class UploadBreadcrumbAdminResendTest(TestCase):
             breadcrumb_data={"endpoint": Endpoints.CREATE_COMMIT.value},
         )
 
-        result = self.admin._resend_upload(breadcrumb, self.user)
-        self.assertTrue(result, "Resend should succeed")
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
+        self.assertTrue(success, "Resend should succeed")
+        self.assertIsNone(error_message, "Error message should be None on success")
 
-        # Verify TaskService.upload was called with correct parameters
-        mock_task_service.upload.assert_called_once()
-        call_kwargs = mock_task_service.upload.call_args[1]
-        self.assertEqual(call_kwargs["repoid"], self.repo.repoid)
-        self.assertEqual(call_kwargs["commitid"], "abcdef1234567890")
-        self.assertEqual(call_kwargs["report_type"], "coverage")
-        self.assertEqual(call_kwargs["arguments"], {})
-        self.assertGreaterEqual(call_kwargs["countdown"], 4)
+        # Verify dispatch_upload_task was called once
+        self.assertEqual(mock_dispatch_upload_task.call_count, 1)
 
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService", None)
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task", None)
     @patch("shared.django_apps.upload_breadcrumbs.admin.log")
     def test_resend_upload_task_service_unavailable(self, mock_log):
-        """Test _resend_upload handles when TaskService is not available."""
+        """Test _resend_upload handles when dispatch_upload_task is not available."""
         breadcrumb = UploadBreadcrumbFactory(
             repo_id=self.repo.repoid,
             commit_sha="abcdef1234567890",
             upload_ids=[123],
         )
 
-        result = self.admin._resend_upload(breadcrumb, self.user)
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
 
-        # Should return False when TaskService is unavailable
-        self.assertFalse(result)
+        # Should return False when dispatch_upload_task is unavailable
+        self.assertFalse(success)
+        self.assertEqual(
+            error_message, "Upload services are not available. Please contact support."
+        )
 
         # Verify error was logged
         mock_log.error.assert_called_with(
-            "TaskService not available - cannot resend upload"
+            "Upload services not available - cannot resend upload"
         )
 
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task")
     @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
     @patch("shared.django_apps.upload_breadcrumbs.admin.log")
     def test_resend_upload_task_service_exception(
-        self, mock_log, mock_redis_connection, mock_task_service_class
+        self, mock_log, mock_redis_connection, mock_dispatch_upload_task
     ):
         """Test _resend_upload handles exceptions and logs them."""
-        # Create real database objects
         commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
         commit_report = CommitReportFactory(commit=commit)
         upload = UploadFactory(
@@ -1351,16 +1340,10 @@ class UploadBreadcrumbAdminResendTest(TestCase):
 
         # Mock Redis
         mock_redis = MagicMock()
-        mock_redis.ping.return_value = True
-        mock_pipeline = MagicMock()
-        mock_pipeline.execute.return_value = [1, True, True]
-        mock_redis.pipeline.return_value.__enter__.return_value = mock_pipeline
         mock_redis_connection.return_value = mock_redis
 
-        # Mock TaskService to raise exception during upload dispatch
-        mock_task_service = MagicMock()
-        mock_task_service.upload.side_effect = Exception("Upload failed")
-        mock_task_service_class.return_value = mock_task_service
+        # Mock dispatch_upload_task to raise exception
+        mock_dispatch_upload_task.side_effect = Exception("Upload failed")
 
         breadcrumb = UploadBreadcrumbFactory(
             repo_id=self.repo.repoid,
@@ -1368,42 +1351,45 @@ class UploadBreadcrumbAdminResendTest(TestCase):
             upload_ids=[upload.id],
         )
 
-        result = self.admin._resend_upload(breadcrumb, self.user)
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
 
         # Should return False when exception occurs
-        self.assertFalse(result)
+        self.assertFalse(success)
+        self.assertEqual(
+            error_message, "Failed to dispatch upload tasks: Upload failed"
+        )
 
         # Verify exception was logged with correct details
         mock_log.error.assert_called_with(
-            "Failed to dispatch upload task - likely Celery broker connection issue",
+            "Failed to dispatch upload tasks",
             extra={
                 "error": "Upload failed",
                 "error_type": "Exception",
                 "breadcrumb_id": breadcrumb.id,
+                "num_uploads": 1,
             },
             exc_info=True,
         )
 
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
-    @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task")
     @patch("shared.django_apps.upload_breadcrumbs.admin.log")
     def test_resend_upload_repository_not_found(
-        self, mock_log, mock_redis_connection, mock_task_service_class
+        self, mock_log, mock_dispatch_upload_task
     ):
         """Test _resend_upload handles Repository.DoesNotExist error."""
-        # Create breadcrumb with non-existent repo_id
+
         breadcrumb = UploadBreadcrumbFactory(
             repo_id=999999,  # Non-existent repo
             commit_sha="abcdef1234567890",
             upload_ids=[123],
         )
 
-        result = self.admin._resend_upload(breadcrumb, self.user)
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
 
-        # Should return False when repository not found
-        self.assertFalse(result)
-
-        # Verify error was logged with correct details
+        self.assertFalse(success)
+        self.assertEqual(
+            error_message, "Repository with ID 999999 not found in database."
+        )
         mock_log.error.assert_called_with(
             "Repository not found in database - cannot resend upload",
             extra={
@@ -1412,96 +1398,61 @@ class UploadBreadcrumbAdminResendTest(TestCase):
             },
         )
 
-        # Redis should not be called
-        mock_redis_connection.assert_not_called()
-
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
-    @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task")
     @patch("shared.django_apps.upload_breadcrumbs.admin.log")
-    def test_resend_upload_redis_connection_error(
-        self, mock_log, mock_redis_connection, mock_task_service_class
-    ):
-        """Test _resend_upload handles Redis connection failure."""
-        # Create real database objects
-        commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
-        commit_report = CommitReportFactory(commit=commit)
-        upload = UploadFactory(
-            report=commit_report,
-            external_id=1234567890,
-            storage_path="v4/raw/test-path",
-        )
-
-        # Mock Redis to fail on ping
-        mock_redis = MagicMock()
-        mock_redis.ping.side_effect = Exception("Connection timeout")
-        mock_redis_connection.return_value = mock_redis
+    def test_resend_upload_commit_not_found(self, mock_log, mock_dispatch_upload_task):
+        """Test _resend_upload handles Commit.DoesNotExist error."""
 
         breadcrumb = UploadBreadcrumbFactory(
             repo_id=self.repo.repoid,
-            commit_sha="abcdef1234567890",
-            upload_ids=[upload.id],
+            commit_sha="nonexistentcommit12345678901234567890",
+            upload_ids=[123],
         )
 
-        result = self.admin._resend_upload(breadcrumb, self.user)
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
 
-        # Should return False when Redis connection fails
-        self.assertFalse(result)
+        self.assertFalse(success)
+        self.assertEqual(error_message, "Commit nonexis not found in database.")
 
-        # Verify error was logged with correct details
         mock_log.error.assert_called_with(
-            "Failed to connect to Redis",
+            "Commit not found in database - cannot resend upload",
             extra={
-                "error": "Connection timeout",
+                "repo_id": self.repo.repoid,
                 "breadcrumb_id": breadcrumb.id,
             },
         )
 
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
-    @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task")
     @patch("shared.django_apps.upload_breadcrumbs.admin.log")
     def test_resend_upload_invalid_upload_ids(
-        self, mock_log, mock_redis_connection, mock_task_service_class
+        self, mock_log, mock_dispatch_upload_task
     ):
         """Test _resend_upload handles invalid upload_ids (no ReportSession found)."""
-        # Create real database objects but don't create any uploads
+
         commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
 
-        # Mock Redis connection to succeed
-        mock_redis = MagicMock()
-        mock_redis.ping.return_value = True
-        mock_redis_connection.return_value = mock_redis
-
-        # Create breadcrumb with upload_ids that don't exist in database
         breadcrumb = UploadBreadcrumbFactory(
             repo_id=self.repo.repoid,
             commit_sha="abcdef1234567890",
-            upload_ids=[999, 888, 777],  # Non-existent upload IDs
+            upload_ids=[999, 888, 777],
         )
 
-        result = self.admin._resend_upload(breadcrumb, self.user)
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
 
-        # Should return False when no valid upload data is found
-        self.assertFalse(result)
+        self.assertFalse(success)
+        self.assertEqual(
+            error_message, "No upload sessions found for upload IDs: [999, 888, 777]"
+        )
 
-        # Verify warning was logged for each missing upload
-        warning_calls = [
-            call
-            for call in mock_log.warning.call_args_list
-            if "Upload with ID" in str(call)
-        ]
-        self.assertEqual(len(warning_calls), 3)
+        mock_log.error.assert_called_with("No uploads found to resend")
 
-        # Verify error was logged when no valid uploads found
-        mock_log.error.assert_called_with("No valid upload data found to resend")
-
-    @patch("shared.django_apps.upload_breadcrumbs.admin.TaskService")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task")
     @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
     @patch("shared.django_apps.upload_breadcrumbs.admin.log")
-    def test_resend_upload_redis_storage_error(
-        self, mock_log, mock_redis_connection, mock_task_service_class
+    def test_resend_upload_dispatch_failure(
+        self, mock_log, mock_redis_connection, mock_dispatch_upload_task
     ):
-        """Test _resend_upload handles Redis storage failure."""
-        # Create real database objects
+        """Test _resend_upload handles dispatch_upload_task failure."""
         commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
         commit_report = CommitReportFactory(commit=commit)
         upload = UploadFactory(
@@ -1514,13 +1465,10 @@ class UploadBreadcrumbAdminResendTest(TestCase):
             provider="github",
         )
 
-        # Mock Redis connection to succeed but pipeline execution to fail
         mock_redis = MagicMock()
-        mock_redis.ping.return_value = True
-        mock_pipeline = MagicMock()
-        mock_pipeline.execute.side_effect = Exception("Redis pipeline error")
-        mock_redis.pipeline.return_value.__enter__.return_value = mock_pipeline
         mock_redis_connection.return_value = mock_redis
+
+        mock_dispatch_upload_task.side_effect = Exception("Redis pipeline error")
 
         breadcrumb = UploadBreadcrumbFactory(
             repo_id=self.repo.repoid,
@@ -1528,27 +1476,28 @@ class UploadBreadcrumbAdminResendTest(TestCase):
             upload_ids=[upload.id],
         )
 
-        result = self.admin._resend_upload(breadcrumb, self.user)
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
 
-        # Should return False when Redis storage fails
-        self.assertFalse(result)
+        self.assertFalse(success)
+        self.assertEqual(
+            error_message, "Failed to dispatch upload tasks: Redis pipeline error"
+        )
 
-        # Verify error was logged with correct details
-        repo_queue_key = f"uploads/{self.repo.repoid}/abcdef1234567890"
         mock_log.error.assert_called_with(
-            "Failed to store upload arguments in Redis",
+            "Failed to dispatch upload tasks",
             extra={
                 "error": "Redis pipeline error",
-                "repo_queue_key": repo_queue_key,
+                "error_type": "Exception",
+                "breadcrumb_id": breadcrumb.id,
                 "num_uploads": 1,
             },
+            exc_info=True,
         )
 
     def test_get_urls_includes_resend_url(self):
         """Test that get_urls includes the resend upload URL pattern."""
         urls = self.admin.get_urls()
 
-        # Find the resend upload URL pattern
         resend_url_pattern = None
         for url_pattern in urls:
             if (
