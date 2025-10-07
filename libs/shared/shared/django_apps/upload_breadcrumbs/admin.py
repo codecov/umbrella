@@ -693,11 +693,20 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             )
             return False
 
-        commit = Commit.objects.get(
-            repository=breadcrumb.repo_id, commitid=breadcrumb.commit_sha
-        )
-        if commit:
+        try:
+            commit = Commit.objects.get(
+                repository=breadcrumb.repo_id, commitid=breadcrumb.commit_sha
+            )
             log.info(f"Found existing commit: {commit.commitid}")
+        except Commit.DoesNotExist:
+            log.error(
+                "Commit not found in database - cannot resend upload",
+                extra={
+                    "repo_id": breadcrumb.repo_id,
+                    "breadcrumb_id": breadcrumb.id,
+                },
+            )
+            return False
 
         # Test Redis connection first
         try:
@@ -727,8 +736,17 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             extra={"upload_ids": breadcrumb.upload_ids},
         )
 
+        # Guarunteed to have an upload_id from _is_failed_upload function
+        # Fetch all uploads at once to avoid N+1 query problem
+        uploads = ReportSession.objects.filter(
+            id__in=breadcrumb.upload_ids
+        ).prefetch_related("flags")
+
+        # Create a mapping for easy lookup
+        uploads_by_id = {upload.id: upload for upload in uploads}
+
         for upload_id in breadcrumb.upload_ids:
-            upload = ReportSession.objects.filter(id=upload_id).first()
+            upload = uploads_by_id.get(upload_id)
             if upload:
                 log.info(
                     f"Found original upload: {upload.id} with storage_path: {upload.storage_path}"
