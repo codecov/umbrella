@@ -664,7 +664,11 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
     def _resend_upload(self, breadcrumb: UploadBreadcrumb, user) -> bool:
         """Actually trigger the upload resend."""
         # Create a TaskService instance and trigger a new upload task
-        task_service = TaskService()
+        if TaskService:
+            task_service = TaskService()
+        else:
+            log.error("TaskService not available - cannot resend upload")
+            return False
 
         log.info(
             "Starting resend upload process",
