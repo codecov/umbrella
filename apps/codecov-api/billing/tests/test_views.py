@@ -376,6 +376,9 @@ class StripeWebhookHandlerTests(APITestCase):
                         "hosted_invoice_url": "https://stripe.com",
                         "payment_intent": "payment_intent_asdf",
                         "default_payment_method": None,
+                        "subscription_details": {
+                            "metadata": {"username": self.owner.username}
+                        },
                     }
                 },
             }
@@ -412,6 +415,9 @@ class StripeWebhookHandlerTests(APITestCase):
                         "hosted_invoice_url": "https://stripe.com",
                         "payment_intent": "payment_intent_asdf",
                         "default_payment_method": {},
+                        "subscription_details": {
+                            "metadata": {"username": self.owner.username}
+                        },
                     }
                 },
             }
@@ -444,6 +450,9 @@ class StripeWebhookHandlerTests(APITestCase):
                         "hosted_invoice_url": "https://stripe.com",
                         "payment_intent": "payment_intent_asdf",
                         "default_payment_method": {},
+                        "subscription_details": {
+                            "metadata": {"username": self.owner.username}
+                        },
                     }
                 },
             }
