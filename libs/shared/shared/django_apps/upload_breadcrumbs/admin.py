@@ -695,7 +695,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
 
         try:
             commit = Commit.objects.get(
-                repository=breadcrumb.repo_id, commitid=breadcrumb.commit_sha
+                repository_id=breadcrumb.repo_id, commitid=breadcrumb.commit_sha
             )
             log.info(f"Found existing commit: {commit.commitid}")
         except Commit.DoesNotExist:
@@ -745,38 +745,25 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         # Create a mapping for easy lookup
         uploads_by_id = {upload.id: upload for upload in uploads}
 
-        for upload_id in breadcrumb.upload_ids:
-            upload = uploads_by_id.get(upload_id)
-            if upload:
-                log.info(
-                    f"Found original upload: {upload.id} with storage_path: {upload.storage_path}"
-                )
-                upload_arguments = {
-                    "commit": breadcrumb.commit_sha,
-                    "upload_id": upload.id,  # CRITICAL: Include the upload_id so it reuses the existing upload
-                    "reportid": str(upload.external_id) if upload.external_id else None,
-                    "url": upload.storage_path,
-                    "build": upload.build_code,
-                    "build_url": upload.build_url,
-                    "job": upload.job_code,
-                    "service": upload.provider,
-                    "flags": [flag.flag_name for flag in upload.flags.all()]
-                    if upload.flags
-                    else [],
-                    **resend_metadata,  # Include resend metadata in each upload
-                }
-                all_upload_arguments.append(upload_arguments)
-                log.info(
-                    f"Retrieved upload data for upload_id {upload_id}: {upload_arguments}"
-                )
-            else:
-                log.warning(f"Upload with ID {upload_id} not found")
-
-        if not all_upload_arguments:
-            log.error("No valid upload data found to resend")
-            return False
-
-        log.info(f"Collected {len(all_upload_arguments)} uploads to resend")
+        for upload in uploads:
+            upload_arguments = {
+                "commit": breadcrumb.commit_sha,
+                "upload_id": upload.id,  # CRITICAL: Include the upload_id so it reuses the existing upload
+                "reportid": str(upload.external_id) if upload.external_id else None,
+                "url": upload.storage_path,
+                "build": upload.build_code,
+                "build_url": upload.build_url,
+                "job": upload.job_code,
+                "service": upload.provider,
+                "flags": [flag.flag_name for flag in upload.flags.all()]
+                if upload.flags
+                else [],
+                **resend_metadata,  # Include resend metadata in each upload
+            }
+            all_upload_arguments.append(upload_arguments)
+            log.info(
+                f"Retrieved upload data for upload_id {upload.id}: {upload_arguments}"
+            )
 
         # Store all upload arguments in Redis
         cache_uploads_eta = get_config(("setup", "cache", "uploads"), default=86400)
