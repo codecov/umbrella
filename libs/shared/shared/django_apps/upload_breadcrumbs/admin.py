@@ -690,7 +690,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             return False
 
         commit = Commit.objects.get(
-            repository_id=breadcrumb.repo_id, commitid=breadcrumb.commit_sha
+            repository=breadcrumb.repo_id, commitid=breadcrumb.commit_sha
         )
         if commit:
             log.info(f"Found existing commit: {commit.commitid}")
