@@ -500,6 +500,13 @@ class StripeWebhookHandlerTests(APITestCase):
                         "subscription_details": {
                             "metadata": {"username": self.owner.username}
                         },
+                        "lines": {
+                            "data": [
+                                {
+                                    "plan": {"nickname": "users-pr-inappm"},
+                                }
+                            ]
+                        },
                     }
                 },
             }
@@ -522,6 +529,7 @@ class StripeWebhookHandlerTests(APITestCase):
                 cta_link="https://stripe.com",
                 date=datetime.now().strftime("%B %-d, %Y"),
                 org_name=self.owner.username,
+                plan_tier="pro",
             ),
             call(
                 to_addr=admin_1.email,
@@ -534,6 +542,7 @@ class StripeWebhookHandlerTests(APITestCase):
                 cta_link="https://stripe.com",
                 date=datetime.now().strftime("%B %-d, %Y"),
                 org_name=self.owner.username,
+                plan_tier="pro",
             ),
             call(
                 to_addr=admin_2.email,
@@ -546,6 +555,7 @@ class StripeWebhookHandlerTests(APITestCase):
                 cta_link="https://stripe.com",
                 date=datetime.now().strftime("%B %-d, %Y"),
                 org_name=self.owner.username,
+                plan_tier="pro",
             ),
         ]
 
@@ -585,6 +595,13 @@ class StripeWebhookHandlerTests(APITestCase):
                         "subscription_details": {
                             "metadata": {"username": self.owner.username}
                         },
+                        "lines": {
+                            "data": [
+                                {
+                                    "plan": {"nickname": "users-teamm"},
+                                }
+                            ]
+                        },
                     }
                 },
             }
@@ -616,6 +633,7 @@ class StripeWebhookHandlerTests(APITestCase):
                 cta_link="https://stripe.com",
                 date=datetime.now().strftime("%B %-d, %Y"),
                 org_name=self.owner.username,
+                plan_tier="team",
             ),
             call(
                 to_addr=valid_admin.email,
@@ -628,6 +646,7 @@ class StripeWebhookHandlerTests(APITestCase):
                 cta_link="https://stripe.com",
                 date=datetime.now().strftime("%B %-d, %Y"),
                 org_name=self.owner.username,
+                plan_tier="team",
             ),
         ]
         mocked_send_email.assert_has_calls(expected_calls)
@@ -671,6 +690,13 @@ class StripeWebhookHandlerTests(APITestCase):
                         "subscription_details": {
                             "metadata": {"username": self.owner.username}
                         },
+                        "lines": {
+                            "data": [
+                                {
+                                    "plan": {"nickname": "users-teamy"},
+                                }
+                            ]
+                        },
                     }
                 },
             }
@@ -695,6 +721,7 @@ class StripeWebhookHandlerTests(APITestCase):
                 cta_link="https://stripe.com",
                 date=datetime.now().strftime("%B %-d, %Y"),
                 org_name=self.owner.username,
+                plan_tier="team",
             ),
             call(
                 to_addr=admin_1.email,
@@ -707,6 +734,7 @@ class StripeWebhookHandlerTests(APITestCase):
                 cta_link="https://stripe.com",
                 date=datetime.now().strftime("%B %-d, %Y"),
                 org_name=self.owner.username,
+                plan_tier="team",
             ),
             call(
                 to_addr=admin_2.email,
@@ -719,6 +747,7 @@ class StripeWebhookHandlerTests(APITestCase):
                 cta_link="https://stripe.com",
                 date=datetime.now().strftime("%B %-d, %Y"),
                 org_name=self.owner.username,
+                plan_tier="team",
             ),
         ]
         mocked_send_email.assert_has_calls(expected_calls)

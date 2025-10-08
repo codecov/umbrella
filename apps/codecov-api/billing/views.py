@@ -132,6 +132,12 @@ class StripeWebhookHandler(APIView):
         except AttributeError:
             card = None
 
+        try:
+            plan = invoice.lines.data[0].plan.get("nickname")
+            plan_tier = Plan.objects.get(name=plan).tier.tier_name
+        except (AttributeError, IndexError, KeyError):
+            plan_tier = None
+
         template_vars = {
             "amount": invoice.total / 100,
             "card_type": card.brand if card else None,
@@ -141,6 +147,7 @@ class StripeWebhookHandler(APIView):
             "org_name": invoice.subscription_details.get("metadata", {}).get("username")
             if invoice.subscription_details
             else None,
+            "plan_tier": plan_tier,
         }
 
         for admin in admins:

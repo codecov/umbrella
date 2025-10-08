@@ -1,4 +1,4 @@
-Your ${{ amount }} payment to Functional Software, Inc, dba Sentry has failed{% if org_name %} for the {{ org_name }} organization{% endif %}.
+Your ${{ amount }} payment to Functional Software, Inc, dba Sentry{% if org_name %} for {{ org_name }}'s{% endif %}{% if plan_tier %} {{ plan_tier }}{% endif %} plan has failed.
 
 We were unable to process your {% if card_type %}{{ card_type | capitalize }}{% else %}card{% endif %}{% if last_four %} ending in {{ last_four }}{% endif %}. Please take a moment to double check your payment information to ensure your account continues to run smoothly.
 
