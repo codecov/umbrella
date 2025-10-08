@@ -607,6 +607,8 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         log.info(
             f"Data: {data}, Upload IDs: {obj.upload_ids}, Milestone: {data.get('milestone')}"
         )
+
+        # Only consider uploads that are in the PROCESSING_UPLOAD or COMPILING_UPLOADS milestone since those are the ones that the upload task handles
         if (
             data.get("milestone")
             in [Milestones.PROCESSING_UPLOAD.value, Milestones.COMPILING_UPLOADS.value]
