@@ -19,7 +19,6 @@ from codecov_auth.helpers import current_user_part_of_org
 from codecov_auth.models import (
     SERVICE_GITHUB,
     SERVICE_GITHUB_ENTERPRISE,
-    Account,
     GithubAppInstallation,
     Owner,
     Plan,
@@ -378,9 +377,10 @@ def resolve_owner_invoice(
 @owner_bindable.field("account")
 @require_part_of_org
 @sync_to_async
-def resolve_owner_account(owner: Owner, info: GraphQLResolveInfo) -> dict:
-    account_id = owner.account_id
-    return Account.objects.filter(pk=account_id).first()
+def resolve_owner_account(owner: Owner, info: GraphQLResolveInfo) -> dict | None:
+    if not owner.has_billing_account:
+        return None
+    return owner.account
 
 
 @owner_bindable.field("isUserOktaAuthenticated")
@@ -391,8 +391,8 @@ def resolve_is_user_okta_authenticated(owner: Owner, info: GraphQLResolveInfo) -
         OKTA_SIGNED_IN_ACCOUNTS_SESSION_KEY,
         [],
     )
-    if owner.account_id:
-        return owner.account_id in okta_signed_in_accounts
+    if owner.has_billing_account:
+        return owner.account.id in okta_signed_in_accounts
     return False
 
 

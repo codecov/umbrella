@@ -92,6 +92,7 @@ def require_shared_account_or_part_of_org(resolver):
             and current_user.is_authenticated
             and queried_owner
             and queried_owner.account
+            and queried_owner.has_billing_account
             and current_user in queried_owner.account.users.all()
         ):
             return resolver(queried_owner, info, *args, **kwargs)
