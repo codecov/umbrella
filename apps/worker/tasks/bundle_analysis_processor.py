@@ -141,7 +141,7 @@ class BundleAnalysisProcessorTask(
                             "commit": commit.commitid,
                         },
                     )
-                    return processing_results
+                    return {"results": processing_results}
             else:
                 # If the commit report does not exist, we will create a new one
                 commit_report = report_service.initialize_and_save_report(commit)
