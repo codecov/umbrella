@@ -81,11 +81,6 @@ class PlanService:
         self.current_org.stripe_subscription_id = None
         self.current_org.save()
 
-    @property
-    def has_account(self) -> bool:
-        """Returns whether the organization has an associated account."""
-        return self.current_org.account is not None
-
     @cached_property
     def plan_data(self) -> Plan:
         """Returns the plan data for the organization, either from account or default."""
