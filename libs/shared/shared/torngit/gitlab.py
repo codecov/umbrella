@@ -308,7 +308,7 @@ GITLAB_API_ENDPOINTS = {
         "enterprise_counter": GITLAB_E_API_CALL_COUNTER.labels(
             endpoint="list_repos_get_user_and_groups"
         ),
-        "url_template": Template("/groups?per_page=100"),
+        "url_template": Template("/groups?per_page=100&page=${page}"),
     },
     "list_repos_get_owned_projects": {
         "counter": GITLAB_API_CALL_COUNTER.labels(
@@ -722,6 +722,7 @@ class Gitlab(TorngitBaseAdapter):
         user_url = self.count_and_get_url_template("list_repos_get_user").substitute()
         user = await self.api("get", user_url, token=token)
         user["is_user"] = True
+        groups = []
         if username:
             if username.lower() == user["username"].lower():
                 # just me
@@ -734,10 +735,16 @@ class Gitlab(TorngitBaseAdapter):
                 groups = [(await self.api("get", groups_url, token=token))]
         else:
             # user and all groups
-            url = self.count_and_get_url_template(
-                "list_repos_get_user_and_groups"
-            ).substitute()
-            groups = await self.api("get", url, token=token)
+            page = 0
+            while True:
+                page += 1
+                url = self.count_and_get_url_template(
+                    "list_repos_get_user_and_groups"
+                ).substitute(page=page)
+                groups_paged = await self.api("get", url, token=token)
+                groups += groups_paged
+                if len(groups) < 100:
+                    break
             groups.append(user)
 
         data = []
