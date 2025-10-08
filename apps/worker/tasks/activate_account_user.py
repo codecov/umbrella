@@ -35,7 +35,7 @@ class ActivateAccountUserTask(BaseCodecovTask, name=activate_account_user_task_n
         # NOTE: We're currently ignoring organizations that don't have an account.
         org_owner: Owner = Owner.objects.get(pk=org_ownerid)
         account: Account | None = org_owner.account
-        if not account:
+        if not account or not org_owner.has_billing_account:
             log.info(
                 "Organization does not have an account. Skipping account user activation."
             )

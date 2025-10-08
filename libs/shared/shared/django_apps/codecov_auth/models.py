@@ -689,7 +689,7 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
                 pass
         owner_org.save()
 
-        if owner_org.account and owner_user.user:
+        if owner_org.has_billing_account and owner_user.user:
             owner_org.account.deactivate_owner_user_from_account(owner_user)
 
     def add_admin(self, user):

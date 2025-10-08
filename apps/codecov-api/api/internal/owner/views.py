@@ -17,11 +17,7 @@ from services.task import TaskService
 from shared.django_apps.codecov_auth.models import Owner
 from shared.plan.constants import DEFAULT_FREE_PLAN
 
-from .serializers import (
-    AccountDetailsSerializer,
-    OwnerSerializer,
-    UserSerializer,
-)
+from .serializers import AccountDetailsSerializer, OwnerSerializer, UserSerializer
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +58,7 @@ class AccountDetailsViewSet(
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def get_object(self):
-        if self.owner.account:
+        if self.owner.has_billing_account:
             # gets the related account and invoice_billing objects from db in 1 query
             # otherwise, each reference to owner.account would be an additional query
             self.owner = (
