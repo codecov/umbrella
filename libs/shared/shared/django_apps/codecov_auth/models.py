@@ -446,6 +446,20 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
             return int(self.plan[:-1])
 
     @property
+    def has_billing_account(self) -> bool:
+        """
+        Returns True if the owner has an account that manages its billing/plan.
+
+        Returns False if there's no account or if the account is a sentry-merge account,
+        which is used only for organizational linkage and does not override the owner's
+        direct billing information.
+        """
+        return (
+            self.account is not None
+            and self.account.plan != PlanName.SENTRY_MERGE_PLAN.value
+        )
+
+    @property
     def root_organization(self: "Owner") -> Optional["Owner"]:
         """
         Find the root organization of Gitlab, by using the root_parent_service_id
@@ -620,7 +634,7 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
 
     @property
     def pretty_plan(self):
-        if self.account:
+        if self.has_billing_account:
             return self.account.pretty_plan
 
         plan_details = Plan.objects.select_related("tier").get(name=self.plan)
@@ -644,7 +658,7 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
         owner_org = self
         if owner_user.student:
             return True
-        if owner_org.account:
+        if owner_org.has_billing_account:
             return owner_org.account.can_activate_user(owner_user.user)
         return (
             owner_org.activated_user_count < owner_org.plan_user_count + owner_org.free
@@ -660,7 +674,7 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
             owner_org.plan_activated_users = [owner_user.ownerid]
         owner_org.save()
 
-        if owner_org.account:
+        if owner_org.has_billing_account:
             owner_org.account.activate_owner_user_onto_account(owner_user)
 
     def deactivate_user(self, owner_user: Self) -> None:

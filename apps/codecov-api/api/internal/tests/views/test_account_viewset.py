@@ -1859,6 +1859,116 @@ class AccountViewSetTests(APITestCase):
         self.assertDictEqual(response.data["plan"], expected_response["plan"])
         self.assertDictEqual(response.data, expected_response)
 
+    def test_retrieve_with_sentry_merge_account_uses_owner_fields(self):
+        mock_all_plans_and_tiers()
+
+        org = OwnerFactory(
+            plan=PlanName.CODECOV_PRO_YEARLY.value,
+            plan_user_count=10,
+            stripe_customer_id="cus_test123",
+            delinquent=True,
+        )
+        org.plan_activated_users = []
+        org.save()
+
+        activated_owner = OwnerFactory(
+            service=Service.GITHUB.value,
+            user=UserFactory(),
+            organizations=[org.ownerid],
+        )
+        org.plan_activated_users = [activated_owner.ownerid]
+        org.admins = [activated_owner.ownerid]
+        org.save()
+
+        account = AccountFactory(
+            plan=PlanName.SENTRY_MERGE_PLAN.value,
+            plan_seat_count=5,
+            is_delinquent=False,
+        )
+        InvoiceBillingFactory(account=account, is_active=True)
+        org.account = account
+        org.save()
+
+        self.client.force_login_owner(activated_owner)
+        response = self._retrieve(
+            kwargs={"service": Service.GITHUB.value, "owner_username": org.username}
+        )
+        assert response.status_code == status.HTTP_200_OK
+
+        expected_response = {
+            "activated_user_count": 1,
+            "activated_student_count": 0,
+            "delinquent": True,
+            "uses_invoice": False,
+            "plan": {
+                "marketing_name": "Pro Team",
+                "value": PlanName.CODECOV_PRO_YEARLY.value,
+                "billing_rate": "annually",
+                "base_unit_price": 10,
+                "benefits": [
+                    "Configurable # of users",
+                    "Unlimited public repositories",
+                    "Unlimited private repositories",
+                    "Priority Support",
+                ],
+                "quantity": 10,
+            },
+            "root_organization": None,
+            "integration_id": org.integration_id,
+            "plan_auto_activate": org.plan_auto_activate,
+            "inactive_user_count": 0,
+            "subscription_detail": None,
+            "checkout_session_id": None,
+            "name": org.name,
+            "email": org.email,
+            "nb_active_private_repos": 0,
+            "repo_total_credits": 99999999,
+            "plan_provider": org.plan_provider,
+            "student_count": 0,
+            "schedule_detail": None,
+        }
+        self.assertDictEqual(response.data["plan"], expected_response["plan"])
+        self.assertEqual(response.data["activated_user_count"], 1)
+        self.assertEqual(response.data["delinquent"], True)
+        self.assertEqual(response.data["uses_invoice"], False)
+
+    def test_validate_plan_allows_update_for_sentry_merge_account(self):
+        mock_all_plans_and_tiers()
+
+        org = OwnerFactory(
+            plan=PlanName.CODECOV_PRO_MONTHLY.value,
+            plan_user_count=5,
+            stripe_subscription_id="sub_test123",
+            stripe_customer_id="cus_test123",
+        )
+
+        account = AccountFactory(plan=PlanName.SENTRY_MERGE_PLAN.value)
+        org.account = account
+        org.save()
+
+        user = OwnerFactory(
+            service=Service.GITHUB.value,
+            user=UserFactory(),
+            organizations=[org.ownerid],
+        )
+        org.admins = [user.ownerid]
+        org.save()
+
+        self.client.force_login_owner(user)
+
+        with patch("services.billing.StripeService.modify_subscription") as mock_modify:
+            response = self._update(
+                kwargs={"service": org.service, "owner_username": org.username},
+                data={
+                    "plan": {
+                        "value": PlanName.CODECOV_PRO_YEARLY.value,
+                        "quantity": 10,
+                    }
+                },
+            )
+            assert response.status_code == status.HTTP_200_OK
+            mock_modify.assert_called_once()
+
 
 @override_settings(IS_ENTERPRISE=True)
 class EnterpriseAccountViewSetTests(APITestCase):

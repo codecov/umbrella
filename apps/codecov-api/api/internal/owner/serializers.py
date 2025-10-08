@@ -140,7 +140,7 @@ class PlanSerializer(serializers.Serializer):
 
     def validate(self, plan: dict[str, Any]) -> dict[str, Any]:
         current_org = self.context["view"].owner
-        if current_org.account:
+        if current_org.has_billing_account:
             raise serializers.ValidationError(
                 detail="You cannot update your plan manually, for help or changes to plan, connect with sales@codecov.io"
             )
@@ -312,22 +312,22 @@ class AccountDetailsSerializer(serializers.ModelSerializer):
         return self.context.get("checkout_session_id")
 
     def get_activated_student_count(self, owner: Owner) -> int:
-        if owner.account:
+        if owner.has_billing_account:
             return owner.account.activated_student_count
         return owner.activated_student_count
 
     def get_activated_user_count(self, owner: Owner) -> int:
-        if owner.account:
+        if owner.has_billing_account:
             return owner.account.activated_user_count
         return owner.activated_user_count
 
     def get_delinquent(self, owner: Owner) -> bool:
-        if owner.account:
+        if owner.has_billing_account:
             return owner.account.is_delinquent
         return owner.delinquent
 
     def get_uses_invoice(self, owner: Owner) -> bool:
-        if owner.account:
+        if owner.has_billing_account:
             return (
                 hasattr(owner.account, "invoice_billing")
                 and owner.account.invoice_billing.is_active
