@@ -1,0 +1,70 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Stripe-Version:
+      - 2024-12-18.acacia
+      User-Agent:
+      - Stripe/v1 PythonBindings/12.1.0
+      X-Stripe-Client-Telemetry:
+      - '{"last_request_metrics": {"request_id": "req_AaY8IvHbbSDcvz", "request_duration_ms":
+        1}}'
+      X-Stripe-Client-User-Agent:
+      - '{"bindings_version": "12.1.0", "lang": "python", "publisher": "stripe", "httplib":
+        "requests", "lang_version": "3.13.8", "platform": "Linux-6.8.0-50-generic-aarch64-with-glibc2.36",
+        "uname": "Linux affeb8b59f6a 6.8.0-50-generic #51-Ubuntu SMP PREEMPT_DYNAMIC
+        Sat Nov  9 18:03:35 UTC 2024 aarch64 "}'
+    method: GET
+    uri: https://api.stripe.com/v1/subscriptions/sub_test123?expand%5B0%5D=latest_invoice&expand%5B1%5D=customer&expand%5B2%5D=customer.invoice_settings.default_payment_method&expand%5B3%5D=customer.tax_ids
+  response:
+    body:
+      string: "{\n  \"error\": {\n    \"message\": \"Invalid API Key provided: default\",\n
+        \   \"type\": \"invalid_request_error\"\n  }\n}\n"
+    headers:
+      Access-Control-Allow-Credentials:
+      - 'true'
+      Access-Control-Allow-Methods:
+      - GET, HEAD, PUT, PATCH, POST, DELETE
+      Access-Control-Allow-Origin:
+      - '*'
+      Access-Control-Expose-Headers:
+      - Request-Id, Stripe-Manage-Version, Stripe-Should-Retry, X-Stripe-External-Auth-Required,
+        X-Stripe-Privileged-Session-Required
+      Access-Control-Max-Age:
+      - '300'
+      Cache-Control:
+      - no-cache, no-store
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '109'
+      Content-Security-Policy:
+      - base-uri 'none'; default-src 'none'; form-action 'none'; frame-ancestors 'none';
+        img-src 'self'; script-src 'self' 'report-sample'; style-src 'self'; worker-src
+        'none'; upgrade-insecure-requests; report-uri https://q.stripe.com/csp-violation?q=ExuJuLbTEDCmAz4Yn3NBLx-GG6q1al6t0FbBrJYe4vkB3kq1BMch4lmx4XLhDMGPvdcJoWL6ddxZhq9D
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 08 Oct 2025 21:44:22 GMT
+      Server:
+      - nginx
+      Strict-Transport-Security:
+      - max-age=63072000; includeSubDomains; preload
+      Vary:
+      - Origin
+      Www-Authenticate:
+      - Bearer realm="Stripe"
+      X-Robots-Tag:
+      - none
+      X-Wc:
+      - ABHIJ
+    status:
+      code: 401
+      message: Unauthorized
+version: 1

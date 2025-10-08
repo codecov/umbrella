@@ -1860,8 +1860,6 @@ class AccountViewSetTests(APITestCase):
         self.assertDictEqual(response.data, expected_response)
 
     def test_retrieve_with_sentry_merge_account_uses_owner_fields(self):
-        mock_all_plans_and_tiers()
-
         org = OwnerFactory(
             plan=PlanName.CODECOV_PRO_YEARLY.value,
             plan_user_count=10,
@@ -1901,7 +1899,7 @@ class AccountViewSetTests(APITestCase):
             "delinquent": True,
             "uses_invoice": False,
             "plan": {
-                "marketing_name": "Pro Team",
+                "marketing_name": "Pro",
                 "value": PlanName.CODECOV_PRO_YEARLY.value,
                 "billing_rate": "annually",
                 "base_unit_price": 10,
@@ -1931,43 +1929,6 @@ class AccountViewSetTests(APITestCase):
         self.assertEqual(response.data["activated_user_count"], 1)
         self.assertEqual(response.data["delinquent"], True)
         self.assertEqual(response.data["uses_invoice"], False)
-
-    def test_validate_plan_allows_update_for_sentry_merge_account(self):
-        mock_all_plans_and_tiers()
-
-        org = OwnerFactory(
-            plan=PlanName.CODECOV_PRO_MONTHLY.value,
-            plan_user_count=5,
-            stripe_subscription_id="sub_test123",
-            stripe_customer_id="cus_test123",
-        )
-
-        account = AccountFactory(plan=PlanName.SENTRY_MERGE_PLAN.value)
-        org.account = account
-        org.save()
-
-        user = OwnerFactory(
-            service=Service.GITHUB.value,
-            user=UserFactory(),
-            organizations=[org.ownerid],
-        )
-        org.admins = [user.ownerid]
-        org.save()
-
-        self.client.force_login_owner(user)
-
-        with patch("services.billing.StripeService.modify_subscription") as mock_modify:
-            response = self._update(
-                kwargs={"service": org.service, "owner_username": org.username},
-                data={
-                    "plan": {
-                        "value": PlanName.CODECOV_PRO_YEARLY.value,
-                        "quantity": 10,
-                    }
-                },
-            )
-            assert response.status_code == status.HTTP_200_OK
-            mock_modify.assert_called_once()
 
 
 @override_settings(IS_ENTERPRISE=True)

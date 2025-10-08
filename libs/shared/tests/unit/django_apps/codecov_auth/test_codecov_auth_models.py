@@ -440,6 +440,7 @@ class TestOwnerModel(TestCase):
         self.assertEqual(self.owner.pretty_plan["value"], self.owner.account.plan)
 
     def test_pretty_plan_uses_owner_plan_for_sentry_merge_account(self):
+        mock_all_plans_and_tiers()
         self.owner.plan = PlanName.CODECOV_PRO_YEARLY.value
         self.owner.plan_user_count = 10
         self.owner.save()
@@ -456,6 +457,7 @@ class TestOwnerModel(TestCase):
         assert self.owner.pretty_plan["quantity"] == 10
 
     def test_can_activate_user_uses_owner_logic_for_sentry_merge_account(self):
+        mock_all_plans_and_tiers()
         to_activate = OwnerFactory()
         to_activate.user = UserFactory()
 

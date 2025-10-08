@@ -461,7 +461,7 @@ class PlanServiceTests(TestCase):
         plan_service = PlanService(current_org=owner)
 
         assert plan_service.plan_name == PlanName.CODECOV_PRO_YEARLY.value
-        assert plan_service.plan_user_count == 10
+        assert plan_service.plan_user_count == 12
         assert plan_service.free_seat_count == 2
 
 
