@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 
 class ExtendTrialForm(forms.Form):
     end_date = forms.DateTimeField(
-        label="Trial End Date (YYYY-MM-DD HH:MM:SS):", required=True
+        label="Trial End Date (YYYY-MM-DD HH:MM:SS):", required=False
     )
 
 
