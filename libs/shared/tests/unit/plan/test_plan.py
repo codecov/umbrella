@@ -446,6 +446,24 @@ class PlanServiceTests(TestCase):
         plan_service = PlanService(current_org=current_org)
         assert plan_service.free_seat_count == 5
 
+    def test_plan_service_uses_owner_plan_for_sentry_merge_account(self):
+        """Test PlanService uses owner's plan data when account is sentry-merge."""
+        owner = OwnerFactory(
+            plan=PlanName.CODECOV_PRO_YEARLY.value, plan_user_count=10, free=2
+        )
+
+        account = AccountFactory(
+            plan=PlanName.SENTRY_MERGE_PLAN.value, plan_seat_count=5, free_seat_count=0
+        )
+        owner.account = account
+        owner.save()
+
+        plan_service = PlanService(current_org=owner)
+
+        assert plan_service.plan_name == PlanName.CODECOV_PRO_YEARLY.value
+        assert plan_service.plan_user_count == 12
+        assert plan_service.free_seat_count == 2
+
 
 class AvailablePlansBeforeTrial(TestCase):
     """

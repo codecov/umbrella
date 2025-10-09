@@ -81,18 +81,13 @@ class PlanService:
         self.current_org.stripe_subscription_id = None
         self.current_org.save()
 
-    @property
-    def has_account(self) -> bool:
-        """Returns whether the organization has an associated account."""
-        return self.current_org.account is not None
-
     @cached_property
     def plan_data(self) -> Plan:
         """Returns the plan data for the organization, either from account or default."""
         if self._plan_data is None:
             self._plan_data = Plan.objects.select_related("tier").get(
                 name=self.current_org.account.plan
-                if self.has_account
+                if self.current_org.has_billing_account
                 else self.current_org.plan
             )
         return self._plan_data
@@ -107,14 +102,14 @@ class PlanService:
         """Returns the number of users allowed by the organization's plan."""
         if get_config("setup", "enterprise_license"):
             return license_seats()
-        if self.has_account:
+        if self.current_org.has_billing_account:
             return self.current_org.account.total_seat_count
         return self.current_org.total_seat_count
 
     @property
     def free_seat_count(self) -> int:
         """Returns the number of free seats for the organization."""
-        if self.has_account:
+        if self.current_org.has_billing_account:
             return self.current_org.account.free_seat_count
         return self.current_org.free or 0
 
@@ -322,7 +317,7 @@ class PlanService:
     def has_seats_left(self) -> bool:
         if get_config("setup", "enterprise_license"):
             return enterprise_has_seats_left()
-        if self.has_account:
+        if self.current_org.has_billing_account:
             # edge case: IF the User is already a plan_activated_user on any of the Orgs in the Account,
             # AND their Account is at capacity,
             # AND they try to become a plan_activated_user on another Org in the Account,

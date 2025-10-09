@@ -17,7 +17,7 @@ from database.enums import Decoration, Notification, NotificationState, ReportTy
 from database.utils import ArchiveField
 from shared.django_apps.utils.config import should_write_data_to_storage_config_check
 from shared.helpers.github_apps import is_configured
-from shared.plan.constants import DEFAULT_FREE_PLAN
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 
 
 class AccountsUsers(CodecovBaseModel, MixinBaseClassNoExternalID):
@@ -194,6 +194,20 @@ class Owner(CodecovBaseModel):
             db_session.query(Owner)
             .filter_by(service_id=service_id, service=self.service)
             .one()
+        )
+
+    @property
+    def has_billing_account(self) -> bool:
+        """
+        Returns True if the owner has an account that manages its billing/plan.
+
+        Returns False if there's no account or if the account is a sentry-merge account,
+        which is used only for organizational linkage and does not override the owner's
+        direct billing information.
+        """
+        return (
+            self.account is not None
+            and self.account.plan != PlanName.SENTRY_MERGE_PLAN.value
         )
 
     def __repr__(self: "Owner") -> str:

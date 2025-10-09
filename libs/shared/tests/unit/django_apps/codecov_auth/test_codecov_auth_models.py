@@ -34,10 +34,7 @@ from shared.django_apps.codecov_auth.tests.factories import (
     UserFactory,
 )
 from shared.django_apps.core.tests.factories import RepositoryFactory
-from shared.plan.constants import (
-    DEFAULT_FREE_PLAN,
-    PlanName,
-)
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from shared.utils.test_utils import mock_config_helper
 from tests.helper import mock_all_plans_and_tiers
 
@@ -441,6 +438,43 @@ class TestOwnerModel(TestCase):
         # Pretty plan stuff that we care about
         self.assertEqual(self.owner.pretty_plan["quantity"], 0)
         self.assertEqual(self.owner.pretty_plan["value"], self.owner.account.plan)
+
+    def test_pretty_plan_uses_owner_plan_for_sentry_merge_account(self):
+        mock_all_plans_and_tiers()
+        self.owner.plan = PlanName.CODECOV_PRO_YEARLY.value
+        self.owner.plan_user_count = 10
+        self.owner.save()
+
+        account = AccountFactory(
+            plan=PlanName.SENTRY_MERGE_PLAN.value, plan_seat_count=5
+        )
+        self.owner.account = account
+        self.owner.save()
+        self.owner.refresh_from_db()
+
+        assert (self.owner.has_billing_account) is False
+        assert self.owner.pretty_plan["value"] == PlanName.CODECOV_PRO_YEARLY.value
+        assert self.owner.pretty_plan["quantity"] == 10
+
+    def test_can_activate_user_uses_owner_logic_for_sentry_merge_account(self):
+        mock_all_plans_and_tiers()
+        to_activate = OwnerFactory()
+        to_activate.user = UserFactory()
+
+        self.owner.plan = PlanName.CODECOV_PRO_MONTHLY.value
+        self.owner.plan_user_count = 5
+        self.owner.plan_activated_users = []
+        self.owner.free = 0
+        self.owner.save()
+
+        account = AccountFactory(
+            plan=PlanName.SENTRY_MERGE_PLAN.value, plan_seat_count=0
+        )
+        self.owner.account = account
+        self.owner.save()
+
+        assert (self.owner.has_billing_account) is False
+        assert self.owner.can_activate_user(to_activate) is True
 
     def test_add_admin_adds_ownerid_to_admin_array(self):
         self.owner.admins = []

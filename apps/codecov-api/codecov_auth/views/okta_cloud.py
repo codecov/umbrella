@@ -36,7 +36,7 @@ def get_oauth_redirect_url() -> str:
 
 def get_okta_settings(organization: Owner) -> OktaSettings | None:
     account: Account | None = organization.account
-    if account:
+    if account and organization.has_billing_account:
         okta_settings: OktaSettings | None = account.okta_settings.first()
         if okta_settings:
             return okta_settings
