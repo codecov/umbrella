@@ -33,7 +33,8 @@
     "
   >
     Your ${{ amount }} payment to Functional Software, Inc, dba
-    Sentry has failed
+    Sentry{% if org_name %} for {{ org_name }}'s{% endif %}
+    {% if plan_tier %} {{ plan_tier }}{% endif %} plan has failed.
   </p>
 </div>
 <p
