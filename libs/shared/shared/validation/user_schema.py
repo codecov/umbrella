@@ -206,6 +206,7 @@ coverage_comment_config = {
     "show_carryforward_flags": {"type": "boolean"},
     "hide_comment_details": {"type": "boolean"},
     "hide_project_coverage": {"type": "boolean"},
+    "show_patch_table": {"type": "boolean", "default": True},
 }
 
 bundle_analysis_comment_config = {

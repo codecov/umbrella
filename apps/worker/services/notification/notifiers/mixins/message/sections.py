@@ -55,7 +55,9 @@ def get_message_layout(
         sections.insert(0, "condensed_header")
 
     # append the `newfiles` section if there is a `files` or `tree` section
-    if "files" in sections or "tree" in sections:
+    # and show_patch_table is not explicitly set to False
+    show_patch_table = settings.get("show_patch_table", True)
+    if show_patch_table and ("files" in sections or "tree" in sections):
         sections.append("newfiles")
 
     upper: SectionList = []
