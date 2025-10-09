@@ -135,7 +135,7 @@ class StripeWebhookHandler(APIView):
         try:
             plan = invoice.lines.data[0].plan.get("nickname")
             plan_tier = Plan.objects.get(name=plan).tier.tier_name
-        except (AttributeError, IndexError, KeyError):
+        except (AttributeError, IndexError, KeyError, Plan.DoesNotExist):
             plan_tier = None
 
         template_vars = {
