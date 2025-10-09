@@ -3,4 +3,23 @@
 {% block content_title %}
     {{ breadcrumb_info | default:"" }}
     {{ block.super }}
+    <style>
+        .resend-button {
+            background-color: #417690;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 12px;
+        }
+        
+        .resend-button:hover {
+            background-color: #205067;
+            color: white;
+        }
+        
+        .resend-button:visited {
+            color: white;
+        }
+        </style>
 {% endblock %}
