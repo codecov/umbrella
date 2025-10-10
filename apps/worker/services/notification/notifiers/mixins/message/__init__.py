@@ -178,10 +178,13 @@ class MessageMixin:
     ) -> list[str]:
         writer_class = TeamPlanWriter()
 
+        # Get changes for coverage change-based emoji logic
+        changes = comparison.get_changes()
+
         # Settings here enable failed tests results for now as a new product
         message.extend(
             writer_class.header_lines(
-                comparison=comparison, diff=diff, settings=settings
+                comparison=comparison, diff=diff, settings=settings, changes=changes
             )
         )
         message.extend(
