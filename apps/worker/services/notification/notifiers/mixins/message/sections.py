@@ -167,8 +167,9 @@ class HeaderSectionWriter(BaseSectionWriter):
         # Determine if we should use coverage change-based emoji logic
         status_emoji_on_coverage_change = self.settings.get("status_emoji_on_coverage_change", False)
 
-        if status_emoji_on_coverage_change:
+        if status_emoji_on_coverage_change and base_report and head_report:
             # Check if any files have decreased coverage
+            # Only evaluate if both reports are available
             has_coverage_decrease = any(
                 change.totals and change.totals.coverage < 0
                 for change in (changes or [])

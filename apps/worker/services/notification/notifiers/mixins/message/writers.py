@@ -29,6 +29,7 @@ class TeamPlanWriter:
     def header_lines(self, comparison: ComparisonProxy, diff, settings, changes=None) -> list[str]:
         lines = []
 
+        base_report = comparison.project_coverage_base.report
         head_report = comparison.head.report
         diff_totals = head_report.apply_diff(diff)
 
@@ -42,8 +43,9 @@ class TeamPlanWriter:
         # Determine if we should use coverage change-based emoji logic
         status_emoji_on_coverage_change = settings.get("status_emoji_on_coverage_change", False)
 
-        if status_emoji_on_coverage_change:
+        if status_emoji_on_coverage_change and base_report and head_report:
             # Check if any files have decreased coverage
+            # Only evaluate if both reports are available
             has_coverage_decrease = any(
                 change.totals and change.totals.coverage < 0
                 for change in (changes or [])
