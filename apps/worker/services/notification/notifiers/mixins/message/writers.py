@@ -26,7 +26,7 @@ class TeamPlanWriter:
     def name(self):
         return self.__class__.__name__
 
-    def header_lines(self, comparison: ComparisonProxy, diff, settings) -> list[str]:
+    def header_lines(self, comparison: ComparisonProxy, diff, settings, changes=None) -> list[str]:
         lines = []
 
         head_report = comparison.head.report
@@ -38,15 +38,40 @@ class TeamPlanWriter:
         else:
             misses_and_partials = None
             patch_coverage = None
-        if misses_and_partials:
-            ln_text = "lines" if misses_and_partials > 1 else "line"
-            lines.append(
-                f":x: Patch coverage is `{patch_coverage}%` with `{misses_and_partials} {ln_text}` in your changes missing coverage. Please review."
+
+        # Determine if we should use coverage change-based emoji logic
+        status_emoji_on_coverage_change = settings.get("status_emoji_on_coverage_change", False)
+
+        if status_emoji_on_coverage_change:
+            # Check if any files have decreased coverage
+            has_coverage_decrease = any(
+                change.totals and change.totals.coverage < 0
+                for change in (changes or [])
             )
+
+            if has_coverage_decrease:
+                # Red X - project coverage decreased
+                ln_text = "lines" if misses_and_partials and misses_and_partials > 1 else "line"
+                if misses_and_partials:
+                    lines.append(
+                        f":x: Patch coverage is `{patch_coverage}%` with `{misses_and_partials} {ln_text}` in your changes missing coverage. Please review."
+                    )
+                else:
+                    lines.append(":x: Coverage decreased for some files.")
+            else:
+                # Green checkmark - no coverage decrease
+                lines.append(":white_check_mark: All modified files maintained or improved their coverage.")
         else:
-            lines.append(
-                ":white_check_mark: All modified and coverable lines are covered by tests."
-            )
+            # Default behavior: emoji based on patch coverage only
+            if misses_and_partials:
+                ln_text = "lines" if misses_and_partials > 1 else "line"
+                lines.append(
+                    f":x: Patch coverage is `{patch_coverage}%` with `{misses_and_partials} {ln_text}` in your changes missing coverage. Please review."
+                )
+            else:
+                lines.append(
+                    ":white_check_mark: All modified and coverable lines are covered by tests."
+                )
 
         hide_project_coverage = settings.get("hide_project_coverage", False)
         if hide_project_coverage:
