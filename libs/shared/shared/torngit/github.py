@@ -2437,6 +2437,8 @@ class Github(TorngitBaseAdapter):
         """Legacy behavior. Searches commit reference in issues.
         Known issues: Can return a reference to a PR in which the commit was just mentioned, leading us to comment in the wrong PR.
         """
+        if not self.slug:
+            return None
         query = (
             (f"{commit}+" if commit else "")
             + f"repo:{url_escape(self.slug)}+type:pr"
