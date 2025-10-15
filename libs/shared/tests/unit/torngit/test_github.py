@@ -640,7 +640,11 @@ class TestUnitGithub:
             assert res == 18
             mock_log.assert_called_with(
                 "Commit search_issues returned multiple references",
-                extra={"refs": [18, 22], "commit": "abcdef", "slug": "username/repo_name"},
+                extra={
+                    "refs": [18, 22],
+                    "commit": "abcdef",
+                    "slug": "username/repo_name",
+                },
             )
             mock_search_by_pull.assert_called()
 
