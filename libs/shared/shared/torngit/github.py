@@ -2425,3 +2425,25 @@ class Github(TorngitBaseAdapter):
                 return True
             except (TorngitClientError, TorngitServer5xxCodeError):
                 return False
+
+    async def _find_pr_by_search_issues(self, client, commit, state, token):
+        """Legacy behavior. Searches commit reference in issues.
+        Known issues: Can return a reference to a PR in which the commit was just mentioned, leading us to comment in the wrong PR.
+        """
+        query = "%srepo:%s+type:pr%s" % (
+            (("%s+" % commit) if commit else ""),
+            url_escape(self.slug),
+            (("+state:%s" % state) if state else ""),
+        )
+
+        # https://developer.github.com/v3/search/#search-issues
+        res = await self.api(client, "get", "/search/issues?q=%s" % query, token=token)
+        if res["items"]:
+            if len(res["items"]) > 1:
+                commit_refs = list(map(lambda data: data["number"], res["items"]))
+                log.warning(
+                    "Commit search_issues returned multiple references",
+                    extra=dict(refs=commit_refs, commit=commit, slug=self.slug),
+                )
+            return res["items"][0]["number"]
+
