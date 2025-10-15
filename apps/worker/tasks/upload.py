@@ -256,6 +256,18 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         *args: Any,
         **kwargs: Any,
     ):
+        # DEBUG: Log that upload task is actually running
+        log.info(
+            "UPLOAD TASK STARTED - Upload task is running",
+            extra={
+                "repoid": repoid,
+                "commitid": commitid,
+                "report_type": report_type,
+                "task_args": args,
+                "task_kwargs": kwargs,
+            },
+        )
+
         upload_context = UploadContext(
             repoid=int(repoid), commitid=commitid, report_type=ReportType(report_type)
         )

@@ -7,7 +7,11 @@ from django.test import Client, TestCase, override_settings
 from django.utils.safestring import SafeString
 
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
-from shared.django_apps.core.tests.factories import RepositoryFactory
+from shared.django_apps.core.tests.factories import CommitFactory, RepositoryFactory
+from shared.django_apps.reports.tests.factories import (
+    CommitReportFactory,
+    UploadFactory,
+)
 from shared.django_apps.upload_breadcrumbs.admin import (
     EndpointFilter,
     ErrorFilter,
@@ -937,3 +941,572 @@ class UploadBreadcrumbAdminSearchTest(TestCase):
         self.assertTrue(use_distinct)
         result_ids = list(result.values_list("id", flat=True))
         self.assertIn(test_breadcrumb.id, result_ids)
+
+
+@override_settings(ROOT_URLCONF="shared.django_apps.upload_breadcrumbs.tests.test_urls")
+class UploadBreadcrumbAdminResendTest(TestCase):
+    """Test cases for the resend upload functionality in UploadBreadcrumbAdmin."""
+
+    def setUp(self):
+        self.user = UserFactory(is_staff=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.admin = UploadBreadcrumbAdmin(UploadBreadcrumb, AdminSite())
+        self.repo = RepositoryFactory()
+
+    def test_is_failed_upload_scenarios(self):
+        """Test _is_failed_upload with various scenarios."""
+        test_cases = [
+            # (breadcrumb_data, expected_result, description)
+            (
+                {
+                    "milestone": Milestones.PROCESSING_UPLOAD.value,
+                    "error": Errors.FILE_NOT_IN_STORAGE.value,
+                },
+                True,
+                "processing upload with FILE_NOT_IN_STORAGE error",
+            ),
+            (
+                {
+                    "milestone": Milestones.PROCESSING_UPLOAD.value,
+                    "error": Errors.REPORT_EXPIRED.value,
+                },
+                True,
+                "processing upload with REPORT_EXPIRED error",
+            ),
+            (
+                {
+                    "milestone": Milestones.COMPILING_UPLOADS.value,
+                    "error": Errors.REPORT_EXPIRED.value,
+                },
+                True,
+                "compiling uploads with REPORT_EXPIRED error",
+            ),
+            (
+                {
+                    "milestone": Milestones.COMPILING_UPLOADS.value,
+                    "error": Errors.UNKNOWN.value,
+                },
+                True,
+                "compiling uploads with UNKNOWN error",
+            ),
+            (
+                {
+                    "milestone": Milestones.PROCESSING_UPLOAD.value,
+                },
+                False,
+                "processing upload without error",
+            ),
+            (
+                {
+                    "milestone": Milestones.COMPILING_UPLOADS.value,
+                },
+                False,
+                "compiling uploads without error",
+            ),
+            (
+                {
+                    "milestone": Milestones.UPLOAD_COMPLETE.value,
+                    "error": Errors.BAD_REQUEST.value,
+                },
+                False,
+                "non-processing/compiling milestone with error",
+            ),
+            (
+                {
+                    "milestone": Milestones.WAITING_FOR_COVERAGE_UPLOAD.value,
+                    "error": Errors.FILE_NOT_IN_STORAGE.value,
+                },
+                False,
+                "non-processing/compiling milestone with error",
+            ),
+            (None, False, "None breadcrumb_data"),
+            ({}, False, "empty breadcrumb_data"),
+        ]
+
+        for breadcrumb_data, expected_result, description in test_cases:
+            with self.subTest(description=description):
+                if breadcrumb_data is None:
+                    # Handle None case with a mock since the DB doesn't allow null breadcrumb_data
+                    breadcrumb = MagicMock()
+                    breadcrumb.breadcrumb_data = None
+                else:
+                    breadcrumb = UploadBreadcrumbFactory(
+                        breadcrumb_data=breadcrumb_data
+                    )
+                result = self.admin._is_failed_upload(breadcrumb)
+                self.assertEqual(result, expected_result, f"Failed for: {description}")
+
+    def test_resend_upload_button_scenarios(self):
+        """Test resend_upload_button with various scenarios."""
+        test_cases = [
+            # (breadcrumb_data, expected_contains, expected_type, description)
+            (
+                {
+                    "milestone": Milestones.PROCESSING_UPLOAD.value,
+                    "error": Errors.FILE_NOT_IN_STORAGE.value,
+                },
+                ["🔄 Resend", 'class="button"', "onclick="],
+                SafeString,
+                "failed upload",
+            ),
+            (
+                {
+                    "milestone": Milestones.COMPILING_UPLOADS.value,
+                    "error": Errors.REPORT_EXPIRED.value,
+                },
+                ["🔄 Resend", 'class="button"', "onclick="],
+                SafeString,
+                "failed compiling upload",
+            ),
+            (
+                {
+                    "milestone": Milestones.UPLOAD_COMPLETE.value,
+                },
+                None,
+                str,
+                "successful upload",
+            ),
+        ]
+
+        for (
+            breadcrumb_data,
+            expected_contains,
+            expected_type,
+            description,
+        ) in test_cases:
+            with self.subTest(description=description):
+                breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+                result = self.admin.resend_upload_button(breadcrumb)
+
+                if expected_contains is None:
+                    self.assertEqual(result, "-", f"Failed for: {description}")
+                else:
+                    self.assertIsInstance(
+                        result, expected_type, f"Failed for: {description}"
+                    )
+                    for expected_content in expected_contains:
+                        self.assertIn(
+                            expected_content, result, f"Failed for: {description}"
+                        )
+
+    def test_resend_upload_action_scenarios(self):
+        """Test resend_upload_action with various scenarios."""
+        test_cases = [
+            # (breadcrumb_data, commit_sha, has_pk, expected_contains, description)
+            (
+                {
+                    "milestone": Milestones.PROCESSING_UPLOAD.value,
+                    "error": Errors.REPORT_EXPIRED.value,
+                },
+                "abcdef1234567890",
+                True,
+                ["🔄 Resend Upload", 'class="button default"', "abcdef1", "⚠️ Note:"],
+                "failed upload",
+            ),
+            (
+                {
+                    "milestone": Milestones.COMPILING_UPLOADS.value,
+                    "error": Errors.FILE_NOT_IN_STORAGE.value,
+                },
+                "1234567890abcdef",
+                True,
+                ["🔄 Resend Upload", 'class="button default"', "1234567", "⚠️ Note:"],
+                "failed compiling upload",
+            ),
+            (
+                {
+                    "milestone": Milestones.UPLOAD_COMPLETE.value,
+                },
+                "abcdef1234567890",
+                True,
+                [
+                    "✅ This upload does not appear to have failed",
+                    "Resend option is not available",
+                ],
+                "successful upload",
+            ),
+            ({}, "abcdef1234567890", False, None, "new object without pk"),
+        ]
+
+        for (
+            breadcrumb_data,
+            commit_sha,
+            has_pk,
+            expected_contains,
+            description,
+        ) in test_cases:
+            with self.subTest(description=description):
+                if has_pk:
+                    breadcrumb = UploadBreadcrumbFactory(
+                        breadcrumb_data=breadcrumb_data, commit_sha=commit_sha
+                    )
+                else:
+                    breadcrumb = UploadBreadcrumb()  # No pk
+
+                result = self.admin.resend_upload_action(breadcrumb)
+
+                if expected_contains is None:
+                    self.assertEqual(result, "-", f"Failed for: {description}")
+                else:
+                    self.assertIsInstance(
+                        result, SafeString, f"Failed for: {description}"
+                    )
+                    for expected_content in expected_contains:
+                        self.assertIn(
+                            expected_content, result, f"Failed for: {description}"
+                        )
+
+    @patch("django.contrib.messages.error")
+    def test_resend_upload_view_with_nonexistent_breadcrumb(self, mock_messages_error):
+        """Test resend_upload_view handles nonexistent breadcrumb."""
+        request = MagicMock()
+        request.user = self.user
+
+        with patch.object(self.admin, "get_object", return_value=None):
+            response = self.admin.resend_upload_view(request, 998)
+
+        mock_messages_error.assert_called_once_with(
+            request, "Upload breadcrumb not found."
+        )
+
+    @patch("django.contrib.messages.error")
+    def test_resend_upload_view_with_non_failed_upload(self, mock_messages_error):
+        """Test resend_upload_view handles non-failed uploads."""
+        breadcrumb_data = {
+            "milestone": Milestones.UPLOAD_COMPLETE.value,
+        }
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+        request = MagicMock()
+        request.user = self.user
+
+        with patch.object(self.admin, "get_object", return_value=breadcrumb):
+            response = self.admin.resend_upload_view(request, str(breadcrumb.id))
+
+        mock_messages_error.assert_called_once_with(
+            request, "This upload does not appear to have failed."
+        )
+
+    @patch("django.contrib.messages.success")
+    def test_resend_upload_view_successful_resend(self, mock_messages_success):
+        """Test resend_upload_view handles successful resend."""
+        breadcrumb_data = {
+            "milestone": Milestones.PROCESSING_UPLOAD.value,
+            "error": Errors.FILE_NOT_IN_STORAGE.value,
+        }
+        breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data=breadcrumb_data, commit_sha="abcdef1234567890"
+        )
+        request = MagicMock()
+        request.user = self.user
+
+        with (
+            patch.object(self.admin, "get_object", return_value=breadcrumb),
+            patch.object(self.admin, "_resend_upload", return_value=(True, None)),
+        ):
+            response = self.admin.resend_upload_view(request, str(breadcrumb.id))
+
+        mock_messages_success.assert_called_once()
+        success_message = mock_messages_success.call_args[0][1]
+        self.assertIn("Upload resend triggered successfully", success_message)
+        self.assertIn("abcdef1", success_message)
+
+    @patch("django.contrib.messages.error")
+    def test_resend_upload_view_failed_resend(self, mock_messages_error):
+        """Test resend_upload_view handles failed resend."""
+        breadcrumb_data = {
+            "milestone": Milestones.PROCESSING_UPLOAD.value,
+            "error": Errors.FILE_NOT_IN_STORAGE.value,
+        }
+        breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data=breadcrumb_data, commit_sha="abcdef1234567890"
+        )
+        request = MagicMock()
+        request.user = self.user
+
+        with (
+            patch.object(self.admin, "get_object", return_value=breadcrumb),
+            patch.object(
+                self.admin, "_resend_upload", return_value=(False, "Test error message")
+            ),
+        ):
+            response = self.admin.resend_upload_view(request, str(breadcrumb.id))
+
+        mock_messages_error.assert_called_once()
+        error_message = mock_messages_error.call_args[0][1]
+        self.assertIn("Failed to resend upload", error_message)
+        self.assertIn("abcdef1", error_message)
+        self.assertIn("Test error message", error_message)
+
+    @patch("django.contrib.messages.error")
+    def test_resend_upload_view_exception_handling(self, mock_messages_error):
+        """Test resend_upload_view handles exceptions gracefully."""
+        request = MagicMock()
+        request.user = self.user
+
+        with patch.object(
+            self.admin, "get_object", side_effect=Exception("Test error")
+        ):
+            response = self.admin.resend_upload_view(request, "123")
+
+        mock_messages_error.assert_called_once()
+        error_message = mock_messages_error.call_args[0][1]
+        self.assertIn("Error resending upload: Test error", error_message)
+
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
+    def test_resend_upload_successful(
+        self,
+        mock_redis_connection,
+        mock_dispatch_upload_task,
+    ):
+        """Test _resend_upload successfully triggers upload task."""
+
+        commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
+        commit.save()
+
+        commit_report = CommitReportFactory(commit=commit)
+        commit_report.save()
+
+        upload = UploadFactory(
+            report=commit_report,
+            external_id=1234567890,
+            storage_path="v4/raw/test-path",
+            build_code="test-build",
+            build_url="https://example.com/build",
+            job_code="test-job",
+            provider="github",
+        )
+        upload.save()
+
+        mock_redis = MagicMock()
+        mock_redis_connection.return_value = mock_redis
+
+        breadcrumb = UploadBreadcrumbFactory(
+            repo_id=self.repo.repoid,
+            commit_sha="abcdef1234567890",
+            upload_ids=[upload.id],  # Use real upload ID from database
+            breadcrumb_data={"endpoint": Endpoints.CREATE_COMMIT.value},
+        )
+
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
+        self.assertTrue(success, "Resend should succeed")
+        self.assertIsNone(error_message, "Error message should be None on success")
+
+        # Verify dispatch_upload_task was called once
+        self.assertEqual(mock_dispatch_upload_task.call_count, 1)
+
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task", None)
+    @patch("shared.django_apps.upload_breadcrumbs.admin.log")
+    def test_resend_upload_task_service_unavailable(self, mock_log):
+        """Test _resend_upload handles when dispatch_upload_task is not available."""
+        breadcrumb = UploadBreadcrumbFactory(
+            repo_id=self.repo.repoid,
+            commit_sha="abcdef1234567890",
+            upload_ids=[123],
+        )
+
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
+
+        # Should return False when dispatch_upload_task is unavailable
+        self.assertFalse(success)
+        self.assertEqual(
+            error_message, "Upload services are not available. Please contact support."
+        )
+
+        # Verify error was logged
+        mock_log.error.assert_called_with(
+            "Upload services not available - cannot resend upload"
+        )
+
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.log")
+    def test_resend_upload_task_service_exception(
+        self, mock_log, mock_redis_connection, mock_dispatch_upload_task
+    ):
+        """Test _resend_upload handles exceptions and logs them."""
+        commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
+        commit_report = CommitReportFactory(commit=commit)
+        upload = UploadFactory(
+            report=commit_report,
+            external_id=1234567890,
+            storage_path="v4/raw/test-path",
+            build_code="test-build",
+            build_url="https://example.com/build",
+            job_code="test-job",
+            provider="github",
+        )
+
+        # Mock Redis
+        mock_redis = MagicMock()
+        mock_redis_connection.return_value = mock_redis
+
+        # Mock dispatch_upload_task to raise exception
+        mock_dispatch_upload_task.side_effect = Exception("Upload failed")
+
+        breadcrumb = UploadBreadcrumbFactory(
+            repo_id=self.repo.repoid,
+            commit_sha="abcdef1234567890",
+            upload_ids=[upload.id],
+        )
+
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
+
+        # Should return False when exception occurs
+        self.assertFalse(success)
+        self.assertEqual(
+            error_message, "Failed to dispatch upload tasks: Upload failed"
+        )
+
+        # Verify exception was logged with correct details
+        mock_log.error.assert_called_with(
+            "Failed to dispatch upload tasks",
+            extra={
+                "error": "Upload failed",
+                "error_type": "Exception",
+                "breadcrumb_id": breadcrumb.id,
+                "num_uploads": 1,
+            },
+            exc_info=True,
+        )
+
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.log")
+    def test_resend_upload_repository_not_found(
+        self, mock_log, mock_dispatch_upload_task
+    ):
+        """Test _resend_upload handles Repository.DoesNotExist error."""
+
+        breadcrumb = UploadBreadcrumbFactory(
+            repo_id=999999,  # Non-existent repo
+            commit_sha="abcdef1234567890",
+            upload_ids=[123],
+        )
+
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
+
+        self.assertFalse(success)
+        self.assertEqual(
+            error_message, "Repository with ID 999999 not found in database."
+        )
+        mock_log.error.assert_called_with(
+            "Repository not found in database - cannot resend upload",
+            extra={
+                "repo_id": 999999,
+                "breadcrumb_id": breadcrumb.id,
+            },
+        )
+
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.log")
+    def test_resend_upload_commit_not_found(self, mock_log, mock_dispatch_upload_task):
+        """Test _resend_upload handles Commit.DoesNotExist error."""
+
+        breadcrumb = UploadBreadcrumbFactory(
+            repo_id=self.repo.repoid,
+            commit_sha="nonexistentcommit12345678901234567890",
+            upload_ids=[123],
+        )
+
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
+
+        self.assertFalse(success)
+        self.assertEqual(error_message, "Commit nonexis not found in database.")
+
+        mock_log.error.assert_called_with(
+            "Commit not found in database - cannot resend upload",
+            extra={
+                "repo_id": self.repo.repoid,
+                "breadcrumb_id": breadcrumb.id,
+            },
+        )
+
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.log")
+    def test_resend_upload_invalid_upload_ids(
+        self, mock_log, mock_dispatch_upload_task
+    ):
+        """Test _resend_upload handles invalid upload_ids (no ReportSession found)."""
+
+        commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
+
+        breadcrumb = UploadBreadcrumbFactory(
+            repo_id=self.repo.repoid,
+            commit_sha="abcdef1234567890",
+            upload_ids=[999, 888, 777],
+        )
+
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
+
+        self.assertFalse(success)
+        self.assertEqual(
+            error_message, "No upload sessions found for upload IDs: [999, 888, 777]"
+        )
+
+        mock_log.error.assert_called_with("No uploads found to resend")
+
+    @patch("shared.django_apps.upload_breadcrumbs.admin.dispatch_upload_task")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.get_redis_connection")
+    @patch("shared.django_apps.upload_breadcrumbs.admin.log")
+    def test_resend_upload_dispatch_failure(
+        self, mock_log, mock_redis_connection, mock_dispatch_upload_task
+    ):
+        """Test _resend_upload handles dispatch_upload_task failure."""
+        commit = CommitFactory(repository=self.repo, commitid="abcdef1234567890")
+        commit_report = CommitReportFactory(commit=commit)
+        upload = UploadFactory(
+            report=commit_report,
+            external_id=1234567890,
+            storage_path="v4/raw/test-path",
+            build_code="test-build",
+            build_url="https://example.com/build",
+            job_code="test-job",
+            provider="github",
+        )
+
+        mock_redis = MagicMock()
+        mock_redis_connection.return_value = mock_redis
+
+        mock_dispatch_upload_task.side_effect = Exception("Redis pipeline error")
+
+        breadcrumb = UploadBreadcrumbFactory(
+            repo_id=self.repo.repoid,
+            commit_sha="abcdef1234567890",
+            upload_ids=[upload.id],
+        )
+
+        success, error_message = self.admin._resend_upload(breadcrumb, self.user)
+
+        self.assertFalse(success)
+        self.assertEqual(
+            error_message, "Failed to dispatch upload tasks: Redis pipeline error"
+        )
+
+        mock_log.error.assert_called_with(
+            "Failed to dispatch upload tasks",
+            extra={
+                "error": "Redis pipeline error",
+                "error_type": "Exception",
+                "breadcrumb_id": breadcrumb.id,
+                "num_uploads": 1,
+            },
+            exc_info=True,
+        )
+
+    def test_get_urls_includes_resend_url(self):
+        """Test that get_urls includes the resend upload URL pattern."""
+        urls = self.admin.get_urls()
+
+        resend_url_pattern = None
+        for url_pattern in urls:
+            if (
+                hasattr(url_pattern, "name")
+                and url_pattern.name
+                == "upload_breadcrumbs_uploadbreadcrumb_resend_upload"
+            ):
+                resend_url_pattern = url_pattern
+                break
+
+        self.assertIsNotNone(resend_url_pattern)
+        self.assertIn("resend-upload/", str(resend_url_pattern.pattern))
