@@ -137,8 +137,8 @@ class StripeWebhookHandler(APIView):
             plan_tier = Plan.objects.get(name=plan).tier.tier_name
         except (AttributeError, IndexError, KeyError, Plan.DoesNotExist):
             log.info(
-                "Plan tier not found by invoice plan nickname",
-                extra={"invoice_line_data": invoice.lines.data[0]},
+                "Plan tier not found by plan nickname at invoice.lines.data[0].plan.get('nickname')",
+                extra={"invoice": invoice},
             )
             plan_tier = None
 
