@@ -2058,7 +2058,9 @@ class Github(TorngitBaseAdapter):
                     "Commit not found on pulls endpoint. Fallback to legacy behavior",
                     extra=dict(commit=commit, slug=self.slug),
                 )
-                return await self._find_pr_by_search_issues(client, commit, state, token)
+                return await self._find_pr_by_search_issues(
+                    client, commit, state, token
+                )
             except TorngitClientGeneralError as exp:
                 if exp.code == 422:
                     return None
