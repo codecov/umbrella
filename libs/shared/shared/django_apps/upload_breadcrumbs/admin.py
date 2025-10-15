@@ -17,7 +17,7 @@ from django.utils.safestring import mark_safe
 
 from shared.config import get_config
 from shared.django_apps.core.models import Commit, Repository
-from shared.django_apps.reports.models import ReportSession
+from shared.django_apps.reports.models import CommitReport, ReportSession
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
     Endpoints,
@@ -711,9 +711,11 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             extra={"upload_ids": breadcrumb.upload_ids},
         )
 
-        uploads = ReportSession.objects.filter(
-            id__in=breadcrumb.upload_ids
-        ).prefetch_related("flags")
+        uploads = (
+            ReportSession.objects.filter(id__in=breadcrumb.upload_ids)
+            .prefetch_related("flags")
+            .select_related("report")
+        )
 
         if not uploads:
             log.error("No uploads found to resend")
@@ -750,11 +752,19 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         try:
             redis = get_redis_connection()
             # Dispatch a task for each upload
-            for upload_args in all_upload_arguments:
+            for upload, upload_args in zip(uploads, all_upload_arguments):
+                # Get the report type from the upload's associated report
+                report_type_str = upload.report.report_type
+                report_type = (
+                    CommitReport.ReportType(report_type_str)
+                    if report_type_str
+                    else CommitReport.ReportType.COVERAGE
+                )
                 dispatch_upload_task(
                     redis=redis,
                     repoid=breadcrumb.repo_id,
                     task_arguments=upload_args,
+                    report_type=report_type,
                 )
             log.info(
                 f"Successfully dispatched {len(all_upload_arguments)} upload task(s)"
