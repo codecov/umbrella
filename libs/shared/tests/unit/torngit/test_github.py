@@ -580,7 +580,9 @@ class TestUnitGithub:
             client = handler.get_client()
             token = handler.get_token_by_type(TokenType.read)
             with pytest.raises(TorngitClientGeneralError):
-                await handler._find_pr_by_pulls_endpoint(client, commit=commit_sha, token=token)
+                await handler._find_pr_by_pulls_endpoint(
+                    client, commit=commit_sha, token=token
+                )
             after = REGISTRY.get_sample_value(
                 "git_provider_api_calls_github_total",
                 labels={"endpoint": "find_pull_request"},
