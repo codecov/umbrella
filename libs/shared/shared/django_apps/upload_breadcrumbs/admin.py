@@ -586,9 +586,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             html_parts.append(
                 f'<a class="button default" href="{resend_url}" '
                 f"onclick=\"return confirm('Are you sure you want to resend this upload for commit {obj.commit_sha[:7]}?')\">🔄 Resend Upload</a>"
-            )
-            html_parts.append("<br><br>")
-            html_parts.append(
+                "<br><br>"
                 "<div><strong>⚠️ Note:</strong> This will create a new upload task for the same commit and repository. "
                 "The original upload data may no longer be available in storage.</div>"
             )
