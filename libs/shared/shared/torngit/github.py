@@ -2039,7 +2039,7 @@ class Github(TorngitBaseAdapter):
                     return pr_from_pulls
                 log.info(
                     "Commit not found on pulls endpoint. Fallback to legacy behavior",
-                    extra=dict(commit=commit, slug=self.slug),
+                    extra={"commit": commit, "slug": self.slug},
                 )
             return await self._find_pr_by_search_issues(client, commit, state, token)
 
@@ -2420,12 +2420,12 @@ class Github(TorngitBaseAdapter):
                 if len(prs_with_commit) > 1:
                     log.warning(
                         "Commit is referenced in multiple PRs.",
-                        extra=dict(
-                            prs=prs_with_commit,
-                            commit=commit,
-                            slug=self.slug,
-                            state=state,
-                        ),
+                        extra={
+                            "prs": prs_with_commit,
+                            "commit": commit,
+                            "slug": self.slug,
+                            "state": state,
+                        },
                     )
                 return prs_with_commit[0]
         except TorngitClientGeneralError as exp:

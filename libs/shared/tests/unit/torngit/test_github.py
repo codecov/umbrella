@@ -464,9 +464,9 @@ class TestUnitGithub:
             Github, "_find_pr_by_search_issues", return_value=None
         )
         handler = Github(
-            repo=dict(name="repo_name"),
-            owner=dict(username="username"),
-            token=dict(key="aaaaa"),
+            repo={"name": "repo_name"},
+            owner={"username": "username"},
+            token={"key": "aaaaa"},
         )
         commit_sha = "some_commit_sha"
         mock_log = mocker.patch.object(
@@ -525,12 +525,12 @@ class TestUnitGithub:
             assert res == 18
             mock_log.assert_called_with(
                 "Commit is referenced in multiple PRs.",
-                extra=dict(
-                    prs=[18, 19],
-                    commit="some_commit_sha",
-                    slug="username/repo_name",
-                    state="open",
-                ),
+                extra={
+                    "prs": [18, 19],
+                    "commit": "some_commit_sha",
+                    "slug": "username/repo_name",
+                    "state": "open",
+                },
             )
             mock_search_by_issues.assert_not_called()
 
@@ -632,15 +632,15 @@ class TestUnitGithub:
                 )
             )
             handler = Github(
-                repo=dict(name="repo_name"),
-                owner=dict(username="username"),
-                token=dict(key="aaaaa"),
+                repo={"name": "repo_name"},
+                owner={"username": "username"},
+                token={"key": "aaaaa"},
             )
             res = await handler.find_pull_request(commit="abcdef")
             assert res == 18
             mock_log.assert_called_with(
                 "Commit search_issues returned multiple references",
-                extra=dict(refs=[18, 22], commit="abcdef", slug="username/repo_name"),
+                extra={"refs": [18, 22], "commit": "abcdef", "slug": "username/repo_name"},
             )
             mock_search_by_pull.assert_called()
 
