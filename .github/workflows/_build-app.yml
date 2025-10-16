@@ -51,7 +51,7 @@ jobs:
           make ${{ inputs.make_target_prefix }}build.app
 
       - name: Push app
-        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' && inputs.make_target_prefix != 'shared.' }}
         run: |
           make ${{ inputs.make_target_prefix }}push.app-temp
 
@@ -85,6 +85,6 @@ jobs:
           make ${{ inputs.make_target_prefix }}build.test-app
 
       - name: Push Test App
-        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' && inputs.make_target_prefix != 'shared.' }}
         run: |
           make ${{ inputs.make_target_prefix }}push.test-app-temp

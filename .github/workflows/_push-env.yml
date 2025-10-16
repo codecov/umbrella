@@ -46,11 +46,21 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'recursive'
+          
       - name: Get Release SHA
         env:
           SHA: ${{ github.sha }}
         id: sha
         run: echo short_sha="${SHA:0:7}" >> $GITHUB_OUTPUT
+
+      - id: "auth"
+        name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v2.1.2"
+        with:
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
+          service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
+
       - name: Pull built image
         run: |
           make ${{ inputs.make_target_prefix }}pull.app-temp
