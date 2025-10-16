@@ -99,6 +99,7 @@ _build.test-app:
 
 # Build a self-hosted image.
 _build.self-hosted:
+	$(MAKE) build.requirements
 	$(MAKE) _build.self-hosted-base
 	$(MAKE) _build.self-hosted-runtime
 

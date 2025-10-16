@@ -30,6 +30,7 @@ env:
 jobs:
   build-self-hosted:
     name: Build Self Hosted App
+    if: github.repository_owner == 'codecov' && !github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -51,18 +52,6 @@ jobs:
         run: |-
           echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
 
-      - name: Cache Requirements
-        id: cache-requirements
-        uses: actions/cache@v4
-        env:
-          # Forks can't access the variable containing our actual image repository. We want to
-          # use a separate cache to make sure they don't interfere with reqs images being pushed.
-          cache-name: ${{ !github.event.pull_request.repo.fork && 'umbrella-requirements' || 'umbrella-requirements-fork' }}
-        with:
-          path: |
-            ./requirements.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
-
       - name: Cache Self hosted
         id: cache-self-hosted
         uses: actions/cache@v4
@@ -73,19 +62,6 @@ jobs:
             ${{ inputs.output_directory }}/self-hosted-runtime.tar
             ${{ inputs.output_directory }}/self-hosted.tar
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
-
-      - name: Load requirements from cache
-        if: ${{ steps.cache-requirements.outputs.cache-hit == 'true' }}
-        run: |
-          make load.requirements
-
-      # This shouldn't happen; the _build-requirements.yml job should have run.
-      - name: Build/pull requirements
-        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' }}
-        run: |
-          echo "Warning: requirements image not in cache, building a new one"
-          make build.requirements
-          make save.requirements
 
       - name: Load built image
         if: ${{ steps.cache-self-hosted.outputs.cache-hit == 'true' }}
