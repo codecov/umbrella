@@ -10,7 +10,6 @@ from urllib.parse import parse_qs, urlencode
 import httpx
 import sentry_sdk
 from httpx import Response
-
 from shared.config import get_config
 from shared.github import get_github_integration_token, get_github_jwt_token
 from shared.helpers.cache import cache
@@ -2409,12 +2408,10 @@ class Github(TorngitBaseAdapter):
             return None
         # https://docs.github.com/en/rest/commits/commits#list-pull-requests-associated-with-a-commit
         try:
-            res = await self.api(
-                client,
-                "get",
-                f"/repos/{self.slug}/commits/{commit}/pulls",
-                token=token,
+            url = self.count_and_get_url_template("find_pull_request").substitute(
+                slug=self.slug, commit=commit
             )
+            res = await self.api(client, "get", url, token=token)
             prs_with_commit = [data["number"] for data in res if data["state"] == state]
             if prs_with_commit:
                 if len(prs_with_commit) > 1:

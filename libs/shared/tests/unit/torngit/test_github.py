@@ -8,7 +8,6 @@ import httpx
 import pytest
 import respx
 from prometheus_client import REGISTRY
-
 from shared.torngit.base import TokenType
 from shared.torngit.exceptions import (
     TorngitClientError,
@@ -568,7 +567,7 @@ class TestUnitGithub:
         commit_sha = "some_commit_sha"
         with respx.mock:
             respx.get(
-                url=f"https://api.github.com/repos/{handler.slug}/commits/{commit_sha}/pulls"
+                f"https://api.github.com/repos/{handler.slug}/commits/{commit_sha}/pulls"
             ).mock(
                 return_value=httpx.Response(
                     status_code=425,
