@@ -66,7 +66,7 @@ codecov-api = [
     "certifi>=2024.7.4",
     "django-autocomplete-light>=3.11.0",
     "django-cors-headers>=3.7.0",
-    "django-csp>=3.8.0",
+    "django-csp==3.8.0",
     "django-cursor-pagination>=0.3.0",
     "django-filter>=2.4.0",
     "djangorestframework>=3.15.2",
