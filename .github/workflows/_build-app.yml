@@ -47,7 +47,7 @@ jobs:
 
       - name: Build app
         run: |
-          make ${{ inputs.make_target_prefix }}build.requirements
+          make build.requirements
           make ${{ inputs.make_target_prefix }}build.app
 
       - name: Push app
@@ -81,7 +81,7 @@ jobs:
 
       - name: Build Test App
         run: |
-          make ${{ inputs.make_target_prefix }}build.test-requirements
+          make build.test-requirements
           make ${{ inputs.make_target_prefix }}build.test-app
 
       - name: Push Test App
