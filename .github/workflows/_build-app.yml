@@ -87,7 +87,7 @@ jobs:
 
   build-test-app:
     name: Build Test App
-    runs-on: self-hosted
+    runs-on: Ubuntu-Large
     steps:
       - name: Checkout
         uses: actions/checkout@v4
