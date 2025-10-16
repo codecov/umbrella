@@ -2029,6 +2029,8 @@ class Github(TorngitBaseAdapter):
     async def find_pull_request(
         self, commit=None, branch=None, state="open", token=None
     ):
+        if not self.slug:
+            return None
         token = self.get_token_by_type_if_none(token, TokenType.read)
         async with self.get_client() as client:
             if commit:
@@ -2409,9 +2411,9 @@ class Github(TorngitBaseAdapter):
             return None
         # https://docs.github.com/en/rest/commits/commits#list-pull-requests-associated-with-a-commit
         try:
-            url = self.count_and_get_url_template("find_pull_request").substitute(
-                slug=self.slug, commit=commit
-            )
+            url = self.count_and_get_url_template(
+                url_name="find_pull_request"
+            ).substitute(slug=self.slug, commit=commit)
             res = await self.api(client, "get", url, token=token)
             prs_with_commit = [data["number"] for data in res if data["state"] == state]
             if prs_with_commit:
