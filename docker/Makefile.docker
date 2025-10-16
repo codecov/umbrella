@@ -49,6 +49,12 @@ build.test-requirements:
 	       -t ${CI_REQS_REPO}:${TEST_REQS_TAG} \
 	       --build-arg REQUIREMENTS_IMAGE=${AR_REQS_REPO}:${REQUIREMENTS_TAG}
 
+# Build test requirements image and the test app
+build.test-app:
+	$(MAKE) build.requirements
+	$(MAKE) build.test-requirements
+	$(MAKE) _build.test-app
+
 # Build an image for local development.
 _build.local:
 	docker build -f docker/Dockerfile . \
@@ -96,6 +102,7 @@ _build.test-app:
 		--build-arg ENTRYPOINT=${ENTRYPOINT} \
 		--build-arg RELEASE_VERSION=${VERSION} \
 		--build-arg BUILD_ENV=cloud
+
 
 # Build a self-hosted image.
 _build.self-hosted:
@@ -158,18 +165,39 @@ load.test-requirements:
 	docker load --input test-requirements.tar
 	docker tag ${CI_REQS_REPO}:${TEST_REQS_TAG} ${AR_REQS_REPO}:${TEST_REQS_TAG}
 
-# Load an exported self-hosted image (e.g. from GHA's cache)
-_load.self-hosted:
-	docker load --input ${APP_DIR}/self-hosted-runtime.tar
-	docker load --input ${APP_DIR}/self-hosted.tar
+# Push self-hosted images with temporary tags (for passing between CI jobs)
+_push.self-hosted-temp:
+	docker tag ${DOCKERHUB_REPO}:${VERSION}-no-dependencies ${AR_REPO}:self-hosted-base-${GITHUB_RUN_ID}
+	docker tag ${DOCKERHUB_REPO}:${VERSION} ${AR_REPO}:self-hosted-runtime-${GITHUB_RUN_ID}
+	docker push ${AR_REPO}:self-hosted-base-${GITHUB_RUN_ID}
+	docker push ${AR_REPO}:self-hosted-runtime-${GITHUB_RUN_ID}
 
-# Export a production image.
-_save.app:
-	docker save -o ${APP_DIR}/app.tar ${AR_REPO}:${VERSION}
+# Pull self-hosted images from temporary tags
+_pull.self-hosted-temp:
+	docker pull ${AR_REPO}:self-hosted-base-${GITHUB_RUN_ID}
+	docker pull ${AR_REPO}:self-hosted-runtime-${GITHUB_RUN_ID}
+	docker tag ${AR_REPO}:self-hosted-base-${GITHUB_RUN_ID} ${DOCKERHUB_REPO}:${VERSION}-no-dependencies
+	docker tag ${AR_REPO}:self-hosted-runtime-${GITHUB_RUN_ID} ${DOCKERHUB_REPO}:${VERSION}
 
-# Export a production image with test dependencies.
-_save.test-app:
-	docker save -o ${APP_DIR}/test-app.tar ${AR_REPO}:test-${VERSION}
+# Push production app with temporary tag (for passing between CI jobs)
+_push.app-temp:
+	docker tag ${AR_REPO}:${VERSION} ${AR_REPO}:build-${GITHUB_RUN_ID}
+	docker push ${AR_REPO}:build-${GITHUB_RUN_ID}
+
+# Pull production app from temporary tag
+_pull.app-temp:
+	docker pull ${AR_REPO}:build-${GITHUB_RUN_ID}
+	docker tag ${AR_REPO}:build-${GITHUB_RUN_ID} ${AR_REPO}:${VERSION}
+
+# Push test app with temporary tag (for passing between CI jobs)
+_push.test-app-temp:
+	docker tag ${AR_REPO}:test-${VERSION} ${AR_REPO}:test-build-${GITHUB_RUN_ID}
+	docker push ${AR_REPO}:test-build-${GITHUB_RUN_ID}
+
+# Pull test app from temporary tag or build
+_pull.test-app-temp:
+	docker pull ${AR_REPO}:test-build-${GITHUB_RUN_ID} || $(MAKE) build.test-app
+	docker tag ${AR_REPO}:test-build-${GITHUB_RUN_ID} ${AR_REPO}:test-${VERSION}
 
 # Export a requirements image.
 save.requirements:
@@ -180,11 +208,6 @@ save.requirements:
 save.test-requirements:
 	docker tag ${AR_REQS_REPO}:${TEST_REQS_TAG} ${CI_REQS_REPO}:${TEST_REQS_TAG}
 	docker save -o test-requirements.tar ${CI_REQS_REPO}:${TEST_REQS_TAG}
-
-# Export a self-hosted image pair (base and runtime)
-_save.self-hosted:
-	$(MAKE) _save.self-hosted-base
-	$(MAKE) _save.self-hosted-runtime
 
 _save.self-hosted-base:
 	docker save -o ${APP_DIR}/self-hosted.tar ${DOCKERHUB_REPO}:${VERSION}-no-dependencies

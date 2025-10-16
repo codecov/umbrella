@@ -45,21 +45,15 @@ jobs:
         run: |-
           echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
 
-      - name: Cache App
-        id: cache-app
-        uses: actions/cache@v4
-        env:
-          cache-name: ${{ inputs.repo }}-app
-        with:
-          path: |
-            ${{ inputs.output_directory }}/app.tar
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
-
       - name: Build app
         run: |
           make ${{ inputs.make_target_prefix }}build.requirements
           make ${{ inputs.make_target_prefix }}build.app
-          make ${{ inputs.make_target_prefix }}save.app
+
+      - name: Push app
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |
+          make ${{ inputs.make_target_prefix }}push.app-temp
 
   build-test-app:
     name: Build Test App
@@ -85,18 +79,12 @@ jobs:
         run: |-
           echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
 
-      - name: Cache Test App
-        id: cache-test-app
-        uses: actions/cache@v4
-        env:
-          cache-name: ${{ inputs.repo }}-test-app
-        with:
-          path: |
-            ${{ inputs.output_directory }}/test-app.tar
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
-
       - name: Build Test App
         run: |
           make ${{ inputs.make_target_prefix }}build.test-requirements
           make ${{ inputs.make_target_prefix }}build.test-app
-          make ${{ inputs.make_target_prefix }}save.test-app
+
+      - name: Push Test App
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |
+          make ${{ inputs.make_target_prefix }}push.test-app-temp
