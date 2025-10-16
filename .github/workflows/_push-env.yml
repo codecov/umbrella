@@ -46,7 +46,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'recursive'
-          
+
       - name: Get Release SHA
         env:
           SHA: ${{ github.sha }}
@@ -61,25 +61,19 @@ jobs:
           workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
           service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
 
-      - name: Pull built image
-        run: |
-          make ${{ inputs.make_target_prefix }}pull.app-temp
-      - id: "auth"
-        name: "Authenticate to Google Cloud"
-        uses: "google-github-actions/auth@v2.1.2"
-        with:
-          token_format: "access_token"
-          workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
-          service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
-
       - name: Docker configuration
         run: |-
           echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
 
+            
+      - name: Pull built image
+        run: |
+          make ${{ inputs.make_target_prefix }}pull.app-temp
       - name: Push ${{ inputs.environment }}
         run: |
           make ${{ inputs.make_target_prefix }}tag.${{ inputs.environment }}
           make ${{ inputs.make_target_prefix }}push.${{ inputs.environment }}
+          
       - name: Push latest
         if: inputs.environment == 'production'
         run: |
