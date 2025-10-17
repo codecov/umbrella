@@ -35,7 +35,7 @@ from shared.torngit.response_types import ProviderPull
 from shared.torngit.status import Status
 from shared.typings.oauth_token_types import OauthConsumerToken
 from shared.typings.torngit import GithubInstallationInfo
-from shared.utils.urls import url_concat
+from shared.utils.urls import url_concat, url_escape
 
 log = logging.getLogger(__name__)
 
@@ -1998,7 +1998,7 @@ class Github(TorngitBaseAdapter):
             return result
 
     async def get_pull_requests(self, state="open", token=None):
-        token = self.get_token_by_type_if_none(token, TokenType.pull)
+        token = self.get_token_by_type_if_none(token, TokenType.read)
         # https://developer.github.com/v3/pulls/#list-pull-requests
         page, pulls = 0, []
         async with self.get_client() as client:
@@ -2029,35 +2029,21 @@ class Github(TorngitBaseAdapter):
     async def find_pull_request(
         self, commit=None, branch=None, state="open", token=None
     ):
-        if not self.slug or not commit:
+        if not self.slug:
             return None
-        token = self.get_token_by_type_if_none(token, TokenType.pull)
+        token = self.get_token_by_type_if_none(token, TokenType.read)
         async with self.get_client() as client:
-            # https://docs.github.com/en/rest/commits/commits#list-pull-requests-associated-with-a-commit
-            try:
-                url = self.count_and_get_url_template(
-                    url_name="find_pull_request"
-                ).substitute(slug=self.slug, commit=commit)
-                res = await self.api(client, "get", url, token=token)
-                prs_with_commit = [
-                    data["number"] for data in res if data["state"] == state
-                ]
-                if prs_with_commit:
-                    if len(prs_with_commit) > 1:
-                        log.warning(
-                            "Commit is referenced in multiple PRs.",
-                            extra={
-                                "prs": prs_with_commit,
-                                "commit": commit,
-                                "slug": self.slug,
-                                "state": state,
-                            },
-                        )
-                    return prs_with_commit[0]
-            except TorngitClientGeneralError as exp:
-                if exp.code == 422:
-                    return None
-                raise exp
+            if commit:
+                pr_from_pulls = await self._find_pr_by_pulls_endpoint(
+                    client, commit, token, state
+                )
+                if pr_from_pulls:
+                    return pr_from_pulls
+                log.info(
+                    "Commit not found on pulls endpoint. Fallback to legacy behavior",
+                    extra={"commit": commit, "slug": self.slug},
+                )
+            return await self._find_pr_by_search_issues(client, commit, state, token)
 
     async def get_pull_request_files(self, pullid, token=None):
         if not self.slug:
@@ -2418,3 +2404,58 @@ class Github(TorngitBaseAdapter):
                 return True
             except (TorngitClientError, TorngitServer5xxCodeError):
                 return False
+
+    async def _find_pr_by_pulls_endpoint(self, client, commit, token, state="open"):
+        """Searches pull requests of the commit"""
+        if not self.slug:
+            return None
+        # https://docs.github.com/en/rest/commits/commits#list-pull-requests-associated-with-a-commit
+        try:
+            url = self.count_and_get_url_template(
+                url_name="find_pull_request"
+            ).substitute(slug=self.slug, commit=commit)
+            res = await self.api(client, "get", url, token=token)
+            prs_with_commit = [data["number"] for data in res if data["state"] == state]
+            if prs_with_commit:
+                if len(prs_with_commit) > 1:
+                    log.warning(
+                        "Commit is referenced in multiple PRs.",
+                        extra={
+                            "prs": prs_with_commit,
+                            "commit": commit,
+                            "slug": self.slug,
+                            "state": state,
+                        },
+                    )
+                return prs_with_commit[0]
+        except TorngitClientGeneralError as exp:
+            if exp.code == 422:
+                return None
+            raise exp
+
+    async def _find_pr_by_search_issues(self, client, commit, state, token):
+        """Legacy behavior. Searches commit reference in issues.
+        Known issues: Can return a reference to a PR in which the commit was just mentioned, leading us to comment in the wrong PR.
+        """
+        # Guard against missing or invalid slug to avoid passing None to url_escape()
+        if not self.slug:
+            return None
+        if not isinstance(self.slug, str):
+            return None
+
+        query = (
+            (f"{commit}+" if commit else "")
+            + f"repo:{url_escape(self.slug)}+type:pr"
+            + (f"+state:{state}" if state else "")
+        )
+
+        # https://developer.github.com/v3/search/#search-issues
+        res = await self.api(client, "get", f"/search/issues?q={query}", token=token)
+        if res["items"]:
+            if len(res["items"]) > 1:
+                commit_refs = [data["number"] for data in res["items"]]
+                log.warning(
+                    "Commit search_issues returned multiple references",
+                    extra={"refs": commit_refs, "commit": commit, "slug": self.slug},
+                )
+            return res["items"][0]["number"]
