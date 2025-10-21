@@ -280,6 +280,52 @@ def ts_add_continuous_aggregate_policy(
     return migrations.RunSQL(forward_sql, reverse_sql=reverse_sql)
 
 
+def ts_alter_continuous_aggregate_policy(
+    view_name: str,
+    *,
+    start_offset: str | None,
+    end_offset: str | None,
+    schedule_interval: str,
+    reverse_schedule_interval: str,
+    risky: bool = False,
+) -> RiskyRunSQL | migrations.RunSQL:
+    """
+    Alters a continuous aggregate policy by removing and re-adding it.
+    TimescaleDB doesn't have an ALTER function, so we remove and add.
+    """
+    start_sql = "NULL" if start_offset is None else f"'{start_offset}'"
+    end_sql = "NULL" if end_offset is None else f"'{end_offset}'"
+    schedule_sql = f"INTERVAL '{schedule_interval}'"
+    reverse_schedule_sql = f"INTERVAL '{reverse_schedule_interval}'"
+
+    # Remove old policy, then add new one with updated schedule
+    forward_sql = f"""
+        SELECT remove_continuous_aggregate_policy('{view_name}');
+        SELECT add_continuous_aggregate_policy(
+            '{view_name}',
+            start_offset => {start_sql},
+            end_offset => {end_sql},
+            schedule_interval => {schedule_sql}
+        );
+    """.strip()
+
+    # Reverse: remove new policy, add back old one with original schedule
+    reverse_sql = f"""
+        SELECT remove_continuous_aggregate_policy('{view_name}');
+        SELECT add_continuous_aggregate_policy(
+            '{view_name}',
+            start_offset => {start_sql},
+            end_offset => {end_sql},
+            schedule_interval => {reverse_schedule_sql}
+        );
+    """.strip()
+
+    if risky:
+        return RiskyRunSQL(forward_sql, reverse_sql=reverse_sql)
+    else:
+        return migrations.RunSQL(forward_sql, reverse_sql=reverse_sql)
+
+
 def ts_add_retention_policy(relation_name: str, drop_after: str) -> migrations.RunSQL:
     forward_sql = (
         f"SELECT add_retention_policy('{relation_name}', INTERVAL '{drop_after}');"
