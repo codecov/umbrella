@@ -2,6 +2,8 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
+    atomic = False
+
     dependencies = [
         ("ta_timeseries", "0035_alter_branch_test_aggregate_daily_policy"),
     ]
