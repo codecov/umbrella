@@ -77,10 +77,15 @@ def merge_reports(
 
         joined = get_joined_flag(commit_yaml, session.flags or [])
         log.info(
-            "merge_reports: Merging report",
+            "merge_reports: Merging report with disjoint optimization",
             extra={"joined": joined},
         )
-        master_report.merge(report, joined)
+        # Use is_disjoint=True to defer the expensive merge operation until finish_merge()
+        master_report.merge(report, joined, is_disjoint=True)
+
+    # Now perform the actual merge of all disjoint coverage records in one pass
+    log.info("merge_reports: Finishing merge of disjoint records")
+    master_report.finish_merge()
 
     log.info("merge_reports: Returning merge result")
     return master_report, MergeResult(session_mapping, deleted_sessions)
