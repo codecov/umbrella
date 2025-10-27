@@ -197,9 +197,15 @@ class TaskService:
         If running both tasks on new worker, we create a chain with sync_teams to run
         first so that when sync_repos starts it has the most up to date teams/groups
         data for the user. Otherwise, we may miss some repos.
+
+        When using_integration=True (e.g. Sentry integration), we skip sync_teams because:
+        1. It requires user OAuth tokens which may not be available with app installations
+        2. Team membership tracking isn't needed when permissions are handled externally
         """
         chain_to_call = []
-        if sync_teams:
+        # Skip sync_teams when using integration since it requires user OAuth tokens
+        # and team membership isn't needed for integration-based syncs
+        if sync_teams and not using_integration:
             chain_to_call.append(
                 self._create_signature(
                     celery_config.sync_teams_task_name,
