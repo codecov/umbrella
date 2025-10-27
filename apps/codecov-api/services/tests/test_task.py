@@ -21,6 +21,45 @@ def test_refresh_task(mocker):
     mock_route_task.assert_called()
 
 
+def test_refresh_task_skips_sync_teams_when_using_integration(mocker):
+    """
+    Test that sync_teams is skipped when using_integration=True.
+    This is necessary because sync_teams requires user OAuth tokens which
+    may not be available when using GitHub App installations.
+    """
+    chain_mock = mocker.patch("services.task.task.chain")
+    mock_route_task = mocker.patch(
+        "services.task.task.route_task", return_value={"queue": "my_queue"}
+    )
+    mock_signature = mocker.patch("services.task.task.signature")
+
+    # Call refresh with using_integration=True
+    TaskService().refresh(5, "codecov", using_integration=True)
+
+    # Verify chain was called
+    chain_mock.assert_called_once()
+
+    # Verify that only sync_repos signature was created (not sync_teams)
+    assert mock_signature.call_count == 1
+    mock_signature.assert_called_with(
+        celery_config.sync_repos_task_name,
+        args=None,
+        kwargs={
+            "ownerid": 5,
+            "username": "codecov",
+            "using_integration": True,
+            "manual_trigger": False,
+            "repository_service_ids": None,
+        },
+        app=celery_app,
+        queue="my_queue",
+        headers=mocker.ANY,
+        immutable=False,
+        time_limit=None,
+        soft_time_limit=None,
+    )
+
+
 @freeze_time("2023-06-13T10:01:01.000123")
 def test_compute_comparison_task(mocker):
     signature_mock = mocker.patch("services.task.task.signature")
