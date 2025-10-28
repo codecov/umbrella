@@ -22,7 +22,7 @@ from .types import IntermediateReport, MergeResult, ProcessingResult
 log = logging.getLogger(__name__)
 
 
-def _compare_reports(original_report: Report, optimized_report: Report):
+def compare_reports(original_report: Report, optimized_report: Report):
     """
     Compare two reports to ensure they produce identical coverage data.
     Raises an exception if the reports differ.
@@ -257,7 +257,7 @@ def merge_reports(
     # COMPARISON: Validate that both paths produce the same result
     # ============================================================================
     log.info("merge_reports: Comparing original and optimized reports")
-    _compare_reports(master_report, optimized_report)
+    compare_reports(master_report, optimized_report)
 
     log.info("merge_reports: Returning merge result")
     return master_report, MergeResult(session_mapping, deleted_sessions)
