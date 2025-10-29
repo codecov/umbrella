@@ -46,23 +46,13 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'recursive'
+
       - name: Get Release SHA
         env:
           SHA: ${{ github.sha }}
         id: sha
         run: echo short_sha="${SHA:0:7}" >> $GITHUB_OUTPUT
-      - name: Cache App
-        id: cache-app
-        uses: actions/cache@v4
-        env:
-          cache-name: ${{ inputs.repo }}-app
-        with:
-          path: |
-            ${{ inputs.output_directory }}/app.tar
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
-      - name: Load built image
-        run: |
-          docker load --input ${{ inputs.output_directory }}/app.tar
+
       - id: "auth"
         name: "Authenticate to Google Cloud"
         uses: "google-github-actions/auth@v2.1.2"
@@ -75,10 +65,15 @@ jobs:
         run: |-
           echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
 
+            
+      - name: Pull built image
+        run: |
+          make ${{ inputs.make_target_prefix }}pull.app-temp
       - name: Push ${{ inputs.environment }}
         run: |
           make ${{ inputs.make_target_prefix }}tag.${{ inputs.environment }}
           make ${{ inputs.make_target_prefix }}push.${{ inputs.environment }}
+          
       - name: Push latest
         if: inputs.environment == 'production'
         run: |
@@ -106,18 +101,9 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'recursive'
-      - name: Cache App
-        id: cache-app
-        uses: actions/cache@v4
-        env:
-          cache-name: ${{ inputs.repo }}-app
-        with:
-          path: |
-            ${{ inputs.output_directory }}/app.tar
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
-      - name: Load built image
+      - name: Pull built image
         run: |
-          docker load --input ${{ inputs.output_directory }}/app.tar
+          make ${{ inputs.make_target_prefix }}pull.app-temp
       - name: Log in to Docker Hub
         uses: docker/login-action@v3.1.0
         with:
@@ -137,18 +123,9 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'recursive'
-      - name: Cache App
-        id: cache-app
-        uses: actions/cache@v4
-        env:
-          cache-name: ${{ inputs.repo }}-app
-        with:
-          path: |
-            ${{ inputs.output_directory }}/app.tar
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
-      - name: Load built image
+      - name: Pull built image
         run: |
-          docker load --input ${{ inputs.output_directory }}/app.tar
+          make ${{ inputs.make_target_prefix }}pull.app-temp
       - name: Log in to Docker Hub
         uses: docker/login-action@v3.1.0
         with:
