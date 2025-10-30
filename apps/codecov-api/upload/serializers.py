@@ -151,6 +151,11 @@ class CommitSerializer(serializers.ModelSerializer):
                 commitid=commit.commitid, repoid=commit.repository.repoid
             )
         else:
+            pullid = validated_data.pop("pullid", None)
+            if commit.pullid is None and pullid is not None:
+                commit.pullid = pullid
+                commit.save()
+
             TaskService().upload_breadcrumb(
                 commit_sha=commit.commitid,
                 repo_id=repo.repoid,
