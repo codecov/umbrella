@@ -241,6 +241,7 @@ class BaseCodecovTask(celery_app.Task):
             )  # TODO is None a valid label value
             time_in_queue_timer.observe(delta.total_seconds())
 
+    @sentry_sdk.trace
     def run(self, *args, **kwargs):
         with self.task_full_runtime.time():  # Timer isn't tested
             db_session = get_db_session()
