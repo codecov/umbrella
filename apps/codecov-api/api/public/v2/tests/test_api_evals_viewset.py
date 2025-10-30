@@ -192,11 +192,17 @@ class EvalsViewSetTestCase(APITestCase):
         assert data["totalItems"] == 3
         assert data["passedItems"] == 2
         assert data["failedItems"] == 1
-        assert data["avgDurationSeconds"] == (10.0 + 20.0 + 30.0) / 3
-        assert data["avgCost"] == (5.0 + 7.0 + 3.0) / 3
+        assert data["avgDurationSeconds"] == pytest.approx((10.0 + 20.0 + 30.0) / 3)
+        assert data["avgCost"] == pytest.approx((5.0 + 7.0 + 3.0) / 3)
         assert data["scores"] == {
-            "accuracy": {"sum": (0.9 + 0.7 + 0.1), "avg": (0.9 + 0.7 + 0.1) / 3},
-            "f1": {"sum": (0.8 + 0.6 + 0.2), "avg": (0.8 + 0.6 + 0.2) / 3},
+            "accuracy": {
+                "sum": pytest.approx(0.9 + 0.7 + 0.1),
+                "avg": pytest.approx((0.9 + 0.7 + 0.1) / 3),
+            },
+            "f1": {
+                "sum": pytest.approx(0.8 + 0.6 + 0.2),
+                "avg": pytest.approx((0.8 + 0.6 + 0.2) / 3),
+            },
         }
 
     def test_summary_aggregation_and_filtering_filter_classA(self):
