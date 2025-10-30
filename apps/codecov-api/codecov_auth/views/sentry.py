@@ -34,6 +34,7 @@ class SentryLoginView(LoginMixin, StateMixin, View):
                 "client_secret": settings.SENTRY_OAUTH_CLIENT_SECRET,
                 "code": code,
                 "state": state,
+                "redirect_uri": settings.SENTRY_OAUTH_REDIRECT_URI,
             },
         )
 
