@@ -256,8 +256,13 @@ def merge_reports(
     # ============================================================================
     # COMPARISON: Validate that both paths produce the same result
     # ============================================================================
+    # Comparison: Validate that both paths produce the same result
     log.info("merge_reports: Comparing original and optimized reports")
-    compare_reports(master_report, optimized_report)
+    try:
+        compare_reports(master_report, optimized_report)
+    except Exception as e:
+        log.error("merge_reports: Shadow mode validation failed", exc_info=True)
+        sentry_sdk.capture_exception(e)
 
     log.info("merge_reports: Returning merge result")
     return master_report, MergeResult(session_mapping, deleted_sessions)
