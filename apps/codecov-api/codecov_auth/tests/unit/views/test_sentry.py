@@ -81,6 +81,7 @@ def test_sentry_perform_login(client, mocked_sentry_request, db):
             "client_secret": settings.SENTRY_OAUTH_CLIENT_SECRET,
             "code": "test-code",
             "state": state,
+            "redirect_uri": settings.SENTRY_OAUTH_REDIRECT_URI,
         },
     )
 
