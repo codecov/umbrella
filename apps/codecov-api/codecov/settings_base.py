@@ -212,6 +212,11 @@ USE_TZ = True
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(PROJECT_ROOT, "static")
+CODECOV_URL = get_config("setup", "codecov_url", default="https://codecov.io")
+CODECOV_API_URL = get_config("setup", "codecov_api_url", default=CODECOV_URL)
+CODECOV_DASHBOARD_URL = get_config(
+    "setup", "codecov_dashboard_url", default="https://app.codecov.io"
+)
 
 LOGGING = {
     "version": 1,

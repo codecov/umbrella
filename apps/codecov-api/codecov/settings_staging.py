@@ -35,7 +35,6 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 CODECOV_URL = get_config(
     "setup", "codecov_url", default="https://stage-web.codecov.dev"
 )
-CODECOV_API_URL = get_config("setup", "codecov_api_url", default=CODECOV_URL)
 CODECOV_DASHBOARD_URL = get_config(
     "setup", "codecov_dashboard_url", default="https://stage-app.codecov.dev"
 )
