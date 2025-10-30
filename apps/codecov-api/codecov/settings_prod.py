@@ -19,11 +19,7 @@ STRIPE_ENDPOINT_SECRET = get_config(
 )
 
 CORS_ALLOW_HEADERS += ["sentry-trace", "baggage"]
-CODECOV_URL = get_config("setup", "codecov_url", default="https://codecov.io")
-CODECOV_API_URL = get_config("setup", "codecov_api_url", default=CODECOV_URL)
-CODECOV_DASHBOARD_URL = get_config(
-    "setup", "codecov_dashboard_url", default="https://app.codecov.io"
-)
+
 CORS_ALLOWED_ORIGINS = [
     CODECOV_URL,
     CODECOV_DASHBOARD_URL,
