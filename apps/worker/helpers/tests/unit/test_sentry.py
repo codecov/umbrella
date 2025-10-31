@@ -22,6 +22,7 @@ class TestSentry:
             profiles_sample_rate=1.0,
             environment="production",
             _experiments=mocker.ANY,
+            enable_backpressure_handling=False,
             integrations=mocker.ANY,
         )
         mocked_set_tag.assert_called_with("cluster", cluster)

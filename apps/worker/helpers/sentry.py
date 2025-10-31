@@ -28,6 +28,7 @@ def initialize_sentry() -> None:
             os.environ.get("SERVICES__SENTRY__PROFILES_SAMPLE_RATE", "1")
         ),
         _experiments={"enable_logs": True},
+        enable_backpressure_handling=False,
         integrations=[
             CeleryIntegration(monitor_beat_tasks=True),
             DjangoIntegration(signals_spans=False),
