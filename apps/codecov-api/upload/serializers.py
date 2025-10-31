@@ -146,8 +146,8 @@ class CommitSerializer(serializers.ModelSerializer):
             repository=repo, commitid=commitid, defaults=validated_data
         )
 
+        updated = False
         if not created:
-            updated = False
             update_fields = [
                 "branch",
                 "parent_commit_id",
@@ -158,7 +158,9 @@ class CommitSerializer(serializers.ModelSerializer):
                 if getattr(commit, field_name) is None and field is not None:
                     setattr(commit, field_name, field)
                     updated = True
-            commit.save()
+
+            if updated:
+                commit.save()
 
             TaskService().upload_breadcrumb(
                 commit_sha=commit.commitid,
