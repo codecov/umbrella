@@ -468,3 +468,64 @@ def test_upload_coverage_post_shelter(db, mocker):
             ),
         ]
     )
+
+def test_upload_coverage_without_pullid(db, mocker):
+    mock_all_plans_and_tiers()
+    presigned_put_mock = mocker.patch(
+        "shared.storage.MinioStorageService.create_presigned_put",
+        return_value="presigned put",
+    )
+    upload_task_mock = mocker.patch(
+        "upload.views.uploads.trigger_upload_task", return_value=True
+    )
+    amplitude_mock = mocker.patch(
+        "shared.events.amplitude.AmplitudeEventPublisher.publish"
+    )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
+    repository = RepositoryFactory(
+        name="the_repo1", author__username="codecov", author__service="github"
+    )
+    commit = CommitFactory(repository=repository, pullid=None)
+    repository.save()
+    commit.save()
+
+    # Assert pullid is None
+    commit.refresh_from_db()
+    assert commit.pullid is None
+
+    owner = repository.author
+    client = APIClient()
+    client.force_authenticate(user=owner)
+    repo_slug = f"{repository.author.username}::::{repository.name}"
+    url = reverse(
+        "new_upload.upload_coverage",
+        args=[repository.author.service, repo_slug],
+    )
+    response = client.post(
+        url,
+        {
+            "branch": "branch",
+            "ci_service": "ci_service",
+            "ci_url": "ci_url",
+            "cli_args": "blah",
+            "code": "default",
+            "commitid": commit.commitid,
+            "flags": ["flag1", "flag2"],
+            "job_code": "job_code",
+            "pullid": "123",
+            "version": "version",
+        },
+        format="json",
+    )
+    response_json = response.json()
+    upload = ReportSession.objects.filter(
+        report__commit=commit,
+        report__code=None,
+        upload_extras={"format_version": "v1"},
+    ).first()
+    assert response.status_code == 201
+
+    commit.refresh_from_db()
+    assert commit.pullid is not None
+    assert commit.pullid == '123'
