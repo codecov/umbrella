@@ -523,6 +523,7 @@ def test_upload_coverage_without_pullid(db, mocker):
             "commitid": commit.commitid,
             "flags": ["flag1", "flag2"],
             "job_code": "job_code",
+            "parent_commit_id": "fakecommit",
             "pullid": "123",
             "version": "version",
         },
@@ -538,7 +539,7 @@ def test_upload_coverage_without_pullid(db, mocker):
 
     commit.refresh_from_db()
     assert commit.branch == "branch"
-    assert commit.parent_commit_id is None
+    assert commit.parent_commit_id == "fakecommit"
     assert commit.pullid == 123
 
 
