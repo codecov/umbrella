@@ -84,6 +84,8 @@ def process_raw_upload(
             if len(report_from_file._files) > len(report._files):
                 report_from_file, report = report, report_from_file
 
+            # Cannot use is_disjoint=True here because multiple coverage files
+            # in one upload can report on the same source files with the same session ID
             report.merge(report_from_file)
 
     if not report:

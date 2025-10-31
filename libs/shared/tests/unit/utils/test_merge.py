@@ -7,6 +7,7 @@ from shared.utils.merge import (
     LineType,
     ReportLine,
     branch_type,
+    deduplicate_sessions,
     get_complexity_from_sessions,
     get_coverage_from_sessions,
     line_type,
@@ -347,3 +348,88 @@ def test_get_coverage_from_sessions():
         )
         == "2/2"
     )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "sessions, expected_len, expected_results",
+    [
+        # No duplicates - sessions with unique IDs returned unchanged
+        (
+            [
+                LineSession(0, 1, [1, 2]),
+                LineSession(1, "2/2"),
+                LineSession(2, 0, [1, 2, 3]),
+            ],
+            3,
+            {0: (1, [1, 2]), 1: ("2/2", None), 2: (0, [1, 2, 3])},
+        ),
+        # Simple duplicate - two sessions with same ID merged
+        (
+            [LineSession(0, "1/2", ["exit"]), LineSession(1, 1), LineSession(0, "2/2")],
+            2,
+            {0: ("2/2", []), 1: (1, None)},
+        ),
+        # Multiple duplicates - three sessions with same ID all merged
+        (
+            [
+                LineSession(0, "1/3", [1, 2]),
+                LineSession(1, 1),
+                LineSession(0, "1/3", [2, 3]),
+                LineSession(0, "1/3", [3]),
+            ],
+            2,
+            {0: ("3/3", []), 1: (1, None)},
+        ),
+        (
+            [LineSession(0, 5), LineSession(0, 3)],
+            1,
+            {0: (5, None)},
+        ),
+        (
+            [LineSession(0, "1/2", [5, 7]), LineSession(0, "1/2", [7, 9])],
+            1,
+            {0: ("1/2", [7])},
+        ),
+        (
+            [LineSession(0, 1, None), LineSession(0, 1, [5])],
+            1,
+            {0: (1, [])},
+        ),
+        (
+            [
+                LineSession(2, 1),
+                LineSession(0, 1),
+                LineSession(1, 1),
+                LineSession(0, 1),
+            ],
+            3,
+            {2: (1, None), 0: (1, None), 1: (1, None)},
+        ),
+    ],
+)
+def test_deduplicate_sessions(sessions, expected_len, expected_results):
+    result = deduplicate_sessions(sessions)
+    assert len(result) == expected_len
+
+    for session in result:
+        assert session.id in expected_results
+        expected_coverage, expected_branches = expected_results[session.id]
+        assert session.coverage == expected_coverage
+        if expected_branches is not None:
+            assert session.branches == expected_branches
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "sessions, expected",
+    [
+        # Empty list
+        ([], []),
+        # Single session unchanged
+        ([LineSession(0, 1, [1])], [LineSession(0, 1, [1])]),
+    ],
+)
+def test_deduplicate_sessions_edge_cases(sessions, expected):
+    result = deduplicate_sessions(sessions)
+    assert result == expected
