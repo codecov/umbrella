@@ -470,7 +470,7 @@ def test_upload_coverage_post_shelter(db, mocker):
     )
 
 
-def test_upload_coverage_without_pullid(db, mocker):
+def test_upload_coverage_set_fields_post_init(db, mocker):
     mock_all_plans_and_tiers()
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
@@ -543,7 +543,7 @@ def test_upload_coverage_without_pullid(db, mocker):
     assert commit.pullid == 123
 
 
-def test_upload_coverage_with_pullid(db, mocker):
+def test_upload_coverage_dont_set_fields_post_init_if_not_nil(db, mocker):
     mock_all_plans_and_tiers()
     mocker.patch.object(
         CanDoCoverageUploadsPermission, "has_permission", return_value=True
@@ -572,7 +572,7 @@ def test_upload_coverage_with_pullid(db, mocker):
     repository.save()
     commit.save()
 
-    # Assert pullid is None
+    # Assert pullid is not None
     commit.refresh_from_db()
     assert commit.branch == "branch"
     assert commit.parent_commit_id is None
