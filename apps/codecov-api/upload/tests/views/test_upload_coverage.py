@@ -528,4 +528,4 @@ def test_upload_coverage_without_pullid(db, mocker):
 
     commit.refresh_from_db()
     assert commit.pullid is not None
-    assert commit.pullid == '123'
+    assert commit.pullid == "123"
