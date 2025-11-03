@@ -466,6 +466,7 @@ if SENTRY_DSN is not None:
         ],
         environment=SENTRY_ENV,
         traces_sample_rate=SENTRY_SAMPLE_RATE,
+        enable_backpressure_handling=False,
         profiles_sample_rate=float(
             get_config("services", "sentry", "profile_sample_rate", default="0.01")
         ),
