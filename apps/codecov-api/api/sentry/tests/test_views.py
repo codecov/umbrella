@@ -8,13 +8,19 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from codecov_auth.models import Account
-from shared.django_apps.codecov_auth.models import GithubAppInstallation, Owner
+from shared.django_apps.codecov_auth.models import (
+    GithubAppInstallation,
+    Owner,
+    Service,
+)
 from shared.django_apps.codecov_auth.tests.factories import (
     AccountFactory,
     OwnerFactory,
     PlanFactory,
     TierFactory,
 )
+from shared.django_apps.core.tests.factories import RepositoryFactory
+from shared.django_apps.ta_timeseries.tests.factories import TestrunFactory
 from shared.plan.constants import PlanName, TierName
 
 
@@ -820,6 +826,232 @@ class AccountUnlinkViewTests(TestCase):
         """Test account unlinking fails without proper authentication"""
         response = self.client.post(
             self.url, data=json.dumps(self.valid_data), content_type="application/json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TestAnalyticsEuViewTests(TestCase):
+    databases = ["default", "ta_timeseries"]
+
+    def setUp(self):
+        self.client = APIClient()
+        self.url = reverse("test-analytics-eu")
+
+    def _make_authenticated_request(self, data, jwt_payload=None):
+        """Helper method to make an authenticated request with JWT payload"""
+        with patch(
+            "codecov_auth.permissions.get_sentry_jwt_payload"
+        ) as mock_get_payload:
+            mock_get_payload.return_value = jwt_payload or {
+                "g_p": "github",
+                "g_o": "test-org",
+            }
+            return self.client.post(
+                self.url, data=json.dumps(data), content_type="application/json"
+            )
+
+    def test_test_analytics_eu_empty_integration_names(self):
+        """Test that empty integration_names list fails validation"""
+        data = {"integration_names": []}
+
+        response = self._make_authenticated_request(data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("integration_names", response.data)
+
+    def test_test_analytics_eu_missing_integration_names(self):
+        """Test that missing integration_names fails validation"""
+        data = {}
+
+        response = self._make_authenticated_request(data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("integration_names", response.data)
+
+    @patch("api.sentry.views.log")
+    def test_test_analytics_eu_owner_not_found(self, mock_log):
+        """Test that non-existent owner is skipped with warning log"""
+        data = {"integration_names": ["non-existent-org"]}
+
+        response = self._make_authenticated_request(data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["test_runs_per_integration"], {})
+
+        mock_log.warning.assert_called_once()
+        warning_call = mock_log.warning.call_args[0][0]
+        self.assertIn("non-existent-org", warning_call)
+        self.assertIn("not found", warning_call)
+
+    def test_test_analytics_eu_owner_without_repositories(self):
+        """Test that owner without repositories returns empty dict"""
+        OwnerFactory(name="org-no-repos", service=Service.GITHUB)
+
+        data = {"integration_names": ["org-no-repos"]}
+
+        response = self._make_authenticated_request(data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["test_runs_per_integration"], {"org-no-repos": {}}
+        )
+
+    @patch("api.sentry.views.log")
+    def test_test_analytics_eu_mixed_owners_found_and_not_found(self, mock_log):
+        """Test mix of existing and non-existing owners"""
+        owner = OwnerFactory(name="org-exists", service=Service.GITHUB)
+        repo = RepositoryFactory(
+            author=owner, name="test-repo", test_analytics_enabled=True
+        )
+        TestrunFactory(
+            repo_id=repo.repoid,
+            commit_sha="abc123",
+            outcome="pass",
+            name="test_example",
+        )
+
+        data = {"integration_names": ["org-exists", "org-not-exists"]}
+
+        response = self._make_authenticated_request(data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("org-exists", response.data["test_runs_per_integration"])
+        self.assertNotIn("org-not-exists", response.data["test_runs_per_integration"])
+
+        # Verify warning log was called for non-existent owner
+        mock_log.warning.assert_called_once()
+        warning_call = mock_log.warning.call_args[0][0]
+        self.assertIn("org-not-exists", warning_call)
+
+    def test_test_analytics_eu_filters_by_test_analytics_enabled(self):
+        """Test that only repositories with test_analytics_enabled=True are included"""
+        owner = OwnerFactory(name="org-with-repos", service=Service.GITHUB)
+
+        repo_enabled = RepositoryFactory(
+            author=owner,
+            name="repo-enabled",
+            test_analytics_enabled=True,
+        )
+        TestrunFactory(
+            repo_id=repo_enabled.repoid,
+            commit_sha="abc123",
+            outcome="pass",
+            name="test_enabled",
+        )
+
+        repo_disabled = RepositoryFactory(
+            author=owner,
+            name="repo-disabled",
+            test_analytics_enabled=False,
+        )
+
+        data = {"integration_names": ["org-with-repos"]}
+
+        response = self._make_authenticated_request(data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        test_runs_data = response.data["test_runs_per_integration"]["org-with-repos"]
+
+        # Only repo-enabled should be in the response
+        self.assertIn("repo-enabled", test_runs_data)
+        self.assertNotIn("repo-disabled", test_runs_data)
+
+        test_runs_json = json.loads(test_runs_data["repo-enabled"])
+        self.assertEqual(len(test_runs_json), 1)
+        self.assertEqual(test_runs_json[0]["name"], "test_enabled")
+
+    def test_test_analytics_eu_multiple_owners_with_multiple_repos_and_testruns(self):
+        """Test complex scenario with 2 owners, different repositories and test runs"""
+        owner1 = OwnerFactory(name="org-one", service=Service.GITHUB)
+        repo1 = RepositoryFactory(
+            author=owner1,
+            name="repo-one",
+            test_analytics_enabled=True,
+        )
+        TestrunFactory(
+            repo_id=repo1.repoid,
+            commit_sha="commit1",
+            outcome="pass",
+            name="test_one_first",
+            classname="TestClass1",
+        )
+        TestrunFactory(
+            repo_id=repo1.repoid,
+            commit_sha="commit1",
+            outcome="failure",
+            name="test_one_second",
+            classname="TestClass2",
+        )
+
+        owner2 = OwnerFactory(name="org-two", service=Service.GITHUB)
+        repo2_1 = RepositoryFactory(
+            author=owner2,
+            name="repo-two-first",
+            test_analytics_enabled=True,
+        )
+        TestrunFactory(
+            repo_id=repo2_1.repoid,
+            commit_sha="commit2",
+            outcome="pass",
+            name="test_two_first",
+            classname="TestClassA",
+        )
+
+        repo2_2 = RepositoryFactory(
+            author=owner2,
+            name="repo-two-second",
+            test_analytics_enabled=True,
+        )
+        TestrunFactory(
+            repo_id=repo2_2.repoid,
+            commit_sha="commit3",
+            outcome="skip",
+            name="test_two_second",
+            classname="TestClassB",
+        )
+
+        data = {"integration_names": ["org-one", "org-two"]}
+
+        response = self._make_authenticated_request(data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        test_runs_per_integration = response.data["test_runs_per_integration"]
+
+        # Verify org-one data
+        self.assertIn("org-one", test_runs_per_integration)
+        org_one_data = test_runs_per_integration["org-one"]
+        self.assertIn("repo-one", org_one_data)
+        self.assertEqual(len(org_one_data), 1)  # Only 1 repository
+
+        repo_one_testruns = json.loads(org_one_data["repo-one"])
+        self.assertEqual(len(repo_one_testruns), 2)  # 2 test runs
+        testrun_names = [tr["name"] for tr in repo_one_testruns]
+        self.assertIn("test_one_first", testrun_names)
+        self.assertIn("test_one_second", testrun_names)
+
+        self.assertIn("org-two", test_runs_per_integration)
+        org_two_data = test_runs_per_integration["org-two"]
+        self.assertIn("repo-two-first", org_two_data)
+        self.assertIn("repo-two-second", org_two_data)
+        self.assertEqual(len(org_two_data), 2)  # 2 repositories
+
+        repo_two_first_testruns = json.loads(org_two_data["repo-two-first"])
+        self.assertEqual(len(repo_two_first_testruns), 1)
+        self.assertEqual(repo_two_first_testruns[0]["name"], "test_two_first")
+        self.assertEqual(repo_two_first_testruns[0]["outcome"], "pass")
+
+        repo_two_second_testruns = json.loads(org_two_data["repo-two-second"])
+        self.assertEqual(len(repo_two_second_testruns), 1)
+        self.assertEqual(repo_two_second_testruns[0]["name"], "test_two_second")
+        self.assertEqual(repo_two_second_testruns[0]["outcome"], "skip")
+
+    def test_test_analytics_eu_authentication_failure(self):
+        """Test that the endpoint requires authentication"""
+        data = {"integration_names": ["test-org"]}
+
+        response = self.client.post(
+            self.url, data=json.dumps(data), content_type="application/json"
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

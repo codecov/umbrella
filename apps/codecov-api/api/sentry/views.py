@@ -1,3 +1,4 @@
+import json
 import logging
 
 import sentry_sdk
@@ -10,6 +11,7 @@ from rest_framework.decorators import (
 )
 from rest_framework.response import Response
 
+from api.public.v2.test_results.serializers import TestrunSerializer
 from codecov_auth.models import Account
 from codecov_auth.permissions import JWTAuthenticationPermission
 from shared.django_apps.codecov_auth.models import (
@@ -18,6 +20,8 @@ from shared.django_apps.codecov_auth.models import (
     Plan,
     Service,
 )
+from shared.django_apps.core.models import Repository
+from shared.django_apps.ta_timeseries.models import Testrun
 from shared.plan.constants import PlanName
 
 log = logging.getLogger(__name__)
@@ -241,5 +245,56 @@ def account_unlink(request, *args, **kwargs):
             "message": f"Unlinked {successfully_unlinked} of {total_requested} accounts",
             "successfully_unlinked": successfully_unlinked,
             "total_requested": total_requested,
+        }
+    )
+
+
+class SentryTestAnalyticsEuSerializer(serializers.Serializer):
+    """Serializer for test analytics EU endpoint"""
+
+    integration_names = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="The Sentry integration names",
+        min_length=1,
+    )
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([JWTAuthenticationPermission])
+def test_analytics_eu(request, *args, **kwargs):
+    serializer = SentryTestAnalyticsEuSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    integration_names = serializer.validated_data["integration_names"]
+
+    # For every integration name, determine if an Owner record exist by filtering by name and service=github
+    test_runs_per_integration = {}
+    for name in integration_names:
+        try:
+            owner = Owner.objects.get(name=name, service=Service.GITHUB)
+        except Owner.DoesNotExist:
+            log.warning(
+                f"Owner with name {name} and service {Service.GITHUB} not found"
+            )
+            continue
+
+        repositories = Repository.objects.filter(
+            author=owner, test_analytics_enabled=True
+        )
+
+        # For each repository, get the list of test runs
+        test_runs_per_repository = {}
+        for repository in repositories:
+            test_runs = Testrun.objects.filter(repo_id=repository.repoid)
+            test_runs_json = json.dumps(TestrunSerializer(test_runs, many=True).data)
+            test_runs_per_repository[repository.name] = test_runs_json
+
+        # Store each test_runs_per_repository in a dictionary
+        test_runs_per_integration[name] = test_runs_per_repository
+
+    return Response(
+        {
+            "test_runs_per_integration": test_runs_per_integration,
         }
     )
