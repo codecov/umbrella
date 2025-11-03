@@ -1022,10 +1022,10 @@ class TestAnalyticsEuViewTests(TestCase):
         self.assertIn("org-one", test_runs_per_integration)
         org_one_data = test_runs_per_integration["org-one"]
         self.assertIn("repo-one", org_one_data)
-        self.assertEqual(len(org_one_data), 1)  # Only 1 repository
+        self.assertEqual(len(org_one_data), 1)
 
         repo_one_testruns = json.loads(org_one_data["repo-one"])
-        self.assertEqual(len(repo_one_testruns), 2)  # 2 test runs
+        self.assertEqual(len(repo_one_testruns), 2)
         testrun_names = [tr["name"] for tr in repo_one_testruns]
         self.assertIn("test_one_first", testrun_names)
         self.assertIn("test_one_second", testrun_names)
@@ -1034,7 +1034,7 @@ class TestAnalyticsEuViewTests(TestCase):
         org_two_data = test_runs_per_integration["org-two"]
         self.assertIn("repo-two-first", org_two_data)
         self.assertIn("repo-two-second", org_two_data)
-        self.assertEqual(len(org_two_data), 2)  # 2 repositories
+        self.assertEqual(len(org_two_data), 2)
 
         repo_two_first_testruns = json.loads(org_two_data["repo-two-first"])
         self.assertEqual(len(repo_two_first_testruns), 1)
