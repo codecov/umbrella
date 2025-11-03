@@ -468,3 +468,149 @@ def test_upload_coverage_post_shelter(db, mocker):
             ),
         ]
     )
+
+
+def test_upload_coverage_set_fields_post_init(db, mocker):
+    mock_all_plans_and_tiers()
+    mocker.patch.object(
+        CanDoCoverageUploadsPermission, "has_permission", return_value=True
+    )
+    presigned_put_mock = mocker.patch(
+        "shared.storage.MinioStorageService.create_presigned_put",
+        return_value="presigned put",
+    )
+    upload_task_mock = mocker.patch(
+        "upload.views.uploads.trigger_upload_task", return_value=True
+    )
+    amplitude_mock = mocker.patch(
+        "shared.events.amplitude.AmplitudeEventPublisher.publish"
+    )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
+    repository = RepositoryFactory(
+        name="the_repo1", author__username="codecov", author__service="github"
+    )
+    commit = CommitFactory(
+        branch=None,
+        parent_commit_id=None,
+        pullid=None,
+        repository=repository,
+    )
+    repository.save()
+    commit.save()
+
+    # Assert pullid is None
+    commit.refresh_from_db()
+    assert commit.branch is None
+    assert commit.pullid is None
+
+    owner = repository.author
+    client = APIClient()
+    client.force_authenticate(user=owner)
+    repo_slug = f"{repository.author.username}::::{repository.name}"
+    url = reverse(
+        "new_upload.upload_coverage",
+        args=[repository.author.service, repo_slug],
+    )
+    response = client.post(
+        url,
+        {
+            "branch": "branch",
+            "ci_service": "ci_service",
+            "ci_url": "ci_url",
+            "cli_args": "blah",
+            "code": "default",
+            "commitid": commit.commitid,
+            "flags": ["flag1", "flag2"],
+            "job_code": "job_code",
+            "parent_commit_id": "fakecommit",
+            "pullid": "123",
+            "version": "version",
+        },
+        format="json",
+    )
+    response_json = response.json()
+    upload = ReportSession.objects.filter(
+        report__commit=commit,
+        report__code=None,
+        upload_extras={"format_version": "v1"},
+    ).first()
+    assert response.status_code == 201
+
+    commit.refresh_from_db()
+    assert commit.branch == "branch"
+    assert commit.parent_commit_id == "fakecommit"
+    assert commit.pullid == 123
+
+
+def test_upload_coverage_dont_set_fields_post_init_if_not_nil(db, mocker):
+    mock_all_plans_and_tiers()
+    mocker.patch.object(
+        CanDoCoverageUploadsPermission, "has_permission", return_value=True
+    )
+    presigned_put_mock = mocker.patch(
+        "shared.storage.MinioStorageService.create_presigned_put",
+        return_value="presigned put",
+    )
+    upload_task_mock = mocker.patch(
+        "upload.views.uploads.trigger_upload_task", return_value=True
+    )
+    amplitude_mock = mocker.patch(
+        "shared.events.amplitude.AmplitudeEventPublisher.publish"
+    )
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
+    mock_upload_breadcrumb = mocker.patch.object(TaskService, "upload_breadcrumb")
+    repository = RepositoryFactory(
+        name="the_repo1", author__username="codecov", author__service="github"
+    )
+    commit = CommitFactory(
+        branch="branch",
+        parent_commit_id=None,
+        pullid=123,
+        repository=repository,
+    )
+    repository.save()
+    commit.save()
+
+    # Assert pullid is not None
+    commit.refresh_from_db()
+    assert commit.branch == "branch"
+    assert commit.parent_commit_id is None
+    assert commit.pullid == 123
+
+    owner = repository.author
+    client = APIClient()
+    client.force_authenticate(user=owner)
+    repo_slug = f"{repository.author.username}::::{repository.name}"
+    url = reverse(
+        "new_upload.upload_coverage",
+        args=[repository.author.service, repo_slug],
+    )
+    response = client.post(
+        url,
+        {
+            "branch": "fakebranch",
+            "ci_service": "ci_service",
+            "ci_url": "ci_url",
+            "cli_args": "blah",
+            "code": "default",
+            "commitid": commit.commitid,
+            "flags": ["flag1", "flag2"],
+            "job_code": "job_code",
+            "pullid": "123456",
+            "version": "version",
+        },
+        format="json",
+    )
+    response_json = response.json()
+    upload = ReportSession.objects.filter(
+        report__commit=commit,
+        report__code=None,
+        upload_extras={"format_version": "v1"},
+    ).first()
+    assert response.status_code == 201
+
+    commit.refresh_from_db()
+    assert commit.branch == "branch"
+    assert commit.parent_commit_id is None
+    assert commit.pullid == 123

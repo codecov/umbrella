@@ -146,11 +146,22 @@ class CommitSerializer(serializers.ModelSerializer):
             repository=repo, commitid=commitid, defaults=validated_data
         )
 
-        if created:
-            TaskService().update_commit(
-                commitid=commit.commitid, repoid=commit.repository.repoid
-            )
-        else:
+        updated = False
+        if not created:
+            update_fields = [
+                "branch",
+                "parent_commit_id",
+                "pullid",
+            ]
+            for field_name in update_fields:
+                field = validated_data.get(field_name, None)
+                if getattr(commit, field_name) is None and field is not None:
+                    setattr(commit, field_name, field)
+                    updated = True
+
+            if updated:
+                commit.save()
+
             TaskService().upload_breadcrumb(
                 commit_sha=commit.commitid,
                 repo_id=repo.repoid,
@@ -159,6 +170,10 @@ class CommitSerializer(serializers.ModelSerializer):
                 ),
             )
 
+        if created or updated:
+            TaskService().update_commit(
+                commitid=commit.commitid, repoid=commit.repository.repoid
+            )
         return commit
 
 
