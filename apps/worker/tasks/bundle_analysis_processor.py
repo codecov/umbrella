@@ -102,7 +102,22 @@ class BundleAnalysisProcessorTask(
 
         # these are the task results from prior processor tasks in the chain
         # (they get accumulated as we execute each task in succession)
-        processing_results = previous_result.get("results", [])
+        # Defensive handling: previous_result should be a dict, but sometimes it's passed as a list
+        if isinstance(previous_result, dict):
+            processing_results = previous_result.get("results", [])
+        else:
+            # Handle case where previous_result is incorrectly passed as a list (or other type)
+            log.warning(
+                "Bundle analysis processor received non-dict previous_result",
+                extra={
+                    "repoid": repoid,
+                    "commit": commitid,
+                    "previous_result_type": type(previous_result).__name__,
+                    "previous_result": previous_result,
+                    "parent_task": self.request.parent_id,
+                },
+            )
+            processing_results = []
 
         # these are populated in the upload task
         # unless when this task is called on a non-BA upload then we have to create an empty upload
