@@ -31,6 +31,10 @@ fi
 if [[ -n "${PROMETHEUS_MULTIPROC_DIR:-}" ]]; then
   rm -r "${PROMETHEUS_MULTIPROC_DIR:?}"/* 2>/dev/null || true
   mkdir -p "$PROMETHEUS_MULTIPROC_DIR"
+else
+  # Set a default prometheus directory to prevent cleanup errors during shutdown
+  export PROMETHEUS_MULTIPROC_DIR="${HOME}/.prometheus"
+  mkdir -p "$PROMETHEUS_MULTIPROC_DIR"
 fi
 
 queues=""
@@ -46,7 +50,14 @@ if [[ "${CODECOV_SKIP_MIGRATIONS:-}" != "true" && ("${RUN_ENV:-}" = "ENTERPRISE"
 fi
 
 # Signal handling for graceful shutdown
+shutdown_in_progress=false
 shutdown() {
+  # Prevent duplicate shutdown attempts (in case both shell and process receive signal)
+  if [[ "$shutdown_in_progress" == "true" ]]; then
+    return 0
+  fi
+  shutdown_in_progress=true
+  
   echo "Received SIGTERM, shutting down gracefully..."
   if [[ -n "${worker_pid:-}" ]]; then
     # Send SIGTERM to the worker process
