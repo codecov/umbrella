@@ -296,16 +296,12 @@ def test_analytics_eu(request, *args, **kwargs):
             "repo_id", "-timestamp"
         )
 
-        # Group test runs by repository
         test_runs_per_repository = {}
         for repo_id, repo_name in repo_id_to_name.items():
             test_runs_per_repository[repo_name] = []
 
-        # Serialize all test runs at once for efficiency
         serialized_test_runs = TestrunSerializer(test_runs, many=True).data
-
-        # Group serialized data by repository
-        for i, test_run_data in enumerate(serialized_test_runs):
+        for test_run_data in serialized_test_runs:
             repo_id = test_run_data["repo_id"]
             repo_name = repo_id_to_name.get(repo_id)
             if repo_name:
