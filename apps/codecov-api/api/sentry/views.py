@@ -1,4 +1,5 @@
 import logging
+from itertools import groupby
 
 import sentry_sdk
 from django.conf import settings
@@ -280,12 +281,12 @@ def test_analytics_eu(request, *args, **kwargs):
             )
             continue
 
-        repositories = Repository.objects.filter(
-            author=owner, test_analytics_enabled=True
+        # Only fetch name and repoid fields
+        repo_id_to_name = dict(
+            Repository.objects.filter(
+                author=owner, test_analytics_enabled=True
+            ).values_list("repoid", "name")
         )
-
-        # Get all repo IDs for this owner
-        repo_id_to_name = {repo.repoid: repo.name for repo in repositories}
 
         if not repo_id_to_name:
             test_runs_per_integration[name] = {}
@@ -296,16 +297,14 @@ def test_analytics_eu(request, *args, **kwargs):
             "repo_id", "-timestamp"
         )
 
+        # Group by repo_id (data is already ordered by repo_id) and serialize each group
         test_runs_per_repository = {}
-        for repo_id, repo_name in repo_id_to_name.items():
-            test_runs_per_repository[repo_name] = []
-
-        serialized_test_runs = TestrunSerializer(test_runs, many=True).data
-        for test_run_data in serialized_test_runs:
-            repo_id = test_run_data["repo_id"]
-            repo_name = repo_id_to_name.get(repo_id)
-            if repo_name:
-                test_runs_per_repository[repo_name].append(test_run_data)
+        for repo_id, group in groupby(test_runs, key=lambda tr: tr.repo_id):
+            repo_name = repo_id_to_name[repo_id]  # Safe: we only fetch these repo_ids
+            test_runs_list = list(group)
+            test_runs_per_repository[repo_name] = TestrunSerializer(
+                test_runs_list, many=True
+            ).data
 
         # Store each test_runs_per_repository in a dictionary
         test_runs_per_integration[name] = test_runs_per_repository
