@@ -957,9 +957,9 @@ class TestAnalyticsEuViewTests(TestCase):
         self.assertIn("repo-enabled", test_runs_data)
         self.assertNotIn("repo-disabled", test_runs_data)
 
-        test_runs_json = json.loads(test_runs_data["repo-enabled"])
-        self.assertEqual(len(test_runs_json), 1)
-        self.assertEqual(test_runs_json[0]["name"], "test_enabled")
+        test_runs_list = test_runs_data["repo-enabled"]
+        self.assertEqual(len(test_runs_list), 1)
+        self.assertEqual(test_runs_list[0]["name"], "test_enabled")
 
     def test_test_analytics_eu_multiple_owners_with_multiple_repos_and_testruns(self):
         """Test complex scenario with 2 owners, different repositories and test runs"""
@@ -1024,7 +1024,7 @@ class TestAnalyticsEuViewTests(TestCase):
         self.assertIn("repo-one", org_one_data)
         self.assertEqual(len(org_one_data), 1)
 
-        repo_one_testruns = json.loads(org_one_data["repo-one"])
+        repo_one_testruns = org_one_data["repo-one"]
         self.assertEqual(len(repo_one_testruns), 2)
         testrun_names = [tr["name"] for tr in repo_one_testruns]
         self.assertIn("test_one_first", testrun_names)
@@ -1036,12 +1036,12 @@ class TestAnalyticsEuViewTests(TestCase):
         self.assertIn("repo-two-second", org_two_data)
         self.assertEqual(len(org_two_data), 2)
 
-        repo_two_first_testruns = json.loads(org_two_data["repo-two-first"])
+        repo_two_first_testruns = org_two_data["repo-two-first"]
         self.assertEqual(len(repo_two_first_testruns), 1)
         self.assertEqual(repo_two_first_testruns[0]["name"], "test_two_first")
         self.assertEqual(repo_two_first_testruns[0]["outcome"], "pass")
 
-        repo_two_second_testruns = json.loads(org_two_data["repo-two-second"])
+        repo_two_second_testruns = org_two_data["repo-two-second"]
         self.assertEqual(len(repo_two_second_testruns), 1)
         self.assertEqual(repo_two_second_testruns[0]["name"], "test_two_second")
         self.assertEqual(repo_two_second_testruns[0]["outcome"], "skip")

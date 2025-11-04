@@ -1,8 +1,8 @@
-import json
 import logging
 
 import sentry_sdk
 from django.conf import settings
+from django.views.decorators.gzip import gzip_page
 from rest_framework import serializers, status
 from rest_framework.decorators import (
     api_view,
@@ -259,6 +259,7 @@ class SentryTestAnalyticsEuSerializer(serializers.Serializer):
     )
 
 
+@gzip_page
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([JWTAuthenticationPermission])
@@ -283,12 +284,32 @@ def test_analytics_eu(request, *args, **kwargs):
             author=owner, test_analytics_enabled=True
         )
 
-        # For each repository, get the list of test runs
+        # Get all repo IDs for this owner
+        repo_id_to_name = {repo.repoid: repo.name for repo in repositories}
+
+        if not repo_id_to_name:
+            test_runs_per_integration[name] = {}
+            continue
+
+        # Fetch all test runs for all repositories in a single query
+        test_runs = Testrun.objects.filter(repo_id__in=repo_id_to_name.keys()).order_by(
+            "repo_id", "-timestamp"
+        )
+
+        # Group test runs by repository
         test_runs_per_repository = {}
-        for repository in repositories:
-            test_runs = Testrun.objects.filter(repo_id=repository.repoid)
-            test_runs_json = json.dumps(TestrunSerializer(test_runs, many=True).data)
-            test_runs_per_repository[repository.name] = test_runs_json
+        for repo_id, repo_name in repo_id_to_name.items():
+            test_runs_per_repository[repo_name] = []
+
+        # Serialize all test runs at once for efficiency
+        serialized_test_runs = TestrunSerializer(test_runs, many=True).data
+
+        # Group serialized data by repository
+        for i, test_run_data in enumerate(serialized_test_runs):
+            repo_id = test_run_data["repo_id"]
+            repo_name = repo_id_to_name.get(repo_id)
+            if repo_name:
+                test_runs_per_repository[repo_name].append(test_run_data)
 
         # Store each test_runs_per_repository in a dictionary
         test_runs_per_integration[name] = test_runs_per_repository
