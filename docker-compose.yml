@@ -68,7 +68,7 @@ services:
 
   api:
     image: ${AR_REPO_PREFIX-codecov}/api
-    entrypoint: sh -c "/devenv-scripts/start.sh codecov-api"
+    entrypoint: sh -c "exec /devenv-scripts/start.sh codecov-api"
     environment:
       - RUN_ENV=DEV
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -87,7 +87,7 @@ services:
 
   worker:
     image: ${AR_REPO_PREFIX-codecov}/worker
-    entrypoint: sh -c "/devenv-scripts/start.sh worker"
+    entrypoint: sh -c "exec /devenv-scripts/start.sh worker"
     environment:
       - RUN_ENV=DEV
       - CELERY_BROKER_URL=redis://redis:6379/0
