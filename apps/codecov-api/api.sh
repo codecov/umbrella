@@ -4,6 +4,44 @@ set -euo pipefail
 # Default entrypoint for api
 echo "Starting api"
 
+# Signal handling for graceful shutdown
+shutdown_in_progress=false
+shutdown() {
+  # Prevent duplicate shutdown attempts (in case both shell and process receive signal)
+  if [[ "$shutdown_in_progress" == "true" ]]; then
+    return 0
+  fi
+  shutdown_in_progress=true
+  
+  echo "Received SIGTERM, shutting down gracefully..."
+  if [[ -n "${api_pid:-}" ]]; then
+    # Send SIGTERM to the API process (gunicorn)
+    kill -TERM "$api_pid" 2>/dev/null || true
+    
+    # Wait for graceful shutdown with timeout (default 25s, less than K8s terminationGracePeriodSeconds)
+    local timeout=${SHUTDOWN_TIMEOUT:-25}
+    local count=0
+    
+    while kill -0 "$api_pid" 2>/dev/null && [[ $count -lt $timeout ]]; do
+      sleep 1
+      ((count++))
+    done
+    
+    # If process is still running, force kill
+    if kill -0 "$api_pid" 2>/dev/null; then
+      echo "API did not shutdown gracefully after ${timeout}s, forcing shutdown..."
+      kill -KILL "$api_pid" 2>/dev/null || true
+      wait "$api_pid" 2>/dev/null || true
+    else
+      echo "API shutdown complete"
+    fi
+  fi
+  exit 0
+}
+
+# Trap SIGTERM and SIGINT
+trap shutdown SIGTERM SIGINT
+
 # Script section to keep in sync with worker.sh
 #### Start ####
 
@@ -67,6 +105,8 @@ if [[ -z "${1:-}" ]]; then
     echo "Starting gunicorn in default mode"
     ;;
   esac
+  
+  # Start gunicorn in the background and capture its PID
   $pre $berglas gunicorn codecov.wsgi:application \
     $added_args \
     $statsd \
@@ -76,7 +116,12 @@ if [[ -z "${1:-}" ]]; then
     --bind "${CODECOV_API_BIND:-0.0.0.0}":"${CODECOV_API_PORT:-8000}" \
     --access-logfile '-' \
     --timeout "${GUNICORN_TIMEOUT:-600}" \
-    $post
+    $post &
+  api_pid=$!
+  echo "Gunicorn started with PID $api_pid"
+  
+  # Wait for the background process
+  wait "$api_pid"
 else
   echo "Executing custom command"
   exec "$@"
