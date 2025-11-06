@@ -270,6 +270,11 @@ def test_analytics_eu(request, *args, **kwargs):
 
     integration_names = serializer.validated_data["integration_names"]
 
+    log.info(
+        "Starting data export for the following integrations",
+        extra={"integrations": integration_names},
+    )
+
     # For every integration name, determine if an Owner record exist by filtering by name and service=github
     test_runs_per_integration = {}
     for name in integration_names:
