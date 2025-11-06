@@ -314,3 +314,5 @@ def test_analytics_eu(request, *args, **kwargs):
             "test_runs_per_integration": test_runs_per_integration,
         }
     )
+
+
