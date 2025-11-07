@@ -35,8 +35,7 @@ _test_env.check_db:
 # Outside the Docker env: Run unit tests.
 _test_env.run_unit:
 	docker-compose exec repo /bin/sh -c \
-		"COVERAGE_CORE=sysmon \
-		RUN_ENV=TESTING \
+		"RUN_ENV=TESTING \
 		DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_PARENT}.settings_test \
 		pytest --cov=${COV_SOURCE} \
 		    -m 'not integration' \
@@ -49,8 +48,7 @@ _test_env.run_unit:
 # Outside the Docker env: Run integration tests.
 _test_env.run_integration:
 	docker-compose exec repo /bin/sh -c \
-		"COVERAGE_CORE=sysmon \
-		RUN_ENV=TESTING \
+		"RUN_ENV=TESTING \
 		DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_PARENT}.settings_test \
 		pytest --cov=${COV_SOURCE} \
 		    -m 'integration' \
