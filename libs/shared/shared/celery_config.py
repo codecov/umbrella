@@ -202,6 +202,13 @@ class BaseCeleryConfig:
         )
     )  # 1.5GB
 
+    # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-worker_soft_shutdown_timeout
+    worker_soft_shutdown_timeout = int(
+        get_config(
+            "setup", "tasks", "celery", "worker_soft_shutdown_timeout", default=60
+        )  # 60 seconds
+    )
+
     # http://docs.celeryproject.org/en/latest/configuration.html?highlight=celery_redirect_stdouts#celeryd-hijack-root-logger
     worker_hijack_root_logger = False
 

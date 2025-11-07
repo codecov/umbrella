@@ -21,7 +21,7 @@ export WORKER_DOCKER_VERSION=${VERSION}
 CODECOV_CLI_VERSION := 0.5.1
 
 test:
-	COVERAGE_CORE=sysmon pytest --cov=./ --junitxml=junit.xml -o junit_family=legacy -c pytest.ini --rootdir=${PYTEST_ROOTDIR}
+	pytest --cov=./ --junitxml=junit.xml -o junit_family=legacy -c pytest.ini --rootdir=${PYTEST_ROOTDIR}
 
 shell:
 	docker-compose exec worker bash
