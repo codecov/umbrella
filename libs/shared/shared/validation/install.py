@@ -218,6 +218,7 @@ config_schema = {
                                 "hard_timelimit": {"type": "integer"},
                                 "enterprise": {**enterprise_queue_fields},
                                 "worker_max_memory_per_child": {"type": "integer"},
+                                "worker_soft_shutdown_timeout": {"type": "integer"},
                             }
                         },
                     ],
