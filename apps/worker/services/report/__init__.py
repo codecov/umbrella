@@ -217,7 +217,10 @@ class ReportService(BaseReportService):
                 # This means there is a report to carryforward
                 log.info(
                     "Carryforwarding report",
-                    extra={"commitid": commit.commitid, "files_count": len(report.files)}
+                    extra={
+                        "commitid": commit.commitid,
+                        "files_count": len(report.files),
+                    },
                 )
                 self.save_full_report(commit, report)
 

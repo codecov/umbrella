@@ -2184,6 +2184,55 @@ class TestUploadTaskUnit:
         )
 
     @pytest.mark.django_db
+    def test_upload_task_initialize_report_unexpected_error(
+        self,
+        dbsession,
+        mocker,
+        mock_configuration,
+        mock_redis,
+        mock_repo_provider,
+        mock_storage,
+    ):
+        """Test that unexpected errors during initialize_and_save_report are logged and re-raised"""
+        mock_configuration.set_params({"github": {"bot": {"key": "somekey"}}})
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+        mocker.patch.object(UploadContext, "has_pending_jobs", return_value=True)
+        task = UploadTask()
+        mock_repo_provider.data = mocker.MagicMock()
+        mock_repo_provider.service = "github"
+        
+        # Mock initialize_and_save_report to raise an unexpected exception
+        test_exception = ValueError("Database connection failed")
+        mocker.patch.object(
+            ReportService,
+            "initialize_and_save_report",
+            side_effect=test_exception,
+        )
+        
+        # Mock the log.error call to verify it's called
+        mock_log_error = mocker.patch("tasks.upload.log.error")
+        
+        upload_args = UploadContext(
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            redis_connection=mock_redis,
+        )
+        
+        # Should re-raise the exception
+        with pytest.raises(ValueError, match="Database connection failed"):
+            task.run_impl_within_lock(dbsession, upload_args, kwargs={})
+        
+        # Verify error was logged with proper context
+        mock_log_error.assert_called_once()
+        call_args = mock_log_error.call_args
+        assert "Unexpected error during initialize_and_save_report" in call_args[0]
+        assert call_args[1]["extra"]["error_type"] == "ValueError"
+        assert call_args[1]["extra"]["error_message"] == "Database connection failed"
+        assert call_args[1]["exc_info"] is True
+
+    @pytest.mark.django_db
     def test_upload_debounce_limit(
         self, dbsession, mocker, mock_config, mock_storage, mock_self_app
     ):
