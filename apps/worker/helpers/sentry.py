@@ -15,6 +15,23 @@ def is_sentry_enabled() -> bool:
     return bool(get_config("services", "sentry", "server_dsn"))
 
 
+def before_send_transaction(transaction, hint):
+    """
+    Filter out noisy transactions from Sentry to reduce ingestion costs.
+
+    Returns None to drop the transaction, or the transaction object to send it.
+    """
+    # Filter out UploadBreadcrumb tasks (can appear with or without task prefix)
+    if transaction.name in ("UploadBreadcrumb", "app.tasks.upload.UploadBreadcrumb"):
+        return None  # Drop the transaction
+
+    # Can add more filters here as needed
+    # if "health_check" in transaction.name.lower():
+    #     return None
+
+    return transaction
+
+
 def initialize_sentry() -> None:
     version = get_current_version()
     version_str = f"worker-{version}"
@@ -37,6 +54,7 @@ def initialize_sentry() -> None:
             HttpxIntegration(),
         ],
         release=os.getenv("SENTRY_RELEASE", version_str),
+        before_send_transaction=before_send_transaction,
     )
     if os.getenv("CLUSTER_ENV"):
         sentry_sdk.set_tag("cluster", os.getenv("CLUSTER_ENV"))
