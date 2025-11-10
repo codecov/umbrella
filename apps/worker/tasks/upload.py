@@ -543,6 +543,10 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         try:
             log.info("Initializing and saving report", extra=upload_context.log_extra())
             commit_report = report_service.initialize_and_save_report(commit)
+            log.info(
+                "Successfully initialized and saved report",
+                extra=upload_context.log_extra(),
+            )
         except NotReadyToBuildReportYetError:
             log.warning(
                 "Commit not yet ready to build its initial report. Retrying in 60s.",
@@ -555,6 +559,17 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 error=Errors.INTERNAL_RETRYING,
             )
             self.retry(countdown=60, kwargs=upload_context.kwargs_for_retry(kwargs))
+        except Exception as e:
+            log.error(
+                "Unexpected error during initialize_and_save_report",
+                extra={
+                    **upload_context.log_extra(),
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
+                exc_info=True,
+            )
+            raise
 
         upload_argument_list = self.possibly_insert_uploads_and_side_effects(
             db_session=db_session,
