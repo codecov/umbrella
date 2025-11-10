@@ -215,17 +215,12 @@ class ReportService(BaseReportService):
             report = self.create_new_report_for_commit(commit)
             if not report.is_empty():
                 # This means there is a report to carryforward
-                try:
-                    files_count = report.totals.files
-                except Exception:
-                    # Fallback if totals computation fails
-                    files_count = len(report._files)
                 log.info(
                     "Carryforwarding report",
                     extra={
                         "commit": commit.commitid,
                         "repoid": commit.repoid,
-                        "files_count": files_count,
+                        "files_count": report.totals.files,
                     },
                 )
                 self.save_full_report(commit, report)
