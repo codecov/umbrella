@@ -565,6 +565,13 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 },
                 exc_info=True,
             )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                milestone=Milestones.COMPILING_UPLOADS,
+                error=Errors.UNKNOWN,
+                error_text=repr(e),
+            )
             raise
 
         upload_argument_list = self.possibly_insert_uploads_and_side_effects(

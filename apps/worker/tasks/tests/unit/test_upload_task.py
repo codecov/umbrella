@@ -2192,6 +2192,7 @@ class TestUploadTaskUnit:
         mock_redis,
         mock_repo_provider,
         mock_storage,
+        mock_self_app,
     ):
         """Test that unexpected errors during initialize_and_save_report are logged and re-raised"""
         mock_configuration.set_params({"github": {"bot": {"key": "somekey"}}})
@@ -2246,6 +2247,23 @@ class TestUploadTaskUnit:
         assert call_args[1]["extra"]["error_type"] == "ValueError"
         assert call_args[1]["extra"]["error_message"] == "Database connection failed"
         assert call_args[1]["exc_info"] is True
+
+        # Verify breadcrumb was logged
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMPILING_UPLOADS,
+                    error=Errors.UNKNOWN,
+                    error_text=repr(test_exception),
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
 
     @pytest.mark.django_db
     def test_upload_debounce_limit(
