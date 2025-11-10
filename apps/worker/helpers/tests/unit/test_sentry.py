@@ -33,25 +33,25 @@ class TestSentry:
         # Create mock transaction with UploadBreadcrumb name
         mock_transaction = mocker.Mock()
         mock_transaction.name = "UploadBreadcrumb"
-        
+
         result = before_send_transaction(mock_transaction, None)
-        
+
         assert result is None  # Transaction should be dropped
 
     def test_before_send_transaction_filters_upload_breadcrumb_full_path(self, mocker):
         """Test that fully qualified UploadBreadcrumb task names are filtered"""
         mock_transaction = mocker.Mock()
         mock_transaction.name = "app.tasks.upload.UploadBreadcrumb"
-        
+
         result = before_send_transaction(mock_transaction, None)
-        
+
         assert result is None  # Transaction should be dropped
 
     def test_before_send_transaction_allows_other_tasks(self, mocker):
         """Test that non-filtered transactions are allowed through"""
         mock_transaction = mocker.Mock()
         mock_transaction.name = "app.tasks.upload.Upload"
-        
+
         result = before_send_transaction(mock_transaction, None)
-        
+
         assert result is mock_transaction  # Transaction should pass through
