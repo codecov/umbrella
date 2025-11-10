@@ -2203,6 +2203,21 @@ class TestUploadTaskUnit:
         mock_repo_provider.data = mocker.MagicMock()
         mock_repo_provider.service = "github"
 
+        # Mock all the functions that run before initialize_and_save_report
+        mocker.patch(
+            "tasks.upload.fetch_commit_yaml_and_possibly_store",
+            return_value=UserYaml.from_dict({}),
+        )
+        mocker.patch(
+            "tasks.upload.possibly_update_commit_from_provider_info",
+            return_value=False,
+        )
+        mocker.patch.object(
+            UploadTask,
+            "possibly_setup_webhooks",
+            return_value=False,
+        )
+
         # Mock initialize_and_save_report to raise an unexpected exception
         test_exception = ValueError("Database connection failed")
         mocker.patch.object(
