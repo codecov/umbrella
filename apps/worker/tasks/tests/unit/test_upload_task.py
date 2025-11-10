@@ -2202,7 +2202,7 @@ class TestUploadTaskUnit:
         task = UploadTask()
         mock_repo_provider.data = mocker.MagicMock()
         mock_repo_provider.service = "github"
-        
+
         # Mock initialize_and_save_report to raise an unexpected exception
         test_exception = ValueError("Database connection failed")
         mocker.patch.object(
@@ -2210,20 +2210,20 @@ class TestUploadTaskUnit:
             "initialize_and_save_report",
             side_effect=test_exception,
         )
-        
+
         # Mock the log.error call to verify it's called
         mock_log_error = mocker.patch("tasks.upload.log.error")
-        
+
         upload_args = UploadContext(
             repoid=commit.repoid,
             commitid=commit.commitid,
             redis_connection=mock_redis,
         )
-        
+
         # Should re-raise the exception
         with pytest.raises(ValueError, match="Database connection failed"):
             task.run_impl_within_lock(dbsession, upload_args, kwargs={})
-        
+
         # Verify error was logged with proper context
         mock_log_error.assert_called_once()
         call_args = mock_log_error.call_args
