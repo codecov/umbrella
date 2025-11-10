@@ -2241,12 +2241,16 @@ class TestUploadTaskUnit:
             task.run_impl_within_lock(dbsession, upload_args, kwargs={})
 
         # Verify error was logged with proper context
-        mock_log_error.assert_called_once()
-        call_args = mock_log_error.call_args
-        assert "Unexpected error during initialize_and_save_report" in call_args[0]
-        assert call_args[1]["extra"]["error_type"] == "ValueError"
-        assert call_args[1]["extra"]["error_message"] == "Database connection failed"
-        assert call_args[1]["exc_info"] is True
+        # Using assert_called_once_with to verify both call count and arguments
+        mock_log_error.assert_called_once_with(
+            "Unexpected error during initialize_and_save_report",
+            extra={
+                **upload_args.log_extra(),
+                "error_type": "ValueError",
+                "error_message": "Database connection failed",
+            },
+            exc_info=True,
+        )
 
         # Verify breadcrumb was logged
         mock_self_app.tasks[
