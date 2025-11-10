@@ -173,15 +173,7 @@ class ReportService(BaseReportService):
         Returns:
             CommitReport: The CommitReport for that commit
         """
-        log.info(
-            "Starting initialize_and_save_report",
-            extra={"commitid": commit.commitid, "commit_id": commit.id_},
-        )
         db_session = commit.get_db_session()
-
-        log.info(
-            "Querying for existing CommitReport", extra={"commitid": commit.commitid}
-        )
         current_report_row = (
             db_session.query(CommitReport)
             .filter_by(commit_id=commit.id_, code=None)
@@ -194,9 +186,6 @@ class ReportService(BaseReportService):
         if not current_report_row:
             # This happens if the commit report is being created for the first time
             # or backfilled
-            log.info(
-                "Creating new CommitReport row", extra={"commitid": commit.commitid}
-            )
             current_report_row = CommitReport(
                 commit_id=commit.id_,
                 code=None,
@@ -204,18 +193,14 @@ class ReportService(BaseReportService):
             )
             db_session.add(current_report_row)
             db_session.flush()
-            log.info(
-                "CommitReport created and flushed",
+            log.debug(
+                "Created new CommitReport",
                 extra={
                     "commitid": commit.commitid,
                     "report_id": current_report_row.id_,
                 },
             )
 
-            log.info(
-                "Checking for existing report to backfill",
-                extra={"commitid": commit.commitid},
-            )
             actual_report = self.get_existing_report_for_commit(commit)
             if actual_report is not None:
                 log.info(
@@ -225,59 +210,17 @@ class ReportService(BaseReportService):
                 # This case means the report exists in our system, it was just not saved
                 #   yet into the new models therefore it needs backfilling
                 self.save_full_report(commit, actual_report)
-                log.info(
-                    "Backfill save_full_report completed",
-                    extra={"commitid": commit.commitid},
-                )
-            else:
-                log.info(
-                    "No existing report found to backfill",
-                    extra={"commitid": commit.commitid},
-                )
-        else:
-            log.info(
-                "Found existing CommitReport",
-                extra={
-                    "commitid": commit.commitid,
-                    "report_id": current_report_row.id_,
-                },
-            )
 
-        log.info(
-            "Checking if report has been initialized",
-            extra={"commitid": commit.commitid},
-        )
         if not self.has_initialized_report(commit):
-            log.info(
-                "Report not initialized, creating new report",
-                extra={"commitid": commit.commitid},
-            )
             report = self.create_new_report_for_commit(commit)
-            log.info(
-                "New report created",
-                extra={"commitid": commit.commitid, "is_empty": report.is_empty()},
-            )
             if not report.is_empty():
                 # This means there is a report to carryforward
                 log.info(
-                    "Saving carryforward report", extra={"commitid": commit.commitid}
+                    "Carryforwarding report",
+                    extra={"commitid": commit.commitid, "files_count": len(report.files)}
                 )
                 self.save_full_report(commit, report)
-                log.info(
-                    "Carryforward report saved", extra={"commitid": commit.commitid}
-                )
-            else:
-                log.info(
-                    "Report is empty, skipping save",
-                    extra={"commitid": commit.commitid},
-                )
-        else:
-            log.info("Report already initialized", extra={"commitid": commit.commitid})
 
-        log.info(
-            "initialize_and_save_report completed successfully",
-            extra={"commitid": commit.commitid},
-        )
         return current_report_row
 
     def _attach_flags_to_upload(self, upload: Upload, flag_names: list[str]):

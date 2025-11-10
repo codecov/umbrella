@@ -543,10 +543,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         try:
             log.info("Initializing and saving report", extra=upload_context.log_extra())
             commit_report = report_service.initialize_and_save_report(commit)
-            log.info(
-                "Successfully initialized and saved report",
-                extra=upload_context.log_extra(),
-            )
         except NotReadyToBuildReportYetError:
             log.warning(
                 "Commit not yet ready to build its initial report. Retrying in 60s.",
