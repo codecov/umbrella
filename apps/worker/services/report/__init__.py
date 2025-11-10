@@ -219,7 +219,7 @@ class ReportService(BaseReportService):
                     "Carryforwarding report",
                     extra={
                         "commitid": commit.commitid,
-                        "files_count": len(report.files),
+                        "files_count": report.totals.files,
                     },
                 )
                 self.save_full_report(commit, report)
