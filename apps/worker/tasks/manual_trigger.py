@@ -8,6 +8,7 @@ from database.enums import ReportType
 from database.models import Commit, Pull
 from database.models.reports import CommitReport, Upload
 from services.comparison import get_or_create_comparison
+from services.processing.state import ProcessingState
 from shared.celery_config import (
     compute_comparison_task_name,
     manual_upload_completion_trigger_task_name,
@@ -96,6 +97,26 @@ class ManualTriggerTask(
         for upload in uploads:
             if not upload.state or upload.state_id == UploadState.UPLOADED.db_id:
                 still_processing += 1
+
+        # Also check Redis processing state to prevent race conditions
+        # where uploads have been marked complete in DB but are still
+        # being processed/merged by the finisher task
+        state = ProcessingState(repoid, commitid)
+        upload_numbers = state.get_upload_numbers()
+
+        if upload_numbers.processing > 0 or upload_numbers.processed > 0:
+            log.info(
+                "Retrying ManualTriggerTask. Redis shows uploads still being processed.",
+                extra={
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "redis_processing": upload_numbers.processing,
+                    "redis_processed": upload_numbers.processed,
+                    "db_still_processing": still_processing,
+                },
+            )
+            still_processing += upload_numbers.processing + upload_numbers.processed
+
         if still_processing == 0:
             self.trigger_notifications(repoid, commitid, commit_yaml)
             if commit.pullid:

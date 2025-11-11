@@ -347,6 +347,12 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         except SoftTimeLimitExceeded:
             log.warning("run_impl: soft time limit exceeded")
+            # Clean up orphaned state so future finishers can proceed
+            state.mark_uploads_as_merged(upload_ids)
+            log.info(
+                "Cleaned up processing state after timeout",
+                extra={"upload_ids": upload_ids},
+            )
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -361,6 +367,12 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         except Exception as e:
             log.exception("run_impl: unexpected error in upload finisher")
+            # Clean up orphaned state so future finishers can proceed
+            state.mark_uploads_as_merged(upload_ids)
+            log.info(
+                "Cleaned up processing state after exception",
+                extra={"upload_ids": upload_ids, "error": str(e)},
+            )
             sentry_sdk.capture_exception(e)
             log.exception(
                 "Unexpected error in upload finisher",
@@ -675,6 +687,20 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             "processing_results": processing_results,
             "parent_task": self.request.parent_id,
         }
+
+        # Check if there are still pending uploads
+        state = ProcessingState(commit.repoid, commit.commitid)
+        upload_numbers = state.get_upload_numbers()
+        if upload_numbers.processing > 0 or upload_numbers.processed > 0:
+            log.info(
+                "Not scheduling notify because there are still pending uploads",
+                extra={
+                    **extra_dict,
+                    "processing": upload_numbers.processing,
+                    "processed": upload_numbers.processed,
+                },
+            )
+            return ShouldCallNotifyResult.DO_NOT_NOTIFY
 
         manual_trigger = read_yaml_field(
             commit_yaml, ("codecov", "notify", "manual_trigger")
