@@ -2184,6 +2184,99 @@ class TestUploadTaskUnit:
         )
 
     @pytest.mark.django_db
+    def test_upload_task_initialize_report_unexpected_error(
+        self,
+        dbsession,
+        mocker,
+        mock_configuration,
+        mock_redis,
+        mock_repo_provider,
+        mock_storage,
+        mock_self_app,
+    ):
+        """Test that unexpected errors during initialize_and_save_report are logged and re-raised"""
+        mock_configuration.set_params({"github": {"bot": {"key": "somekey"}}})
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+        mocker.patch.object(UploadContext, "has_pending_jobs", return_value=True)
+        task = UploadTask()
+        mock_repo_provider.data = mocker.MagicMock()
+        mock_repo_provider.service = "github"
+
+        # Mock all the functions that run before initialize_and_save_report
+        mocker.patch(
+            "tasks.upload.fetch_commit_yaml_and_possibly_store",
+            return_value=UserYaml.from_dict({}),
+        )
+        mocker.patch(
+            "tasks.upload.possibly_update_commit_from_provider_info",
+            return_value=False,
+        )
+        mocker.patch.object(
+            UploadTask,
+            "possibly_setup_webhooks",
+            return_value=False,
+        )
+
+        # Mock initialize_and_save_report to raise an unexpected exception
+        test_exception = ValueError("Database connection failed")
+        mocker.patch.object(
+            ReportService,
+            "initialize_and_save_report",
+            side_effect=test_exception,
+        )
+
+        # Mock the log.error call to verify it's called
+        mock_log_error = mocker.patch("tasks.upload.log.error")
+
+        upload_args = UploadContext(
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            redis_connection=mock_redis,
+        )
+
+        # Should re-raise the exception
+        with pytest.raises(ValueError, match="Database connection failed"):
+            task.run_impl_within_lock(dbsession, upload_args, kwargs={})
+
+        # Verify error was logged with proper context
+        # Note: assert_called_once() is safe here because:
+        # 1. Only one log.error exists in the execution path (line 559 in upload.py)
+        # 2. Exception is re-raised, stopping execution before any other log.error could be called
+        # 3. Mock is scoped to 'tasks.upload.log.error' only
+        assert mock_log_error.call_count == 1, (
+            f"Expected exactly 1 log.error call, got {mock_log_error.call_count}. "
+            f"Calls: {mock_log_error.call_args_list}"
+        )
+        call_args = mock_log_error.call_args
+        # Verify the message
+        assert call_args[0][0] == "Unexpected error during initialize_and_save_report"
+        # Verify the extra context contains our error details
+        extra = call_args[1]["extra"]
+        assert extra["error_type"] == "ValueError"
+        assert extra["error_message"] == "Database connection failed"
+        # Verify exc_info is True
+        assert call_args[1]["exc_info"] is True
+
+        # Verify breadcrumb was logged
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMPILING_UPLOADS,
+                    error=Errors.UNKNOWN,
+                    error_text=repr(test_exception),
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
+
+    @pytest.mark.django_db
     def test_upload_debounce_limit(
         self, dbsession, mocker, mock_config, mock_storage, mock_self_app
     ):

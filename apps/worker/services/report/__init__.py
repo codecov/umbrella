@@ -193,6 +193,13 @@ class ReportService(BaseReportService):
             )
             db_session.add(current_report_row)
             db_session.flush()
+            log.debug(
+                "Created new CommitReport",
+                extra={
+                    "commitid": commit.commitid,
+                    "report_id": current_report_row.id_,
+                },
+            )
 
             actual_report = self.get_existing_report_for_commit(commit)
             if actual_report is not None:
@@ -208,6 +215,14 @@ class ReportService(BaseReportService):
             report = self.create_new_report_for_commit(commit)
             if not report.is_empty():
                 # This means there is a report to carryforward
+                log.info(
+                    "Carryforwarding report",
+                    extra={
+                        "commit": commit.commitid,
+                        "repoid": commit.repoid,
+                        "files_count": report.totals.files,
+                    },
+                )
                 self.save_full_report(commit, report)
 
         return current_report_row
@@ -384,6 +399,7 @@ class ReportService(BaseReportService):
             )
         return carryforward_report
 
+    @sentry_sdk.trace
     def create_new_report_for_commit(self, commit: Commit) -> Report:
         log.info(
             "Creating new report for commit",
