@@ -951,3 +951,98 @@ class TestUploadFinisherTask:
                 "sentry_trace_id": None,
             }
         )
+
+    @pytest.mark.django_db
+    def test_idempotency_check_skips_already_processed_uploads(
+        self, dbsession, mocker, mock_self_app
+    ):
+        """Test that finisher skips work if all uploads are already in final state.
+
+        This test validates the idempotency check that prevents wasted work when:
+        - Multiple finishers are triggered (e.g., visibility timeout re-queuing)
+        - Finisher is manually retried
+
+        The check only skips when ALL uploads exist in DB and are in final states.
+        """
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        # Create uploads that are already in "processed" state
+        upload_1 = UploadFactory.create(report=report, state="processed")
+        upload_2 = UploadFactory.create(report=report, state="error")
+        dbsession.add(upload_1)
+        dbsession.add(upload_2)
+        dbsession.flush()
+
+        # Mock the _process_reports_with_lock to verify it's NOT called
+        mock_process = mocker.patch.object(
+            UploadFinisherTask, "_process_reports_with_lock"
+        )
+
+        previous_results = [
+            {"upload_id": upload_1.id, "successful": True, "arguments": {}},
+            {"upload_id": upload_2.id, "successful": False, "arguments": {}},
+        ]
+
+        result = UploadFinisherTask().run_impl(
+            dbsession,
+            previous_results,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        # Verify that the finisher skipped all work
+        assert result == {
+            "already_completed": True,
+            "upload_ids": [upload_1.id, upload_2.id],
+        }
+
+        # Verify that _process_reports_with_lock was NOT called
+        mock_process.assert_not_called()
+
+    @pytest.mark.django_db
+    def test_idempotency_check_proceeds_when_uploads_not_finished(
+        self, dbsession, mocker, mock_storage, mock_repo_provider, mock_self_app
+    ):
+        """Test that finisher proceeds normally if uploads are still in 'started' state."""
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        mocker.patch("tasks.upload_finisher.update_uploads")
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        # Create uploads that are still in "started" state
+        upload_1 = UploadFactory.create(report=report, state="started")
+        dbsession.add(upload_1)
+        dbsession.flush()
+
+        # Mock the _process_reports_with_lock to verify it IS called
+        mock_process = mocker.patch.object(
+            UploadFinisherTask, "_process_reports_with_lock"
+        )
+
+        previous_results = [
+            {"upload_id": upload_1.id, "successful": True, "arguments": {}},
+        ]
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            previous_results,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        # Verify that _process_reports_with_lock WAS called
+        mock_process.assert_called_once()
