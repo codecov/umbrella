@@ -14,6 +14,7 @@ from helpers.checkpoint_logger import _kwargs_key
 from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.log_context import LogContext, set_log_context
+from services.processing.intermediate import intermediate_report_key
 from services.processing.merging import get_joined_flag, update_uploads
 from services.processing.types import MergeResult, ProcessingResult
 from services.timeseries import MeasurementName
@@ -1050,16 +1051,20 @@ class TestUploadFinisherTask:
 
     @pytest.mark.django_db
     def test_reconstruct_processing_results_falls_back_to_database_when_redis_expires(
-        self, dbsession, mocker, mock_storage, mock_repo_provider, mock_redis, mock_self_app
+        self,
+        dbsession,
+        mocker,
+        mock_storage,
+        mock_repo_provider,
+        mock_redis,
+        mock_self_app,
     ):
         """Test that finisher falls back to database when Redis ProcessingState expires.
-        
+
         This tests the edge case where Redis keys expire after 24h TTL, but uploads
         were processed and have intermediate reports. The finisher should find them
         via database query and include them in the final report.
         """
-        from services.processing.intermediate import intermediate_report_key
-
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
@@ -1081,14 +1086,16 @@ class TestUploadFinisherTask:
 
         # Mock Redis to simulate intermediate reports exist (confirms uploads were processed)
         mock_redis.exists.side_effect = lambda key: (
-            key == intermediate_report_key(upload_1.id) or
-            key == intermediate_report_key(upload_2.id)
+            key == intermediate_report_key(upload_1.id)
+            or key == intermediate_report_key(upload_2.id)
         )
 
         # Mock ProcessingState to return empty (simulating Redis expiration)
         mock_state = mocker.MagicMock()
         mock_state.get_uploads_for_merging.return_value = set()  # Redis expired
-        mock_state.get_upload_numbers.return_value = mocker.MagicMock(processing=0, processed=0)
+        mock_state.get_upload_numbers.return_value = mocker.MagicMock(
+            processing=0, processed=0
+        )
         mocker.patch("tasks.upload_finisher.ProcessingState", return_value=mock_state)
 
         # Mock the processing methods
@@ -1115,13 +1122,13 @@ class TestUploadFinisherTask:
         call_args = mock_process.call_args
         # processing_results is the 4th positional argument (index 0 is args tuple)
         processing_results = call_args[0][3]
-        
+
         # Verify both uploads are included in processing_results
         upload_ids_in_results = {r["upload_id"] for r in processing_results}
         assert upload_1.id in upload_ids_in_results
         assert upload_2.id in upload_ids_in_results
         assert len(processing_results) == 2
-        
+
         # Verify both are marked as successful (have intermediate reports)
         assert all(r["successful"] for r in processing_results)
 
@@ -1130,7 +1137,7 @@ class TestUploadFinisherTask:
         self, dbsession, mocker, mock_redis, mock_self_app
     ):
         """Test that finisher returns empty list when no uploads found in Redis or DB.
-        
+
         This tests the edge case where Redis expires AND no uploads exist in database
         in "started" state with intermediate reports.
         """
