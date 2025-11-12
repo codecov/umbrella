@@ -29,7 +29,10 @@ from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValid
 from helpers.log_context import LogContext, set_log_context
 from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
-from shared.celery_config import upload_breadcrumb_task_name
+from shared.celery_config import (
+    TASK_RETRY_BACKOFF_BASE_SECONDS,
+    upload_breadcrumb_task_name,
+)
 from shared.celery_router import route_tasks_based_on_user_plan
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
@@ -52,6 +55,20 @@ REQUEST_TIMEOUT_COUNTER = Counter(
 REQUEST_HARD_TIMEOUT_COUNTER = Counter(
     "worker_task_counts_hard_timeouts",
     "Number of times a task experienced a hard timeout",
+    ["task"],
+)
+
+# Task retry tracking with retry count
+TASK_RETRY_WITH_COUNT_COUNTER = Counter(
+    "worker_task_counts_retries_by_count",
+    "Number of times this task was retried, labeled by retry count",
+    ["task", "retry_count"],
+)
+
+# Task max retries exceeded counter
+TASK_MAX_RETRIES_EXCEEDED_COUNTER = Counter(
+    "worker_task_counts_max_retries_exceeded",
+    "Number of times this task exceeded maximum retry limit",
     ["task"],
 )
 
@@ -198,6 +215,65 @@ class BaseCodecovTask(celery_app.Task):
             if TestResultsFlow.has_begun():
                 TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
 
+    def safe_retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
+        """
+        Safely retry with max retry limit and proper metrics tracking.
+
+        This method provides a common retry pattern for all tasks with:
+        - Configurable max retry limit
+        - Automatic metric tracking
+        - Consistent error handling
+
+        Args:
+            max_retries: Maximum number of retries allowed (default: task's max_retries)
+            countdown: Seconds to wait before retry (default: exponential backoff)
+            exc: Exception to include in retry (optional)
+            **kwargs: Additional kwargs to pass to self.retry()
+
+        Returns:
+            True if retry was scheduled
+            False if max retries exceeded
+
+        Example:
+            if some_condition_requires_retry:
+                if not self.safe_retry(max_retries=5, countdown=60):
+                    # Max retries exceeded
+                    log.error("Giving up after too many retries")
+                    return {"success": False, "reason": "max_retries"}
+        """
+        current_retries = self.request.retries if hasattr(self, "request") else 0
+        task_max_retries = max_retries if max_retries is not None else self.max_retries
+
+        if task_max_retries is not None and current_retries >= task_max_retries:
+            log.error(
+                f"Task {self.name} exceeded max retries",
+                extra={
+                    "task_name": self.name,
+                    "current_retries": current_retries,
+                    "max_retries": task_max_retries,
+                },
+            )
+            TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
+            return False
+
+        # Default countdown: exponential backoff
+        # Uses TASK_RETRY_BACKOFF_BASE_SECONDS from shared config (default: 20s)
+        if countdown is None:
+            countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**current_retries)
+
+        try:
+            self.retry(
+                max_retries=task_max_retries, countdown=countdown, exc=exc, **kwargs
+            )
+            return True
+        except MaxRetriesExceededError:
+            TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
+            if UploadFlow.has_begun():
+                UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+            if TestResultsFlow.has_begun():
+                TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+            return False
+
     def _analyse_error(self, exception: SQLAlchemyError, *args, **kwargs):
         try:
             import psycopg2  # noqa: PLC0415
@@ -334,6 +410,11 @@ class BaseCodecovTask(celery_app.Task):
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         res = super().on_retry(exc, task_id, args, kwargs, einfo)
         self.task_retry_counter.inc()
+        # Track retry count for better observability
+        retry_count = self.request.retries if hasattr(self, "request") else 0
+        TASK_RETRY_WITH_COUNT_COUNTER.labels(
+            task=self.name, retry_count=str(retry_count)
+        ).inc()
         return res
 
     def on_success(self, retval, task_id, args, kwargs):

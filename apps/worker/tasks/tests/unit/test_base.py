@@ -6,7 +6,7 @@ import psycopg2
 import pytest
 from celery import chain
 from celery.contrib.testing.mocks import TaskMessage
-from celery.exceptions import Retry, SoftTimeLimitExceeded
+from celery.exceptions import MaxRetriesExceededError, Retry, SoftTimeLimitExceeded
 from prometheus_client import REGISTRY
 from sqlalchemy.exc import (
     DBAPIError,
@@ -509,6 +509,112 @@ class TestBaseCodecovTaskHooks:
             "worker_task_counts_retries_total", labels={"task": task.name}
         )
         assert prom_retry_counter_after - prom_retry_counter_before == 1
+
+    def test_on_retry_tracks_retry_count(self):
+        # Verify that on_retry increments the retry_by_count metric
+        task = RetrySampleTask()
+        task.request.retries = 3
+
+        counter_before = REGISTRY.get_sample_value(
+            "worker_task_counts_retries_by_count_total",
+            labels={"task": task.name, "retry_count": "3"},
+        )
+
+        task.on_retry("exc", "task_id", ("args",), {"kwargs": "foo"}, "einfo")
+
+        counter_after = REGISTRY.get_sample_value(
+            "worker_task_counts_retries_by_count_total",
+            labels={"task": task.name, "retry_count": "3"},
+        )
+
+        expected_increment = 1 if counter_before is not None else 1
+        actual_increment = (counter_after or 0) - (counter_before or 0)
+        assert actual_increment == expected_increment
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+class TestBaseCodecovTaskSafeRetry:
+    def test_safe_retry_succeeds_below_max_retries(self, mocker):
+        task = SampleTask()
+        task.request.retries = 2
+        task.max_retries = 5
+
+        mock_retry = mocker.patch.object(task, "retry")
+
+        result = task.safe_retry(max_retries=5, countdown=60)
+
+        assert result is True
+        mock_retry.assert_called_once_with(max_retries=5, countdown=60, exc=None)
+
+    def test_safe_retry_fails_at_max_retries(self, mocker):
+        task = SampleTask()
+        task.request.retries = 10
+        task.max_retries = 10
+
+        mock_retry = mocker.patch.object(task, "retry")
+
+        counter_before = REGISTRY.get_sample_value(
+            "worker_task_counts_max_retries_exceeded_total",
+            labels={"task": task.name},
+        )
+
+        result = task.safe_retry(max_retries=10, countdown=60)
+
+        assert result is False
+        mock_retry.assert_not_called()
+
+        counter_after = REGISTRY.get_sample_value(
+            "worker_task_counts_max_retries_exceeded_total",
+            labels={"task": task.name},
+        )
+
+        expected_increment = 1 if counter_before is not None else 1
+        actual_increment = (counter_after or 0) - (counter_before or 0)
+        assert actual_increment == expected_increment
+
+    def test_safe_retry_uses_exponential_backoff_by_default(self, mocker):
+        task = SampleTask()
+        task.request.retries = 3
+        task.max_retries = 10
+
+        mock_retry = mocker.patch.object(task, "retry")
+
+        # Call without countdown - should use exponential backoff
+        # Formula: TASK_RETRY_BACKOFF_BASE_SECONDS * (2 ** retry_count)
+        # For retry 3: 20 * (2 ** 3) = 20 * 8 = 160
+        task.safe_retry(max_retries=10)
+
+        mock_retry.assert_called_once()
+        call_kwargs = mock_retry.call_args[1]
+        assert call_kwargs["countdown"] == 160  # 20 * 2^3
+
+    def test_safe_retry_handles_max_retries_exceeded_exception(self, mocker):
+        task = SampleTask()
+        task.request.retries = 9
+        task.max_retries = 10
+
+        # Make retry raise MaxRetriesExceededError
+        mock_retry = mocker.patch.object(
+            task, "retry", side_effect=MaxRetriesExceededError()
+        )
+
+        counter_before = REGISTRY.get_sample_value(
+            "worker_task_counts_max_retries_exceeded_total",
+            labels={"task": task.name},
+        )
+
+        result = task.safe_retry(max_retries=10, countdown=60)
+
+        assert result is False
+
+        counter_after = REGISTRY.get_sample_value(
+            "worker_task_counts_max_retries_exceeded_total",
+            labels={"task": task.name},
+        )
+
+        expected_increment = 1 if counter_before is not None else 1
+        actual_increment = (counter_after or 0) - (counter_before or 0)
+        assert actual_increment == expected_increment
 
 
 class TestBaseCodecovRequest:
