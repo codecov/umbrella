@@ -20,6 +20,8 @@ from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import OwnerFactory, RepositoryFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from shared.celery_config import (
+    DLQ_KEY_PREFIX,
+    DLQ_TTL_SECONDS,
     sync_repos_task_name,
     upload_breadcrumb_task_name,
     upload_task_name,
@@ -917,3 +919,89 @@ class TestBaseCodecovTaskApplyAsyncOverride:
             time_limit=450,
             user_plan="users-enterprisey",
         )
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+class TestBaseCodecovTaskDLQ:
+    def test_save_to_task_dlq_success(self, mocker):
+        task = SampleTask()
+        task.name = "test.SampleTask"
+        task.request.retries = 10
+
+        mock_redis = mocker.MagicMock()
+        mock_redis.rpush = mocker.MagicMock()
+        mock_redis.expire = mocker.MagicMock()
+        mocker.patch("tasks.base.get_redis_connection", return_value=mock_redis)
+        mock_datetime = mocker.patch("tasks.base.datetime")
+        mock_datetime.now.return_value.isoformat.return_value = "2023-01-01T00:00:00"
+
+        task_data = {"task_name": task.name, "args": [], "kwargs": {}}
+        dlq_key = task._save_to_task_dlq(task_data)
+
+        assert dlq_key is not None
+        assert dlq_key.startswith(f"{DLQ_KEY_PREFIX}/{task.name}/")
+        mock_redis.rpush.assert_called_once()
+        mock_redis.expire.assert_called_once_with(dlq_key, DLQ_TTL_SECONDS)
+
+    def test_save_to_task_dlq_with_suffix(self, mocker):
+        task = SampleTask()
+        task.name = "test.SampleTask"
+        task.request.retries = 10
+
+        mock_redis = mocker.MagicMock()
+        mock_redis.rpush = mocker.MagicMock()
+        mock_redis.expire = mocker.MagicMock()
+        mocker.patch("tasks.base.get_redis_connection", return_value=mock_redis)
+
+        task_data = {"task_name": task.name, "args": [], "kwargs": {}}
+        dlq_key_suffix = "123/abc/coverage"
+        dlq_key = task._save_to_task_dlq(task_data, dlq_key_suffix=dlq_key_suffix)
+
+        assert dlq_key == f"{DLQ_KEY_PREFIX}/{task.name}/{dlq_key_suffix}"
+        mock_redis.rpush.assert_called_once()
+        mock_redis.expire.assert_called_once_with(dlq_key, DLQ_TTL_SECONDS)
+
+    def test_save_to_task_dlq_failure_handled_gracefully(self, mocker):
+        task = SampleTask()
+        task.name = "test.SampleTask"
+        task.request.retries = 10
+
+        # Make Redis connection raise an exception
+        mocker.patch(
+            "tasks.base.get_redis_connection", side_effect=Exception("Redis error")
+        )
+        mocker.patch("tasks.base.log")
+
+        task_data = {"task_name": task.name, "args": [], "kwargs": {}}
+        dlq_key = task._save_to_task_dlq(task_data)
+
+        assert dlq_key is None
+
+    def test_save_to_task_dlq_tracks_metric(self, mocker):
+        task = SampleTask()
+        task.name = "test.SampleTask"
+        task.request.retries = 10
+
+        mock_redis = mocker.MagicMock()
+        mock_redis.rpush = mocker.MagicMock()
+        mock_redis.expire = mocker.MagicMock()
+        mocker.patch("tasks.base.get_redis_connection", return_value=mock_redis)
+        mock_datetime = mocker.patch("tasks.base.datetime")
+        mock_datetime.now.return_value.isoformat.return_value = "2023-01-01T00:00:00"
+
+        counter_before = REGISTRY.get_sample_value(
+            "worker_task_counts_dlq_saved_total",
+            labels={"task": task.name},
+        )
+
+        task_data = {"task_name": task.name, "args": [], "kwargs": {}}
+        task._save_to_task_dlq(task_data)
+
+        counter_after = REGISTRY.get_sample_value(
+            "worker_task_counts_dlq_saved_total",
+            labels={"task": task.name},
+        )
+
+        expected_increment = 1 if counter_before is not None else 1
+        actual_increment = (counter_after or 0) - (counter_before or 0)
+        assert actual_increment == expected_increment

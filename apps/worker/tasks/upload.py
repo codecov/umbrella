@@ -362,6 +362,25 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     labels={"report_type": report_type},
                 )
                 self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
+
+                # Save pending uploads to DLQ to prevent data loss
+                dlq_key_suffix = f"{repoid}/{commitid}/{report_type}"
+                task_data = {
+                    "task_name": self.name,
+                    "args": [],
+                    "kwargs": upload_context.kwargs_for_retry(kwargs),
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "report_type": report_type,
+                    "reason": "too_many_processing_retries",
+                }
+                dlq_key = self._save_to_task_dlq(task_data, dlq_key_suffix)
+                if dlq_key:
+                    log.error(
+                        "Moved upload task to DLQ after too many processing retries",
+                        extra=upload_context.log_extra(dlq_key=dlq_key),
+                    )
+
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,
@@ -373,6 +392,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "was_updated": False,
                     "tasks_were_scheduled": False,
                     "reason": "too_many_processing_retries",
+                    "dlq_key": dlq_key,
                 }
 
         if retry_countdown := _should_debounce_processing(upload_context):
@@ -460,6 +480,25 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     extra=upload_context.log_extra(),
                 )
                 self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
+
+                # Save to DLQ to prevent data loss
+                dlq_key_suffix = f"{repoid}/{commitid}/{report_type}"
+                task_data = {
+                    "task_name": self.name,
+                    "args": [],
+                    "kwargs": upload_context.kwargs_for_retry(kwargs),
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "report_type": report_type,
+                    "reason": "too_many_retries",
+                }
+                dlq_key = self._save_to_task_dlq(task_data, dlq_key_suffix)
+                if dlq_key:
+                    log.error(
+                        "Moved upload task to DLQ after too many retries",
+                        extra=upload_context.log_extra(dlq_key=dlq_key),
+                    )
+
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,
@@ -471,6 +510,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "was_updated": False,
                     "tasks_were_scheduled": False,
                     "reason": "too_many_retries",
+                    "dlq_key": dlq_key,
                 }
             retry_countdown = 20 * 2**self.request.retries
             log.warning(

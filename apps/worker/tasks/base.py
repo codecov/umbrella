@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 
+import orjson
 import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
@@ -30,6 +31,8 @@ from helpers.log_context import LogContext, set_log_context
 from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
 from shared.celery_config import (
+    DLQ_KEY_PREFIX,
+    DLQ_TTL_SECONDS,
     TASK_RETRY_BACKOFF_BASE_SECONDS,
     upload_breadcrumb_task_name,
 )
@@ -39,6 +42,7 @@ from shared.django_apps.upload_breadcrumbs.models import (
     Errors,
     Milestones,
 )
+from shared.helpers.redis import get_redis_connection
 from shared.metrics import Counter, Histogram
 from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
@@ -69,6 +73,13 @@ TASK_RETRY_WITH_COUNT_COUNTER = Counter(
 TASK_MAX_RETRIES_EXCEEDED_COUNTER = Counter(
     "worker_task_counts_max_retries_exceeded",
     "Number of times this task exceeded maximum retry limit",
+    ["task"],
+)
+
+# Dead Letter Queue (DLQ) metric
+TASK_DLQ_SAVED_COUNTER = Counter(
+    "worker_task_counts_dlq_saved",
+    "Number of tasks saved to Dead Letter Queue after exhausting retries",
     ["task"],
 )
 
@@ -273,6 +284,60 @@ class BaseCodecovTask(celery_app.Task):
             if TestResultsFlow.has_begun():
                 TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
             return False
+
+    def _save_to_task_dlq(
+        self, task_data: dict, dlq_key_suffix: str | None = None
+    ) -> str | None:
+        """
+        Save task data to Dead Letter Queue (DLQ) for manual inspection/recovery.
+
+        This method is called when a task exhausts all retries to prevent data loss.
+        The task data is stored in Redis with a configurable TTL (default: 7 days).
+
+        Args:
+            task_data: Dictionary containing task information (args, kwargs, etc.)
+            dlq_key_suffix: Optional suffix to append to DLQ key for task-specific organization.
+                           If None, uses task name and timestamp.
+
+        Returns:
+            DLQ key if successful, None if failed
+        """
+        try:
+            redis_conn = get_redis_connection()
+
+            # Generate DLQ key: task_dlq/{task_name}/{suffix or timestamp}
+            if dlq_key_suffix:
+                dlq_key = f"{DLQ_KEY_PREFIX}/{self.name}/{dlq_key_suffix}"
+            else:
+                timestamp = datetime.now().isoformat()
+                dlq_key = f"{DLQ_KEY_PREFIX}/{self.name}/{timestamp}"
+
+            # Serialize task data as JSON
+            serialized_data = orjson.dumps(task_data).decode("utf-8")
+
+            # Save to Redis list (allows multiple entries per key)
+            redis_conn.rpush(dlq_key, serialized_data)
+            redis_conn.expire(dlq_key, DLQ_TTL_SECONDS)
+
+            # Track metric
+            TASK_DLQ_SAVED_COUNTER.labels(task=self.name).inc()
+
+            log.error(
+                f"Task {self.name} saved to DLQ after exhausting retries",
+                extra={
+                    "task_name": self.name,
+                    "dlq_key": dlq_key,
+                    "retries": self.request.retries if hasattr(self, "request") else 0,
+                },
+            )
+
+            return dlq_key
+        except Exception as e:
+            log.exception(
+                f"Failed to save task {self.name} to DLQ",
+                extra={"task_name": self.name, "error": str(e)},
+            )
+            return None
 
     def _analyse_error(self, exception: SQLAlchemyError, *args, **kwargs):
         try:

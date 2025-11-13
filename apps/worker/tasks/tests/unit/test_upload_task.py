@@ -1645,13 +1645,19 @@ class TestUploadTaskUnit:
         mock_redis.keys[f"uploads/{commit.repoid}/{commit.commitid}"] = ["something"]
         task = UploadTask()
         task.request.retries = 3
+        # Mock Redis for DLQ save - FakeRedis doesn't have rpush/expire, so add them
+        mock_redis.rpush = mocker.MagicMock(return_value=1)
+        mock_redis.expire = mocker.MagicMock()
+        mocker.patch(
+            "tasks.base.datetime"
+        ).now.return_value.isoformat.return_value = "2023-01-01T00:00:00"
+
         result = task.run_impl(dbsession, commit.repoid, commit.commitid)
-        assert result == {
-            "tasks_were_scheduled": False,
-            "was_setup": False,
-            "was_updated": False,
-            "reason": "too_many_retries",
-        }
+        assert result["tasks_were_scheduled"] is False
+        assert result["was_setup"] is False
+        assert result["was_updated"] is False
+        assert result["reason"] == "too_many_retries"
+        assert "dlq_key" in result  # DLQ key may be None or a string
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
                 call(
