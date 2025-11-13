@@ -5,12 +5,10 @@ This provides a web-based interface for inspecting and recovering tasks
 that were saved to the DLQ after exhausting all retries.
 """
 
-from urllib.parse import unquote
-
 from django.contrib import admin, messages
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
-from django.urls import path, reverse
+from django.urls import path, re_path, reverse
 
 from services.task.task import celery_app
 from shared.celery_config import dlq_recovery_task_name
@@ -44,7 +42,7 @@ def list_dlq(request):
 
 def recover_dlq(request, dlq_key):
     """Recover tasks from a DLQ key."""
-    dlq_key = unquote(dlq_key)  # Decode URL-encoded key
+    # Django automatically URL-decodes the path parameter
     # Call DLQ recovery task synchronously via Celery
     result = celery_app.send_task(
         dlq_recovery_task_name,
@@ -74,7 +72,7 @@ def recover_dlq(request, dlq_key):
 
 def delete_dlq(request, dlq_key):
     """Delete tasks from a DLQ key."""
-    dlq_key = unquote(dlq_key)  # Decode URL-encoded key
+    # Django automatically URL-decodes the path parameter
     # Call DLQ recovery task synchronously via Celery
     result = celery_app.send_task(
         dlq_recovery_task_name,
@@ -103,13 +101,14 @@ def get_urls_with_dlq():
     """Add DLQ URLs to admin site."""
     dlq_urls = [
         path("dlq/", admin.site.admin_view(list_dlq), name="core_dlq_list"),
-        path(
-            "dlq/recover/<str:dlq_key>/",
+        # Use re_path to handle slashes in dlq_key
+        re_path(
+            r"^dlq/recover/(?P<dlq_key>.+)/$",
             admin.site.admin_view(recover_dlq),
             name="core_dlq_recover",
         ),
-        path(
-            "dlq/delete/<str:dlq_key>/",
+        re_path(
+            r"^dlq/delete/(?P<dlq_key>.+)/$",
             admin.site.admin_view(delete_dlq),
             name="core_dlq_delete",
         ),
