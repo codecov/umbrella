@@ -28,6 +28,11 @@ from shared.metrics import Counter
 
 MERGE_BATCH_SIZE = 10
 
+# TTL for processing state keys in Redis (24 hours, matches intermediate report TTL)
+# This prevents state keys from accumulating indefinitely and ensures consistency
+# with intermediate report expiration
+PROCESSING_STATE_TTL = 24 * 60 * 60
+
 CLEARED_UPLOADS = Counter(
     "worker_processing_cleared_uploads",
     "Number of uploads cleared from queue because of errors",
@@ -81,7 +86,11 @@ class ProcessingState:
         return UploadNumbers(processing, processed)
 
     def mark_uploads_as_processing(self, upload_ids: list[int]):
-        self._redis.sadd(self._redis_key("processing"), *upload_ids)
+        key = self._redis_key("processing")
+        self._redis.sadd(key, *upload_ids)
+        # Set TTL to match intermediate report expiration (24 hours)
+        # This ensures state keys don't accumulate indefinitely
+        self._redis.expire(key, PROCESSING_STATE_TTL)
 
     def clear_in_progress_uploads(self, upload_ids: list[int]):
         removed_uploads = self._redis.srem(self._redis_key("processing"), *upload_ids)
@@ -93,15 +102,20 @@ class ProcessingState:
             CLEARED_UPLOADS.inc(removed_uploads)
 
     def mark_upload_as_processed(self, upload_id: int):
-        res = self._redis.smove(
-            self._redis_key("processing"), self._redis_key("processed"), upload_id
-        )
+        processing_key = self._redis_key("processing")
+        processed_key = self._redis_key("processed")
+
+        res = self._redis.smove(processing_key, processed_key, upload_id)
         if not res:
             # this can happen when `upload_id` was never in the source set,
             # which probably is the case during initial deployment as
             # the code adding this to the initial set was not deployed yet
             # TODO: make sure to remove this code after a grace period
-            self._redis.sadd(self._redis_key("processed"), upload_id)
+            self._redis.sadd(processed_key, upload_id)
+
+        # Set TTL on processed key to match intermediate report expiration
+        # This ensures uploads marked as processed have a bounded lifetime
+        self._redis.expire(processed_key, PROCESSING_STATE_TTL)
 
     def mark_uploads_as_merged(self, upload_ids: list[int]):
         self._redis.srem(self._redis_key("processed"), *upload_ids)

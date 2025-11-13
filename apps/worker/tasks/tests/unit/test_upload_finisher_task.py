@@ -14,6 +14,7 @@ from helpers.checkpoint_logger import _kwargs_key
 from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.log_context import LogContext, set_log_context
+from services.processing.intermediate import intermediate_report_key
 from services.processing.merging import get_joined_flag, update_uploads
 from services.processing.types import MergeResult, ProcessingResult
 from services.timeseries import MeasurementName
@@ -29,6 +30,7 @@ from shared.django_apps.upload_breadcrumbs.models import (
     Errors,
     Milestones,
 )
+from shared.reports.enums import UploadState
 from shared.torngit.exceptions import TorngitObjectNotFoundError
 from shared.yaml import UserYaml
 from tasks.upload_finisher import (
@@ -951,3 +953,206 @@ class TestUploadFinisherTask:
                 "sentry_trace_id": None,
             }
         )
+
+    @pytest.mark.django_db
+    def test_idempotency_check_skips_already_processed_uploads(
+        self, dbsession, mocker, mock_self_app
+    ):
+        """Test that finisher skips work if all uploads are already in final state.
+
+        This test validates the idempotency check that prevents wasted work when:
+        - Multiple finishers are triggered (e.g., visibility timeout re-queuing)
+        - Finisher is manually retried
+
+        The check only skips when ALL uploads exist in DB and are in final states.
+        """
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        # Create uploads that are already in "processed" state
+        upload_1 = UploadFactory.create(report=report, state="processed")
+        upload_2 = UploadFactory.create(report=report, state="error")
+        dbsession.add(upload_1)
+        dbsession.add(upload_2)
+        dbsession.flush()
+
+        # Mock the _process_reports_with_lock to verify it's NOT called
+        mock_process = mocker.patch.object(
+            UploadFinisherTask, "_process_reports_with_lock"
+        )
+
+        previous_results = [
+            {"upload_id": upload_1.id, "successful": True, "arguments": {}},
+            {"upload_id": upload_2.id, "successful": False, "arguments": {}},
+        ]
+
+        result = UploadFinisherTask().run_impl(
+            dbsession,
+            previous_results,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        # Verify that the finisher skipped all work
+        assert result == {
+            "already_completed": True,
+            "upload_ids": [upload_1.id, upload_2.id],
+        }
+
+        # Verify that _process_reports_with_lock was NOT called
+        mock_process.assert_not_called()
+
+    @pytest.mark.django_db
+    def test_idempotency_check_proceeds_when_uploads_not_finished(
+        self, dbsession, mocker, mock_storage, mock_repo_provider, mock_self_app
+    ):
+        """Test that finisher proceeds normally if uploads are still in 'started' state."""
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        mocker.patch("tasks.upload_finisher.update_uploads")
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        # Create uploads that are still in "started" state
+        upload_1 = UploadFactory.create(report=report, state="started")
+        dbsession.add(upload_1)
+        dbsession.flush()
+
+        # Mock the _process_reports_with_lock to verify it IS called
+        mock_process = mocker.patch.object(
+            UploadFinisherTask, "_process_reports_with_lock"
+        )
+
+        previous_results = [
+            {"upload_id": upload_1.id, "successful": True, "arguments": {}},
+        ]
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            previous_results,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        # Verify that _process_reports_with_lock WAS called
+        mock_process.assert_called_once()
+
+    @pytest.mark.django_db
+    def test_reconstruct_processing_results_falls_back_to_database_when_redis_expires(
+        self,
+        dbsession,
+        mocker,
+        mock_storage,
+        mock_repo_provider,
+        mock_redis,
+        mock_self_app,
+    ):
+        """Test that finisher falls back to database when Redis ProcessingState expires.
+
+        This tests the edge case where Redis keys expire after 24h TTL, but uploads
+        were processed and have intermediate reports. The finisher should find them
+        via database query and include them in the final report.
+        """
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        # Create uploads in "started" state (simulating Redis state expired)
+        upload_1 = UploadFactory.create(
+            report=report, state="started", state_id=UploadState.UPLOADED.db_id
+        )
+        upload_2 = UploadFactory.create(
+            report=report, state="started", state_id=UploadState.UPLOADED.db_id
+        )
+        dbsession.add(upload_1)
+        dbsession.add(upload_2)
+        dbsession.flush()
+
+        # Mock Redis to simulate intermediate reports exist (confirms uploads were processed)
+        mock_redis.exists.side_effect = lambda key: (
+            key == intermediate_report_key(upload_1.id)
+            or key == intermediate_report_key(upload_2.id)
+        )
+
+        # Mock ProcessingState to return empty (simulating Redis expiration)
+        mock_state = mocker.MagicMock()
+        mock_state.get_uploads_for_merging.return_value = set()  # Redis expired
+        mock_state.get_upload_numbers.return_value = mocker.MagicMock(
+            processing=0, processed=0
+        )
+        mocker.patch("tasks.upload_finisher.ProcessingState", return_value=mock_state)
+
+        # Mock the processing methods
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        mocker.patch("tasks.upload_finisher.update_uploads")
+        mock_process = mocker.patch.object(
+            UploadFinisherTask, "_process_reports_with_lock"
+        )
+
+        # Call run_impl without processing_results to trigger reconstruction
+        task = UploadFinisherTask()
+        task.run_impl(
+            dbsession,
+            processing_results=None,  # Triggers reconstruction
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        # Verify that _find_started_uploads_with_reports was called (via reconstruction)
+        # This is verified by checking that _process_reports_with_lock was called
+        # with processing_results containing our uploads
+        mock_process.assert_called_once()
+        call_args = mock_process.call_args
+        # processing_results is the 4th positional argument (index 0 is args tuple)
+        processing_results = call_args[0][3]
+
+        # Verify both uploads are included in processing_results
+        upload_ids_in_results = {r["upload_id"] for r in processing_results}
+        assert upload_1.id in upload_ids_in_results
+        assert upload_2.id in upload_ids_in_results
+        assert len(processing_results) == 2
+
+        # Verify both are marked as successful (have intermediate reports)
+        assert all(r["successful"] for r in processing_results)
+
+    @pytest.mark.django_db
+    def test_reconstruct_processing_results_returns_empty_when_no_uploads_found(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
+        """Test that finisher returns empty list when no uploads found in Redis or DB.
+
+        This tests the edge case where Redis expires AND no uploads exist in database
+        in "started" state with intermediate reports.
+        """
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        # Mock ProcessingState to return empty (simulating Redis expiration)
+        mock_state = mocker.MagicMock()
+        mock_state.get_uploads_for_merging.return_value = set()  # Redis expired
+        mocker.patch("tasks.upload_finisher.ProcessingState", return_value=mock_state)
+
+        # Call run_impl without processing_results to trigger reconstruction
+        task = UploadFinisherTask()
+        result = task._reconstruct_processing_results(dbsession, mock_state, commit)
+
+        # Verify empty list returned when no uploads found
+        assert result == []

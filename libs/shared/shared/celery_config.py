@@ -174,6 +174,72 @@ def get_task_group(task_name: str) -> str | None:
     return task_parts[2]
 
 
+# =============================================================================
+# Task Resilience Configuration
+# =============================================================================
+# These settings improve task resilience to pod failures and network issues.
+# All values can be overridden via environment variables or YAML config.
+#
+# References:
+# - Celery Reliability: https://docs.celeryq.dev/en/stable/userguide/tasks.html#task-request
+# - Redis Broker Options: https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html#configuration
+# =============================================================================
+
+# Visibility timeout for Redis broker (seconds)
+# How long a task remains invisible after being pulled from queue before becoming
+# visible again if not acknowledged. This is the maximum time a task can be "lost"
+# before another worker picks it up.
+# Default: 900 seconds (15 minutes)
+# Celery docs: https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html#visibility-timeout
+TASK_VISIBILITY_TIMEOUT_SECONDS = int(
+    get_config("setup", "tasks", "celery", "visibility_timeout", default=900)
+)
+
+# Maximum retries for tasks hitting transient conditions (e.g., processing locks)
+# Default: 10 retries
+# Celery docs: https://docs.celeryq.dev/en/stable/userguide/tasks.html#max-retries
+TASK_MAX_RETRIES_DEFAULT = int(
+    get_config("setup", "tasks", "celery", "max_retries", default=10)
+)
+
+# Base delay for exponential backoff retry strategy (seconds)
+# Each retry waits: base_delay * (2 ** retry_count)
+# Example: 20s, 40s, 80s, 160s, 320s...
+# Default: 20 seconds
+# Celery docs: https://docs.celeryq.dev/en/stable/userguide/tasks.html#retrying
+TASK_RETRY_BACKOFF_BASE_SECONDS = int(
+    get_config("setup", "tasks", "celery", "retry_backoff_base", default=20)
+)
+
+# Fixed retry delay for specific conditions (seconds)
+# Used for predictable retry intervals (e.g., waiting for processing lock)
+# Default: 60 seconds
+TASK_RETRY_FIXED_DELAY_SECONDS = int(
+    get_config("setup", "tasks", "celery", "retry_fixed_delay", default=60)
+)
+
+# Upload queue TTL (seconds)
+# How long pending uploads remain in Redis before expiring
+# Default: 86400 seconds (24 hours)
+UPLOAD_QUEUE_TTL_SECONDS = int(
+    get_config("setup", "tasks", "upload", "queue_ttl_seconds", default=86400)
+)
+
+# Upload processing lock retry delay (seconds)
+# When another task is processing uploads, how long to wait before retrying
+# Default: 60 seconds
+UPLOAD_PROCESSING_RETRY_DELAY_SECONDS = int(
+    get_config("setup", "tasks", "upload", "processing_retry_delay", default=60)
+)
+
+# Upload processing lock max retries
+# How many times to retry when processing lock is held before giving up
+# Default: 10 retries (= 10 minutes with 60s delay)
+UPLOAD_PROCESSING_MAX_RETRIES = int(
+    get_config("setup", "tasks", "upload", "processing_max_retries", default=10)
+)
+
+
 class BaseCeleryConfig:
     broker_url = get_config("services", "celery_broker") or get_config(
         "services", "redis_url"
@@ -182,7 +248,12 @@ class BaseCeleryConfig:
         "services", "redis_url"
     )
 
-    broker_transport_options = {"visibility_timeout": (60 * 60 * 6)}  # 6 hours
+    # Task visibility timeout for broker transport
+    # Uses TASK_VISIBILITY_TIMEOUT_SECONDS constant (default: 15 minutes)
+    # Can be overridden via: setup.tasks.celery.visibility_timeout config
+    broker_transport_options = {
+        "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
+    }
     result_extended = True
     task_default_queue = get_config(
         "setup", "tasks", "celery", "default_queue", default="celery"
@@ -223,6 +294,17 @@ class BaseCeleryConfig:
 
     # http://celery.readthedocs.org/en/latest/faq.html#should-i-use-retry-or-acks-late
     task_acks_late = bool(get_config("setup", "tasks", "celery", "acks_late"))
+
+    # Reject tasks if the worker is lost (due to pod death, OOM, etc)
+    # This immediately returns the task to the queue for another worker to pick up,
+    # preventing task loss when pods crash or are terminated.
+    # IMPORTANT: Requires task_acks_late=True to work effectively.
+    # Default: True (enabled for pod failure resilience)
+    # Can be overridden via: setup.tasks.celery.reject_on_worker_lost config
+    # Celery docs: https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-reject-on-worker-lost
+    task_reject_on_worker_lost = bool(
+        get_config("setup", "tasks", "celery", "reject_on_worker_lost", default=True)
+    )
 
     # http://celery.readthedocs.org/en/latest/userguide/optimizing.html#prefetch-limits
     worker_prefetch_multiplier = int(
