@@ -9,8 +9,8 @@ import logging
 from typing import Any
 
 import orjson
+
 from app import celery_app
-from database.engine import get_db_session
 from shared.celery_config import DLQ_KEY_PREFIX, dlq_recovery_task_name
 from shared.helpers.redis import get_redis_connection
 from tasks.base import BaseCodecovTask
@@ -55,7 +55,10 @@ class DLQRecoveryTask(BaseCodecovTask, name=dlq_recovery_task_name):
             return self._list_dlq_keys(redis_conn, task_name_filter)
         elif action == "recover":
             if not dlq_key:
-                return {"success": False, "error": "dlq_key required for recover action"}
+                return {
+                    "success": False,
+                    "error": "dlq_key required for recover action",
+                }
             return self._recover_tasks(redis_conn, dlq_key)
         elif action == "delete":
             if not dlq_key:
@@ -64,7 +67,9 @@ class DLQRecoveryTask(BaseCodecovTask, name=dlq_recovery_task_name):
         else:
             return {"success": False, "error": f"Unknown action: {action}"}
 
-    def _list_dlq_keys(self, redis_conn, task_name_filter: str | None) -> dict[str, Any]:
+    def _list_dlq_keys(
+        self, redis_conn, task_name_filter: str | None
+    ) -> dict[str, Any]:
         """List all DLQ keys, optionally filtered by task name."""
         pattern = f"{DLQ_KEY_PREFIX}/*"
         if task_name_filter:
@@ -152,7 +157,9 @@ class DLQRecoveryTask(BaseCodecovTask, name=dlq_recovery_task_name):
         count = redis_conn.llen(dlq_key)
         redis_conn.delete(dlq_key)
 
-        log.info(f"Deleted DLQ key: {dlq_key}", extra={"dlq_key": dlq_key, "count": count})
+        log.info(
+            f"Deleted DLQ key: {dlq_key}", extra={"dlq_key": dlq_key, "count": count}
+        )
 
         return {
             "success": True,
@@ -164,4 +171,3 @@ class DLQRecoveryTask(BaseCodecovTask, name=dlq_recovery_task_name):
 
 RegisteredDLQRecoveryTask = celery_app.register_task(DLQRecoveryTask())
 dlq_recovery_task = celery_app.tasks[RegisteredDLQRecoveryTask.name]
-

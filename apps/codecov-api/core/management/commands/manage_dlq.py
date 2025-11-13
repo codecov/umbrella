@@ -48,7 +48,9 @@ class Command(BaseCommand):
         )
 
         if result.get("success"):
-            self.stdout.write(self.style.SUCCESS(f"Action '{action}' completed successfully"))
+            self.stdout.write(
+                self.style.SUCCESS(f"Action '{action}' completed successfully")
+            )
             if action == "list":
                 keys = result.get("keys", [])
                 self.stdout.write(f"\nFound {result.get('total_keys', 0)} DLQ key(s):")
@@ -75,6 +77,7 @@ class Command(BaseCommand):
                 )
         else:
             self.stdout.write(
-                self.style.ERROR(f"Action '{action}' failed: {result.get('error', 'Unknown error')}")
+                self.style.ERROR(
+                    f"Action '{action}' failed: {result.get('error', 'Unknown error')}"
+                )
             )
-

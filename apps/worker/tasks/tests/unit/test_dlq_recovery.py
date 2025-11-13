@@ -1,11 +1,12 @@
 """Tests for Dead Letter Queue (DLQ) recovery task."""
 
+from unittest.mock import MagicMock
+
 import orjson
 import pytest
-from unittest.mock import MagicMock, call
 
 from app import celery_app
-from shared.celery_config import DLQ_KEY_PREFIX, dlq_recovery_task_name
+from shared.celery_config import DLQ_KEY_PREFIX
 from tasks.dlq_recovery import DLQRecoveryTask
 
 
@@ -64,7 +65,9 @@ class TestDLQRecoveryTask:
 
         assert result["success"] is True
         # Verify scan_iter was called with filtered pattern
-        mock_redis.scan_iter.assert_called_with(match=f"{DLQ_KEY_PREFIX}/app.tasks.upload.Upload/*")
+        mock_redis.scan_iter.assert_called_with(
+            match=f"{DLQ_KEY_PREFIX}/app.tasks.upload.Upload/*"
+        )
 
     def test_recover_tasks_success(self, dlq_task, mock_redis, mocker):
         """Test recovering tasks from DLQ."""
@@ -77,7 +80,10 @@ class TestDLQRecoveryTask:
         serialized_data = orjson.dumps(task_data).decode("utf-8")
 
         mock_redis.exists.return_value = True
-        mock_redis.lpop.side_effect = [serialized_data, None]  # First call returns data, second returns None
+        mock_redis.lpop.side_effect = [
+            serialized_data,
+            None,
+        ]  # First call returns data, second returns None
 
         mock_send_task = mocker.patch.object(celery_app, "send_task")
 
@@ -158,7 +164,9 @@ class TestDLQRecoveryTask:
         assert result["success"] is True
         assert result["action"] == "delete"
         assert result["deleted_count"] == 5
-        mock_redis.delete.assert_called_once_with("task_dlq/app.tasks.upload.Upload/123/abc")
+        mock_redis.delete.assert_called_once_with(
+            "task_dlq/app.tasks.upload.Upload/123/abc"
+        )
 
     def test_delete_tasks_missing_key(self, dlq_task, mock_redis):
         """Test deleting from non-existent DLQ key."""
@@ -202,4 +210,3 @@ class TestDLQRecoveryTask:
 
         assert result["success"] is False
         assert "dlq_key required" in result["error"].lower()
-
