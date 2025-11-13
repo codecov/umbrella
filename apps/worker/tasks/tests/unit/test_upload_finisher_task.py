@@ -586,6 +586,39 @@ class TestUploadFinisherTask:
             == ShouldCallNotifyResult.NOTIFY
         )
 
+    def test_should_call_notifications_with_pending_uploads_in_redis(
+        self, dbsession, mocker
+    ):
+        """Test that notifications are not called when Redis shows pending uploads"""
+        # Mock ProcessingState to return pending uploads
+        mock_processing_state = mocker.patch("tasks.upload_finisher.ProcessingState")
+        mock_state_instance = mocker.MagicMock()
+        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
+            processing=2,
+            processed=1,  # Redis shows 3 uploads still being processed
+        )
+        mock_processing_state.return_value = mock_state_instance
+
+        commit_yaml = {"codecov": {"max_report_age": "1y ago"}}
+        commit = CommitFactory.create(
+            message="dsidsahdsahdsa",
+            commitid="abf6d4df662c47e32460020ab14abf9303581429",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
+            repository__yaml=commit_yaml,
+        )
+        dbsession.add(commit)
+        dbsession.flush()
+
+        assert (
+            UploadFinisherTask().should_call_notifications(
+                commit,
+                commit_yaml,
+                [{"arguments": {"url": "url"}, "successful": True}],
+            )
+            == ShouldCallNotifyResult.DO_NOT_NOTIFY
+        )
+
     def test_finish_reports_processing(self, dbsession, mocker, mock_self_app):
         # Mock ProcessingState to return no pending uploads
         mock_processing_state = mocker.patch("tasks.upload_finisher.ProcessingState")
