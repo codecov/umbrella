@@ -775,7 +775,7 @@ class Github(TorngitBaseAdapter):
                 "event": "api",
                 "endpoint": url,
                 "method": method,
-                "bot": token_to_use.get("username"),
+                "bot": token_to_use.get("username") if token_to_use is not None else '',
                 "repo_slug": self.slug,
                 "loggable_token": self.loggable_token(token_to_use),
             }
