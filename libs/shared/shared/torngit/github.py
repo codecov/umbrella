@@ -764,8 +764,11 @@ class Github(TorngitBaseAdapter):
             "Accept": "application/json",
             "User-Agent": os.getenv("USER_AGENT", "Default"),
         }
-        if token_to_use is not None and 'key' in token_to_use:
-            _headers["Authorization"] = "token {}".format(token_to_use["key"])
+        bot = ''
+        if token_to_use is not None:
+            bot = token_to_use.get('username', '')
+            if 'key' in token_to_use:
+                _headers["Authorization"] = "token {}".format(token_to_use["key"])
         _headers.update(headers or {})
         log_dict = {}
 
@@ -775,7 +778,7 @@ class Github(TorngitBaseAdapter):
                 "event": "api",
                 "endpoint": url,
                 "method": method,
-                "bot": token_to_use.get("username") if token_to_use is not None else '',
+                "bot": bot,
                 "repo_slug": self.slug,
                 "loggable_token": self.loggable_token(token_to_use),
             }
@@ -2321,7 +2324,7 @@ class Github(TorngitBaseAdapter):
         Returns:
             str: A good enough string to tell tokens apart
         """
-        if token.get("username"):
+        if token is not None and token.get("username"):
             username = token.get("username")
             return f"{username}'s token"
         if token is None or token.get("key") is None:
