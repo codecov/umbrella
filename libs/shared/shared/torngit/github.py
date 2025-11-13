@@ -764,7 +764,7 @@ class Github(TorngitBaseAdapter):
             "Accept": "application/json",
             "User-Agent": os.getenv("USER_AGENT", "Default"),
         }
-        if token_to_use:
+        if token_to_use is not None and 'key' in token_to_use:
             _headers["Authorization"] = "token {}".format(token_to_use["key"])
         _headers.update(headers or {})
         log_dict = {}
