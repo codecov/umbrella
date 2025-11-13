@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import ANY, call
 
@@ -1156,3 +1157,49 @@ class TestUploadFinisherTask:
 
         # Verify empty list returned when no uploads found
         assert result == []
+
+    @pytest.mark.django_db
+    def test_upload_finisher_updates_repository_timestamp(
+        self,
+        mocker,
+        mock_configuration,
+        dbsession,
+        mock_storage,
+        mock_repo_provider,
+        mock_redis,
+        mock_self_app,
+    ):
+        """Test that repository.updatestamp is updated when None or old"""
+
+        mock_redis.scard.return_value = 0
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        mocker.patch("tasks.upload_finisher.update_uploads")
+
+        # Create commit with repository that has no updatestamp
+        commit = CommitFactory.create(
+            message="test",
+            branch="main",
+            repository__branch="main",
+        )
+        # Ensure updatestamp is None
+        commit.repository.updatestamp = None
+        dbsession.add(commit)
+        dbsession.flush()
+
+        previous_results = [
+            {"upload_id": 0, "arguments": {"url": "test_url"}, "successful": True}
+        ]
+
+        result = UploadFinisherTask().run_impl(
+            dbsession,
+            previous_results,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert result == {"notifications_called": True}
+        dbsession.refresh(commit.repository)
+        # Repository timestamp should now be set
+        assert commit.repository.updatestamp is not None
+        assert (datetime.now(tz=UTC) - commit.repository.updatestamp).seconds < 60
