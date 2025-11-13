@@ -3,6 +3,7 @@ from celery.exceptions import Retry
 
 from database.tests.factories import CommitFactory, PullFactory
 from database.tests.factories.core import UploadFactory
+from services.processing.state import UploadNumbers
 from shared.reports.enums import UploadState
 from tasks.manual_trigger import ManualTriggerTask
 
@@ -17,6 +18,14 @@ class TestUploadCompletionTask:
         mock_redis,
         celery_app,
     ):
+        # Mock ProcessingState to return no pending uploads in Redis
+        mock_processing_state = mocker.patch("tasks.manual_trigger.ProcessingState")
+        mock_state_instance = mocker.MagicMock()
+        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
+            processing=0, processed=0
+        )
+        mock_processing_state.return_value = mock_state_instance
+
         mocked_app = mocker.patch.object(
             ManualTriggerTask,
             "app",
@@ -78,6 +87,14 @@ class TestUploadCompletionTask:
         mock_redis,
         celery_app,
     ):
+        # Mock ProcessingState to return no pending uploads in Redis
+        mock_processing_state = mocker.patch("tasks.manual_trigger.ProcessingState")
+        mock_state_instance = mocker.MagicMock()
+        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
+            processing=0, processed=0
+        )
+        mock_processing_state.return_value = mock_state_instance
+
         mocker.patch.object(
             ManualTriggerTask,
             "app",
@@ -105,3 +122,47 @@ class TestUploadCompletionTask:
                 "notifications_called": False,
                 "message": "Uploads are still in process and the task got retired so many times. Not triggering notifications.",
             } == result
+
+    def test_manual_upload_completion_trigger_redis_pending(
+        self,
+        mocker,
+        mock_configuration,
+        dbsession,
+        mock_storage,
+        mock_redis,
+        celery_app,
+    ):
+        """Test that task retries when Redis shows pending uploads even if DB shows complete"""
+        # Mock ProcessingState to return pending uploads in Redis
+        mock_processing_state = mocker.patch("tasks.manual_trigger.ProcessingState")
+        mock_state_instance = mocker.MagicMock()
+        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
+            processing=1,
+            processed=2,  # Redis shows 3 uploads still being processed/merged
+        )
+        mock_processing_state.return_value = mock_state_instance
+
+        mocker.patch.object(
+            ManualTriggerTask,
+            "app",
+            celery_app,
+        )
+        commit = CommitFactory.create()
+        # Upload is complete in DB
+        upload = UploadFactory.create(
+            report__commit=commit,
+            state="complete",
+            state_id=UploadState.PROCESSED.db_id,
+        )
+        dbsession.add(commit)
+        dbsession.add(upload)
+        dbsession.flush()
+
+        # Should retry because Redis shows pending uploads
+        with pytest.raises(Retry):
+            ManualTriggerTask().run_impl(
+                dbsession,
+                repoid=commit.repoid,
+                commitid=commit.commitid,
+                current_yaml={},
+            )
