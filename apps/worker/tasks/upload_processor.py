@@ -103,8 +103,50 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 error_text=ub_error_text,
             )
 
+            # Check if we've exceeded max retries - if so, save to DLQ
+            if self.request.retries >= MAX_RETRIES:
+                log.error(
+                    "Upload processor exceeded max retries. Saving to DLQ.",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "upload_id": arguments["upload_id"],
+                        "retries": self.request.retries,
+                    },
+                )
+                dlq_key_suffix = f"{repoid}/{commitid}/{arguments['upload_id']}"
+                task_data = {
+                    "task_name": self.name,
+                    "args": [],
+                    "kwargs": {
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "commit_yaml": commit_yaml,
+                        "arguments": arguments,
+                    },
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "upload_id": arguments["upload_id"],
+                    "reason": "too_many_retries",
+                }
+                dlq_key = self._save_to_task_dlq(task_data, dlq_key_suffix)
+                if dlq_key:
+                    log.error(
+                        "Saved upload processor task to DLQ",
+                        extra={
+                            "dlq_key": dlq_key,
+                            "upload_id": arguments["upload_id"],
+                        },
+                    )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=Milestones.PROCESSING_UPLOAD,
+                    upload_ids=[arguments["upload_id"]],
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
             # the error is only retried on the first pass
-            if error.is_retryable and self.request.retries == 0:
+            elif error.is_retryable and self.request.retries == 0:
                 log.info(
                     "Scheduling a retry due to retryable error",
                     extra={"error": error.as_dict()},

@@ -48,6 +48,7 @@ from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
 from shared.typings.torngit import AdditionalData
 from shared.utils.sentry import current_sentry_trace_id
+from shared.yaml import UserYaml
 
 log = logging.getLogger("worker")
 
@@ -313,6 +314,20 @@ class BaseCodecovTask(celery_app.Task):
                 dlq_key = f"{DLQ_KEY_PREFIX}/{self.name}/{timestamp}"
 
             # Serialize task data as JSON
+            # Ensure all UserYaml objects are converted to dicts recursively
+            def convert_user_yaml(obj):
+                """Recursively convert UserYaml objects to dicts."""
+                if isinstance(obj, UserYaml):
+                    return obj.to_dict()
+                elif isinstance(obj, dict):
+                    return {k: convert_user_yaml(v) for k, v in obj.items()}
+                elif isinstance(obj, list | tuple):
+                    return [convert_user_yaml(item) for item in obj]
+                else:
+                    return obj
+
+            # Convert any UserYaml objects in task_data before serialization
+            task_data = convert_user_yaml(task_data)
             serialized_data = orjson.dumps(task_data).decode("utf-8")
 
             # Save to Redis list (allows multiple entries per key)

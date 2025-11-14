@@ -29,8 +29,8 @@
       <td>{{ key_info.count }}</td>
       <td>{{ key_info.ttl_seconds }}</td>
       <td>
-        <a href="{% url 'admin:core_dlq_recover' dlq_key=key_info.key|urlencode %}" class="button">Recover</a>
-        <a href="{% url 'admin:core_dlq_delete' dlq_key=key_info.key|urlencode %}" class="button" onclick="return confirm('Are you sure you want to delete this DLQ key?');">Delete</a>
+        <a href="{% url 'admin:core_dlq_recover' dlq_key=key_info.key %}" class="button">Recover</a>
+        <a href="{% url 'admin:core_dlq_delete' dlq_key=key_info.key %}" class="button" onclick="return confirm('Are you sure you want to delete this DLQ key?');">Delete</a>
       </td>
     </tr>
     {% endfor %}
