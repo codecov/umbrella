@@ -1,52 +1,51 @@
 {% extends "admin/base_site.html" %}
-{% load i18n admin_urls static admin_list %}
-
-{% block title %}Dead Letter Queue{% endblock %}
+{% load i18n admin_urls %}
 
 {% block content %}
-<h1>Dead Letter Queue</h1>
+<div class="module">
+  <h1>Dead Letter Queue</h1>
 
-{% if task_name_filter %}
-<p>Filtered by task name: <strong>{{ task_name_filter }}</strong></p>
-{% endif %}
-
-<p>Total DLQ keys: <strong>{{ total_keys }}</strong></p>
-
-{% if keys %}
-<table>
-  <thead>
-    <tr>
-      <th>DLQ Key</th>
-      <th>Task Count</th>
-      <th>TTL (seconds)</th>
-      <th>Actions</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for key_info in keys %}
-    <tr>
-      <td><code>{{ key_info.key }}</code></td>
-      <td>{{ key_info.count }}</td>
-      <td>{{ key_info.ttl_seconds }}</td>
-      <td>
-        <a href="{% url 'admin:core_dlq_recover' dlq_key=key_info.key %}" class="button">Recover</a>
-        <a href="{% url 'admin:core_dlq_delete' dlq_key=key_info.key %}" class="button" onclick="return confirm('Are you sure you want to delete this DLQ key?');">Delete</a>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<p>No DLQ keys found.</p>
-{% endif %}
-
-<form method="get" action="{% url 'admin:core_dlq_list' %}">
-  <label for="task_name">Filter by task name:</label>
-  <input type="text" name="task_name" id="task_name" value="{{ task_name_filter|default:'' }}" placeholder="e.g., app.tasks.upload.Upload">
-  <input type="submit" value="Filter">
   {% if task_name_filter %}
-  <a href="{% url 'admin:core_dlq_list' %}">Clear filter</a>
+  <p>Filtered by task name: <strong>{{ task_name_filter }}</strong></p>
   {% endif %}
-</form>
-{% endblock %}
 
+  <p>Total DLQ keys: <strong>{{ total_keys }}</strong></p>
+
+  {% if keys %}
+  <table>
+    <thead>
+      <tr>
+        <th>DLQ Key</th>
+        <th>Task Count</th>
+        <th>TTL (seconds)</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for key_info in keys %}
+      <tr>
+        <td><code>{{ key_info.key }}</code></td>
+        <td>{{ key_info.count }}</td>
+        <td>{{ key_info.ttl_seconds }}</td>
+        <td>
+          <a href="{% url 'admin:core_dlq_recover' dlq_key=key_info.key %}" class="button">Recover</a>
+          <a href="{% url 'admin:core_dlq_delete' dlq_key=key_info.key %}" class="button" onclick="return confirm('Are you sure you want to delete this DLQ key?');">Delete</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No DLQ keys found.</p>
+  {% endif %}
+
+  <form method="get" action="{% url 'admin:core_dlq_list' %}">
+    <label for="task_name">Filter by task name:</label>
+    <input type="text" name="task_name" id="task_name" value="{{ task_name_filter|default:'' }}" placeholder="e.g., app.tasks.upload.Upload">
+    <input type="submit" value="Filter">
+    {% if task_name_filter %}
+    <a href="{% url 'admin:core_dlq_list' %}">Clear filter</a>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}

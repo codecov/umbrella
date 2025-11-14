@@ -26,15 +26,20 @@ def list_dlq(request):
 
     if result.get("success"):
         keys = result.get("keys", [])
-        context = {
-            **admin.site.each_context(request),
-            "title": "Dead Letter Queue",
-            "keys": keys,
-            "total_keys": result.get("total_keys", 0),
-            "task_name_filter": task_name_filter,
-            "opts": {"app_label": "core", "model_name": "dlq"},
-        }
-        return render(request, "admin/core/dlq_list.html", context)
+        total_keys = result.get("total_keys", 0)
+
+        return render(
+            request,
+            "admin/core/dlq_list.html",
+            {
+                **admin.site.each_context(request),
+                "title": "Dead Letter Queue",
+                "keys": keys,
+                "total_keys": total_keys,
+                "task_name_filter": task_name_filter,
+                "opts": {"app_label": "core", "model_name": "dlq"},
+            },
+        )
     else:
         messages.error(request, f"Failed to list DLQ keys: {result.get('error')}")
         return HttpResponseRedirect(reverse("admin:index"))
