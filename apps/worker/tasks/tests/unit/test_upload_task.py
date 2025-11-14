@@ -1549,6 +1549,52 @@ class TestUploadTaskUnit:
         res = list(upload_args.arguments_list())
         assert res == [{"url": "http://example.first.com"}, {"and_another": "one"}]
 
+    def test_get_all_arguments(self, mock_redis):
+        """Test get_all_arguments reads without consuming."""
+        upload_args = UploadContext(
+            repoid=542,
+            commitid="commitid",
+            redis_connection=mock_redis,
+        )
+        first_redis_queue = [
+            {"url": "http://example.first.com"},
+            {"and_another": "one"},
+        ]
+        mock_redis.lists["uploads/542/commitid"] = [
+            json.dumps(x) for x in first_redis_queue
+        ]
+        # Get all arguments without consuming
+        res = upload_args.get_all_arguments()
+        assert res == [{"url": "http://example.first.com"}, {"and_another": "one"}]
+        # Verify list still exists (not consumed)
+        assert len(mock_redis.lists["uploads/542/commitid"]) == 2
+
+    def test_get_all_arguments_empty_list(self, mock_redis):
+        """Test get_all_arguments returns empty list when key doesn't exist."""
+        upload_args = UploadContext(
+            repoid=542,
+            commitid="commitid",
+            redis_connection=mock_redis,
+        )
+        # Key doesn't exist
+        res = upload_args.get_all_arguments()
+        assert res == []
+
+    def test_get_all_arguments_different_report_type(self, mock_redis):
+        """Test get_all_arguments works with different report types."""
+        upload_args = UploadContext(
+            repoid=542,
+            commitid="commitid",
+            report_type=ReportType.TEST_RESULTS,
+            redis_connection=mock_redis,
+        )
+        test_queue = [{"upload_id": 1}, {"upload_id": 2}]
+        mock_redis.lists["uploads/542/commitid/test_results"] = [
+            json.dumps(x) for x in test_queue
+        ]
+        res = upload_args.get_all_arguments()
+        assert res == [{"upload_id": 1}, {"upload_id": 2}]
+
     @pytest.mark.django_db
     def test_schedule_task_with_one_task(
         self, dbsession, mocker, mock_repo_provider, mock_self_app

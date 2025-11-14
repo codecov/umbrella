@@ -260,3 +260,172 @@ class TestDLQRecoveryTask:
 
         assert result["success"] is False
         assert "dlq_key required" in result["error"].lower()
+
+    def test_recover_upload_task_with_empty_arguments(
+        self, dlq_task, mock_redis, mocker
+    ):
+        """Test that recovering UploadTask with empty upload_arguments still works."""
+        task_data = {
+            "task_name": upload_task_name,
+            "args": [],
+            "kwargs": {"repoid": 123, "commitid": "abc", "report_type": "coverage"},
+            "upload_arguments": [],  # Empty list
+        }
+        serialized_data = orjson.dumps(task_data).decode("utf-8")
+
+        mock_redis.exists.return_value = True
+        mock_redis.lpop.side_effect = [serialized_data, None]
+
+        mock_pipeline = mocker.MagicMock()
+        mock_redis.pipeline.return_value.__enter__.return_value = mock_pipeline
+        mock_redis.pipeline.return_value.__exit__.return_value = None
+
+        mock_send_task = mocker.patch.object(celery_app, "send_task")
+
+        result = dlq_task.run_impl(
+            db_session=None,
+            action="recover",
+            dlq_key="task_dlq/app.tasks.upload.Upload/123/abc",
+        )
+
+        assert result["success"] is True
+        assert result["recovered_count"] == 1
+        # Pipeline should not be called when upload_arguments is empty (falsy check)
+        mock_redis.pipeline.assert_not_called()
+        mock_send_task.assert_called_once()
+
+    def test_recover_upload_task_restore_failure(self, dlq_task, mock_redis, mocker):
+        """Test that recovery continues even if argument restoration fails."""
+        upload_arguments = [{"upload_id": 1, "flags": ["flag1"]}]
+        task_data = {
+            "task_name": upload_task_name,
+            "args": [],
+            "kwargs": {"repoid": 123, "commitid": "abc", "report_type": "coverage"},
+            "upload_arguments": upload_arguments,
+        }
+        serialized_data = orjson.dumps(task_data).decode("utf-8")
+
+        mock_redis.exists.return_value = True
+        mock_redis.lpop.side_effect = [serialized_data, None]
+
+        # Mock pipeline to raise an error
+        mock_pipeline = mocker.MagicMock()
+        mock_pipeline.execute.side_effect = Exception("Redis error")
+        mock_redis.pipeline.return_value.__enter__.return_value = mock_pipeline
+        mock_redis.pipeline.return_value.__exit__.return_value = None
+
+        result = dlq_task.run_impl(
+            db_session=None,
+            action="recover",
+            dlq_key="task_dlq/app.tasks.upload.Upload/123/abc",
+        )
+
+        assert result["success"] is True
+        assert result["recovered_count"] == 0  # Failed due to restore error
+        assert result["failed_count"] == 1
+        assert len(result["errors"]) > 0
+
+    def test_recover_upload_task_missing_repoid_commitid(
+        self, dlq_task, mock_redis, mocker
+    ):
+        """Test that recovery fails gracefully when repoid/commitid missing."""
+        upload_arguments = [{"upload_id": 1}]
+        task_data = {
+            "task_name": upload_task_name,
+            "args": [],
+            "kwargs": {},  # Missing repoid and commitid
+            "upload_arguments": upload_arguments,
+        }
+        serialized_data = orjson.dumps(task_data).decode("utf-8")
+
+        mock_redis.exists.return_value = True
+        mock_redis.lpop.side_effect = [serialized_data, None]
+
+        result = dlq_task.run_impl(
+            db_session=None,
+            action="recover",
+            dlq_key="task_dlq/app.tasks.upload.Upload/123/abc",
+        )
+
+        assert result["success"] is True
+        assert result["recovered_count"] == 0
+        assert result["failed_count"] == 1
+        assert any(
+            "repoid and commitid required" in err.lower() for err in result["errors"]
+        )
+
+    def test_recover_upload_task_test_results_report_type(
+        self, dlq_task, mock_redis, mocker
+    ):
+        """Test restoring arguments for test_results report type."""
+        upload_arguments = [{"upload_id": 1}]
+        task_data = {
+            "task_name": upload_task_name,
+            "args": [],
+            "kwargs": {"repoid": 123, "commitid": "abc", "report_type": "test_results"},
+            "upload_arguments": upload_arguments,
+        }
+        serialized_data = orjson.dumps(task_data).decode("utf-8")
+
+        mock_redis.exists.return_value = True
+        mock_redis.lpop.side_effect = [serialized_data, None]
+
+        mock_pipeline = mocker.MagicMock()
+        mock_redis.pipeline.return_value.__enter__.return_value = mock_pipeline
+        mock_redis.pipeline.return_value.__exit__.return_value = None
+
+        mock_send_task = mocker.patch.object(celery_app, "send_task")
+
+        result = dlq_task.run_impl(
+            db_session=None,
+            action="recover",
+            dlq_key="task_dlq/app.tasks.upload.Upload/123/abc/test_results",
+        )
+
+        assert result["success"] is True
+        assert result["recovered_count"] == 1
+        # Verify correct Redis key was used (includes report_type)
+        # Check that rpush was called with the correct key
+        rpush_calls = mock_pipeline.rpush.call_args_list
+        expected_key = "uploads/123/abc/test_results"
+        # rpush is called with (key, value), so check first arg of first call
+        assert rpush_calls[0][0][0] == expected_key
+
+    def test_recover_upload_task_bundle_analysis_report_type(
+        self, dlq_task, mock_redis, mocker
+    ):
+        """Test restoring arguments for bundle_analysis report type."""
+        upload_arguments = [{"upload_id": 1}]
+        task_data = {
+            "task_name": upload_task_name,
+            "args": [],
+            "kwargs": {
+                "repoid": 123,
+                "commitid": "abc",
+                "report_type": "bundle_analysis",
+            },
+            "upload_arguments": upload_arguments,
+        }
+        serialized_data = orjson.dumps(task_data).decode("utf-8")
+
+        mock_redis.exists.return_value = True
+        mock_redis.lpop.side_effect = [serialized_data, None]
+
+        mock_pipeline = mocker.MagicMock()
+        mock_redis.pipeline.return_value.__enter__.return_value = mock_pipeline
+        mock_redis.pipeline.return_value.__exit__.return_value = None
+
+        mock_send_task = mocker.patch.object(celery_app, "send_task")
+
+        result = dlq_task.run_impl(
+            db_session=None,
+            action="recover",
+            dlq_key="task_dlq/app.tasks.upload.Upload/123/abc/bundle_analysis",
+        )
+
+        assert result["success"] is True
+        assert result["recovered_count"] == 1
+        # Verify correct Redis key was used (includes report_type)
+        rpush_calls = mock_pipeline.rpush.call_args_list
+        expected_key = "uploads/123/abc/bundle_analysis"
+        assert rpush_calls[0][0][0] == expected_key

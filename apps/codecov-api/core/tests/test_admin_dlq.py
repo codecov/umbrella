@@ -280,3 +280,54 @@ class DLQAdminTest(TestCase):
             response = self.client.get(reverse("admin:core_dlq_list"))
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, "No DLQ keys found")
+
+    def test_dlq_recover_with_url_encoded_key(self):
+        """Test recovering DLQ with URL-encoded key containing special characters."""
+        self.user.is_staff = True
+        self.user.save()
+        self.client.force_login(self.user)
+
+        # DLQ key with slashes and special characters
+        dlq_key = "task_dlq/app.tasks.upload.Upload/123/abc/test_results"
+
+        with patch("core.admin_dlq.celery_app") as mock_celery_app:
+            mock_result = MagicMock()
+            mock_result.get.return_value = {
+                "success": True,
+                "recovered_count": 1,
+                "failed_count": 0,
+            }
+            mock_celery_app.send_task.return_value = mock_result
+
+            response = self.client.get(
+                reverse("admin:core_dlq_recover", kwargs={"dlq_key": dlq_key})
+            )
+            self.assertEqual(response.status_code, 302)
+            # Verify task was called with correct (decoded) key
+            call_kwargs = mock_celery_app.send_task.call_args[1]["kwargs"]
+            self.assertEqual(call_kwargs["dlq_key"], dlq_key)
+
+    def test_dlq_delete_with_url_encoded_key(self):
+        """Test deleting DLQ with URL-encoded key containing special characters."""
+        self.user.is_staff = True
+        self.user.save()
+        self.client.force_login(self.user)
+
+        # DLQ key with slashes and special characters
+        dlq_key = "task_dlq/app.tasks.upload.Upload/123/abc/bundle_analysis"
+
+        with patch("core.admin_dlq.celery_app") as mock_celery_app:
+            mock_result = MagicMock()
+            mock_result.get.return_value = {
+                "success": True,
+                "deleted_count": 1,
+            }
+            mock_celery_app.send_task.return_value = mock_result
+
+            response = self.client.get(
+                reverse("admin:core_dlq_delete", kwargs={"dlq_key": dlq_key})
+            )
+            self.assertEqual(response.status_code, 302)
+            # Verify task was called with correct (decoded) key
+            call_kwargs = mock_celery_app.send_task.call_args[1]["kwargs"]
+            self.assertEqual(call_kwargs["dlq_key"], dlq_key)
