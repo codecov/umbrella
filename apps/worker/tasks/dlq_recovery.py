@@ -11,7 +11,11 @@ from typing import Any
 import orjson
 
 from app import celery_app
-from shared.celery_config import DLQ_KEY_PREFIX, dlq_recovery_task_name
+from shared.celery_config import (
+    DLQ_KEY_PREFIX,
+    dlq_recovery_task_name,
+    upload_task_name,
+)
 from shared.helpers.redis import get_redis_connection
 from tasks.base import BaseCodecovTask
 
@@ -123,6 +127,34 @@ class DLQRecoveryTask(BaseCodecovTask, name=dlq_recovery_task_name):
                     errors.append("Task data missing task_name")
                     continue
 
+                # For UploadTask, restore upload arguments to Redis before re-queuing
+                # This ensures the task behaves exactly like a normal retry
+                if task_name == upload_task_name:
+                    upload_arguments = task_data.get("upload_arguments")
+                    if upload_arguments:
+                        try:
+                            self._restore_upload_arguments(
+                                redis_conn, task_kwargs, upload_arguments
+                            )
+                            log.info(
+                                f"Restored {len(upload_arguments)} upload arguments to Redis",
+                                extra={
+                                    "dlq_key": dlq_key,
+                                    "task_name": task_name,
+                                    "repoid": task_kwargs.get("repoid"),
+                                    "commitid": task_kwargs.get("commitid"),
+                                },
+                            )
+                        except Exception as e:
+                            failed_count += 1
+                            error_msg = f"Failed to restore upload arguments: {str(e)}"
+                            errors.append(error_msg)
+                            log.exception(
+                                "Failed to restore upload arguments from DLQ",
+                                extra={"dlq_key": dlq_key, "error": str(e)},
+                            )
+                            continue
+
                 # Re-queue the task
                 celery_app.send_task(task_name, args=task_args, kwargs=task_kwargs)
                 recovered_count += 1
@@ -148,6 +180,42 @@ class DLQRecoveryTask(BaseCodecovTask, name=dlq_recovery_task_name):
             "failed_count": failed_count,
             "errors": errors[:10],  # Limit errors to first 10
         }
+
+    def _restore_upload_arguments(
+        self, redis_conn, task_kwargs: dict, upload_arguments: list[dict]
+    ) -> None:
+        """
+        Restore upload arguments to Redis for UploadTask recovery.
+
+        This restores the arguments to the same Redis key that UploadTask expects,
+        allowing the recovered task to behave exactly like a normal retry.
+        """
+        repoid = task_kwargs.get("repoid")
+        commitid = task_kwargs.get("commitid")
+        report_type = task_kwargs.get("report_type", "coverage")
+
+        if not repoid or not commitid:
+            raise ValueError("repoid and commitid required to restore upload arguments")
+
+        # Determine Redis key based on report type (matches UploadContext.upload_location)
+        if report_type == "coverage":
+            uploads_list_key = f"uploads/{repoid}/{commitid}"
+        else:
+            uploads_list_key = f"uploads/{repoid}/{commitid}/{report_type}"
+
+        # Restore arguments to Redis using rpush (same as dispatch_upload_task)
+        # Use pipeline for atomicity
+        with redis_conn.pipeline() as pipeline:
+            for arg in upload_arguments:
+                # Serialize argument as JSON (same format as stored by dispatch_upload_task)
+                serialized_arg = orjson.dumps(arg).decode("utf-8")
+                pipeline.rpush(uploads_list_key, serialized_arg)
+
+            # Set TTL to match upload cache TTL (default 24 hours)
+            # This matches the behavior in dispatch_upload_task
+            cache_uploads_eta = 86400  # 24 hours default
+            pipeline.expire(uploads_list_key, cache_uploads_eta)
+            pipeline.execute()
 
     def _delete_tasks(self, redis_conn, dlq_key: str) -> dict[str, Any]:
         """Delete all tasks from a DLQ key."""

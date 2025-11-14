@@ -3,18 +3,10 @@ from datetime import datetime
 
 import orjson
 import sentry_sdk
+from app import celery_app
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from django.db import InterfaceError, close_old_connections
-from sqlalchemy.exc import (
-    DataError,
-    IntegrityError,
-    InvalidRequestError,
-    SQLAlchemyError,
-)
-
-from app import celery_app
 from celery_task_router import _get_ownerid_from_task, _get_user_plan_from_task
 from database.engine import get_db_session
 from database.enums import CommitErrorTypes
@@ -23,6 +15,7 @@ from database.models.core import (
     Commit,
     Repository,
 )
+from django.db import InterfaceError, close_old_connections
 from helpers.checkpoint_logger import from_kwargs as load_checkpoints_from_kwargs
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.clock import get_seconds_to_next_hour
@@ -49,6 +42,12 @@ from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundErr
 from shared.typings.torngit import AdditionalData
 from shared.utils.sentry import current_sentry_trace_id
 from shared.yaml import UserYaml
+from sqlalchemy.exc import (
+    DataError,
+    IntegrityError,
+    InvalidRequestError,
+    SQLAlchemyError,
+)
 
 log = logging.getLogger("worker")
 
@@ -315,12 +314,14 @@ class BaseCodecovTask(celery_app.Task):
 
             # Serialize task data as JSON
             # Ensure all UserYaml objects are converted to dicts recursively
+            # and all dict keys are strings (required by orjson)
             def convert_user_yaml(obj):
-                """Recursively convert UserYaml objects to dicts."""
+                """Recursively convert UserYaml objects to dicts and ensure string keys."""
                 if isinstance(obj, UserYaml):
                     return obj.to_dict()
                 elif isinstance(obj, dict):
-                    return {k: convert_user_yaml(v) for k, v in obj.items()}
+                    # Ensure all keys are strings (orjson requirement)
+                    return {str(k): convert_user_yaml(v) for k, v in obj.items()}
                 elif isinstance(obj, list | tuple):
                     return [convert_user_yaml(item) for item in obj]
                 else:

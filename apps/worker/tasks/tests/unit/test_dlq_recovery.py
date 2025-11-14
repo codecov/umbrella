@@ -6,7 +6,7 @@ import orjson
 import pytest
 
 from app import celery_app
-from shared.celery_config import DLQ_KEY_PREFIX
+from shared.celery_config import DLQ_KEY_PREFIX, upload_task_name
 from tasks.dlq_recovery import DLQRecoveryTask
 
 
@@ -101,6 +101,56 @@ class TestDLQRecoveryTask:
             "app.tasks.upload.Upload",
             args=[],
             kwargs={"repoid": 123, "commitid": "abc"},
+        )
+
+    def test_recover_upload_task_restores_arguments(self, dlq_task, mock_redis, mocker):
+        """Test that recovering UploadTask restores upload arguments to Redis."""
+        # Mock task data in DLQ with upload arguments
+        upload_arguments = [
+            {"upload_id": 1, "flags": ["flag1"], "url": "http://example.com/report1"},
+            {"upload_id": 2, "flags": ["flag2"], "url": "http://example.com/report2"},
+        ]
+        task_data = {
+            "task_name": upload_task_name,
+            "args": [],
+            "kwargs": {"repoid": 123, "commitid": "abc", "report_type": "coverage"},
+            "upload_arguments": upload_arguments,
+        }
+        serialized_data = orjson.dumps(task_data).decode("utf-8")
+
+        mock_redis.exists.return_value = True
+        mock_redis.lpop.side_effect = [
+            serialized_data,
+            None,
+        ]  # First call returns data, second returns None
+
+        # Mock Redis pipeline for restoring arguments
+        mock_pipeline = mocker.MagicMock()
+        mock_redis.pipeline.return_value.__enter__.return_value = mock_pipeline
+        mock_redis.pipeline.return_value.__exit__.return_value = None
+
+        mock_send_task = mocker.patch.object(celery_app, "send_task")
+
+        result = dlq_task.run_impl(
+            db_session=None,
+            action="recover",
+            dlq_key="task_dlq/app.tasks.upload.Upload/123/abc",
+        )
+
+        assert result["success"] is True
+        assert result["recovered_count"] == 1
+        assert result["failed_count"] == 0
+
+        # Verify upload arguments were restored to Redis
+        assert mock_pipeline.rpush.call_count == len(upload_arguments)
+        mock_pipeline.expire.assert_called_once()
+        mock_pipeline.execute.assert_called_once()
+
+        # Verify task was re-queued
+        mock_send_task.assert_called_once_with(
+            upload_task_name,
+            args=[],
+            kwargs={"repoid": 123, "commitid": "abc", "report_type": "coverage"},
         )
 
     def test_recover_tasks_missing_key(self, dlq_task, mock_redis):

@@ -7,8 +7,6 @@ from unittest.mock import AsyncMock, call
 
 import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
-from redis.exceptions import LockError
-
 from database.enums import ReportType
 from database.models import Upload
 from database.models.reports import CommitReport
@@ -18,6 +16,7 @@ from helpers.checkpoint_logger import _kwargs_key
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.log_context import LogContext, set_log_context
+from redis.exceptions import LockError
 from services.report import NotReadyToBuildReportYetError, ReportService
 from shared.celery_config import upload_breadcrumb_task_name
 from shared.django_apps.upload_breadcrumbs.models import (
@@ -118,6 +117,20 @@ class FakeRedis:
                 del self.lists[key]
 
         return res
+
+    def lrange(self, key, start, end):
+        """Get a range of elements from a list without consuming them."""
+        list = self.lists.get(key)
+        if not list:
+            return []
+
+        # Convert negative end to positive index
+        if end == -1:
+            end = len(list)
+
+        # Return a copy of the range (as bytes to match Redis behavior)
+        result = list[start : end + 1] if end >= 0 else list[start:]
+        return [item.encode() if isinstance(item, str) else item for item in result]
 
     def delete(self, key):
         del self.lists[key]
