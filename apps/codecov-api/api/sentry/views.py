@@ -1,9 +1,8 @@
 import logging
-from itertools import groupby
 
 import sentry_sdk
+from celery.result import AsyncResult
 from django.conf import settings
-from django.views.decorators.gzip import gzip_page
 from rest_framework import serializers, status
 from rest_framework.decorators import (
     api_view,
@@ -12,17 +11,16 @@ from rest_framework.decorators import (
 )
 from rest_framework.response import Response
 
-from api.public.v2.test_results.serializers import TestrunSerializer
 from codecov_auth.models import Account
 from codecov_auth.permissions import JWTAuthenticationPermission
+from services.task import TaskService, celery_app
+from shared.celery_config import export_test_analytics_data_task_name
 from shared.django_apps.codecov_auth.models import (
     GithubAppInstallation,
     Owner,
     Plan,
     Service,
 )
-from shared.django_apps.core.models import Repository
-from shared.django_apps.ta_timeseries.models import Testrun
 from shared.plan.constants import PlanName
 
 log = logging.getLogger(__name__)
@@ -250,67 +248,211 @@ def account_unlink(request, *args, **kwargs):
     )
 
 
-class SentryTestAnalyticsEuSerializer(serializers.Serializer):
-    """Serializer for test analytics EU endpoint"""
+class CreateTestAnalyticsExportSerializer(serializers.Serializer):
+    """Serializer for create test analytics export endpoint"""
 
     integration_names = serializers.ListField(
         child=serializers.CharField(),
         help_text="The Sentry integration names",
         min_length=1,
     )
+    gcp_project_id = serializers.CharField(
+        help_text="The GCP project ID",
+        required=True,
+    )
+    destination_bucket = serializers.CharField(
+        help_text="The destination bucket",
+        required=True,
+    )
+    destination_prefix = serializers.CharField(
+        help_text="The destination prefix",
+        required=True,
+    )
 
 
-@gzip_page
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([JWTAuthenticationPermission])
-def test_analytics_eu(request, *args, **kwargs):
-    serializer = SentryTestAnalyticsEuSerializer(data=request.data)
+def create_ta_export(request, *args, **kwargs):
+    """
+    Starts a Celery task to export test analytics data.
+
+    POST /sentry/internal/test-analytics/exports/
+
+    Returns:
+        {
+            "tasks": [
+                {
+                    "integration_name": "sample-integration-name",
+                    "task_id": "sample-celery-task-id",
+                    "status": "PENDING"
+                }
+            ],
+            "total_tasks": 1,
+            "successfully_scheduled": 1,
+            "status": "PENDING"
+        }
+    """
+    serializer = CreateTestAnalyticsExportSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
     integration_names = serializer.validated_data["integration_names"]
+    gcp_project_id = serializer.validated_data["gcp_project_id"]
+    destination_bucket = serializer.validated_data["destination_bucket"]
+    destination_prefix = serializer.validated_data["destination_prefix"]
 
-    # For every integration name, determine if an Owner record exist by filtering by name and service=github
-    test_runs_per_integration = {}
-    for name in integration_names:
+    log.info(
+        "Starting data export for the following integrations",
+        extra={
+            "integrations": integration_names,
+            "integration_count": len(integration_names),
+        },
+    )
+
+    task_service = TaskService()
+    task_results = []
+
+    for integration_name in integration_names:
         try:
-            owner = Owner.objects.get(name=name, service=Service.GITHUB)
-        except Owner.DoesNotExist:
-            log.warning(
-                f"Owner with name {name} and service {Service.GITHUB} not found"
+            result = task_service.schedule_task(
+                task_name=export_test_analytics_data_task_name,
+                kwargs={
+                    "integration_name": integration_name,
+                    "gcp_project_id": gcp_project_id,
+                    "destination_bucket": destination_bucket,
+                    "destination_prefix": destination_prefix,
+                },
+                apply_async_kwargs={},
             )
-            continue
+            task_id = result.id
+            task_status = result.status
 
-        # Only fetch name and repoid fields
-        repo_id_to_name = dict(
-            Repository.objects.filter(
-                author=owner, test_analytics_enabled=True
-            ).values_list("repoid", "name")
-        )
+            log.info(
+                "Scheduled TA export task",
+                extra={
+                    "integration_name": integration_name,
+                    "task_id": task_id,
+                    "task_status": task_status,
+                },
+            )
 
-        if not repo_id_to_name:
-            test_runs_per_integration[name] = {}
-            continue
+            task_results.append(
+                {
+                    "integration_name": integration_name,
+                    "task_id": task_id,
+                    "status": task_status,
+                }
+            )
+        except Exception as e:
+            log.error(
+                "Failed to schedule TA export task",
+                extra={
+                    "integration_name": integration_name,
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
+            task_results.append(
+                {
+                    "integration_name": integration_name,
+                    "error": str(e),
+                    "status": "FAILED_TO_SCHEDULE",
+                }
+            )
 
-        # Fetch all test runs for all repositories in a single query
-        test_runs = Testrun.objects.filter(repo_id__in=repo_id_to_name.keys()).order_by(
-            "repo_id", "-timestamp"
-        )
-
-        # Group by repo_id (data is already ordered by repo_id) and serialize each group
-        test_runs_per_repository = {}
-        for repo_id, group in groupby(test_runs, key=lambda tr: tr.repo_id):
-            repo_name = repo_id_to_name[repo_id]  # Safe: we only fetch these repo_ids
-            test_runs_list = list(group)
-            test_runs_per_repository[repo_name] = TestrunSerializer(
-                test_runs_list, many=True
-            ).data
-
-        # Store each test_runs_per_repository in a dictionary
-        test_runs_per_integration[name] = test_runs_per_repository
+    successful_tasks = [task for task in task_results if "task_id" in task]
+    log.info(
+        "Completed data export scheduling for test analytics",
+        extra={
+            "total_requested": len(integration_names),
+            "successfully_scheduled": len(successful_tasks),
+            "failed_to_schedule": len(integration_names) - len(successful_tasks),
+            "task_ids": [task.get("task_id") for task in successful_tasks],
+        },
+    )
 
     return Response(
         {
-            "test_runs_per_integration": test_runs_per_integration,
-        }
+            "tasks": task_results,
+            "total_tasks": len(task_results),
+            "successfully_scheduled": len(successful_tasks),
+        },
+        status=status.HTTP_202_ACCEPTED,
     )
+
+
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([JWTAuthenticationPermission])
+def get_ta_export(request, task_id, *args, **kwargs):
+    """
+    Check the status of a test analytics export task.
+
+    GET /sentry/internal/test-analytics/exports/<task_id>
+
+    Returns:
+        {
+            "task_id": "celery-task-id-here",
+            "status": "SUCCESS|PENDING|FAILURE|RETRY|STARTED",
+            "result": {...}  # Only present if status is SUCCESS
+        }
+    """
+    log.info(
+        "Checking status for test analytics export task", extra={"task_id": task_id}
+    )
+
+    result = AsyncResult(task_id, app=celery_app)
+
+    response_data = {
+        "task_id": task_id,
+        "status": result.status,
+    }
+
+    if result.successful():
+        task_result = result.result
+        response_data["result"] = task_result
+
+        if isinstance(task_result, dict) and not task_result.get("successful", True):
+            log.warning(
+                "Test analytics export task completed but reported failure",
+                extra={
+                    "task_id": task_id,
+                    "integration_name": task_result.get("integration_name"),
+                    "error": task_result.get("error"),
+                },
+            )
+        else:
+            log.info(
+                "Test analytics export task successful",
+                extra={
+                    "task_id": task_id,
+                    "integration_name": task_result.get("integration_name")
+                    if isinstance(task_result, dict)
+                    else None,
+                },
+            )
+    elif result.failed():
+        error_info = result.info
+        response_data["error"] = {
+            "message": str(error_info),
+            "type": type(error_info).__name__ if error_info else "Unknown",
+        }
+
+        log.error(
+            "Test analytics export task failed with exception",
+            extra={
+                "task_id": task_id,
+                "error_type": type(error_info).__name__ if error_info else "Unknown",
+                "error_message": str(error_info),
+            },
+        )
+    else:
+        log.info(
+            "TA export task in progress",
+            extra={
+                "task_id": task_id,
+                "status": result.status,
+            },
+        )
+
+    return Response(response_data, status=status.HTTP_200_OK)

@@ -29,6 +29,7 @@ class TaskConfigGroup(Enum):
     compute_comparison = "compute_comparison"
     daily = "daily"
     delete_owner = "delete_owner"
+    export_test_analytics = "export_test_analytics"
     flakes = "flakes"
     flush_repo = "flush_repo"
     healthcheck = "healthcheck"

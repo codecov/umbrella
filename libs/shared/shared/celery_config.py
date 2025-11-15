@@ -41,6 +41,11 @@ delete_owner_task_name = f"app.tasks.{TaskConfigGroup.delete_owner.value}.Delete
 process_owners_to_be_deleted_cron_task_name = (
     f"app.tasks.{TaskConfigGroup.delete_owner.value}.ProcessOwnersToBeDeletedCron"
 )
+
+# Export tasks
+export_test_analytics_data_task_name = (
+    f"app.tasks.{TaskConfigGroup.export_test_analytics.value}.ExportTestAnalyticsData"
+)
 mark_owner_for_deletion_task_name = (
     f"app.tasks.{TaskConfigGroup.mark_owner_for_deletion.value}.MarkOwnerForDeletion"
 )
@@ -535,6 +540,15 @@ class BaseCeleryConfig:
                 "setup",
                 "tasks",
                 TaskConfigGroup.flush_repo.value,
+                "queue",
+                default=task_default_queue,
+            )
+        },
+        export_test_analytics_data_task_name: {
+            "queue": get_config(
+                "setup",
+                "tasks",
+                TaskConfigGroup.export_test_analytics.value,
                 "queue",
                 default=task_default_queue,
             )

@@ -11,7 +11,6 @@ from codecov_auth.models import Account
 from shared.django_apps.codecov_auth.models import (
     GithubAppInstallation,
     Owner,
-    Service,
 )
 from shared.django_apps.codecov_auth.tests.factories import (
     AccountFactory,
@@ -19,8 +18,6 @@ from shared.django_apps.codecov_auth.tests.factories import (
     PlanFactory,
     TierFactory,
 )
-from shared.django_apps.core.tests.factories import RepositoryFactory
-from shared.django_apps.ta_timeseries.tests.factories import TestrunFactory
 from shared.plan.constants import PlanName, TierName
 
 
@@ -831,15 +828,24 @@ class AccountUnlinkViewTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
-class TestAnalyticsEuViewTests(TestCase):
-    databases = ["default", "ta_timeseries"]
+class CreateTestAnalyticsExportTests(TestCase):
+    """Tests for the create_ta_export endpoint"""
 
     def setUp(self):
         self.client = APIClient()
-        self.url = reverse("test-analytics-eu")
+        self.url = reverse("create-ta-export")
+        self.valid_data = {
+            "integration_names": ["test-integration-1", "test-integration-2"],
+            "gcp_project_id": "test-project-123",
+            "destination_bucket": "test-bucket",
+            "destination_prefix": "test/prefix/path",
+        }
 
-    def _make_authenticated_request(self, data, jwt_payload=None):
+    def _make_authenticated_request(self, data=None, jwt_payload=None):
         """Helper method to make an authenticated request with JWT payload"""
+        if data is None:
+            data = self.valid_data
+
         with patch(
             "codecov_auth.permissions.get_sentry_jwt_payload"
         ) as mock_get_payload:
@@ -851,207 +857,292 @@ class TestAnalyticsEuViewTests(TestCase):
                 self.url, data=json.dumps(data), content_type="application/json"
             )
 
-    def test_test_analytics_eu_empty_integration_names(self):
-        """Test that empty integration_names list fails validation"""
-        data = {"integration_names": []}
-
-        response = self._make_authenticated_request(data=data)
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("integration_names", response.data)
-
-    def test_test_analytics_eu_missing_integration_names(self):
-        """Test that missing integration_names fails validation"""
-        data = {}
-
-        response = self._make_authenticated_request(data=data)
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("integration_names", response.data)
-
-    @patch("api.sentry.views.log")
-    def test_test_analytics_eu_owner_not_found(self, mock_log):
-        """Test that non-existent owner is skipped with warning log"""
-        data = {"integration_names": ["non-existent-org"]}
-
-        response = self._make_authenticated_request(data=data)
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["test_runs_per_integration"], {})
-
-        mock_log.warning.assert_called_once()
-        warning_call = mock_log.warning.call_args[0][0]
-        self.assertIn("non-existent-org", warning_call)
-        self.assertIn("not found", warning_call)
-
-    def test_test_analytics_eu_owner_without_repositories(self):
-        """Test that owner without repositories returns empty dict"""
-        OwnerFactory(name="org-no-repos", service=Service.GITHUB)
-
-        data = {"integration_names": ["org-no-repos"]}
-
-        response = self._make_authenticated_request(data=data)
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            response.data["test_runs_per_integration"], {"org-no-repos": {}}
-        )
-
-    @patch("api.sentry.views.log")
-    def test_test_analytics_eu_mixed_owners_found_and_not_found(self, mock_log):
-        """Test mix of existing and non-existing owners"""
-        owner = OwnerFactory(name="org-exists", service=Service.GITHUB)
-        repo = RepositoryFactory(
-            author=owner, name="test-repo", test_analytics_enabled=True
-        )
-        TestrunFactory(
-            repo_id=repo.repoid,
-            commit_sha="abc123",
-            outcome="pass",
-            name="test_example",
-        )
-
-        data = {"integration_names": ["org-exists", "org-not-exists"]}
-
-        response = self._make_authenticated_request(data=data)
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("org-exists", response.data["test_runs_per_integration"])
-        self.assertNotIn("org-not-exists", response.data["test_runs_per_integration"])
-
-        # Verify warning log was called for non-existent owner
-        mock_log.warning.assert_called_once()
-        warning_call = mock_log.warning.call_args[0][0]
-        self.assertIn("org-not-exists", warning_call)
-
-    def test_test_analytics_eu_filters_by_test_analytics_enabled(self):
-        """Test that only repositories with test_analytics_enabled=True are included"""
-        owner = OwnerFactory(name="org-with-repos", service=Service.GITHUB)
-
-        repo_enabled = RepositoryFactory(
-            author=owner,
-            name="repo-enabled",
-            test_analytics_enabled=True,
-        )
-        TestrunFactory(
-            repo_id=repo_enabled.repoid,
-            commit_sha="abc123",
-            outcome="pass",
-            name="test_enabled",
-        )
-
-        repo_disabled = RepositoryFactory(
-            author=owner,
-            name="repo-disabled",
-            test_analytics_enabled=False,
-        )
-
-        data = {"integration_names": ["org-with-repos"]}
-
-        response = self._make_authenticated_request(data=data)
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        test_runs_data = response.data["test_runs_per_integration"]["org-with-repos"]
-
-        # Only repo-enabled should be in the response
-        self.assertIn("repo-enabled", test_runs_data)
-        self.assertNotIn("repo-disabled", test_runs_data)
-
-        test_runs_list = test_runs_data["repo-enabled"]
-        self.assertEqual(len(test_runs_list), 1)
-        self.assertEqual(test_runs_list[0]["name"], "test_enabled")
-
-    def test_test_analytics_eu_multiple_owners_with_multiple_repos_and_testruns(self):
-        """Test complex scenario with 2 owners, different repositories and test runs"""
-        owner1 = OwnerFactory(name="org-one", service=Service.GITHUB)
-        repo1 = RepositoryFactory(
-            author=owner1,
-            name="repo-one",
-            test_analytics_enabled=True,
-        )
-        TestrunFactory(
-            repo_id=repo1.repoid,
-            commit_sha="commit1",
-            outcome="pass",
-            name="test_one_first",
-            classname="TestClass1",
-        )
-        TestrunFactory(
-            repo_id=repo1.repoid,
-            commit_sha="commit1",
-            outcome="failure",
-            name="test_one_second",
-            classname="TestClass2",
-        )
-
-        owner2 = OwnerFactory(name="org-two", service=Service.GITHUB)
-        repo2_1 = RepositoryFactory(
-            author=owner2,
-            name="repo-two-first",
-            test_analytics_enabled=True,
-        )
-        TestrunFactory(
-            repo_id=repo2_1.repoid,
-            commit_sha="commit2",
-            outcome="pass",
-            name="test_two_first",
-            classname="TestClassA",
-        )
-
-        repo2_2 = RepositoryFactory(
-            author=owner2,
-            name="repo-two-second",
-            test_analytics_enabled=True,
-        )
-        TestrunFactory(
-            repo_id=repo2_2.repoid,
-            commit_sha="commit3",
-            outcome="skip",
-            name="test_two_second",
-            classname="TestClassB",
-        )
-
-        data = {"integration_names": ["org-one", "org-two"]}
-
-        response = self._make_authenticated_request(data=data)
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        test_runs_per_integration = response.data["test_runs_per_integration"]
-
-        # Verify org-one data
-        self.assertIn("org-one", test_runs_per_integration)
-        org_one_data = test_runs_per_integration["org-one"]
-        self.assertIn("repo-one", org_one_data)
-        self.assertEqual(len(org_one_data), 1)
-
-        repo_one_testruns = org_one_data["repo-one"]
-        self.assertEqual(len(repo_one_testruns), 2)
-        testrun_names = [tr["name"] for tr in repo_one_testruns]
-        self.assertIn("test_one_first", testrun_names)
-        self.assertIn("test_one_second", testrun_names)
-
-        self.assertIn("org-two", test_runs_per_integration)
-        org_two_data = test_runs_per_integration["org-two"]
-        self.assertIn("repo-two-first", org_two_data)
-        self.assertIn("repo-two-second", org_two_data)
-        self.assertEqual(len(org_two_data), 2)
-
-        repo_two_first_testruns = org_two_data["repo-two-first"]
-        self.assertEqual(len(repo_two_first_testruns), 1)
-        self.assertEqual(repo_two_first_testruns[0]["name"], "test_two_first")
-        self.assertEqual(repo_two_first_testruns[0]["outcome"], "pass")
-
-        repo_two_second_testruns = org_two_data["repo-two-second"]
-        self.assertEqual(len(repo_two_second_testruns), 1)
-        self.assertEqual(repo_two_second_testruns[0]["name"], "test_two_second")
-        self.assertEqual(repo_two_second_testruns[0]["outcome"], "skip")
-
-    def test_test_analytics_eu_authentication_failure(self):
-        """Test that the endpoint requires authentication"""
-        data = {"integration_names": ["test-org"]}
-
+    def test_create_ta_export_authentication_failure(self):
+        """Test create_ta_export fails without proper authentication"""
         response = self.client.post(
-            self.url, data=json.dumps(data), content_type="application/json"
+            self.url, data=json.dumps(self.valid_data), content_type="application/json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_create_ta_export_invalid_inputs_missing_required_fields(self):
+        response = self._make_authenticated_request(data={})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("integration_names", response.data)
+        self.assertIn("gcp_project_id", response.data)
+        self.assertIn("destination_bucket", response.data)
+        self.assertIn("destination_prefix", response.data)
+
+    def test_create_ta_export_no_integration_names_provided(self):
+        """Test create_ta_export with empty integration_names list"""
+        data = {
+            "integration_names": [],
+            "gcp_project_id": "test-project-123",
+            "destination_bucket": "test-bucket",
+            "destination_prefix": "test/prefix/path",
+        }
+        response = self._make_authenticated_request(data=data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("integration_names", response.data)
+
+    @patch("api.sentry.views.TaskService")
+    def test_create_ta_export_successful_scheduling(self, mock_task_service_class):
+        mock_task_service = mock_task_service_class.return_value
+        mock_result_1 = patch("celery.result.AsyncResult").start()
+        mock_result_1.id = "task-id-1"
+        mock_result_1.status = "PENDING"
+
+        mock_result_2 = patch("celery.result.AsyncResult").start()
+        mock_result_2.id = "task-id-2"
+        mock_result_2.status = "PENDING"
+
+        mock_task_service.schedule_task.side_effect = [mock_result_1, mock_result_2]
+
+        response = self._make_authenticated_request(data=self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data["total_tasks"], 2)
+        self.assertEqual(response.data["successfully_scheduled"], 2)
+        self.assertEqual(len(response.data["tasks"]), 2)
+
+        # Verify first task
+        task1 = response.data["tasks"][0]
+        self.assertEqual(task1["integration_name"], "test-integration-1")
+        self.assertEqual(task1["task_id"], "task-id-1")
+        self.assertEqual(task1["status"], "PENDING")
+
+        # Verify second task
+        task2 = response.data["tasks"][1]
+        self.assertEqual(task2["integration_name"], "test-integration-2")
+        self.assertEqual(task2["task_id"], "task-id-2")
+        self.assertEqual(task2["status"], "PENDING")
+
+        # Verify schedule_task was called correctly
+        self.assertEqual(mock_task_service.schedule_task.call_count, 2)
+
+        # Verify first call
+        call_kwargs_1 = mock_task_service.schedule_task.call_args_list[0][1]
+        self.assertEqual(
+            call_kwargs_1["kwargs"]["integration_name"], "test-integration-1"
+        )
+        self.assertEqual(call_kwargs_1["kwargs"]["gcp_project_id"], "test-project-123")
+        self.assertEqual(call_kwargs_1["kwargs"]["destination_bucket"], "test-bucket")
+        self.assertEqual(
+            call_kwargs_1["kwargs"]["destination_prefix"], "test/prefix/path"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+    @patch("api.sentry.views.TaskService")
+    def test_create_ta_export_failed_schedule_task(self, mock_task_service_class):
+        mock_task_service = mock_task_service_class.return_value
+        mock_task_service.schedule_task.side_effect = Exception(
+            "Failed to schedule task"
+        )
+
+        data = {
+            "integration_names": ["failing-integration"],
+            "gcp_project_id": "test-project-123",
+            "destination_bucket": "test-bucket",
+            "destination_prefix": "test/prefix/path",
+        }
+
+        response = self._make_authenticated_request(data=data)
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data["total_tasks"], 1)
+        self.assertEqual(response.data["successfully_scheduled"], 0)
+        self.assertEqual(len(response.data["tasks"]), 1)
+
+        # Verify failed task
+        task = response.data["tasks"][0]
+        self.assertEqual(task["integration_name"], "failing-integration")
+        self.assertEqual(task["error"], "Failed to schedule task")
+        self.assertEqual(task["status"], "FAILED_TO_SCHEDULE")
+        self.assertNotIn("task_id", task)
+
+    @patch("api.sentry.views.TaskService")
+    def test_create_ta_export_mixed_success_and_failure(self, mock_task_service_class):
+        mock_task_service = mock_task_service_class.return_value
+        mock_result = patch("celery.result.AsyncResult").start()
+        mock_result.id = "task-id-success"
+        mock_result.status = "PENDING"
+
+        mock_task_service.schedule_task.side_effect = [
+            mock_result,
+            Exception("Failed to schedule second task"),
+        ]
+
+        response = self._make_authenticated_request(data=self.valid_data)
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data["total_tasks"], 2)
+        self.assertEqual(response.data["successfully_scheduled"], 1)
+        self.assertEqual(len(response.data["tasks"]), 2)
+
+        # Verify successful task
+        task1 = response.data["tasks"][0]
+        self.assertEqual(task1["integration_name"], "test-integration-1")
+        self.assertEqual(task1["task_id"], "task-id-success")
+        self.assertEqual(task1["status"], "PENDING")
+
+        # Verify failed task
+        task2 = response.data["tasks"][1]
+        self.assertEqual(task2["integration_name"], "test-integration-2")
+        self.assertEqual(task2["error"], "Failed to schedule second task")
+        self.assertEqual(task2["status"], "FAILED_TO_SCHEDULE")
+        self.assertNotIn("task_id", task2)
+
+
+class GetTestAnalyticsExportTests(TestCase):
+    """Tests for the get_ta_export endpoint"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.task_id = "test-task-id-123"
+        self.url = reverse("get-ta-export", kwargs={"task_id": self.task_id})
+
+    def _make_authenticated_request(self, task_id=None, jwt_payload=None):
+        """Helper method to make an authenticated request with JWT payload"""
+        if task_id:
+            url = reverse("get-ta-export", kwargs={"task_id": task_id})
+        else:
+            url = self.url
+
+        with patch(
+            "codecov_auth.permissions.get_sentry_jwt_payload"
+        ) as mock_get_payload:
+            mock_get_payload.return_value = jwt_payload or {
+                "g_p": "github",
+                "g_o": "test-org",
+            }
+            return self.client.get(url)
+
+    @patch("api.sentry.views.AsyncResult")
+    def test_get_ta_export_successful_with_success_result(self, mock_async_result):
+        mock_result = mock_async_result.return_value
+        mock_result.status = "SUCCESS"
+        mock_result.successful.return_value = True
+        mock_result.result = {
+            "successful": True,
+            "integration_name": "test-integration",
+            "exported_files": ["file1.json", "file2.json"],
+            "total_records": 1000,
+        }
+
+        response = self._make_authenticated_request()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["task_id"], self.task_id)
+        self.assertEqual(response.data["status"], "SUCCESS")
+        self.assertIn("result", response.data)
+        self.assertTrue(response.data["result"]["successful"])
+        self.assertEqual(
+            response.data["result"]["integration_name"], "test-integration"
+        )
+        self.assertEqual(response.data["result"]["total_records"], 1000)
+
+    @patch("api.sentry.views.AsyncResult")
+    def test_get_ta_export_successful_but_reported_failure(self, mock_async_result):
+        mock_result = mock_async_result.return_value
+        mock_result.status = "SUCCESS"
+        mock_result.successful.return_value = True
+        mock_result.result = {
+            "successful": False,
+            "integration_name": "test-integration",
+            "error": "Failed to export data: Connection timeout",
+        }
+
+        response = self._make_authenticated_request()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["task_id"], self.task_id)
+        self.assertEqual(response.data["status"], "SUCCESS")
+        self.assertIn("result", response.data)
+        self.assertFalse(response.data["result"]["successful"])
+        self.assertEqual(
+            response.data["result"]["integration_name"], "test-integration"
+        )
+        self.assertEqual(
+            response.data["result"]["error"],
+            "Failed to export data: Connection timeout",
+        )
+
+    @patch("api.sentry.views.AsyncResult")
+    def test_get_ta_export_failed_with_error(self, mock_async_result):
+        mock_result = mock_async_result.return_value
+        mock_result.status = "FAILURE"
+        mock_result.successful.return_value = False
+        mock_result.failed.return_value = True
+
+        test_exception = ValueError("Database connection failed")
+        mock_result.info = test_exception
+
+        response = self._make_authenticated_request()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["task_id"], self.task_id)
+        self.assertEqual(response.data["status"], "FAILURE")
+        self.assertIn("error", response.data)
+        self.assertEqual(
+            response.data["error"]["message"], "Database connection failed"
+        )
+        self.assertEqual(response.data["error"]["type"], "ValueError")
+
+    @patch("api.sentry.views.AsyncResult")
+    def test_get_ta_export_in_progress_pending(self, mock_async_result):
+        mock_result = mock_async_result.return_value
+        mock_result.status = "PENDING"
+        mock_result.successful.return_value = False
+        mock_result.failed.return_value = False
+
+        response = self._make_authenticated_request()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["task_id"], self.task_id)
+        self.assertEqual(response.data["status"], "PENDING")
+        self.assertNotIn("result", response.data)
+        self.assertNotIn("error", response.data)
+
+    @patch("api.sentry.views.AsyncResult")
+    def test_get_ta_export_in_progress_retry(self, mock_async_result):
+        mock_result = mock_async_result.return_value
+        mock_result.status = "RETRY"
+        mock_result.successful.return_value = False
+        mock_result.failed.return_value = False
+
+        response = self._make_authenticated_request()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["task_id"], self.task_id)
+        self.assertEqual(response.data["status"], "RETRY")
+        self.assertNotIn("result", response.data)
+        self.assertNotIn("error", response.data)
+
+    @patch("api.sentry.views.AsyncResult")
+    def test_get_ta_export_successful_with_non_dict_result(self, mock_async_result):
+        mock_result = mock_async_result.return_value
+        mock_result.status = "SUCCESS"
+        mock_result.successful.return_value = True
+        mock_result.result = "Simple string result"
+
+        response = self._make_authenticated_request()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["task_id"], self.task_id)
+        self.assertEqual(response.data["status"], "SUCCESS")
+        self.assertIn("result", response.data)
+        self.assertEqual(response.data["result"], "Simple string result")
+
+    @patch("api.sentry.views.AsyncResult")
+    def test_get_ta_export_failed_with_no_error_info(self, mock_async_result):
+        mock_result = mock_async_result.return_value
+        mock_result.status = "FAILURE"
+        mock_result.successful.return_value = False
+        mock_result.failed.return_value = True
+        mock_result.info = None
+
+        response = self._make_authenticated_request()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["task_id"], self.task_id)
+        self.assertEqual(response.data["status"], "FAILURE")
+        self.assertIn("error", response.data)
+        self.assertEqual(response.data["error"]["type"], "Unknown")
