@@ -87,7 +87,7 @@ def test_bundle_analysis_processor_task_success(
 
     result = BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -96,17 +96,15 @@ def test_bundle_analysis_processor_task_success(
             "commit": commit.commitid,
         },
     )
-    assert result == {
-        "results": [
-            {"previous": "result"},
-            {
-                "error": None,
-                "session_id": 123,
-                "upload_id": upload.id_,
-                "bundle_name": "bundle1",
-            },
-        ],
-    }
+    assert result == [
+        {"previous": "result"},
+        {
+            "error": None,
+            "session_id": 123,
+            "upload_id": upload.id_,
+            "bundle_name": "bundle1",
+        },
+    ]
 
     assert commit.state == "complete"
     assert upload.state == "processed"
@@ -149,7 +147,7 @@ def test_bundle_analysis_processor_task_error(
 
     result = task.run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -158,20 +156,18 @@ def test_bundle_analysis_processor_task_error(
             "commit": commit.commitid,
         },
     )
-    assert result == {
-        "results": [
-            {"previous": "result"},
-            {
-                "error": {
-                    "code": "file_not_in_storage",
-                    "params": {"location": "invalid-storage-path"},
-                },
-                "session_id": None,
-                "upload_id": upload.id_,
-                "bundle_name": None,
+    assert result == [
+        {"previous": "result"},
+        {
+            "error": {
+                "code": "file_not_in_storage",
+                "params": {"location": "invalid-storage-path"},
             },
-        ],
-    }
+            "session_id": None,
+            "upload_id": upload.id_,
+            "bundle_name": None,
+        },
+    ]
 
     assert commit.state == "error"
     assert upload.state == "error"
@@ -223,7 +219,7 @@ def test_bundle_analysis_processor_task_general_error(
     with pytest.raises(Exception):
         task.run_impl(
             dbsession,
-            {"results": [{"previous": "result"}]},
+            [{"previous": "result"}],
             repoid=commit.repoid,
             commitid=commit.commitid,
             commit_yaml={},
@@ -275,7 +271,7 @@ def test_bundle_analysis_process_upload_general_error(
 
     result = BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -285,23 +281,21 @@ def test_bundle_analysis_process_upload_general_error(
         },
     )
 
-    assert result == {
-        "results": [
-            {"previous": "result"},
-            {
-                "error": {
-                    "code": "parser_error",
-                    "params": {
-                        "location": "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite",
-                        "plugin_name": "unknown",
-                    },
+    assert result == [
+        {"previous": "result"},
+        {
+            "error": {
+                "code": "parser_error",
+                "params": {
+                    "location": "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite",
+                    "plugin_name": "unknown",
                 },
-                "session_id": None,
-                "upload_id": upload.id_,
-                "bundle_name": None,
             },
-        ],
-    }
+            "session_id": None,
+            "upload_id": upload.id_,
+            "bundle_name": None,
+        },
+    ]
 
     assert not retry.called
     assert upload.state == "error"
@@ -349,7 +343,7 @@ def test_bundle_analysis_processor_task_locked(
 
     result = task.run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -402,7 +396,7 @@ def test_bundle_analysis_process_upload_rate_limit_error(
 
     result = task.run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -411,22 +405,20 @@ def test_bundle_analysis_process_upload_rate_limit_error(
             "commit": commit.commitid,
         },
     )
-    assert result == {
-        "results": [
-            {"previous": "result"},
-            {
-                "error": {
-                    "code": "rate_limit_error",
-                    "params": {
-                        "location": "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
-                    },
+    assert result == [
+        {"previous": "result"},
+        {
+            "error": {
+                "code": "rate_limit_error",
+                "params": {
+                    "location": "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
                 },
-                "session_id": None,
-                "upload_id": upload.id_,
-                "bundle_name": None,
             },
-        ],
-    }
+            "session_id": None,
+            "upload_id": upload.id_,
+            "bundle_name": None,
+        },
+    ]
 
     assert commit.state == "error"
     assert upload.state == "error"
@@ -472,7 +464,7 @@ def test_bundle_analysis_process_associate_no_parent_commit_id(
 
     BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -525,7 +517,7 @@ def test_bundle_analysis_process_associate_no_parent_commit_object(
 
     BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -582,7 +574,7 @@ def test_bundle_analysis_process_associate_no_parent_commit_report_object(
 
     BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -645,7 +637,7 @@ def test_bundle_analysis_process_associate_called(
 
     BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -719,7 +711,7 @@ def test_bundle_analysis_process_associate_called_two(
 
     BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -789,7 +781,7 @@ def test_bundle_analysis_processor_associate_custom_compare_sha(
 
     BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -864,7 +856,7 @@ def test_bundle_analysis_processor_task_cache_config_not_saved(
 
     result = BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -873,17 +865,15 @@ def test_bundle_analysis_processor_task_cache_config_not_saved(
             "commit": commit.commitid,
         },
     )
-    assert result == {
-        "results": [
-            {"previous": "result"},
-            {
-                "error": None,
-                "session_id": 123,
-                "upload_id": upload.id_,
-                "bundle_name": "BundleA",
-            },
-        ],
-    }
+    assert result == [
+        {"previous": "result"},
+        {
+            "error": None,
+            "session_id": 123,
+            "upload_id": upload.id_,
+            "bundle_name": "BundleA",
+        },
+    ]
 
     assert commit.state == "complete"
     assert upload.state == "processed"
@@ -943,7 +933,7 @@ def test_bundle_analysis_processor_task_cache_config_saved(
 
     result = BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -952,17 +942,15 @@ def test_bundle_analysis_processor_task_cache_config_saved(
             "commit": commit.commitid,
         },
     )
-    assert result == {
-        "results": [
-            {"previous": "result"},
-            {
-                "error": None,
-                "session_id": 123,
-                "upload_id": upload.id_,
-                "bundle_name": "BundleA",
-            },
-        ],
-    }
+    assert result == [
+        {"previous": "result"},
+        {
+            "error": None,
+            "session_id": 123,
+            "upload_id": upload.id_,
+            "bundle_name": "BundleA",
+        },
+    ]
 
     assert commit.state == "complete"
     assert upload.state == "processed"
@@ -1031,7 +1019,7 @@ def test_bundle_analysis_processor_not_caching_previous_report(
 
     result = BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -1040,17 +1028,15 @@ def test_bundle_analysis_processor_not_caching_previous_report(
             "commit": commit.commitid,
         },
     )
-    assert result == {
-        "results": [
-            {"previous": "result"},
-            {
-                "error": None,
-                "session_id": 123,
-                "upload_id": upload.id_,
-                "bundle_name": "BundleA",
-            },
-        ],
-    }
+    assert result == [
+        {"previous": "result"},
+        {
+            "error": None,
+            "session_id": 123,
+            "upload_id": upload.id_,
+            "bundle_name": "BundleA",
+        },
+    ]
 
     assert commit.state == "complete"
     assert upload.state == "processed"
@@ -1121,7 +1107,7 @@ def test_bundle_analysis_processor_not_caching_previous_report_two(
 
     result = BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -1130,17 +1116,15 @@ def test_bundle_analysis_processor_not_caching_previous_report_two(
             "commit": commit.commitid,
         },
     )
-    assert result == {
-        "results": [
-            {"previous": "result"},
-            {
-                "error": None,
-                "session_id": 123,
-                "upload_id": upload.id_,
-                "bundle_name": "BundleA",
-            },
-        ],
-    }
+    assert result == [
+        {"previous": "result"},
+        {
+            "error": None,
+            "session_id": 123,
+            "upload_id": upload.id_,
+            "bundle_name": "BundleA",
+        },
+    ]
 
     assert commit.state == "complete"
     assert upload.state == "processed"
@@ -1211,7 +1195,7 @@ def test_bundle_analysis_processor_caching_previous_report(
 
     result = BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -1220,17 +1204,15 @@ def test_bundle_analysis_processor_caching_previous_report(
             "commit": commit.commitid,
         },
     )
-    assert result == {
-        "results": [
-            {"previous": "result"},
-            {
-                "error": None,
-                "session_id": 123,
-                "upload_id": upload.id_,
-                "bundle_name": "BundleA",
-            },
-        ],
-    }
+    assert result == [
+        {"previous": "result"},
+        {
+            "error": None,
+            "session_id": 123,
+            "upload_id": upload.id_,
+            "bundle_name": "BundleA",
+        },
+    ]
 
     assert commit.state == "complete"
     assert upload.state == "processed"
@@ -1261,7 +1243,7 @@ def test_bundle_analysis_processor_task_no_upload(
 
     result = BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -1277,17 +1259,15 @@ def test_bundle_analysis_processor_task_no_upload(
     upload = dbsession.query(Upload).filter_by(report_id=commit_report.id).first()
     assert upload is not None
 
-    assert result == {
-        "results": [
-            {"previous": "result"},
-            {
-                "error": None,
-                "session_id": None,
-                "upload_id": upload.id_,
-                "bundle_name": None,
-            },
-        ],
-    }
+    assert result == [
+        {"previous": "result"},
+        {
+            "error": None,
+            "session_id": None,
+            "upload_id": upload.id_,
+            "bundle_name": None,
+        },
+    ]
 
     assert commit.state == "complete"
     assert upload.state == "processed"
@@ -1331,7 +1311,7 @@ def test_bundle_analysis_processor_task_carryforward(
 
     BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -1391,7 +1371,7 @@ def test_bundle_analysis_processor_task_carryforward_error(
 
     BundleAnalysisProcessorTask().run_impl(
         dbsession,
-        {"results": [{"previous": "result"}]},
+        [{"previous": "result"}],
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
