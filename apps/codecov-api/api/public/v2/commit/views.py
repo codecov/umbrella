@@ -73,9 +73,11 @@ class CommitsUploadsViewSet(
 
     def get_queryset(self):
         commit = self.get_commit(self.kwargs["commitid"])
-        return ReportSession.objects.filter(report__commit=commit.id).select_related(
-            "uploadleveltotals"
-        ).prefetch_related("flags")
+        return (
+            ReportSession.objects.filter(report__commit=commit.id)
+            .select_related("uploadleveltotals")
+            .prefetch_related("flags")
+        )
 
     @extend_schema(summary="Commit uploads", parameters=commits_parameters)
     def list(self, request, *args, **kwargs):
