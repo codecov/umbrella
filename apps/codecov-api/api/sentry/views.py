@@ -327,15 +327,6 @@ def create_ta_export(request, *args, **kwargs):
             task_id = result.id
             task_status = result.status
 
-            log.info(
-                "Scheduled TA export task",
-                extra={
-                    "integration_name": integration_name,
-                    "task_id": task_id,
-                    "task_status": task_status,
-                },
-            )
-
             task_results.append(
                 {
                     "integration_name": integration_name,
@@ -344,14 +335,6 @@ def create_ta_export(request, *args, **kwargs):
                 }
             )
         except Exception as e:
-            log.error(
-                "Failed to schedule TA export task",
-                extra={
-                    "integration_name": integration_name,
-                    "error": str(e),
-                },
-                exc_info=True,
-            )
             task_results.append(
                 {
                     "integration_name": integration_name,
@@ -361,13 +344,26 @@ def create_ta_export(request, *args, **kwargs):
             )
 
     successful_tasks = [task for task in task_results if "task_id" in task]
+    failed_tasks = [task for task in task_results if "error" in task]
+
     log.info(
         "Completed data export scheduling for test analytics",
         extra={
-            "total_requested": len(integration_names),
-            "successfully_scheduled": len(successful_tasks),
-            "failed_to_schedule": len(integration_names) - len(successful_tasks),
-            "task_ids": [task.get("task_id") for task in successful_tasks],
+            "successful_tasks": [
+                {
+                    "integration_name": task["integration_name"],
+                    "task_id": task["task_id"],
+                }
+                for task in successful_tasks
+            ],
+            "failed_tasks": [
+                {
+                    "integration_name": task["integration_name"],
+                    "error": task["error"],
+                    "status": task.get("status", "UNKNOWN"),
+                }
+                for task in failed_tasks
+            ],
         },
     )
 
