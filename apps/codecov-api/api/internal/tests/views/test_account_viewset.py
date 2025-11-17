@@ -19,7 +19,11 @@ from shared.django_apps.codecov_auth.tests.factories import (
     OwnerFactory,
     UserFactory,
 )
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TrialStatus
+from shared.plan.constants import (
+    DEFAULT_FREE_PLAN,
+    PlanName,
+    TrialStatus,
+)
 from utils.test_utils import APIClient
 
 curr_path = os.path.dirname(__file__)
@@ -295,6 +299,7 @@ class AccountViewSetTests(APITestCase):
                     "start_date": schedule_params["start_date"],
                     "plan": "Pro",
                     "quantity": schedule_params["quantity"],
+                    "billing_rate": "annually",
                 },
             },
             "student_count": 0,
@@ -354,11 +359,21 @@ class AccountViewSetTests(APITestCase):
         phases = [
             {
                 "start_date": 123689126536,
-                "items": [{"plan": "test_plan_123", "quantity": 4}],
+                "items": [
+                    {
+                        "plan": "test_plan_123",
+                        "quantity": 4,
+                    }
+                ],
             },
             {
                 "start_date": 123689126636,
-                "items": [{"plan": "test_plan_456", "quantity": 5}],
+                "items": [
+                    {
+                        "plan": "test_plan_456",
+                        "quantity": 5,
+                    }
+                ],
             },
             {
                 "start_date": schedule_params["start_date"],
@@ -430,6 +445,7 @@ class AccountViewSetTests(APITestCase):
                     "plan": "Pro",
                     "quantity": schedule_params["quantity"],
                     "start_date": schedule_params["start_date"],
+                    "billing_rate": "annually",
                 },
             },
             "uses_invoice": False,
