@@ -218,7 +218,16 @@ class StripeScheduledPhaseSerializer(serializers.Serializer):
         """Helper method to get and cache the Plan object."""
         if not hasattr(self, "_cached_plan"):
             plan_id = phase["items"][0]["plan"]
-            self._cached_plan = Plan.objects.get(stripe_id=plan_id)
+            try:
+                self._cached_plan = Plan.objects.get(stripe_id=plan_id)
+            except Plan.DoesNotExist:
+                log.warning(
+                    "Plan not found for scheduled phase",
+                    extra={
+                        "plan_id": plan_id,
+                    },
+                )
+                return None
         return self._cached_plan
 
     def get_plan(self, phase: dict[str, Any]) -> str:
