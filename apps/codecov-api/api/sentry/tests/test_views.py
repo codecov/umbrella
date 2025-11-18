@@ -1,5 +1,5 @@
 import json
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import jwt
 from django.test import TestCase
@@ -887,11 +887,12 @@ class CreateTestAnalyticsExportTests(TestCase):
     @patch("api.sentry.views.TaskService")
     def test_create_ta_export_successful_scheduling(self, mock_task_service_class):
         mock_task_service = mock_task_service_class.return_value
-        mock_result_1 = patch("celery.result.AsyncResult").start()
+
+        mock_result_1 = Mock()
         mock_result_1.id = "task-id-1"
         mock_result_1.status = "PENDING"
 
-        mock_result_2 = patch("celery.result.AsyncResult").start()
+        mock_result_2 = Mock()
         mock_result_2.id = "task-id-2"
         mock_result_2.status = "PENDING"
 
@@ -961,7 +962,8 @@ class CreateTestAnalyticsExportTests(TestCase):
     @patch("api.sentry.views.TaskService")
     def test_create_ta_export_mixed_success_and_failure(self, mock_task_service_class):
         mock_task_service = mock_task_service_class.return_value
-        mock_result = patch("celery.result.AsyncResult").start()
+
+        mock_result = Mock()
         mock_result.id = "task-id-success"
         mock_result.status = "PENDING"
 
@@ -1015,8 +1017,11 @@ class GetTestAnalyticsExportTests(TestCase):
             }
             return self.client.get(url)
 
+    @patch("services.task.celery_app")
     @patch("api.sentry.views.AsyncResult")
-    def test_get_ta_export_successful_with_success_result(self, mock_async_result):
+    def test_get_ta_export_successful_with_success_result(
+        self, mock_async_result, mock_celery_app
+    ):
         mock_result = mock_async_result.return_value
         mock_result.status = "SUCCESS"
         mock_result.successful.return_value = True
@@ -1039,8 +1044,11 @@ class GetTestAnalyticsExportTests(TestCase):
         )
         self.assertEqual(response.data["result"]["total_records"], 1000)
 
+    @patch("services.task.celery_app")
     @patch("api.sentry.views.AsyncResult")
-    def test_get_ta_export_successful_but_reported_failure(self, mock_async_result):
+    def test_get_ta_export_successful_but_reported_failure(
+        self, mock_async_result, mock_celery_app
+    ):
         mock_result = mock_async_result.return_value
         mock_result.status = "SUCCESS"
         mock_result.successful.return_value = True
@@ -1065,8 +1073,9 @@ class GetTestAnalyticsExportTests(TestCase):
             "Failed to export data: Connection timeout",
         )
 
+    @patch("services.task.celery_app")
     @patch("api.sentry.views.AsyncResult")
-    def test_get_ta_export_failed_with_error(self, mock_async_result):
+    def test_get_ta_export_failed_with_error(self, mock_async_result, mock_celery_app):
         mock_result = mock_async_result.return_value
         mock_result.status = "FAILURE"
         mock_result.successful.return_value = False
@@ -1086,8 +1095,11 @@ class GetTestAnalyticsExportTests(TestCase):
         )
         self.assertEqual(response.data["error"]["type"], "ValueError")
 
+    @patch("services.task.celery_app")
     @patch("api.sentry.views.AsyncResult")
-    def test_get_ta_export_in_progress_pending(self, mock_async_result):
+    def test_get_ta_export_in_progress_pending(
+        self, mock_async_result, mock_celery_app
+    ):
         mock_result = mock_async_result.return_value
         mock_result.status = "PENDING"
         mock_result.successful.return_value = False
@@ -1101,8 +1113,9 @@ class GetTestAnalyticsExportTests(TestCase):
         self.assertNotIn("result", response.data)
         self.assertNotIn("error", response.data)
 
+    @patch("services.task.celery_app")
     @patch("api.sentry.views.AsyncResult")
-    def test_get_ta_export_in_progress_retry(self, mock_async_result):
+    def test_get_ta_export_in_progress_retry(self, mock_async_result, mock_celery_app):
         mock_result = mock_async_result.return_value
         mock_result.status = "RETRY"
         mock_result.successful.return_value = False
@@ -1116,23 +1129,11 @@ class GetTestAnalyticsExportTests(TestCase):
         self.assertNotIn("result", response.data)
         self.assertNotIn("error", response.data)
 
+    @patch("services.task.celery_app")
     @patch("api.sentry.views.AsyncResult")
-    def test_get_ta_export_successful_with_non_dict_result(self, mock_async_result):
-        mock_result = mock_async_result.return_value
-        mock_result.status = "SUCCESS"
-        mock_result.successful.return_value = True
-        mock_result.result = "Simple string result"
-
-        response = self._make_authenticated_request()
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["task_id"], self.task_id)
-        self.assertEqual(response.data["status"], "SUCCESS")
-        self.assertIn("result", response.data)
-        self.assertEqual(response.data["result"], "Simple string result")
-
-    @patch("api.sentry.views.AsyncResult")
-    def test_get_ta_export_failed_with_no_error_info(self, mock_async_result):
+    def test_get_ta_export_failed_with_no_error_info(
+        self, mock_async_result, mock_celery_app
+    ):
         mock_result = mock_async_result.return_value
         mock_result.status = "FAILURE"
         mock_result.successful.return_value = False

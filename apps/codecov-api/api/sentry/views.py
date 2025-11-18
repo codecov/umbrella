@@ -293,6 +293,7 @@ def create_ta_export(request, *args, **kwargs):
             "status": "PENDING"
         }
     """
+
     serializer = CreateTestAnalyticsExportSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
@@ -326,7 +327,6 @@ def create_ta_export(request, *args, **kwargs):
             )
             task_id = result.id
             task_status = result.status
-
             task_results.append(
                 {
                     "integration_name": integration_name,
@@ -335,6 +335,10 @@ def create_ta_export(request, *args, **kwargs):
                 }
             )
         except Exception as e:
+            sentry_sdk.capture_message(
+                f"Integration {integration_name} has an exception",
+                level="error",
+            )
             task_results.append(
                 {
                     "integration_name": integration_name,
@@ -407,26 +411,10 @@ def get_ta_export(request, task_id, *args, **kwargs):
     if result.successful():
         task_result = result.result
         response_data["result"] = task_result
-
-        if isinstance(task_result, dict) and not task_result.get("successful", True):
-            log.warning(
-                "Test analytics export task completed but reported failure",
-                extra={
-                    "task_id": task_id,
-                    "integration_name": task_result.get("integration_name"),
-                    "error": task_result.get("error"),
-                },
-            )
-        else:
-            log.info(
-                "Test analytics export task successful",
-                extra={
-                    "task_id": task_id,
-                    "integration_name": task_result.get("integration_name")
-                    if isinstance(task_result, dict)
-                    else None,
-                },
-            )
+        response_data["integration_name"] = task_result.get("integration_name")
+        if not task_result.get("successful", True):
+            response_data["task_reported_failure"] = True
+            response_data["error"] = task_result.get("error")
     elif result.failed():
         error_info = result.info
         response_data["error"] = {
@@ -434,21 +422,9 @@ def get_ta_export(request, task_id, *args, **kwargs):
             "type": type(error_info).__name__ if error_info else "Unknown",
         }
 
-        log.error(
-            "Test analytics export task failed with exception",
-            extra={
-                "task_id": task_id,
-                "error_type": type(error_info).__name__ if error_info else "Unknown",
-                "error_message": str(error_info),
-            },
-        )
-    else:
-        log.info(
-            "TA export task in progress",
-            extra={
-                "task_id": task_id,
-                "status": result.status,
-            },
-        )
+    log.info(
+        "Completed status check for test analytics export task",
+        extra=response_data,
+    )
 
     return Response(response_data, status=status.HTTP_200_OK)
