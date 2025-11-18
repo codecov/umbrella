@@ -26,7 +26,9 @@ class GetIsCurrentUserAnAdminInteractor(BaseInteractor):
                     if isAdmin:
                         # save admin provider in admins list
                         owner.add_admin(current_owner)
-                    return isAdmin or (current_owner.ownerid in admins)
+                    return isAdmin or (
+                        admins is not None and current_owner.ownerid in admins
+                    )
                 except Exception as error:
                     capture_exception(error)
                     print("Error Calling Admin Provider " + repr(error))  # noqa: T201
