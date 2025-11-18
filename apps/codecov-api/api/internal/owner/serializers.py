@@ -214,7 +214,7 @@ class StripeScheduledPhaseSerializer(serializers.Serializer):
     quantity = serializers.SerializerMethodField()
     billing_rate = serializers.SerializerMethodField()
 
-    def _get_plan_object(self, phase: dict[str, Any]) -> Plan:
+    def _get_plan_object(self, phase: dict[str, Any]) -> Plan | None:
         """Helper method to get and cache the Plan object."""
         if not hasattr(self, "_cached_plan"):
             plan_id = phase["items"][0]["plan"]
@@ -227,17 +227,19 @@ class StripeScheduledPhaseSerializer(serializers.Serializer):
                         "plan_id": plan_id,
                     },
                 )
-                return None
+                self._cached_plan = None
         return self._cached_plan
 
-    def get_plan(self, phase: dict[str, Any]) -> str:
-        return self._get_plan_object(phase).marketing_name
+    def get_plan(self, phase: dict[str, Any]) -> str | None:
+        plan = self._get_plan_object(phase)
+        return plan.marketing_name if plan else None
 
     def get_quantity(self, phase: dict[str, Any]) -> int:
         return phase["items"][0]["quantity"]
 
     def get_billing_rate(self, phase: dict[str, Any]) -> str | None:
-        return self._get_plan_object(phase).billing_rate
+        plan = self._get_plan_object(phase)
+        return plan.billing_rate if plan else None
 
 
 class ScheduleDetailSerializer(serializers.Serializer):
