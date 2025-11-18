@@ -365,7 +365,7 @@ class TestUploadTaskIntegration:
         assert len(uploads) == 1
         upload = dbsession.query(Upload).filter_by(report_id=commit_report.id).first()
         processor_sig = bundle_analysis_processor_task.s(
-            [],
+            {},
             repoid=commit.repoid,
             commitid=commit.commitid,
             commit_yaml={"codecov": {"max_report_age": "1y ago"}},
@@ -482,7 +482,7 @@ class TestUploadTaskIntegration:
         assert commit_report.commit == commit
 
         processor_sig = bundle_analysis_processor_task.s(
-            [],
+            {},
             repoid=commit.repoid,
             commitid=commit.commitid,
             commit_yaml={"codecov": {"max_report_age": "1y ago"}},

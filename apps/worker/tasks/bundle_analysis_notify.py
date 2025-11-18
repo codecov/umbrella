@@ -21,9 +21,9 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
     def run_impl(
         self,
         db_session,
-        # Celery `chain` injects this argument - it's the list of processing results
-        # from prior processor tasks in the chain
-        previous_result: list[dict[str, Any]],
+        # Celery `chain` injects this argument - it's the returned result
+        # from the prior task in the chain
+        previous_result: dict[str, Any],
         *,
         repoid: int,
         commitid: str,
@@ -72,7 +72,7 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
         repoid: int,
         commitid: str,
         commit_yaml: UserYaml,
-        previous_result: list[dict[str, Any]],
+        previous_result: dict[str, Any],
         **kwargs,
     ):
         log.info(
@@ -90,11 +90,9 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
         )
         assert commit, "commit not found"
 
-        # previous_result is the list of processing results from prior processor tasks
+        # these are the task results from prior processor tasks in the chain
         # (they get accumulated as we execute each task in succession)
-        processing_results = (
-            previous_result if isinstance(previous_result, list) else []
-        )
+        processing_results = previous_result.get("results", [])
 
         if all(result["error"] is not None for result in processing_results):
             # every processor errored, nothing to notify on
