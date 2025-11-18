@@ -61,7 +61,7 @@ def _get_ownerid_from_ownerid(ownerid, *args, **kwargs) -> int:
 
 
 def _get_ownerid_from_repoid(repoid, *args, **kwargs) -> int | None:
-    repo = Repository.objects.filter(repoid=repoid).first()
+    repo = Repository.objects.filter(repoid=repoid).select_related("author").first()
     if repo and repo.author:
         return repo.author.ownerid
     return None
