@@ -103,6 +103,7 @@ process_flakes_task_name = f"app.tasks.{TaskConfigGroup.flakes.value}.ProcessFla
 manual_upload_completion_trigger_task_name = (
     f"app.tasks.{TaskConfigGroup.upload.value}.ManualUploadCompletionTrigger"
 )
+dlq_recovery_task_name = f"app.tasks.{TaskConfigGroup.http_request.value}.DLQRecovery"
 comment_task_name = f"app.tasks.{TaskConfigGroup.comment.value}.Comment"
 flush_repo_task_name = f"app.tasks.{TaskConfigGroup.flush_repo.value}.FlushRepo"
 ghm_sync_plans_task_name = f"app.tasks.{TaskConfigGroup.sync_plans.value}.SyncPlans"
@@ -194,6 +195,12 @@ def get_task_group(task_name: str) -> str | None:
 TASK_VISIBILITY_TIMEOUT_SECONDS = int(
     get_config("setup", "tasks", "celery", "visibility_timeout", default=900)
 )
+
+# Dead Letter Queue (DLQ) configuration
+DLQ_TTL_SECONDS = int(
+    get_config("setup", "tasks", "celery", "dlq_ttl_seconds", default=604800)
+)  # 7 days default
+DLQ_KEY_PREFIX = "task_dlq"
 
 # Maximum retries for tasks hitting transient conditions (e.g., processing locks)
 # Default: 10 retries

@@ -13,11 +13,15 @@ from helpers.exceptions import (
     ReportExpiredException,
 )
 from services.processing.processing import process_upload
+from services.processing.types import ProcessingResult as ProcessingResultType
 from services.report import (
     ProcessingError,
     ProcessingResult,
     RawReportInfo,
     ReportService,
+)
+from services.report import (
+    ProcessingError as ReportProcessingError,
 )
 from services.report.parser.legacy import LegacyReportParser
 from shared.api_archive.archive import ArchiveService
@@ -1224,3 +1228,111 @@ class TestUploadProcessorTask:
             diff=0,
         )
         assert commit.state == "error"
+
+    @pytest.mark.django_db
+    def test_upload_processor_saves_to_dlq_when_max_retries_exceeded(
+        self,
+        mocker,
+        mock_configuration,
+        dbsession,
+        mock_repo_provider,
+        mock_storage,
+        mock_self_app,
+    ):
+        """Test that upload processor saves to DLQ when max retries are exceeded."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+        upload = UploadFactory.create(report__commit=commit, state="started")
+        dbsession.add(upload)
+        dbsession.flush()
+
+        # Mock process_upload to directly call the error callback with a retryable error
+        # This ensures the callback is invoked and we can test the DLQ path
+        def mock_process_upload(on_processing_error, *args, **kwargs):
+            # Create a retryable error
+            error = ReportProcessingError(
+                code=UploadErrorCode.FILE_NOT_IN_STORAGE,
+                params={"location": "test"},
+                is_retryable=True,
+            )
+            # Call the error callback directly
+            on_processing_error(error)
+            # Return a result with the error
+            return ProcessingResultType(
+                upload_id=upload.id_,
+                arguments={"upload_id": upload.id_},
+                successful=False,
+                error=error.as_dict(),
+            )
+
+        mocker.patch(
+            "services.processing.processing.process_upload",
+            side_effect=mock_process_upload,
+        )
+
+        # Mock Redis for DLQ save
+        mock_redis = mocker.patch("tasks.base.get_redis_connection")
+        mock_redis.return_value.rpush = mocker.MagicMock(return_value=1)
+        mock_redis.return_value.expire = mocker.MagicMock()
+        mocker.patch(
+            "tasks.base.datetime"
+        ).now.return_value.isoformat.return_value = "2023-01-01T00:00:00"
+
+        task = UploadProcessorTask()
+        # Set retries to exceed MAX_RETRIES (5) so DLQ save is triggered
+        task.request.retries = 5  # Equal to MAX_RETRIES
+
+        result = task.run_impl(
+            dbsession,
+            {},
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            arguments={"upload_id": upload.id_},
+        )
+
+        # Verify DLQ was called (should be triggered when retries >= MAX_RETRIES)
+        mock_redis.return_value.rpush.assert_called_once()
+        mock_redis.return_value.expire.assert_called_once()
+
+        # Verify breadcrumb task was called with INTERNAL_OUT_OF_RETRIES error
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
+            [
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                        ),
+                        "upload_ids": [upload.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.FILE_NOT_IN_STORAGE,
+                        ),
+                        "upload_ids": [upload.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+                call(
+                    kwargs={
+                        "commit_sha": commit.commitid,
+                        "repo_id": commit.repoid,
+                        "breadcrumb_data": BreadcrumbData(
+                            milestone=Milestones.PROCESSING_UPLOAD,
+                            error=Errors.INTERNAL_OUT_OF_RETRIES,
+                        ),
+                        "upload_ids": [upload.id_],
+                        "sentry_trace_id": None,
+                    }
+                ),
+            ]
+        )

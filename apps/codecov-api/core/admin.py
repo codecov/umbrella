@@ -5,6 +5,7 @@ from django.http import HttpRequest
 
 from codecov.admin import AdminMixin
 from codecov_auth.models import RepositoryToken
+from core import admin_dlq  # noqa: F401 - Register DLQ admin views
 from core.models import Pull, Repository
 from services.task.task import TaskService
 from shared.django_apps.utils.paginator import EstimatedCountPaginator

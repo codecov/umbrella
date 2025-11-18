@@ -119,6 +119,20 @@ class FakeRedis:
 
         return res
 
+    def lrange(self, key, start, end):
+        """Get a range of elements from a list without consuming them."""
+        list = self.lists.get(key)
+        if not list:
+            return []
+
+        # Convert negative end to positive index
+        if end == -1:
+            end = len(list)
+
+        # Return a copy of the range (as bytes to match Redis behavior)
+        result = list[start : end + 1] if end >= 0 else list[start:]
+        return [item.encode() if isinstance(item, str) else item for item in result]
+
     def delete(self, key):
         del self.lists[key]
 
@@ -1535,6 +1549,52 @@ class TestUploadTaskUnit:
         res = list(upload_args.arguments_list())
         assert res == [{"url": "http://example.first.com"}, {"and_another": "one"}]
 
+    def test_get_all_arguments(self, mock_redis):
+        """Test get_all_arguments reads without consuming."""
+        upload_args = UploadContext(
+            repoid=542,
+            commitid="commitid",
+            redis_connection=mock_redis,
+        )
+        first_redis_queue = [
+            {"url": "http://example.first.com"},
+            {"and_another": "one"},
+        ]
+        mock_redis.lists["uploads/542/commitid"] = [
+            json.dumps(x) for x in first_redis_queue
+        ]
+        # Get all arguments without consuming
+        res = upload_args.get_all_arguments()
+        assert res == [{"url": "http://example.first.com"}, {"and_another": "one"}]
+        # Verify list still exists (not consumed)
+        assert len(mock_redis.lists["uploads/542/commitid"]) == 2
+
+    def test_get_all_arguments_empty_list(self, mock_redis):
+        """Test get_all_arguments returns empty list when key doesn't exist."""
+        upload_args = UploadContext(
+            repoid=542,
+            commitid="commitid",
+            redis_connection=mock_redis,
+        )
+        # Key doesn't exist
+        res = upload_args.get_all_arguments()
+        assert res == []
+
+    def test_get_all_arguments_different_report_type(self, mock_redis):
+        """Test get_all_arguments works with different report types."""
+        upload_args = UploadContext(
+            repoid=542,
+            commitid="commitid",
+            report_type=ReportType.TEST_RESULTS,
+            redis_connection=mock_redis,
+        )
+        test_queue = [{"upload_id": 1}, {"upload_id": 2}]
+        mock_redis.lists["uploads/542/commitid/test_results"] = [
+            json.dumps(x) for x in test_queue
+        ]
+        res = upload_args.get_all_arguments()
+        assert res == [{"upload_id": 1}, {"upload_id": 2}]
+
     @pytest.mark.django_db
     def test_schedule_task_with_one_task(
         self, dbsession, mocker, mock_repo_provider, mock_self_app
@@ -1645,13 +1705,19 @@ class TestUploadTaskUnit:
         mock_redis.keys[f"uploads/{commit.repoid}/{commit.commitid}"] = ["something"]
         task = UploadTask()
         task.request.retries = 3
+        # Mock Redis for DLQ save - FakeRedis doesn't have rpush/expire, so add them
+        mock_redis.rpush = mocker.MagicMock(return_value=1)
+        mock_redis.expire = mocker.MagicMock()
+        mocker.patch(
+            "tasks.base.datetime"
+        ).now.return_value.isoformat.return_value = "2023-01-01T00:00:00"
+
         result = task.run_impl(dbsession, commit.repoid, commit.commitid)
-        assert result == {
-            "tasks_were_scheduled": False,
-            "was_setup": False,
-            "was_updated": False,
-            "reason": "too_many_retries",
-        }
+        assert result["tasks_were_scheduled"] is False
+        assert result["was_setup"] is False
+        assert result["was_updated"] is False
+        assert result["reason"] == "too_many_retries"
+        assert "dlq_key" in result  # DLQ key may be None or a string
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
                 call(

@@ -438,6 +438,59 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
+            # Check if we've exceeded max retries - if so, save to DLQ
+            if self.request.retries >= MAX_RETRIES:
+                log.error(
+                    "Upload finisher exceeded max retries. Saving to DLQ.",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "upload_ids": upload_ids,
+                        "retries": self.request.retries,
+                    },
+                )
+                dlq_key_suffix = f"{repoid}/{commitid}"
+                # commit_yaml is already a UserYaml object at this point
+                # Convert to dict for JSON serialization
+                if isinstance(commit_yaml, UserYaml):
+                    commit_yaml_dict = commit_yaml.to_dict()
+                elif isinstance(commit_yaml, dict):
+                    commit_yaml_dict = commit_yaml
+                else:
+                    # Fallback: try to convert to dict
+                    commit_yaml_dict = (
+                        dict(commit_yaml)
+                        if hasattr(commit_yaml, "__dict__")
+                        else str(commit_yaml)
+                    )
+                task_data = {
+                    "task_name": self.name,
+                    "args": [],
+                    "kwargs": {
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "commit_yaml": commit_yaml_dict,
+                        "processing_results": None,  # Can't serialize ProcessingResult easily
+                    },
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "upload_ids": upload_ids,
+                    "reason": "too_many_lock_retries",
+                }
+                dlq_key = self._save_to_task_dlq(task_data, dlq_key_suffix)
+                if dlq_key:
+                    log.error(
+                        "Saved upload finisher task to DLQ",
+                        extra={"dlq_key": dlq_key, "upload_ids": upload_ids},
+                    )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
+                return
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -454,7 +507,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     "number_retries": self.request.retries,
                 },
             )
-            self.retry(max_retries=MAX_RETRIES, countdown=retry_in)
+            # Use safe_retry to track retries
+            self.safe_retry(max_retries=MAX_RETRIES, countdown=retry_in)
 
     def _handle_finisher_lock(
         self,

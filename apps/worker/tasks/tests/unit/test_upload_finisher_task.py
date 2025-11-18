@@ -1156,3 +1156,110 @@ class TestUploadFinisherTask:
 
         # Verify empty list returned when no uploads found
         assert result == []
+
+    @pytest.mark.django_db
+    def test_upload_finisher_saves_to_dlq_when_max_retries_exceeded(
+        self,
+        mocker,
+        mock_configuration,
+        dbsession,
+        mock_repo_provider,
+        mock_self_app,
+    ):
+        """Test that upload finisher saves to DLQ when max retries exceeded acquiring lock."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+        upload = UploadFactory.create(report__commit=commit, state="started")
+        dbsession.add(upload)
+        dbsession.flush()
+
+        # Mock ProcessingState to return uploads for processing
+        mock_state = mocker.MagicMock()
+        mock_state.get_upload_numbers = mocker.MagicMock(
+            return_value=mocker.MagicMock(processing=0, processed=1)
+        )
+        mock_state.mark_uploads_as_merged = mocker.MagicMock()
+        mocker.patch("tasks.upload_finisher.ProcessingState", return_value=mock_state)
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        mocker.patch("tasks.upload_finisher.update_uploads")
+        mocker.patch("tasks.upload_finisher.load_commit_diff", return_value=None)
+        # Ensure should_trigger_postprocessing returns True so we don't return early
+        mocker.patch(
+            "tasks.upload_finisher.should_trigger_postprocessing", return_value=True
+        )
+        # Mock UploadFlow to avoid errors
+        mocker.patch("tasks.upload_finisher.UploadFlow.log")
+        # Mock random.randint used in retry calculation
+        mocker.patch("tasks.upload_finisher.random.randint", return_value=100)
+
+        # Mock lock acquisition failure - patch get_redis_connection used by get_report_lock
+        # to return a lock that raises LockError when entering the context manager
+        # This ensures the exception is raised inside _process_reports_with_lock and caught by its LockError handler
+        mock_redis_lock = mocker.MagicMock()
+        mock_redis_lock.__enter__ = mocker.MagicMock(
+            side_effect=LockError("Could not acquire lock")
+        )
+        mock_redis_lock.__exit__ = mocker.MagicMock()
+        mock_redis_conn = mocker.MagicMock()
+        mock_redis_conn.lock = mocker.MagicMock(return_value=mock_redis_lock)
+        mocker.patch(
+            "tasks.upload_finisher.get_redis_connection", return_value=mock_redis_conn
+        )
+
+        # Mock Redis for DLQ save (separate connection for base.get_redis_connection)
+        mock_redis_base = mocker.patch("tasks.base.get_redis_connection")
+        mock_redis_base.return_value.rpush = mocker.MagicMock(return_value=1)
+        mock_redis_base.return_value.expire = mocker.MagicMock()
+        mocker.patch(
+            "tasks.base.datetime"
+        ).now.return_value.isoformat.return_value = "2023-01-01T00:00:00"
+
+        task = UploadFinisherTask()
+        # Set retries to exceed MAX_RETRIES (5) so DLQ save is triggered
+        task.request.retries = 5  # Equal to MAX_RETRIES
+
+        # Ensure upload is not in final state to avoid idempotency check
+        assert upload.state == "started", "Upload should be in 'started' state"
+
+        # Provide processing_results to avoid reconstruction and idempotency check
+        result = task.run_impl(
+            dbsession,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml=UserYaml({}),
+            processing_results=[
+                {"upload_id": upload.id_, "successful": True, "arguments": {}}
+            ],
+        )
+
+        # Verify breadcrumb task was called (should happen in exception handler)
+        # First verify INTERNAL_LOCK_ERROR was called - this confirms the exception handler was reached
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_called()
+
+        # Get all breadcrumb calls to verify INTERNAL_LOCK_ERROR was called
+        calls = mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.call_args_list
+        lock_error_called = any(
+            call_obj.kwargs["kwargs"]["breadcrumb_data"].error
+            == Errors.INTERNAL_LOCK_ERROR
+            for call_obj in calls
+        )
+        assert lock_error_called, (
+            "INTERNAL_LOCK_ERROR breadcrumb should be called in exception handler"
+        )
+
+        # Verify DLQ was called (should be triggered when retries >= MAX_RETRIES)
+        mock_redis_base.return_value.rpush.assert_called_once()
+        mock_redis_base.return_value.expire.assert_called_once()
+
+        # Check that INTERNAL_OUT_OF_RETRIES error was logged
+        calls = mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.call_args_list
+        assert any(
+            call_obj.kwargs["kwargs"]["breadcrumb_data"].error
+            == Errors.INTERNAL_OUT_OF_RETRIES
+            for call_obj in calls
+        )

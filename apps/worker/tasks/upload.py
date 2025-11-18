@@ -175,6 +175,22 @@ class UploadContext:
             for arg in arguments:
                 yield orjson.loads(arg)
 
+    def get_all_arguments(self) -> list[dict]:
+        """
+        Get all remaining arguments from Redis without consuming them.
+        Used for DLQ recovery to restore arguments that haven't been processed yet.
+
+        Returns:
+            list[dict]: List of upload argument dictionaries
+        """
+        uploads_list_key = self.upload_location
+        if not self.redis_connection.exists(uploads_list_key):
+            return []
+
+        # Use lrange to read without consuming (0, -1 means all elements)
+        arguments = self.redis_connection.lrange(uploads_list_key, 0, -1)
+        return [orjson.loads(arg) for arg in arguments]
+
 
 def normalize_flags(arguments: UploadArguments):
     flags: list | str | None = arguments.get("flags")
@@ -362,6 +378,28 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     labels={"report_type": report_type},
                 )
                 self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
+
+                # Save pending uploads to DLQ to prevent data loss
+                # Capture remaining upload arguments from Redis before saving to DLQ
+                upload_arguments = upload_context.get_all_arguments()
+                dlq_key_suffix = f"{repoid}/{commitid}/{report_type}"
+                task_data = {
+                    "task_name": self.name,
+                    "args": [],
+                    "kwargs": upload_context.kwargs_for_retry(kwargs),
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "report_type": report_type,
+                    "reason": "too_many_processing_retries",
+                    "upload_arguments": upload_arguments,  # Save arguments for recovery
+                }
+                dlq_key = self._save_to_task_dlq(task_data, dlq_key_suffix)
+                if dlq_key:
+                    log.error(
+                        "Moved upload task to DLQ after too many processing retries",
+                        extra=upload_context.log_extra(dlq_key=dlq_key),
+                    )
+
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,
@@ -373,6 +411,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "was_updated": False,
                     "tasks_were_scheduled": False,
                     "reason": "too_many_processing_retries",
+                    "dlq_key": dlq_key,
                 }
 
         if retry_countdown := _should_debounce_processing(upload_context):
@@ -460,6 +499,28 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     extra=upload_context.log_extra(),
                 )
                 self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
+
+                # Save to DLQ to prevent data loss
+                # Capture remaining upload arguments from Redis before saving to DLQ
+                upload_arguments = upload_context.get_all_arguments()
+                dlq_key_suffix = f"{repoid}/{commitid}/{report_type}"
+                task_data = {
+                    "task_name": self.name,
+                    "args": [],
+                    "kwargs": upload_context.kwargs_for_retry(kwargs),
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "report_type": report_type,
+                    "reason": "too_many_retries",
+                    "upload_arguments": upload_arguments,  # Save arguments for recovery
+                }
+                dlq_key = self._save_to_task_dlq(task_data, dlq_key_suffix)
+                if dlq_key:
+                    log.error(
+                        "Moved upload task to DLQ after too many retries",
+                        extra=upload_context.log_extra(dlq_key=dlq_key),
+                    )
+
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,
@@ -471,6 +532,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "was_updated": False,
                     "tasks_were_scheduled": False,
                     "reason": "too_many_retries",
+                    "dlq_key": dlq_key,
                 }
             retry_countdown = 20 * 2**self.request.retries
             log.warning(
