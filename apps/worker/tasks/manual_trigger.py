@@ -8,7 +8,6 @@ from database.enums import ReportType
 from database.models import Commit, Pull
 from database.models.reports import CommitReport, Upload
 from services.comparison import get_or_create_comparison
-from services.processing.state import ProcessingState
 from shared.celery_config import (
     compute_comparison_task_name,
     manual_upload_completion_trigger_task_name,
@@ -93,29 +92,11 @@ class ManualTriggerTask(
                 | (CommitReport.report_type == ReportType.COVERAGE.value),
             )
         )
+
         still_processing = 0
         for upload in uploads:
             if not upload.state or upload.state_id == UploadState.UPLOADED.db_id:
                 still_processing += 1
-
-        # Also check Redis processing state to prevent race conditions
-        # where uploads have been marked complete in DB but are still
-        # being processed/merged by the finisher task
-        state = ProcessingState(repoid, commitid)
-        upload_numbers = state.get_upload_numbers()
-
-        if upload_numbers.processing > 0 or upload_numbers.processed > 0:
-            log.info(
-                "Retrying ManualTriggerTask. Redis shows uploads still being processed.",
-                extra={
-                    "repoid": repoid,
-                    "commitid": commitid,
-                    "redis_processing": upload_numbers.processing,
-                    "redis_processed": upload_numbers.processed,
-                    "db_still_processing": still_processing,
-                },
-            )
-            still_processing += upload_numbers.processing + upload_numbers.processed
 
         if still_processing == 0:
             self.trigger_notifications(repoid, commitid, commit_yaml)
@@ -129,7 +110,12 @@ class ManualTriggerTask(
             # reschedule the task
             try:
                 log.info(
-                    "Retrying ManualTriggerTask. Some uploads are still being processed."
+                    "Retrying ManualTriggerTask. Some uploads are still being processed.",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "uploads_still_processing": still_processing,
+                    },
                 )
                 retry_in = 60 * 3**self.request.retries
                 self.retry(max_retries=5, countdown=retry_in)
@@ -137,10 +123,10 @@ class ManualTriggerTask(
                 log.warning(
                     "Not attempting to wait for all uploads to get processed since we already retried too many times",
                     extra={
-                        "repoid": commit.repoid,
                         "commit": commit.commitid,
                         "max_retries": 5,
                         "next_countdown_would_be": retry_in,
+                        "repoid": commit.repoid,
                     },
                 )
                 return {

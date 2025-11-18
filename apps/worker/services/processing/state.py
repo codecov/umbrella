@@ -130,3 +130,9 @@ class ProcessingState:
 
     def _redis_key(self, state: str) -> str:
         return f"upload-processing-state/{self.repoid}/{self.commitsha}/{state}"
+
+    def has_unmerged_uploads(self) -> bool:
+        return (
+            self._redis.exists(self._redis_key("processed")) > 0
+            or self._redis.exists(self._redis_key("processing")) > 0
+        )

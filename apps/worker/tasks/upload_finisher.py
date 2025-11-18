@@ -27,7 +27,7 @@ from services.processing.intermediate import (
     load_intermediate_reports,
 )
 from services.processing.merging import merge_reports, update_uploads
-from services.processing.state import ProcessingState, should_trigger_postprocessing
+from services.processing.state import ProcessingState
 from services.processing.types import ProcessingResult
 from services.report import ReportService
 from services.repository import get_repo_provider_service
@@ -319,8 +319,24 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 state,
             )
 
-            if not should_trigger_postprocessing(state.get_upload_numbers()):
-                log.info("run_impl: Postprocessing should not be triggered")
+            # Check if there are still unprocessed uploads in the database
+            # Use DB as source of truth - if any uploads are still in UPLOADED state,
+            # another finisher will process them and we shouldn't send notifications yet
+            remaining_uploads = (
+                db_session.query(Upload)
+                .join(Upload.report)
+                .filter(
+                    Upload.report.has(commit=commit),
+                    Upload.state_id == UploadState.UPLOADED.db_id,
+                )
+                .count()
+            )
+
+            if remaining_uploads > 0:
+                log.info(
+                    "run_impl: Postprocessing should not be triggered - uploads still pending",
+                    extra={"remaining_uploads": remaining_uploads},
+                )
                 UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
                 UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
                 self._call_upload_breadcrumb_task(
@@ -347,12 +363,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         except SoftTimeLimitExceeded:
             log.warning("run_impl: soft time limit exceeded")
-            # Clean up orphaned state so future finishers can proceed
-            state.mark_uploads_as_merged(upload_ids)
-            log.info(
-                "Cleaned up processing state after timeout",
-                extra={"upload_ids": upload_ids},
-            )
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -367,12 +377,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         except Exception as e:
             log.exception("run_impl: unexpected error in upload finisher")
-            # Clean up orphaned state so future finishers can proceed
-            state.mark_uploads_as_merged(upload_ids)
-            log.info(
-                "Cleaned up processing state after exception",
-                extra={"upload_ids": upload_ids, "error": str(e)},
-            )
             sentry_sdk.capture_exception(e)
             log.exception(
                 "Unexpected error in upload finisher",
@@ -568,7 +572,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         notifications_called = False
         if not regexp_ci_skip.search(commit.message or ""):
             should_call_notifications = self.should_call_notifications(
-                commit, commit_yaml, processing_results
+                commit, commit_yaml, processing_results, db_session
             )
             log.info(
                 "finish_reports_processing: should_call_notifications",
@@ -679,6 +683,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit: Commit,
         commit_yaml: UserYaml,
         processing_results: list[ProcessingResult],
+        db_session=None,
     ) -> ShouldCallNotifyResult:
         extra_dict = {
             "repoid": commit.repoid,
@@ -688,19 +693,24 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             "parent_task": self.request.parent_id,
         }
 
-        # Check if there are still pending uploads
-        state = ProcessingState(commit.repoid, commit.commitid)
-        upload_numbers = state.get_upload_numbers()
-        if upload_numbers.processing > 0 or upload_numbers.processed > 0:
-            log.info(
-                "Not scheduling notify because there are still pending uploads",
-                extra={
-                    **extra_dict,
-                    "processing": upload_numbers.processing,
-                    "processed": upload_numbers.processed,
-                },
+        # Check if there are still pending uploads in the database
+        # Use DB as source of truth for upload completion status
+        if db_session:
+            remaining_uploads = (
+                db_session.query(Upload)
+                .join(Upload.report)
+                .filter(
+                    Upload.report.has(commit=commit),
+                    Upload.state_id == UploadState.UPLOADED.db_id,
+                )
+                .count()
             )
-            return ShouldCallNotifyResult.DO_NOT_NOTIFY
+            if remaining_uploads > 0:
+                log.info(
+                    "Not scheduling notify because there are still pending uploads",
+                    extra={**extra_dict, "remaining_uploads": remaining_uploads},
+                )
+                return ShouldCallNotifyResult.DO_NOT_NOTIFY
 
         manual_trigger = read_yaml_field(
             commit_yaml, ("codecov", "notify", "manual_trigger")
