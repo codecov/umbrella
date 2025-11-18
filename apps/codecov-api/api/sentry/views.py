@@ -335,9 +335,12 @@ def create_ta_export(request, *args, **kwargs):
                 }
             )
         except Exception as e:
-            sentry_sdk.capture_message(
-                f"Integration {integration_name} has an exception",
-                level="error",
+            sentry_sdk.capture_exception(
+                e,
+                tags={
+                    "event": "test_analytics_export_scheduling_failed",
+                    "integration_name": integration_name,
+                },
             )
             task_results.append(
                 {
@@ -411,10 +414,11 @@ def get_ta_export(request, task_id, *args, **kwargs):
     if result.successful():
         task_result = result.result
         response_data["result"] = task_result
-        response_data["integration_name"] = task_result.get("integration_name")
-        if not task_result.get("successful", True):
-            response_data["task_reported_failure"] = True
-            response_data["error"] = task_result.get("error")
+        if isinstance(task_result, dict):
+            response_data["integration_name"] = task_result.get("integration_name")
+            if not task_result.get("successful", True):
+                response_data["task_reported_failure"] = True
+                response_data["error"] = task_result.get("error")
     elif result.failed():
         error_info = result.info
         response_data["error"] = {
