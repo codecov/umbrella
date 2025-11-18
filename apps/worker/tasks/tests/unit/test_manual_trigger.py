@@ -3,7 +3,6 @@ from celery.exceptions import Retry
 
 from database.tests.factories import CommitFactory, PullFactory
 from database.tests.factories.core import UploadFactory
-from services.processing.state import UploadNumbers
 from shared.reports.enums import UploadState
 from tasks.manual_trigger import ManualTriggerTask
 
@@ -18,14 +17,6 @@ class TestUploadCompletionTask:
         mock_redis,
         celery_app,
     ):
-        # Mock ProcessingState to return no pending uploads in Redis
-        mock_processing_state = mocker.patch("tasks.manual_trigger.ProcessingState")
-        mock_state_instance = mocker.MagicMock()
-        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
-            processing=0, processed=0
-        )
-        mock_processing_state.return_value = mock_state_instance
-
         mocked_app = mocker.patch.object(
             ManualTriggerTask,
             "app",
@@ -43,7 +34,12 @@ class TestUploadCompletionTask:
 
         dbsession.add(commit)
 
-        upload = UploadFactory.create(report__commit=commit)
+        # Upload is complete in database (state = PROCESSED)
+        upload = UploadFactory.create(
+            report__commit=commit,
+            state="processed",
+            state_id=UploadState.PROCESSED.db_id,
+        )
         compared_to = CommitFactory.create(repository=commit.repository)
         pull.compared_to = compared_to.commitid
 
@@ -87,14 +83,6 @@ class TestUploadCompletionTask:
         mock_redis,
         celery_app,
     ):
-        # Mock ProcessingState to return no pending uploads in Redis
-        mock_processing_state = mocker.patch("tasks.manual_trigger.ProcessingState")
-        mock_state_instance = mocker.MagicMock()
-        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
-            processing=0, processed=0
-        )
-        mock_processing_state.return_value = mock_state_instance
-
         mocker.patch.object(
             ManualTriggerTask,
             "app",
@@ -123,7 +111,7 @@ class TestUploadCompletionTask:
                 "message": "Uploads are still in process and the task got retired so many times. Not triggering notifications.",
             } == result
 
-    def test_manual_upload_completion_trigger_redis_pending(
+    def test_manual_upload_completion_trigger_with_uploaded_state(
         self,
         mocker,
         mock_configuration,
@@ -132,33 +120,31 @@ class TestUploadCompletionTask:
         mock_redis,
         celery_app,
     ):
-        """Test that task retries when Redis shows pending uploads even if DB shows complete"""
-        # Mock ProcessingState to return pending uploads in Redis
-        mock_processing_state = mocker.patch("tasks.manual_trigger.ProcessingState")
-        mock_state_instance = mocker.MagicMock()
-        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
-            processing=1,
-            processed=2,  # Redis shows 3 uploads still being processed/merged
-        )
-        mock_processing_state.return_value = mock_state_instance
-
+        """Test that task retries when DB shows uploads in UPLOADED state"""
         mocker.patch.object(
             ManualTriggerTask,
             "app",
             celery_app,
         )
         commit = CommitFactory.create()
-        # Upload is complete in DB
-        upload = UploadFactory.create(
+        # One upload is still in UPLOADED state (being processed)
+        upload1 = UploadFactory.create(
             report__commit=commit,
-            state="complete",
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+        )
+        # Another upload is complete
+        upload2 = UploadFactory.create(
+            report__commit=commit,
+            state="processed",
             state_id=UploadState.PROCESSED.db_id,
         )
         dbsession.add(commit)
-        dbsession.add(upload)
+        dbsession.add(upload1)
+        dbsession.add(upload2)
         dbsession.flush()
 
-        # Should retry because Redis shows pending uploads
+        # Should retry because DB shows upload still in UPLOADED state
         with pytest.raises(Retry):
             ManualTriggerTask().run_impl(
                 dbsession,

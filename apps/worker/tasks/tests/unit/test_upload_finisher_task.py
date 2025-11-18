@@ -17,7 +17,6 @@ from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.log_context import LogContext, set_log_context
 from services.processing.intermediate import intermediate_report_key
 from services.processing.merging import get_joined_flag, update_uploads
-from services.processing.state import UploadNumbers
 from services.processing.types import MergeResult, ProcessingResult
 from services.timeseries import MeasurementName
 from shared.celery_config import (
@@ -397,14 +396,6 @@ class TestUploadFinisherTask:
         )
 
     def test_should_call_notifications(self, dbsession, mocker):
-        # Mock ProcessingState to return no pending uploads
-        mock_processing_state = mocker.patch("tasks.upload_finisher.ProcessingState")
-        mock_state_instance = mocker.MagicMock()
-        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
-            processing=0, processed=0
-        )
-        mock_processing_state.return_value = mock_state_instance
-
         commit_yaml = {"codecov": {"max_report_age": "1y ago"}}
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
@@ -443,14 +434,6 @@ class TestUploadFinisherTask:
         )
 
     def test_should_call_notifications_manual_trigger_off(self, dbsession, mocker):
-        # Mock ProcessingState to return no pending uploads
-        mock_processing_state = mocker.patch("tasks.upload_finisher.ProcessingState")
-        mock_state_instance = mocker.MagicMock()
-        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
-            processing=0, processed=0
-        )
-        mock_processing_state.return_value = mock_state_instance
-
         commit_yaml = {
             "codecov": {"max_report_age": "1y ago", "notify": {"manual_trigger": False}}
         }
@@ -483,14 +466,6 @@ class TestUploadFinisherTask:
     def test_should_call_notifications_no_successful_reports(
         self, dbsession, mocker, notify_error, result
     ):
-        # Mock ProcessingState to return no pending uploads
-        mock_processing_state = mocker.patch("tasks.upload_finisher.ProcessingState")
-        mock_state_instance = mocker.MagicMock()
-        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
-            processing=0, processed=0
-        )
-        mock_processing_state.return_value = mock_state_instance
-
         commit_yaml = {
             "codecov": {
                 "max_report_age": "1y ago",
@@ -517,14 +492,6 @@ class TestUploadFinisherTask:
         )
 
     def test_should_call_notifications_not_enough_builds(self, dbsession, mocker):
-        # Mock ProcessingState to return no pending uploads
-        mock_processing_state = mocker.patch("tasks.upload_finisher.ProcessingState")
-        mock_state_instance = mocker.MagicMock()
-        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
-            processing=0, processed=0
-        )
-        mock_processing_state.return_value = mock_state_instance
-
         commit_yaml = {"codecov": {"notify": {"after_n_builds": 9}}}
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
@@ -552,14 +519,6 @@ class TestUploadFinisherTask:
         )
 
     def test_should_call_notifications_more_than_enough_builds(self, dbsession, mocker):
-        # Mock ProcessingState to return no pending uploads
-        mock_processing_state = mocker.patch("tasks.upload_finisher.ProcessingState")
-        mock_state_instance = mocker.MagicMock()
-        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
-            processing=0, processed=0
-        )
-        mock_processing_state.return_value = mock_state_instance
-
         commit_yaml = {"codecov": {"notify": {"after_n_builds": 9}}}
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
@@ -586,19 +545,10 @@ class TestUploadFinisherTask:
             == ShouldCallNotifyResult.NOTIFY
         )
 
-    def test_should_call_notifications_with_pending_uploads_in_redis(
+    def test_should_call_notifications_with_pending_uploads_in_db(
         self, dbsession, mocker
     ):
-        """Test that notifications are not called when Redis shows pending uploads"""
-        # Mock ProcessingState to return pending uploads
-        mock_processing_state = mocker.patch("tasks.upload_finisher.ProcessingState")
-        mock_state_instance = mocker.MagicMock()
-        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
-            processing=2,
-            processed=1,  # Redis shows 3 uploads still being processed
-        )
-        mock_processing_state.return_value = mock_state_instance
-
+        """Test that notifications are not called when DB shows pending uploads"""
         commit_yaml = {"codecov": {"max_report_age": "1y ago"}}
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
@@ -607,7 +557,20 @@ class TestUploadFinisherTask:
             repository__author__username="ThiagoCodecov",
             repository__yaml=commit_yaml,
         )
+        # Create uploads in UPLOADED state (still being processed)
+        upload1 = UploadFactory.create(
+            report__commit=commit,
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+        )
+        upload2 = UploadFactory.create(
+            report__commit=commit,
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+        )
         dbsession.add(commit)
+        dbsession.add(upload1)
+        dbsession.add(upload2)
         dbsession.flush()
 
         assert (
@@ -615,19 +578,12 @@ class TestUploadFinisherTask:
                 commit,
                 commit_yaml,
                 [{"arguments": {"url": "url"}, "successful": True}],
+                db_session=dbsession,
             )
             == ShouldCallNotifyResult.DO_NOT_NOTIFY
         )
 
     def test_finish_reports_processing(self, dbsession, mocker, mock_self_app):
-        # Mock ProcessingState to return no pending uploads
-        mock_processing_state = mocker.patch("tasks.upload_finisher.ProcessingState")
-        mock_state_instance = mocker.MagicMock()
-        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
-            processing=0, processed=0
-        )
-        mock_processing_state.return_value = mock_state_instance
-
         commit_yaml = {}
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
@@ -673,14 +629,6 @@ class TestUploadFinisherTask:
     def test_finish_reports_processing_with_pull(
         self, dbsession, mocker, mock_self_app
     ):
-        # Mock ProcessingState to return no pending uploads
-        mock_processing_state = mocker.patch("tasks.upload_finisher.ProcessingState")
-        mock_state_instance = mocker.MagicMock()
-        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
-            processing=0, processed=0
-        )
-        mock_processing_state.return_value = mock_state_instance
-
         commit_yaml = {}
         repository = RepositoryFactory.create(
             author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
@@ -754,14 +702,6 @@ class TestUploadFinisherTask:
     def test_finish_reports_processing_no_notification(
         self, dbsession, mocker, notify_error, mock_self_app
     ):
-        # Mock ProcessingState to return no pending uploads
-        mock_processing_state = mocker.patch("tasks.upload_finisher.ProcessingState")
-        mock_state_instance = mocker.MagicMock()
-        mock_state_instance.get_upload_numbers.return_value = UploadNumbers(
-            processing=0, processed=0
-        )
-        mock_processing_state.return_value = mock_state_instance
-
         commit_yaml = {"codecov": {"notify": {"notify_error": notify_error}}}
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
