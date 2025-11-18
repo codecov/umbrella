@@ -943,7 +943,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             )
             for params in argument_list
         ]
-        task_signatures[0].args = ([],)  # this is the first `previous_result`
+        task_signatures[0].args = ({},)  # this is the first `previous_result`
 
         # it might make sense to eventually have a "finisher" task that
         # does whatever extra stuff + enqueues a notify

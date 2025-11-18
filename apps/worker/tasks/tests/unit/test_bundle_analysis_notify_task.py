@@ -30,7 +30,7 @@ def test_bundle_analysis_notify_task(
 
     result = BundleAnalysisNotifyTask().run_impl(
         dbsession,
-        [{"error": None}],
+        {"results": [{"error": None}]},
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -47,7 +47,7 @@ def test_bundle_analysis_notify_skips_if_all_processing_fail(dbsession):
     dbsession.flush()
     result = BundleAnalysisNotifyTask().run_impl(
         dbsession,
-        [{"error": True}],
+        {"results": [{"error": True}]},
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
