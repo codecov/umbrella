@@ -31,9 +31,9 @@ class BundleAnalysisProcessorTask(
     def run_impl(
         self,
         db_session,
-        # Celery `chain` injects this argument - it's the returned result
-        # from the prior task in the chain
-        previous_result: dict[str, Any],
+        # Celery `chain` injects this argument - it's the list of processing results
+        # from prior tasks in the chain (accumulated as each task executes)
+        previous_result: list[dict[str, Any]],
         *args,
         repoid: int,
         commitid: str,
@@ -82,7 +82,7 @@ class BundleAnalysisProcessorTask(
         commitid: str,
         commit_yaml: UserYaml,
         params: UploadArguments,
-        previous_result: dict[str, Any],
+        previous_result: list[dict[str, Any]],
     ):
         log.info(
             "Running bundle analysis processor",
@@ -100,9 +100,11 @@ class BundleAnalysisProcessorTask(
 
         report_service = BundleAnalysisReportService(commit_yaml)
 
-        # these are the task results from prior processor tasks in the chain
+        # previous_result is the list of processing results from prior processor tasks
         # (they get accumulated as we execute each task in succession)
-        processing_results = previous_result.get("results", [])
+        processing_results = (
+            previous_result if isinstance(previous_result, list) else []
+        )
 
         # these are populated in the upload task
         # unless when this task is called on a non-BA upload then we have to create an empty upload
@@ -141,7 +143,7 @@ class BundleAnalysisProcessorTask(
                             "commit": commit.commitid,
                         },
                     )
-                    return {"results": processing_results}
+                    return processing_results
             else:
                 # If the commit report does not exist, we will create a new one
                 commit_report = report_service.initialize_and_save_report(commit)
@@ -240,7 +242,7 @@ class BundleAnalysisProcessorTask(
             },
         )
 
-        return {"results": processing_results}
+        return processing_results
 
 
 RegisteredBundleAnalysisProcessorTask = celery_app.register_task(
