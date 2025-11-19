@@ -11,36 +11,27 @@ class Matcher:
 
     def _get_matchers(self) -> tuple[re.Pattern | None, re.Pattern | None]:
         if not self._is_initialized:
-            positive_patterns = []
-            negative_patterns = []
-            for pattern in self._patterns:
-                if not pattern:
-                    continue
-                if pattern.startswith(("^!", "!")):
-                    negative_pattern = pattern.replace("!", "")
-                    negative_patterns.append(negative_pattern)
-                else:
-                    positive_patterns.append(pattern)
+            _patterns = [pattern for pattern in self._patterns if pattern]
+            _negative_patterns_set = {
+                pattern for pattern in _patterns if pattern.startswith(("^!", "!"))
+            }
+
+            positive_patterns = [
+                pattern
+                for pattern in _patterns
+                if pattern not in _negative_patterns_set
+            ]
+            negative_patterns = [
+                pattern.replace("!", "") for pattern in _negative_patterns_set
+            ]
 
             # Combine positive patterns into a single regex for faster matching
-            if len(positive_patterns) > 0:
-                # Combine patterns with OR, each pattern is wrapped in parentheses to preserve anchors
-                combined_pattern = (
-                    "|".join(f"({p})" for p in positive_patterns)
-                    if len(positive_patterns) > 1
-                    else positive_patterns[0]
-                )
-                self._combined_positives = re.compile(combined_pattern)
+            if positive_patterns:
+                self._combined_positives = re.compile("|".join(positive_patterns))
 
             # Combine negative patterns into a single regex for faster matching
-            if len(negative_patterns) > 0:
-                # Combine patterns with OR, each pattern is wrapped in parentheses to preserve anchors
-                combined_pattern = (
-                    "|".join(f"({p})" for p in negative_patterns)
-                    if len(negative_patterns) > 1
-                    else negative_patterns[0]
-                )
-                self._combined_negatives = re.compile(combined_pattern)
+            if negative_patterns:
+                self._combined_negatives = re.compile("|".join(negative_patterns))
 
             self._is_initialized = True
 
@@ -53,9 +44,8 @@ class Matcher:
         combined_positives, combined_negatives = self._get_matchers()
 
         # Check negatives first - if any match, return False
-        if combined_negatives:
-            if combined_negatives.match(s):
-                return False
+        if combined_negatives is not None and combined_negatives.match(s):
+            return False
 
         # Check positives - if any match, return True; if none match, return False
         if combined_positives:
