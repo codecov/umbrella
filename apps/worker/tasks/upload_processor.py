@@ -1,5 +1,6 @@
 import logging
 
+import sentry_sdk
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session as DbSession
 
@@ -9,6 +10,7 @@ from services.report import ProcessingError
 from shared.celery_config import upload_processor_task_name
 from shared.config import get_config
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
+from shared.storage.exceptions import FileNotInStorageError
 from shared.upload.constants import UploadErrorCode
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
@@ -16,6 +18,7 @@ from tasks.base import BaseCodecovTask
 log = logging.getLogger(__name__)
 
 MAX_RETRIES = 5
+MAX_FILE_NOT_FOUND_RETRIES = 1
 FIRST_RETRY_DELAY = 20
 
 
@@ -117,6 +120,24 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                     error=Errors.INTERNAL_RETRYING,
                 )
                 self.retry(max_retries=MAX_RETRIES, countdown=FIRST_RETRY_DELAY)
+            elif (
+                error.is_retryable
+                and self.request.retries >= MAX_FILE_NOT_FOUND_RETRIES
+            ):
+                sentry_sdk.capture_exception(
+                    FileNotInStorageError(
+                        f"File not found in {error.params.get('location')} for upload {arguments.get('upload_id')}"
+                    ),
+                    contexts={
+                        "upload_details": {
+                            "repoid": repoid,
+                            "commitid": commitid,
+                            "upload_id": arguments.get("upload_id"),
+                            "storage_location": error.params.get("location"),
+                            "retry_count": self.request.retries,
+                        }
+                    },
+                )
 
         try:
             return process_upload(

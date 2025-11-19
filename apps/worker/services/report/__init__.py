@@ -559,7 +559,6 @@ class ReportService(BaseReportService):
             raw_report = self.parse_raw_report_from_storage(commit.repository, upload)
             raw_report_info.raw_report = raw_report
         except FileNotInStorageError as e:
-            sentry_sdk.capture_exception(e)
             log.info(
                 "Raw report file was not found",
                 extra={
