@@ -18,10 +18,8 @@ class Matcher:
                     continue
                 if pattern.startswith(("^!", "!")):
                     negative_pattern = pattern.replace("!", "")
-                    # self._negatives.append(re.compile(negative_pattern))
                     negative_patterns.append(negative_pattern)
                 else:
-                    # self._positives.append(re.compile(pattern))
                     positive_patterns.append(pattern)
 
             # Combine positive patterns into a single regex for faster matching
