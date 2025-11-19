@@ -166,10 +166,10 @@ class FilteredReport:
 
     def _iter_totals(self):
         for filename in self.report._files.keys():
-            if self.should_include(filename):
-                res = self.get(filename).totals
-                if res and res.lines > 0:
-                    yield res
+            report = self.get(filename)
+            res = report.totals if report else None
+            if res and res.lines > 0:
+                yield res
 
     def _process_totals(self):
         """Runs through the file network to aggregate totals
