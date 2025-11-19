@@ -691,6 +691,17 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             "resend_timestamp": timezone.now().isoformat(),
         }
 
+        # Check if upload_ids is None
+        if breadcrumb.upload_ids is None:
+            log.error(
+                "Cannot resend upload - breadcrumb has no upload IDs",
+                extra={"breadcrumb_id": breadcrumb.id},
+            )
+            return (
+                False,
+                "This breadcrumb has no associated upload IDs. It may be a resend breadcrumb that hasn't been processed yet.",
+            )
+
         log.info(
             f"Collecting upload data for {len(breadcrumb.upload_ids)} uploads",
             extra={"upload_ids": breadcrumb.upload_ids},
