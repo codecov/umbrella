@@ -125,9 +125,7 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 and self.request.retries >= MAX_FILE_NOT_FOUND_RETRIES
             ):
                 sentry_sdk.capture_exception(
-                    FileNotInStorageError(
-                        f"File not found in {error.params.get('location')} for upload {arguments.get('upload_id')}"
-                    ),
+                    FileNotInStorageError("File not found in storage"),
                     contexts={
                         "upload_details": {
                             "repoid": repoid,
