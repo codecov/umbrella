@@ -1,3 +1,5 @@
+from html import escape
+
 from graphs.badges.badges import large_badge, medium_badge, small_badge, unknown_badge
 from shared.helpers.color import coverage_to_color
 
@@ -30,9 +32,12 @@ def get_badge(coverage: str | None, coverage_range: list[int], precision: str):
     else:
         badge = unknown_badge
 
-    return (
-        badge.format(color.hex, coverage).strip() if badge != unknown_badge else badge
-    )
+    # Escape coverage value before inserting into SVG to prevent XSS
+    if badge != unknown_badge:
+        escaped_coverage = escape(str(coverage), quote=True)
+        return badge.format(color.hex, escaped_coverage).strip()
+    else:
+        return badge
 
 
 def format_coverage_precision(coverage: float | None, precision: int):
@@ -77,6 +82,9 @@ def get_bundle_badge(bundle_size_bytes: int | None, precision: int):
 """
 
     bundle_size_string = format_bundle_bytes(bundle_size_bytes, precision)
+    # Escape the bundle size string to prevent XSS
+    escaped_bundle_size = escape(bundle_size_string, quote=True)
+
     char_width = 7  # approximate, looks good on all reasonable inputs
     width_in_pixels = len(bundle_size_string) * char_width
     static_width = 57  # width of static elements in the svg (text + margins)
@@ -99,8 +107,8 @@ def get_bundle_badge(bundle_size_bytes: int | None, precision: int):
     <g fill="#fff" text-anchor="left" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="11">
         <text x="5" y="15" fill="#010101" fill-opacity=".3">bundle</text>
         <text x="5" y="14">bundle</text>
-        <text x="52" y="15" fill="#010101" fill-opacity=".3">{bundle_size_string}</text>
-        <text x="52" y="14">{bundle_size_string}</text>
+        <text x="52" y="15" fill="#010101" fill-opacity=".3">{escaped_bundle_size}</text>
+        <text x="52" y="14">{escaped_bundle_size}</text>
     </g>
 </svg>
 """
