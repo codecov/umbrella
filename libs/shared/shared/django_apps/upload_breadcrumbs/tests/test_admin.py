@@ -1063,8 +1063,8 @@ class UploadBreadcrumbAdminResendTest(TestCase):
                 {
                     "milestone": Milestones.UPLOAD_COMPLETE.value,
                 },
-                None,
-                str,
+                ["🔄 Resend", 'class="button"', "onclick="],
+                SafeString,
                 "successful upload",
             ),
         ]
@@ -1079,16 +1079,13 @@ class UploadBreadcrumbAdminResendTest(TestCase):
                 breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
                 result = self.admin.resend_upload_button(breadcrumb)
 
-                if expected_contains is None:
-                    self.assertEqual(result, "-", f"Failed for: {description}")
-                else:
-                    self.assertIsInstance(
-                        result, expected_type, f"Failed for: {description}"
+                self.assertIsInstance(
+                    result, expected_type, f"Failed for: {description}"
+                )
+                for expected_content in expected_contains:
+                    self.assertIn(
+                        expected_content, result, f"Failed for: {description}"
                     )
-                    for expected_content in expected_contains:
-                        self.assertIn(
-                            expected_content, result, f"Failed for: {description}"
-                        )
 
     def test_resend_upload_action_scenarios(self):
         """Test resend_upload_action with various scenarios."""
@@ -1120,10 +1117,7 @@ class UploadBreadcrumbAdminResendTest(TestCase):
                 },
                 "abcdef1234567890",
                 True,
-                [
-                    "✅ This upload does not appear to have failed",
-                    "Resend option is not available",
-                ],
+                ["🔄 Resend Upload", 'class="button default"', "abcdef1", "⚠️ Note:"],
                 "successful upload",
             ),
             ({}, "abcdef1234567890", False, None, "new object without pk"),
@@ -1170,22 +1164,27 @@ class UploadBreadcrumbAdminResendTest(TestCase):
             request, "Upload breadcrumb not found."
         )
 
-    @patch("django.contrib.messages.error")
-    def test_resend_upload_view_with_non_failed_upload(self, mock_messages_error):
-        """Test resend_upload_view handles non-failed uploads."""
+    @patch("django.contrib.messages.success")
+    def test_resend_upload_view_with_non_failed_upload(self, mock_messages_success):
+        """Test resend_upload_view allows resending non-failed uploads."""
         breadcrumb_data = {
             "milestone": Milestones.UPLOAD_COMPLETE.value,
         }
-        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+        breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data=breadcrumb_data, commit_sha="abcdef1234567890"
+        )
         request = MagicMock()
         request.user = self.user
 
-        with patch.object(self.admin, "get_object", return_value=breadcrumb):
+        with (
+            patch.object(self.admin, "get_object", return_value=breadcrumb),
+            patch.object(self.admin, "_resend_upload", return_value=(True, None)),
+        ):
             response = self.admin.resend_upload_view(request, str(breadcrumb.id))
 
-        mock_messages_error.assert_called_once_with(
-            request, "This upload does not appear to have failed."
-        )
+        mock_messages_success.assert_called_once()
+        success_message = mock_messages_success.call_args[0][1]
+        self.assertIn("Upload resend triggered successfully", success_message)
 
     @patch("django.contrib.messages.success")
     def test_resend_upload_view_successful_resend(self, mock_messages_success):
