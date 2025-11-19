@@ -560,9 +560,6 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
     @admin.display(description="Actions", ordering=None)
     def resend_upload_button(self, obj: UploadBreadcrumb) -> str:
         """Display resend button in the list view for failed uploads."""
-        if not self._is_failed_upload(obj):
-            return "-"
-
         resend_url = reverse(
             "admin:upload_breadcrumbs_uploadbreadcrumb_resend_upload", args=[obj.id]
         )
@@ -577,24 +574,16 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
         if not obj.pk:  # New object
             return "-"
 
-        html_parts = []
-
-        if self._is_failed_upload(obj):
-            resend_url = reverse(
-                "admin:upload_breadcrumbs_uploadbreadcrumb_resend_upload", args=[obj.id]
-            )
-            html_parts.append(
-                f'<a class="button default" href="{resend_url}" '
-                f"onclick=\"return confirm('Are you sure you want to resend this upload for commit {obj.commit_sha[:7]}?')\">🔄 Resend Upload</a>"
-                "<br><br>"
-                "<div><strong>⚠️ Note:</strong> This will create a new upload task for the same commit and repository. "
-                "The original upload data may no longer be available in storage.</div>"
-            )
-        else:
-            html_parts.append(
-                "<div>✅ This upload does not appear to have failed. Resend option is not available.</div>"
-            )
-
+        resend_url = reverse(
+            "admin:upload_breadcrumbs_uploadbreadcrumb_resend_upload", args=[obj.id]
+        )
+        html_parts = [
+            f'<a class="button default" href="{resend_url}" '
+            f"onclick=\"return confirm('Are you sure you want to resend this upload for commit {obj.commit_sha[:7]}?')\">🔄 Resend Upload</a>"
+            "<br><br>"
+            "<div><strong>⚠️ Note:</strong> This will create a new upload task for the same commit and repository. "
+            "The original upload data may no longer be available in storage.</div>"
+        ]
         return format_html("".join(html_parts))
 
     def _is_failed_upload(self, obj: UploadBreadcrumb) -> bool:
@@ -622,10 +611,6 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             breadcrumb = self.get_object(request, object_id)
             if not breadcrumb:
                 messages.error(request, "Upload breadcrumb not found.")
-                return redirect("admin:upload_breadcrumbs_uploadbreadcrumb_changelist")
-
-            if not self._is_failed_upload(breadcrumb):
-                messages.error(request, "This upload does not appear to have failed.")
                 return redirect("admin:upload_breadcrumbs_uploadbreadcrumb_changelist")
 
             success, error_message = self._resend_upload(breadcrumb, request.user)
