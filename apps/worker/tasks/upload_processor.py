@@ -5,6 +5,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session as DbSession
 
 from app import celery_app
+from helpers.exceptions import ReportEmptyError, ReportExpiredException
 from services.processing.processing import UploadArguments, process_upload
 from services.report import ProcessingError
 from shared.celery_config import upload_processor_task_name
@@ -77,25 +78,45 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
         )
 
         def on_processing_error(error: ProcessingError):
+            error_class = None
+            error_text = None
+            max_retries = None
             ub_error = None
-            ub_error_text = None
+
             match error.code:
                 case UploadErrorCode.FILE_NOT_IN_STORAGE:
+                    error_class = FileNotInStorageError
+                    error_text = "File not found in storage."
+                    max_retries = MAX_FILE_NOT_FOUND_RETRIES
                     ub_error = Errors.FILE_NOT_IN_STORAGE
                 case UploadErrorCode.REPORT_EXPIRED:
+                    error_class = ReportExpiredException
+                    error_text = "Report expired and cannot be processed."
+                    max_retries = MAX_RETRIES
                     ub_error = Errors.REPORT_EXPIRED
                 case UploadErrorCode.REPORT_EMPTY:
+                    error_class = ReportEmptyError
+                    error_text = "Report is empty and cannot be processed."
+                    max_retries = MAX_RETRIES
                     ub_error = Errors.REPORT_EMPTY
                 case UploadErrorCode.PROCESSING_TIMEOUT:
+                    error_class = SoftTimeLimitExceeded
+                    error_text = "Task timed out while processing."
+                    max_retries = MAX_RETRIES
                     ub_error = Errors.TASK_TIMED_OUT
                 case (
                     UploadErrorCode.UNSUPPORTED_FILE_FORMAT
                     | UploadErrorCode.UNKNOWN_PROCESSING
                 ):
+                    error_class = Exception
+                    error_text = "Unsupported coverage report format."
+                    max_retries = MAX_RETRIES
                     ub_error = Errors.UNSUPPORTED_FORMAT
                 case _:
+                    error_class = Exception
+                    error_text = str(error.params)
+                    max_retries = MAX_RETRIES
                     ub_error = Errors.UNKNOWN
-                    ub_error_text = str(error.params)
 
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
@@ -103,14 +124,20 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 milestone=Milestones.PROCESSING_UPLOAD,
                 upload_ids=[arguments["upload_id"]],
                 error=ub_error,
-                error_text=ub_error_text,
+                error_text=error_text,
             )
 
             # the error is only retried on the first pass
-            if error.is_retryable and self.request.retries == 0:
+            if error.is_retryable and self.request.retries < max_retries:
+                countdown = FIRST_RETRY_DELAY * (2 ** self.request.retries)
                 log.info(
                     "Scheduling a retry due to retryable error",
-                    extra={"error": error.as_dict()},
+                    extra={
+                        "countdown": countdown,
+                        "max_retries": max_retries,
+                        "retry_count": self.request.retries,
+                        "error": error.as_dict(),
+                    },
                 )
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
@@ -119,20 +146,18 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                     upload_ids=[arguments["upload_id"]],
                     error=Errors.INTERNAL_RETRYING,
                 )
-                self.retry(max_retries=MAX_RETRIES, countdown=FIRST_RETRY_DELAY)
-            elif (
-                error.is_retryable
-                and self.request.retries >= MAX_FILE_NOT_FOUND_RETRIES
-            ):
+                self.retry(max_retries=max_retries, countdown=countdown)
+            elif error.is_retryable and self.request.retries >= max_retries:
                 sentry_sdk.capture_exception(
-                    FileNotInStorageError("File not found in storage"),
+                    error_class(error_text),
                     contexts={
                         "upload_details": {
-                            "repoid": repoid,
                             "commitid": commitid,
-                            "upload_id": arguments.get("upload_id"),
-                            "storage_location": error.params.get("location"),
+                            "error_code": error.code,
+                            "repoid": repoid,
                             "retry_count": self.request.retries,
+                            "storage_location": error.params.get("location"),
+                            "upload_id": arguments.get("upload_id"),
                         }
                     },
                 )
