@@ -129,7 +129,7 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
 
             # the error is only retried on the first pass
             if error.is_retryable and self.request.retries < max_retries:
-                countdown = FIRST_RETRY_DELAY * (2 ** self.request.retries)
+                countdown = FIRST_RETRY_DELAY * (2**self.request.retries)
                 log.info(
                     "Scheduling a retry due to retryable error",
                     extra={
