@@ -286,11 +286,37 @@ CACHES = {
 
 # Session configuration
 
-# Controls how the X-Forwarded-For header is processed to get client IP addresses.
-# Set to how many trusted proxies you have in front of the application (must be
-# a positive integer). Defaults to trusting all proxies (this is unsafe unless
-# your ingress proxy strips X-Forwarded-For headers).
-TRUSTED_PROXY_DEPTH = get_config("setup", "http", "trusted_proxy_depth", default=0)
+# SECURITY: X-Forwarded-For header processing configuration
+# These settings control how client IP addresses are extracted from requests
+# that pass through reverse proxies or load balancers.
+
+# TRUSTED_PROXY_COUNT: Number of proxies in front of the application that append
+# to the X-Forwarded-For header. The library will traverse this many proxies from
+# the right side of the XFF chain to find the real client IP.
+# - Set to 0 (default) to only trust REMOTE_ADDR (safest for most setups)
+# - Set to N where N is the exact number of trusted proxies you control
+# Example: nginx -> load balancer -> app = set to 2
+TRUSTED_PROXY_COUNT = get_config("setup", "http", "trusted_proxy_count", default=0)
+
+# TRUSTED_PROXY_IPS: List of IP addresses of trusted proxies that are allowed
+# to set X-Forwarded-For headers. If specified, only requests from these IPs
+# will have their XFF headers processed.
+# Example: ["10.0.0.1", "192.168.1.1"]
+TRUSTED_PROXY_IPS = get_config("setup", "http", "trusted_proxy_ips", default=[])
+
+# Backward compatibility: Support old "trusted_proxy_depth" config key
+# DEPRECATED: Use trusted_proxy_count instead
+_legacy_depth = get_config("setup", "http", "trusted_proxy_depth", default=None)
+if _legacy_depth is not None:
+    import warnings
+
+    warnings.warn(
+        "Config key 'setup.http.trusted_proxy_depth' is deprecated. "
+        "Use 'setup.http.trusted_proxy_count' instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    TRUSTED_PROXY_COUNT = _legacy_depth
 
 SESSION_COOKIE_DOMAIN = get_config(
     "setup", "http", "cookies_domain", default=".codecov.io"
