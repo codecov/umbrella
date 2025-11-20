@@ -300,6 +300,7 @@ class AccountViewSetTests(APITestCase):
                     "plan": "Pro",
                     "quantity": schedule_params["quantity"],
                     "billing_rate": "annually",
+                    "base_unit_price": 10,
                 },
             },
             "student_count": 0,
@@ -446,6 +447,7 @@ class AccountViewSetTests(APITestCase):
                     "quantity": schedule_params["quantity"],
                     "start_date": schedule_params["start_date"],
                     "billing_rate": "annually",
+                    "base_unit_price": 10,
                 },
             },
             "uses_invoice": False,
@@ -585,6 +587,7 @@ class AccountViewSetTests(APITestCase):
                 "plan": None,
                 "quantity": schedule_params["quantity"],
                 "billing_rate": None,
+                "base_unit_price": None,
             },
         }
         log_mock.warning.assert_called_once()

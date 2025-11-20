@@ -213,6 +213,7 @@ class StripeScheduledPhaseSerializer(serializers.Serializer):
     plan = serializers.SerializerMethodField()
     quantity = serializers.SerializerMethodField()
     billing_rate = serializers.SerializerMethodField()
+    base_unit_price = serializers.SerializerMethodField()
 
     def _get_plan_object(self, phase: dict[str, Any]) -> Plan | None:
         """Helper method to get and cache the Plan object."""
@@ -240,6 +241,10 @@ class StripeScheduledPhaseSerializer(serializers.Serializer):
     def get_billing_rate(self, phase: dict[str, Any]) -> str | None:
         plan = self._get_plan_object(phase)
         return plan.billing_rate if plan else None
+
+    def get_base_unit_price(self, phase: dict[str, Any]) -> int | None:
+        plan = self._get_plan_object(phase)
+        return plan.base_unit_price if plan else None
 
 
 class ScheduleDetailSerializer(serializers.Serializer):
