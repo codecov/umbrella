@@ -40,6 +40,11 @@ from tasks.upload_processor import UploadProcessorTask
 here = Path(__file__)
 
 
+def get_error_text(error_code: UploadErrorCode) -> str:
+    """Helper to get error text from ProcessingError class"""
+    return ProcessingError(code=error_code, params={}).error_text
+
+
 @pytest.fixture
 def mock_self_app(mocker, celery_app):
     mock_app = celery_app
@@ -332,6 +337,7 @@ class TestUploadProcessorTask:
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.PROCESSING_UPLOAD,
                             error=Errors.UNSUPPORTED_FORMAT,
+                            error_text=get_error_text(UploadErrorCode.UNSUPPORTED_FILE_FORMAT),
                         ),
                         "upload_ids": [upload.id_],
                         "sentry_trace_id": None,
@@ -453,6 +459,7 @@ class TestUploadProcessorTask:
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.PROCESSING_UPLOAD,
                             error=Errors.REPORT_EXPIRED,
+                            error_text=get_error_text(UploadErrorCode.REPORT_EXPIRED),
                         ),
                         "upload_ids": [upload_2.id_],
                         "sentry_trace_id": None,
@@ -519,6 +526,7 @@ class TestUploadProcessorTask:
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.PROCESSING_UPLOAD,
                             error=Errors.FILE_NOT_IN_STORAGE,
+                            error_text=get_error_text(UploadErrorCode.FILE_NOT_IN_STORAGE),
                         ),
                         "upload_ids": [upload.id_],
                         "sentry_trace_id": None,
@@ -580,6 +588,7 @@ class TestUploadProcessorTask:
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.PROCESSING_UPLOAD,
                             error=Errors.FILE_NOT_IN_STORAGE,
+                            error_text=get_error_text(UploadErrorCode.FILE_NOT_IN_STORAGE),
                         ),
                         "upload_ids": [upload.id_],
                         "sentry_trace_id": None,
@@ -731,6 +740,7 @@ class TestUploadProcessorTask:
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.PROCESSING_UPLOAD,
                             error=Errors.REPORT_EMPTY,
+                            error_text=get_error_text(UploadErrorCode.REPORT_EMPTY),
                         ),
                         "upload_ids": [upload_2.id_],
                         "sentry_trace_id": None,
@@ -813,6 +823,7 @@ class TestUploadProcessorTask:
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.PROCESSING_UPLOAD,
                             error=Errors.REPORT_EMPTY,
+                            error_text=get_error_text(UploadErrorCode.REPORT_EMPTY),
                         ),
                         "upload_ids": [upload_1.id_],
                         "sentry_trace_id": None,
@@ -863,6 +874,7 @@ class TestUploadProcessorTask:
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.PROCESSING_UPLOAD,
                             error=Errors.UNSUPPORTED_FORMAT,
+                            error_text=get_error_text(UploadErrorCode.UNKNOWN_PROCESSING),
                         ),
                         "upload_ids": [upload_2.id_],
                         "sentry_trace_id": None,
@@ -931,6 +943,7 @@ class TestUploadProcessorTask:
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.PROCESSING_UPLOAD,
                             error=Errors.TASK_TIMED_OUT,
+                            error_text=get_error_text(UploadErrorCode.PROCESSING_TIMEOUT),
                         ),
                         "upload_ids": [upload_1.id_],
                         "sentry_trace_id": None,

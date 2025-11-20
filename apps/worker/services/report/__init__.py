@@ -63,6 +63,60 @@ class ProcessingError:
     def as_dict(self) -> ProcessingErrorDict:
         return {"code": self.code, "params": self.params}
 
+    @property
+    def error_class(self) -> type[Exception]:
+        return self._get_error_details()["error_class"]
+
+    @property
+    def error_text(self) -> str:
+        return self._get_error_details()["error_text"]
+
+    @property
+    def max_retries(self) -> int:
+        return self._get_error_details()["max_retries"]
+
+    def _get_error_details(self) -> dict[str, Any]:
+        match self.code:
+            case UploadErrorCode.FILE_NOT_IN_STORAGE:
+                return {
+                    "error_class": FileNotInStorageError,
+                    "error_text": "File not found in storage.",
+                    "max_retries": 1,
+                }
+            case UploadErrorCode.REPORT_EXPIRED:
+                return {
+                    "error_class": ReportExpiredException,
+                    "error_text": "Report expired and cannot be processed.",
+                    "max_retries": 5,
+                }
+            case UploadErrorCode.REPORT_EMPTY:
+                return {
+                    "error_class": ReportEmptyError,
+                    "error_text": "Report is empty and cannot be processed.",
+                    "max_retries": 5,
+                }
+            case UploadErrorCode.PROCESSING_TIMEOUT:
+                return {
+                    "error_class": SoftTimeLimitExceeded,
+                    "error_text": "Task timed out while processing.",
+                    "max_retries": 5,
+                }
+            case (
+                UploadErrorCode.UNSUPPORTED_FILE_FORMAT
+                | UploadErrorCode.UNKNOWN_PROCESSING
+            ):
+                return {
+                    "error_class": Exception,
+                    "error_text": "Unsupported coverage report format.",
+                    "max_retries": 5,
+                }
+            case _:
+                return {
+                    "error_class": Exception,
+                    "error_text": str(self.params),
+                    "max_retries": 5,
+                }
+
 
 @dataclass
 class ProcessingResult:
