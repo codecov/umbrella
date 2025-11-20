@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import ANY, call
 
@@ -180,6 +181,7 @@ class TestUploadFinisherTask:
             branch="thisbranch",
             ci_passed=True,
             repository__branch="thisbranch",
+            repository__updatestamp=None,
             repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
             repository__author__username="ThiagoCodecov",
             repository__author__service="github",
@@ -207,6 +209,11 @@ class TestUploadFinisherTask:
         assert result == {"notifications_called": True}
         dbsession.refresh(commit)
         assert commit.message == "dsidsahdsahdsa"
+
+        # Verify repository timestamp is updated
+        dbsession.refresh(commit.repository)
+        assert commit.repository.updatestamp is not None
+        assert (datetime.now(tz=UTC) - commit.repository.updatestamp).seconds < 60
 
         mock_checkpoint_submit.assert_any_call(
             "batch_processing_duration",
@@ -394,7 +401,7 @@ class TestUploadFinisherTask:
             ]
         )
 
-    def test_should_call_notifications(self, dbsession):
+    def test_should_call_notifications(self, dbsession, mocker):
         commit_yaml = {"codecov": {"max_report_age": "1y ago"}}
         commit = CommitFactory.create(
             message="dsidsahdsahdsa",
@@ -432,7 +439,7 @@ class TestUploadFinisherTask:
             == ShouldCallNotifyResult.DO_NOT_NOTIFY
         )
 
-    def test_should_call_notifications_manual_trigger_off(self, dbsession):
+    def test_should_call_notifications_manual_trigger_off(self, dbsession, mocker):
         commit_yaml = {
             "codecov": {"max_report_age": "1y ago", "notify": {"manual_trigger": False}}
         }
@@ -463,7 +470,7 @@ class TestUploadFinisherTask:
         ],
     )
     def test_should_call_notifications_no_successful_reports(
-        self, dbsession, notify_error, result
+        self, dbsession, mocker, notify_error, result
     ):
         commit_yaml = {
             "codecov": {
@@ -542,6 +549,44 @@ class TestUploadFinisherTask:
                 2 * [{"arguments": {"url": "url"}, "successful": True}],
             )
             == ShouldCallNotifyResult.NOTIFY
+        )
+
+    def test_should_call_notifications_with_pending_uploads_in_db(
+        self, dbsession, mocker
+    ):
+        """Test that notifications are not called when DB shows pending uploads"""
+        commit_yaml = {"codecov": {"max_report_age": "1y ago"}}
+        commit = CommitFactory.create(
+            message="dsidsahdsahdsa",
+            commitid="abf6d4df662c47e32460020ab14abf9303581429",
+            repository__author__unencrypted_oauth_token="testulk3d54rlhxkjyzomq2wh8b7np47xabcrkx8",
+            repository__author__username="ThiagoCodecov",
+            repository__yaml=commit_yaml,
+        )
+        # Create uploads in UPLOADED state (still being processed)
+        upload1 = UploadFactory.create(
+            report__commit=commit,
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+        )
+        upload2 = UploadFactory.create(
+            report__commit=commit,
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+        )
+        dbsession.add(commit)
+        dbsession.add(upload1)
+        dbsession.add(upload2)
+        dbsession.flush()
+
+        assert (
+            UploadFinisherTask().should_call_notifications(
+                commit,
+                commit_yaml,
+                [{"arguments": {"url": "url"}, "successful": True}],
+                db_session=dbsession,
+            )
+            == ShouldCallNotifyResult.DO_NOT_NOTIFY
         )
 
     def test_finish_reports_processing(self, dbsession, mocker, mock_self_app):

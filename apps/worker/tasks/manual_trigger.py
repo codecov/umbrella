@@ -92,10 +92,12 @@ class ManualTriggerTask(
                 | (CommitReport.report_type == ReportType.COVERAGE.value),
             )
         )
+
         still_processing = 0
         for upload in uploads:
             if not upload.state or upload.state_id == UploadState.UPLOADED.db_id:
                 still_processing += 1
+
         if still_processing == 0:
             self.trigger_notifications(repoid, commitid, commit_yaml)
             if commit.pullid:
@@ -108,7 +110,12 @@ class ManualTriggerTask(
             # reschedule the task
             try:
                 log.info(
-                    "Retrying ManualTriggerTask. Some uploads are still being processed."
+                    "Retrying ManualTriggerTask. Some uploads are still being processed.",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "uploads_still_processing": still_processing,
+                    },
                 )
                 retry_in = 60 * 3**self.request.retries
                 self.retry(max_retries=5, countdown=retry_in)
@@ -116,10 +123,10 @@ class ManualTriggerTask(
                 log.warning(
                     "Not attempting to wait for all uploads to get processed since we already retried too many times",
                     extra={
-                        "repoid": commit.repoid,
                         "commit": commit.commitid,
                         "max_retries": 5,
                         "next_countdown_would_be": retry_in,
+                        "repoid": commit.repoid,
                     },
                 )
                 return {
