@@ -2,7 +2,6 @@ import logging
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery.exceptions import MaxRetriesExceededError
 from sqlalchemy import and_
 from sqlalchemy.orm.session import Session
 
@@ -174,15 +173,20 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         *args,
         **kwargs,
     ):
-        try:
-            self._call_upload_breadcrumb_task(
-                commit_sha=commit.commitid,
-                repo_id=commit.repoid,
-                milestone=Milestones.NOTIFICATIONS_SENT,
-                error=Errors.INTERNAL_RETRYING,
-            )
-            self.retry(max_retries=max_retries, countdown=countdown)
-        except MaxRetriesExceededError:
+        self._call_upload_breadcrumb_task(
+            commit_sha=commit.commitid,
+            repo_id=commit.repoid,
+            milestone=Milestones.NOTIFICATIONS_SENT,
+            error=Errors.INTERNAL_RETRYING,
+        )
+        if not self.safe_retry(max_retries=max_retries, countdown=countdown):
+            # Handle both UserYaml objects and dicts
+            yaml_dict = None
+            if current_yaml:
+                if hasattr(current_yaml, "to_dict"):
+                    yaml_dict = current_yaml.to_dict()
+                elif isinstance(current_yaml, dict):
+                    yaml_dict = current_yaml
             log.warning(
                 "Not attempting to retry notifications since we already retried too many times",
                 extra={
@@ -190,7 +194,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     "commit": commit.commitid,
                     "max_retries": max_retries,
                     "next_countdown_would_be": countdown,
-                    "current_yaml": current_yaml.to_dict(),
+                    "current_yaml": yaml_dict,
                 },
             )
             self.log_checkpoint(UploadFlow.NOTIF_TOO_MANY_RETRIES)
