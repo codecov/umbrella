@@ -10,7 +10,6 @@ from services.report import ProcessingError
 from shared.celery_config import upload_processor_task_name
 from shared.config import get_config
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
-from shared.storage.exceptions import FileNotInStorageError
 from shared.upload.constants import UploadErrorCode
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
@@ -77,8 +76,7 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
         )
 
         def on_processing_error(error: ProcessingError):
-            ub_error = None
-            ub_error_text = None
+            # Map error codes to breadcrumb errors
             match error.code:
                 case UploadErrorCode.FILE_NOT_IN_STORAGE:
                     ub_error = Errors.FILE_NOT_IN_STORAGE
@@ -95,7 +93,6 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                     ub_error = Errors.UNSUPPORTED_FORMAT
                 case _:
                     ub_error = Errors.UNKNOWN
-                    ub_error_text = str(error.params)
 
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
@@ -103,14 +100,20 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 milestone=Milestones.PROCESSING_UPLOAD,
                 upload_ids=[arguments["upload_id"]],
                 error=ub_error,
-                error_text=ub_error_text,
+                error_text=error.error_text,
             )
 
             # the error is only retried on the first pass
-            if error.is_retryable and self.request.retries == 0:
+            if error.is_retryable and self.request.retries < error.max_retries:
+                countdown = FIRST_RETRY_DELAY * (2**self.request.retries)
                 log.info(
                     "Scheduling a retry due to retryable error",
-                    extra={"error": error.as_dict()},
+                    extra={
+                        "countdown": countdown,
+                        "max_retries": error.max_retries,
+                        "retry_count": self.request.retries,
+                        "error": error.as_dict(),
+                    },
                 )
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
@@ -119,20 +122,18 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                     upload_ids=[arguments["upload_id"]],
                     error=Errors.INTERNAL_RETRYING,
                 )
-                self.retry(max_retries=MAX_RETRIES, countdown=FIRST_RETRY_DELAY)
-            elif (
-                error.is_retryable
-                and self.request.retries >= MAX_FILE_NOT_FOUND_RETRIES
-            ):
+                self.retry(max_retries=error.max_retries, countdown=countdown)
+            elif error.is_retryable and self.request.retries >= error.max_retries:
                 sentry_sdk.capture_exception(
-                    FileNotInStorageError("File not found in storage"),
+                    error.error_class(error.error_text),
                     contexts={
                         "upload_details": {
-                            "repoid": repoid,
                             "commitid": commitid,
-                            "upload_id": arguments.get("upload_id"),
-                            "storage_location": error.params.get("location"),
+                            "error_code": error.code,
+                            "repoid": repoid,
                             "retry_count": self.request.retries,
+                            "storage_location": error.params.get("location"),
+                            "upload_id": arguments.get("upload_id"),
                         }
                     },
                 )
