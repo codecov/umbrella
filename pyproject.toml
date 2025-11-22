@@ -31,7 +31,6 @@ shared = [
     "django>=4.2.25,<5.0.0",
     "google-auth>=2.21.1",
     "google-cloud-pubsub>=2.27.1",
-    "google-cloud-storage>=2.18.0",
     "httpx>=0.23.1",
     "ijson>=3.2.3",
     "minio>=7.2.15",
