@@ -1,5 +1,6 @@
 import logging
 
+import sentry_sdk
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session as DbSession
 
@@ -16,6 +17,7 @@ from tasks.base import BaseCodecovTask
 log = logging.getLogger(__name__)
 
 MAX_RETRIES = 5
+MAX_FILE_NOT_FOUND_RETRIES = 1
 FIRST_RETRY_DELAY = 20
 
 
@@ -74,8 +76,7 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
         )
 
         def on_processing_error(error: ProcessingError):
-            ub_error = None
-            ub_error_text = None
+            # Map error codes to breadcrumb errors
             match error.code:
                 case UploadErrorCode.FILE_NOT_IN_STORAGE:
                     ub_error = Errors.FILE_NOT_IN_STORAGE
@@ -92,7 +93,6 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                     ub_error = Errors.UNSUPPORTED_FORMAT
                 case _:
                     ub_error = Errors.UNKNOWN
-                    ub_error_text = str(error.params)
 
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
@@ -100,14 +100,20 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 milestone=Milestones.PROCESSING_UPLOAD,
                 upload_ids=[arguments["upload_id"]],
                 error=ub_error,
-                error_text=ub_error_text,
+                error_text=error.error_text,
             )
 
             # the error is only retried on the first pass
-            if error.is_retryable and self.request.retries == 0:
+            if error.is_retryable and self.request.retries < error.max_retries:
+                countdown = FIRST_RETRY_DELAY * (2**self.request.retries)
                 log.info(
                     "Scheduling a retry due to retryable error",
-                    extra={"error": error.as_dict()},
+                    extra={
+                        "countdown": countdown,
+                        "max_retries": error.max_retries,
+                        "retry_count": self.request.retries,
+                        "error": error.as_dict(),
+                    },
                 )
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
@@ -116,7 +122,21 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                     upload_ids=[arguments["upload_id"]],
                     error=Errors.INTERNAL_RETRYING,
                 )
-                self.retry(max_retries=MAX_RETRIES, countdown=FIRST_RETRY_DELAY)
+                self.retry(max_retries=error.max_retries, countdown=countdown)
+            elif error.is_retryable and self.request.retries >= error.max_retries:
+                sentry_sdk.capture_exception(
+                    error.error_class(error.error_text),
+                    contexts={
+                        "upload_details": {
+                            "commitid": commitid,
+                            "error_code": error.code,
+                            "repoid": repoid,
+                            "retry_count": self.request.retries,
+                            "storage_location": error.params.get("location"),
+                            "upload_id": arguments.get("upload_id"),
+                        }
+                    },
+                )
 
         try:
             return process_upload(

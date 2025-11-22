@@ -526,6 +526,15 @@ class BaseCeleryConfig:
                 default=task_default_queue,
             )
         },
+        f"app.tasks.{TaskConfigGroup.bundle_analysis.value}.*": {
+            "queue": get_config(
+                "setup",
+                "tasks",
+                TaskConfigGroup.bundle_analysis.value,
+                "queue",
+                default=task_default_queue,
+            )
+        },
         comment_task_name: {
             "queue": get_config(
                 "setup",

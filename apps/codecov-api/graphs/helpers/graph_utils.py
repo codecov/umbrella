@@ -1,3 +1,4 @@
+from html import escape
 from math import cos, pi, sin
 
 style_n_defs = """
@@ -86,13 +87,16 @@ def _svg_rect(x, y, width, height, fill, stroke, stroke_width, _class=None, titl
             )
         )
 
+    # Escape the title to prevent XSS
+    escaped_title = escape(title, quote=True)
+
     return (
         '<rect x="{0}" y="{1}" width="{2}" height="{3}" '
         'fill="{4}" stroke="{5}" stroke-width="{6}" class="{8} tooltipped" '
         'data-content="{7}">'
         "<title>{7}</title>"
         "</rect>".format(
-            x, y, width, height, fill, stroke, stroke_width, title, _class or ""
+            x, y, width, height, fill, stroke, stroke_width, escaped_title, _class or ""
         )
     )
 

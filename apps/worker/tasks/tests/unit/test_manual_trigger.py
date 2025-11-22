@@ -34,7 +34,12 @@ class TestUploadCompletionTask:
 
         dbsession.add(commit)
 
-        upload = UploadFactory.create(report__commit=commit)
+        # Upload is complete in database (state = PROCESSED)
+        upload = UploadFactory.create(
+            report__commit=commit,
+            state="processed",
+            state_id=UploadState.PROCESSED.db_id,
+        )
         compared_to = CommitFactory.create(repository=commit.repository)
         pull.compared_to = compared_to.commitid
 
@@ -105,3 +110,45 @@ class TestUploadCompletionTask:
                 "notifications_called": False,
                 "message": "Uploads are still in process and the task got retired so many times. Not triggering notifications.",
             } == result
+
+    def test_manual_upload_completion_trigger_with_uploaded_state(
+        self,
+        mocker,
+        mock_configuration,
+        dbsession,
+        mock_storage,
+        mock_redis,
+        celery_app,
+    ):
+        """Test that task retries when DB shows uploads in UPLOADED state"""
+        mocker.patch.object(
+            ManualTriggerTask,
+            "app",
+            celery_app,
+        )
+        commit = CommitFactory.create()
+        # One upload is still in UPLOADED state (being processed)
+        upload1 = UploadFactory.create(
+            report__commit=commit,
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+        )
+        # Another upload is complete
+        upload2 = UploadFactory.create(
+            report__commit=commit,
+            state="processed",
+            state_id=UploadState.PROCESSED.db_id,
+        )
+        dbsession.add(commit)
+        dbsession.add(upload1)
+        dbsession.add(upload2)
+        dbsession.flush()
+
+        # Should retry because DB shows upload still in UPLOADED state
+        with pytest.raises(Retry):
+            ManualTriggerTask().run_impl(
+                dbsession,
+                repoid=commit.repoid,
+                commitid=commit.commitid,
+                current_yaml={},
+            )

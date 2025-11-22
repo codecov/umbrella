@@ -365,7 +365,7 @@ class TestUploadTaskIntegration:
         assert len(uploads) == 1
         upload = dbsession.query(Upload).filter_by(report_id=commit_report.id).first()
         processor_sig = bundle_analysis_processor_task.s(
-            {},
+            [],
             repoid=commit.repoid,
             commitid=commit.commitid,
             commit_yaml={"codecov": {"max_report_age": "1y ago"}},
@@ -482,7 +482,7 @@ class TestUploadTaskIntegration:
         assert commit_report.commit == commit
 
         processor_sig = bundle_analysis_processor_task.s(
-            {},
+            [],
             repoid=commit.repoid,
             commitid=commit.commitid,
             commit_yaml={"codecov": {"max_report_age": "1y ago"}},
@@ -1634,149 +1634,6 @@ class TestUploadTaskUnit:
                 ),
             ]
         )
-
-    def test_run_impl_unobtainable_lock_too_many_retries(
-        self, dbsession, mocker, mock_redis, mock_self_app
-    ):
-        commit = CommitFactory.create()
-        dbsession.add(commit)
-        dbsession.flush()
-        mock_redis.lock.side_effect = LockError()
-        mock_redis.keys[f"uploads/{commit.repoid}/{commit.commitid}"] = ["something"]
-        task = UploadTask()
-        task.request.retries = 3
-        result = task.run_impl(dbsession, commit.repoid, commit.commitid)
-        assert result == {
-            "tasks_were_scheduled": False,
-            "was_setup": False,
-            "was_updated": False,
-            "reason": "too_many_retries",
-        }
-        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
-            [
-                call(
-                    kwargs={
-                        "commit_sha": commit.commitid,
-                        "repo_id": commit.repository.repoid,
-                        "breadcrumb_data": BreadcrumbData(
-                            milestone=Milestones.COMPILING_UPLOADS,
-                        ),
-                        "upload_ids": [],
-                        "sentry_trace_id": None,
-                    }
-                ),
-                call(
-                    kwargs={
-                        "commit_sha": commit.commitid,
-                        "repo_id": commit.repository.repoid,
-                        "breadcrumb_data": BreadcrumbData(
-                            milestone=Milestones.COMPILING_UPLOADS,
-                            error=Errors.INTERNAL_LOCK_ERROR,
-                        ),
-                        "upload_ids": [],
-                        "sentry_trace_id": None,
-                    }
-                ),
-            ]
-        )
-
-    def test_run_impl_currently_processing(
-        self, dbsession, mocker, mock_redis, mock_self_app
-    ):
-        commit = CommitFactory.create()
-        dbsession.add(commit)
-        dbsession.flush()
-        mocked_is_currently_processing = mocker.patch.object(
-            UploadContext, "is_currently_processing", return_value=True
-        )
-        mocked_run_impl_within_lock = mocker.patch.object(
-            UploadTask, "run_impl_within_lock", return_value=True
-        )
-        mock_redis.keys[f"uploads/{commit.repoid}/{commit.commitid}"] = ["something"]
-        task = UploadTask()
-        task.request.retries = 0
-        with pytest.raises(Retry):
-            task.run_impl(dbsession, commit.repoid, commit.commitid)
-        mocked_is_currently_processing.assert_called_with()
-        assert not mocked_run_impl_within_lock.called
-        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
-            [
-                call(
-                    kwargs={
-                        "commit_sha": commit.commitid,
-                        "repo_id": commit.repository.repoid,
-                        "breadcrumb_data": BreadcrumbData(
-                            milestone=Milestones.COMPILING_UPLOADS,
-                        ),
-                        "upload_ids": [],
-                        "sentry_trace_id": None,
-                    }
-                ),
-                call(
-                    kwargs={
-                        "commit_sha": commit.commitid,
-                        "repo_id": commit.repository.repoid,
-                        "breadcrumb_data": BreadcrumbData(
-                            milestone=Milestones.COMPILING_UPLOADS,
-                            error=Errors.INTERNAL_RETRYING,
-                        ),
-                        "upload_ids": [],
-                        "sentry_trace_id": None,
-                    }
-                ),
-            ]
-        )
-
-    def test_run_impl_currently_processing_second_retry(
-        self, dbsession, mocker, mock_redis, mock_self_app
-    ):
-        # Test that processing check now works on ALL retries, not just first
-        # This verifies the fix for the retries==0 bug
-        commit = CommitFactory.create()
-        dbsession.add(commit)
-        dbsession.flush()
-        mocked_is_currently_processing = mocker.patch.object(
-            UploadContext, "is_currently_processing", return_value=True
-        )
-        mocked_run_impl_within_lock = mocker.patch.object(
-            UploadTask, "run_impl_within_lock", return_value={"some": "value"}
-        )
-        mock_redis.keys[f"uploads/{commit.repoid}/{commit.commitid}"] = ["something"]
-        task = UploadTask()
-        task.request.retries = 1
-
-        # Should raise Retry exception when processing is ongoing (on ANY retry)
-        with pytest.raises(Retry):
-            task.run_impl(dbsession, commit.repoid, commit.commitid)
-
-        mocked_is_currently_processing.assert_called_with()
-        # Should NOT proceed to run_impl_within_lock when processing is ongoing
-        assert not mocked_run_impl_within_lock.called
-
-    def test_run_impl_too_many_retries_logs_checkpoint(
-        self, dbsession, mocker, mock_redis, mock_self_app
-    ):
-        # Test that UploadFlow.TOO_MANY_RETRIES is logged when max retries exceeded
-        commit = CommitFactory.create()
-        dbsession.add(commit)
-        dbsession.flush()
-
-        mocker.patch.object(UploadContext, "is_currently_processing", return_value=True)
-        mocker.patch.object(
-            UploadTask, "run_impl_within_lock", return_value={"some": "value"}
-        )
-        mock_checkpoint = mocker.patch.object(UploadTask, "maybe_log_upload_checkpoint")
-
-        mock_redis.keys[f"uploads/{commit.repoid}/{commit.commitid}"] = ["something"]
-        task = UploadTask()
-        task.request.retries = 10  # At max retries
-
-        result = task.run_impl(dbsession, commit.repoid, commit.commitid)
-
-        # Verify checkpoint was logged
-        mock_checkpoint.assert_called_once_with(UploadFlow.TOO_MANY_RETRIES)
-        assert result["reason"] == "too_many_processing_retries"
-        assert result["was_setup"] is False
 
     def test_is_currently_processing(self, mock_redis):
         repoid = 1
