@@ -1,5 +1,6 @@
 import logging
 import random
+import time
 from contextlib import contextmanager
 from enum import Enum
 
@@ -61,6 +62,7 @@ class LockManager:
             with self.redis_connection.lock(
                 lock_name, timeout=self.lock_timeout, blocking_timeout=5
             ):
+                lock_acquired_time = time.time()
                 log.info(
                     "Acquired lock",
                     extra={
@@ -70,12 +72,14 @@ class LockManager:
                     },
                 )
                 yield
+                lock_duration = time.time() - lock_acquired_time
                 log.info(
                     "Releasing lock",
                     extra={
                         "repoid": self.repoid,
                         "commitid": self.commitid,
                         "lock_name": lock_name,
+                        "lock_duration_seconds": lock_duration,
                     },
                 )
         except LockError:
