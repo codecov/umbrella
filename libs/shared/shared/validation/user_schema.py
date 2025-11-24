@@ -516,6 +516,10 @@ schema = {
                     "partials_as_hits": {"type": "boolean"},
                 },
             },
+            "lcov": {
+                "type": "dict",
+                "schema": {"partials_as_hits": {"type": "boolean"}},
+            },
         },
     },
     "ignore": path_list_structure,
