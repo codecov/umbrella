@@ -26,7 +26,7 @@ check-for-migration-conflicts:
 	python manage.py check_for_migration_conflicts
 
 test:
-	COVERAGE_CORE=sysmon pytest --cov=./ --junitxml=junit.xml -o junit_family=legacy -c pytest.ini --rootdir=${PYTEST_ROOTDIR}
+	pytest --cov=./ --junitxml=junit.xml -o junit_family=legacy -c pytest.ini --rootdir=${PYTEST_ROOTDIR}
 
 shell:
 	docker compose exec api bash

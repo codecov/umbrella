@@ -37,7 +37,11 @@ from services.repository import (
     possibly_update_commit_from_provider_info,
 )
 from services.test_results import TestResultsReportService
-from shared.celery_config import upload_task_name
+from shared.celery_config import (
+    UPLOAD_PROCESSING_MAX_RETRIES,
+    UPLOAD_PROCESSING_RETRY_DELAY_SECONDS,
+    upload_task_name,
+)
 from shared.config import get_config
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.django_apps.user_measurements.models import UserMeasurement
@@ -74,6 +78,18 @@ UPLOADS_PER_TASK_SCHEDULE = Histogram(
 
 TA_SCHEDULED_COUNTER = Counter(
     "ta_scheduled_counter", "Number of TA pipelines scheduled", ["product"]
+)
+
+UPLOAD_TASK_PROCESSING_RETRY_COUNTER = Counter(
+    "upload_task_processing_retry",
+    "Number of times upload task retried due to processing lock",
+    ["report_type", "retry_count"],
+)
+
+UPLOAD_TASK_TOO_MANY_RETRIES_COUNTER = Counter(
+    "upload_task_too_many_retries",
+    "Number of times upload task gave up due to too many retries",
+    ["report_type"],
 )
 
 
@@ -308,10 +324,17 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 "tasks_were_scheduled": False,
             }
 
-        if upload_context.is_currently_processing() and self.request.retries == 0:
+        if upload_context.is_currently_processing():
             log.info(
-                "Currently processing upload. Retrying in 60s.",
-                extra=upload_context.log_extra(),
+                f"Currently processing upload. Retrying in {UPLOAD_PROCESSING_RETRY_DELAY_SECONDS}s.",
+                extra=upload_context.log_extra(retry_count=self.request.retries),
+            )
+            inc_counter(
+                UPLOAD_TASK_PROCESSING_RETRY_COUNTER,
+                labels={
+                    "report_type": report_type,
+                    "retry_count": str(self.request.retries),
+                },
             )
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
@@ -319,7 +342,38 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 milestone=milestone,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(countdown=60, kwargs=upload_context.kwargs_for_retry(kwargs))
+
+            # Use base class safe_retry method (shared by all tasks)
+            # Uses constants from shared config:
+            # - max_retries: UPLOAD_PROCESSING_MAX_RETRIES (default: 10)
+            # - countdown: UPLOAD_PROCESSING_RETRY_DELAY_SECONDS (default: 60)
+            if not self.safe_retry(
+                max_retries=UPLOAD_PROCESSING_MAX_RETRIES,
+                countdown=UPLOAD_PROCESSING_RETRY_DELAY_SECONDS,
+                kwargs=upload_context.kwargs_for_retry(kwargs),
+            ):
+                # Max retries exceeded - give up
+                log.error(
+                    "Upload still processing after too many retries. Giving up.",
+                    extra=upload_context.log_extra(retry_count=self.request.retries),
+                )
+                inc_counter(
+                    UPLOAD_TASK_TOO_MANY_RETRIES_COUNTER,
+                    labels={"report_type": report_type},
+                )
+                self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
+                return {
+                    "was_setup": False,
+                    "was_updated": False,
+                    "tasks_were_scheduled": False,
+                    "reason": "too_many_processing_retries",
+                }
 
         if retry_countdown := _should_debounce_processing(upload_context):
             log.info(
@@ -555,6 +609,24 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 error=Errors.INTERNAL_RETRYING,
             )
             self.retry(countdown=60, kwargs=upload_context.kwargs_for_retry(kwargs))
+        except Exception as e:
+            log.error(
+                "Unexpected error during initialize_and_save_report",
+                extra={
+                    **upload_context.log_extra(),
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                },
+                exc_info=True,
+            )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=repository.repoid,
+                milestone=Milestones.COMPILING_UPLOADS,
+                error=Errors.UNKNOWN,
+                error_text=repr(e),
+            )
+            raise
 
         upload_argument_list = self.possibly_insert_uploads_and_side_effects(
             db_session=db_session,
@@ -871,7 +943,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             )
             for params in argument_list
         ]
-        task_signatures[0].args = ({},)  # this is the first `previous_result`
+        task_signatures[0].args = ([],)  # this is the first `previous_result`
 
         # it might make sense to eventually have a "finisher" task that
         # does whatever extra stuff + enqueues a notify

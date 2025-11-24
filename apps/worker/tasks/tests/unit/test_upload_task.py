@@ -365,7 +365,7 @@ class TestUploadTaskIntegration:
         assert len(uploads) == 1
         upload = dbsession.query(Upload).filter_by(report_id=commit_report.id).first()
         processor_sig = bundle_analysis_processor_task.s(
-            {},
+            [],
             repoid=commit.repoid,
             commitid=commit.commitid,
             commit_yaml={"codecov": {"max_report_age": "1y ago"}},
@@ -482,7 +482,7 @@ class TestUploadTaskIntegration:
         assert commit_report.commit == commit
 
         processor_sig = bundle_analysis_processor_task.s(
-            {},
+            [],
             repoid=commit.repoid,
             commitid=commit.commitid,
             commit_yaml={"codecov": {"max_report_age": "1y ago"}},
@@ -1730,6 +1730,8 @@ class TestUploadTaskUnit:
     def test_run_impl_currently_processing_second_retry(
         self, dbsession, mocker, mock_redis, mock_self_app
     ):
+        # Test that processing check now works on ALL retries, not just first
+        # This verifies the fix for the retries==0 bug
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
@@ -1742,23 +1744,39 @@ class TestUploadTaskUnit:
         mock_redis.keys[f"uploads/{commit.repoid}/{commit.commitid}"] = ["something"]
         task = UploadTask()
         task.request.retries = 1
-        result = task.run_impl(dbsession, commit.repoid, commit.commitid)
+
+        # Should raise Retry exception when processing is ongoing (on ANY retry)
+        with pytest.raises(Retry):
+            task.run_impl(dbsession, commit.repoid, commit.commitid)
+
         mocked_is_currently_processing.assert_called_with()
-        assert mocked_run_impl_within_lock.called
-        assert result == {"some": "value"}
-        mock_self_app.tasks[
-            upload_breadcrumb_task_name
-        ].apply_async.assert_called_once_with(
-            kwargs={
-                "commit_sha": commit.commitid,
-                "repo_id": commit.repository.repoid,
-                "breadcrumb_data": BreadcrumbData(
-                    milestone=Milestones.COMPILING_UPLOADS,
-                ),
-                "upload_ids": [],
-                "sentry_trace_id": None,
-            }
+        # Should NOT proceed to run_impl_within_lock when processing is ongoing
+        assert not mocked_run_impl_within_lock.called
+
+    def test_run_impl_too_many_retries_logs_checkpoint(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
+        # Test that UploadFlow.TOO_MANY_RETRIES is logged when max retries exceeded
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        mocker.patch.object(UploadContext, "is_currently_processing", return_value=True)
+        mocker.patch.object(
+            UploadTask, "run_impl_within_lock", return_value={"some": "value"}
         )
+        mock_checkpoint = mocker.patch.object(UploadTask, "maybe_log_upload_checkpoint")
+
+        mock_redis.keys[f"uploads/{commit.repoid}/{commit.commitid}"] = ["something"]
+        task = UploadTask()
+        task.request.retries = 10  # At max retries
+
+        result = task.run_impl(dbsession, commit.repoid, commit.commitid)
+
+        # Verify checkpoint was logged
+        mock_checkpoint.assert_called_once_with(UploadFlow.TOO_MANY_RETRIES)
+        assert result["reason"] == "too_many_processing_retries"
+        assert result["was_setup"] is False
 
     def test_is_currently_processing(self, mock_redis):
         repoid = 1
@@ -2177,6 +2195,99 @@ class TestUploadTaskUnit:
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.COMPILING_UPLOADS,
                     error=Errors.INTERNAL_RETRYING,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
+
+    @pytest.mark.django_db
+    def test_upload_task_initialize_report_unexpected_error(
+        self,
+        dbsession,
+        mocker,
+        mock_configuration,
+        mock_redis,
+        mock_repo_provider,
+        mock_storage,
+        mock_self_app,
+    ):
+        """Test that unexpected errors during initialize_and_save_report are logged and re-raised"""
+        mock_configuration.set_params({"github": {"bot": {"key": "somekey"}}})
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+        mocker.patch.object(UploadContext, "has_pending_jobs", return_value=True)
+        task = UploadTask()
+        mock_repo_provider.data = mocker.MagicMock()
+        mock_repo_provider.service = "github"
+
+        # Mock all the functions that run before initialize_and_save_report
+        mocker.patch(
+            "tasks.upload.fetch_commit_yaml_and_possibly_store",
+            return_value=UserYaml.from_dict({}),
+        )
+        mocker.patch(
+            "tasks.upload.possibly_update_commit_from_provider_info",
+            return_value=False,
+        )
+        mocker.patch.object(
+            UploadTask,
+            "possibly_setup_webhooks",
+            return_value=False,
+        )
+
+        # Mock initialize_and_save_report to raise an unexpected exception
+        test_exception = ValueError("Database connection failed")
+        mocker.patch.object(
+            ReportService,
+            "initialize_and_save_report",
+            side_effect=test_exception,
+        )
+
+        # Mock the log.error call to verify it's called
+        mock_log_error = mocker.patch("tasks.upload.log.error")
+
+        upload_args = UploadContext(
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            redis_connection=mock_redis,
+        )
+
+        # Should re-raise the exception
+        with pytest.raises(ValueError, match="Database connection failed"):
+            task.run_impl_within_lock(dbsession, upload_args, kwargs={})
+
+        # Verify error was logged with proper context
+        # Note: assert_called_once() is safe here because:
+        # 1. Only one log.error exists in the execution path (line 559 in upload.py)
+        # 2. Exception is re-raised, stopping execution before any other log.error could be called
+        # 3. Mock is scoped to 'tasks.upload.log.error' only
+        assert mock_log_error.call_count == 1, (
+            f"Expected exactly 1 log.error call, got {mock_log_error.call_count}. "
+            f"Calls: {mock_log_error.call_args_list}"
+        )
+        call_args = mock_log_error.call_args
+        # Verify the message
+        assert call_args[0][0] == "Unexpected error during initialize_and_save_report"
+        # Verify the extra context contains our error details
+        extra = call_args[1]["extra"]
+        assert extra["error_type"] == "ValueError"
+        assert extra["error_message"] == "Database connection failed"
+        # Verify exc_info is True
+        assert call_args[1]["exc_info"] is True
+
+        # Verify breadcrumb was logged
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMPILING_UPLOADS,
+                    error=Errors.UNKNOWN,
+                    error_text=repr(test_exception),
                 ),
                 "upload_ids": [],
                 "sentry_trace_id": None,
