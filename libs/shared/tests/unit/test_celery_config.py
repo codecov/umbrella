@@ -34,6 +34,7 @@ def test_celery_config():
         "app.tasks.commit_update.CommitUpdate",
         "app.tasks.compute_comparison.ComputeComparison",
         "app.tasks.delete_owner.DeleteOwner",
+        "app.tasks.export_test_analytics.ExportTestAnalyticsData",
         "app.tasks.flakes.*",
         "app.tasks.flush_repo.FlushRepo",
         "app.tasks.mark_owner_for_deletion.MarkOwnerForDeletion",
