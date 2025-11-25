@@ -14,11 +14,12 @@ from services.task.task import TaskService
 from shared.celery_config import (
     bundle_analysis_notify_task_name,
     manual_upload_completion_trigger_task_name,
-    test_results_finisher_task_name,
 )
 from shared.django_apps.reports.models import ReportType
+from shared.django_apps.ta_timeseries.models import Testrun
 from shared.django_apps.utils.paginator import EstimatedCountPaginator
 from shared.helpers.redis import get_redis_connection
+from shared.reports.enums import UploadState
 from shared.yaml import UserYaml
 from shared.yaml.user_yaml import OwnerContext
 from upload.helpers import dispatch_upload_task
@@ -349,6 +350,15 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
                 reverse("admin:core_commit_change", args=[commit.pk])
             )
 
+        # Reset upload states to UPLOADED so the finisher won't skip them
+        # The finisher has an idempotency check that skips uploads already in
+        # "processed" or "error" state
+        upload_ids = [u.id for u in reprocessable_uploads]
+        ReportSession.objects.filter(id__in=upload_ids).update(
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+        )
+
         # Build upload arguments for each upload (following breadcrumbs pattern)
         reprocess_metadata = {
             "reprocess_via_admin": True,
@@ -398,36 +408,121 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
             self.message_user(request, "Commit not found", level=messages.ERROR)
             return HttpResponseRedirect(reverse("admin:core_commit_changelist"))
 
-        has_test_analytics = CommitReport.objects.filter(
+        # Query for test results reports
+        test_reports = CommitReport.objects.filter(
             commit=commit, report_type=ReportType.TEST_RESULTS
-        ).exists()
+        )
 
-        if has_test_analytics:
-            commit_yaml = get_repo_yaml(commit.repository)
-            commit_yaml_dict = commit_yaml.to_dict() if commit_yaml else None
-
-            task_service = TaskService()
-            task_service.schedule_task(
-                test_results_finisher_task_name,
-                args=(True,),  # _chain_result - required positional arg for this task
-                kwargs={
-                    "repoid": commit.repository.repoid,
-                    "commitid": commit.commitid,
-                    "commit_yaml": commit_yaml_dict,
-                },
-                apply_async_kwargs={},
-            )
-            self.message_user(
-                request,
-                f"Successfully queued test analytics reprocessing for commit {commit.commitid[:7]}",
-                level=messages.SUCCESS,
-            )
-        else:
+        if not test_reports.exists():
             self.message_user(
                 request,
                 "This commit has no test analytics data to reprocess",
                 level=messages.WARNING,
             )
+            return HttpResponseRedirect(
+                reverse("admin:core_commit_change", args=[commit.pk])
+            )
+
+        # Get all uploads (ReportSession) for test results reports with their flags
+        uploads = (
+            ReportSession.objects.filter(report__in=test_reports)
+            .prefetch_related("flags")
+            .select_related("report")
+        )
+
+        if not uploads.exists():
+            self.message_user(
+                request,
+                "This commit has no test analytics uploads to reprocess",
+                level=messages.WARNING,
+            )
+            return HttpResponseRedirect(
+                reverse("admin:core_commit_change", args=[commit.pk])
+            )
+
+        # Only include uploads that have a storage_path (raw data location)
+        reprocessable_uploads = [u for u in uploads if u.storage_path]
+        skipped_uploads = [u for u in uploads if not u.storage_path]
+
+        if skipped_uploads:
+            self.message_user(
+                request,
+                f"Skipping {len(skipped_uploads)} uploads without storage path",
+                level=messages.WARNING,
+            )
+
+        if not reprocessable_uploads:
+            self.message_user(
+                request,
+                "No uploads with storage paths found to reprocess",
+                level=messages.WARNING,
+            )
+            return HttpResponseRedirect(
+                reverse("admin:core_commit_change", args=[commit.pk])
+            )
+
+        upload_ids = [u.id for u in reprocessable_uploads]
+
+        # Delete existing test run data for these uploads to avoid duplicates
+        # Testrun is in the ta_timeseries database
+        deleted_count, _ = (
+            Testrun.objects.using("ta_timeseries")
+            .filter(upload_id__in=upload_ids)
+            .delete()
+        )
+
+        if deleted_count > 0:
+            self.message_user(
+                request,
+                f"Deleted {deleted_count} existing test runs for reprocessing",
+                level=messages.INFO,
+            )
+
+        # Reset upload states to UPLOADED so the processor won't skip them
+        # The ta_processor has a check: if upload.state == "processed": return False
+        ReportSession.objects.filter(id__in=upload_ids).update(
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+        )
+
+        # Build upload arguments for each upload (following breadcrumbs pattern)
+        reprocess_metadata = {
+            "reprocess_via_admin": True,
+            "reprocess_by": str(request.user.username)
+            if hasattr(request.user, "username")
+            else str(request.user),
+            "reprocess_timestamp": timezone.now().isoformat(),
+        }
+
+        redis = get_redis_connection()
+
+        for upload in reprocessable_uploads:
+            upload_arguments = {
+                "commit": commit.commitid,
+                "upload_id": upload.id,
+                "reportid": str(upload.external_id) if upload.external_id else None,
+                "url": upload.storage_path,
+                "build": upload.build_code,
+                "build_url": upload.build_url,
+                "job": upload.job_code,
+                "service": upload.provider,
+                "flags": [flag.flag_name for flag in upload.flags.all()]
+                if upload.flags
+                else [],
+                **reprocess_metadata,
+            }
+            dispatch_upload_task(
+                redis=redis,
+                repoid=commit.repository.repoid,
+                task_arguments=upload_arguments,
+                report_type=CommitReport.ReportType.TEST_RESULTS,
+            )
+
+        self.message_user(
+            request,
+            f"Successfully queued test analytics reprocessing for commit {commit.commitid[:7]} ({len(reprocessable_uploads)} uploads)",
+            level=messages.SUCCESS,
+        )
 
         return HttpResponseRedirect(
             reverse("admin:core_commit_change", args=[commit.pk])
