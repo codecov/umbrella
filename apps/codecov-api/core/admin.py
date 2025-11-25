@@ -3,6 +3,7 @@ from django.contrib import admin, messages
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponseRedirect
 from django.urls import path, reverse
+from django.utils import timezone
 from django.utils.html import format_html
 
 from codecov.admin import AdminMixin
@@ -14,12 +15,13 @@ from shared.celery_config import (
     bundle_analysis_notify_task_name,
     manual_upload_completion_trigger_task_name,
     test_results_finisher_task_name,
-    upload_finisher_task_name,
 )
 from shared.django_apps.reports.models import ReportType
 from shared.django_apps.utils.paginator import EstimatedCountPaginator
+from shared.helpers.redis import get_redis_connection
 from shared.yaml import UserYaml
 from shared.yaml.user_yaml import OwnerContext
+from upload.helpers import dispatch_upload_task
 
 
 def get_repo_yaml(repository):
@@ -308,8 +310,12 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
                 reverse("admin:core_commit_change", args=[commit.pk])
             )
 
-        # Get all uploads (ReportSession) for coverage reports
-        uploads = ReportSession.objects.filter(report__in=coverage_reports)
+        # Get all uploads (ReportSession) for coverage reports with their flags
+        uploads = (
+            ReportSession.objects.filter(report__in=coverage_reports)
+            .prefetch_related("flags")
+            .select_related("report")
+        )
 
         if not uploads.exists():
             self.message_user(
@@ -321,40 +327,64 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
                 reverse("admin:core_commit_change", args=[commit.pk])
             )
 
-        # Construct processing_results to pass directly to the task
-        # This keeps all retrieval logic in admin.py and avoids modifying the task
-        processing_results = [
-            {
+        # Only include uploads that have a storage_path (raw data location)
+        # Without storage_path, we cannot re-download and reprocess the upload
+        reprocessable_uploads = [u for u in uploads if u.storage_path]
+        skipped_uploads = [u for u in uploads if not u.storage_path]
+
+        if skipped_uploads:
+            self.message_user(
+                request,
+                f"Skipping {len(skipped_uploads)} uploads without storage path",
+                level=messages.WARNING,
+            )
+
+        if not reprocessable_uploads:
+            self.message_user(
+                request,
+                "No uploads with storage paths found to reprocess",
+                level=messages.WARNING,
+            )
+            return HttpResponseRedirect(
+                reverse("admin:core_commit_change", args=[commit.pk])
+            )
+
+        # Build upload arguments for each upload (following breadcrumbs pattern)
+        reprocess_metadata = {
+            "reprocess_via_admin": True,
+            "reprocess_by": str(request.user.username)
+            if hasattr(request.user, "username")
+            else str(request.user),
+            "reprocess_timestamp": timezone.now().isoformat(),
+        }
+
+        redis = get_redis_connection()
+
+        for upload in reprocessable_uploads:
+            upload_arguments = {
+                "commit": commit.commitid,
                 "upload_id": upload.id,
-                "arguments": {
-                    "commit": commit.commitid,
-                    "upload_id": upload.id,
-                    "version": "v4",
-                    "reportid": str(upload.report.external_id),
-                },
-                "successful": upload.order_number is not None,
+                "reportid": str(upload.external_id) if upload.external_id else None,
+                "url": upload.storage_path,
+                "build": upload.build_code,
+                "build_url": upload.build_url,
+                "job": upload.job_code,
+                "service": upload.provider,
+                "flags": [flag.flag_name for flag in upload.flags.all()]
+                if upload.flags
+                else [],
+                **reprocess_metadata,
             }
-            for upload in uploads
-        ]
+            dispatch_upload_task(
+                redis=redis,
+                repoid=commit.repository.repoid,
+                task_arguments=upload_arguments,
+                report_type=CommitReport.ReportType.COVERAGE,
+            )
 
-        commit_yaml = get_repo_yaml(commit.repository)
-        commit_yaml_dict = commit_yaml.to_dict() if commit_yaml else None
-
-        task_service = TaskService()
-        task_service.schedule_task(
-            upload_finisher_task_name,
-            kwargs={
-                "repoid": commit.repository.repoid,
-                "commitid": commit.commitid,
-                "commit_yaml": commit_yaml_dict,
-                "processing_results": processing_results,
-                "manual_trigger": True,  # Skip idempotency check for admin reprocessing
-            },
-            apply_async_kwargs={},
-        )
         self.message_user(
             request,
-            f"Successfully queued coverage reprocessing for commit {commit.commitid[:7]} ({len(processing_results)} uploads)",
+            f"Successfully queued coverage reprocessing for commit {commit.commitid[:7]} ({len(reprocessable_uploads)} uploads)",
             level=messages.SUCCESS,
         )
 
