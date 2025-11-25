@@ -326,6 +326,40 @@ def test_should_do_flake_detection(dbsession, mocker, config, private, plan, ex_
     assert result == ex_result
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "config,private,owner_plan,account_plan,ex_result",
+    [
+        # Account with free plan should override owner's paid plan
+        (True, True, "users-inappm", DEFAULT_FREE_PLAN, False),
+        # Account with paid plan should override owner's free plan
+        (True, True, DEFAULT_FREE_PLAN, "users-inappm", True),
+        # Account with paid plan, private repo, should work
+        (True, False, DEFAULT_FREE_PLAN, "users-inappm", True),
+        # Account with free plan, public repo, should work
+        (True, False, "users-inappm", DEFAULT_FREE_PLAN, True),
+    ],
+)
+def test_should_do_flake_detection_with_account(
+    dbsession, mocker, config, private, owner_plan, account_plan, ex_result
+):
+    mock_all_plans_and_tiers()
+    account = Account(name="testaccount", plan=account_plan, is_active=True)
+    dbsession.add(account)
+    dbsession.flush()
+
+    owner = OwnerFactory(plan=owner_plan, account=account)
+    repo = RepositoryFactory(private=private, author=owner)
+    dbsession.add(repo)
+    dbsession.flush()
+
+    yaml = {"test_analytics": {"flake_detection": config}}
+
+    result = should_do_flaky_detection(repo, UserYaml.from_dict(yaml))
+
+    assert result == ex_result
+
+
 def test_specific_error_message(mocker, snapshot):
     mock_repo_service = mock.AsyncMock()
     mocker.patch(
