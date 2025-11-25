@@ -231,6 +231,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         repoid: int,
         commitid: str,
         commit_yaml,
+        manual_trigger: bool = False,
         **kwargs,
     ):
         try:
@@ -242,8 +243,17 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         log.info(
             "Received upload_finisher task",
-            extra={"processing_results": processing_results},
+            extra={
+                "processing_results": processing_results,
+                "manual_trigger": manual_trigger,
+            },
         )
+
+        if manual_trigger:
+            log.info(
+                "Manual trigger mode - skipping idempotency check",
+                extra={"repoid": repoid, "commitid": commitid},
+            )
 
         repoid = int(repoid)
         commit_yaml = UserYaml(commit_yaml)
@@ -283,7 +293,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         # Idempotency check: Skip if all uploads are already processed
         # This prevents wasted work if multiple finishers are triggered (e.g., from
         # visibility timeout re-queuing) or if finisher is manually retried
-        if upload_ids:
+        # Skip this check if manual_trigger=True (e.g., from admin reprocessing)
+        if upload_ids and not manual_trigger:
             uploads_in_db = (
                 db_session.query(Upload).filter(Upload.id_.in_(upload_ids)).all()
             )

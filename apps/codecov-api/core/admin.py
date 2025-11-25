@@ -8,12 +8,12 @@ from django.utils.html import format_html
 from codecov.admin import AdminMixin
 from codecov_auth.models import RepositoryToken
 from core.models import Commit, Pull, Repository
-from reports.models import CommitReport
-from services.task.task import TaskService, celery_app
+from reports.models import CommitReport, ReportSession
+from services.task.task import TaskService
 from shared.celery_config import (
     bundle_analysis_notify_task_name,
     manual_upload_completion_trigger_task_name,
-    test_analytics_notifier_task_name,
+    test_results_finisher_task_name,
     upload_finisher_task_name,
 )
 from shared.django_apps.reports.models import ReportType
@@ -30,7 +30,7 @@ def get_repo_yaml(repository):
     context = OwnerContext(
         owner_onboarding_date=repository.author.createstamp,
         owner_plan=repository.author.plan,
-        ownerid=repository.ownerid,
+        ownerid=repository.author.ownerid,
     )
     return UserYaml.get_final_yaml(
         owner_yaml=repository.author.yaml,
@@ -293,32 +293,70 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
             self.message_user(request, "Commit not found", level=messages.ERROR)
             return HttpResponseRedirect(reverse("admin:core_commit_changelist"))
 
-        commit_yaml = get_repo_yaml(commit.repository)
-        commit_yaml_dict = commit_yaml.to_dict() if commit_yaml else None
-
-        has_coverage = CommitReport.objects.filter(
+        # Query for coverage reports
+        coverage_reports = CommitReport.objects.filter(
             commit=commit, report_type__in=[None, ReportType.COVERAGE]
-        ).exists()
+        )
 
-        if has_coverage:
-            celery_app.tasks[upload_finisher_task_name].apply_async(
-                kwargs={
-                    "repoid": commit.repository.repoid,
-                    "commitid": commit.commitid,
-                    "commit_yaml": commit_yaml_dict,
-                }
-            )
-            self.message_user(
-                request,
-                f"Successfully queued coverage reprocessing for commit {commit.commitid[:7]}",
-                level=messages.SUCCESS,
-            )
-        else:
+        if not coverage_reports.exists():
             self.message_user(
                 request,
                 "This commit has no coverage data to reprocess",
                 level=messages.WARNING,
             )
+            return HttpResponseRedirect(
+                reverse("admin:core_commit_change", args=[commit.pk])
+            )
+
+        # Get all uploads (ReportSession) for coverage reports
+        uploads = ReportSession.objects.filter(report__in=coverage_reports)
+
+        if not uploads.exists():
+            self.message_user(
+                request,
+                "This commit has no coverage uploads to reprocess",
+                level=messages.WARNING,
+            )
+            return HttpResponseRedirect(
+                reverse("admin:core_commit_change", args=[commit.pk])
+            )
+
+        # Construct processing_results to pass directly to the task
+        # This keeps all retrieval logic in admin.py and avoids modifying the task
+        processing_results = [
+            {
+                "upload_id": upload.id,
+                "arguments": {
+                    "commit": commit.commitid,
+                    "upload_id": upload.id,
+                    "version": "v4",
+                    "reportid": str(upload.report.external_id),
+                },
+                "successful": upload.order_number is not None,
+            }
+            for upload in uploads
+        ]
+
+        commit_yaml = get_repo_yaml(commit.repository)
+        commit_yaml_dict = commit_yaml.to_dict() if commit_yaml else None
+
+        task_service = TaskService()
+        task_service.schedule_task(
+            upload_finisher_task_name,
+            kwargs={
+                "repoid": commit.repository.repoid,
+                "commitid": commit.commitid,
+                "commit_yaml": commit_yaml_dict,
+                "processing_results": processing_results,
+                "manual_trigger": True,  # Skip idempotency check for admin reprocessing
+            },
+            apply_async_kwargs={},
+        )
+        self.message_user(
+            request,
+            f"Successfully queued coverage reprocessing for commit {commit.commitid[:7]} ({len(processing_results)} uploads)",
+            level=messages.SUCCESS,
+        )
 
         return HttpResponseRedirect(
             reverse("admin:core_commit_change", args=[commit.pk])
@@ -336,12 +374,18 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
 
         if has_test_analytics:
             commit_yaml = get_repo_yaml(commit.repository)
-            celery_app.tasks[test_analytics_notifier_task_name].apply_async(
+            commit_yaml_dict = commit_yaml.to_dict() if commit_yaml else None
+
+            task_service = TaskService()
+            task_service.schedule_task(
+                test_results_finisher_task_name,
+                args=(True,),  # _chain_result - required positional arg for this task
                 kwargs={
-                    "repo_id": commit.repository.repoid,
-                    "commit_sha": commit.commitid,
-                    "commit_yaml": commit_yaml.to_dict() if commit_yaml else None,
-                }
+                    "repoid": commit.repository.repoid,
+                    "commitid": commit.commitid,
+                    "commit_yaml": commit_yaml_dict,
+                },
+                apply_async_kwargs={},
             )
             self.message_user(
                 request,
@@ -373,12 +417,15 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
             commit_yaml = get_repo_yaml(commit.repository)
             commit_yaml_dict = commit_yaml.to_dict() if commit_yaml else None
 
-            celery_app.tasks[bundle_analysis_notify_task_name].apply_async(
+            task_service = TaskService()
+            task_service.schedule_task(
+                bundle_analysis_notify_task_name,
                 kwargs={
                     "repoid": commit.repository.repoid,
                     "commitid": commit.commitid,
                     "commit_yaml": commit_yaml_dict,
-                }
+                },
+                apply_async_kwargs={},
             )
             self.message_user(
                 request,
@@ -405,12 +452,15 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         commit_yaml = get_repo_yaml(commit.repository)
         commit_yaml_dict = commit_yaml.to_dict() if commit_yaml else None
 
-        celery_app.tasks[manual_upload_completion_trigger_task_name].apply_async(
+        task_service = TaskService()
+        task_service.schedule_task(
+            manual_upload_completion_trigger_task_name,
             kwargs={
                 "repoid": commit.repository.repoid,
                 "commitid": commit.commitid,
                 "current_yaml": commit_yaml_dict,
-            }
+            },
+            apply_async_kwargs={},
         )
         self.message_user(
             request,
