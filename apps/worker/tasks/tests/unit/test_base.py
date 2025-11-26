@@ -999,8 +999,8 @@ class TestBaseCodecovTaskWithLoggedLock:
             pass
 
         # Check that all extra context is included in all log calls
-        for call in mock_log.info.call_args_list:
-            extra = call[1]["extra"]
+        for log_call in mock_log.info.call_args_list:
+            extra = log_call[1]["extra"]
             assert extra["lock_name"] == "test_lock"
             assert extra["repoid"] == 123
             assert extra["commitid"] == "abc123"
