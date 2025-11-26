@@ -1095,6 +1095,133 @@ class TestUploadFinisherTask:
         mock_process.assert_called_once()
 
     @pytest.mark.django_db
+    def test_manual_trigger_skips_idempotency_check(
+        self, dbsession, mocker, mock_storage, mock_repo_provider, mock_self_app
+    ):
+        """Test that manual_trigger=True bypasses the idempotency check.
+
+        This is used when admin users want to force reprocessing of uploads
+        that are already in a final state (processed/error).
+        """
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        mocker.patch("tasks.upload_finisher.update_uploads")
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        # Create uploads that are already "processed" (would normally be skipped)
+        upload_1 = UploadFactory.create(
+            report=report, state="processed", state_id=UploadState.PROCESSED.db_id
+        )
+        upload_2 = UploadFactory.create(
+            report=report, state="error", state_id=UploadState.ERROR.db_id
+        )
+        dbsession.add_all([upload_1, upload_2])
+        dbsession.flush()
+
+        # Mock the _process_reports_with_lock to verify it IS called
+        mock_process = mocker.patch.object(
+            UploadFinisherTask, "_process_reports_with_lock"
+        )
+
+        previous_results = [
+            {"upload_id": upload_1.id, "successful": True, "arguments": {}},
+            {"upload_id": upload_2.id, "successful": False, "arguments": {}},
+        ]
+
+        # With manual_trigger=True, should NOT skip even though uploads are in final state
+        UploadFinisherTask().run_impl(
+            dbsession,
+            previous_results,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            manual_trigger=True,  # Key parameter being tested
+        )
+
+        # Verify that _process_reports_with_lock WAS called (idempotency skipped)
+        mock_process.assert_called_once()
+
+    @pytest.mark.django_db
+    @pytest.mark.parametrize(
+        "manual_trigger,upload_states,expected_processing",
+        [
+            # Without manual_trigger, already processed uploads are skipped
+            (False, ["processed", "processed"], False),
+            # Without manual_trigger, mix of states still processes
+            (False, ["processed", "started"], True),
+            # With manual_trigger, always processes regardless of state
+            (True, ["processed", "processed"], True),
+            (True, ["error", "error"], True),
+            (True, ["processed", "error"], True),
+        ],
+    )
+    def test_manual_trigger_parametrized(
+        self,
+        dbsession,
+        mocker,
+        mock_storage,
+        mock_repo_provider,
+        mock_self_app,
+        manual_trigger,
+        upload_states,
+        expected_processing,
+    ):
+        """Parametrized test for manual_trigger behavior with various upload states."""
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        mocker.patch("tasks.upload_finisher.update_uploads")
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        # Create uploads with specified states
+        uploads = []
+        for state in upload_states:
+            state_id = (
+                UploadState.PROCESSED.db_id
+                if state == "processed"
+                else UploadState.ERROR.db_id
+                if state == "error"
+                else UploadState.UPLOADED.db_id
+            )
+            upload = UploadFactory.create(report=report, state=state, state_id=state_id)
+            uploads.append(upload)
+        dbsession.add_all(uploads)
+        dbsession.flush()
+
+        mock_process = mocker.patch.object(
+            UploadFinisherTask, "_process_reports_with_lock"
+        )
+
+        previous_results = [
+            {"upload_id": u.id, "successful": True, "arguments": {}} for u in uploads
+        ]
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            previous_results,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            manual_trigger=manual_trigger,
+        )
+
+        if expected_processing:
+            mock_process.assert_called_once()
+        else:
+            mock_process.assert_not_called()
+
+    @pytest.mark.django_db
     def test_reconstruct_processing_results_falls_back_to_database_when_redis_expires(
         self,
         dbsession,

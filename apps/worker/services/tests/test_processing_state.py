@@ -1,4 +1,7 @@
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
+
+import pytest
 
 from services.processing.state import (
     ProcessingState,
@@ -69,3 +72,120 @@ def test_batch_merging_many_uploads():
     state.mark_uploads_as_merged(merging)
 
     assert should_trigger_postprocessing(state.get_upload_numbers())
+
+
+class TestProcessingStateEmptyListGuards:
+    """Tests for empty list guards in ProcessingState methods."""
+
+    @pytest.fixture
+    def mock_redis(self):
+        """Create a mock Redis connection."""
+        with patch("services.processing.state.get_redis_connection") as mock_get_redis:
+            mock_redis = MagicMock()
+            mock_get_redis.return_value = mock_redis
+            yield mock_redis
+
+    def test_mark_uploads_as_processing_empty_list(self, mock_redis):
+        """Test that mark_uploads_as_processing handles empty list gracefully."""
+        state = ProcessingState(1234, uuid4().hex)
+        state._redis = mock_redis
+
+        # Should not call Redis when empty list is passed
+        state.mark_uploads_as_processing([])
+
+        mock_redis.sadd.assert_not_called()
+        mock_redis.expire.assert_not_called()
+
+    def test_mark_uploads_as_processing_non_empty_list(self, mock_redis):
+        """Test that mark_uploads_as_processing works with non-empty list."""
+        state = ProcessingState(1234, uuid4().hex)
+        state._redis = mock_redis
+
+        state.mark_uploads_as_processing([1, 2, 3])
+
+        mock_redis.sadd.assert_called_once()
+        mock_redis.expire.assert_called()
+
+    def test_clear_in_progress_uploads_empty_list(self, mock_redis):
+        """Test that clear_in_progress_uploads handles empty list gracefully."""
+        state = ProcessingState(1234, uuid4().hex)
+        state._redis = mock_redis
+
+        # Should not call Redis when empty list is passed
+        state.clear_in_progress_uploads([])
+
+        mock_redis.srem.assert_not_called()
+
+    def test_clear_in_progress_uploads_non_empty_list(self, mock_redis):
+        """Test that clear_in_progress_uploads works with non-empty list."""
+        state = ProcessingState(1234, uuid4().hex)
+        state._redis = mock_redis
+        mock_redis.srem.return_value = 3
+
+        state.clear_in_progress_uploads([1, 2, 3])
+
+        mock_redis.srem.assert_called_once()
+
+    def test_mark_uploads_as_merged_empty_list(self, mock_redis):
+        """Test that mark_uploads_as_merged handles empty list gracefully."""
+        state = ProcessingState(1234, uuid4().hex)
+        state._redis = mock_redis
+
+        # Should not call Redis when empty list is passed
+        state.mark_uploads_as_merged([])
+
+        mock_redis.srem.assert_not_called()
+
+    def test_mark_uploads_as_merged_non_empty_list(self, mock_redis):
+        """Test that mark_uploads_as_merged works with non-empty list."""
+        state = ProcessingState(1234, uuid4().hex)
+        state._redis = mock_redis
+
+        state.mark_uploads_as_merged([1, 2, 3])
+
+        mock_redis.srem.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "method_name,upload_ids,should_call_redis",
+    [
+        ("mark_uploads_as_processing", [], False),
+        ("mark_uploads_as_processing", [1], True),
+        ("mark_uploads_as_processing", [1, 2, 3], True),
+        ("clear_in_progress_uploads", [], False),
+        ("clear_in_progress_uploads", [1], True),
+        ("clear_in_progress_uploads", [1, 2, 3], True),
+        ("mark_uploads_as_merged", [], False),
+        ("mark_uploads_as_merged", [1], True),
+        ("mark_uploads_as_merged", [1, 2, 3], True),
+    ],
+)
+def test_empty_list_guards_parametrized(method_name, upload_ids, should_call_redis):
+    """Parametrized test for empty list guards across all methods."""
+    with patch("services.processing.state.get_redis_connection") as mock_get_redis:
+        mock_redis = MagicMock()
+        mock_get_redis.return_value = mock_redis
+
+        # For clear_in_progress_uploads, srem needs to return a value
+        mock_redis.srem.return_value = len(upload_ids) if upload_ids else 0
+
+        state = ProcessingState(1234, uuid4().hex)
+        state._redis = mock_redis
+
+        # Call the method
+        method = getattr(state, method_name)
+        method(upload_ids)
+
+        # Check if Redis was called based on expected behavior
+        if should_call_redis:
+            assert mock_redis.method_calls, f"{method_name} should call Redis"
+        else:
+            # For empty lists, only get_redis_connection is called (in __init__),
+            # but no actual operations should happen
+            assert mock_redis.sadd.call_count == 0, (
+                f"{method_name} should not call sadd"
+            )
+            if method_name != "mark_uploads_as_processing":
+                assert mock_redis.srem.call_count == 0, (
+                    f"{method_name} should not call srem"
+                )
