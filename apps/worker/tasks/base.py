@@ -38,6 +38,7 @@ from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
     Errors,
     Milestones,
+    ReportTypes,
 )
 from shared.metrics import Counter, Histogram
 from shared.torngit.base import TorngitBaseAdapter
@@ -541,6 +542,7 @@ class BaseCodecovTask(celery_app.Task):
         upload_ids: list[int] = [],
         error: Errors | None = None,
         error_text: str | None = None,
+        report_type: ReportTypes | None = None,
     ):
         """
         Queue a task to create an upload breadcrumb.
@@ -551,7 +553,10 @@ class BaseCodecovTask(celery_app.Task):
                     "commit_sha": commit_sha,
                     "repo_id": repo_id,
                     "breadcrumb_data": BreadcrumbData(
-                        milestone=milestone, error=error, error_text=error_text
+                        milestone=milestone,
+                        error=error,
+                        error_text=error_text,
+                        report_type=report_type,
                     ),
                     "upload_ids": upload_ids,
                     "sentry_trace_id": current_sentry_trace_id(),
@@ -567,5 +572,6 @@ class BaseCodecovTask(celery_app.Task):
                     "upload_ids": upload_ids,
                     "error": error,
                     "error_text": error_text,
+                    "report_type": report_type,
                 },
             )
