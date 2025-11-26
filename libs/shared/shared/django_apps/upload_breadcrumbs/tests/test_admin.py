@@ -462,6 +462,7 @@ class PresentDataFilterTest(TestCase):
         lookups = self.filter.lookups(request, model_admin)
 
         expected = [
+            ("has_report_type", "Has Report Type"),
             ("has_milestone", "Has Milestone"),
             ("has_endpoint", "Has Endpoint"),
             ("has_uploader", "Has Uploader"),
@@ -490,7 +491,7 @@ class PresentDataFilterTest(TestCase):
         with patch.object(
             self.filter,
             "value",
-            return_value="has_milestone,has_endpoint,has_uploader,has_error,has_error_text,has_upload_ids,has_sentry_trace",
+            return_value="has_report_type,has_milestone,has_endpoint,has_uploader,has_error,has_error_text,has_upload_ids,has_sentry_trace",
         ):
             result = self.filter.queryset(request, queryset)
 
@@ -506,7 +507,7 @@ class PresentDataFilterTest(TestCase):
             choices = list(self.filter.choices(changelist))
 
         # Should have "All" option plus all filter options
-        self.assertEqual(len(choices), 8)  # 1 "All" + 7 filter options
+        self.assertEqual(len(choices), 9)  # 1 "All" + 8 filter options
 
         # Check that selected items have checkmarks
         milestone_choice = next(c for c in choices if "Has Milestone" in c["display"])
@@ -527,6 +528,7 @@ class PresentDataFilterTest(TestCase):
 
         # Test each filter type individually
         filter_types = [
+            "has_report_type",
             "has_milestone",
             "has_endpoint",
             "has_uploader",
