@@ -413,7 +413,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         log.info("run_impl: Loaded commit diff")
 
         try:
-            with get_report_lock(repoid, commitid, self.hard_time_limit_task):
+            lock, lock_name = get_report_lock(
+                repoid, commitid, self.hard_time_limit_task
+            )
+            with self.with_logged_lock(
+                lock,
+                lock_name=lock_name,
+                repoid=repoid,
+                commitid=commitid,
+            ):
                 log.info("run_impl: Acquired report lock")
 
                 report_service = ReportService(commit_yaml)
@@ -490,7 +498,12 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         redis_connection = get_redis_connection()
 
         try:
-            with redis_connection.lock(lock_name, timeout=60 * 5, blocking_timeout=5):
+            with self.with_logged_lock(
+                redis_connection.lock(lock_name, timeout=60 * 5, blocking_timeout=5),
+                lock_name=lock_name,
+                repoid=repoid,
+                commitid=commitid,
+            ):
                 log.info("handle_finisher_lock: Acquired finisher lock")
 
                 result = self.finish_reports_processing(
@@ -774,7 +787,15 @@ RegisteredUploadTask = celery_app.register_task(UploadFinisherTask())
 upload_finisher_task = celery_app.tasks[RegisteredUploadTask.name]
 
 
-def get_report_lock(repoid: int, commitid: str, hard_time_limit: int) -> Lock:
+def get_report_lock(
+    repoid: int, commitid: str, hard_time_limit: int
+) -> tuple[Lock, str]:
+    """
+    Returns both the lock object and the lock name to ensure consistency.
+
+    Returns:
+        tuple[Lock, str]: A tuple of (lock_object, lock_name)
+    """
     lock_name = UPLOAD_PROCESSING_LOCK_NAME(repoid, commitid)
     redis_connection = get_redis_connection()
 
@@ -782,11 +803,12 @@ def get_report_lock(repoid: int, commitid: str, hard_time_limit: int) -> Lock:
     if hard_time_limit:
         timeout = max(timeout, hard_time_limit)
 
-    return redis_connection.lock(
+    lock = redis_connection.lock(
         lock_name,
         timeout=timeout,
         blocking_timeout=5,
     )
+    return lock, lock_name
 
 
 @sentry_sdk.trace

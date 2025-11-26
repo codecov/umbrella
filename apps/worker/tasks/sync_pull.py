@@ -77,10 +77,15 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         lock_name = f"pullsync_{repoid}_{pullid}"
         start_wait = time.monotonic()
         try:
-            with redis_connection.lock(
-                lock_name,
-                timeout=60 * 5,
-                blocking_timeout=0.5,
+            with self.with_logged_lock(
+                redis_connection.lock(
+                    lock_name,
+                    timeout=60 * 5,
+                    blocking_timeout=0.5,
+                ),
+                lock_name=lock_name,
+                repoid=repoid,
+                pullid=pullid,
             ):
                 return self.run_impl_within_lock(
                     db_session,

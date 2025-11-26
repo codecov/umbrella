@@ -41,10 +41,15 @@ class ManualTriggerTask(
         lock_name = f"manual_trigger_lock_{repoid}_{commitid}"
         redis_connection = get_redis_connection()
         try:
-            with redis_connection.lock(
-                lock_name,
-                timeout=60 * 5,
-                blocking_timeout=5,
+            with self.with_logged_lock(
+                redis_connection.lock(
+                    lock_name,
+                    timeout=60 * 5,
+                    blocking_timeout=5,
+                ),
+                lock_name=lock_name,
+                repoid=repoid,
+                commitid=commitid,
             ):
                 return self.process_impl_within_lock(
                     db_session=db_session,
