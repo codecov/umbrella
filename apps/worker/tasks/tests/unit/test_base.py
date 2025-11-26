@@ -979,7 +979,9 @@ class TestBaseCodecovTaskWithLoggedLock:
         assert releasing_calls[0][1]["extra"]["lock_name"] == "test_lock"
         assert releasing_calls[0][1]["extra"]["commitid"] == "abc123"
         # Use approximate comparison due to floating point precision
-        assert abs(releasing_calls[0][1]["extra"]["lock_duration_seconds"] - 0.5) < 0.001
+        assert (
+            abs(releasing_calls[0][1]["extra"]["lock_duration_seconds"] - 0.5) < 0.001
+        )
 
     def test_with_logged_lock_includes_extra_context(self, mocker):
         """Test that with_logged_lock includes all extra context in logs."""
@@ -1081,4 +1083,6 @@ class TestBaseCodecovTaskWithLoggedLock:
         ]
         assert len(releasing_calls) == 1
         # Use approximate comparison due to floating point precision
-        assert abs(releasing_calls[0][1]["extra"]["lock_duration_seconds"] - 0.2) < 0.001
+        assert (
+            abs(releasing_calls[0][1]["extra"]["lock_duration_seconds"] - 0.2) < 0.001
+        )
