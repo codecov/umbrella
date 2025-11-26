@@ -86,6 +86,8 @@ class ProcessingState:
         return UploadNumbers(processing, processed)
 
     def mark_uploads_as_processing(self, upload_ids: list[int]):
+        if not upload_ids:
+            return
         key = self._redis_key("processing")
         self._redis.sadd(key, *upload_ids)
         # Set TTL to match intermediate report expiration (24 hours)
@@ -93,6 +95,8 @@ class ProcessingState:
         self._redis.expire(key, PROCESSING_STATE_TTL)
 
     def clear_in_progress_uploads(self, upload_ids: list[int]):
+        if not upload_ids:
+            return
         removed_uploads = self._redis.srem(self._redis_key("processing"), *upload_ids)
         if removed_uploads > 0:
             # the normal flow would move the uploads from the "processing" set
@@ -118,6 +122,8 @@ class ProcessingState:
         self._redis.expire(processed_key, PROCESSING_STATE_TTL)
 
     def mark_uploads_as_merged(self, upload_ids: list[int]):
+        if not upload_ids:
+            return
         self._redis.srem(self._redis_key("processed"), *upload_ids)
 
     def get_uploads_for_merging(self) -> set[int]:
