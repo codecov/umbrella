@@ -13,7 +13,11 @@ from shared.reports.reportfile import ReportFile
 from shared.reports.types import ReportLine, ReportTotals
 from shared.utils.flare import report_to_flare
 from shared.utils.make_network_file import make_network_file
-from shared.utils.merge import get_complexity_from_sessions, get_coverage_from_sessions
+from shared.utils.merge import (
+    deduplicate_sessions,
+    get_complexity_from_sessions,
+    get_coverage_from_sessions,
+)
 from shared.utils.migrate import migrate_totals
 from shared.utils.sessions import Session, SessionType
 from shared.utils.totals import agg_totals
@@ -302,6 +306,8 @@ class Report:
                 continue
             for line in file._parsed_lines:
                 if isinstance(line, ReportLine) and line.coverage is None:
+                    # Deduplicate and merge any duplicate session IDs before calculating coverage
+                    line.sessions = deduplicate_sessions(line.sessions)
                     line.coverage = get_coverage_from_sessions(line.sessions)
                     line.complexity = get_complexity_from_sessions(line.sessions)
 

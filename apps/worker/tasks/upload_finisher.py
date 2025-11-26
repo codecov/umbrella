@@ -785,7 +785,7 @@ def get_report_lock(repoid: int, commitid: str, hard_time_limit: int) -> Lock:
     return redis_connection.lock(
         lock_name,
         timeout=timeout,
-        blocking_timeout=5,
+        blocking_timeout=30,
     )
 
 

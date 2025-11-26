@@ -158,7 +158,9 @@ def merge_missed_branches(sessions: list[LineSession]) -> list | None:
     return list(missed_branches) if missed_branches is not None else None
 
 
-def merge_line(l1, l2, joined=True, is_disjoint=False):
+def merge_line(
+    l1: ReportLine, l2: ReportLine, joined: bool = True, is_disjoint: bool = False
+) -> ReportLine:
     if not l1 or not l2:
         return l1 or l2
 
@@ -178,7 +180,7 @@ def merge_line(l1, l2, joined=True, is_disjoint=False):
     )
 
 
-def merge_line_session(s1, s2):
+def merge_line_session(s1: LineSession, s2: LineSession) -> LineSession:
     s1b = s1.branches
     s2b = s2.branches
     if s1b is None and s2b is None:
@@ -321,6 +323,31 @@ def partials_to_line(partials):
         return partials[0][2]
     v = sum(1 for (sc, ec, hits) in partials if hits > 0)
     return f"{v}/{ln}"
+
+
+def deduplicate_sessions(sessions: list[LineSession]) -> list[LineSession]:
+    """
+    Deduplicates sessions by ID, merging any duplicates using merge_line_session.
+    This handles cases where the same session ID appears multiple times due to
+    incorrect usage of is_disjoint=True optimization.
+
+    Returns a list of sessions with unique IDs.
+    """
+    if not sessions:
+        return sessions
+
+    # Group sessions by ID
+    sessions_by_id: dict[int, LineSession] = {}
+    for session in sessions:
+        if session.id in sessions_by_id:
+            # Duplicate detected - merge them
+            sessions_by_id[session.id] = merge_line_session(
+                sessions_by_id[session.id], session
+            )
+        else:
+            sessions_by_id[session.id] = session
+
+    return list(sessions_by_id.values())
 
 
 def get_complexity_from_sessions(sessions):
