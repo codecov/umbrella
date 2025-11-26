@@ -19,7 +19,11 @@ from shared.django_apps.codecov_auth.tests.factories import (
     OwnerFactory,
     UserFactory,
 )
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TrialStatus
+from shared.plan.constants import (
+    DEFAULT_FREE_PLAN,
+    PlanName,
+    TrialStatus,
+)
 from utils.test_utils import APIClient
 
 curr_path = os.path.dirname(__file__)
@@ -295,6 +299,8 @@ class AccountViewSetTests(APITestCase):
                     "start_date": schedule_params["start_date"],
                     "plan": "Pro",
                     "quantity": schedule_params["quantity"],
+                    "billing_rate": "annually",
+                    "base_unit_price": 10,
                 },
             },
             "student_count": 0,
@@ -354,11 +360,21 @@ class AccountViewSetTests(APITestCase):
         phases = [
             {
                 "start_date": 123689126536,
-                "items": [{"plan": "test_plan_123", "quantity": 4}],
+                "items": [
+                    {
+                        "plan": "test_plan_123",
+                        "quantity": 4,
+                    }
+                ],
             },
             {
                 "start_date": 123689126636,
-                "items": [{"plan": "test_plan_456", "quantity": 5}],
+                "items": [
+                    {
+                        "plan": "test_plan_456",
+                        "quantity": 5,
+                    }
+                ],
             },
             {
                 "start_date": schedule_params["start_date"],
@@ -430,6 +446,8 @@ class AccountViewSetTests(APITestCase):
                     "plan": "Pro",
                     "quantity": schedule_params["quantity"],
                     "start_date": schedule_params["start_date"],
+                    "billing_rate": "annually",
+                    "base_unit_price": 10,
                 },
             },
             "uses_invoice": False,
@@ -513,6 +531,69 @@ class AccountViewSetTests(APITestCase):
             "uses_invoice": False,
             "delinquent": None,
         }
+
+    @patch("api.internal.owner.serializers.log")
+    @patch("services.billing.stripe.SubscriptionSchedule.retrieve")
+    @patch("services.billing.stripe.Subscription.retrieve")
+    def test_retrieve_account_handles_missing_plan_in_scheduled_phase(
+        self, mock_retrieve_subscription, mock_retrieve_schedule, log_mock
+    ):
+        owner = OwnerFactory(
+            admins=[self.current_owner.ownerid], stripe_subscription_id="sub_123"
+        )
+        self.current_owner.organizations = [owner.ownerid]
+        self.current_owner.save()
+
+        subscription_params = {
+            "default_payment_method": None,
+            "cancel_at_period_end": False,
+            "current_period_end": 1633512445,
+            "latest_invoice": None,
+            "schedule_id": "sub_sched_456",
+            "collection_method": "charge_automatically",
+            "tax_ids": None,
+        }
+
+        mock_retrieve_subscription.return_value = MockSubscription(subscription_params)
+        schedule_params = {
+            "id": 123,
+            "start_date": 123689126736,
+            "stripe_plan_id": "nonexistent_plan_id",
+            "quantity": 6,
+        }
+        phases = [
+            {},
+            {
+                "start_date": schedule_params["start_date"],
+                "items": [
+                    {
+                        "plan": schedule_params["stripe_plan_id"],
+                        "quantity": schedule_params["quantity"],
+                    }
+                ],
+            },
+        ]
+
+        mock_retrieve_schedule.return_value = MockSchedule(schedule_params, phases)
+
+        response = self._retrieve(
+            kwargs={"service": owner.service, "owner_username": owner.username}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["schedule_detail"] == {
+            "id": "123",
+            "scheduled_phase": {
+                "start_date": schedule_params["start_date"],
+                "plan": None,
+                "quantity": schedule_params["quantity"],
+                "billing_rate": None,
+                "base_unit_price": None,
+            },
+        }
+        log_mock.warning.assert_called_once()
+        call_args = log_mock.warning.call_args
+        assert call_args[0][0] == "Plan not found for scheduled phase"
+        assert call_args[1]["extra"]["plan_id"] == "nonexistent_plan_id"
 
     def test_retrieve_account_gets_account_students(self):
         owner = OwnerFactory(
