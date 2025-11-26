@@ -412,8 +412,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         log.info("run_impl: Loaded commit diff")
 
+        lock_name = UPLOAD_PROCESSING_LOCK_NAME(repoid, commitid)
         try:
-            with get_report_lock(repoid, commitid, self.hard_time_limit_task):
+            with self.with_logged_lock(
+                get_report_lock(repoid, commitid, self.hard_time_limit_task),
+                lock_name=lock_name,
+                repoid=repoid,
+                commitid=commitid,
+            ):
                 log.info("run_impl: Acquired report lock")
 
                 report_service = ReportService(commit_yaml)
@@ -490,7 +496,12 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         redis_connection = get_redis_connection()
 
         try:
-            with redis_connection.lock(lock_name, timeout=60 * 5, blocking_timeout=5):
+            with self.with_logged_lock(
+                redis_connection.lock(lock_name, timeout=60 * 5, blocking_timeout=5),
+                lock_name=lock_name,
+                repoid=repoid,
+                commitid=commitid,
+            ):
                 log.info("handle_finisher_lock: Acquired finisher lock")
 
                 result = self.finish_reports_processing(

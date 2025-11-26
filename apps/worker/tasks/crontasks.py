@@ -37,10 +37,14 @@ class CodecovCronTask(BaseCodecovTask):
         redis_connection = get_redis_connection()
         generation_time = datetime.fromisoformat(cron_task_generation_time_iso)
         try:
-            with redis_connection.lock(
-                lock_name,
-                timeout=max(60 * 5, self.hard_time_limit_task),
-                blocking_timeout=1,
+            with self.with_logged_lock(
+                redis_connection.lock(
+                    lock_name,
+                    timeout=max(60 * 5, self.hard_time_limit_task),
+                    blocking_timeout=1,
+                ),
+                lock_name=lock_name,
+                task_name=self.name,
             ):
                 min_seconds_interval = (
                     self.get_min_seconds_interval_between_executions()
