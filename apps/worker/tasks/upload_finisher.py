@@ -470,7 +470,18 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     "number_retries": self.request.retries,
                 },
             )
-            self.retry(max_retries=MAX_RETRIES, countdown=retry_in)
+            if not self.safe_retry(max_retries=MAX_RETRIES, countdown=retry_in):
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
+                return {
+                    "error": "Max retries exceeded while acquiring report lock",
+                    "upload_ids": upload_ids,
+                }
 
     def _handle_finisher_lock(
         self,

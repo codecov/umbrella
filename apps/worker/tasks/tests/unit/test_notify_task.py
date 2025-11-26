@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, call
 import httpx
 import pytest
 import respx
-from celery.exceptions import MaxRetriesExceededError, Retry
+from celery.exceptions import Retry
 from freezegun import freeze_time
 
 from database.enums import Decoration, Notification, NotificationState
@@ -778,6 +778,11 @@ class TestNotifyTask:
             NotifyTask, "should_wait_longer", return_value=True
         )
         mocked_retry = mocker.patch.object(NotifyTask, "retry", side_effect=Retry())
+        mocked_safe_retry = mocker.patch.object(
+            NotifyTask,
+            "safe_retry",
+            side_effect=lambda **kwargs: mocked_retry(**kwargs),
+        )
         fetch_and_update_whether_ci_passed_result = {}
         mocker.patch.object(
             NotifyTask,
@@ -800,7 +805,7 @@ class TestNotifyTask:
                 commitid=commit.commitid,
                 current_yaml={},
             )
-        mocked_retry.assert_called_with(countdown=15, max_retries=10)
+        mocked_safe_retry.assert_called_with(countdown=15, max_retries=10)
         mocked_should_wait_longer.assert_called_with(
             UserYaml({}), commit, fetch_and_update_whether_ci_passed_result
         )
@@ -829,6 +834,11 @@ class TestNotifyTask:
             NotifyTask, "should_wait_longer", return_value=True
         )
         mocked_retry = mocker.patch.object(NotifyTask, "retry", side_effect=Retry())
+        mocked_safe_retry = mocker.patch.object(
+            NotifyTask,
+            "safe_retry",
+            side_effect=lambda **kwargs: mocked_retry(**kwargs),
+        )
         fetch_and_update_whether_ci_passed_result = {}
         mocker.patch.object(
             NotifyTask,
@@ -852,7 +862,7 @@ class TestNotifyTask:
                 commitid=commit.commitid,
                 current_yaml={},
             )
-        mocked_retry.assert_called_with(countdown=180, max_retries=5)
+        mocked_safe_retry.assert_called_with(countdown=180, max_retries=5)
         mocked_should_wait_longer.assert_called_with(
             UserYaml({}), commit, fetch_and_update_whether_ci_passed_result
         )
@@ -1057,6 +1067,15 @@ class TestNotifyTask:
             "tasks.notify.get_repo_provider_service"
         )
         mock_retry = mocker.patch.object(NotifyTask, "retry", return_value=None)
+
+        # Mock safe_retry to return True (retry scheduled) and call retry
+        def safe_retry_side_effect(**kwargs):
+            mock_retry(**kwargs)
+            return True  # Return True to indicate retry was scheduled
+
+        mock_safe_retry = mocker.patch.object(
+            NotifyTask, "safe_retry", side_effect=safe_retry_side_effect
+        )
         get_repo_provider_service.side_effect = NoConfiguredAppsAvailable(
             apps_count=2, rate_limited_count=1, suspended_count=1
         )
@@ -1078,7 +1097,7 @@ class TestNotifyTask:
             current_yaml=current_yaml,
         )
         assert res is None
-        mock_retry.assert_called_with(max_retries=10, countdown=45 * 60)
+        mock_safe_retry.assert_called_with(max_retries=10, countdown=45 * 60)
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
                 call(
@@ -1286,7 +1305,7 @@ class TestNotifyTask:
         self, dbsession, mocker, mock_repo_provider, mock_self_app
     ):
         mocker.patch.object(NotifyTask, "should_wait_longer", return_value=True)
-        mocker.patch.object(NotifyTask, "retry", side_effect=MaxRetriesExceededError())
+        mocker.patch.object(NotifyTask, "safe_retry", return_value=False)
         mocked_fetch_and_update_whether_ci_passed = mocker.patch.object(
             NotifyTask, "fetch_and_update_whether_ci_passed"
         )

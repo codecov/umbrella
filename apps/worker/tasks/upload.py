@@ -327,10 +327,24 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 milestone=milestone,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(
+            if not self.safe_retry(
+                max_retries=10,
                 countdown=retry_countdown,
                 kwargs=upload_context.kwargs_for_retry(kwargs),
-            )
+            ):
+                self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
+                return {
+                    "was_setup": False,
+                    "was_updated": False,
+                    "tasks_were_scheduled": False,
+                    "reason": "too_many_retries",
+                }
 
         lock_name = upload_context.lock_name("upload")
         try:
@@ -422,11 +436,24 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 milestone=milestone,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(
+            if not self.safe_retry(
                 max_retries=3,
                 countdown=retry_countdown,
                 kwargs=upload_context.kwargs_for_retry(kwargs),
-            )
+            ):
+                self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
+                return {
+                    "was_setup": False,
+                    "was_updated": False,
+                    "tasks_were_scheduled": False,
+                    "reason": "too_many_retries",
+                }
         except SoftTimeLimitExceeded:
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
@@ -435,11 +462,24 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 error=Errors.TASK_TIMED_OUT,
             )
             retry_countdown = 20 * 2**self.request.retries
-            self.retry(
+            if not self.safe_retry(
                 max_retries=3,
                 countdown=retry_countdown,
                 kwargs=upload_context.kwargs_for_retry(kwargs),
-            )
+            ):
+                self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
+                return {
+                    "was_setup": False,
+                    "was_updated": False,
+                    "tasks_were_scheduled": False,
+                    "reason": "too_many_retries",
+                }
 
     @sentry_sdk.trace
     def run_impl_within_lock(
@@ -547,7 +587,24 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 milestone=Milestones.COMPILING_UPLOADS,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(countdown=60, kwargs=upload_context.kwargs_for_retry(kwargs))
+            if not self.safe_retry(
+                max_retries=10,
+                countdown=60,
+                kwargs=upload_context.kwargs_for_retry(kwargs),
+            ):
+                self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=repository.repoid,
+                    milestone=Milestones.COMPILING_UPLOADS,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
+                return {
+                    "was_setup": False,
+                    "was_updated": False,
+                    "tasks_were_scheduled": False,
+                    "reason": "too_many_retries",
+                }
         except Exception as e:
             log.error(
                 "Unexpected error during initialize_and_save_report",
