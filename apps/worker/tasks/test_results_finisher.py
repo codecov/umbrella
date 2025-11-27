@@ -58,7 +58,6 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                     **kwargs,
                 )
 
-            # Log breadcrumb for upload complete
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -75,7 +74,6 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                         "current_yaml": commit_yaml,
                     },
                 )
-                # Log breadcrumb for notifications triggered
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,

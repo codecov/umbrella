@@ -17,12 +17,14 @@ from shared.django_apps.upload_breadcrumbs.admin import (
     ErrorFilter,
     MilestoneFilter,
     PresentDataFilter,
+    ReportTypeFilter,
     UploadBreadcrumbAdmin,
 )
 from shared.django_apps.upload_breadcrumbs.models import (
     Endpoints,
     Errors,
     Milestones,
+    ReportTypes,
     UploadBreadcrumb,
 )
 from shared.django_apps.upload_breadcrumbs.tests.factories import (
@@ -666,6 +668,251 @@ class ErrorFilterTest(TestCase):
                 else:
                     # Should return original queryset
                     self.assertEqual(result, queryset)
+
+
+class ReportTypeFilterTest(TestCase):
+    """Test cases for the ReportTypeFilter used in UploadBreadcrumbAdmin."""
+
+    def setUp(self):
+        self.filter = ReportTypeFilter(
+            None, {}, UploadBreadcrumb, UploadBreadcrumbAdmin
+        )
+
+    def test_lookups(self):
+        """Test report type filter lookups return all ReportTypes choices."""
+        request = MagicMock()
+        model_admin = MagicMock()
+
+        lookups = self.filter.lookups(request, model_admin)
+
+        # Should have all report type choices with labels
+        self.assertEqual(len(lookups), len(ReportTypes))
+        for choice in ReportTypes:
+            self.assertIn((choice.value, str(choice.label)), lookups)
+
+    def test_lookups_contains_expected_values(self):
+        """Test that lookups contain the expected report type values."""
+        request = MagicMock()
+        model_admin = MagicMock()
+
+        lookups = self.filter.lookups(request, model_admin)
+
+        expected_lookups = [
+            ("cov", "Coverage"),
+            ("tr", "Test Results"),
+            ("ba", "Bundle Analysis"),
+        ]
+        self.assertEqual(lookups, expected_lookups)
+
+    def test_queryset_with_value(self):
+        """Test queryset filtering when a report type is selected."""
+        request = MagicMock()
+        queryset = UploadBreadcrumb.objects.all()
+
+        with patch.object(
+            self.filter, "value", return_value=ReportTypes.COVERAGE.value
+        ):
+            result = self.filter.queryset(request, queryset)
+
+        # Check that the filter was applied (queryset changed)
+        self.assertNotEqual(result, queryset)
+
+    def test_queryset_without_value(self):
+        """Test queryset returns unchanged when no filter value."""
+        request = MagicMock()
+        queryset = UploadBreadcrumb.objects.all()
+
+        with patch.object(self.filter, "value", return_value=None):
+            result = self.filter.queryset(request, queryset)
+
+        # Should return original queryset
+        self.assertEqual(result, queryset)
+
+    def test_queryset_with_each_report_type(self):
+        """Test queryset filtering works for each report type."""
+        test_cases = [
+            (ReportTypes.COVERAGE.value, True),
+            (ReportTypes.TEST_RESULTS.value, True),
+            (ReportTypes.BUNDLE_ANALYSIS.value, True),
+            (None, False),
+        ]
+
+        for filter_value, should_change_queryset in test_cases:
+            with self.subTest(filter_value=filter_value):
+                request = MagicMock()
+                queryset = UploadBreadcrumb.objects.all()
+
+                with patch.object(self.filter, "value", return_value=filter_value):
+                    result = self.filter.queryset(request, queryset)
+
+                if should_change_queryset:
+                    self.assertNotEqual(result, queryset)
+                else:
+                    self.assertEqual(result, queryset)
+
+    def test_queryset_filters_correctly(self):
+        """Test that the filter actually returns matching breadcrumbs."""
+        # Create breadcrumbs with different report types
+        coverage_breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data={"report_type": ReportTypes.COVERAGE.value}
+        )
+        test_results_breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data={"report_type": ReportTypes.TEST_RESULTS.value}
+        )
+        bundle_analysis_breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data={"report_type": ReportTypes.BUNDLE_ANALYSIS.value}
+        )
+        no_report_type_breadcrumb = UploadBreadcrumbFactory(
+            breadcrumb_data={"milestone": Milestones.COMMIT_PROCESSED.value}
+        )
+
+        request = MagicMock()
+        queryset = UploadBreadcrumb.objects.all()
+
+        # Filter for Coverage
+        with patch.object(
+            self.filter, "value", return_value=ReportTypes.COVERAGE.value
+        ):
+            result = self.filter.queryset(request, queryset)
+            result_ids = list(result.values_list("id", flat=True))
+            self.assertIn(coverage_breadcrumb.id, result_ids)
+            self.assertNotIn(test_results_breadcrumb.id, result_ids)
+            self.assertNotIn(bundle_analysis_breadcrumb.id, result_ids)
+            self.assertNotIn(no_report_type_breadcrumb.id, result_ids)
+
+        # Filter for Test Results
+        with patch.object(
+            self.filter, "value", return_value=ReportTypes.TEST_RESULTS.value
+        ):
+            result = self.filter.queryset(request, queryset)
+            result_ids = list(result.values_list("id", flat=True))
+            self.assertNotIn(coverage_breadcrumb.id, result_ids)
+            self.assertIn(test_results_breadcrumb.id, result_ids)
+            self.assertNotIn(bundle_analysis_breadcrumb.id, result_ids)
+            self.assertNotIn(no_report_type_breadcrumb.id, result_ids)
+
+        # Filter for Bundle Analysis
+        with patch.object(
+            self.filter, "value", return_value=ReportTypes.BUNDLE_ANALYSIS.value
+        ):
+            result = self.filter.queryset(request, queryset)
+            result_ids = list(result.values_list("id", flat=True))
+            self.assertNotIn(coverage_breadcrumb.id, result_ids)
+            self.assertNotIn(test_results_breadcrumb.id, result_ids)
+            self.assertIn(bundle_analysis_breadcrumb.id, result_ids)
+            self.assertNotIn(no_report_type_breadcrumb.id, result_ids)
+
+
+class ReportTypeUIComponentsTest(TestCase):
+    """Test cases for report type display in UI components."""
+
+    def setUp(self):
+        self.admin = UploadBreadcrumbAdmin(UploadBreadcrumb, AdminSite())
+
+    def test_formatted_breadcrumb_data_with_report_type(self):
+        """Test that report_type is displayed in formatted_breadcrumb_data."""
+        breadcrumb_data = {"report_type": ReportTypes.COVERAGE.value}
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+
+        result = self.admin.formatted_breadcrumb_data(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertIn("📊", result)  # report type emoji
+        self.assertIn("Coverage", result)
+
+    def test_formatted_breadcrumb_data_with_test_results_report_type(self):
+        """Test that Test Results report type is displayed correctly."""
+        breadcrumb_data = {"report_type": ReportTypes.TEST_RESULTS.value}
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+
+        result = self.admin.formatted_breadcrumb_data(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertIn("📊", result)
+        self.assertIn("Test Results", result)
+
+    def test_formatted_breadcrumb_data_with_bundle_analysis_report_type(self):
+        """Test that Bundle Analysis report type is displayed correctly."""
+        breadcrumb_data = {"report_type": ReportTypes.BUNDLE_ANALYSIS.value}
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+
+        result = self.admin.formatted_breadcrumb_data(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertIn("📊", result)
+        self.assertIn("Bundle Analysis", result)
+
+    def test_formatted_breadcrumb_data_without_report_type(self):
+        """Test that missing report_type doesn't show report type section."""
+        breadcrumb_data = {"milestone": Milestones.COMMIT_PROCESSED.value}
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+
+        result = self.admin.formatted_breadcrumb_data(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertNotIn("📊", result)
+
+    def test_formatted_breadcrumb_data_detail_with_report_type(self):
+        """Test that report_type is displayed in detailed view."""
+        breadcrumb_data = {"report_type": ReportTypes.COVERAGE.value}
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+
+        result = self.admin.formatted_breadcrumb_data_detail(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertIn("📊 Report Type:", result)
+        self.assertIn("Coverage", result)
+        self.assertIn("(cov)", result)  # Raw value should be shown
+
+    def test_formatted_breadcrumb_data_detail_with_test_results(self):
+        """Test that Test Results is displayed correctly in detail view."""
+        breadcrumb_data = {"report_type": ReportTypes.TEST_RESULTS.value}
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+
+        result = self.admin.formatted_breadcrumb_data_detail(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertIn("📊 Report Type:", result)
+        self.assertIn("Test Results", result)
+        self.assertIn("(tr)", result)
+
+    def test_formatted_breadcrumb_data_detail_with_bundle_analysis(self):
+        """Test that Bundle Analysis is displayed correctly in detail view."""
+        breadcrumb_data = {"report_type": ReportTypes.BUNDLE_ANALYSIS.value}
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+
+        result = self.admin.formatted_breadcrumb_data_detail(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertIn("📊 Report Type:", result)
+        self.assertIn("Bundle Analysis", result)
+        self.assertIn("(ba)", result)
+
+    def test_formatted_breadcrumb_data_detail_without_report_type(self):
+        """Test that missing report_type doesn't show report type section in detail."""
+        breadcrumb_data = {"milestone": Milestones.COMMIT_PROCESSED.value}
+        breadcrumb = UploadBreadcrumbFactory(breadcrumb_data=breadcrumb_data)
+
+        result = self.admin.formatted_breadcrumb_data_detail(breadcrumb)
+
+        self.assertIsInstance(result, SafeString)
+        self.assertNotIn("📊 Report Type:", result)
+
+    def test_report_type_filter_in_list_filter(self):
+        """Test that ReportTypeFilter is included in admin list_filter."""
+        self.assertIn(ReportTypeFilter, self.admin.list_filter)
+
+    def test_present_data_filter_has_report_type_option(self):
+        """Test that PresentDataFilter includes has_report_type option."""
+        present_filter = PresentDataFilter(
+            None, {}, UploadBreadcrumb, UploadBreadcrumbAdmin
+        )
+        request = MagicMock()
+        model_admin = MagicMock()
+
+        lookups = present_filter.lookups(request, model_admin)
+
+        self.assertIn(("has_report_type", "Has Report Type"), lookups)
 
 
 class UploadBreadcrumbAdminSearchTest(TestCase):
