@@ -120,6 +120,16 @@ class Errors(models.TextChoices):
     UNKNOWN = "u", _("Unknown error")
 
 
+class ReportTypes(models.TextChoices):
+    """
+    Possible report types for an upload breadcrumb.
+    """
+
+    COVERAGE = "cov", _("Coverage")
+    TEST_RESULTS = "tr", _("Test Results")
+    BUNDLE_ANALYSIS = "ba", _("Bundle Analysis")
+
+
 class BreadcrumbData(
     PydanticBaseModel,
     frozen=True,
@@ -144,6 +154,8 @@ class BreadcrumbData(
     :type error: Errors, optional
     :param error_text: Additional text describing the error.
     :type error_text: str, optional
+    :param report_type: The type of report (coverage, test_results, bundle_analysis).
+    :type report_type: ReportTypes, optional
 
     :raises ValidationError: If no non-empty fields are provided.
     :raises ValidationError: If any field is explicitly set to an empty string.
@@ -157,6 +169,7 @@ class BreadcrumbData(
     uploader: str | None = None
     error: Errors | None = None
     error_text: str | None = None
+    report_type: ReportTypes | None = None
 
     @field_validator("*", mode="after")
     @classmethod
@@ -174,6 +187,7 @@ class BreadcrumbData(
                 self.uploader,
                 self.error,
                 self.error_text,
+                self.report_type,
             ]
         ):
             raise ValueError("at least one field must be provided.")

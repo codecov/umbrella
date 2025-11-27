@@ -23,6 +23,7 @@ from shared.django_apps.upload_breadcrumbs.models import (
     Endpoints,
     Errors,
     Milestones,
+    ReportTypes,
     UploadBreadcrumb,
 )
 from shared.django_apps.utils.paginator import EstimatedCountPaginator
@@ -48,6 +49,7 @@ class PresentDataFilter(admin.SimpleListFilter):
         self, request: HttpRequest, model_admin: admin.ModelAdmin
     ) -> list[tuple[str, str]]:
         return [
+            ("has_report_type", "Has Report Type"),
             ("has_milestone", "Has Milestone"),
             ("has_endpoint", "Has Endpoint"),
             ("has_uploader", "Has Uploader"),
@@ -105,7 +107,9 @@ class PresentDataFilter(admin.SimpleListFilter):
         selected_filters = (self.value() or "").split(",")
 
         for filter_type in selected_filters:
-            if filter_type == "has_milestone":
+            if filter_type == "has_report_type":
+                queryset = queryset.filter(breadcrumb_data__report_type__isnull=False)
+            elif filter_type == "has_milestone":
                 queryset = queryset.filter(breadcrumb_data__milestone__isnull=False)
             elif filter_type == "has_endpoint":
                 queryset = queryset.filter(breadcrumb_data__endpoint__isnull=False)
@@ -168,6 +172,21 @@ class ErrorFilter(admin.SimpleListFilter):
         return queryset
 
 
+class ReportTypeFilter(admin.SimpleListFilter):
+    title = "Report Type"
+    parameter_name = "report_type"
+
+    def lookups(
+        self, request: HttpRequest, model_admin: admin.ModelAdmin
+    ) -> list[tuple[str, str]]:
+        return [(choice.value, choice.label) for choice in ReportTypes]
+
+    def queryset(self, request: HttpRequest, queryset: QuerySet) -> QuerySet:
+        if self.value():
+            return queryset.filter(breadcrumb_data__report_type=self.value())
+        return queryset
+
+
 @admin.register(UploadBreadcrumb)
 class UploadBreadcrumbAdmin(admin.ModelAdmin):
     list_display = (
@@ -188,6 +207,7 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
     show_full_result_count = False
     list_filter = [
         PresentDataFilter,
+        ReportTypeFilter,
         MilestoneFilter,
         EndpointFilter,
         ErrorFilter,
@@ -300,6 +320,10 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             milestone_label = Milestones(data["milestone"]).label
             parts.append(f"📍 {milestone_label}")
 
+        if data.get("report_type"):
+            report_type_label = ReportTypes(data["report_type"]).label
+            parts.append(f"📊 {report_type_label}")
+
         if data.get("endpoint"):
             endpoint_label = Endpoints(data["endpoint"]).label
             parts.append(f"🔗 {endpoint_label}")
@@ -333,11 +357,16 @@ class UploadBreadcrumbAdmin(admin.ModelAdmin):
             '<div style="font-family: monospace; padding: 15px; border-radius: 5px; border: 1px solid var(--hairline-color);">'
         )
 
-        # Show each field with its label
         if data.get("milestone"):
             milestone_label = Milestones(data["milestone"]).label
             html_parts.append(
                 f"<div><strong>📍 Milestone:</strong> {milestone_label} <span>({data['milestone']})</span></div>"
+            )
+
+        if data.get("report_type"):
+            report_type_label = ReportTypes(data["report_type"]).label
+            html_parts.append(
+                f"<div><strong>📊 Report Type:</strong> {report_type_label} <span>({data['report_type']})</span></div>"
             )
 
         if data.get("endpoint"):
