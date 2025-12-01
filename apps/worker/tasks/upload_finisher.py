@@ -423,8 +423,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 LockType.UPLOAD_PROCESSING,
                 retry_num=self.request.retries,
             ):
-                log.info("run_impl: Acquired report lock")
-
                 report_service = ReportService(commit_yaml)
 
                 log.info("run_impl: Performing report merging")
@@ -463,13 +461,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            log.warning(
-                "Unable to acquire report lock",
-                extra={
-                    "countdown": retry.countdown,
-                    "number_retries": self.request.retries,
-                },
-            )
             if self.request.retries >= MAX_RETRIES:
                 log.warning(
                     "Not retrying since we already had too many retries",
@@ -486,13 +477,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone=milestone,
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
-            )
-            log.warning(
-                "Unable to acquire report lock. Retrying",
-                extra={
-                    "countdown": retry.countdown,
-                    "number_retries": self.request.retries,
-                },
             )
             self.retry(max_retries=MAX_RETRIES, countdown=retry.countdown)
 
@@ -522,8 +506,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 LockType.UPLOAD_FINISHER,
                 retry_num=self.request.retries,
             ):
-                log.info("handle_finisher_lock: Acquired finisher lock")
-
                 result = self.finish_reports_processing(
                     db_session, commit, commit_yaml, processing_results
                 )
@@ -583,14 +565,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone=milestone,
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
-            )
-            log.warning(
-                "Unable to acquire lock",
-                extra={
-                    "lock_name": lock_manager.lock_name(LockType.UPLOAD_FINISHER),
-                    "countdown": retry.countdown,
-                    "number_retries": self.request.retries,
-                },
             )
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
             if self.request.retries >= MAX_RETRIES:

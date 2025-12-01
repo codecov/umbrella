@@ -57,16 +57,6 @@ class ManualTriggerTask(
                     **kwargs,
                 )
         except LockRetry as retry:
-            log.warning(
-                "Unable to acquire lock",
-                extra={
-                    "commit": commitid,
-                    "repoid": repoid,
-                    "number_retries": self.request.retries,
-                    "lock_name": lock_manager.lock_name(LockType.MANUAL_TRIGGER),
-                    "countdown": retry.countdown,
-                },
-            )
             if self.request.retries >= TASK_MAX_RETRIES_DEFAULT:
                 log.warning(
                     "Not retrying since we already had too many retries",

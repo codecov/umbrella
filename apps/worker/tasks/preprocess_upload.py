@@ -66,16 +66,6 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
                     commitid=commitid,
                 )
         except LockRetry as retry:
-            log.warning(
-                "Unable to acquire lock",
-                extra={
-                    "commit": commitid,
-                    "repoid": repoid,
-                    "number_retries": self.request.retries,
-                    "lock_name": lock_name,
-                    "countdown": retry.countdown,
-                },
-            )
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,

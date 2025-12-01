@@ -368,15 +368,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     kwargs,
                 )
         except LockRetry as retry:
-            log.warning(
-                "Unable to acquire lock",
-                extra={
-                    "commit": commitid,
-                    "repoid": repoid,
-                    "report_type": report_type,
-                    "lock_name": lock_manager.lock_name(LockType.UPLOAD),
-                },
-            )
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
