@@ -183,7 +183,7 @@ class ExportTestAnalyticsDataTask(
                         log.info(
                             "Successfully processed repository test runs",
                             extra={
-                                "name": repo_name,
+                                "repo_name": repo_name,
                                 "total_processed": total_processed,
                                 "duration": duration,
                             },
