@@ -190,14 +190,54 @@ def get_task_group(task_name: str) -> str | None:
 # - Redis Broker Options: https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html#configuration
 # =============================================================================
 
+# Visibility timeout for Redis broker when acks_late=False (seconds)
+# Used when tasks acknowledge immediately upon receipt, allowing faster recovery
+# from worker failures. Tasks are removed from queue immediately, so shorter timeout
+# is acceptable for faster task recovery.
+# Default: 300 seconds (5 minutes)
+TASK_VISIBILITY_TIMEOUT_WITHOUT_ACKS_LATE_SECONDS = int(
+    get_config(
+        "setup", "tasks", "celery", "visibility_timeout_without_acks_late", default=300
+    )
+)
+
+# Visibility timeout for Redis broker when acks_late=True (seconds)
+# Must be longer than the longest-running task that uses acks_late=True.
+# Tasks like delete_owner can take up to 48 minutes, so visibility timeout should
+# be set accordingly to prevent duplicate task execution.
+# Default: 900 seconds (15 minutes)
+# Note: Some tasks explicitly set acks_late=True, so this timeout must accommodate them.
+TASK_VISIBILITY_TIMEOUT_WITH_ACKS_LATE_SECONDS = int(
+    get_config(
+        "setup", "tasks", "celery", "visibility_timeout_with_acks_late", default=900
+    )
+)
+
 # Visibility timeout for Redis broker (seconds)
 # How long a task remains invisible after being pulled from queue before becoming
 # visible again if not acknowledged. This is the maximum time a task can be "lost"
 # before another worker picks it up.
-# Default: 300 seconds (5 minutes)
+# Automatically selects appropriate timeout based on global task_acks_late setting,
+# but defaults to the longer timeout to protect tasks that explicitly set acks_late=True.
+# Can be overridden directly via: setup.tasks.celery.visibility_timeout config
 # Celery docs: https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html#visibility-timeout
+_global_acks_late = bool(get_config("setup", "tasks", "celery", "acks_late"))
+_default_visibility_timeout = (
+    TASK_VISIBILITY_TIMEOUT_WITH_ACKS_LATE_SECONDS
+    if _global_acks_late
+    else TASK_VISIBILITY_TIMEOUT_WITHOUT_ACKS_LATE_SECONDS
+)
 TASK_VISIBILITY_TIMEOUT_SECONDS = int(
-    get_config("setup", "tasks", "celery", "visibility_timeout", default=300)
+    get_config(
+        "setup",
+        "tasks",
+        "celery",
+        "visibility_timeout",
+        default=max(
+            _default_visibility_timeout,
+            TASK_VISIBILITY_TIMEOUT_WITH_ACKS_LATE_SECONDS,
+        ),
+    )
 )
 
 # Maximum retries for tasks hitting transient conditions (e.g., processing locks)

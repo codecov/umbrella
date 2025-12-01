@@ -345,7 +345,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             with lock_manager.locked(
                 LockType.UPLOAD,
                 retry_num=self.request.retries,
-                max_retries=3,  # Upload task uses max_retries=3
+                max_retries=3,
             ):
                 # Check whether a different `Upload` task has "stolen" our uploads
                 if not upload_context.has_pending_jobs():
@@ -392,8 +392,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "was_updated": False,
                     "tasks_were_scheduled": False,
                 }
-            # Upload task uses max_retries=3, which allows 4 total attempts (initial + 3 retries)
-            # So we check if retries >= 3 to prevent exceeding the limit
             if self.request.retries >= 3:
                 self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
                 self._call_upload_breadcrumb_task(
@@ -408,9 +406,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "tasks_were_scheduled": False,
                     "reason": "too_many_retries",
                 }
-            # Use the maximum of LockRetry countdown and exponential backoff
-            # LockManager's countdown uses exponential backoff with a maximum cap
-            # We respect both strategies by taking the maximum to ensure adequate backoff
             retry_countdown = max(retry.countdown, 20 * 2**self.request.retries)
             log.warning(
                 "Retrying upload",

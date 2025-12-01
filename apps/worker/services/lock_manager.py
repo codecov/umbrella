@@ -100,8 +100,6 @@ class LockManager:
                     },
                 )
         except LockError:
-            # Calculate exponential backoff with a maximum cap, preserving exponential growth
-            # Generate random value from unbounded exponential range first, then apply cap
             max_retry_cap = 60 * 60 * 5  # 5 hours
             max_retry_unbounded = 200 * 3**retry_num
             countdown_unbounded = random.randint(
@@ -109,7 +107,6 @@ class LockManager:
             )
             countdown = min(countdown_unbounded, max_retry_cap)
 
-            # Log max retries exceeded if applicable
             if max_retries is not None and retry_num >= max_retries:
                 log.error(
                     "Not retrying since we already had too many retries",

@@ -53,7 +53,7 @@ def test_celery_config():
         "app.tasks.timeseries.*",
         "app.tasks.upload.*",
     ]
-    assert config.broker_transport_options == {"visibility_timeout": 300}
+    assert config.broker_transport_options == {"visibility_timeout": 900}
     assert config.result_extended is True
     assert config.imports == ("tasks",)
     assert config.task_serializer == "json"
