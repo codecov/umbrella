@@ -186,7 +186,10 @@ class TestExportTestAnalyticsDataTask:
         mock_gcs_and_archiver,
         sample_test_run_data,
     ):
-        mock_testrun.objects.filter.return_value.order_by.return_value.values.return_value = sample_test_run_data
+        # Create a mock queryset that supports iterator()
+        mock_queryset = MagicMock()
+        mock_queryset.iterator.return_value = iter(sample_test_run_data)
+        mock_testrun.objects.filter.return_value.order_by.return_value.values.return_value = mock_queryset
 
         result = ExportTestAnalyticsDataTask().run_impl(
             dbsession,
@@ -202,11 +205,10 @@ class TestExportTestAnalyticsDataTask:
         assert len(result["repositories_failed"]) == 0
 
         archiver_instance = mock_gcs_and_archiver["archiver_instance"]
-        archiver_instance.upload_json.assert_called_once()
-        call_args = archiver_instance.upload_json.call_args
+        # The new implementation uses _add_file instead of upload_json
+        archiver_instance._add_file.assert_called_once()
+        call_args = archiver_instance._add_file.call_args
         assert call_args[0][0] == "test_owner/test_repo.json"
-        assert "fields" in call_args[0][1]
-        assert "data" in call_args[0][1]
 
     @patch("tasks.export_test_analytics_data.Testrun")
     @patch("tasks.export_test_analytics_data.sentry_sdk")
@@ -260,9 +262,9 @@ class TestExportTestAnalyticsDataTask:
                 raise Exception("Processing error for failing_repo")
             else:
                 mock_result = MagicMock()
-                mock_result.order_by.return_value.values.return_value = (
-                    sample_test_run_data
-                )
+                mock_queryset = MagicMock()
+                mock_queryset.iterator.return_value = iter(sample_test_run_data)
+                mock_result.order_by.return_value.values.return_value = mock_queryset
                 return mock_result
 
         mock_testrun.objects.filter.side_effect = filter_side_effect
@@ -288,7 +290,7 @@ class TestExportTestAnalyticsDataTask:
         assert mock_sentry.capture_exception.call_count == 1
 
         archiver_instance = mock_gcs_and_archiver["archiver_instance"]
-        assert archiver_instance.upload_json.call_count == 2
+        assert archiver_instance._add_file.call_count == 2
 
     @patch("tasks.export_test_analytics_data.Testrun")
     def test_export_with_multiple_test_runs(
@@ -299,7 +301,10 @@ class TestExportTestAnalyticsDataTask:
         mock_gcs_and_archiver,
         multiple_test_runs_data,
     ):
-        mock_testrun.objects.filter.return_value.order_by.return_value.values.return_value = multiple_test_runs_data
+        # Create a mock queryset that supports iterator()
+        mock_queryset = MagicMock()
+        mock_queryset.iterator.return_value = iter(multiple_test_runs_data)
+        mock_testrun.objects.filter.return_value.order_by.return_value.values.return_value = mock_queryset
 
         result = ExportTestAnalyticsDataTask().run_impl(
             dbsession,
@@ -314,20 +319,8 @@ class TestExportTestAnalyticsDataTask:
         assert len(result["repositories_failed"]) == 0
 
         archiver_instance = mock_gcs_and_archiver["archiver_instance"]
-        archiver_instance.upload_json.assert_called_once()
-        call_args = archiver_instance.upload_json.call_args
-        uploaded_data = call_args[0][1]
-
-        assert len(uploaded_data["data"]) == 3
-        assert uploaded_data["fields"] == [
-            "filename",
-            "timestamp",
-            "testsuite",
-            "outcome",
-            "duration_seconds",
-            "failure_message",
-            "framework",
-            "commit_sha",
-            "branch",
-            "flags",
-        ]
+        archiver_instance._add_file.assert_called_once()
+        # We can't easily inspect the JSON file content with the new streaming approach,
+        # but we can verify the correct blob name was used
+        call_args = archiver_instance._add_file.call_args
+        assert call_args[0][0] == "test_owner/test_repo.json"

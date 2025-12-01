@@ -1,3 +1,4 @@
+import json
 import logging
 import pathlib
 import tempfile
@@ -17,6 +18,9 @@ from shared.storage.data_exporter import _Archiver
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
+
+# Batch size for processing test runs from the database
+BATCH_SIZE = 10000
 
 
 def serialize_test_run(test_run: dict) -> list:
@@ -96,7 +100,6 @@ class ExportTestAnalyticsDataTask(
                 "error": f"No repositories found for owner {integration_name}",
             }
 
-        # Initialize GCS client and bucket
         gcs_client = storage.Client(project=gcp_project_id)
         bucket = gcs_client.bucket(destination_bucket)
 
@@ -132,20 +135,58 @@ class ExportTestAnalyticsDataTask(
                             .order_by("-timestamp")
                             .values(*fields)
                         )
-                        test_runs_data = [
-                            serialize_test_run(tr) for tr in list(test_runs_qs)
-                        ]
 
-                        repo_data = {"fields": fields, "data": test_runs_data}
+                        # Stream test runs to a JSON file
+                        with tempfile.NamedTemporaryFile(
+                            mode="w",
+                            suffix=".json",
+                            delete=False,
+                            dir=temp_dir,
+                        ) as json_file:
+                            json_file.write('{"fields": ')
+                            json.dump(fields, json_file)
+                            json_file.write(', "data": [')
+
+                            first_item = True
+                            total_processed = 0
+
+                            for test_run in test_runs_qs.iterator(
+                                chunk_size=BATCH_SIZE
+                            ):
+                                if not first_item:
+                                    json_file.write(", ")
+                                else:
+                                    first_item = False
+
+                                json.dump(serialize_test_run(test_run), json_file)
+                                total_processed += 1
+
+                                if total_processed % BATCH_SIZE == 0:
+                                    log.debug(
+                                        f"Processed {total_processed} test runs for {repo_name}"
+                                    )
+
+                            json_file.write("]}")
+                            json_file_path = json_file.name
+
+                        # Upload the JSON file, then cleaning it up
                         blob_name = f"{integration_name}/{repo_name}.json"
-                        archiver.upload_json(blob_name, repo_data)
+                        with open(json_file_path, "rb") as f:
+                            archiver._add_file(blob_name, f)
+
+                        pathlib.Path(json_file_path).unlink()
 
                         repositories_succeeded.append({"name": repo_name})
 
                         end_time = datetime.now()
                         duration = (end_time - start_time).total_seconds()
                         log.info(
-                            f"Successfully processed repository {repo_name}: {len(test_runs_data)} test runs in {duration:.2f}s"
+                            "Successfully processed repository test runs",
+                            extra={
+                                "name": repo_name,
+                                "total_processed": total_processed,
+                                "duration": duration,
+                            },
                         )
                     except Exception as e:
                         log.error(
