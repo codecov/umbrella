@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, call
 
 import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
-from redis.exceptions import LockError
 
 from database.enums import ReportType
 from database.models import Upload
@@ -18,6 +17,7 @@ from helpers.checkpoint_logger import _kwargs_key
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.log_context import LogContext, set_log_context
+from services.lock_manager import LockRetry
 from services.report import NotReadyToBuildReportYetError, ReportService
 from shared.celery_config import upload_breadcrumb_task_name
 from shared.django_apps.upload_breadcrumbs.models import (
@@ -36,6 +36,7 @@ from tasks.bundle_analysis_notify import bundle_analysis_notify_task
 from tasks.bundle_analysis_processor import bundle_analysis_processor_task
 from tasks.test_results_finisher import test_results_finisher_task
 from tasks.test_results_processor import test_results_processor_task
+from tasks.tests.utils import ensure_hard_time_limit_task_is_numeric
 from tasks.upload import UploadContext, UploadTask
 from tasks.upload_finisher import upload_finisher_task
 from tasks.upload_processor import upload_processor_task
@@ -1107,18 +1108,60 @@ class TestUploadTaskIntegration:
         mock_redis.lists[f"uploads/{commit.repoid}/{commit.commitid}"] = (
             jsonified_redis_queue
         )
+        # Ensure mock_redis.lock returns a context manager that can be used in 'with' statement
+        # MagicMock() can be used as a context manager by default, but we need to ensure
+        # it records calls properly
+        mock_lock_obj = mocker.MagicMock()
+        mock_lock_obj.__enter__ = mocker.MagicMock(return_value=None)
+        mock_lock_obj.__exit__ = mocker.MagicMock(return_value=None)
+        mock_redis.lock.return_value = mock_lock_obj
 
-        result = UploadTask().run_impl(dbsession, commit.repoid, commit.commitid)
+        task = UploadTask()
+        ensure_hard_time_limit_task_is_numeric(mocker, task)
+        result = task.run_impl(dbsession, commit.repoid, commit.commitid)
         expected_result = {"was_setup": False, "was_updated": True}
         assert expected_result == result
         assert commit.message == "dsidsahdsahdsa"
         assert commit.parent_commit_id == "c5b67303452bbff57cc1f49984339cde39eb1db5"
         assert not mocked_1.called
-        mock_redis.lock.assert_any_call(
-            f"upload_lock_{commit.repoid}_{commit.commitid}",
-            blocking_timeout=5,
-            timeout=300,
+        # Verify that mock_redis.lock was called with the correct parameters
+        # The lock is called via upload_context.redis_connection.lock(), which should be mock_redis.lock()
+        assert mock_redis.lock.called, (
+            f"mock_redis.lock should have been called. "
+            f"Actual calls: {mock_redis.lock.call_args_list}"
         )
+        # Check what parameters the lock was actually called with for better error messages
+        expected_lock_name = f"upload_lock_{commit.repoid}_{commit.commitid}"
+        actual_calls = mock_redis.lock.call_args_list
+        # Find the call with the correct lock name
+        matching_call = None
+        for call_args in actual_calls:
+            args, kwargs = call_args
+            if args and len(args) > 0 and args[0] == expected_lock_name:
+                matching_call = call_args
+                break
+
+        if matching_call is None:
+            pytest.fail(
+                f"mock_redis.lock was not called with lock name '{expected_lock_name}'. "
+                f"Actual calls: {actual_calls}"
+            )
+
+        # Check the parameters - Redis lock() takes (name, timeout=..., blocking_timeout=...)
+        args, kwargs = matching_call
+        actual_blocking_timeout = kwargs.get("blocking_timeout")
+        actual_timeout = kwargs.get("timeout")
+
+        if actual_blocking_timeout is not None:
+            pytest.fail(
+                f"Expected blocking_timeout=None, got {actual_blocking_timeout}. "
+                f"Full call: {matching_call}"
+            )
+        if actual_timeout != 720:
+            pytest.fail(
+                f"Expected timeout=720, got {actual_timeout}. "
+                f"Full call: {matching_call}"
+            )
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
                 call(
@@ -1600,7 +1643,10 @@ class TestUploadTaskUnit:
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
-        mock_redis.lock.side_effect = LockError()
+        # Mock LockManager to raise LockRetry
+        m = mocker.MagicMock()
+        m.return_value.locked.return_value.__enter__.side_effect = LockRetry(60)
+        mocker.patch("tasks.upload.LockManager", m)
         result = UploadTask().run_impl(dbsession, commit.repoid, commit.commitid)
         assert result == {
             "tasks_were_scheduled": False,
@@ -1659,7 +1705,10 @@ class TestUploadTaskUnit:
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
-        mock_redis.lock.side_effect = LockError()
+        # Mock LockManager to raise LockRetry
+        m = mocker.MagicMock()
+        m.return_value.locked.return_value.__enter__.side_effect = LockRetry(60)
+        mocker.patch("tasks.upload.LockManager", m)
         mock_redis.keys[f"uploads/{commit.repoid}/{commit.commitid}"] = ["something"]
         task = UploadTask()
         task.request.retries = 0

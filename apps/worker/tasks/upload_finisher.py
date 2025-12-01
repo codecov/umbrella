@@ -1,5 +1,4 @@
 import logging
-import random
 import re
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -7,8 +6,6 @@ from enum import Enum
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
-from redis.exceptions import LockError
-from redis.lock import Lock
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -21,6 +18,7 @@ from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.save_commit_error import save_commit_error
 from services.comparison import get_or_create_comparison
+from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.intermediate import (
     cleanup_intermediate_reports,
     intermediate_report_key,
@@ -34,6 +32,7 @@ from services.repository import get_repo_provider_service
 from services.timeseries import repository_datasets_query
 from services.yaml import read_yaml_field
 from shared.celery_config import (
+    DEFAULT_LOCK_TIMEOUT_SECONDS,
     compute_comparison_task_name,
     notify_task_name,
     pulls_task_name,
@@ -50,7 +49,7 @@ from shared.timeseries.helpers import is_timeseries_enabled
 from shared.torngit.exceptions import TorngitError
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
-from tasks.upload_processor import MAX_RETRIES, UPLOAD_PROCESSING_LOCK_NAME
+from tasks.upload_processor import MAX_RETRIES
 
 log = logging.getLogger(__name__)
 
@@ -412,15 +411,17 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         log.info("run_impl: Loaded commit diff")
 
+        lock_manager = LockManager(
+            repoid=repoid,
+            commitid=commitid,
+            lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
+            blocking_timeout=None,  # Wait indefinitely - we NEVER want an upload to timeout
+        )
+
         try:
-            lock, lock_name = get_report_lock(
-                repoid, commitid, self.hard_time_limit_task
-            )
-            with self.with_logged_lock(
-                lock,
-                lock_name=lock_name,
-                repoid=repoid,
-                commitid=commitid,
+            with lock_manager.locked(
+                LockType.UPLOAD_PROCESSING,
+                retry_num=self.request.retries,
             ):
                 log.info("run_impl: Acquired report lock")
 
@@ -454,7 +455,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
                 log.info("run_impl: Finished upload_finisher task")
 
-        except LockError:
+        except LockRetry as retry:
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -462,6 +463,23 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
+            log.warning(
+                "Unable to acquire report lock",
+                extra={
+                    "countdown": retry.countdown,
+                    "number_retries": self.request.retries,
+                },
+            )
+            if self.request.retries >= MAX_RETRIES:
+                log.warning(
+                    "Not retrying since we already had too many retries",
+                    extra={
+                        "commit": commitid,
+                        "repoid": repoid,
+                        "max_retries": MAX_RETRIES,
+                    },
+                )
+                return
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -469,16 +487,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            max_retry = 200 * 3**self.request.retries
-            retry_in = min(random.randint(max_retry // 2, max_retry), 60 * 60 * 5)
             log.warning(
                 "Unable to acquire report lock. Retrying",
                 extra={
-                    "countdown": retry_in,
+                    "countdown": retry.countdown,
                     "number_retries": self.request.retries,
                 },
             )
-            self.retry(max_retries=MAX_RETRIES, countdown=retry_in)
+            self.retry(max_retries=MAX_RETRIES, countdown=retry.countdown)
 
     def _handle_finisher_lock(
         self,
@@ -494,15 +510,17 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commitid = commit.commitid
         repository = commit.repository
 
-        lock_name = f"upload_finisher_lock_{repoid}_{commitid}"
-        redis_connection = get_redis_connection()
+        lock_manager = LockManager(
+            repoid=repoid,
+            commitid=commitid,
+            lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
+            blocking_timeout=None,  # Wait indefinitely - we NEVER want an upload to timeout
+        )
 
         try:
-            with self.with_logged_lock(
-                redis_connection.lock(lock_name, timeout=60 * 5, blocking_timeout=5),
-                lock_name=lock_name,
-                repoid=repoid,
-                commitid=commitid,
+            with lock_manager.locked(
+                LockType.UPLOAD_FINISHER,
+                retry_num=self.request.retries,
             ):
                 log.info("handle_finisher_lock: Acquired finisher lock")
 
@@ -548,7 +566,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     )
 
                 log.info("handle_finisher_lock: Invalidating caches")
-                self.invalidate_caches(redis_connection, commit)
+                self.invalidate_caches(lock_manager.redis_connection, commit)
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,
@@ -558,7 +576,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 log.info("handle_finisher_lock: Finished upload_finisher task")
                 return result
 
-        except LockError:
+        except LockRetry as retry:
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -566,9 +584,33 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            log.warning("Unable to acquire lock", extra={"lock_name": lock_name})
+            log.warning(
+                "Unable to acquire lock",
+                extra={
+                    "lock_name": lock_manager.lock_name(LockType.UPLOAD_FINISHER),
+                    "countdown": retry.countdown,
+                    "number_retries": self.request.retries,
+                },
+            )
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
-            return
+            if self.request.retries >= MAX_RETRIES:
+                log.warning(
+                    "Not retrying since we already had too many retries",
+                    extra={
+                        "commit": commitid,
+                        "repoid": repoid,
+                        "max_retries": MAX_RETRIES,
+                    },
+                )
+                return
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                upload_ids=upload_ids,
+                error=Errors.INTERNAL_RETRYING,
+            )
+            self.retry(max_retries=MAX_RETRIES, countdown=retry.countdown)
 
     def finish_reports_processing(
         self,
@@ -785,30 +827,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
 RegisteredUploadTask = celery_app.register_task(UploadFinisherTask())
 upload_finisher_task = celery_app.tasks[RegisteredUploadTask.name]
-
-
-def get_report_lock(
-    repoid: int, commitid: str, hard_time_limit: int
-) -> tuple[Lock, str]:
-    """
-    Returns both the lock object and the lock name to ensure consistency.
-
-    Returns:
-        tuple[Lock, str]: A tuple of (lock_object, lock_name)
-    """
-    lock_name = UPLOAD_PROCESSING_LOCK_NAME(repoid, commitid)
-    redis_connection = get_redis_connection()
-
-    timeout = 60 * 5
-    if hard_time_limit:
-        timeout = max(timeout, hard_time_limit)
-
-    lock = redis_connection.lock(
-        lock_name,
-        timeout=timeout,
-        blocking_timeout=5,
-    )
-    return lock, lock_name
 
 
 @sentry_sdk.trace

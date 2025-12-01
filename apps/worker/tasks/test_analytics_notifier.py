@@ -92,6 +92,7 @@ class TestAnalyticsNotifierTask(
             commitid=upload_context["commit_sha"],
             report_type=ReportType.TEST_RESULTS,
             lock_timeout=max(80, self.hard_time_limit_task),
+            blocking_timeout=None,  # Wait indefinitely - we NEVER want an upload to timeout
             redis_connection=redis_client,
         )
 

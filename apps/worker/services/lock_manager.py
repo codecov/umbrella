@@ -4,11 +4,15 @@ import time
 from contextlib import contextmanager
 from enum import Enum
 
-from redis import Redis
-from redis.exceptions import LockError
+from redis import Redis  # type: ignore
+from redis.exceptions import LockError  # type: ignore
 
 from database.enums import ReportType
-from shared.helpers.redis import get_redis_connection
+from shared.celery_config import (
+    DEFAULT_BLOCKING_TIMEOUT_SECONDS,
+    DEFAULT_LOCK_TIMEOUT_SECONDS,
+)
+from shared.helpers.redis import get_redis_connection  # type: ignore
 
 log = logging.getLogger(__name__)
 
@@ -17,7 +21,16 @@ class LockType(Enum):
     BUNDLE_ANALYSIS_PROCESSING = "bundle_analysis_processing"
     BUNDLE_ANALYSIS_NOTIFY = "bundle_analysis_notify"
     NOTIFICATION = "notify"
-    # TODO: port existing task locking to use `LockManager`
+    UPLOAD = "upload"
+    UPLOAD_PROCESSING = "upload_processing"
+    UPLOAD_FINISHER = "upload_finisher"
+    PREPROCESS_UPLOAD = "preprocess_upload"
+    MANUAL_TRIGGER = "manual_trigger"
+    # NOTE: All tasks following the repoid+commitid pattern have been migrated to use LockManager.
+    # The following tasks cannot be migrated because they use different lock naming patterns:
+    # - sync_repos.py: owner-based locks (syncrepos_lock_{ownerid}_{using_integration})
+    # - sync_pull.py: pull-based locks (pullsync_{repoid}_{pullid})
+    # - crontasks.py: task-name based locks (worker.executionlock.{task_name})
 
 
 class LockRetry(Exception):
@@ -31,13 +44,15 @@ class LockManager:
         repoid: int,
         commitid: str,
         report_type=ReportType.COVERAGE,
-        lock_timeout=300,  # 5 min
+        lock_timeout=DEFAULT_LOCK_TIMEOUT_SECONDS,
+        blocking_timeout: int | None = DEFAULT_BLOCKING_TIMEOUT_SECONDS,
         redis_connection: Redis | None = None,
     ):
         self.repoid = repoid
         self.commitid = commitid
         self.report_type = report_type
         self.lock_timeout = lock_timeout
+        self.blocking_timeout = blocking_timeout
         self.redis_connection = redis_connection or get_redis_connection()
 
     def lock_name(self, lock_type: LockType):
@@ -60,7 +75,9 @@ class LockManager:
                 },
             )
             with self.redis_connection.lock(
-                lock_name, timeout=self.lock_timeout, blocking_timeout=5
+                lock_name,
+                timeout=self.lock_timeout,
+                blocking_timeout=self.blocking_timeout,
             ):
                 lock_acquired_time = time.time()
                 log.info(
@@ -83,8 +100,14 @@ class LockManager:
                     },
                 )
         except LockError:
-            max_retry = 200 * 3**retry_num
-            countdown = min(random.randint(max_retry // 2, max_retry), 60 * 60 * 5)
+            # Calculate exponential backoff with a maximum cap, preserving exponential growth
+            # Generate random value from unbounded exponential range first, then apply cap
+            max_retry_cap = 60 * 5
+            max_retry_unbounded = 200 * 3**retry_num
+            countdown_unbounded = random.randint(
+                max_retry_unbounded // 2, max_retry_unbounded
+            )
+            countdown = min(countdown_unbounded, max_retry_cap)
 
             log.warning(
                 "Unable to acquire lock",

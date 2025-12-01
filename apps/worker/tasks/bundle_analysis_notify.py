@@ -46,6 +46,7 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
             repoid=repoid,
             commitid=commitid,
             report_type=ReportType.BUNDLE_ANALYSIS,
+            blocking_timeout=None,  # Wait indefinitely - we NEVER want an upload to timeout
         )
 
         try:

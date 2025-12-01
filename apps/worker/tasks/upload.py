@@ -13,7 +13,6 @@ from celery import chain, chord
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from redis import Redis
-from redis.exceptions import LockError
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -23,6 +22,7 @@ from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from services.bundle_analysis.report import BundleAnalysisReportService
+from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.state import ProcessingState
 from services.processing.types import UploadArguments
 from services.report import (
@@ -37,7 +37,7 @@ from services.repository import (
     possibly_update_commit_from_provider_info,
 )
 from services.test_results import TestResultsReportService
-from shared.celery_config import upload_task_name
+from shared.celery_config import DEFAULT_LOCK_TIMEOUT_SECONDS, upload_task_name
 from shared.config import get_config
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.django_apps.user_measurements.models import UserMeasurement
@@ -310,7 +310,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
         # Note: We don't check for upload_processing lock here because:
         # 1. UploadTask should continue processing uploads regardless of processing state
-        # 2. Only UploadFinisherTask blocks on upload_processing lock (via get_report_lock)
+        # 2. Only UploadFinisherTask blocks on upload_processing lock (via LockManager with LockType.UPLOAD_PROCESSING)
         # 3. UploadProcessorTask handles the upload_processing lock for individual upload processing
         # The upload_processing lock prevents concurrent report merging, not upload scheduling
 
@@ -332,18 +332,19 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 kwargs=upload_context.kwargs_for_retry(kwargs),
             )
 
-        lock_name = upload_context.lock_name("upload")
+        lock_manager = LockManager(
+            repoid=repoid,
+            commitid=commitid,
+            report_type=upload_context.report_type,
+            lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
+            blocking_timeout=None,  # Wait indefinitely - we NEVER want an upload to timeout
+            redis_connection=upload_context.redis_connection,
+        )
+
         try:
-            with self.with_logged_lock(
-                upload_context.redis_connection.lock(
-                    lock_name,
-                    timeout=max(300, self.hard_time_limit_task),
-                    blocking_timeout=5,
-                ),
-                lock_name=lock_name,
-                repoid=repoid,
-                commitid=commitid,
-                report_type=report_type,
+            with lock_manager.locked(
+                LockType.UPLOAD,
+                retry_num=self.request.retries,
             ):
                 # Check whether a different `Upload` task has "stolen" our uploads
                 if not upload_context.has_pending_jobs():
@@ -366,14 +367,14 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     upload_context,
                     kwargs,
                 )
-        except LockError:
+        except LockRetry as retry:
             log.warning(
-                "Unable to acquire lock for key %s.",
-                lock_name,
+                "Unable to acquire lock",
                 extra={
                     "commit": commitid,
                     "repoid": repoid,
                     "report_type": report_type,
+                    "lock_name": lock_manager.lock_name(LockType.UPLOAD),
                 },
             )
             self._call_upload_breadcrumb_task(
@@ -399,7 +400,9 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "was_updated": False,
                     "tasks_were_scheduled": False,
                 }
-            if self.request.retries > 1:
+            # Upload task uses max_retries=3, which allows 4 total attempts (initial + 3 retries)
+            # So we check if retries >= 3 to prevent exceeding the limit
+            if self.request.retries >= 3:
                 log.info(
                     "Not retrying since we already had too many retries",
                     extra=upload_context.log_extra(),
@@ -417,7 +420,10 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "tasks_were_scheduled": False,
                     "reason": "too_many_retries",
                 }
-            retry_countdown = 20 * 2**self.request.retries
+            # Use the maximum of LockRetry countdown and exponential backoff
+            # LockManager's countdown uses exponential backoff with a maximum cap
+            # We respect both strategies by taking the maximum to ensure adequate backoff
+            retry_countdown = max(retry.countdown, 20 * 2**self.request.retries)
             log.warning(
                 "Retrying upload",
                 extra=upload_context.log_extra(countdown=retry_countdown),

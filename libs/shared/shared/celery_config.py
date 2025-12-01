@@ -194,10 +194,10 @@ def get_task_group(task_name: str) -> str | None:
 # How long a task remains invisible after being pulled from queue before becoming
 # visible again if not acknowledged. This is the maximum time a task can be "lost"
 # before another worker picks it up.
-# Default: 900 seconds (15 minutes)
+# Default: 300 seconds (5 minutes)
 # Celery docs: https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html#visibility-timeout
 TASK_VISIBILITY_TIMEOUT_SECONDS = int(
-    get_config("setup", "tasks", "celery", "visibility_timeout", default=900)
+    get_config("setup", "tasks", "celery", "visibility_timeout", default=300)
 )
 
 # Maximum retries for tasks hitting transient conditions (e.g., processing locks)
@@ -244,6 +244,16 @@ UPLOAD_PROCESSING_MAX_RETRIES = int(
     get_config("setup", "tasks", "upload", "processing_max_retries", default=10)
 )
 
+# Default timeout for Redis locks used by LockManager
+DEFAULT_LOCK_TIMEOUT_SECONDS = int(
+    get_config("setup", "tasks", "lock_timeout", default=300)
+)
+
+# Default time to wait when acquiring a Redis lock before giving up
+DEFAULT_BLOCKING_TIMEOUT_SECONDS = int(
+    get_config("setup", "tasks", "blocking_timeout", default=5)
+)
+
 
 class BaseCeleryConfig:
     broker_url = get_config("services", "celery_broker") or get_config(
@@ -254,7 +264,7 @@ class BaseCeleryConfig:
     )
 
     # Task visibility timeout for broker transport
-    # Uses TASK_VISIBILITY_TIMEOUT_SECONDS constant (default: 15 minutes)
+    # Uses TASK_VISIBILITY_TIMEOUT_SECONDS constant
     # Can be overridden via: setup.tasks.celery.visibility_timeout config
     broker_transport_options = {
         "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,

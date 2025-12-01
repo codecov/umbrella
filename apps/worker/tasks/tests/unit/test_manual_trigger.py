@@ -5,6 +5,7 @@ from database.tests.factories import CommitFactory, PullFactory
 from database.tests.factories.core import UploadFactory
 from shared.reports.enums import UploadState
 from tasks.manual_trigger import ManualTriggerTask
+from tasks.tests.utils import ensure_hard_time_limit_task_is_numeric
 
 
 class TestUploadCompletionTask:
@@ -26,6 +27,8 @@ class TestUploadCompletionTask:
                 "app.tasks.compute_comparison.ComputeComparison": mocker.MagicMock(),
             },
         )
+        task = ManualTriggerTask()
+        ensure_hard_time_limit_task_is_numeric(mocker, task)
         commit = CommitFactory.create(pullid=None)
         pull = PullFactory.create(repository=commit.repository, head=commit.commitid)
         commit.pullid = pull.pullid
@@ -47,7 +50,7 @@ class TestUploadCompletionTask:
         dbsession.add(compared_to)
         dbsession.add(pull)
         dbsession.flush()
-        result = ManualTriggerTask().run_impl(
+        result = task.run_impl(
             dbsession, repoid=commit.repoid, commitid=commit.commitid, current_yaml={}
         )
         assert {
