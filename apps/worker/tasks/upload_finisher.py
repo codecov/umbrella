@@ -415,7 +415,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=None,  # Wait indefinitely - we NEVER want an upload to timeout
+            blocking_timeout=None,
         )
 
         try:
@@ -514,7 +514,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=None,  # Wait indefinitely - we NEVER want an upload to timeout
+            blocking_timeout=None,
         )
 
         try:

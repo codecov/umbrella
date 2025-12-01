@@ -57,7 +57,7 @@ class BundleAnalysisProcessorTask(
             repoid=repoid,
             commitid=commitid,
             report_type=ReportType.BUNDLE_ANALYSIS,
-            blocking_timeout=None,  # Wait indefinitely - we NEVER want an upload to timeout
+            blocking_timeout=None,
         )
 
         try:

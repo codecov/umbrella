@@ -40,7 +40,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
             commitid=commitid,
             report_type=ReportType.COVERAGE,
             lock_timeout=max(80, self.hard_time_limit_task),
-            blocking_timeout=None,  # Wait indefinitely - we NEVER want an upload to timeout
+            blocking_timeout=None,
         )
 
         try:

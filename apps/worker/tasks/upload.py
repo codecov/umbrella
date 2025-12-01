@@ -337,7 +337,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             commitid=commitid,
             report_type=upload_context.report_type,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=None,  # Wait indefinitely - we NEVER want an upload to timeout
+            blocking_timeout=None,
             redis_connection=upload_context.redis_connection,
         )
 

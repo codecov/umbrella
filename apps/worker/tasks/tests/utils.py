@@ -64,6 +64,9 @@ def ensure_hard_time_limit_task_is_numeric(
     preventing issues where MagicMock objects might be returned when app.conf
     is mocked.
 
+    Use this helper when testing code that calls get_lock_timeout() to ensure
+    hard_time_limit_task returns a proper numeric value.
+
     Args:
         mocker: The pytest mocker fixture
         task_instance: The task instance to patch

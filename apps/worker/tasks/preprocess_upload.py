@@ -13,10 +13,7 @@ from services.repository import (
     get_repo_provider_service,
     possibly_update_commit_from_provider_info,
 )
-from shared.celery_config import (
-    TASK_MAX_RETRIES_DEFAULT,
-    pre_process_upload_task_name,
-)
+from shared.celery_config import TASK_MAX_RETRIES_DEFAULT, pre_process_upload_task_name
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter
@@ -40,7 +37,7 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
         lock_manager = LockManager(
             repoid=repoid,
             commitid=commitid,
-            blocking_timeout=None,  # Wait indefinitely - we NEVER want an upload to timeout
+            blocking_timeout=None,
         )
         lock_name = lock_manager.lock_name(LockType.PREPROCESS_UPLOAD)
         redis_connection = get_redis_connection()

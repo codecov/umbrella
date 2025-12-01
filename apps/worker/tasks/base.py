@@ -182,8 +182,6 @@ class BaseCodecovTask(celery_app.Task):
 
         Returns the maximum of default_timeout and hard_time_limit_task.
         In production, hard_time_limit_task always returns a numeric value.
-        For tests, use ensure_hard_time_limit_task_is_numeric() helper to ensure
-        hard_time_limit_task returns a proper numeric value.
 
         Args:
             default_timeout: The default lock timeout to use
