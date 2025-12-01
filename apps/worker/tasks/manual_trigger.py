@@ -48,6 +48,7 @@ class ManualTriggerTask(
             with lock_manager.locked(
                 LockType.MANUAL_TRIGGER,
                 retry_num=self.request.retries,
+                max_retries=TASK_MAX_RETRIES_DEFAULT,
             ):
                 return self.process_impl_within_lock(
                     db_session=db_session,
@@ -58,14 +59,6 @@ class ManualTriggerTask(
                 )
         except LockRetry as retry:
             if self.request.retries >= TASK_MAX_RETRIES_DEFAULT:
-                log.warning(
-                    "Not retrying since we already had too many retries",
-                    extra={
-                        "commit": commitid,
-                        "repoid": repoid,
-                        "max_retries": TASK_MAX_RETRIES_DEFAULT,
-                    },
-                )
                 return {
                     "notifications_called": False,
                     "message": "Unable to acquire lock",

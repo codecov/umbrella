@@ -13,7 +13,10 @@ from services.repository import (
     get_repo_provider_service,
     possibly_update_commit_from_provider_info,
 )
-from shared.celery_config import TASK_MAX_RETRIES_DEFAULT, pre_process_upload_task_name
+from shared.celery_config import (
+    PREPROCESS_UPLOAD_MAX_RETRIES,
+    pre_process_upload_task_name,
+)
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter
@@ -59,6 +62,7 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
             with lock_manager.locked(
                 LockType.PREPROCESS_UPLOAD,
                 retry_num=self.request.retries,
+                max_retries=PREPROCESS_UPLOAD_MAX_RETRIES,
             ):
                 return self.process_impl_within_lock(
                     db_session=db_session,
@@ -72,15 +76,7 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
                 milestone=Milestones.READY_FOR_REPORT,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            if self.request.retries >= TASK_MAX_RETRIES_DEFAULT:
-                log.warning(
-                    "Not retrying since we already had too many retries",
-                    extra={
-                        "commit": commitid,
-                        "repoid": repoid,
-                        "max_retries": TASK_MAX_RETRIES_DEFAULT,
-                    },
-                )
+            if self.request.retries >= PREPROCESS_UPLOAD_MAX_RETRIES:
                 return {
                     "preprocessed_upload": False,
                     "reason": "unable_to_acquire_lock",
@@ -91,7 +87,9 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
                 milestone=Milestones.READY_FOR_REPORT,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(max_retries=TASK_MAX_RETRIES_DEFAULT, countdown=retry.countdown)
+            self.retry(
+                max_retries=PREPROCESS_UPLOAD_MAX_RETRIES, countdown=retry.countdown
+            )
 
     def process_impl_within_lock(self, db_session, repoid, commitid):
         commit = (

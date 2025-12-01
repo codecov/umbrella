@@ -345,6 +345,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             with lock_manager.locked(
                 LockType.UPLOAD,
                 retry_num=self.request.retries,
+                max_retries=3,  # Upload task uses max_retries=3
             ):
                 # Check whether a different `Upload` task has "stolen" our uploads
                 if not upload_context.has_pending_jobs():
@@ -394,10 +395,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             # Upload task uses max_retries=3, which allows 4 total attempts (initial + 3 retries)
             # So we check if retries >= 3 to prevent exceeding the limit
             if self.request.retries >= 3:
-                log.info(
-                    "Not retrying since we already had too many retries",
-                    extra=upload_context.log_extra(),
-                )
                 self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,

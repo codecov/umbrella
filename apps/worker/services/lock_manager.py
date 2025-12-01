@@ -63,7 +63,7 @@ class LockManager:
             return f"{lock_type.value}_lock_{self.repoid}_{self.commitid}_{self.report_type.value}"
 
     @contextmanager
-    def locked(self, lock_type: LockType, retry_num=0):
+    def locked(self, lock_type: LockType, retry_num=0, max_retries: int | None = None):
         lock_name = self.lock_name(lock_type)
         try:
             log.info(
@@ -102,12 +102,25 @@ class LockManager:
         except LockError:
             # Calculate exponential backoff with a maximum cap, preserving exponential growth
             # Generate random value from unbounded exponential range first, then apply cap
-            max_retry_cap = 60 * 5
+            max_retry_cap = 60 * 60 * 5  # 5 hours
             max_retry_unbounded = 200 * 3**retry_num
             countdown_unbounded = random.randint(
                 max_retry_unbounded // 2, max_retry_unbounded
             )
             countdown = min(countdown_unbounded, max_retry_cap)
+
+            # Log max retries exceeded if applicable
+            if max_retries is not None and retry_num >= max_retries:
+                log.error(
+                    "Not retrying since we already had too many retries",
+                    extra={
+                        "repoid": self.repoid,
+                        "commitid": self.commitid,
+                        "lock_name": lock_name,
+                        "max_retries": max_retries,
+                        "retry_num": retry_num,
+                    },
+                )
 
             log.warning(
                 "Unable to acquire lock",

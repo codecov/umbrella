@@ -244,6 +244,13 @@ UPLOAD_PROCESSING_MAX_RETRIES = int(
     get_config("setup", "tasks", "upload", "processing_max_retries", default=10)
 )
 
+# Preprocess upload max retries
+# How many times to retry when preprocess upload lock cannot be acquired
+# Default: 10 retries
+PREPROCESS_UPLOAD_MAX_RETRIES = int(
+    get_config("setup", "tasks", "upload", "preprocess_max_retries", default=10)
+)
+
 # Default timeout for Redis locks used by LockManager
 DEFAULT_LOCK_TIMEOUT_SECONDS = int(
     get_config("setup", "tasks", "lock_timeout", default=300)
