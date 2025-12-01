@@ -8,6 +8,8 @@ from celery import chain
 from celery.contrib.testing.mocks import TaskMessage
 from celery.exceptions import MaxRetriesExceededError, Retry, SoftTimeLimitExceeded
 from prometheus_client import REGISTRY
+from redis.exceptions import LockError
+from redis.lock import Lock
 from sqlalchemy.exc import (
     DBAPIError,
     IntegrityError,
@@ -916,4 +918,167 @@ class TestBaseCodecovTaskApplyAsyncOverride:
             headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
             time_limit=450,
             user_plan="users-enterprisey",
+        )
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+class TestBaseCodecovTaskWithLoggedLock:
+    def test_with_logged_lock_logs_acquiring_and_acquired(self, mocker):
+        """Test that with_logged_lock logs 'Acquiring lock' and 'Acquired lock'."""
+        mock_log = mocker.patch("tasks.base.log")
+        mock_lock = mocker.MagicMock(spec=Lock)
+        mock_lock.__enter__ = mocker.MagicMock(return_value=None)
+        mock_lock.__exit__ = mocker.MagicMock(return_value=None)
+
+        task = BaseCodecovTask()
+        with task.with_logged_lock(mock_lock, lock_name="test_lock", repoid=123):
+            pass
+
+        acquiring_calls = [
+            call
+            for call in mock_log.info.call_args_list
+            if call[0][0] == "Acquiring lock"
+        ]
+        assert len(acquiring_calls) == 1
+        assert acquiring_calls[0][1]["extra"]["lock_name"] == "test_lock"
+        assert acquiring_calls[0][1]["extra"]["repoid"] == 123
+
+        acquired_calls = [
+            call
+            for call in mock_log.info.call_args_list
+            if call[0][0] == "Acquired lock"
+        ]
+        assert len(acquired_calls) == 1
+        assert acquired_calls[0][1]["extra"]["lock_name"] == "test_lock"
+        assert acquired_calls[0][1]["extra"]["repoid"] == 123
+
+    def test_with_logged_lock_logs_releasing_with_duration(self, mocker):
+        """Test that with_logged_lock logs 'Releasing lock' with duration."""
+        mock_log = mocker.patch("tasks.base.log")
+        mock_lock = mocker.MagicMock(spec=Lock)
+        mock_lock.__enter__ = mocker.MagicMock(return_value=None)
+        mock_lock.__exit__ = mocker.MagicMock(return_value=None)
+
+        # Mock time.time to control duration
+        mock_time = mocker.patch("tasks.base.time.time")
+        mock_time.side_effect = [1000.0, 1000.5]  # 0.5 second duration
+
+        task = BaseCodecovTask()
+        with task.with_logged_lock(mock_lock, lock_name="test_lock", commitid="abc123"):
+            pass
+
+        releasing_calls = [
+            call
+            for call in mock_log.info.call_args_list
+            if call[0][0] == "Releasing lock"
+        ]
+        assert len(releasing_calls) == 1
+        assert releasing_calls[0][1]["extra"]["lock_name"] == "test_lock"
+        assert releasing_calls[0][1]["extra"]["commitid"] == "abc123"
+        # Use approximate comparison due to floating point precision
+        assert (
+            abs(releasing_calls[0][1]["extra"]["lock_duration_seconds"] - 0.5) < 0.001
+        )
+
+    def test_with_logged_lock_includes_extra_context(self, mocker):
+        """Test that with_logged_lock includes all extra context in logs."""
+        mock_log = mocker.patch("tasks.base.log")
+        mock_lock = mocker.MagicMock(spec=Lock)
+        mock_lock.__enter__ = mocker.MagicMock(return_value=None)
+        mock_lock.__exit__ = mocker.MagicMock(return_value=None)
+
+        task = BaseCodecovTask()
+        with task.with_logged_lock(
+            mock_lock,
+            lock_name="test_lock",
+            repoid=123,
+            commitid="abc123",
+            report_type="coverage",
+            custom_field="custom_value",
+        ):
+            pass
+
+        # Check that all extra context is included in all log calls
+        for log_call in mock_log.info.call_args_list:
+            extra = log_call[1]["extra"]
+            assert extra["lock_name"] == "test_lock"
+            assert extra["repoid"] == 123
+            assert extra["commitid"] == "abc123"
+            assert extra["report_type"] == "coverage"
+            assert extra["custom_field"] == "custom_value"
+
+    def test_with_logged_lock_executes_code_within_lock(self, mocker):
+        """Test that code within with_logged_lock executes correctly."""
+        mock_log = mocker.patch("tasks.base.log")
+        mock_lock = mocker.MagicMock(spec=Lock)
+        mock_lock.__enter__ = mocker.MagicMock(return_value=None)
+        mock_lock.__exit__ = mocker.MagicMock(return_value=None)
+
+        task = BaseCodecovTask()
+        result = None
+        with task.with_logged_lock(mock_lock, lock_name="test_lock"):
+            result = "executed"
+
+        assert result == "executed"
+        mock_lock.__enter__.assert_called_once()
+        mock_lock.__exit__.assert_called_once()
+
+    def test_with_logged_lock_propagates_lock_error(self, mocker):
+        """Test that LockError from lock acquisition is not caught by with_logged_lock."""
+        mock_log = mocker.patch("tasks.base.log")
+        mock_lock = mocker.MagicMock(spec=Lock)
+        mock_lock.__enter__ = mocker.MagicMock(side_effect=LockError("Lock failed"))
+
+        task = BaseCodecovTask()
+        with pytest.raises(LockError, match="Lock failed"):
+            with task.with_logged_lock(mock_lock, lock_name="test_lock"):
+                pass
+
+        # Should have logged "Acquiring lock" but not "Acquired lock" or "Releasing lock"
+        acquiring_calls = [
+            call
+            for call in mock_log.info.call_args_list
+            if call[0][0] == "Acquiring lock"
+        ]
+        assert len(acquiring_calls) == 1
+
+        acquired_calls = [
+            call
+            for call in mock_log.info.call_args_list
+            if call[0][0] == "Acquired lock"
+        ]
+        assert len(acquired_calls) == 0
+
+        releasing_calls = [
+            call
+            for call in mock_log.info.call_args_list
+            if call[0][0] == "Releasing lock"
+        ]
+        assert len(releasing_calls) == 0
+
+    def test_with_logged_lock_logs_release_even_on_exception(self, mocker):
+        """Test that 'Releasing lock' is logged even if code within raises an exception."""
+        mock_log = mocker.patch("tasks.base.log")
+        mock_lock = mocker.MagicMock(spec=Lock)
+        mock_lock.__enter__ = mocker.MagicMock(return_value=None)
+        mock_lock.__exit__ = mocker.MagicMock(return_value=None)
+
+        # Mock time.time to control duration
+        mock_time = mocker.patch("tasks.base.time.time")
+        mock_time.side_effect = [1000.0, 1000.2]  # 0.2 second duration
+
+        task = BaseCodecovTask()
+        with pytest.raises(ValueError):
+            with task.with_logged_lock(mock_lock, lock_name="test_lock"):
+                raise ValueError("Test exception")
+
+        releasing_calls = [
+            call
+            for call in mock_log.info.call_args_list
+            if call[0][0] == "Releasing lock"
+        ]
+        assert len(releasing_calls) == 1
+        # Use approximate comparison due to floating point precision
+        assert (
+            abs(releasing_calls[0][1]["extra"]["lock_duration_seconds"] - 0.2) < 0.001
         )

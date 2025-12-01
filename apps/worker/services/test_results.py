@@ -498,7 +498,11 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
 
 
 def not_private_and_free_or_team(repo: Repository):
-    plan = Plan.objects.select_related("tier").get(name=repo.author.plan)
+    plan_name = repo.author.plan
+    if repo.author.account:
+        plan_name = repo.author.account.plan
+
+    plan = Plan.objects.select_related("tier").get(name=plan_name)
 
     return not (
         repo.private

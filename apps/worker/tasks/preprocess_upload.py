@@ -57,10 +57,15 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
             )
             return {"preprocessed_upload": False, "reason": "already_running"}
         try:
-            with redis_connection.lock(
-                lock_name,
-                timeout=60 * 5,
-                blocking_timeout=None,
+            with self.with_logged_lock(
+                redis_connection.lock(
+                    lock_name,
+                    timeout=60 * 5,
+                    blocking_timeout=None,
+                ),
+                lock_name=lock_name,
+                repoid=repoid,
+                commitid=commitid,
             ):
                 return self.process_impl_within_lock(
                     db_session=db_session,

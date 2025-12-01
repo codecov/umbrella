@@ -334,10 +334,16 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
         lock_name = upload_context.lock_name("upload")
         try:
-            with upload_context.redis_connection.lock(
-                lock_name,
-                timeout=max(300, self.hard_time_limit_task),
-                blocking_timeout=5,
+            with self.with_logged_lock(
+                upload_context.redis_connection.lock(
+                    lock_name,
+                    timeout=max(300, self.hard_time_limit_task),
+                    blocking_timeout=5,
+                ),
+                lock_name=lock_name,
+                repoid=repoid,
+                commitid=commitid,
+                report_type=report_type,
             ):
                 # Check whether a different `Upload` task has "stolen" our uploads
                 if not upload_context.has_pending_jobs():
