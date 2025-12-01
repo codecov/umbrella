@@ -86,7 +86,6 @@ class TestTestResultsFinisherTask:
 
     @pytest.mark.django_db
     def test_upload_complete_breadcrumb_logged(self, mocker, dbsession, mock_self_app):
-        """Test that UPLOAD_COMPLETE breadcrumb is logged after successful processing."""
         mocker.patch(
             "tasks.test_results_finisher.ta_finish_upload",
             return_value={
@@ -140,7 +139,6 @@ class TestTestResultsFinisherTask:
     def test_notifications_triggered_breadcrumb_logged(
         self, mocker, dbsession, mock_self_app
     ):
-        """Test that NOTIFICATIONS_TRIGGERED breadcrumb is logged when queue_notify is True."""
         mocker.patch(
             "tasks.test_results_finisher.ta_finish_upload",
             return_value={
@@ -211,7 +209,6 @@ class TestTestResultsFinisherTask:
 
     @pytest.mark.django_db
     def test_lock_retry_breadcrumbs_logged(self, mocker, dbsession, mock_self_app):
-        """Test that INTERNAL_LOCK_ERROR and INTERNAL_RETRYING breadcrumbs are logged on LockRetry."""
         mocker.patch(
             "tasks.test_results_finisher.LockManager.locked",
             side_effect=LockRetry(countdown=60),
@@ -246,7 +243,6 @@ class TestTestResultsFinisherTask:
                 commit_yaml={},
             )
 
-        # Verify both INTERNAL_LOCK_ERROR and INTERNAL_RETRYING breadcrumbs were logged
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
                 call(
@@ -278,7 +274,6 @@ class TestTestResultsFinisherTask:
 
     @pytest.mark.django_db
     def test_unknown_error_breadcrumb_logged(self, mocker, dbsession, mock_self_app):
-        """Test that UNKNOWN error breadcrumb is logged on generic Exception."""
         mocker.patch(
             "tasks.test_results_finisher.ta_finish_upload",
             side_effect=ValueError("Something went wrong"),
