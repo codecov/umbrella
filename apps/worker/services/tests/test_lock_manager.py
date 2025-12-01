@@ -7,6 +7,7 @@ from redis.exceptions import LockError
 
 from database.enums import ReportType
 from services.lock_manager import LockManager, LockRetry, LockType
+from tasks.base import BaseCodecovTask
 
 
 @pytest.fixture
@@ -303,8 +304,6 @@ class TestGetLockTimeout:
 
     def test_get_lock_timeout_default_larger(self, mocker):
         """Test when default_timeout is larger than hard_time_limit_task"""
-        from tasks.base import BaseCodecovTask
-
         task = BaseCodecovTask()
         mocker.patch.object(task, "hard_time_limit_task", 100)
         result = task.get_lock_timeout(300)
@@ -312,8 +311,6 @@ class TestGetLockTimeout:
 
     def test_get_lock_timeout_hard_limit_larger(self, mocker):
         """Test when hard_time_limit_task is larger than default_timeout"""
-        from tasks.base import BaseCodecovTask
-
         task = BaseCodecovTask()
         mocker.patch.object(task, "hard_time_limit_task", 720)
         result = task.get_lock_timeout(300)
@@ -321,8 +318,6 @@ class TestGetLockTimeout:
 
     def test_get_lock_timeout_equal(self, mocker):
         """Test when default_timeout equals hard_time_limit_task"""
-        from tasks.base import BaseCodecovTask
-
         task = BaseCodecovTask()
         mocker.patch.object(task, "hard_time_limit_task", 300)
         result = task.get_lock_timeout(300)
