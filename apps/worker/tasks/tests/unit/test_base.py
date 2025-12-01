@@ -934,7 +934,6 @@ class TestBaseCodecovTaskWithLoggedLock:
         with task.with_logged_lock(mock_lock, lock_name="test_lock", repoid=123):
             pass
 
-        # Verify "Acquiring lock" was logged
         acquiring_calls = [
             call
             for call in mock_log.info.call_args_list
@@ -944,7 +943,6 @@ class TestBaseCodecovTaskWithLoggedLock:
         assert acquiring_calls[0][1]["extra"]["lock_name"] == "test_lock"
         assert acquiring_calls[0][1]["extra"]["repoid"] == 123
 
-        # Verify "Acquired lock" was logged
         acquired_calls = [
             call
             for call in mock_log.info.call_args_list
@@ -969,7 +967,6 @@ class TestBaseCodecovTaskWithLoggedLock:
         with task.with_logged_lock(mock_lock, lock_name="test_lock", commitid="abc123"):
             pass
 
-        # Verify "Releasing lock" was logged with duration
         releasing_calls = [
             call
             for call in mock_log.info.call_args_list
@@ -1075,7 +1072,6 @@ class TestBaseCodecovTaskWithLoggedLock:
             with task.with_logged_lock(mock_lock, lock_name="test_lock"):
                 raise ValueError("Test exception")
 
-        # Verify "Releasing lock" was still logged
         releasing_calls = [
             call
             for call in mock_log.info.call_args_list
