@@ -305,20 +305,35 @@ class TestGetLockTimeout:
     def test_get_lock_timeout_default_larger(self, mocker):
         """Test when default_timeout is larger than hard_time_limit_task"""
         task = BaseCodecovTask()
-        mocker.patch.object(task, "hard_time_limit_task", 100)
+        # Patch at class level since hard_time_limit_task is a property
+        mocker.patch.object(
+            BaseCodecovTask,
+            "hard_time_limit_task",
+            property(lambda self: 100),
+        )
         result = task.get_lock_timeout(300)
         assert result == 300
 
     def test_get_lock_timeout_hard_limit_larger(self, mocker):
         """Test when hard_time_limit_task is larger than default_timeout"""
         task = BaseCodecovTask()
-        mocker.patch.object(task, "hard_time_limit_task", 720)
+        # Patch at class level since hard_time_limit_task is a property
+        mocker.patch.object(
+            BaseCodecovTask,
+            "hard_time_limit_task",
+            property(lambda self: 720),
+        )
         result = task.get_lock_timeout(300)
         assert result == 720
 
     def test_get_lock_timeout_equal(self, mocker):
         """Test when default_timeout equals hard_time_limit_task"""
         task = BaseCodecovTask()
-        mocker.patch.object(task, "hard_time_limit_task", 300)
+        # Patch at class level since hard_time_limit_task is a property
+        mocker.patch.object(
+            BaseCodecovTask,
+            "hard_time_limit_task",
+            property(lambda self: 300),
+        )
         result = task.get_lock_timeout(300)
         assert result == 300
