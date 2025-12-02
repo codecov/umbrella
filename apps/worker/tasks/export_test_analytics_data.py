@@ -165,12 +165,13 @@ class ExportTestAnalyticsDataTask(
                             json_file.write("]}")
                             json_file_path = json_file.name
 
-                        # Upload the JSON file, then cleaning it up
                         blob_name = f"{integration_name}/{repo_name}.json"
-                        with open(json_file_path, "rb") as f:
-                            archiver._add_file(blob_name, f)
+                        try:
+                            with open(json_file_path, "rb") as f:
+                                archiver._add_file(blob_name, f)
+                        finally:
+                            pathlib.Path(json_file_path).unlink(missing_ok=True)
 
-                        pathlib.Path(json_file_path).unlink(missing_ok=True)
                         repositories_succeeded.append({"name": repo_name})
 
                         end_time = datetime.now()
