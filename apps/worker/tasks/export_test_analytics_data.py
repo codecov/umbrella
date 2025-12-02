@@ -18,8 +18,6 @@ from shared.storage.data_exporter import _Archiver
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
-
-# Batch size for processing test runs from the database
 BATCH_SIZE = 10000
 
 
@@ -128,7 +126,10 @@ class ExportTestAnalyticsDataTask(
                 for repo_id, repo_name in repo_id_to_name.items():
                     try:
                         start_time = datetime.now()
-                        log.info(f"Processing repository: {repo_name} (ID: {repo_id})")
+                        log.info(
+                            "Processing repository",
+                            extra={"repo_name": repo_name, "repo_id": repo_id},
+                        )
 
                         test_runs_qs = (
                             Testrun.objects.filter(repo_id=repo_id)
@@ -161,11 +162,6 @@ class ExportTestAnalyticsDataTask(
                                 json.dump(serialize_test_run(test_run), json_file)
                                 total_processed += 1
 
-                                if total_processed % BATCH_SIZE == 0:
-                                    log.debug(
-                                        f"Processed {total_processed} test runs for {repo_name}"
-                                    )
-
                             json_file.write("]}")
                             json_file_path = json_file.name
 
@@ -174,8 +170,7 @@ class ExportTestAnalyticsDataTask(
                         with open(json_file_path, "rb") as f:
                             archiver._add_file(blob_name, f)
 
-                        pathlib.Path(json_file_path).unlink()
-
+                        pathlib.Path(json_file_path).unlink(missing_ok=True)
                         repositories_succeeded.append({"name": repo_name})
 
                         end_time = datetime.now()
