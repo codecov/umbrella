@@ -212,14 +212,39 @@ class StripeScheduledPhaseSerializer(serializers.Serializer):
     start_date = serializers.IntegerField()
     plan = serializers.SerializerMethodField()
     quantity = serializers.SerializerMethodField()
+    billing_rate = serializers.SerializerMethodField()
+    base_unit_price = serializers.SerializerMethodField()
 
-    def get_plan(self, phase: dict[str, Any]) -> str:
-        plan_id = phase["items"][0]["plan"]
-        marketing_plan_name = Plan.objects.get(stripe_id=plan_id).marketing_name
-        return marketing_plan_name
+    def _get_plan_object(self, phase: dict[str, Any]) -> Plan | None:
+        """Helper method to get and cache the Plan object."""
+        if not hasattr(self, "_cached_plan"):
+            plan_id = phase["items"][0]["plan"]
+            try:
+                self._cached_plan = Plan.objects.get(stripe_id=plan_id)
+            except Plan.DoesNotExist:
+                log.warning(
+                    "Plan not found for scheduled phase",
+                    extra={
+                        "plan_id": plan_id,
+                    },
+                )
+                self._cached_plan = None
+        return self._cached_plan
+
+    def get_plan(self, phase: dict[str, Any]) -> str | None:
+        plan = self._get_plan_object(phase)
+        return plan.marketing_name if plan else None
 
     def get_quantity(self, phase: dict[str, Any]) -> int:
         return phase["items"][0]["quantity"]
+
+    def get_billing_rate(self, phase: dict[str, Any]) -> str | None:
+        plan = self._get_plan_object(phase)
+        return plan.billing_rate if plan else None
+
+    def get_base_unit_price(self, phase: dict[str, Any]) -> int | None:
+        plan = self._get_plan_object(phase)
+        return plan.base_unit_price if plan else None
 
 
 class ScheduleDetailSerializer(serializers.Serializer):

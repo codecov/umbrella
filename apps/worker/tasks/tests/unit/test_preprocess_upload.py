@@ -1,5 +1,5 @@
 import pytest
-from redis.exceptions import LockError
+from celery.exceptions import Retry
 
 from database.models.reports import Upload
 from database.tests.factories.core import (
@@ -8,6 +8,7 @@ from database.tests.factories.core import (
     RepositoryFactory,
 )
 from helpers.exceptions import OwnerWithoutValidBotError, RepositoryWithoutValidBotError
+from services.lock_manager import LockRetry
 from services.report import ReportService
 from shared.celery_config import upload_breadcrumb_task_name
 from shared.django_apps.upload_breadcrumbs.models import (
@@ -150,30 +151,49 @@ class TestPreProcessUpload:
             }
         )
 
-    def test_run_impl_unobtainable_lock(self, dbsession, mock_redis, mock_self_app):
+    def test_run_impl_unobtainable_lock(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
         mock_redis.get = lambda _name: False
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
-        mock_redis.lock.side_effect = LockError()
-        result = PreProcessUpload().run_impl(
-            dbsession,
-            repoid=commit.repository.repoid,
-            commitid=commit.commitid,
+        # Mock LockManager to raise LockRetry
+        m = mocker.MagicMock()
+        m.return_value.locked.return_value.__enter__.side_effect = LockRetry(60)
+        mocker.patch("tasks.preprocess_upload.LockManager", m)
+        task = PreProcessUpload()
+        task.request.retries = 0  # Set retries to 0 so it will retry
+        # Task should call self.retry() which raises Retry exception
+        with pytest.raises(Retry):
+            task.run_impl(
+                dbsession,
+                repoid=commit.repository.repoid,
+                commitid=commit.commitid,
+            )
+        # Breadcrumb should be called twice: INTERNAL_LOCK_ERROR and INTERNAL_RETRYING
+        assert (
+            mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.call_count == 2
         )
-        assert result == {
-            "preprocessed_upload": False,
-            "reason": "unable_to_acquire_lock",
-        }
-        mock_self_app.tasks[
-            upload_breadcrumb_task_name
-        ].apply_async.assert_called_once_with(
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_any_call(
             kwargs={
                 "commit_sha": commit.commitid,
                 "repo_id": commit.repository.repoid,
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.READY_FOR_REPORT,
                     error=Errors.INTERNAL_LOCK_ERROR,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_any_call(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.READY_FOR_REPORT,
+                    error=Errors.INTERNAL_RETRYING,
                 ),
                 "upload_ids": [],
                 "sentry_trace_id": None,

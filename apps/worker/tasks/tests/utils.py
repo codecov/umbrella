@@ -52,3 +52,43 @@ def hook_repo_provider(mocker, mock_repo_provider):
     """
     for path in GLOBALS_USING_REPO_PROVIDER:
         mocker.patch(path, return_value=mock_repo_provider)
+
+
+def ensure_hard_time_limit_task_is_numeric(
+    mocker, task_instance, default_value: int = 720
+):
+    """
+    Ensures that hard_time_limit_task returns a numeric value for testing.
+
+    This helper patches hard_time_limit_task to return a proper integer value,
+    preventing issues where MagicMock objects might be returned when app.conf
+    is mocked.
+
+    Use this helper when testing code that calls get_lock_timeout() to ensure
+    hard_time_limit_task returns a proper numeric value.
+
+    Args:
+        mocker: The pytest mocker fixture
+        task_instance: The task instance to patch
+        default_value: The default value to return (default: 720)
+    """
+    # Get the original property getter
+    original_getter = task_instance.__class__.hard_time_limit_task.fget
+
+    def safe_hard_time_limit_task(self):
+        try:
+            value = original_getter(self)
+            if isinstance(value, int | float):
+                # Use the original value if it's valid and greater than 0
+                # Otherwise fall back to default_value
+                if value > 0:
+                    return int(value)
+        except AttributeError | TypeError:
+            pass
+        return default_value
+
+    mocker.patch.object(
+        task_instance.__class__,
+        "hard_time_limit_task",
+        property(safe_hard_time_limit_task),
+    )

@@ -57,6 +57,7 @@ class BundleAnalysisProcessorTask(
             repoid=repoid,
             commitid=commitid,
             report_type=ReportType.BUNDLE_ANALYSIS,
+            blocking_timeout=None,
         )
 
         try:
