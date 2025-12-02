@@ -14,6 +14,7 @@ from services.repository import (
     possibly_update_commit_from_provider_info,
 )
 from shared.celery_config import (
+    DEFAULT_LOCK_TIMEOUT_SECONDS,
     PREPROCESS_UPLOAD_MAX_RETRIES,
     pre_process_upload_task_name,
 )
@@ -40,6 +41,7 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
         lock_manager = LockManager(
             repoid=repoid,
             commitid=commitid,
+            lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
             blocking_timeout=None,
         )
         lock_name = lock_manager.lock_name(LockType.PREPROCESS_UPLOAD)
