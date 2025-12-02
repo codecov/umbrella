@@ -176,6 +176,21 @@ class BaseCodecovTask(celery_app.Task):
             return self.time_limit
         return self.app.conf.task_time_limit or 0
 
+    def get_lock_timeout(self, default_timeout: int) -> int:
+        """
+        Calculate the lock timeout based on hard_time_limit_task.
+
+        Returns the maximum of default_timeout and hard_time_limit_task.
+        In production, hard_time_limit_task always returns a numeric value.
+
+        Args:
+            default_timeout: The default lock timeout to use
+
+        Returns:
+            The calculated lock timeout
+        """
+        return max(default_timeout, self.hard_time_limit_task)
+
     @sentry_sdk.trace
     def apply_async(self, args=None, kwargs=None, **options):
         db_session = get_db_session()

@@ -1,13 +1,12 @@
 import logging
 
-from redis.exceptions import LockError
-
 from app import celery_app
 from database.enums import CommitErrorTypes
 from database.models import Commit
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.save_commit_error import save_commit_error
+from services.lock_manager import LockManager, LockRetry, LockType
 from services.report import ReportService
 from services.repository import (
     fetch_commit_yaml_and_possibly_store,
@@ -15,12 +14,11 @@ from services.repository import (
     possibly_update_commit_from_provider_info,
 )
 from shared.celery_config import (
+    DEFAULT_LOCK_TIMEOUT_SECONDS,
+    PREPROCESS_UPLOAD_MAX_RETRIES,
     pre_process_upload_task_name,
 )
-from shared.django_apps.upload_breadcrumbs.models import (
-    Errors,
-    Milestones,
-)
+from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter
 from tasks.base import BaseCodecovTask
@@ -40,7 +38,13 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
             "Received preprocess upload task",
             extra={"repoid": repoid, "commit": commitid},
         )
-        lock_name = f"preprocess_upload_lock_{repoid}_{commitid}_{None}"
+        lock_manager = LockManager(
+            repoid=repoid,
+            commitid=commitid,
+            lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
+            blocking_timeout=None,
+        )
+        lock_name = lock_manager.lock_name(LockType.PREPROCESS_UPLOAD)
         redis_connection = get_redis_connection()
         # This task only needs to run once per commit to generate the report.
         # So if one is already running we don't need another.
@@ -57,38 +61,37 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
             )
             return {"preprocessed_upload": False, "reason": "already_running"}
         try:
-            with self.with_logged_lock(
-                redis_connection.lock(
-                    lock_name,
-                    timeout=60 * 5,
-                    blocking_timeout=None,
-                ),
-                lock_name=lock_name,
-                repoid=repoid,
-                commitid=commitid,
+            with lock_manager.locked(
+                LockType.PREPROCESS_UPLOAD,
+                retry_num=self.request.retries,
+                max_retries=PREPROCESS_UPLOAD_MAX_RETRIES,
             ):
                 return self.process_impl_within_lock(
                     db_session=db_session,
                     repoid=repoid,
                     commitid=commitid,
                 )
-        except LockError:
-            log.warning(
-                "Unable to acquire lock",
-                extra={
-                    "commit": commitid,
-                    "repoid": repoid,
-                    "number_retries": self.request.retries,
-                    "lock_name": lock_name,
-                },
-            )
+        except LockRetry as retry:
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
                 milestone=Milestones.READY_FOR_REPORT,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            return {"preprocessed_upload": False, "reason": "unable_to_acquire_lock"}
+            if self.request.retries >= PREPROCESS_UPLOAD_MAX_RETRIES:
+                return {
+                    "preprocessed_upload": False,
+                    "reason": "unable_to_acquire_lock",
+                }
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=Milestones.READY_FOR_REPORT,
+                error=Errors.INTERNAL_RETRYING,
+            )
+            self.retry(
+                max_retries=PREPROCESS_UPLOAD_MAX_RETRIES, countdown=retry.countdown
+            )
 
     def process_impl_within_lock(self, db_session, repoid, commitid):
         commit = (

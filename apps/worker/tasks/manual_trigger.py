@@ -1,20 +1,21 @@
 import logging
 
 from celery.exceptions import MaxRetriesExceededError
-from redis.exceptions import LockError
 
 from app import celery_app
 from database.enums import ReportType
 from database.models import Commit, Pull
 from database.models.reports import CommitReport, Upload
 from services.comparison import get_or_create_comparison
+from services.lock_manager import LockManager, LockRetry, LockType
 from shared.celery_config import (
+    DEFAULT_LOCK_TIMEOUT_SECONDS,
+    TASK_MAX_RETRIES_DEFAULT,
     compute_comparison_task_name,
     manual_upload_completion_trigger_task_name,
     notify_task_name,
     pulls_task_name,
 )
-from shared.helpers.redis import get_redis_connection
 from shared.reports.enums import UploadState
 from tasks.base import BaseCodecovTask
 
@@ -38,18 +39,16 @@ class ManualTriggerTask(
             extra={"repoid": repoid, "commit": commitid},
         )
         repoid = int(repoid)
-        lock_name = f"manual_trigger_lock_{repoid}_{commitid}"
-        redis_connection = get_redis_connection()
+        lock_manager = LockManager(
+            repoid=repoid,
+            commitid=commitid,
+            lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
+        )
         try:
-            with self.with_logged_lock(
-                redis_connection.lock(
-                    lock_name,
-                    timeout=60 * 5,
-                    blocking_timeout=5,
-                ),
-                lock_name=lock_name,
-                repoid=repoid,
-                commitid=commitid,
+            with lock_manager.locked(
+                LockType.MANUAL_TRIGGER,
+                retry_num=self.request.retries,
+                max_retries=TASK_MAX_RETRIES_DEFAULT,
             ):
                 return self.process_impl_within_lock(
                     db_session=db_session,
@@ -58,17 +57,13 @@ class ManualTriggerTask(
                     commit_yaml=current_yaml,
                     **kwargs,
                 )
-        except LockError:
-            log.warning(
-                "Unable to acquire lock",
-                extra={
-                    "commit": commitid,
-                    "repoid": repoid,
-                    "number_retries": self.request.retries,
-                    "lock_name": lock_name,
-                },
-            )
-            return {"notifications_called": False, "message": "Unable to acquire lock"}
+        except LockRetry as retry:
+            if self.request.retries >= TASK_MAX_RETRIES_DEFAULT:
+                return {
+                    "notifications_called": False,
+                    "message": "Unable to acquire lock",
+                }
+            self.retry(max_retries=TASK_MAX_RETRIES_DEFAULT, countdown=retry.countdown)
 
     def process_impl_within_lock(
         self,

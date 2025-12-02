@@ -4,7 +4,6 @@ from unittest.mock import ANY, call
 
 import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
-from redis.exceptions import LockError
 
 from celery_config import notify_error_task_name
 from database.models.reports import CommitReport
@@ -15,6 +14,7 @@ from helpers.checkpoint_logger import _kwargs_key
 from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.log_context import LogContext, set_log_context
+from services.lock_manager import LockRetry
 from services.processing.intermediate import intermediate_report_key
 from services.processing.merging import get_joined_flag, update_uploads
 from services.processing.types import MergeResult, ProcessingResult
@@ -815,12 +815,15 @@ class TestUploadFinisherTask:
         )
 
     @pytest.mark.django_db
-    def test_retry_on_report_lock(self, dbsession, mock_redis, mock_self_app):
+    def test_retry_on_report_lock(self, dbsession, mocker, mock_redis, mock_self_app):
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
 
-        mock_redis.lock.side_effect = LockError()
+        # Mock LockManager to raise LockRetry for UPLOAD_PROCESSING lock
+        m = mocker.MagicMock()
+        m.return_value.locked.return_value.__enter__.side_effect = LockRetry(60)
+        mocker.patch("tasks.upload_finisher.LockManager", m)
 
         task = UploadFinisherTask()
         task.request.retries = 0
@@ -882,28 +885,53 @@ class TestUploadFinisherTask:
         dbsession.add(commit)
         dbsession.flush()
 
-        mock_redis.lock.side_effect = [mocker.MagicMock(), LockError()]
+        # Mock LockManager: first call (UPLOAD_PROCESSING) succeeds, second call (UPLOAD_FINISHER) raises LockRetry
+        # Create two mock instances
+        first_lock_manager = mocker.MagicMock()  # For UPLOAD_PROCESSING - succeeds
+        second_lock_manager = (
+            mocker.MagicMock()
+        )  # For UPLOAD_FINISHER - raises LockRetry
+        second_lock_manager.locked.return_value.__enter__.side_effect = LockRetry(60)
+
+        lock_manager_mock = mocker.MagicMock()
+        lock_manager_mock.side_effect = [first_lock_manager, second_lock_manager]
+        mocker.patch("tasks.upload_finisher.LockManager", lock_manager_mock)
 
         task = UploadFinisherTask()
         task.request.retries = 0
 
-        result = task.run_impl(
-            dbsession,
-            [{"upload_id": 0, "arguments": {"url": url}, "successful": True}],
-            repoid=commit.repoid,
-            commitid=commit.commitid,
-            commit_yaml={},
+        # Task should call self.retry() which raises Retry exception
+        with pytest.raises(Retry):
+            task.run_impl(
+                dbsession,
+                [{"upload_id": 0, "arguments": {"url": url}, "successful": True}],
+                repoid=commit.repoid,
+                commitid=commit.commitid,
+                commit_yaml={},
+            )
+        # Breadcrumb should be called twice: INTERNAL_LOCK_ERROR and INTERNAL_RETRYING
+        assert (
+            mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.call_count == 2
         )
-        assert result is None
-        mock_self_app.tasks[
-            upload_breadcrumb_task_name
-        ].apply_async.assert_called_once_with(
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_any_call(
             kwargs={
                 "commit_sha": commit.commitid,
                 "repo_id": commit.repoid,
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.UPLOAD_COMPLETE,
                     error=Errors.INTERNAL_LOCK_ERROR,
+                ),
+                "upload_ids": [0],
+                "sentry_trace_id": None,
+            }
+        )
+        mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_any_call(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.UPLOAD_COMPLETE,
+                    error=Errors.INTERNAL_RETRYING,
                 ),
                 "upload_ids": [0],
                 "sentry_trace_id": None,
