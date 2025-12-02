@@ -14,9 +14,7 @@ from codecov_auth.models import RepositoryToken
 from core.models import Commit, Pull, Repository
 from reports.models import CommitReport, ReportSession
 from services.task.task import TaskService
-from shared.celery_config import (
-    manual_upload_completion_trigger_task_name,
-)
+from shared.celery_config import manual_upload_completion_trigger_task_name
 from shared.django_apps.reports.models import ReportType
 from shared.django_apps.ta_timeseries.models import Testrun
 from shared.django_apps.timeseries.models import Measurement, MeasurementName
