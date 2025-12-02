@@ -421,21 +421,12 @@ class CommitAdminReprocessViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
 
-    @patch("core.admin.TaskService")
-    @patch("core.admin.get_repo_yaml")
-    def test_reprocess_bundle_analysis_view_success(
-        self, mock_get_yaml, mock_task_service
-    ):
-        """Test reprocess_bundle_analysis_view successfully queues reprocessing."""
+    def test_reprocess_bundle_analysis_view_no_uploads(self):
+        """Test reprocess_bundle_analysis_view handles commit with report but no uploads."""
         commit = CommitFactory(repository=self.repo)
         CommitReportFactory(commit=commit, report_type=ReportType.BUNDLE_ANALYSIS)
-
         request = MagicMock()
         request.user = self.user
-
-        mock_yaml = MagicMock()
-        mock_yaml.to_dict.return_value = {"coverage": {"status": "patch"}}
-        mock_get_yaml.return_value = mock_yaml
 
         with (
             patch.object(self.commit_admin, "get_object", return_value=commit),
@@ -446,7 +437,71 @@ class CommitAdminReprocessViewsTests(TestCase):
             )
 
         self.assertEqual(response.status_code, 302)
-        mock_task_service.return_value.schedule_task.assert_called_once()
+
+    def test_reprocess_bundle_analysis_view_skips_uploads_without_storage_path(self):
+        """Test reprocess_bundle_analysis_view skips uploads without storage_path."""
+        commit = CommitFactory(repository=self.repo)
+        report = CommitReportFactory(
+            commit=commit, report_type=ReportType.BUNDLE_ANALYSIS
+        )
+        # Upload without storage_path
+        UploadFactory(report=report, storage_path=None)
+
+        request = MagicMock()
+        request.user = self.user
+
+        with (
+            patch.object(self.commit_admin, "get_object", return_value=commit),
+            patch.object(self.commit_admin, "message_user"),
+        ):
+            response = self.commit_admin.reprocess_bundle_analysis_view(
+                request, str(commit.pk)
+            )
+
+        self.assertEqual(response.status_code, 302)
+
+    @patch("core.admin.Measurement")
+    @patch("core.admin.dispatch_upload_task")
+    @patch("core.admin.get_redis_connection")
+    def test_reprocess_bundle_analysis_view_success(
+        self, mock_redis, mock_dispatch, mock_measurement
+    ):
+        """Test reprocess_bundle_analysis_view successfully queues reprocessing."""
+        commit = CommitFactory(repository=self.repo)
+        report = CommitReportFactory(
+            commit=commit, report_type=ReportType.BUNDLE_ANALYSIS
+        )
+        upload = UploadFactory(
+            report=report,
+            storage_path="v4/raw/test-path",
+            state="processed",
+            state_id=UploadState.PROCESSED.db_id,
+        )
+
+        request = MagicMock()
+        request.user = self.user
+
+        mock_redis.return_value = MagicMock()
+        mock_measurement.objects.using.return_value.filter.return_value.delete.return_value = (
+            0,
+            {},
+        )
+
+        with (
+            patch.object(self.commit_admin, "get_object", return_value=commit),
+            patch.object(self.commit_admin, "message_user"),
+        ):
+            response = self.commit_admin.reprocess_bundle_analysis_view(
+                request, str(commit.pk)
+            )
+
+        self.assertEqual(response.status_code, 302)
+        mock_dispatch.assert_called_once()
+
+        # Verify upload state was reset
+        upload.refresh_from_db()
+        self.assertEqual(upload.state, "started")
+        self.assertEqual(upload.state_id, UploadState.UPLOADED.db_id)
 
     def test_trigger_notifications_view_commit_not_found(self):
         """Test trigger_notifications_view handles missing commit."""
