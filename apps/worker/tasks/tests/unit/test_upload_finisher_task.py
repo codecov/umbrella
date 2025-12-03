@@ -564,14 +564,17 @@ class TestUploadFinisherTask:
             repository__author__username="ThiagoCodecov",
             repository__yaml=commit_yaml,
         )
-        # Create uploads in UPLOADED state (still being processed)
+        # Create coverage uploads in UPLOADED state (still being processed)
+        # These should block notifications since they're coverage uploads
         upload1 = UploadFactory.create(
             report__commit=commit,
+            report__report_type=ReportType.COVERAGE.value,
             state="started",
             state_id=UploadState.UPLOADED.db_id,
         )
         upload2 = UploadFactory.create(
             report__commit=commit,
+            report__report_type=ReportType.COVERAGE.value,
             state="started",
             state_id=UploadState.UPLOADED.db_id,
         )
