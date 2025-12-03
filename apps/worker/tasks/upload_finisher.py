@@ -9,7 +9,7 @@ from celery.exceptions import Retry, SoftTimeLimitExceeded
 
 from app import celery_app
 from celery_config import notify_error_task_name
-from database.enums import CommitErrorTypes
+from database.enums import CommitErrorTypes, ReportType
 from database.models import Commit, Pull
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.models.reports import Upload
@@ -318,14 +318,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 state,
             )
 
-            # Check if there are still unprocessed uploads in the database
-            # Use DB as source of truth - if any uploads are still in UPLOADED state,
+            # Check if there are still unprocessed coverage uploads in the database
+            # Use DB as source of truth - if any coverage uploads are still in UPLOADED state,
             # another finisher will process them and we shouldn't send notifications yet
             remaining_uploads = (
                 db_session.query(Upload)
                 .join(Upload.report)
                 .filter(
                     Upload.report.has(commit=commit),
+                    Upload.report.has(report_type=ReportType.COVERAGE.value),
                     Upload.state_id == UploadState.UPLOADED.db_id,
                 )
                 .count()
@@ -716,6 +717,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 .join(Upload.report)
                 .filter(
                     Upload.report.has(commit=commit),
+                    Upload.report.has(report_type=ReportType.COVERAGE.value),
                     Upload.state_id == UploadState.UPLOADED.db_id,
                 )
                 .count()

@@ -6,7 +6,8 @@ import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
 
 from celery_config import notify_error_task_name
-from database.models.reports import CommitReport
+from database.enums import ReportType
+from database.models.reports import CommitReport, Upload
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
 from database.tests.factories.core import UploadFactory
 from database.tests.factories.timeseries import DatasetFactory
@@ -1229,3 +1230,131 @@ class TestUploadFinisherTask:
 
         # Verify empty list returned when no uploads found
         assert result == []
+
+    @pytest.mark.django_db
+    def test_coverage_notifications_not_blocked_by_test_results_uploads(
+        self,
+        dbsession,
+        mocker,
+        mock_storage,
+        mock_repo_provider,
+        mock_self_app,
+    ):
+        """
+        Regression test for CCMRG-1909: Coverage notifications should not be blocked
+        by test_results uploads that are still pending.
+
+        This test verifies that when all coverage uploads are processed, notifications
+        proceed even if test_results uploads are still in UPLOADED state.
+        """
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        # Don't mock update_uploads - let it run normally to update upload state
+        mocker.patch(
+            "tasks.upload_finisher.get_repo_provider_service",
+            return_value=mock_repo_provider,
+        )
+        # Mock dependencies that _process_reports_with_lock needs (we'll handle update_uploads in the mock)
+        mocker.patch("tasks.upload_finisher.load_commit_diff", return_value=None)
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        # Create coverage report and upload (processed)
+        coverage_report = CommitReport(
+            commit_id=commit.id_,
+            report_type=ReportType.COVERAGE.value,
+        )
+        dbsession.add(coverage_report)
+        dbsession.flush()
+
+        # Create coverage upload in "started" state initially (will be processed by _process_reports_with_lock)
+        coverage_upload = UploadFactory.create(
+            report=coverage_report,
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+        )
+        dbsession.add(coverage_upload)
+        dbsession.flush()
+
+        # Create test_results report and upload (still in UPLOADED state)
+        test_results_report = CommitReport(
+            commit_id=commit.id_,
+            report_type=ReportType.TEST_RESULTS.value,
+        )
+        dbsession.add(test_results_report)
+        dbsession.flush()
+
+        test_results_upload = UploadFactory.create(
+            report=test_results_report,
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+        )
+        dbsession.add(test_results_upload)
+        dbsession.flush()
+
+        processing_results = [
+            {"upload_id": coverage_upload.id_, "successful": True, "arguments": {}},
+        ]
+
+        # Mock the _process_reports_with_lock to verify it IS called
+        # Call update_uploads directly using the SQLAlchemy session (same as test_mark_uploads_as_failed)
+        def mock_process_reports(
+            db_session,
+            commit,
+            commit_yaml,
+            processing_results,
+            milestone,
+            upload_ids,
+            state,
+        ):
+            # Call update_uploads to update the upload state to PROCESSED
+            # This uses the same SQLAlchemy session that the query will use
+            update_uploads(
+                db_session,
+                commit_yaml,
+                processing_results,
+                [],  # intermediate_reports
+                MergeResult({}, set()),  # merge_result
+            )
+            # update_uploads already calls flush(), but ensure the session is ready for queries
+            # The flush() in update_uploads makes the update visible to subsequent queries
+            db_session.expire_all()  # Expire all objects so queries refetch from DB
+
+            # Verify the update worked by querying the upload directly
+            updated_upload = (
+                db_session.query(Upload)
+                .filter(Upload.id_ == coverage_upload.id_)
+                .first()
+            )
+            assert updated_upload is not None, "Upload should exist"
+            assert updated_upload.state == "processed", (
+                f"Upload state should be 'processed', got '{updated_upload.state}'"
+            )
+            assert updated_upload.state_id == UploadState.PROCESSED.db_id, (
+                f"Upload state_id should be {UploadState.PROCESSED.db_id}, got {updated_upload.state_id}"
+            )
+
+        mock_process = mocker.patch.object(
+            UploadFinisherTask,
+            "_process_reports_with_lock",
+            side_effect=mock_process_reports,
+        )
+        mock_handle_finisher_lock = mocker.patch.object(
+            UploadFinisherTask, "_handle_finisher_lock", return_value={"notified": True}
+        )
+
+        result = UploadFinisherTask().run_impl(
+            dbsession,
+            processing_results,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        # Verify that _process_reports_with_lock WAS called
+        mock_process.assert_called_once()
+
+        # Verify that _handle_finisher_lock WAS called (notifications should proceed)
+        # This is the key assertion - notifications should NOT be blocked by test_results uploads
+        mock_handle_finisher_lock.assert_called_once()
