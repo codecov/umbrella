@@ -241,7 +241,9 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         log.info(
             "Received upload_finisher task",
-            extra={"processing_results": processing_results},
+            extra={
+                "processing_results": processing_results,
+            },
         )
 
         repoid = int(repoid)

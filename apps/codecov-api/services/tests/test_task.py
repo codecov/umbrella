@@ -336,3 +336,73 @@ def test_make_http_request_task(mocker):
         headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
         immutable=False,
     )
+
+
+@freeze_time("2023-06-13T10:01:01.000123")
+def test_schedule_task_with_args(mocker):
+    """Test that schedule_task supports both args and kwargs parameters."""
+    signature_mock = mocker.patch("services.task.task.signature")
+    mock_route_task = mocker.patch(
+        "services.task.task.route_task", return_value={"queue": "celery"}
+    )
+    mock_signature = MagicMock()
+    signature_mock.return_value = mock_signature
+
+    TaskService().schedule_task(
+        "test.task_name",
+        args=["arg1", "arg2"],
+        kwargs={"key1": "value1"},
+        apply_async_kwargs={"countdown": 60},
+    )
+
+    mock_route_task.assert_called_with(
+        "test.task_name",
+        args=["arg1", "arg2"],
+        kwargs={"key1": "value1"},
+    )
+    signature_mock.assert_called_with(
+        "test.task_name",
+        args=["arg1", "arg2"],
+        kwargs={"key1": "value1"},
+        app=celery_app,
+        queue="celery",
+        soft_time_limit=None,
+        time_limit=None,
+        headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
+        immutable=False,
+    )
+    mock_signature.apply_async.assert_called_once_with(countdown=60)
+
+
+@freeze_time("2023-06-13T10:01:01.000123")
+def test_schedule_task_without_args(mocker):
+    """Test that schedule_task works without args (default None)."""
+    signature_mock = mocker.patch("services.task.task.signature")
+    mock_route_task = mocker.patch(
+        "services.task.task.route_task", return_value={"queue": "celery"}
+    )
+    mock_signature = MagicMock()
+    signature_mock.return_value = mock_signature
+
+    TaskService().schedule_task(
+        "test.task_name",
+        kwargs={"key1": "value1"},
+        apply_async_kwargs={},
+    )
+
+    mock_route_task.assert_called_with(
+        "test.task_name",
+        args=None,
+        kwargs={"key1": "value1"},
+    )
+    signature_mock.assert_called_with(
+        "test.task_name",
+        args=None,
+        kwargs={"key1": "value1"},
+        app=celery_app,
+        queue="celery",
+        soft_time_limit=None,
+        time_limit=None,
+        headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
+        immutable=False,
+    )
