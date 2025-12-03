@@ -20,7 +20,7 @@ from services.test_results import (
 )
 from services.yaml import UserYaml
 from shared.django_apps.test_analytics.models import TAPullComment
-from shared.plan.constants import DEFAULT_FREE_PLAN
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
 from shared.torngit.exceptions import TorngitClientError
 from shared.torngit.response_types import ProviderPull
 from shared.upload.types import TAUploadContext
@@ -358,6 +358,29 @@ def test_should_do_flake_detection_with_account(
     result = should_do_flaky_detection(repo, UserYaml.from_dict(yaml))
 
     assert result == ex_result
+
+
+@pytest.mark.django_db
+def test_should_do_flake_detection_with_sentry_merge_account(dbsession):
+    mock_all_plans_and_tiers()
+    account = Account(
+        name="sentry_merge_account",
+        plan=PlanName.SENTRY_MERGE_PLAN.value,
+        is_active=True,
+    )
+    dbsession.add(account)
+    dbsession.flush()
+
+    owner = OwnerFactory(plan=DEFAULT_FREE_PLAN, account=account)
+    repo = RepositoryFactory(private=True, author=owner)
+    dbsession.add(repo)
+    dbsession.flush()
+
+    yaml = {"test_analytics": {"flake_detection": True}}
+
+    result = should_do_flaky_detection(repo, UserYaml.from_dict(yaml))
+
+    assert result is True
 
 
 def test_specific_error_message(mocker, snapshot):

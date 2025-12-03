@@ -24,7 +24,7 @@ from services.repository import EnrichedPull
 from services.urls import get_members_url, get_test_analytics_url
 from services.yaml import read_yaml_field
 from shared.django_apps.codecov_auth.models import Plan
-from shared.plan.constants import TierName
+from shared.plan.constants import PlanName, TierName
 from shared.yaml import UserYaml
 
 
@@ -501,6 +501,8 @@ def not_private_and_free_or_team(repo: Repository):
     plan_name = repo.author.plan
     if repo.author.account:
         plan_name = repo.author.account.plan
+        if plan_name == PlanName.SENTRY_MERGE_PLAN.value:
+            return True
 
     plan = Plan.objects.select_related("tier").get(name=plan_name)
 
