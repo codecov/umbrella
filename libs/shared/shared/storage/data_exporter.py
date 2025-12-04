@@ -68,6 +68,7 @@ class _Archiver:
     ) -> Literal[False]:
         if exc_type is None and self.entries > 0:
             self._upload()
+        self.archive.close()
         return False
 
     def upload_json(self, blob_name: str, data: dict) -> None:
