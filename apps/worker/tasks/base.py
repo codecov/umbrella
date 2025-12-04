@@ -212,10 +212,12 @@ class BaseCodecovTask(celery_app.Task):
 
         # Pass current time in task headers so we can emit a metric of
         # how long the task was in the queue for
+        # Also track total_attempts to catch visibility timeout re-deliveries
         current_time = datetime.now()
         headers = {
             **opt_headers,
             "created_timestamp": current_time.isoformat(),
+            "total_attempts": 1,  # Initialize total attempts counter
         }
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
@@ -232,6 +234,56 @@ class BaseCodecovTask(celery_app.Task):
             if TestResultsFlow.has_begun():
                 TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
 
+    def _get_total_attempts(self) -> int:
+        """
+        Get total attempts including re-deliveries from visibility timeout expiration.
+
+        When visibility timeout expires, Redis re-queues the task but Celery treats
+        it as a new delivery (not a retry), so request.retries doesn't increment.
+        We track total attempts in task headers to catch these re-deliveries.
+
+        Returns:
+            Total number of attempts (retries + re-deliveries)
+        """
+        if not hasattr(self, "request"):
+            return 0
+
+        # Get retry count from Celery
+        retry_count = self.request.retries if hasattr(self.request, "retries") else 0
+
+        # Get total attempts from headers (tracks re-deliveries)
+        headers = self.request.get("headers", {}) or {}
+        total_attempts_header = headers.get("total_attempts", None)
+
+        if total_attempts_header is not None:
+            # Use header value if it exists (includes re-deliveries)
+            return int(total_attempts_header)
+        else:
+            # Fallback to retry count + 1 (initial attempt + retries)
+            return retry_count + 1
+
+    def _check_max_attempts_exceeded(self, max_retries: int | None) -> bool:
+        """
+        Check if task has exceeded max attempts (including re-deliveries).
+
+        This is a helper method to check if we should fail early due to too many
+        attempts, including re-deliveries from visibility timeout expiration.
+
+        Args:
+            max_retries: Maximum number of retries allowed
+
+        Returns:
+            True if max attempts exceeded, False otherwise
+        """
+        if max_retries is None:
+            return False
+
+        current_retries = self.request.retries if hasattr(self, "request") else 0
+        total_attempts = self._get_total_attempts()
+        max_total_attempts = max_retries + 1  # +1 for initial attempt
+
+        return current_retries >= max_retries or total_attempts >= max_total_attempts
+
     def safe_retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
         """
         Safely retry with max retry limit and proper metrics tracking.
@@ -240,6 +292,7 @@ class BaseCodecovTask(celery_app.Task):
         - Configurable max retry limit
         - Automatic metric tracking
         - Consistent error handling
+        - Protection against infinite loops from visibility timeout re-deliveries
 
         Args:
             max_retries: Maximum number of retries allowed (default: task's max_retries)
@@ -259,19 +312,31 @@ class BaseCodecovTask(celery_app.Task):
                     return {"success": False, "reason": "max_retries"}
         """
         current_retries = self.request.retries if hasattr(self, "request") else 0
+        total_attempts = self._get_total_attempts()
         task_max_retries = max_retries if max_retries is not None else self.max_retries
 
-        if task_max_retries is not None and current_retries >= task_max_retries:
-            log.error(
-                f"Task {self.name} exceeded max retries",
-                extra={
-                    "task_name": self.name,
-                    "current_retries": current_retries,
-                    "max_retries": task_max_retries,
-                },
-            )
-            TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
-            return False
+        # Check both retry count and total attempts to catch visibility timeout re-deliveries
+        # Total attempts = retries + 1 (initial attempt), so we compare against max_retries + 1
+        max_total_attempts = (
+            task_max_retries + 1 if task_max_retries is not None else None
+        )
+
+        if task_max_retries is not None:
+            if current_retries >= task_max_retries or (
+                max_total_attempts and total_attempts >= max_total_attempts
+            ):
+                log.error(
+                    f"Task {self.name} exceeded max retries",
+                    extra={
+                        "task_name": self.name,
+                        "current_retries": current_retries,
+                        "total_attempts": total_attempts,
+                        "max_retries": task_max_retries,
+                        "max_total_attempts": max_total_attempts,
+                    },
+                )
+                TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
+                return False
 
         # Default countdown: exponential backoff
         # Uses TASK_RETRY_BACKOFF_BASE_SECONDS from shared config (default: 20s)
@@ -279,6 +344,11 @@ class BaseCodecovTask(celery_app.Task):
             countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**current_retries)
 
         try:
+            # Increment total_attempts in headers for next attempt
+            headers = kwargs.get("headers", {}) or {}
+            headers["total_attempts"] = total_attempts + 1
+            kwargs["headers"] = headers
+
             self.retry(
                 max_retries=task_max_retries, countdown=countdown, exc=exc, **kwargs
             )
@@ -349,6 +419,30 @@ class BaseCodecovTask(celery_app.Task):
             if task and task.request:
                 log_context.task_name = task.name
                 log_context.task_id = task.request.id
+
+                # Track total attempts including re-deliveries from visibility timeout
+                # If this is a re-delivery (visibility timeout expired), log it
+                # Note: We can't modify headers here (they're read-only), but we can detect
+                # re-deliveries by checking if total_attempts exists and retries hasn't incremented
+                headers = task.request.get("headers", {}) or {}
+                total_attempts = headers.get("total_attempts", None)
+                retry_count = (
+                    task.request.retries if hasattr(task.request, "retries") else 0
+                )
+
+                if total_attempts is not None:
+                    # Re-delivery detected (visibility timeout expired)
+                    # The total_attempts header exists but retries hasn't incremented
+                    # This means Redis re-queued the task due to visibility timeout expiration
+                    log.warning(
+                        f"Task {task.name} re-delivered (visibility timeout expired)",
+                        extra={
+                            "task_id": task.request.id,
+                            "retry_count": retry_count,
+                            "total_attempts": int(total_attempts),
+                            "note": "Task was re-queued by Redis due to visibility timeout expiration",
+                        },
+                    )
 
             log_context.populate_from_sqlalchemy(db_session)
             set_log_context(log_context)

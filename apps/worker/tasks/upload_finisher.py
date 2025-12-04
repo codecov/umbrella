@@ -465,7 +465,26 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            if self.request.retries >= MAX_RETRIES:
+            # Check both retries and total attempts to prevent infinite loops
+            # from visibility timeout re-deliveries
+            total_attempts = self._get_total_attempts()
+            max_total_attempts = MAX_RETRIES + 1  # +1 for initial attempt
+
+            if (
+                self.request.retries >= MAX_RETRIES
+                or total_attempts >= max_total_attempts
+            ):
+                log.error(
+                    "Upload finisher exceeded max retries",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "retry_count": self.request.retries,
+                        "total_attempts": total_attempts,
+                        "max_retries": MAX_RETRIES,
+                        "max_total_attempts": max_total_attempts,
+                    },
+                )
                 return
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
@@ -474,7 +493,18 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(max_retries=MAX_RETRIES, countdown=retry.countdown)
+            # Use safe_retry to properly track total attempts
+            if not self.safe_retry(max_retries=MAX_RETRIES, countdown=retry.countdown):
+                log.error(
+                    "Failed to schedule retry for upload finisher",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "retry_count": self.request.retries,
+                        "total_attempts": total_attempts,
+                    },
+                )
+                return
 
     def _handle_finisher_lock(
         self,
@@ -564,7 +594,26 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
-            if self.request.retries >= MAX_RETRIES:
+            # Check both retries and total attempts to prevent infinite loops
+            # from visibility timeout re-deliveries
+            total_attempts = self._get_total_attempts()
+            max_total_attempts = MAX_RETRIES + 1  # +1 for initial attempt
+
+            if (
+                self.request.retries >= MAX_RETRIES
+                or total_attempts >= max_total_attempts
+            ):
+                log.error(
+                    "Upload finisher exceeded max retries (finisher lock)",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "retry_count": self.request.retries,
+                        "total_attempts": total_attempts,
+                        "max_retries": MAX_RETRIES,
+                        "max_total_attempts": max_total_attempts,
+                    },
+                )
                 return
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
@@ -573,7 +622,18 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(max_retries=MAX_RETRIES, countdown=retry.countdown)
+            # Use safe_retry to properly track total attempts
+            if not self.safe_retry(max_retries=MAX_RETRIES, countdown=retry.countdown):
+                log.error(
+                    "Failed to schedule retry for upload finisher (finisher lock)",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "retry_count": self.request.retries,
+                        "total_attempts": total_attempts,
+                    },
+                )
+                return
 
     def finish_reports_processing(
         self,

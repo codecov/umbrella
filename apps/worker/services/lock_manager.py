@@ -4,6 +4,7 @@ import time
 from contextlib import contextmanager
 from enum import Enum
 
+import sentry_sdk
 from redis import Redis  # type: ignore
 from redis.exceptions import LockError  # type: ignore
 
@@ -108,6 +109,10 @@ class LockManager:
             countdown = min(countdown_unbounded, max_retry_cap)
 
             if max_retries is not None and retry_num >= max_retries:
+                error_msg = (
+                    f"Lock acquisition failed after {retry_num} retries (max: {max_retries}). "
+                    f"Lock: {lock_name}, Repo: {self.repoid}, Commit: {self.commitid}"
+                )
                 log.error(
                     "Not retrying since we already had too many retries",
                     extra={
@@ -116,8 +121,33 @@ class LockManager:
                         "lock_name": lock_name,
                         "max_retries": max_retries,
                         "retry_num": retry_num,
+                        "report_type": self.report_type.value,
+                    },
+                    exc_info=True,
+                )
+                # Send exception to Sentry with full context
+                sentry_sdk.capture_exception(
+                    Exception(error_msg),
+                    contexts={
+                        "lock_acquisition": {
+                            "lock_name": lock_name,
+                            "repoid": self.repoid,
+                            "commitid": self.commitid,
+                            "report_type": self.report_type.value,
+                            "retry_num": retry_num,
+                            "max_retries": max_retries,
+                            "lock_timeout": self.lock_timeout,
+                            "blocking_timeout": self.blocking_timeout,
+                        }
+                    },
+                    tags={
+                        "lock_name": lock_name,
+                        "error_type": "lock_max_retries_exceeded",
                     },
                 )
+                # Still raise LockRetry so the calling task can handle it
+                # The task should check retries and fail gracefully
+                raise LockRetry(countdown)
 
             log.warning(
                 "Unable to acquire lock",
@@ -127,6 +157,7 @@ class LockManager:
                     "lock_name": lock_name,
                     "countdown": countdown,
                     "retry_num": retry_num,
+                    "max_retries": max_retries,
                 },
             )
             raise LockRetry(countdown)

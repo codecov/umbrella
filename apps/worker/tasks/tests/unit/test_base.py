@@ -540,13 +540,25 @@ class TestBaseCodecovTaskSafeRetry:
         task = SampleTask()
         task.request.retries = 2
         task.max_retries = 5
+        # Mock headers to simulate existing total_attempts
+        task.request.headers = {}
 
         mock_retry = mocker.patch.object(task, "retry")
 
         result = task.safe_retry(max_retries=5, countdown=60)
 
         assert result is True
-        mock_retry.assert_called_once_with(max_retries=5, countdown=60, exc=None)
+        # safe_retry now adds total_attempts to headers for the NEXT attempt
+        # Current attempt: retries=2, so total_attempts=3 (2+1)
+        # Next attempt will be: total_attempts=4 (3+1)
+        call_kwargs = mock_retry.call_args[1]
+        assert call_kwargs["max_retries"] == 5
+        assert call_kwargs["countdown"] == 60
+        assert call_kwargs["exc"] is None
+        assert "headers" in call_kwargs
+        assert (
+            call_kwargs["headers"]["total_attempts"] == 4
+        )  # (retries 2 + 1) + 1 for next attempt
 
     def test_safe_retry_fails_at_max_retries(self, mocker):
         task = SampleTask()
@@ -578,6 +590,8 @@ class TestBaseCodecovTaskSafeRetry:
         task = SampleTask()
         task.request.retries = 3
         task.max_retries = 10
+        # Mock headers to simulate existing total_attempts
+        task.request.headers = {}
 
         mock_retry = mocker.patch.object(task, "retry")
 
@@ -589,11 +603,18 @@ class TestBaseCodecovTaskSafeRetry:
         mock_retry.assert_called_once()
         call_kwargs = mock_retry.call_args[1]
         assert call_kwargs["countdown"] == 160  # 20 * 2^3
+        # Current attempt: retries=3, so total_attempts=4 (3+1)
+        # Next attempt will be: total_attempts=5 (4+1)
+        assert (
+            call_kwargs["headers"]["total_attempts"] == 5
+        )  # (retries 3 + 1) + 1 for next attempt
 
     def test_safe_retry_handles_max_retries_exceeded_exception(self, mocker):
         task = SampleTask()
         task.request.retries = 9
         task.max_retries = 10
+        # Mock headers to simulate existing total_attempts
+        task.request.headers = {}
 
         # Make retry raise MaxRetriesExceededError
         mock_retry = mocker.patch.object(
@@ -736,14 +757,16 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         assert mock_get_db_session.call_count == 1
         assert mock_celery_task_router.call_count == 1
         assert mock_route_tasks.call_count == 1
-        mocked_apply_async.assert_called_with(
-            args=None,
-            kwargs=kwargs,
-            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
-            time_limit=400,
-            soft_time_limit=200,
-            user_plan=mock_celery_task_router(),
+        call_kwargs = mocked_apply_async.call_args[1]
+        assert call_kwargs["args"] is None
+        assert call_kwargs["kwargs"] == kwargs
+        assert (
+            call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
+        assert call_kwargs["headers"]["total_attempts"] == 1  # New header added
+        assert call_kwargs["time_limit"] == 400
+        assert call_kwargs["soft_time_limit"] == 200
+        assert call_kwargs["user_plan"] == mock_celery_task_router()
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
     def test_apply_async_override_with_chain(self, mocker):
@@ -775,9 +798,9 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         assert "chain" in kwargs and len(kwargs.get("chain")) == 1
         assert "task_id" in kwargs
         assert "headers" in kwargs
-        assert kwargs.get("headers") == {
-            "created_timestamp": "2023-06-13T10:01:01.000123"
-        }
+        headers = kwargs.get("headers")
+        assert headers["created_timestamp"] == "2023-06-13T10:01:01.000123"
+        assert headers["total_attempts"] == 1  # New header added
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
     @pytest.mark.django_db
@@ -817,14 +840,16 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         kwargs = {"ownerid": repo.ownerid}
         task.apply_async(kwargs=kwargs)
         assert mock_get_db_session.call_count == 1
-        mocked_super_apply_async.assert_called_with(
-            args=None,
-            kwargs=kwargs,
-            soft_time_limit=None,
-            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
-            time_limit=None,
-            user_plan="users-pr-inappm",
+        call_kwargs = mocked_super_apply_async.call_args[1]
+        assert call_kwargs["args"] is None
+        assert call_kwargs["kwargs"] == kwargs
+        assert call_kwargs["soft_time_limit"] is None
+        assert (
+            call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
+        assert call_kwargs["headers"]["total_attempts"] == 1  # New header added
+        assert call_kwargs["time_limit"] is None
+        assert call_kwargs["user_plan"] == "users-pr-inappm"
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
     @pytest.mark.django_db
@@ -864,14 +889,16 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         kwargs = {"ownerid": repo_enterprise_cloud.ownerid}
         task.apply_async(kwargs=kwargs)
         assert mock_get_db_session.call_count == 1
-        mocked_super_apply_async.assert_called_with(
-            args=None,
-            kwargs=kwargs,
-            soft_time_limit=500,
-            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
-            time_limit=600,
-            user_plan="users-enterprisey",
+        call_kwargs = mocked_super_apply_async.call_args[1]
+        assert call_kwargs["args"] is None
+        assert call_kwargs["kwargs"] == kwargs
+        assert call_kwargs["soft_time_limit"] == 500
+        assert (
+            call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
+        assert call_kwargs["headers"]["total_attempts"] == 1  # New header added
+        assert call_kwargs["time_limit"] == 600
+        assert call_kwargs["user_plan"] == "users-enterprisey"
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
     @pytest.mark.django_db
@@ -911,14 +938,16 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         kwargs = {"repoid": repo_enterprise_cloud.repoid}
         task.apply_async(kwargs=kwargs)
         assert mock_get_db_session.call_count == 1
-        mocked_super_apply_async.assert_called_with(
-            args=None,
-            kwargs=kwargs,
-            soft_time_limit=400,
-            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
-            time_limit=450,
-            user_plan="users-enterprisey",
+        call_kwargs = mocked_super_apply_async.call_args[1]
+        assert call_kwargs["args"] is None
+        assert call_kwargs["kwargs"] == kwargs
+        assert call_kwargs["soft_time_limit"] == 400
+        assert (
+            call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
+        assert call_kwargs["headers"]["total_attempts"] == 1  # New header added
+        assert call_kwargs["time_limit"] == 450
+        assert call_kwargs["user_plan"] == "users-enterprisey"
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
