@@ -5,7 +5,7 @@ from enum import Enum
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery.exceptions import Retry, SoftTimeLimitExceeded
+from celery.exceptions import MaxRetriesExceededError, Retry, SoftTimeLimitExceeded
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -466,6 +466,23 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
             if self.request.retries >= MAX_RETRIES:
+                # LockManager already logged the error, but we need to capture to Sentry
+                # and prevent infinite retry loop
+                sentry_sdk.capture_exception(
+                    MaxRetriesExceededError(
+                        f"Upload finisher exceeded max retries ({MAX_RETRIES}) while acquiring upload processing lock"
+                    ),
+                    contexts={
+                        "upload_finisher": {
+                            "repoid": repoid,
+                            "commitid": commitid,
+                            "retry_count": self.request.retries,
+                            "max_retries": MAX_RETRIES,
+                            "upload_ids": upload_ids,
+                            "lock_type": LockType.UPLOAD_PROCESSING.value,
+                        }
+                    },
+                )
                 return
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
@@ -565,6 +582,23 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             )
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
             if self.request.retries >= MAX_RETRIES:
+                # LockManager already logged the error, but we need to capture to Sentry
+                # and prevent infinite retry loop
+                sentry_sdk.capture_exception(
+                    MaxRetriesExceededError(
+                        f"Upload finisher exceeded max retries ({MAX_RETRIES}) while acquiring finisher lock"
+                    ),
+                    contexts={
+                        "upload_finisher": {
+                            "repoid": repoid,
+                            "commitid": commitid,
+                            "retry_count": self.request.retries,
+                            "max_retries": MAX_RETRIES,
+                            "upload_ids": upload_ids,
+                            "lock_type": LockType.UPLOAD_FINISHER.value,
+                        }
+                    },
+                )
                 return
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
