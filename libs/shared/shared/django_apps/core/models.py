@@ -153,6 +153,9 @@ class Repository(ExportModelOperationsMixin("core.repository"), models.Model):
                 fields=["service_id", "author"],
                 name="repos_service_id_author",
             ),
+            GinIndex(
+                OpClass(Upper("name"), name="gin_trgm_ops"), name="repos_name_trgm_idx"
+            ),
         ]
         constraints = [
             models.UniqueConstraint(fields=["author", "name"], name="repos_slug"),
