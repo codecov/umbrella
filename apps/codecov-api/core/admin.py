@@ -192,6 +192,8 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
             pass
         else:
             queryset |= self.model.objects.filter(repoid=search_term_as_int)
+        # avoid N+1 queries for foreign key author
+        queryset = queryset.select_related("author")
         return queryset, may_have_duplicates
 
     def has_add_permission(self, _, obj=None):
