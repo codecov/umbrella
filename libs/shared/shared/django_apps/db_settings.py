@@ -155,6 +155,9 @@ DATABASES = {
         "PORT": DATABASE_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
         "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+        "TEST": {
+            "CONN_HEALTH_CHECKS": False,
+        },
     }
 }
 
@@ -168,6 +171,9 @@ if DATABASE_READ_REPLICA_ENABLED:
         "PORT": DATABASE_READ_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
         "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+        "TEST": {
+            "CONN_HEALTH_CHECKS": False,
+        },
     }
 
 if TIMESERIES_ENABLED:
@@ -180,6 +186,9 @@ if TIMESERIES_ENABLED:
         "PORT": TIMESERIES_DATABASE_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
         "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+        "TEST": {
+            "CONN_HEALTH_CHECKS": False,
+        },
     }
 
     if TIMESERIES_DATABASE_READ_REPLICA_ENABLED:
@@ -192,6 +201,9 @@ if TIMESERIES_ENABLED:
             "PORT": TIMESERIES_DATABASE_READ_PORT,
             "CONN_MAX_AGE": CONN_MAX_AGE,
             "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+            "TEST": {
+                "CONN_HEALTH_CHECKS": False,
+            },
         }
 
 if TA_TIMESERIES_ENABLED:
@@ -204,6 +216,9 @@ if TA_TIMESERIES_ENABLED:
         "PORT": TA_TIMESERIES_DATABASE_PORT,
         "CONN_MAX_AGE": CONN_MAX_AGE,
         "CONN_HEALTH_CHECKS": CONN_HEALTH_CHECKS,
+        "TEST": {
+            "CONN_HEALTH_CHECKS": False,
+        },
     }
 
 # See https://django-postgres-extra.readthedocs.io/en/main/settings.html
