@@ -39,6 +39,10 @@ class LockRetry(Exception):
         self.countdown = countdown
 
 
+class LockMaxRetriesExceeded(Exception):
+    """Raised when lock acquisition exceeds max retries."""
+
+
 class LockManager:
     def __init__(
         self,
@@ -125,28 +129,25 @@ class LockManager:
                     },
                     exc_info=True,
                 )
-                # Send exception to Sentry with full context
                 sentry_sdk.capture_exception(
-                    Exception(error_msg),
+                    LockMaxRetriesExceeded(error_msg),
                     contexts={
                         "lock_acquisition": {
-                            "lock_name": lock_name,
-                            "repoid": self.repoid,
+                            "blocking_timeout": self.blocking_timeout,
                             "commitid": self.commitid,
+                            "lock_name": lock_name,
+                            "lock_timeout": self.lock_timeout,
+                            "max_retries": max_retries,
+                            "repoid": self.repoid,
                             "report_type": self.report_type.value,
                             "retry_num": retry_num,
-                            "max_retries": max_retries,
-                            "lock_timeout": self.lock_timeout,
-                            "blocking_timeout": self.blocking_timeout,
                         }
                     },
                     tags={
-                        "lock_name": lock_name,
                         "error_type": "lock_max_retries_exceeded",
+                        "lock_name": lock_name,
                     },
                 )
-                # Still raise LockRetry so the calling task can handle it
-                # The task should check retries and fail gracefully
                 raise LockRetry(countdown)
 
             log.warning(

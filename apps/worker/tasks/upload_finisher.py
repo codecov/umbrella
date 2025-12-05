@@ -465,15 +465,9 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            # Check both retries and total attempts to prevent infinite loops
-            # from visibility timeout re-deliveries
-            total_attempts = self._get_total_attempts()
-            max_total_attempts = MAX_RETRIES + 1  # +1 for initial attempt
-
-            if (
-                self.request.retries >= MAX_RETRIES
-                or total_attempts >= max_total_attempts
-            ):
+            if self._has_exceeded_max_attempts(MAX_RETRIES):
+                total_attempts = self._get_total_attempts()
+                max_total_attempts = self._max_total_attempts(MAX_RETRIES)
                 log.error(
                     "Upload finisher exceeded max retries",
                     extra={
@@ -500,8 +494,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            # Use safe_retry to properly track total attempts
             if not self.safe_retry(max_retries=MAX_RETRIES, countdown=retry.countdown):
+                total_attempts = self._get_total_attempts()
                 log.error(
                     "Failed to schedule retry for upload finisher",
                     extra={
@@ -601,15 +595,9 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
-            # Check both retries and total attempts to prevent infinite loops
-            # from visibility timeout re-deliveries
-            total_attempts = self._get_total_attempts()
-            max_total_attempts = MAX_RETRIES + 1  # +1 for initial attempt
-
-            if (
-                self.request.retries >= MAX_RETRIES
-                or total_attempts >= max_total_attempts
-            ):
+            if self._has_exceeded_max_attempts(MAX_RETRIES):
+                total_attempts = self._get_total_attempts()
+                max_total_attempts = self._max_total_attempts(MAX_RETRIES)
                 log.error(
                     "Upload finisher exceeded max retries (finisher lock)",
                     extra={
@@ -636,8 +624,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            # Use safe_retry to properly track total attempts
             if not self.safe_retry(max_retries=MAX_RETRIES, countdown=retry.countdown):
+                total_attempts = self._get_total_attempts()
                 log.error(
                     "Failed to schedule retry for upload finisher (finisher lock)",
                     extra={
