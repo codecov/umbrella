@@ -31,6 +31,7 @@ from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
     Errors,
     Milestones,
+    ReportTypes,
 )
 from shared.reports.enums import UploadState
 from shared.torngit.exceptions import TorngitObjectNotFoundError
@@ -248,6 +249,7 @@ class TestUploadFinisherTask:
                         "repo_id": commit.repoid,
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                            report_type=ReportTypes.COVERAGE,
                         ),
                         "upload_ids": [0],
                         "sentry_trace_id": None,
@@ -259,6 +261,7 @@ class TestUploadFinisherTask:
                         "repo_id": commit.repoid,
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.UPLOAD_COMPLETE,
+                            report_type=ReportTypes.COVERAGE,
                         ),
                         "upload_ids": [0],
                         "sentry_trace_id": None,
@@ -316,6 +319,7 @@ class TestUploadFinisherTask:
                         "repo_id": commit.repoid,
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                            report_type=ReportTypes.COVERAGE,
                         ),
                         "upload_ids": [0],
                         "sentry_trace_id": None,
@@ -327,6 +331,7 @@ class TestUploadFinisherTask:
                         "repo_id": commit.repoid,
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.UPLOAD_COMPLETE,
+                            report_type=ReportTypes.COVERAGE,
                         ),
                         "upload_ids": [0],
                         "sentry_trace_id": None,
@@ -383,6 +388,7 @@ class TestUploadFinisherTask:
                         "repo_id": commit.repoid,
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                            report_type=ReportTypes.COVERAGE,
                         ),
                         "upload_ids": [0],
                         "sentry_trace_id": None,
@@ -394,6 +400,7 @@ class TestUploadFinisherTask:
                         "repo_id": commit.repoid,
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.UPLOAD_COMPLETE,
+                            report_type=ReportTypes.COVERAGE,
                         ),
                         "upload_ids": [0],
                         "sentry_trace_id": None,
@@ -630,6 +637,7 @@ class TestUploadFinisherTask:
                 "repo_id": commit.repoid,
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                    report_type=ReportTypes.COVERAGE,
                 ),
                 "upload_ids": [1],
                 "sentry_trace_id": None,
@@ -699,6 +707,7 @@ class TestUploadFinisherTask:
                 "repo_id": commit.repoid,
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                    report_type=ReportTypes.COVERAGE,
                 ),
                 "upload_ids": [1],
                 "sentry_trace_id": None,
@@ -799,6 +808,7 @@ class TestUploadFinisherTask:
                         "repo_id": commit.repoid,
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                            report_type=ReportTypes.COVERAGE,
                         ),
                         "upload_ids": [0],
                         "sentry_trace_id": None,
@@ -810,6 +820,7 @@ class TestUploadFinisherTask:
                         "repo_id": commit.repoid,
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.UPLOAD_COMPLETE,
+                            report_type=ReportTypes.COVERAGE,
                         ),
                         "upload_ids": [0],
                         "sentry_trace_id": None,
@@ -849,6 +860,7 @@ class TestUploadFinisherTask:
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.UPLOAD_COMPLETE,
                             error=Errors.INTERNAL_LOCK_ERROR,
+                            report_type=ReportTypes.COVERAGE,
                         ),
                         "upload_ids": [0],
                         "sentry_trace_id": None,
@@ -861,6 +873,7 @@ class TestUploadFinisherTask:
                         "breadcrumb_data": BreadcrumbData(
                             milestone=Milestones.UPLOAD_COMPLETE,
                             error=Errors.INTERNAL_RETRYING,
+                            report_type=ReportTypes.COVERAGE,
                         ),
                         "upload_ids": [0],
                         "sentry_trace_id": None,
@@ -924,6 +937,7 @@ class TestUploadFinisherTask:
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.UPLOAD_COMPLETE,
                     error=Errors.INTERNAL_LOCK_ERROR,
+                    report_type=ReportTypes.COVERAGE,
                 ),
                 "upload_ids": [0],
                 "sentry_trace_id": None,
@@ -971,6 +985,7 @@ class TestUploadFinisherTask:
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.UPLOAD_COMPLETE,
                     error=Errors.TASK_TIMED_OUT,
+                    report_type=ReportTypes.COVERAGE,
                 ),
                 "upload_ids": [0],
                 "sentry_trace_id": None,
@@ -1025,6 +1040,7 @@ class TestUploadFinisherTask:
                     milestone=Milestones.UPLOAD_COMPLETE,
                     error=Errors.UNKNOWN,
                     error_text="ValueError('Unexpected error occurred')",
+                    report_type=ReportTypes.COVERAGE,
                 ),
                 "upload_ids": [0],
                 "sentry_trace_id": None,

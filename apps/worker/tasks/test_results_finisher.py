@@ -10,6 +10,7 @@ from helpers.checkpoint_logger.flows import TestResultsFlow
 from services.lock_manager import LockManager, LockRetry, LockType
 from services.test_analytics.ta_finish_upload import ta_finish_upload
 from shared.celery_config import test_results_finisher_task_name
+from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones, ReportTypes
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.notify import notify_task_name
@@ -57,6 +58,14 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                     commit_yaml=UserYaml.from_dict(commit_yaml),
                     **kwargs,
                 )
+
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=Milestones.UPLOAD_COMPLETE,
+                report_type=ReportTypes.TEST_RESULTS,
+            )
+
             if finisher_result["queue_notify"]:
                 self.app.tasks[notify_task_name].apply_async(
                     args=None,
@@ -66,11 +75,43 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                         "current_yaml": commit_yaml,
                     },
                 )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=Milestones.NOTIFICATIONS_TRIGGERED,
+                    report_type=ReportTypes.TEST_RESULTS,
+                )
 
             return finisher_result
 
         except LockRetry as retry:
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                error=Errors.INTERNAL_LOCK_ERROR,
+                report_type=ReportTypes.TEST_RESULTS,
+            )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                error=Errors.INTERNAL_RETRYING,
+                report_type=ReportTypes.TEST_RESULTS,
+            )
             self.retry(max_retries=5, countdown=retry.countdown)
+
+        except Exception as e:
+            log.exception(
+                "Error in test results finisher",
+                extra={"repoid": repoid, "commitid": commitid},
+            )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                error=Errors.UNKNOWN,
+                error_text=repr(e),
+                report_type=ReportTypes.TEST_RESULTS,
+            )
+            raise
 
     def process_impl_within_lock(
         self,

@@ -39,7 +39,7 @@ from shared.celery_config import (
     timeseries_save_commit_measurements_task_name,
     upload_finisher_task_name,
 )
-from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
+from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones, ReportTypes
 from shared.helpers.cache import cache
 from shared.helpers.redis import get_redis_connection
 from shared.metrics import Counter, inc_counter
@@ -346,6 +346,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     repo_id=repoid,
                     milestone=milestone,
                     upload_ids=upload_ids,
+                    report_type=ReportTypes.COVERAGE,
                 )
                 return
 
@@ -371,6 +372,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone=milestone,
                 upload_ids=upload_ids,
                 error=Errors.TASK_TIMED_OUT,
+                report_type=ReportTypes.COVERAGE,
             )
             return {
                 "error": "Soft time limit exceeded",
@@ -391,6 +393,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.UNKNOWN,
                 error_text=repr(e),
+                report_type=ReportTypes.COVERAGE,
             )
             return {
                 "error": str(e),
@@ -464,6 +467,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone=milestone,
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
+                report_type=ReportTypes.COVERAGE,
             )
             if self.request.retries >= MAX_RETRIES:
                 return
@@ -473,6 +477,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone=milestone,
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
+                report_type=ReportTypes.COVERAGE,
             )
             self.retry(max_retries=MAX_RETRIES, countdown=retry.countdown)
 
@@ -551,6 +556,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     repo_id=repoid,
                     milestone=milestone,
                     upload_ids=upload_ids,
+                    report_type=ReportTypes.COVERAGE,
                 )
                 log.info("handle_finisher_lock: Finished upload_finisher task")
                 return result
@@ -562,6 +568,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone=milestone,
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
+                report_type=ReportTypes.COVERAGE,
             )
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
             if self.request.retries >= MAX_RETRIES:
@@ -615,6 +622,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         upload_ids=[
                             upload["upload_id"] for upload in processing_results
                         ],
+                        report_type=ReportTypes.COVERAGE,
                     )
                     log.info(
                         "Scheduling notify task",
