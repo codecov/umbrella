@@ -831,6 +831,9 @@ class TestUploadFinisherTask:
 
         task = UploadFinisherTask()
         task.request.retries = 0
+        # Set up request.get() and headers for _get_request_headers()
+        task.request.get = lambda key, default=None: {} if key == "headers" else default
+        task.request.headers = {}
 
         with pytest.raises(Retry):
             task.run_impl(
@@ -903,6 +906,9 @@ class TestUploadFinisherTask:
 
         task = UploadFinisherTask()
         task.request.retries = 0
+        # Set up request.get() and headers for _get_request_headers()
+        task.request.get = lambda key, default=None: {} if key == "headers" else default
+        task.request.headers = {}
 
         # Task should call self.retry() which raises Retry exception
         with pytest.raises(Retry):

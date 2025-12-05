@@ -223,8 +223,8 @@ class BundleAnalysisProcessorTask(
                 log.exception(
                     "Failed to commit upload error state",
                     extra={
-                        "repoid": repoid,
                         "commit": commitid,
+                        "repoid": repoid,
                         "upload_id": upload.id_,
                     },
                 )

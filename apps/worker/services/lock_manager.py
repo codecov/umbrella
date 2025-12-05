@@ -120,12 +120,12 @@ class LockManager:
                 log.error(
                     "Not retrying since we already had too many retries",
                     extra={
-                        "repoid": self.repoid,
                         "commitid": self.commitid,
                         "lock_name": lock_name,
                         "max_retries": max_retries,
-                        "retry_num": retry_num,
+                        "repoid": self.repoid,
                         "report_type": self.report_type.value,
+                        "retry_num": retry_num,
                     },
                     exc_info=True,
                 )
@@ -153,12 +153,12 @@ class LockManager:
             log.warning(
                 "Unable to acquire lock",
                 extra={
-                    "repoid": self.repoid,
                     "commitid": self.commitid,
-                    "lock_name": lock_name,
                     "countdown": countdown,
-                    "retry_num": retry_num,
+                    "lock_name": lock_name,
                     "max_retries": max_retries,
+                    "repoid": self.repoid,
+                    "retry_num": retry_num,
                 },
             )
             raise LockRetry(countdown)

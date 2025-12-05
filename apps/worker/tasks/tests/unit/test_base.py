@@ -564,6 +564,9 @@ class TestBaseCodecovTaskSafeRetry:
         task = SampleTask()
         task.request.retries = 10
         task.max_retries = 10
+        # Set up request.get() and headers for _get_request_headers()
+        task.request.get = lambda key, default=None: {} if key == "headers" else default
+        task.request.headers = {}
 
         mock_retry = mocker.patch.object(task, "retry")
 
@@ -836,7 +839,6 @@ class TestBaseCodecovTaskReDeliveryDetection:
             def run_impl(self, dbsession):
                 return "success"
 
-        task = SampleTask()
         mock_current_task = MagicMock()
         mock_current_task.name = "test.SampleTask"
         mock_request = MagicMock()
@@ -848,6 +850,11 @@ class TestBaseCodecovTaskReDeliveryDetection:
         )
         mock_request.headers = {"total_attempts": 5}
         mock_current_task.request = mock_request
+        # Set up self.request on task instance using PropertyMock (request is a property)
+        # Must patch BEFORE creating task instance
+        mock_property = PropertyMock(return_value=mock_request)
+        mocker.patch.object(SampleTask, "request", mock_property, create=True)
+        task = SampleTask()
 
         mocker.patch("tasks.base.get_current_task", return_value=mock_current_task)
         mock_log_warning = mocker.patch("tasks.base.log.warning")
@@ -903,7 +910,6 @@ class TestBaseCodecovTaskReDeliveryDetection:
             def run_impl(self, dbsession):
                 return "success"
 
-        task = SampleTask()
         mock_current_task = MagicMock()
         mock_current_task.name = "test.SampleTask"
         mock_request = MagicMock()
@@ -915,6 +921,11 @@ class TestBaseCodecovTaskReDeliveryDetection:
         )  # Invalid value
         mock_request.headers = {"total_attempts": "invalid"}
         mock_current_task.request = mock_request
+        # Set up self.request on task instance using PropertyMock (request is a property)
+        # Must patch BEFORE creating task instance
+        mock_property = PropertyMock(return_value=mock_request)
+        mocker.patch.object(SampleTask, "request", mock_property, create=True)
+        task = SampleTask()
 
         mocker.patch("tasks.base.get_current_task", return_value=mock_current_task)
         mock_log_warning = mocker.patch("tasks.base.log.warning")
@@ -972,7 +983,6 @@ class TestBaseCodecovTaskReDeliveryDetection:
             def run_impl(self, dbsession):
                 return "success"
 
-        task = SampleTask()
         mock_current_task = MagicMock()
         mock_current_task.name = "test.SampleTask"
         mock_request = MagicMock()
@@ -984,6 +994,11 @@ class TestBaseCodecovTaskReDeliveryDetection:
         )
         mock_request.headers = {"total_attempts": None}
         mock_current_task.request = mock_request
+        # Set up self.request on task instance using PropertyMock (request is a property)
+        # Must patch BEFORE creating task instance
+        mock_property = PropertyMock(return_value=mock_request)
+        mocker.patch.object(SampleTask, "request", mock_property, create=True)
+        task = SampleTask()
 
         mocker.patch("tasks.base.get_current_task", return_value=mock_current_task)
         mock_log_warning = mocker.patch("tasks.base.log.warning")

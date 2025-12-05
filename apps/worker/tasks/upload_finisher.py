@@ -471,12 +471,12 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 log.error(
                     "Upload finisher exceeded max retries",
                     extra={
-                        "repoid": repoid,
                         "commitid": commitid,
-                        "retry_count": self.request.retries,
-                        "total_attempts": total_attempts,
                         "max_retries": MAX_RETRIES,
                         "max_total_attempts": max_total_attempts,
+                        "repoid": repoid,
+                        "retry_count": self.request.retries,
+                        "total_attempts": total_attempts,
                     },
                 )
                 self._call_upload_breadcrumb_task(
@@ -499,8 +499,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 log.error(
                     "Failed to schedule retry for upload finisher",
                     extra={
-                        "repoid": repoid,
                         "commitid": commitid,
+                        "repoid": repoid,
                         "retry_count": self.request.retries,
                         "total_attempts": total_attempts,
                     },
@@ -601,12 +601,12 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 log.error(
                     "Upload finisher exceeded max retries (finisher lock)",
                     extra={
-                        "repoid": repoid,
                         "commitid": commitid,
-                        "retry_count": self.request.retries,
-                        "total_attempts": total_attempts,
                         "max_retries": MAX_RETRIES,
                         "max_total_attempts": max_total_attempts,
+                        "repoid": repoid,
+                        "retry_count": self.request.retries,
+                        "total_attempts": total_attempts,
                     },
                 )
                 self._call_upload_breadcrumb_task(
@@ -629,8 +629,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 log.error(
                     "Failed to schedule retry for upload finisher (finisher lock)",
                     extra={
-                        "repoid": repoid,
                         "commitid": commitid,
+                        "repoid": repoid,
                         "retry_count": self.request.retries,
                         "total_attempts": total_attempts,
                     },
