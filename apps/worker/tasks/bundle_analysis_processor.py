@@ -207,22 +207,32 @@ class BundleAnalysisProcessorTask(
             result: ProcessingResult = report_service.process_upload(
                 commit, upload, compare_sha
             )
-            if (
-                result.error
-                and result.error.is_retryable
-                and self.request.retries < self.max_retries
-            ):
+            if result.error and result.error.is_retryable:
+                if self._has_exceeded_max_attempts(self.max_retries):
+                    attempts = self.attempts
+                    max_attempts = self.max_retries + 1
+                    log.error(
+                        "Bundle analysis processor exceeded max retries",
+                        extra={
+                            "attempts": attempts,
+                            "commitid": commitid,
+                            "max_attempts": max_attempts,
+                            "max_retries": self.max_retries,
+                            "repoid": repoid,
+                        },
+                    )
+                    return
                 log.warn(
                     "Attempting to retry bundle analysis upload",
                     extra={
+                        "commitid": commitid,
                         "repoid": repoid,
-                        "commit": commitid,
                         "commit_yaml": commit_yaml,
                         "params": params,
                         "result": result.as_dict(),
                     },
                 )
-                self.retry(countdown=30 * (2**self.request.retries))
+                self.retry(max_retries=self.max_retries, countdown=30 * (2**self.request.retries))
             result.update_upload(carriedforward=carriedforward)
             db_session.commit()
 

@@ -493,17 +493,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            if not self.safe_retry(max_retries=MAX_RETRIES, countdown=retry.countdown):
-                attempts = self.attempts
-                log.error(
-                    "Failed to schedule retry for upload finisher",
-                    extra={
-                        "attempts": attempts,
-                        "commitid": commitid,
-                        "repoid": repoid,
-                    },
-                )
-                return
+            self.retry(max_retries=MAX_RETRIES, countdown=retry.countdown)
 
     def _handle_finisher_lock(
         self,
@@ -621,17 +611,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            if not self.safe_retry(max_retries=MAX_RETRIES, countdown=retry.countdown):
-                attempts = self.attempts
-                log.error(
-                    "Failed to schedule retry for upload finisher (finisher lock)",
-                    extra={
-                        "attempts": attempts,
-                        "commitid": commitid,
-                        "repoid": repoid,
-                    },
-                )
-                return
+            self.retry(max_retries=MAX_RETRIES, countdown=retry.countdown)
 
     def finish_reports_processing(
         self,

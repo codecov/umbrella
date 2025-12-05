@@ -128,6 +128,7 @@ class LockManager:
             )
             countdown = min(countdown_unbounded, max_retry_cap)
 
+            # None means no max retries (infinite retries)
             max_attempts = max_retries + 1 if max_retries is not None else None
             if max_attempts is not None and retry_num >= max_attempts:
                 error_msg = (
