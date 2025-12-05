@@ -883,10 +883,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         # does whatever extra stuff + enqueues a notify
         if do_notify:
             task_signatures.append(
-                bundle_analysis_notify_task.s(
-                    repoid=commit.repoid,
-                    commitid=commit.commitid,
-                    commit_yaml=commit_yaml,
+                bundle_analysis_notify_task.signature(
+                    kwargs={
+                        "repoid": commit.repoid,
+                        "commitid": commit.commitid,
+                        "commit_yaml": commit_yaml,
+                    }
                 )
             )
 
