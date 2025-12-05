@@ -39,8 +39,23 @@ class LockRetry(Exception):
         self.countdown = countdown
 
 
-class LockMaxRetriesExceeded(Exception):
+class LockMaxRetriesExceededError(Exception):
     """Raised when lock acquisition exceeds max retries."""
+
+    def __init__(
+        self,
+        retry_num: int,
+        max_attempts: int,
+        lock_name: str,
+        repoid: int,
+        commitid: str,
+    ):
+        self.retry_num = retry_num
+        self.max_attempts = max_attempts
+        self.lock_name = lock_name
+        self.repoid = repoid
+        self.commitid = commitid
+        super().__init__("Lock acquisition failed after exceeding max retries")
 
 
 class LockManager:
@@ -131,9 +146,12 @@ class LockManager:
             # None means no max retries (infinite retries)
             max_attempts = max_retries + 1 if max_retries is not None else None
             if max_attempts is not None and retry_num >= max_attempts:
-                error_msg = (
-                    f"Lock acquisition failed after {retry_num} attempts (max: {max_attempts}). "
-                    f"Lock: {lock_name}, Repo: {self.repoid}, Commit: {self.commitid}"
+                error = LockMaxRetriesExceededError(
+                    retry_num=retry_num,
+                    max_attempts=max_attempts,
+                    lock_name=lock_name,
+                    repoid=self.repoid,
+                    commitid=self.commitid,
                 )
                 log.error(
                     "Not retrying since we already had too many retries",
@@ -150,7 +168,7 @@ class LockManager:
                     exc_info=True,
                 )
                 sentry_sdk.capture_exception(
-                    LockMaxRetriesExceeded(error_msg),
+                    error,
                     contexts={
                         "lock_acquisition": {
                             "blocking_timeout": self.blocking_timeout,
@@ -171,6 +189,7 @@ class LockManager:
                         "lock_type": lock_type.value,
                     },
                 )
+                # TODO: should we raise this, or would a return be ok?
                 raise LockRetry(countdown)
 
             log.warning(

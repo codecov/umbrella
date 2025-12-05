@@ -189,6 +189,7 @@ class BundleAnalysisProcessorTask(
             str | None, params.get("bundle_analysis_compare_sha")
         )
 
+        result: ProcessingResult | None = None
         try:
             log.info(
                 "Processing bundle analysis upload",
@@ -204,9 +205,7 @@ class BundleAnalysisProcessorTask(
             )
             assert params.get("commit") == commit.commitid
 
-            result: ProcessingResult = report_service.process_upload(
-                commit, upload, compare_sha
-            )
+            result = report_service.process_upload(commit, upload, compare_sha)
             if result.error and result.error.is_retryable:
                 if self._has_exceeded_max_attempts(self.max_retries):
                     attempts = self.attempts
@@ -232,7 +231,10 @@ class BundleAnalysisProcessorTask(
                         "result": result.as_dict(),
                     },
                 )
-                self.retry(max_retries=self.max_retries, countdown=30 * (2**self.request.retries))
+                self.retry(
+                    max_retries=self.max_retries,
+                    countdown=30 * (2**self.request.retries),
+                )
             result.update_upload(carriedforward=carriedforward)
             db_session.commit()
 
@@ -270,9 +272,9 @@ class BundleAnalysisProcessorTask(
                 )
             raise
         finally:
-            if "result" in locals() and result.bundle_report:
+            if result is not None and result.bundle_report:
                 result.bundle_report.cleanup()
-            if "result" in locals() and result.previous_bundle_report:
+            if result is not None and result.previous_bundle_report:
                 result.previous_bundle_report.cleanup()
 
         # Create task to save bundle measurements
