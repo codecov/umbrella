@@ -216,7 +216,18 @@ class BundleAnalysisProcessorTask(
             )
             upload.state_id = UploadState.ERROR.db_id
             upload.state = "error"
-            db_session.commit()
+            try:
+                db_session.commit()
+            except Exception:
+                # Log commit failure but preserve original exception
+                log.exception(
+                    "Failed to commit upload error state",
+                    extra={
+                        "repoid": repoid,
+                        "commit": commitid,
+                        "upload_id": upload.id_,
+                    },
+                )
             raise
         finally:
             if "result" in locals() and result.bundle_report:

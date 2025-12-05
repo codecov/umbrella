@@ -423,17 +423,18 @@ class BaseCodecovTask(celery_app.Task):
                 # Track total attempts including re-deliveries from visibility timeout
                 # If this is a re-delivery (visibility timeout expired), log it
                 # Note: We can't modify headers here (they're read-only), but we can detect
-                # re-deliveries by checking if total_attempts exists and retries hasn't incremented
+                # re-deliveries by checking if total_attempts is ahead of retry_count + 1
+                # (which indicates Redis re-queued the task without incrementing retry_count)
                 headers = task.request.get("headers", {}) or {}
                 total_attempts = headers.get("total_attempts", None)
                 retry_count = (
                     task.request.retries if hasattr(task.request, "retries") else 0
                 )
 
-                if total_attempts is not None:
-                    # Re-delivery detected (visibility timeout expired)
-                    # The total_attempts header exists but retries hasn't incremented
-                    # This means Redis re-queued the task due to visibility timeout expiration
+                # Only log re-deliveries when total_attempts > retry_count + 1
+                # This indicates the task was re-queued by Redis due to visibility timeout
+                # expiration (where total_attempts increments but retry_count doesn't)
+                if total_attempts is not None and int(total_attempts) > retry_count + 1:
                     log.warning(
                         f"Task {task.name} re-delivered (visibility timeout expired)",
                         extra={
