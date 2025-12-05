@@ -730,7 +730,7 @@ class TestBaseCodecovTaskGetTotalAttempts:
             return original_hasattr(obj, name)
 
         mocker.patch("builtins.hasattr", side_effect=mock_hasattr)
-        assert task._get_attempts() == 0
+        assert task.attempts == 0
 
     def test_get_attempts_without_headers(self):
         """Test _get_attempts when headers don't have attempts."""
@@ -739,7 +739,7 @@ class TestBaseCodecovTaskGetTotalAttempts:
         task.request.headers = {}
         # Mock request.get() to return empty headers
         task.request.get = lambda key, default=None: {} if key == "headers" else default
-        assert task._get_attempts() == 4  # retries (3) + 1
+        assert task.attempts == 4  # retries (3) + 1
 
     def test_get_attempts_with_valid_header(self):
         """Test _get_attempts when headers have valid attempts."""
@@ -750,7 +750,7 @@ class TestBaseCodecovTaskGetTotalAttempts:
         task.request.get = lambda key, default=None: (
             {"attempts": 5} if key == "headers" else default
         )
-        assert task._get_attempts() == 5  # Uses header value
+        assert task.attempts == 5  # Uses header value
 
     def test_get_attempts_with_invalid_header_string(self):
         """Test _get_attempts when headers have invalid string value."""
@@ -762,7 +762,7 @@ class TestBaseCodecovTaskGetTotalAttempts:
             {"attempts": "invalid"} if key == "headers" else default
         )
         # Should fallback to retry_count + 1
-        assert task._get_attempts() == 3  # retries (2) + 1
+        assert task.attempts == 3  # retries (2) + 1
 
     def test_get_attempts_with_invalid_header_none(self):
         """Test _get_attempts when headers have None value."""
@@ -774,7 +774,7 @@ class TestBaseCodecovTaskGetTotalAttempts:
             {"attempts": None} if key == "headers" else default
         )
         # Should fallback to retry_count + 1
-        assert task._get_attempts() == 3  # retries (2) + 1
+        assert task.attempts == 3  # retries (2) + 1
 
     def test_get_attempts_without_retries_attribute(self, mocker):
         """Test _get_attempts when request doesn't have retries attribute."""
@@ -798,7 +798,7 @@ class TestBaseCodecovTaskGetTotalAttempts:
         mock_property = PropertyMock(return_value=mock_request)
         mocker.patch.object(SampleTask, "request", mock_property, create=True)
         task = SampleTask()
-        assert task._get_attempts() == 1  # 0 + 1
+        assert task.attempts == 1  # 0 + 1
 
     def test_get_attempts_with_re_delivery_scenario(self):
         """Test _get_attempts in re-delivery scenario (attempts > retry_count + 1)."""
@@ -809,7 +809,7 @@ class TestBaseCodecovTaskGetTotalAttempts:
         task.request.get = lambda key, default=None: (
             {"attempts": 5} if key == "headers" else default
         )
-        assert task._get_attempts() == 5  # Should use header value
+        assert task.attempts == 5  # Should use header value
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})

@@ -257,7 +257,9 @@ class TestLockManager:
         manager = LockManager(repoid=123, commitid="abc123")
         with caplog.at_level(logging.ERROR):
             with pytest.raises(LockRetry):
-                with manager.locked(LockType.UPLOAD, retry_num=3, max_retries=3):
+                # retry_num now represents self.attempts (starts at 1)
+                # max_retries=3 means max_attempts=4, so retry_num=4 should exceed
+                with manager.locked(LockType.UPLOAD, retry_num=4, max_retries=3):
                     pass
 
         error_logs = [

@@ -26,6 +26,9 @@ log = logging.getLogger(__name__)
 class BundleAnalysisProcessorTask(
     BaseCodecovTask, name=bundle_analysis_processor_task_name
 ):
+    # TODO: max_retries should come from config for consistency with other retry limits
+    # (e.g., PREPROCESS_UPLOAD_MAX_RETRIES, UPLOAD_PROCESSING_MAX_RETRIES)
+    # Currently hardcoded to 5, but should use get_config("setup", "tasks", "bundle_analysis", "processor_max_retries", default=5)
     max_retries = 5
 
     def run_impl(
@@ -63,9 +66,8 @@ class BundleAnalysisProcessorTask(
         try:
             with lock_manager.locked(
                 LockType.BUNDLE_ANALYSIS_PROCESSING,
-                retry_num=self.request.retries,
                 max_retries=self.max_retries,
-                attempts=self._get_attempts(),
+                retry_num=self.attempts,
             ):
                 return self.process_impl_within_lock(
                     db_session,
@@ -77,7 +79,7 @@ class BundleAnalysisProcessorTask(
                 )
         except LockRetry as retry:
             if self._has_exceeded_max_attempts(self.max_retries):
-                attempts = self._get_attempts()
+                attempts = self.attempts
                 max_attempts = self.max_retries + 1
                 log.error(
                     "Bundle analysis processor exceeded max retries",
@@ -93,7 +95,7 @@ class BundleAnalysisProcessorTask(
             if not self.safe_retry(
                 max_retries=self.max_retries, countdown=retry.countdown
             ):
-                attempts = self._get_attempts()
+                attempts = self.attempts
                 log.error(
                     "Failed to schedule retry for bundle analysis processor",
                     extra={

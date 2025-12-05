@@ -227,13 +227,12 @@ class BaseCodecovTask(celery_app.Task):
         This ensures all retries (direct calls or through safe_retry) track attempts
         consistently, including re-deliveries from visibility timeout expiration.
         """
-        attempts = self._get_attempts()
         headers = {}
         request_headers = self._get_request_headers()
         if request_headers:
             headers.update(request_headers)
         headers.update(kwargs.get("headers", {}) or {})
-        headers["attempts"] = attempts + 1
+        headers["attempts"] = self.attempts + 1
         kwargs["headers"] = headers
 
         return super().retry(
@@ -271,7 +270,8 @@ class BaseCodecovTask(celery_app.Task):
         headers = getattr(self.request, "headers", {})
         return headers or {}
 
-    def _get_attempts(self) -> int:
+    @property
+    def attempts(self) -> int:
         """Get attempts including re-deliveries from visibility timeout expiration.
 
         Returns:
@@ -304,9 +304,8 @@ class BaseCodecovTask(celery_app.Task):
         if max_retries is None:
             return False
 
-        attempts = self._get_attempts()
         max_attempts = max_retries + 1
-        return attempts >= max_attempts
+        return self.attempts >= max_attempts
 
     def safe_retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
         """Safely retry with max retry limit and proper metrics tracking.
@@ -318,12 +317,11 @@ class BaseCodecovTask(celery_app.Task):
         task_max_retries = max_retries if max_retries is not None else self.max_retries
 
         if self._has_exceeded_max_attempts(task_max_retries):
-            attempts = self._get_attempts()
             max_attempts = task_max_retries + 1
             log.error(
                 f"Task {self.name} exceeded max retries",
                 extra={
-                    "attempts": attempts,
+                    "attempts": self.attempts,
                     "max_attempts": max_attempts,
                     "max_retries": task_max_retries,
                     "task_name": self.name,
@@ -332,11 +330,11 @@ class BaseCodecovTask(celery_app.Task):
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
             sentry_sdk.capture_exception(
                 MaxRetriesExceededError(
-                    f"Task {self.name} exceeded max retries: {attempts} >= {max_attempts}"
+                    f"Task {self.name} exceeded max retries: {self.attempts} >= {max_attempts}"
                 ),
                 contexts={
                     "task": {
-                        "attempts": attempts,
+                        "attempts": self.attempts,
                         "max_attempts": max_attempts,
                         "max_retries": task_max_retries,
                         "task_name": self.name,

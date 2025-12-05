@@ -111,8 +111,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             lock_acquired = False
             with lock_manager.locked(
                 lock_type=LockType.NOTIFICATION,
-                retry_num=self.request.retries,
-                attempts=self._get_attempts(),
+                retry_num=self.attempts,
             ):
                 lock_acquired = True
                 return self.run_impl_within_lock(
