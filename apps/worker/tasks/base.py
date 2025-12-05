@@ -257,7 +257,18 @@ class BaseCodecovTask(celery_app.Task):
 
         if total_attempts_header is not None:
             # Use header value if it exists (includes re-deliveries)
-            return int(total_attempts_header)
+            try:
+                return int(total_attempts_header)
+            except (ValueError, TypeError):
+                # Invalid header value, fallback to retry count
+                log.warning(
+                    "Invalid total_attempts header value",
+                    extra={
+                        "value": total_attempts_header,
+                        "retry_count": retry_count,
+                    },
+                )
+                return retry_count + 1
         else:
             # Fallback to retry count + 1 (initial attempt + retries)
             return retry_count + 1
@@ -301,8 +312,15 @@ class BaseCodecovTask(celery_app.Task):
             **kwargs: Additional kwargs to pass to self.retry()
 
         Returns:
-            True if retry was scheduled
-            False if max retries exceeded
+            False if max retries exceeded (returns immediately)
+            Raises Retry exception if retry was scheduled (this is intentional -
+            the Retry exception propagates to Celery to schedule the retry)
+
+        Note:
+            The `return True` statement is intentionally unreachable because
+            `self.retry()` raises a `Retry` exception that propagates to Celery.
+            This is the correct behavior - callers should use try-except if they
+            need to handle the retry case differently.
 
         Example:
             if some_condition_requires_retry:
@@ -310,6 +328,7 @@ class BaseCodecovTask(celery_app.Task):
                     # Max retries exceeded
                     log.error("Giving up after too many retries")
                     return {"success": False, "reason": "max_retries"}
+                # If retry was scheduled, Retry exception propagates and this code won't execute
         """
         current_retries = self.request.retries if hasattr(self, "request") else 0
         total_attempts = self._get_total_attempts()
@@ -434,16 +453,28 @@ class BaseCodecovTask(celery_app.Task):
                 # Only log re-deliveries when total_attempts > retry_count + 1
                 # This indicates the task was re-queued by Redis due to visibility timeout
                 # expiration (where total_attempts increments but retry_count doesn't)
-                if total_attempts is not None and int(total_attempts) > retry_count + 1:
-                    log.warning(
-                        f"Task {task.name} re-delivered (visibility timeout expired)",
-                        extra={
-                            "task_id": task.request.id,
-                            "retry_count": retry_count,
-                            "total_attempts": int(total_attempts),
-                            "note": "Task was re-queued by Redis due to visibility timeout expiration",
-                        },
-                    )
+                if total_attempts is not None:
+                    try:
+                        total_attempts_int = int(total_attempts)
+                        if total_attempts_int > retry_count + 1:
+                            log.warning(
+                                f"Task {task.name} re-delivered (visibility timeout expired)",
+                                extra={
+                                    "task_id": task.request.id,
+                                    "retry_count": retry_count,
+                                    "total_attempts": total_attempts_int,
+                                    "note": "Task was re-queued by Redis due to visibility timeout expiration",
+                                },
+                            )
+                    except (ValueError, TypeError):
+                        # Invalid header value, skip re-delivery detection
+                        log.debug(
+                            "Invalid total_attempts header, skipping re-delivery detection",
+                            extra={
+                                "task_id": task.request.id,
+                                "value": total_attempts,
+                            },
+                        )
 
             log_context.populate_from_sqlalchemy(db_session)
             set_log_context(log_context)

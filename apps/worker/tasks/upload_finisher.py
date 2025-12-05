@@ -485,6 +485,13 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         "max_total_attempts": max_total_attempts,
                     },
                 )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
                 return
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
@@ -613,6 +620,13 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         "max_retries": MAX_RETRIES,
                         "max_total_attempts": max_total_attempts,
                     },
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
                 )
                 return
             self._call_upload_breadcrumb_task(
