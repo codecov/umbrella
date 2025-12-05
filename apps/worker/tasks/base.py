@@ -251,10 +251,12 @@ class BaseCodecovTask(celery_app.Task):
         request = self.request
         try:
             if hasattr(request, "get") and callable(getattr(request, "get", None)):
-                return request.get("headers", {})
+                headers = request.get("headers", {})
+                return headers if headers is not None else {}
         except (AttributeError, TypeError):
             pass
-        return getattr(request, "headers", {})
+        headers = getattr(request, "headers", {})
+        return headers if headers is not None else {}
 
     def _expected_total_attempts(self) -> int:
         """Get expected total attempts based on retry count (retries + initial attempt)."""
