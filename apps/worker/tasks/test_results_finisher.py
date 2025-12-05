@@ -49,6 +49,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
             with lock_manager.locked(
                 LockType.NOTIFICATION,
                 retry_num=self.request.retries,
+                attempts=self._get_attempts(),
             ):
                 finisher_result = self.process_impl_within_lock(
                     db_session=db_session,

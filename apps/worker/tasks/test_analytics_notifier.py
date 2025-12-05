@@ -172,6 +172,7 @@ class TestAnalyticsNotifierTask(
             with lock_manager.locked(
                 LockType.NOTIFICATION,
                 retry_num=self.request.retries,
+                attempts=self._get_attempts(),
             ):
                 yield
         except LockRetry as retry:

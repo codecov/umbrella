@@ -5,10 +5,9 @@ from contextlib import contextmanager
 from enum import Enum
 
 import sentry_sdk
+from database.enums import ReportType
 from redis import Redis  # type: ignore
 from redis.exceptions import LockError  # type: ignore
-
-from database.enums import ReportType
 from shared.celery_config import (
     DEFAULT_BLOCKING_TIMEOUT_SECONDS,
     DEFAULT_LOCK_TIMEOUT_SECONDS,
@@ -75,6 +74,20 @@ class LockManager:
         max_retries: int | None = None,
         attempts: int | None = None,
     ):
+        """Acquire a Redis lock with retry logic.
+
+        Args:
+            lock_type: Type of lock to acquire
+            retry_num: Actual retry count (self.request.retries) - used as fallback
+                when attempts is not provided (defensive programming). When used as
+                fallback, it's used for both exponential backoff and max retry checking
+                (via retry_num + 1). Should be obtained via self.request.retries.
+            max_retries: Maximum number of retries allowed
+            attempts: Total attempts including re-deliveries from visibility timeout
+                expiration. Used for both exponential backoff and max retry checking.
+                Should be obtained via self._get_attempts(). All call sites should pass
+                this parameter.
+        """
         lock_name = self.lock_name(lock_type)
         try:
             log.info(
@@ -111,15 +124,18 @@ class LockManager:
                     },
                 )
         except LockError:
+            # Use attempts if provided (accounts for re-deliveries), otherwise fall back to retry_num
+            current_attempts = attempts if attempts is not None else retry_num + 1
+            # Exponential backoff based on total attempts (including re-deliveries)
+            # attempts starts at 1, so we use attempts - 1 for the exponent
+            attempt_num_for_backoff = max(0, current_attempts - 1)
             max_retry_cap = 60 * 60 * 5  # 5 hours
-            max_retry_unbounded = 200 * 3**retry_num
+            max_retry_unbounded = 200 * 3**attempt_num_for_backoff
             countdown_unbounded = random.randint(
                 max_retry_unbounded // 2, max_retry_unbounded
             )
             countdown = min(countdown_unbounded, max_retry_cap)
 
-            # Use attempts if provided (accounts for re-deliveries), otherwise fall back to retry_num
-            current_attempts = attempts if attempts is not None else retry_num + 1
             max_attempts = max_retries + 1 if max_retries is not None else None
             if max_attempts is not None and current_attempts >= max_attempts:
                 error_msg = (
@@ -166,6 +182,7 @@ class LockManager:
             log.warning(
                 "Unable to acquire lock",
                 extra={
+                    "attempts": current_attempts,
                     "commitid": self.commitid,
                     "countdown": countdown,
                     "lock_name": lock_name,

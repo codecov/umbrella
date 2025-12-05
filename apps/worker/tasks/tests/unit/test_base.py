@@ -556,8 +556,10 @@ class TestBaseCodecovTaskSafeRetry:
         task.max_retries = 5
         # Mock headers to simulate existing attempts
         task.request.headers = {}
+        task.request.get = lambda key, default=None: {} if key == "headers" else default
 
-        mock_retry = mocker.patch.object(task, "retry")
+        # Mock the parent class's retry method so our overridden retry() still runs
+        mock_retry = mocker.patch("celery.app.task.Task.retry")
 
         result = task.safe_retry(max_retries=5, countdown=60)
 
@@ -609,8 +611,10 @@ class TestBaseCodecovTaskSafeRetry:
         task.max_retries = 10
         # Mock headers to simulate existing attempts
         task.request.headers = {}
+        task.request.get = lambda key, default=None: {} if key == "headers" else default
 
-        mock_retry = mocker.patch.object(task, "retry")
+        # Mock the parent class's retry method so our overridden retry() still runs
+        mock_retry = mocker.patch("celery.app.task.Task.retry")
 
         # Call without countdown - should use exponential backoff
         # Formula: TASK_RETRY_BACKOFF_BASE_SECONDS * (2 ** retry_count)
@@ -632,10 +636,11 @@ class TestBaseCodecovTaskSafeRetry:
         task.max_retries = 10
         # Mock headers to simulate existing attempts
         task.request.headers = {}
+        task.request.get = lambda key, default=None: {} if key == "headers" else default
 
-        # Make retry raise MaxRetriesExceededError
-        mock_retry = mocker.patch.object(
-            task, "retry", side_effect=MaxRetriesExceededError()
+        # Make parent retry raise MaxRetriesExceededError
+        mock_retry = mocker.patch(
+            "celery.app.task.Task.retry", side_effect=MaxRetriesExceededError()
         )
 
         counter_before = REGISTRY.get_sample_value(
@@ -663,8 +668,11 @@ class TestBaseCodecovTaskSafeRetry:
         task.max_retries = 10
         # Simulate re-delivery: attempts is ahead of retry_count
         task.request.headers = {"attempts": 12}  # Exceeds max_attempts (10 + 1 = 11)
+        task.request.get = lambda key, default=None: (
+            {"attempts": 12} if key == "headers" else default
+        )
 
-        mock_retry = mocker.patch.object(task, "retry")
+        mock_retry = mocker.patch("celery.app.task.Task.retry")
 
         counter_before = REGISTRY.get_sample_value(
             "worker_task_counts_max_retries_exceeded_total",
@@ -691,13 +699,19 @@ class TestBaseCodecovTaskSafeRetry:
         task.request.retries = 1
         task.max_retries = 5
         task.request.headers = {"custom_header": "value"}
+        task.request.get = lambda key, default=None: (
+            {"custom_header": "value"} if key == "headers" else default
+        )
 
-        mock_retry = mocker.patch.object(task, "retry")
+        # Mock the parent class's retry method so our overridden retry() still runs
+        mock_retry = mocker.patch("celery.app.task.Task.retry")
 
         task.safe_retry(max_retries=5, countdown=60, custom_kwarg="test")
 
         call_kwargs = mock_retry.call_args[1]
         assert call_kwargs["headers"]["attempts"] == 3  # (retries 1 + 1) + 1
+        assert call_kwargs["headers"]["custom_header"] == "value"
+        assert call_kwargs["custom_kwarg"] == "test"
         assert call_kwargs["headers"]["custom_header"] == "value"
         assert call_kwargs["custom_kwarg"] == "test"
 

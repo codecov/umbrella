@@ -221,6 +221,25 @@ class BaseCodecovTask(celery_app.Task):
         }
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
+    def retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
+        """Override Celery's retry to always update attempts header.
+
+        This ensures all retries (direct calls or through safe_retry) track attempts
+        consistently, including re-deliveries from visibility timeout expiration.
+        """
+        attempts = self._get_attempts()
+        headers = {}
+        request_headers = self._get_request_headers()
+        if request_headers:
+            headers.update(request_headers)
+        headers.update(kwargs.get("headers", {}) or {})
+        headers["attempts"] = attempts + 1
+        kwargs["headers"] = headers
+
+        return super().retry(
+            max_retries=max_retries, countdown=countdown, exc=exc, **kwargs
+        )
+
     # Called when attempting to retry the task on db error
     def _retry(self, countdown=None):
         if not countdown:
@@ -293,6 +312,8 @@ class BaseCodecovTask(celery_app.Task):
         """Safely retry with max retry limit and proper metrics tracking.
 
         Returns False if max retries exceeded, otherwise raises Retry exception.
+        Unlike self.retry(), this checks max attempts BEFORE retrying and returns
+        False instead of raising MaxRetriesExceededError.
         """
         task_max_retries = max_retries if max_retries is not None else self.max_retries
 
@@ -309,6 +330,20 @@ class BaseCodecovTask(celery_app.Task):
                 },
             )
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
+            sentry_sdk.capture_exception(
+                MaxRetriesExceededError(
+                    f"Task {self.name} exceeded max retries: {attempts} >= {max_attempts}"
+                ),
+                contexts={
+                    "task": {
+                        "attempts": attempts,
+                        "max_attempts": max_attempts,
+                        "max_retries": task_max_retries,
+                        "task_name": self.name,
+                    }
+                },
+                tags={"error_type": "max_retries_exceeded", "task": self.name},
+            )
             return False
 
         retry_count = (
@@ -318,15 +353,7 @@ class BaseCodecovTask(celery_app.Task):
             countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
 
         try:
-            attempts = self._get_attempts()
-            headers = {}
-            request_headers = self._get_request_headers()
-            if request_headers:
-                headers.update(request_headers)
-            headers.update(kwargs.get("headers", {}) or {})
-            headers["attempts"] = attempts + 1
-            kwargs["headers"] = headers
-
+            # self.retry() now handles attempts header update automatically
             self.retry(
                 max_retries=task_max_retries, countdown=countdown, exc=exc, **kwargs
             )
@@ -337,6 +364,18 @@ class BaseCodecovTask(celery_app.Task):
                 UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
             if TestResultsFlow.has_begun():
                 TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+            sentry_sdk.capture_exception(
+                MaxRetriesExceededError(
+                    f"Task {self.name} exceeded max retries during retry() call"
+                ),
+                contexts={
+                    "task": {
+                        "max_retries": task_max_retries,
+                        "task_name": self.name,
+                    }
+                },
+                tags={"error_type": "max_retries_exceeded", "task": self.name},
+            )
             return False
 
     def _analyse_error(self, exception: SQLAlchemyError, *args, **kwargs):
