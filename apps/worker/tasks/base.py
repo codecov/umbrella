@@ -234,16 +234,6 @@ class BaseCodecovTask(celery_app.Task):
             if TestResultsFlow.has_begun():
                 TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
 
-    def _max_attempts(self, max_retries: int | None) -> int | None:
-        """Convert max retries to max attempts (includes initial attempt)."""
-        return max_retries + 1 if max_retries is not None else None
-
-    def _get_retry_count(self) -> int:
-        """Get retry count safely, handling missing request or retries attribute."""
-        if not hasattr(self, "request"):
-            return 0
-        return getattr(self.request, "retries", 0)
-
     def _get_request_headers(self) -> dict:
         """Get request headers safely, handling missing request or get method."""
         if not hasattr(self, "request") or self.request is None:
@@ -282,13 +272,13 @@ class BaseCodecovTask(celery_app.Task):
             try:
                 return int(attempts_header)
             except (ValueError, TypeError):
-                retry_count = self._get_retry_count()
+                retry_count = getattr(self.request, "retries", 0)
                 log.warning(
                     "Invalid attempts header value",
                     extra={"value": attempts_header, "retry_count": retry_count},
                 )
                 return retry_count + 1
-        return self._get_retry_count() + 1
+        return getattr(self.request, "retries", 0) + 1
 
     def _has_exceeded_max_attempts(self, max_retries: int | None) -> bool:
         """Check if task has exceeded max attempts (including re-deliveries)."""
@@ -296,9 +286,7 @@ class BaseCodecovTask(celery_app.Task):
             return False
 
         attempts = self._get_attempts()
-        max_attempts = self._max_attempts(max_retries)
-        # max_attempts is guaranteed to be int since max_retries is not None
-        assert max_attempts is not None
+        max_attempts = max_retries + 1
         return attempts >= max_attempts
 
     def safe_retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
@@ -310,7 +298,7 @@ class BaseCodecovTask(celery_app.Task):
 
         if self._has_exceeded_max_attempts(task_max_retries):
             attempts = self._get_attempts()
-            max_attempts = self._max_attempts(task_max_retries)
+            max_attempts = task_max_retries + 1
             log.error(
                 f"Task {self.name} exceeded max retries",
                 extra={
@@ -323,7 +311,9 @@ class BaseCodecovTask(celery_app.Task):
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
             return False
 
-        retry_count = self._get_retry_count()
+        retry_count = (
+            getattr(self.request, "retries", 0) if hasattr(self, "request") else 0
+        )
         if countdown is None:
             countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
 
@@ -496,8 +486,11 @@ class BaseCodecovTask(celery_app.Task):
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         res = super().on_retry(exc, task_id, args, kwargs, einfo)
         self.task_retry_counter.inc()
+        retry_count = (
+            getattr(self.request, "retries", 0) if hasattr(self, "request") else 0
+        )
         TASK_RETRY_WITH_COUNT_COUNTER.labels(
-            task=self.name, retry_count=str(self._get_retry_count())
+            task=self.name, retry_count=str(retry_count)
         ).inc()
         return res
 

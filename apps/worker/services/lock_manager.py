@@ -68,7 +68,13 @@ class LockManager:
             return f"{lock_type.value}_lock_{self.repoid}_{self.commitid}_{self.report_type.value}"
 
     @contextmanager
-    def locked(self, lock_type: LockType, retry_num=0, max_retries: int | None = None):
+    def locked(
+        self,
+        lock_type: LockType,
+        retry_num=0,
+        max_retries: int | None = None,
+        attempts: int | None = None,
+    ):
         lock_name = self.lock_name(lock_type)
         try:
             log.info(
@@ -112,16 +118,21 @@ class LockManager:
             )
             countdown = min(countdown_unbounded, max_retry_cap)
 
-            if max_retries is not None and retry_num >= max_retries:
+            # Use attempts if provided (accounts for re-deliveries), otherwise fall back to retry_num
+            current_attempts = attempts if attempts is not None else retry_num + 1
+            max_attempts = max_retries + 1 if max_retries is not None else None
+            if max_attempts is not None and current_attempts >= max_attempts:
                 error_msg = (
-                    f"Lock acquisition failed after {retry_num} retries (max: {max_retries}). "
+                    f"Lock acquisition failed after {current_attempts} attempts (max: {max_attempts}). "
                     f"Lock: {lock_name}, Repo: {self.repoid}, Commit: {self.commitid}"
                 )
                 log.error(
                     "Not retrying since we already had too many retries",
                     extra={
+                        "attempts": current_attempts,
                         "commitid": self.commitid,
                         "lock_name": lock_name,
+                        "max_attempts": max_attempts,
                         "max_retries": max_retries,
                         "repoid": self.repoid,
                         "report_type": self.report_type.value,
@@ -133,10 +144,12 @@ class LockManager:
                     LockMaxRetriesExceeded(error_msg),
                     contexts={
                         "lock_acquisition": {
+                            "attempts": current_attempts,
                             "blocking_timeout": self.blocking_timeout,
                             "commitid": self.commitid,
                             "lock_name": lock_name,
                             "lock_timeout": self.lock_timeout,
+                            "max_attempts": max_attempts,
                             "max_retries": max_retries,
                             "repoid": self.repoid,
                             "report_type": self.report_type.value,

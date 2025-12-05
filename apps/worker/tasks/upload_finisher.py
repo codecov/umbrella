@@ -426,6 +426,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 LockType.UPLOAD_PROCESSING,
                 retry_num=self.request.retries,
                 max_retries=MAX_RETRIES,
+                attempts=self._get_attempts(),
             ):
                 report_service = ReportService(commit_yaml)
 
@@ -467,7 +468,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             )
             if self._has_exceeded_max_attempts(MAX_RETRIES):
                 attempts = self._get_attempts()
-                max_attempts = self._max_attempts(MAX_RETRIES)
+                max_attempts = MAX_RETRIES + 1
                 log.error(
                     "Upload finisher exceeded max retries",
                     extra={
@@ -531,6 +532,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 LockType.UPLOAD_FINISHER,
                 retry_num=self.request.retries,
                 max_retries=MAX_RETRIES,
+                attempts=self._get_attempts(),
             ):
                 result = self.finish_reports_processing(
                     db_session, commit, commit_yaml, processing_results
@@ -595,7 +597,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
             if self._has_exceeded_max_attempts(MAX_RETRIES):
                 attempts = self._get_attempts()
-                max_attempts = self._max_attempts(MAX_RETRIES)
+                max_attempts = MAX_RETRIES + 1
                 log.error(
                     "Upload finisher exceeded max retries (finisher lock)",
                     extra={

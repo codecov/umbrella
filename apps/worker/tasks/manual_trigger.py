@@ -49,6 +49,7 @@ class ManualTriggerTask(
                 LockType.MANUAL_TRIGGER,
                 retry_num=self.request.retries,
                 max_retries=TASK_MAX_RETRIES_DEFAULT,
+                attempts=self._get_attempts(),
             ):
                 return self.process_impl_within_lock(
                     db_session=db_session,
