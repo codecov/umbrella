@@ -192,6 +192,7 @@ class BundleAnalysisProcessorTask(
                 )
                 self.retry(countdown=30 * (2**self.request.retries))
             result.update_upload(carriedforward=carriedforward)
+            db_session.commit()
 
             processing_results.append(result.as_dict())
         except (CeleryError, SoftTimeLimitExceeded):
@@ -213,11 +214,12 @@ class BundleAnalysisProcessorTask(
             )
             upload.state_id = UploadState.ERROR.db_id
             upload.state = "error"
+            db_session.commit()
             raise
         finally:
-            if result.bundle_report:
+            if "result" in locals() and result.bundle_report:
                 result.bundle_report.cleanup()
-            if result.previous_bundle_report:
+            if "result" in locals() and result.previous_bundle_report:
                 result.previous_bundle_report.cleanup()
 
         # Create task to save bundle measurements
