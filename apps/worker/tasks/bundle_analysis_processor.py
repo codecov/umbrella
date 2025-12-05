@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, cast
 
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
 
@@ -155,7 +155,7 @@ class BundleAnalysisProcessorTask(
         assert upload is not None
 
         # Override base commit of comparisons with a custom commit SHA if applicable
-        compare_sha = params.get("bundle_analysis_compare_sha")
+        compare_sha: str | None = cast(str | None, params.get("bundle_analysis_compare_sha"))
 
         try:
             log.info(
