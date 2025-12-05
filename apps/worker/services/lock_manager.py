@@ -4,6 +4,7 @@ import time
 from contextlib import contextmanager
 from enum import Enum
 
+import sentry_sdk
 from redis import Redis  # type: ignore
 from redis.exceptions import LockError  # type: ignore
 
@@ -38,6 +39,25 @@ class LockRetry(Exception):
         self.countdown = countdown
 
 
+class LockMaxRetriesExceededError(Exception):
+    """Raised when lock acquisition exceeds max retries."""
+
+    def __init__(
+        self,
+        retry_num: int,
+        max_attempts: int,
+        lock_name: str,
+        repoid: int,
+        commitid: str,
+    ):
+        self.retry_num = retry_num
+        self.max_attempts = max_attempts
+        self.lock_name = lock_name
+        self.repoid = repoid
+        self.commitid = commitid
+        super().__init__("Lock acquisition failed after exceeding max retries")
+
+
 class LockManager:
     def __init__(
         self,
@@ -63,15 +83,29 @@ class LockManager:
             return f"{lock_type.value}_lock_{self.repoid}_{self.commitid}_{self.report_type.value}"
 
     @contextmanager
-    def locked(self, lock_type: LockType, retry_num=0, max_retries: int | None = None):
+    def locked(
+        self,
+        lock_type: LockType,
+        retry_num=0,
+        max_retries: int | None = None,
+    ):
+        """Acquire a Redis lock with retry logic.
+
+        Args:
+            lock_type: Type of lock to acquire
+            retry_num: Attempt count (should be self.attempts from BaseCodecovTask).
+                Used for both exponential backoff and max retry checking.
+            max_retries: Maximum number of retries allowed
+        """
         lock_name = self.lock_name(lock_type)
         try:
             log.info(
                 "Acquiring lock",
                 extra={
-                    "repoid": self.repoid,
                     "commitid": self.commitid,
                     "lock_name": lock_name,
+                    "lock_type": lock_type.value,
+                    "repoid": self.repoid,
                 },
             )
             with self.redis_connection.lock(
@@ -83,9 +117,10 @@ class LockManager:
                 log.info(
                     "Acquired lock",
                     extra={
-                        "repoid": self.repoid,
                         "commitid": self.commitid,
                         "lock_name": lock_name,
+                        "lock_type": lock_type.value,
+                        "repoid": self.repoid,
                     },
                 )
                 yield
@@ -93,10 +128,11 @@ class LockManager:
                 log.info(
                     "Releasing lock",
                     extra={
-                        "repoid": self.repoid,
                         "commitid": self.commitid,
-                        "lock_name": lock_name,
                         "lock_duration_seconds": lock_duration,
+                        "lock_name": lock_name,
+                        "lock_type": lock_type.value,
+                        "repoid": self.repoid,
                     },
                 )
         except LockError:
@@ -107,25 +143,64 @@ class LockManager:
             )
             countdown = min(countdown_unbounded, max_retry_cap)
 
-            if max_retries is not None and retry_num >= max_retries:
+            # None means no max retries (infinite retries)
+            max_attempts = max_retries + 1 if max_retries is not None else None
+            if max_attempts is not None and retry_num >= max_attempts:
+                error = LockMaxRetriesExceededError(
+                    retry_num=retry_num,
+                    max_attempts=max_attempts,
+                    lock_name=lock_name,
+                    repoid=self.repoid,
+                    commitid=self.commitid,
+                )
                 log.error(
                     "Not retrying since we already had too many retries",
                     extra={
-                        "repoid": self.repoid,
                         "commitid": self.commitid,
                         "lock_name": lock_name,
+                        "lock_type": lock_type.value,
+                        "max_attempts": max_attempts,
                         "max_retries": max_retries,
+                        "repoid": self.repoid,
+                        "report_type": self.report_type.value,
                         "retry_num": retry_num,
                     },
+                    exc_info=True,
                 )
+                sentry_sdk.capture_exception(
+                    error,
+                    contexts={
+                        "lock_acquisition": {
+                            "blocking_timeout": self.blocking_timeout,
+                            "commitid": self.commitid,
+                            "lock_name": lock_name,
+                            "lock_timeout": self.lock_timeout,
+                            "lock_type": lock_type.value,
+                            "max_attempts": max_attempts,
+                            "max_retries": max_retries,
+                            "repoid": self.repoid,
+                            "report_type": self.report_type.value,
+                            "retry_num": retry_num,
+                        }
+                    },
+                    tags={
+                        "error_type": "lock_max_retries_exceeded",
+                        "lock_name": lock_name,
+                        "lock_type": lock_type.value,
+                    },
+                )
+                # TODO: should we raise this, or would a return be ok?
+                raise LockRetry(countdown)
 
             log.warning(
                 "Unable to acquire lock",
                 extra={
-                    "repoid": self.repoid,
                     "commitid": self.commitid,
-                    "lock_name": lock_name,
                     "countdown": countdown,
+                    "lock_name": lock_name,
+                    "lock_type": lock_type.value,
+                    "max_retries": max_retries,
+                    "repoid": self.repoid,
                     "retry_num": retry_num,
                 },
             )

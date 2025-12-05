@@ -344,8 +344,8 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         try:
             with lock_manager.locked(
                 LockType.UPLOAD,
-                retry_num=self.request.retries,
                 max_retries=3,
+                retry_num=self.attempts,
             ):
                 # Check whether a different `Upload` task has "stolen" our uploads
                 if not upload_context.has_pending_jobs():
