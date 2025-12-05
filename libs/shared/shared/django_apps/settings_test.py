@@ -85,6 +85,14 @@ GCS_BUCKET_NAME = "archive"
 
 TEST = True
 
+# Disable connection health checks for tests to avoid issues with Django 4.2.26+
+# Connection health checks can interfere with test database setup/teardown
+for db_config in DATABASES.values():  # noqa: F405
+    db_config["CONN_HEALTH_CHECKS"] = False
+    if "TEST" not in db_config:
+        db_config["TEST"] = {}
+    db_config["TEST"]["CONN_HEALTH_CHECKS"] = False
+
 # # Database
 # # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 # DATABASES = {
