@@ -148,44 +148,49 @@ class TestBaseCodecovTask:
             == 61.000123
         )
 
-    @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_db_exception(self, mocker, dbsession):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         mocked_get_db_session.return_value = dbsession
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
         with pytest.raises(Retry):
             SampleTaskWithArbitraryError(
                 DBAPIError("statement", "params", "orig")
             ).run()
 
-    @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_integrity_error(self, mocker, dbsession):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         mocked_get_db_session.return_value = dbsession
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
         with pytest.raises(Retry):
             SampleTaskWithArbitraryError(
                 IntegrityError("statement", "params", "orig")
             ).run()
 
-    @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_deadlock_exception(self, mocker, dbsession):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         mocked_get_db_session.return_value = dbsession
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
         with pytest.raises(Retry):
             SampleTaskWithArbitraryPostgresError(
                 psycopg2.errors.DeadlockDetected()
             ).run()
 
-    @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_operationalerror_exception(self, mocker, dbsession):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         mocked_get_db_session.return_value = dbsession
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
         with pytest.raises(Retry):
             SampleTaskWithArbitraryPostgresError(psycopg2.OperationalError()).run()
 
-    @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_softimeout(self, mocker, dbsession):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         mocked_get_db_session.return_value = dbsession
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
         with pytest.raises(SoftTimeLimitExceeded):
             SampleTaskWithSoftTimeout().run()
 
@@ -235,6 +240,8 @@ class TestBaseCodecovTask:
         mock_get_db_session = mocker.patch(
             "tasks.base.get_db_session", return_value=dbsession
         )
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
 
         task = SampleTask()
         task.run()
@@ -252,6 +259,8 @@ class TestBaseCodecovTask:
 
         # IntegrityError and DataError are subclasses of SQLAlchemyError that
         # have their own `except` clause.
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
         task = SampleTaskWithArbitraryError(IntegrityError("", {}, None))
         registered_task = celery_app.register_task(task)
         task = celery_app.tasks[registered_task.name]
@@ -267,6 +276,8 @@ class TestBaseCodecovTask:
         mock_get_db_session = mocker.patch(
             "tasks.base.get_db_session", return_value=dbsession
         )
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
 
         # StatementError is a subclass of SQLAlchemyError just like
         # IntegrityError and DataError, but this test case is different because
@@ -471,7 +482,10 @@ class TestBaseCodecovTaskHooks:
         assert prom_run_counter_after - prom_run_counter_before == 1
         assert prom_success_counter_after - prom_success_counter_before == 1
 
-    def test_sample_task_failure(self, celery_app):
+    def test_sample_task_failure(self, celery_app, mocker):
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
+
         class FailureSampleTask(BaseCodecovTask, name="test.FailureSampleTask"):
             def run_impl(self, *args, **kwargs):
                 raise Exception("Whhhhyyyyyyy")
@@ -540,7 +554,7 @@ class TestBaseCodecovTaskSafeRetry:
         task = SampleTask()
         task.request.retries = 2
         task.max_retries = 5
-        # Mock headers to simulate existing total_attempts
+        # Mock headers to simulate existing attempts
         task.request.headers = {}
 
         mock_retry = mocker.patch.object(task, "retry")
@@ -548,16 +562,16 @@ class TestBaseCodecovTaskSafeRetry:
         result = task.safe_retry(max_retries=5, countdown=60)
 
         assert result is True
-        # safe_retry now adds total_attempts to headers for the NEXT attempt
-        # Current attempt: retries=2, so total_attempts=3 (2+1)
-        # Next attempt will be: total_attempts=4 (3+1)
+        # safe_retry now adds attempts to headers for the NEXT attempt
+        # Current attempt: retries=2, so attempts=3 (2+1)
+        # Next attempt will be: attempts=4 (3+1)
         call_kwargs = mock_retry.call_args[1]
         assert call_kwargs["max_retries"] == 5
         assert call_kwargs["countdown"] == 60
         assert call_kwargs["exc"] is None
         assert "headers" in call_kwargs
         assert (
-            call_kwargs["headers"]["total_attempts"] == 4
+            call_kwargs["headers"]["attempts"] == 4
         )  # (retries 2 + 1) + 1 for next attempt
 
     def test_safe_retry_fails_at_max_retries(self, mocker):
@@ -593,7 +607,7 @@ class TestBaseCodecovTaskSafeRetry:
         task = SampleTask()
         task.request.retries = 3
         task.max_retries = 10
-        # Mock headers to simulate existing total_attempts
+        # Mock headers to simulate existing attempts
         task.request.headers = {}
 
         mock_retry = mocker.patch.object(task, "retry")
@@ -606,17 +620,17 @@ class TestBaseCodecovTaskSafeRetry:
         mock_retry.assert_called_once()
         call_kwargs = mock_retry.call_args[1]
         assert call_kwargs["countdown"] == 160  # 20 * 2^3
-        # Current attempt: retries=3, so total_attempts=4 (3+1)
-        # Next attempt will be: total_attempts=5 (4+1)
+        # Current attempt: retries=3, so attempts=4 (3+1)
+        # Next attempt will be: attempts=5 (4+1)
         assert (
-            call_kwargs["headers"]["total_attempts"] == 5
+            call_kwargs["headers"]["attempts"] == 5
         )  # (retries 3 + 1) + 1 for next attempt
 
     def test_safe_retry_handles_max_retries_exceeded_exception(self, mocker):
         task = SampleTask()
         task.request.retries = 9
         task.max_retries = 10
-        # Mock headers to simulate existing total_attempts
+        # Mock headers to simulate existing attempts
         task.request.headers = {}
 
         # Make retry raise MaxRetriesExceededError
@@ -642,15 +656,13 @@ class TestBaseCodecovTaskSafeRetry:
         actual_increment = (counter_after or 0) - (counter_before or 0)
         assert actual_increment == expected_increment
 
-    def test_safe_retry_fails_when_total_attempts_exceeds_max(self, mocker):
-        """Test that safe_retry fails when total_attempts exceeds max_total_attempts even if retries don't."""
+    def test_safe_retry_fails_when_attempts_exceeds_max(self, mocker):
+        """Test that safe_retry fails when attempts exceeds max_attempts even if retries don't."""
         task = SampleTask()
         task.request.retries = 3  # Below max_retries
         task.max_retries = 10
-        # Simulate re-delivery: total_attempts is ahead of retry_count
-        task.request.headers = {
-            "total_attempts": 12
-        }  # Exceeds max_total_attempts (10 + 1 = 11)
+        # Simulate re-delivery: attempts is ahead of retry_count
+        task.request.headers = {"attempts": 12}  # Exceeds max_attempts (10 + 1 = 11)
 
         mock_retry = mocker.patch.object(task, "retry")
 
@@ -674,7 +686,7 @@ class TestBaseCodecovTaskSafeRetry:
         assert actual_increment == expected_increment
 
     def test_safe_retry_merges_existing_headers(self, mocker):
-        """Test that safe_retry merges total_attempts with existing headers."""
+        """Test that safe_retry merges attempts with existing headers."""
         task = SampleTask()
         task.request.retries = 1
         task.max_retries = 5
@@ -685,15 +697,15 @@ class TestBaseCodecovTaskSafeRetry:
         task.safe_retry(max_retries=5, countdown=60, custom_kwarg="test")
 
         call_kwargs = mock_retry.call_args[1]
-        assert call_kwargs["headers"]["total_attempts"] == 3  # (retries 1 + 1) + 1
+        assert call_kwargs["headers"]["attempts"] == 3  # (retries 1 + 1) + 1
         assert call_kwargs["headers"]["custom_header"] == "value"
         assert call_kwargs["custom_kwarg"] == "test"
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
 class TestBaseCodecovTaskGetTotalAttempts:
-    def test_get_total_attempts_without_request(self, mocker):
-        """Test _get_total_attempts when request doesn't exist."""
+    def test_get_attempts_without_request(self, mocker):
+        """Test _get_attempts when request doesn't exist."""
         task = SampleTask()
         # Mock hasattr to return False for request attribute on this task instance
         original_hasattr = hasattr
@@ -704,56 +716,58 @@ class TestBaseCodecovTaskGetTotalAttempts:
             return original_hasattr(obj, name)
 
         mocker.patch("builtins.hasattr", side_effect=mock_hasattr)
-        assert task._get_total_attempts() == 0
+        assert task._get_attempts() == 0
 
-    def test_get_total_attempts_without_headers(self):
-        """Test _get_total_attempts when headers don't have total_attempts."""
+    def test_get_attempts_without_headers(self):
+        """Test _get_attempts when headers don't have attempts."""
         task = SampleTask()
         task.request.retries = 3
         task.request.headers = {}
         # Mock request.get() to return empty headers
         task.request.get = lambda key, default=None: {} if key == "headers" else default
-        assert task._get_total_attempts() == 4  # retries (3) + 1
+        assert task._get_attempts() == 4  # retries (3) + 1
 
-    def test_get_total_attempts_with_valid_header(self):
-        """Test _get_total_attempts when headers have valid total_attempts."""
+    def test_get_attempts_with_valid_header(self):
+        """Test _get_attempts when headers have valid attempts."""
         task = SampleTask()
         task.request.retries = 2
-        task.request.headers = {"total_attempts": 5}
-        # Mock request.get() to return headers with total_attempts
+        task.request.headers = {"attempts": 5}
+        # Mock request.get() to return headers with attempts
         task.request.get = lambda key, default=None: (
-            {"total_attempts": 5} if key == "headers" else default
+            {"attempts": 5} if key == "headers" else default
         )
-        assert task._get_total_attempts() == 5  # Uses header value
+        assert task._get_attempts() == 5  # Uses header value
 
-    def test_get_total_attempts_with_invalid_header_string(self):
-        """Test _get_total_attempts when headers have invalid string value."""
+    def test_get_attempts_with_invalid_header_string(self):
+        """Test _get_attempts when headers have invalid string value."""
         task = SampleTask()
         task.request.retries = 2
-        task.request.headers = {"total_attempts": "invalid"}
-        # Mock request.get() to return headers with invalid total_attempts
+        task.request.headers = {"attempts": "invalid"}
+        # Mock request.get() to return headers with invalid attempts
         task.request.get = lambda key, default=None: (
-            {"total_attempts": "invalid"} if key == "headers" else default
-        )
-        # Should fallback to retry_count + 1
-        assert task._get_total_attempts() == 3  # retries (2) + 1
-
-    def test_get_total_attempts_with_invalid_header_none(self):
-        """Test _get_total_attempts when headers have None value."""
-        task = SampleTask()
-        task.request.retries = 2
-        task.request.headers = {"total_attempts": None}
-        # Mock request.get() to return headers with None total_attempts
-        task.request.get = lambda key, default=None: (
-            {"total_attempts": None} if key == "headers" else default
+            {"attempts": "invalid"} if key == "headers" else default
         )
         # Should fallback to retry_count + 1
-        assert task._get_total_attempts() == 3  # retries (2) + 1
+        assert task._get_attempts() == 3  # retries (2) + 1
 
-    def test_get_total_attempts_without_retries_attribute(self, mocker):
-        """Test _get_total_attempts when request doesn't have retries attribute."""
+    def test_get_attempts_with_invalid_header_none(self):
+        """Test _get_attempts when headers have None value."""
+        task = SampleTask()
+        task.request.retries = 2
+        task.request.headers = {"attempts": None}
+        # Mock request.get() to return headers with None attempts
+        task.request.get = lambda key, default=None: (
+            {"attempts": None} if key == "headers" else default
+        )
+        # Should fallback to retry_count + 1
+        assert task._get_attempts() == 3  # retries (2) + 1
+
+    def test_get_attempts_without_retries_attribute(self, mocker):
+        """Test _get_attempts when request doesn't have retries attribute."""
         # Create a mock request without retries attribute
-        mock_request = MagicMock()
+        mock_request = MagicMock(
+            spec=[]
+        )  # spec=[] prevents auto-creation of attributes
         mock_request.headers = {}
         mock_request.get = lambda key, default=None: {} if key == "headers" else default
         # Mock hasattr to return False for retries on request
@@ -770,18 +784,18 @@ class TestBaseCodecovTaskGetTotalAttempts:
         mock_property = PropertyMock(return_value=mock_request)
         mocker.patch.object(SampleTask, "request", mock_property, create=True)
         task = SampleTask()
-        assert task._get_total_attempts() == 1  # 0 + 1
+        assert task._get_attempts() == 1  # 0 + 1
 
-    def test_get_total_attempts_with_re_delivery_scenario(self):
-        """Test _get_total_attempts in re-delivery scenario (total_attempts > retry_count + 1)."""
+    def test_get_attempts_with_re_delivery_scenario(self):
+        """Test _get_attempts in re-delivery scenario (attempts > retry_count + 1)."""
         task = SampleTask()
         task.request.retries = 2  # Normal retry count
-        task.request.headers = {"total_attempts": 5}  # Higher due to re-delivery
-        # Mock request.get() to return headers with total_attempts
+        task.request.headers = {"attempts": 5}  # Higher due to re-delivery
+        # Mock request.get() to return headers with attempts
         task.request.get = lambda key, default=None: (
-            {"total_attempts": 5} if key == "headers" else default
+            {"attempts": 5} if key == "headers" else default
         )
-        assert task._get_total_attempts() == 5  # Should use header value
+        assert task._get_attempts() == 5  # Should use header value
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
@@ -790,28 +804,21 @@ class TestBaseCodecovTaskHasExceededMaxAttempts:
         """Test _has_exceeded_max_attempts when max_retries is None."""
         task = SampleTask()
         task.request.retries = 100
-        task.request.headers = {"total_attempts": 100}
+        task.request.headers = {"attempts": 100}
         assert task._has_exceeded_max_attempts(max_retries=None) is False
 
-    def test_has_exceeded_max_attempts_by_retries(self):
-        """Test _has_exceeded_max_attempts when retries >= max_retries."""
-        task = SampleTask()
-        task.request.retries = 10
-        task.request.headers = {}
-        assert task._has_exceeded_max_attempts(max_retries=10) is True
-
-    def test_has_exceeded_max_attempts_by_total_attempts(self):
-        """Test _has_exceeded_max_attempts when total_attempts >= max_total_attempts."""
+    def test_has_exceeded_max_attempts_by_attempts(self):
+        """Test _has_exceeded_max_attempts when attempts >= max_attempts."""
         task = SampleTask()
         task.request.retries = 5
-        task.request.headers = {"total_attempts": 11}
+        task.request.headers = {"attempts": 11}
         assert task._has_exceeded_max_attempts(max_retries=10) is True
 
     def test_has_exceeded_max_attempts_not_exceeded(self):
-        """Test _has_exceeded_max_attempts when neither condition is met."""
+        """Test _has_exceeded_max_attempts when attempts < max_attempts."""
         task = SampleTask()
         task.request.retries = 3
-        task.request.headers = {"total_attempts": 4}
+        task.request.headers = {"attempts": 4}
         assert task._has_exceeded_max_attempts(max_retries=10) is False
 
     def test_has_exceeded_max_attempts_without_request(self, mocker):
@@ -826,202 +833,6 @@ class TestBaseCodecovTaskHasExceededMaxAttempts:
 
         mocker.patch("builtins.hasattr", side_effect=mock_hasattr)
         assert task._has_exceeded_max_attempts(max_retries=10) is False
-
-
-@pytest.mark.django_db(databases={"default", "timeseries"})
-class TestBaseCodecovTaskReDeliveryDetection:
-    """Test re-delivery detection logic in run() method."""
-
-    def test_run_detects_re_delivery(self, mocker, dbsession):
-        """Test that run() detects and logs re-delivery when total_attempts > retry_count + 1."""
-
-        class SampleTask(BaseCodecovTask, name="test.SampleTask"):
-            def run_impl(self, dbsession):
-                return "success"
-
-        mock_current_task = MagicMock()
-        mock_current_task.name = "test.SampleTask"
-        mock_request = MagicMock()
-        mock_request.id = "test-task-id"
-        mock_request.retries = 2  # Normal retry count
-        # Mock request.get() to return headers dict
-        mock_request.get = lambda key, default=None: (
-            {"total_attempts": 5} if key == "headers" else default
-        )
-        mock_request.headers = {"total_attempts": 5}
-        mock_current_task.request = mock_request
-        # Set up self.request on task instance using PropertyMock (request is a property)
-        # Must patch BEFORE creating task instance
-        mock_property = PropertyMock(return_value=mock_request)
-        mocker.patch.object(SampleTask, "request", mock_property, create=True)
-        task = SampleTask()
-
-        mocker.patch("tasks.base.get_current_task", return_value=mock_current_task)
-        mock_log_warning = mocker.patch("tasks.base.log.warning")
-
-        result = task.run()
-
-        assert result == "success"
-        # Should log re-delivery warning
-        mock_log_warning.assert_called_once()
-        call_args = mock_log_warning.call_args
-        assert "re-delivered (visibility timeout expired)" in call_args[0][0]
-        assert call_args[1]["extra"]["retry_count"] == 2
-        assert call_args[1]["extra"]["total_attempts"] == 5
-
-    def test_run_does_not_detect_normal_retry(self, mocker, dbsession):
-        """Test that run() does not log re-delivery for normal retries."""
-
-        class SampleTask(BaseCodecovTask, name="test.SampleTask"):
-            def run_impl(self, dbsession):
-                return "success"
-
-        task = SampleTask()
-        mock_current_task = MagicMock()
-        mock_current_task.name = "test.SampleTask"
-        mock_request = MagicMock()
-        mock_request.id = "test-task-id"
-        mock_request.retries = 2
-        # Mock request.get() to return headers dict
-        mock_request.get = lambda key, default=None: (
-            {"total_attempts": 3} if key == "headers" else default
-        )  # Matches retry_count + 1 (normal retry)
-        mock_request.headers = {"total_attempts": 3}
-        mock_current_task.request = mock_request
-
-        mocker.patch("tasks.base.get_current_task", return_value=mock_current_task)
-        mock_log_warning = mocker.patch("tasks.base.log.warning")
-
-        result = task.run()
-
-        assert result == "success"
-        # Should not log re-delivery warning for normal retry
-        re_delivery_calls = [
-            call
-            for call in mock_log_warning.call_args_list
-            if call[0][0] and "re-delivered" in call[0][0]
-        ]
-        assert len(re_delivery_calls) == 0
-
-    def test_run_handles_invalid_total_attempts_header(self, mocker, dbsession):
-        """Test that run() handles invalid total_attempts header gracefully."""
-
-        class SampleTask(BaseCodecovTask, name="test.SampleTask"):
-            def run_impl(self, dbsession):
-                return "success"
-
-        mock_current_task = MagicMock()
-        mock_current_task.name = "test.SampleTask"
-        mock_request = MagicMock()
-        mock_request.id = "test-task-id"
-        mock_request.retries = 2
-        # Mock request.get() to return headers dict with invalid value
-        mock_request.get = lambda key, default=None: (
-            {"total_attempts": "invalid"} if key == "headers" else default
-        )  # Invalid value
-        mock_request.headers = {"total_attempts": "invalid"}
-        mock_current_task.request = mock_request
-        # Set up self.request on task instance using PropertyMock (request is a property)
-        # Must patch BEFORE creating task instance
-        mock_property = PropertyMock(return_value=mock_request)
-        mocker.patch.object(SampleTask, "request", mock_property, create=True)
-        task = SampleTask()
-
-        mocker.patch("tasks.base.get_current_task", return_value=mock_current_task)
-        mock_log_warning = mocker.patch("tasks.base.log.warning")
-        mock_log_debug = mocker.patch("tasks.base.log.debug")
-
-        result = task.run()
-
-        assert result == "success"
-        # Should log debug message for invalid header
-        debug_calls = [
-            call
-            for call in mock_log_debug.call_args_list
-            if call[0][0] and "Invalid total_attempts header" in call[0][0]
-        ]
-        assert len(debug_calls) == 1
-
-    def test_run_handles_missing_total_attempts_header(self, mocker, dbsession):
-        """Test that run() handles missing total_attempts header gracefully."""
-
-        class SampleTask(BaseCodecovTask, name="test.SampleTask"):
-            def run_impl(self, dbsession):
-                return "success"
-
-        task = SampleTask()
-        mock_current_task = MagicMock()
-        mock_current_task.name = "test.SampleTask"
-        mock_request = MagicMock()
-        mock_request.id = "test-task-id"
-        mock_request.retries = 2
-        # Mock request.get() to return empty headers dict
-        mock_request.get = lambda key, default=None: (
-            {} if key == "headers" else default
-        )  # No total_attempts
-        mock_request.headers = {}
-        mock_current_task.request = mock_request
-
-        mocker.patch("tasks.base.get_current_task", return_value=mock_current_task)
-        mock_log_warning = mocker.patch("tasks.base.log.warning")
-
-        result = task.run()
-
-        assert result == "success"
-        # Should not log re-delivery warning when header is missing
-        re_delivery_calls = [
-            call
-            for call in mock_log_warning.call_args_list
-            if call[0][0] and "re-delivered" in call[0][0]
-        ]
-        assert len(re_delivery_calls) == 0
-
-    def test_run_handles_none_total_attempts_header(self, mocker, dbsession):
-        """Test that run() handles None total_attempts header gracefully."""
-
-        class SampleTask(BaseCodecovTask, name="test.SampleTask"):
-            def run_impl(self, dbsession):
-                return "success"
-
-        mock_current_task = MagicMock()
-        mock_current_task.name = "test.SampleTask"
-        mock_request = MagicMock()
-        mock_request.id = "test-task-id"
-        mock_request.retries = 2
-        # Mock request.get() to return headers dict with None value
-        mock_request.get = lambda key, default=None: (
-            {"total_attempts": None} if key == "headers" else default
-        )
-        mock_request.headers = {"total_attempts": None}
-        mock_current_task.request = mock_request
-        # Set up self.request on task instance using PropertyMock (request is a property)
-        # Must patch BEFORE creating task instance
-        mock_property = PropertyMock(return_value=mock_request)
-        mocker.patch.object(SampleTask, "request", mock_property, create=True)
-        task = SampleTask()
-
-        mocker.patch("tasks.base.get_current_task", return_value=mock_current_task)
-        mock_log_warning = mocker.patch("tasks.base.log.warning")
-        mock_log_debug = mocker.patch("tasks.base.log.debug")
-
-        result = task.run()
-
-        assert result == "success"
-        # None is treated as "not present" and skipped silently (no debug log)
-        # Should not log re-delivery warning when header is None
-        re_delivery_calls = [
-            call
-            for call in mock_log_warning.call_args_list
-            if call[0][0] and "re-delivered" in call[0][0]
-        ]
-        assert len(re_delivery_calls) == 0
-        # Should not log debug message for None header (it's treated as "not present")
-        debug_calls = [
-            call
-            for call in mock_log_debug.call_args_list
-            if call[0][0] and "Invalid total_attempts header" in call[0][0]
-        ]
-        assert len(debug_calls) == 0
 
 
 class TestBaseCodecovRequest:
@@ -1147,7 +958,7 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         assert (
             call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
-        assert call_kwargs["headers"]["total_attempts"] == 1  # New header added
+        assert call_kwargs["headers"]["attempts"] == 1  # New header added
         assert call_kwargs["time_limit"] == 400
         assert call_kwargs["soft_time_limit"] == 200
         assert call_kwargs["user_plan"] == mock_celery_task_router()
@@ -1184,7 +995,7 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         assert "headers" in kwargs
         headers = kwargs.get("headers")
         assert headers["created_timestamp"] == "2023-06-13T10:01:01.000123"
-        assert headers["total_attempts"] == 1  # New header added
+        assert headers["attempts"] == 1  # New header added
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
     @pytest.mark.django_db
@@ -1231,7 +1042,7 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         assert (
             call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
-        assert call_kwargs["headers"]["total_attempts"] == 1  # New header added
+        assert call_kwargs["headers"]["attempts"] == 1  # New header added
         assert call_kwargs["time_limit"] is None
         assert call_kwargs["user_plan"] == "users-pr-inappm"
 
@@ -1280,7 +1091,7 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         assert (
             call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
-        assert call_kwargs["headers"]["total_attempts"] == 1  # New header added
+        assert call_kwargs["headers"]["attempts"] == 1  # New header added
         assert call_kwargs["time_limit"] == 600
         assert call_kwargs["user_plan"] == "users-enterprisey"
 
@@ -1329,7 +1140,7 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         assert (
             call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
-        assert call_kwargs["headers"]["total_attempts"] == 1  # New header added
+        assert call_kwargs["headers"]["attempts"] == 1  # New header added
         assert call_kwargs["time_limit"] == 450
         assert call_kwargs["user_plan"] == "users-enterprisey"
 

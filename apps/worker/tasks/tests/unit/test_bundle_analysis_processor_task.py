@@ -339,7 +339,7 @@ def test_bundle_analysis_processor_task_locked(
     dbsession.flush()
 
     task = BundleAnalysisProcessorTask()
-    retry = mocker.patch.object(task, "retry")
+    safe_retry = mocker.patch.object(task, "safe_retry", return_value=True)
 
     result = task.run_impl(
         dbsession,
@@ -355,7 +355,7 @@ def test_bundle_analysis_processor_task_locked(
     assert result is None
 
     assert upload.state == "started"
-    retry.assert_called_once_with(countdown=ANY)
+    safe_retry.assert_called_once_with(max_retries=task.max_retries, countdown=ANY)
 
 
 def test_bundle_analysis_process_upload_rate_limit_error(

@@ -212,12 +212,12 @@ class BaseCodecovTask(celery_app.Task):
 
         # Pass current time in task headers so we can emit a metric of
         # how long the task was in the queue for
-        # Also track total_attempts to catch visibility timeout re-deliveries
+        # Also track attempts to catch visibility timeout re-deliveries
         current_time = datetime.now()
         headers = {
             **opt_headers,
             "created_timestamp": current_time.isoformat(),
-            "total_attempts": 1,  # Initialize total attempts counter
+            "attempts": 1,  # Initialize attempts counter
         }
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
@@ -234,36 +234,36 @@ class BaseCodecovTask(celery_app.Task):
             if TestResultsFlow.has_begun():
                 TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
 
-    def _max_total_attempts(self, max_retries: int | None) -> int | None:
-        """Convert max retries to max total attempts (includes initial attempt)."""
+    def _max_attempts(self, max_retries: int | None) -> int | None:
+        """Convert max retries to max attempts (includes initial attempt)."""
         return max_retries + 1 if max_retries is not None else None
 
     def _get_retry_count(self) -> int:
         """Get retry count safely, handling missing request or retries attribute."""
         if not hasattr(self, "request"):
             return 0
-        return self.request.retries if hasattr(self.request, "retries") else 0
+        return getattr(self.request, "retries", 0)
 
     def _get_request_headers(self) -> dict:
         """Get request headers safely, handling missing request or get method."""
         if not hasattr(self, "request") or self.request is None:
             return {}
-        request = self.request
         try:
-            if hasattr(request, "get") and callable(getattr(request, "get", None)):
-                headers = request.get("headers", {})
-                return headers if headers is not None else {}
+            if hasattr(self.request, "get") and callable(
+                getattr(self.request, "get", None)
+            ):
+                headers = self.request.get("headers", {})
+                return headers or {}
         except (AttributeError, TypeError):
-            pass
-        headers = getattr(request, "headers", {})
-        return headers if headers is not None else {}
+            log.warning(
+                "Error accessing request.get() method, falling back to getattr",
+                exc_info=True,
+            )
+        headers = getattr(self.request, "headers", {})
+        return headers or {}
 
-    def _expected_total_attempts(self) -> int:
-        """Get expected total attempts based on retry count (retries + initial attempt)."""
-        return self._get_retry_count() + 1
-
-    def _get_total_attempts(self) -> int:
-        """Get total attempts including re-deliveries from visibility timeout expiration.
+    def _get_attempts(self) -> int:
+        """Get attempts including re-deliveries from visibility timeout expiration.
 
         Returns:
             - Header value if present and valid (most accurate)
@@ -276,32 +276,30 @@ class BaseCodecovTask(celery_app.Task):
             return 0
 
         headers = self._get_request_headers()
-        total_attempts_header = headers.get("total_attempts", None)
+        attempts_header = headers.get("attempts", None)
 
-        if total_attempts_header is not None:
+        if attempts_header is not None:
             try:
-                return int(total_attempts_header)
+                return int(attempts_header)
             except (ValueError, TypeError):
                 retry_count = self._get_retry_count()
                 log.warning(
-                    "Invalid total_attempts header value",
-                    extra={"value": total_attempts_header, "retry_count": retry_count},
+                    "Invalid attempts header value",
+                    extra={"value": attempts_header, "retry_count": retry_count},
                 )
-                return self._expected_total_attempts()
-        return self._expected_total_attempts()
+                return retry_count + 1
+        return self._get_retry_count() + 1
 
     def _has_exceeded_max_attempts(self, max_retries: int | None) -> bool:
         """Check if task has exceeded max attempts (including re-deliveries)."""
         if max_retries is None:
             return False
 
-        current_retries = self._get_retry_count()
-        total_attempts = self._get_total_attempts()
-        max_total_attempts = self._max_total_attempts(max_retries)
-
-        return current_retries >= max_retries or (
-            max_total_attempts is not None and total_attempts >= max_total_attempts
-        )
+        attempts = self._get_attempts()
+        max_attempts = self._max_attempts(max_retries)
+        # max_attempts is guaranteed to be int since max_retries is not None
+        assert max_attempts is not None
+        return attempts >= max_attempts
 
     def safe_retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
         """Safely retry with max retry limit and proper metrics tracking.
@@ -311,34 +309,32 @@ class BaseCodecovTask(celery_app.Task):
         task_max_retries = max_retries if max_retries is not None else self.max_retries
 
         if self._has_exceeded_max_attempts(task_max_retries):
-            current_retries = self._get_retry_count()
-            total_attempts = self._get_total_attempts()
-            max_total_attempts = self._max_total_attempts(task_max_retries)
+            attempts = self._get_attempts()
+            max_attempts = self._max_attempts(task_max_retries)
             log.error(
                 f"Task {self.name} exceeded max retries",
                 extra={
-                    "current_retries": current_retries,
+                    "attempts": attempts,
+                    "max_attempts": max_attempts,
                     "max_retries": task_max_retries,
-                    "max_total_attempts": max_total_attempts,
                     "task_name": self.name,
-                    "total_attempts": total_attempts,
                 },
             )
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
             return False
 
-        current_retries = self._get_retry_count()
+        retry_count = self._get_retry_count()
         if countdown is None:
-            countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**current_retries)
+            countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
 
         try:
-            total_attempts = self._get_total_attempts()
+            attempts = self._get_attempts()
             headers = {}
             request_headers = self._get_request_headers()
             if request_headers:
                 headers.update(request_headers)
             headers.update(kwargs.get("headers", {}) or {})
-            headers["total_attempts"] = total_attempts + 1
+            headers["attempts"] = attempts + 1
             kwargs["headers"] = headers
 
             self.retry(
@@ -376,35 +372,14 @@ class BaseCodecovTask(celery_app.Task):
                 )
                 return
         except ImportError:
-            pass
+            log.debug(
+                "psycopg2 not available, skipping PostgreSQL-specific error analysis"
+            )
         log.exception(
             "An error talking to the database occurred",
             extra={"task_args": args, "task_kwargs": kwargs},
             exc_info=True,
         )
-
-    def _emit_queue_metrics(self):
-        if not hasattr(self, "request") or self.request is None:
-            return
-        request = self.request
-        if not hasattr(request, "get"):
-            return
-        created_timestamp = request.get("created_timestamp", None)
-        if created_timestamp:
-            enqueued_time = datetime.fromisoformat(created_timestamp)
-            now = datetime.now()
-            delta = now - enqueued_time
-
-            delivery_info = request.get("delivery_info", {})
-            queue_name = (
-                delivery_info.get("routing_key", None)
-                if isinstance(delivery_info, dict)
-                else None
-            )
-            time_in_queue_timer = TASK_TIME_IN_QUEUE.labels(
-                task=self.name, queue=queue_name
-            )  # TODO is None a valid label value
-            time_in_queue_timer.observe(delta.total_seconds())
 
     @sentry_sdk.trace
     def run(self, *args, **kwargs):
@@ -424,44 +399,32 @@ class BaseCodecovTask(celery_app.Task):
                 if task_id:
                     log_context.task_id = task_id
 
-                try:
-                    headers = self._get_request_headers()
-                    header_total_attempts = headers.get("total_attempts")
-                    if header_total_attempts is not None:
-                        try:
-                            total_attempts = int(header_total_attempts)
-                            retry_count = (
-                                getattr(task.request, "retries", 0)
-                                if hasattr(task.request, "retries")
-                                else 0
-                            )
-                            if total_attempts > retry_count + 1:
-                                log.warning(
-                                    f"Task {task.name} re-delivered (visibility timeout expired)",
-                                    extra={
-                                        "retry_count": retry_count,
-                                        "task_id": task_id,
-                                        "total_attempts": total_attempts,
-                                    },
-                                )
-                        except (ValueError, TypeError):
-                            log.debug(
-                                "Invalid total_attempts header, skipping re-delivery detection",
-                                extra={
-                                    "task_id": task_id,
-                                    "value": header_total_attempts,
-                                },
-                            )
-                except Exception:
-                    # Silently ignore errors accessing request headers to avoid breaking task execution
-                    pass
-
             log_context.populate_from_sqlalchemy(db_session)
             set_log_context(log_context)
             load_checkpoints_from_kwargs([UploadFlow, TestResultsFlow], kwargs)
 
             self.task_run_counter.inc()
-            self._emit_queue_metrics()
+            if (
+                hasattr(self, "request")
+                and self.request is not None
+                and hasattr(self.request, "get")
+            ):
+                created_timestamp = self.request.get("created_timestamp", None)
+                if created_timestamp:
+                    enqueued_time = datetime.fromisoformat(created_timestamp)
+                    now = datetime.now()
+                    delta = now - enqueued_time
+
+                    delivery_info = self.request.get("delivery_info", {})
+                    queue_name = (
+                        delivery_info.get("routing_key", None)
+                        if isinstance(delivery_info, dict)
+                        else None
+                    )
+                    time_in_queue_timer = TASK_TIME_IN_QUEUE.labels(
+                        task=self.name, queue=queue_name
+                    )
+                    time_in_queue_timer.observe(delta.total_seconds())
 
             close_old_connections()
 
