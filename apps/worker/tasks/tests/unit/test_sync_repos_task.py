@@ -457,7 +457,7 @@ class TestSyncReposTaskUnit:
         "tasks/tests/unit/cassetes/test_sync_repos_task/TestSyncReposTaskUnit/test_only_public_repos_not_in_db.yaml"
     )
     @respx.mock
-    @pytest.mark.django_db
+    @pytest.mark.django_db(transaction=True)
     def test_only_public_repos_not_in_db(self, dbsession):
         mock_all_plans_and_tiers()
         token = "ecd73a086eadc85db68747a66bdbd662a785a072"
@@ -728,7 +728,7 @@ class TestSyncReposTaskUnit:
         "tasks/tests/unit/cassetes/test_sync_repos_task/TestSyncReposTaskUnit/test_only_public_repos_not_in_db.yaml"
     )
     @respx.mock
-    @pytest.mark.django_db
+    @pytest.mark.django_db(transaction=True)
     def test_insert_repo_and_call_repo_sync_languages(self, dbsession):
         mock_all_plans_and_tiers()
         token = "ecd73a086eadc85db68747a66bdbd662a785a072"
