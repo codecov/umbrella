@@ -55,7 +55,11 @@ class LockMaxRetriesExceededError(Exception):
         self.lock_name = lock_name
         self.repoid = repoid
         self.commitid = commitid
-        super().__init__("Lock acquisition failed after exceeding max retries")
+        error_msg = (
+            f"Lock acquisition failed after {retry_num} retries (max: {max_attempts}). "
+            f"Lock: {lock_name}, Repo: {repoid}, Commit: {commitid}"
+        )
+        super().__init__(error_msg)
 
 
 class LockManager:
@@ -177,7 +181,6 @@ class LockManager:
                             "lock_timeout": self.lock_timeout,
                             "lock_type": lock_type.value,
                             "max_attempts": max_attempts,
-                            "max_retries": max_retries,
                             "repoid": self.repoid,
                             "report_type": self.report_type.value,
                             "retry_num": retry_num,
