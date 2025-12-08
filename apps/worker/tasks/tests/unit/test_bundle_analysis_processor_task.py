@@ -432,6 +432,83 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_raises_error(
     assert result == previous_result
 
 
+def test_bundle_analysis_processor_task_uses_default_blocking_timeout(
+    mocker,
+    dbsession,
+    mock_storage,
+    mock_redis,
+):
+    """
+    Test that BundleAnalysisProcessorTask uses default blocking_timeout (not None).
+
+    This test verifies that the task doesn't use blocking_timeout=None, which would
+    cause indefinite blocking and disable retry logic. The task should use the
+    default blocking_timeout to enable proper retry behavior.
+    """
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(
+        state="started",
+        storage_path=storage_path,
+        report=commit_report,
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    # Track what blocking_timeout was passed to Redis
+    blocking_timeouts = []
+
+    def track_and_raise(*args, **kwargs):
+        blocking_timeouts.append(kwargs.get("blocking_timeout"))
+        raise LockError()
+
+    mock_redis.lock.side_effect = track_and_raise
+
+    task = BundleAnalysisProcessorTask()
+    task.request.retries = 0
+    task.request.headers = {}
+
+    # Task should raise Retry when lock cannot be acquired
+    with pytest.raises(Retry):
+        task.run_impl(
+            dbsession,
+            [{"previous": "result"}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={
+                "upload_id": upload.id_,
+                "commit": commit.commitid,
+            },
+        )
+
+    # Verify that blocking_timeout was NOT None
+    # The default should be DEFAULT_BLOCKING_TIMEOUT_SECONDS (5)
+    assert None not in blocking_timeouts, (
+        "blocking_timeout=None was used! This causes indefinite blocking "
+        "and disables retry logic. Use default blocking_timeout instead."
+    )
+
+
 def test_bundle_analysis_process_upload_rate_limit_error(
     mocker,
     dbsession,
