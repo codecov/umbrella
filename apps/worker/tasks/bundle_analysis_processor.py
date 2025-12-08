@@ -90,7 +90,7 @@ class BundleAnalysisProcessorTask(
                         "repoid": repoid,
                     },
                 )
-                return
+                return previous_result
             if not self.safe_retry(
                 max_retries=self.max_retries, countdown=retry.countdown
             ):
@@ -103,7 +103,7 @@ class BundleAnalysisProcessorTask(
                         "repoid": repoid,
                     },
                 )
-                return
+                return previous_result
 
     def process_impl_within_lock(
         self,
@@ -219,7 +219,7 @@ class BundleAnalysisProcessorTask(
                             "repoid": repoid,
                         },
                     )
-                    return
+                    return processing_results
                 log.warn(
                     "Attempting to retry bundle analysis upload",
                     extra={
