@@ -296,7 +296,7 @@ class BaseCodecovTask(celery_app.Task):
                     "Invalid attempts header value",
                     extra={"value": attempts_header, "retry_count": retry_count},
                 )
-                return retry_count + 1
+            return retry_count + 1
         return getattr(self.request, "retries", 0) + 1
 
     def _has_exceeded_max_attempts(self, max_retries: int | None) -> bool:
@@ -318,13 +318,13 @@ class BaseCodecovTask(celery_app.Task):
 
         if self._has_exceeded_max_attempts(task_max_retries):
             max_attempts = task_max_retries + 1
-            log.error(
-                f"Task {self.name} exceeded max retries",
-                extra={
+                log.error(
+                    f"Task {self.name} exceeded max retries",
+                    extra={
                     "attempts": self.attempts,
                     "max_attempts": max_attempts,
                     "max_retries": task_max_retries,
-                    "task_name": self.name,
+                        "task_name": self.name,
                 },
             )
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
@@ -339,10 +339,10 @@ class BaseCodecovTask(celery_app.Task):
                         "max_retries": task_max_retries,
                         "task_name": self.name,
                     }
-                },
+                    },
                 tags={"error_type": "max_retries_exceeded", "task": self.name},
-            )
-            return False
+                )
+                return False
 
         retry_count = (
             getattr(self.request, "retries", 0) if hasattr(self, "request") else 0

@@ -392,7 +392,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "was_updated": False,
                     "tasks_were_scheduled": False,
                 }
-            if self.request.retries >= 3:
+            if self._has_exceeded_max_attempts(3):
                 self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
