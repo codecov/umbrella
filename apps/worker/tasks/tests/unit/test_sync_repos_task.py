@@ -456,7 +456,6 @@ class TestSyncReposTaskUnit:
     @reuse_cassette(
         "tasks/tests/unit/cassetes/test_sync_repos_task/TestSyncReposTaskUnit/test_only_public_repos_not_in_db.yaml"
     )
-    @respx.mock
     @pytest.mark.django_db
     def test_only_public_repos_not_in_db(self, dbsession):
         mock_all_plans_and_tiers()
@@ -727,7 +726,6 @@ class TestSyncReposTaskUnit:
     @reuse_cassette(
         "tasks/tests/unit/cassetes/test_sync_repos_task/TestSyncReposTaskUnit/test_only_public_repos_not_in_db.yaml"
     )
-    @respx.mock
     @pytest.mark.django_db
     def test_insert_repo_and_call_repo_sync_languages(self, dbsession):
         mock_all_plans_and_tiers()
