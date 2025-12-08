@@ -58,7 +58,7 @@ class ManualTriggerTask(
                     **kwargs,
                 )
         except LockRetry as retry:
-            if self.request.retries >= TASK_MAX_RETRIES_DEFAULT:
+            if self._has_exceeded_max_attempts(TASK_MAX_RETRIES_DEFAULT):
                 return {
                     "notifications_called": False,
                     "message": "Unable to acquire lock",
