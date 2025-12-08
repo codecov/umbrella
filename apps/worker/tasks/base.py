@@ -352,10 +352,11 @@ class BaseCodecovTask(celery_app.Task):
 
         try:
             # self.retry() now handles attempts header update automatically
+            # Note: self.retry() raises Retry exception when successful, so this
+            # method will propagate that exception rather than returning True
             self.retry(
                 max_retries=task_max_retries, countdown=countdown, exc=exc, **kwargs
             )
-            return True
         except MaxRetriesExceededError:
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
             if UploadFlow.has_begun():

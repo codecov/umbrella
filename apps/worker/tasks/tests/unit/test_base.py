@@ -26,10 +26,7 @@ from shared.celery_config import (
     upload_breadcrumb_task_name,
     upload_task_name,
 )
-from shared.django_apps.upload_breadcrumbs.models import (
-    BreadcrumbData,
-    Errors,
-)
+from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Errors
 from shared.plan.constants import PlanName
 from shared.torngit.exceptions import TorngitClientError
 from tasks.base import BaseCodecovRequest, BaseCodecovTask
@@ -558,15 +555,18 @@ class TestBaseCodecovTaskSafeRetry:
         task.request.headers = {}
         task.request.get = lambda key, default=None: {} if key == "headers" else default
 
-        # Mock the parent class's retry method so our overridden retry() still runs
-        mock_retry = mocker.patch("celery.app.task.Task.retry")
+        # Mock the parent class's retry method to raise Retry exception (normal behavior)
+        mock_retry = mocker.patch("celery.app.task.Task.retry", side_effect=Retry())
 
-        result = task.safe_retry(max_retries=5, countdown=60)
+        # safe_retry() raises Retry exception when successful (doesn't return True)
+        with pytest.raises(Retry):
+            task.safe_retry(max_retries=5, countdown=60)
 
-        assert result is True
+        # Verify retry() was called with correct arguments
         # safe_retry now adds attempts to headers for the NEXT attempt
         # Current attempt: retries=2, so attempts=3 (2+1)
         # Next attempt will be: attempts=4 (3+1)
+        assert mock_retry.called
         call_kwargs = mock_retry.call_args[1]
         assert call_kwargs["max_retries"] == 5
         assert call_kwargs["countdown"] == 60
