@@ -1,10 +1,9 @@
 import pytest
 from celery.exceptions import Retry
-from redis.exceptions import LockError
-
 from database.enums import ReportType
 from database.models import CommitReport, Upload
 from database.tests.factories import CommitFactory, RepositoryFactory, UploadFactory
+from redis.exceptions import LockError
 from services.bundle_analysis.report import ProcessingError, ProcessingResult
 from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.storage import get_bucket_name
