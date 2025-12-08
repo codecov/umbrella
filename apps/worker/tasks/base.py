@@ -4,18 +4,10 @@ from contextlib import contextmanager
 from datetime import datetime
 
 import sentry_sdk
+from app import celery_app
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from django.db import InterfaceError, close_old_connections
-from sqlalchemy.exc import (
-    DataError,
-    IntegrityError,
-    InvalidRequestError,
-    SQLAlchemyError,
-)
-
-from app import celery_app
 from celery_task_router import _get_ownerid_from_task, _get_user_plan_from_task
 from database.engine import get_db_session
 from database.enums import CommitErrorTypes
@@ -24,6 +16,7 @@ from database.models.core import (
     Commit,
     Repository,
 )
+from django.db import InterfaceError, close_old_connections
 from helpers.checkpoint_logger import from_kwargs as load_checkpoints_from_kwargs
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.clock import get_seconds_to_next_hour
@@ -46,6 +39,12 @@ from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
 from shared.typings.torngit import AdditionalData
 from shared.utils.sentry import current_sentry_trace_id
+from sqlalchemy.exc import (
+    DataError,
+    IntegrityError,
+    InvalidRequestError,
+    SQLAlchemyError,
+)
 
 log = logging.getLogger("worker")
 
@@ -318,13 +317,13 @@ class BaseCodecovTask(celery_app.Task):
 
         if self._has_exceeded_max_attempts(task_max_retries):
             max_attempts = task_max_retries + 1
-                log.error(
-                    f"Task {self.name} exceeded max retries",
-                    extra={
+            log.error(
+                f"Task {self.name} exceeded max retries",
+                extra={
                     "attempts": self.attempts,
                     "max_attempts": max_attempts,
                     "max_retries": task_max_retries,
-                        "task_name": self.name,
+                    "task_name": self.name,
                 },
             )
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
@@ -339,10 +338,10 @@ class BaseCodecovTask(celery_app.Task):
                         "max_retries": task_max_retries,
                         "task_name": self.name,
                     }
-                    },
+                },
                 tags={"error_type": "max_retries_exceeded", "task": self.name},
-                )
-                return False
+            )
+            return False
 
         retry_count = (
             getattr(self.request, "retries", 0) if hasattr(self, "request") else 0
