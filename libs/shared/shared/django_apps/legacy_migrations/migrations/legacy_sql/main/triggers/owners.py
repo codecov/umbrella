@@ -15,11 +15,11 @@ def run_sql(schema_editor):
         end;
         $$ language plpgsql;
 
-        create trigger owners_before_insert before insert on owners
+        create trigger owners_after_insert after insert on owners
         for each row
         execute procedure owners_before_insert_or_update();
 
-        create trigger owners_before_update before update on owners
+        create trigger owners_after_update after update on owners
         for each row
         when (new.username is not null and new.username is distinct from old.username)
         execute procedure owners_before_insert_or_update();
