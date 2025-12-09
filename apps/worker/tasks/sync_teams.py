@@ -33,6 +33,18 @@ class SyncTeamsTask(BaseCodecovTask, name=sync_teams_task_name):
         updated_teams = []
 
         for team in teams:
+            # Skip teams with None username to prevent creating invalid Owner records
+            if team.get("username") is None:
+                log.warning(
+                    "Skipping team with None username",
+                    extra={
+                        "service": service,
+                        "team_id": team.get("id"),
+                        "team_name": team.get("name"),
+                    },
+                )
+                continue
+                
             team_data = {
                 "username": team["username"],
                 "name": team["name"],
