@@ -104,9 +104,6 @@ jobs:
           - codecov_url_secret: CODECOV_PUBLIC_QA_URL
             codecov_token_secret: CODECOV_PUBLIC_QA_TOKEN
             name: public qa
-          - codecov_url_secret: CODECOV_EUROPE_WEST3_URL
-            codecov_token_secret: CODECOV_EUROPE_WEST3_TOKEN
-            name: europe-west3
 
     steps:
       - name: Checkout
