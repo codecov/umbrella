@@ -293,16 +293,28 @@ PREPROCESS_UPLOAD_MAX_RETRIES = int(
 
 # Bundle analysis processor max retries
 # How many times to retry when bundle analysis processor lock cannot be acquired
-# Default: 10 retries
+# Default: matches TASK_MAX_RETRIES_DEFAULT
 BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES = int(
-    get_config("setup", "tasks", "bundle_analysis", "processor_max_retries", default=10)
+    get_config(
+        "setup",
+        "tasks",
+        "bundle_analysis",
+        "processor_max_retries",
+        default=TASK_MAX_RETRIES_DEFAULT,
+    )
 )
 
 # Bundle analysis notify max retries
 # How many times to retry when bundle analysis notify lock cannot be acquired
-# Default: 10 retries
+# Default: matches TASK_MAX_RETRIES_DEFAULT
 BUNDLE_ANALYSIS_NOTIFY_MAX_RETRIES = int(
-    get_config("setup", "tasks", "bundle_analysis", "notify_max_retries", default=10)
+    get_config(
+        "setup",
+        "tasks",
+        "bundle_analysis",
+        "notify_max_retries",
+        default=TASK_MAX_RETRIES_DEFAULT,
+    )
 )
 
 # Default timeout for Redis locks used by LockManager
