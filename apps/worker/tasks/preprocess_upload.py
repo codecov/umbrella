@@ -64,7 +64,6 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
             with lock_manager.locked(
                 LockType.PREPROCESS_UPLOAD,
                 retry_num=self.request.retries,
-                max_retries=PREPROCESS_UPLOAD_MAX_RETRIES,
             ):
                 return self.process_impl_within_lock(
                     db_session=db_session,

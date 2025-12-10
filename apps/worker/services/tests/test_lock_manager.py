@@ -202,7 +202,7 @@ class TestLockManager:
         assert exc_info.value.countdown <= 18000
 
     def test_locked_max_retries_not_provided(self, mock_redis, caplog):
-        """Test that max_retries=None doesn't log error"""
+        """Test that max_retries parameter is no longer used (removed - handled by self.retry())"""
         mock_redis.lock.side_effect = LockError()
 
         manager = LockManager(repoid=123, commitid="abc123")
@@ -211,19 +211,21 @@ class TestLockManager:
                 with manager.locked(LockType.UPLOAD, retry_num=5):
                     pass
 
+        # LockManager no longer checks max_retries - that's handled by self.retry() in tasks
         error_logs = [r for r in caplog.records if r.levelname == "ERROR"]
         assert len(error_logs) == 0
 
     def test_locked_max_retries_not_exceeded(self, mock_redis, caplog):
-        """Test that max_retries check doesn't log error when not exceeded"""
+        """Test that max_retries parameter is no longer used (removed - handled by self.retry())"""
         mock_redis.lock.side_effect = LockError()
 
         manager = LockManager(repoid=123, commitid="abc123")
         with caplog.at_level(logging.ERROR):
             with pytest.raises(LockRetry):
-                with manager.locked(LockType.UPLOAD, retry_num=3, max_retries=5):
+                with manager.locked(LockType.UPLOAD, retry_num=3):
                     pass
 
+        # LockManager no longer checks max_retries - that's handled by self.retry() in tasks
         error_logs = [
             r
             for r in caplog.records
@@ -232,40 +234,40 @@ class TestLockManager:
         assert len(error_logs) == 0
 
     def test_locked_max_retries_exceeded(self, mock_redis, caplog):
-        """Test that max_retries exceeded logs error"""
+        """Test that max_retries parameter is no longer used (removed - handled by self.retry())"""
         mock_redis.lock.side_effect = LockError()
 
         manager = LockManager(repoid=123, commitid="abc123")
         with caplog.at_level(logging.ERROR):
             with pytest.raises(LockRetry):
-                with manager.locked(LockType.UPLOAD, retry_num=5, max_retries=3):
+                with manager.locked(LockType.UPLOAD, retry_num=5):
                     pass
 
+        # LockManager no longer checks max_retries - that's handled by self.retry() in tasks
         error_logs = [
             r
             for r in caplog.records
             if r.levelname == "ERROR" and "too many retries" in r.message
         ]
-        assert len(error_logs) == 1
-        assert error_logs[0].__dict__["max_retries"] == 3
-        assert error_logs[0].__dict__["retry_num"] == 5
+        assert len(error_logs) == 0
 
     def test_locked_max_retries_exceeded_at_boundary(self, mock_redis, caplog):
-        """Test that max_retries boundary condition logs error"""
+        """Test that max_retries parameter is no longer used (removed - handled by self.retry())"""
         mock_redis.lock.side_effect = LockError()
 
         manager = LockManager(repoid=123, commitid="abc123")
         with caplog.at_level(logging.ERROR):
             with pytest.raises(LockRetry):
-                with manager.locked(LockType.UPLOAD, retry_num=3, max_retries=3):
+                with manager.locked(LockType.UPLOAD, retry_num=3):
                     pass
 
+        # LockManager no longer checks max_retries - that's handled by self.retry() in tasks
         error_logs = [
             r
             for r in caplog.records
             if r.levelname == "ERROR" and "too many retries" in r.message
         ]
-        assert len(error_logs) == 1
+        assert len(error_logs) == 0
 
     def test_locked_warning_logged_on_lock_error(self, mock_redis, caplog):
         """Test that warning is logged when lock cannot be acquired"""
