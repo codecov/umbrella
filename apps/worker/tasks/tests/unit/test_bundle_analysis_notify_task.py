@@ -17,8 +17,6 @@ def test_bundle_analysis_notify_task(
     celery_app,
     mock_redis,
 ):
-    mocker.patch.object(BundleAnalysisNotifyTask, "app", celery_app)
-
     commit = CommitFactory.create()
     dbsession.add(commit)
     dbsession.flush()
@@ -32,7 +30,9 @@ def test_bundle_analysis_notify_task(
         ),
     )
 
-    result = BundleAnalysisNotifyTask().run_impl(
+    task = BundleAnalysisNotifyTask()
+    task.app = celery_app
+    result = task.run_impl(
         dbsession,
         [{"error": None}],
         repoid=commit.repoid,
@@ -70,17 +70,14 @@ def test_bundle_analysis_notify_task_max_retries_exceeded(
     mock_redis,
 ):
     """Test that bundle analysis notify does not retry infinitely when max retries exceeded"""
-    mocker.patch.object(BundleAnalysisNotifyTask, "app", celery_app)
-
     commit = CommitFactory.create()
     dbsession.add(commit)
     dbsession.flush()
 
-    # Mock Redis to simulate lock failure - this will cause the real LockManager to raise LockRetry
     mock_redis.lock.return_value.__enter__.side_effect = LockError()
 
     task = BundleAnalysisNotifyTask()
-    # Set retries to max_retries to simulate max retries exceeded scenario
+    task.app = celery_app
     task.request.retries = BUNDLE_ANALYSIS_NOTIFY_MAX_RETRIES
 
     # Task should raise MaxRetriesExceededError (from self.retry()) instead of retrying infinitely
@@ -115,8 +112,6 @@ def test_bundle_analysis_notify_task_max_retries_not_exceeded(
     mock_redis,
 ):
     """Test that bundle analysis notify retries when retries are available"""
-    mocker.patch.object(BundleAnalysisNotifyTask, "app", celery_app)
-
     commit = CommitFactory.create()
     dbsession.add(commit)
     dbsession.flush()
@@ -124,6 +119,7 @@ def test_bundle_analysis_notify_task_max_retries_not_exceeded(
     mock_redis.lock.return_value.__enter__.side_effect = LockError()
 
     task = BundleAnalysisNotifyTask()
+    task.app = celery_app
     task.request.retries = 0
 
     with pytest.raises(Retry):
