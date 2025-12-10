@@ -66,6 +66,7 @@ class BundleAnalysisProcessorTask(
             with lock_manager.locked(
                 LockType.BUNDLE_ANALYSIS_PROCESSING,
                 retry_num=self.request.retries,
+                max_retries=self.max_retries,
             ):
                 return self.process_impl_within_lock(
                     db_session,
@@ -76,6 +77,17 @@ class BundleAnalysisProcessorTask(
                     previous_result,
                 )
         except LockRetry as retry:
+            if self.request.retries >= self.max_retries:
+                log.error(
+                    "Max retries exceeded for bundle analysis processor lock",
+                    extra={
+                        "repoid": repoid,
+                        "commit": commitid,
+                        "max_retries": self.max_retries,
+                        "current_retries": self.request.retries,
+                    },
+                )
+                raise
             self.retry(countdown=retry.countdown)
 
     def process_impl_within_lock(

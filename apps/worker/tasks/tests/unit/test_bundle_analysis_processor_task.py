@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import ANY
 
 import pytest
@@ -6,8 +7,10 @@ from redis.exceptions import LockError
 from database.enums import ReportType
 from database.models import CommitReport, Upload
 from database.tests.factories import CommitFactory, RepositoryFactory, UploadFactory
+from services.lock_manager import LockRetry
 from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.storage import get_bucket_name
+from shared.celery_config import BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.storage.exceptions import PutRequestRateLimitError
 from tasks.bundle_analysis_processor import BundleAnalysisProcessorTask
@@ -356,6 +359,146 @@ def test_bundle_analysis_processor_task_locked(
 
     assert upload.state == "started"
     retry.assert_called_once_with(countdown=ANY)
+
+
+def test_bundle_analysis_processor_task_max_retries_exceeded(
+    mocker,
+    dbsession,
+    mock_storage,
+    mock_redis,
+    caplog,
+):
+    """Test that bundle analysis processor does not retry infinitely when max retries exceeded"""
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+    # Mock Redis to simulate lock failure - this will cause the real LockManager to raise LockRetry
+    mock_redis.lock.return_value.__enter__.side_effect = LockError()
+
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(
+        state="started",
+        storage_path=storage_path,
+        report=commit_report,
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    task = BundleAnalysisProcessorTask()
+    # Set retries to max_retries to simulate max retries exceeded scenario
+    task.request.retries = BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
+    retry_mock = mocker.patch.object(task, "retry")
+
+    # Task should raise LockRetry instead of retrying infinitely
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(LockRetry):
+            task.run_impl(
+                dbsession,
+                [{"previous": "result"}],
+                repoid=commit.repoid,
+                commitid=commit.commitid,
+                commit_yaml={},
+                params={
+                    "upload_id": upload.id_,
+                    "commit": commit.commitid,
+                },
+            )
+
+    # Verify retry was NOT called (max retries exceeded)
+    retry_mock.assert_not_called()
+
+    # Verify error log was written
+    error_logs = [
+        r
+        for r in caplog.records
+        if r.levelname == "ERROR"
+        and "Max retries exceeded for bundle analysis processor lock" in r.message
+    ]
+    assert len(error_logs) == 1
+    assert (
+        error_logs[0].__dict__["max_retries"] == BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
+    )
+    assert (
+        error_logs[0].__dict__["current_retries"]
+        == BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
+    )
+
+
+def test_bundle_analysis_processor_task_max_retries_not_exceeded(
+    mocker,
+    dbsession,
+    mock_storage,
+    mock_redis,
+):
+    """Test that bundle analysis processor retries when retries are available"""
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+    # Mock Redis to simulate lock failure - this will cause the real LockManager to raise LockRetry
+    mock_redis.lock.return_value.__enter__.side_effect = LockError()
+
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(
+        state="started",
+        storage_path=storage_path,
+        report=commit_report,
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    task = BundleAnalysisProcessorTask()
+    task.request.retries = 0  # Will retry (below max_retries)
+    retry_mock = mocker.patch.object(task, "retry")
+
+    # Task should call retry when retries are available
+    result = task.run_impl(
+        dbsession,
+        [{"previous": "result"}],
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={
+            "upload_id": upload.id_,
+            "commit": commit.commitid,
+        },
+    )
+
+    # Verify retry was called (with some countdown value from LockRetry)
+    retry_mock.assert_called_once()
+    assert retry_mock.call_args[1]["countdown"] > 0  # Verify countdown was passed
+    assert result is None
 
 
 def test_bundle_analysis_process_upload_rate_limit_error(
