@@ -211,7 +211,6 @@ class TestLockManager:
                 with manager.locked(LockType.UPLOAD, retry_num=5):
                     pass
 
-        # LockManager no longer checks max_retries - that's handled by self.retry() in tasks
         error_logs = [r for r in caplog.records if r.levelname == "ERROR"]
         assert len(error_logs) == 0
 
@@ -225,7 +224,6 @@ class TestLockManager:
                 with manager.locked(LockType.UPLOAD, retry_num=3):
                     pass
 
-        # LockManager no longer checks max_retries - that's handled by self.retry() in tasks
         error_logs = [
             r
             for r in caplog.records
@@ -243,7 +241,6 @@ class TestLockManager:
                 with manager.locked(LockType.UPLOAD, retry_num=5):
                     pass
 
-        # LockManager no longer checks max_retries - that's handled by self.retry() in tasks
         error_logs = [
             r
             for r in caplog.records
@@ -261,7 +258,6 @@ class TestLockManager:
                 with manager.locked(LockType.UPLOAD, retry_num=3):
                     pass
 
-        # LockManager no longer checks max_retries - that's handled by self.retry() in tasks
         error_logs = [
             r
             for r in caplog.records
