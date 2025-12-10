@@ -233,16 +233,15 @@ class BaseCodecovTask(celery_app.Task):
             max_retries: Maximum number of retries allowed (default: task's max_retries)
             **other_kwargs: Additional kwargs to pass to Celery's retry()
         """
-        current_retries = self.request.retries if hasattr(self, "request") else 0
+        request = getattr(self, "request", None)
+        current_retries = request.retries if request else 0
         task_max_retries = (
             max_retries if max_retries is not None else getattr(self, "max_retries", 3)
         )
 
         request_kwargs = {}
-        if hasattr(self, "request") and hasattr(self.request, "kwargs"):
-            request_kwargs = (
-                self.request.kwargs if self.request.kwargs is not None else {}
-            )
+        if request and hasattr(request, "kwargs"):
+            request_kwargs = request.kwargs if request.kwargs is not None else {}
         # Note: kwargs parameter is Celery's special parameter for task kwargs on retry
         retry_kwargs = kwargs if kwargs is not None else {}
         all_kwargs = {**request_kwargs, **retry_kwargs}
@@ -287,9 +286,7 @@ class BaseCodecovTask(celery_app.Task):
                 "current_retries": current_retries,
                 "exception_type": type(exc).__name__ if exc else None,
                 "max_retries": task_max_retries,
-                "task_id": self.request.id
-                if hasattr(self, "request") and hasattr(self.request, "id")
-                else None,
+                "task_id": getattr(request, "id", None) if request else None,
                 "task_name": self.name,
             },
         )
