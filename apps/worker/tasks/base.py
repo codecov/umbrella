@@ -32,6 +32,7 @@ from helpers.log_context import LogContext, set_log_context
 from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
 from shared.celery_config import (
+    TASK_MAX_RETRIES_DEFAULT,
     TASK_RETRY_BACKOFF_BASE_SECONDS,
     upload_breadcrumb_task_name,
 )
@@ -48,6 +49,9 @@ from shared.typings.torngit import AdditionalData
 from shared.utils.sentry import current_sentry_trace_id
 
 log = logging.getLogger("worker")
+
+# Sentinel object to distinguish "not provided" from "explicitly None" for max_retries
+_NOT_PROVIDED = object()
 
 REQUEST_TIMEOUT_COUNTER = Counter(
     "worker_task_counts_timeouts",
@@ -152,6 +156,7 @@ TASK_TIME_IN_QUEUE = Histogram(
 
 class BaseCodecovTask(celery_app.Task):
     Request = BaseCodecovRequest
+    max_retries = TASK_MAX_RETRIES_DEFAULT
 
     def __init_subclass__(cls, name=None):
         cls.name = name
@@ -220,24 +225,38 @@ class BaseCodecovTask(celery_app.Task):
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
     def retry(
-        self, countdown=None, exc=None, kwargs=None, max_retries=None, **other_kwargs
+        self,
+        countdown=None,
+        exc=None,
+        kwargs=None,
+        max_retries=_NOT_PROVIDED,
+        **other_kwargs,
     ):
         """
         Override Celery's retry() to automatically check max_retries and track metrics.
         If max_retries is not provided, uses self.max_retries from the task class.
+        If max_retries=None is explicitly passed, means unlimited retries (matches Celery behavior).
 
         Args:
             countdown: Seconds to wait before retry (optional)
             exc: Exception to include in retry (optional)
             kwargs: Task kwargs to use when retrying (optional, Celery-specific parameter)
-            max_retries: Maximum number of retries allowed (default: task's max_retries)
+            max_retries: Maximum number of retries allowed (default: task's max_retries).
+                        Pass None explicitly for unlimited retries (matches Celery behavior).
             **other_kwargs: Additional kwargs to pass to Celery's retry()
         """
         request = getattr(self, "request", None)
         current_retries = request.retries if request else 0
-        task_max_retries = (
-            max_retries if max_retries is not None else getattr(self, "max_retries", 3)
-        )
+        # Resolve max_retries for checking/logging
+        # If max_retries is not provided, use self.max_retries from task class
+        # If max_retries=None is explicitly provided, means unlimited retries (matches Celery behavior)
+        # self.max_retries is inherited from BaseCodecovTask (TASK_MAX_RETRIES_DEFAULT) or overridden by task
+        if max_retries is _NOT_PROVIDED:
+            # Not provided, use task's max_retries attribute (inherited from BaseCodecovTask or overridden)
+            task_max_retries = self.max_retries
+        else:
+            # Explicitly provided (could be a number or None for unlimited)
+            task_max_retries = max_retries
 
         request_kwargs = {}
         if request and hasattr(request, "kwargs"):
@@ -291,19 +310,28 @@ class BaseCodecovTask(celery_app.Task):
             },
         )
 
+        # Pass max_retries to Celery:
+        # - If not provided, use self.max_retries (inherited from BaseCodecovTask or overridden)
+        # - If explicitly provided (including None), pass as-is (None = unlimited in Celery)
+        if max_retries is _NOT_PROVIDED:
+            # Not provided, use task's max_retries (inherited from BaseCodecovTask or overridden)
+            celery_max_retries = self.max_retries
+        else:
+            # Explicitly provided, pass as-is (None means unlimited in Celery, matches superclass behavior)
+            celery_max_retries = max_retries
         if kwargs is not None:
             return super().retry(
                 countdown=countdown,
                 exc=exc,
                 kwargs=kwargs,
-                max_retries=task_max_retries,
+                max_retries=celery_max_retries,
                 **other_kwargs,
             )
         else:
             return super().retry(
                 countdown=countdown,
                 exc=exc,
-                max_retries=task_max_retries,
+                max_retries=celery_max_retries,
                 **other_kwargs,
             )
 
