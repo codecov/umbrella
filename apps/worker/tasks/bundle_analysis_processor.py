@@ -159,6 +159,7 @@ class BundleAnalysisProcessorTask(
         # Override base commit of comparisons with a custom commit SHA if applicable
         compare_sha = params.get("bundle_analysis_compare_sha")
 
+        result: ProcessingResult | None = None
         try:
             log.info(
                 "Processing bundle analysis upload",
@@ -174,15 +175,9 @@ class BundleAnalysisProcessorTask(
             )
             assert params.get("commit") == commit.commitid
 
-            result: ProcessingResult = report_service.process_upload(
-                commit, upload, compare_sha
-            )
-            if (
-                result.error
-                and result.error.is_retryable
-                and self.request.retries < self.max_retries
-            ):
-                log.warn(
+            result = report_service.process_upload(commit, upload, compare_sha)
+            if result.error and result.error.is_retryable:
+                log.warning(
                     "Attempting to retry bundle analysis upload",
                     extra={
                         "repoid": repoid,
@@ -217,10 +212,11 @@ class BundleAnalysisProcessorTask(
             upload.state = "error"
             raise
         finally:
-            if result.bundle_report:
-                result.bundle_report.cleanup()
-            if result.previous_bundle_report:
-                result.previous_bundle_report.cleanup()
+            if result is not None:
+                if result.bundle_report:
+                    result.bundle_report.cleanup()
+                if result.previous_bundle_report:
+                    result.previous_bundle_report.cleanup()
 
         # Create task to save bundle measurements
         self.app.tasks[bundle_analysis_save_measurements_task_name].apply_async(

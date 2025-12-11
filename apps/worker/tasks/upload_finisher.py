@@ -425,7 +425,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             with lock_manager.locked(
                 LockType.UPLOAD_PROCESSING,
                 retry_num=self.request.retries,
-                max_retries=MAX_RETRIES,
             ):
                 report_service = ReportService(commit_yaml)
 
@@ -501,7 +500,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             with lock_manager.locked(
                 LockType.UPLOAD_FINISHER,
                 retry_num=self.request.retries,
-                max_retries=MAX_RETRIES,
             ):
                 result = self.finish_reports_processing(
                     db_session, commit, commit_yaml, processing_results
