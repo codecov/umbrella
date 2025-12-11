@@ -313,21 +313,15 @@ class BaseCodecovTask(celery_app.Task):
         celery_max_retries = (
             self.max_retries if max_retries is _NOT_PROVIDED else max_retries
         )
+        retry_kwargs_dict = {
+            "countdown": countdown,
+            "exc": exc,
+            "max_retries": celery_max_retries,
+        }
         if kwargs:
-            return super().retry(
-                countdown=countdown,
-                exc=exc,
-                kwargs=kwargs,
-                max_retries=celery_max_retries,
-                **other_kwargs,
-            )
-        else:
-            return super().retry(
-                countdown=countdown,
-                exc=exc,
-                max_retries=celery_max_retries,
-                **other_kwargs,
-            )
+            retry_kwargs_dict["kwargs"] = kwargs
+        retry_kwargs_dict.update(other_kwargs)
+        return super().retry(**retry_kwargs_dict)
 
     def _analyse_error(self, exception: SQLAlchemyError, *args, **kwargs):
         try:

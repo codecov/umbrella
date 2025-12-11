@@ -176,12 +176,8 @@ class BundleAnalysisProcessorTask(
             assert params.get("commit") == commit.commitid
 
             result = report_service.process_upload(commit, upload, compare_sha)
-            if (
-                result.error
-                and result.error.is_retryable
-                and self.request.retries < self.max_retries
-            ):
-                log.warn(
+            if result.error and result.error.is_retryable:
+                log.warning(
                     "Attempting to retry bundle analysis upload",
                     extra={
                         "repoid": repoid,
