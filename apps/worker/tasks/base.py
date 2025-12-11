@@ -270,21 +270,25 @@ class BaseCodecovTask(celery_app.Task):
         retry_kwargs = kwargs if kwargs is not None else {}
         all_kwargs = {**request_kwargs, **retry_kwargs}
 
-        # Extract context fields directly in log extra dict
-        log_extra = {
-            "current_retries": current_retries,
-            "max_retries": task_max_retries,
-            "task_name": self.name,
-        }
+        # Extract context fields into nested dict
+        context = {}
         if all_kwargs.get("commitid") is not None:
-            log_extra["commitid"] = all_kwargs.get("commitid")
+            context["commitid"] = all_kwargs.get("commitid")
         if all_kwargs.get("repoid") is not None:
-            log_extra["repoid"] = all_kwargs.get("repoid")
+            context["repoid"] = all_kwargs.get("repoid")
         if all_kwargs.get("report_type") is not None:
-            log_extra["report_type"] = all_kwargs.get("report_type")
+            context["report_type"] = all_kwargs.get("report_type")
 
         if task_max_retries is not None and current_retries >= task_max_retries:
-            log.error(f"Task {self.name} exceeded max retries", extra=log_extra)
+            log.error(
+                f"Task {self.name} exceeded max retries",
+                extra={
+                    "context": context if context else None,
+                    "current_retries": current_retries,
+                    "max_retries": task_max_retries,
+                    "task_name": self.name,
+                },
+            )
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
             raise MaxRetriesExceededError(
                 f"Task {self.name} exceeded max retries ({task_max_retries})"
@@ -293,14 +297,18 @@ class BaseCodecovTask(celery_app.Task):
         if countdown is None:
             countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**current_retries)
 
-        log_extra.update(
-            {
+        log.warning(
+            f"Task {self.name} retrying",
+            extra={
+                "context": context if context else None,
                 "countdown": countdown,
+                "current_retries": current_retries,
                 "exception_type": type(exc).__name__ if exc else None,
+                "max_retries": task_max_retries,
                 "task_id": getattr(request, "id", None) if request else None,
-            }
+                "task_name": self.name,
+            },
         )
-        log.warning(f"Task {self.name} retrying", extra=log_extra)
 
         celery_max_retries = (
             self.max_retries if max_retries is _NOT_PROVIDED else max_retries
