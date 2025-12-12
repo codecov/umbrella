@@ -52,13 +52,11 @@ class ComparisonSerializer(serializers.Serializer):
     untracked = serializers.SerializerMethodField()
 
     def get_untracked(self, comparison: Comparison) -> list[str]:
-        base_report = comparison.base_report
-        head_report = comparison.head_report
         return [
             f
             for f, _ in comparison.git_comparison["diff"]["files"].items()
-            if (base_report is None or f not in base_report)
-            and (head_report is None or f not in head_report)
+            if (comparison.base_report is None or f not in comparison.base_report)
+            and (comparison.head_report is None or f not in comparison.head_report)
         ]
 
     def get_diff(self, comparison: Comparison) -> dict:
@@ -88,7 +86,6 @@ class FlagComparisonSerializer(serializers.Serializer):
     def get_base_report_totals(self, obj: FlagComparison) -> dict | None:
         if obj.base_report:
             return ReportTotalsSerializer(obj.base_report.totals).data
-        return None
 
 
 class ImpactedFileSegmentSerializer(serializers.Serializer):
