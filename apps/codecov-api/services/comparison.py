@@ -695,12 +695,11 @@ class Comparison:
         )
         diff_data = self.git_comparison["diff"]["files"].get(file_name)
 
+        base_file = None
         if self.base_report is not None:
             base_file = self.base_report.get(file_name)
             if base_file is None and diff_data:
                 base_file = self.base_report.get(diff_data.get("before"))
-        else:
-            base_file = None
 
         if with_src:
             file_content = async_to_sync(self._adapter.get_source)(
