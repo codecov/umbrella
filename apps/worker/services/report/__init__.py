@@ -673,8 +673,15 @@ class ReportService(BaseReportService):
             raw_report_info.error = result.error
             return result
         except ReportEmptyError as e:
+            e.reportid = reportid
             sentry_sdk.capture_exception(e)
-            log.warning("Report is empty", extra={"reportid": reportid})
+            log.warning(
+                "Report is empty",
+                extra={
+                    "reportid": e.reportid,
+                    "archive_path": e.archive_path or archive_url,
+                },
+            )
             result.error = ProcessingError(code=UploadErrorCode.REPORT_EMPTY, params={})
             raw_report_info.error = result.error
             return result
