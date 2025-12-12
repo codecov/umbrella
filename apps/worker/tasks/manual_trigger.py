@@ -95,7 +95,11 @@ class ManualTriggerTask(
 
         still_processing = 0
         for upload in uploads:
-            if not upload.state or upload.state_id == UploadState.UPLOADED.db_id:
+            if (
+                not upload.state
+                or upload.state == "started"
+                or upload.state_id == UploadState.UPLOADED.db_id
+            ):
                 still_processing += 1
 
         if still_processing == 0:

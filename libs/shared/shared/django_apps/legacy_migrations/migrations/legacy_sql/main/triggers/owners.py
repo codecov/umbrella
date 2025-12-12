@@ -8,6 +8,7 @@ def run_sql(schema_editor):
                             set username = null
                             where service = new.service
                             and username = new.username::citext
+                            and ownerid is distinct from new.ownerid
                             returning ownerid)
             delete from sessions where ownerid in (select ownerid from _owners);
             return new;

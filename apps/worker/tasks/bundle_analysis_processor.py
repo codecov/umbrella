@@ -12,7 +12,10 @@ from services.bundle_analysis.report import (
 )
 from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.types import UploadArguments
-from shared.celery_config import bundle_analysis_processor_task_name
+from shared.celery_config import (
+    BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES,
+    bundle_analysis_processor_task_name,
+)
 from shared.reports.enums import UploadState
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
@@ -26,10 +29,7 @@ log = logging.getLogger(__name__)
 class BundleAnalysisProcessorTask(
     BaseCodecovTask, name=bundle_analysis_processor_task_name
 ):
-    # TODO: max_retries should come from config for consistency with other retry limits
-    # (e.g., PREPROCESS_UPLOAD_MAX_RETRIES, UPLOAD_PROCESSING_MAX_RETRIES)
-    # Currently hardcoded to 5, but should use get_config("setup", "tasks", "bundle_analysis", "processor_max_retries", default=5)
-    max_retries = 5
+    max_retries = BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 
     def run_impl(
         self,
