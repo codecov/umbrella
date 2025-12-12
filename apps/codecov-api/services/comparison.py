@@ -673,14 +673,11 @@ class Comparison:
 
     @property
     def files(self) -> Generator[FileComparison]:
-        try:
-            head_report = self.head_report
-            if head_report is None:
-                return
-            for file_name in head_report.files:
-                yield self.get_file_comparison(file_name)
-        except (AttributeError, TypeError, MissingComparisonReport):
+        head_report = self.head_report
+        if head_report is None:
             return
+        for file_name in head_report.files:
+            yield self.get_file_comparison(file_name)
 
     def get_file_comparison(
         self, file_name: str, with_src: bool = False, bypass_max_diff: bool = False
