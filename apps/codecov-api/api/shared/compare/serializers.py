@@ -9,6 +9,7 @@ from services.comparison import (
     Comparison,
     ComparisonReport,
     FileComparison,
+    FlagComparison,
     ImpactedFile,
     Segment,
 )
@@ -50,7 +51,7 @@ class ComparisonSerializer(serializers.Serializer):
     files = serializers.SerializerMethodField()
     untracked = serializers.SerializerMethodField()
 
-    def get_untracked(self, comparison) -> list[str]:
+    def get_untracked(self, comparison: Comparison) -> list[str]:
         base_report = comparison.base_report
         head_report = comparison.head_report
         return [
@@ -60,21 +61,22 @@ class ComparisonSerializer(serializers.Serializer):
             and (head_report is None or f not in head_report)
         ]
 
-    def get_diff(self, comparison) -> dict:
+    def get_diff(self, comparison: Comparison) -> dict:
         return {"git_commits": comparison.git_commits}
 
     def get_files(self, comparison: Comparison) -> list[dict]:
+        if comparison.head_report is None:
+            return []
         return [
             FileComparisonSerializer(file).data
             for file in comparison.files
             if self._should_include_file(file)
         ]
 
-    def _should_include_file(self, file: FileComparison):
+    def _should_include_file(self, file: "FileComparison") -> bool:
         if "has_diff" in self.context:
             return self.context["has_diff"] == file.has_diff
-        else:
-            return True
+        return True
 
 
 class FlagComparisonSerializer(serializers.Serializer):
@@ -83,9 +85,10 @@ class FlagComparisonSerializer(serializers.Serializer):
     head_report_totals = ReportTotalsSerializer(source="head_report.totals")
     diff_totals = ReportTotalsSerializer()
 
-    def get_base_report_totals(self, obj):
+    def get_base_report_totals(self, obj: FlagComparison) -> dict | None:
         if obj.base_report:
             return ReportTotalsSerializer(obj.base_report.totals).data
+        return None
 
 
 class ImpactedFileSegmentSerializer(serializers.Serializer):
