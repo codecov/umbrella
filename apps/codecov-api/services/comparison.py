@@ -672,11 +672,15 @@ class Comparison:
 
     @cached_property
     def files(self):
+        if self.head_report is None:
+            return iter([])
         for file_name in self.head_report.files:
             yield self.get_file_comparison(file_name)
 
     def get_file_comparison(self, file_name, with_src=False, bypass_max_diff=False):
-        head_file = self.head_report.get(file_name)
+        head_file = (
+            self.head_report.get(file_name) if self.head_report is not None else None
+        )
         diff_data = self.git_comparison["diff"]["files"].get(file_name)
 
         if self.base_report is not None:

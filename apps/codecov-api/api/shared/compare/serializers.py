@@ -51,11 +51,13 @@ class ComparisonSerializer(serializers.Serializer):
     untracked = serializers.SerializerMethodField()
 
     def get_untracked(self, comparison) -> list[str]:
+        base_report = comparison.base_report
+        head_report = comparison.head_report
         return [
             f
             for f, _ in comparison.git_comparison["diff"]["files"].items()
-            if f not in (comparison.base_report or [])
-            and f not in (comparison.head_report or [])
+            if (base_report is None or f not in base_report)
+            and (head_report is None or f not in head_report)
         ]
 
     def get_diff(self, comparison) -> dict:
