@@ -673,11 +673,6 @@ class Comparison:
 
     @property
     def files(self) -> Generator[FileComparison]:
-        """
-        Returns a generator of FileComparison objects.
-        This implementation always yields the up-to-date set of FileComparisons,
-        and avoids manual cache management which might break if head_report changes.
-        """
         try:
             head_report = self.head_report
             if head_report is None:
