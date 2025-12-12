@@ -16,6 +16,9 @@ from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
+# TODO: MAX_RETRIES should come from config for consistency with other retry limits
+# (e.g., PREPROCESS_UPLOAD_MAX_RETRIES, UPLOAD_PROCESSING_MAX_RETRIES)
+# Currently hardcoded to 5, but should use get_config("setup", "tasks", "upload", "processor_max_retries", default=5)
 MAX_RETRIES = 5
 MAX_FILE_NOT_FOUND_RETRIES = 1
 FIRST_RETRY_DELAY = 20

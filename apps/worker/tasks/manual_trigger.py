@@ -47,8 +47,8 @@ class ManualTriggerTask(
         try:
             with lock_manager.locked(
                 LockType.MANUAL_TRIGGER,
-                retry_num=self.request.retries,
                 max_retries=TASK_MAX_RETRIES_DEFAULT,
+                retry_num=self.attempts,
             ):
                 return self.process_impl_within_lock(
                     db_session=db_session,
@@ -58,7 +58,7 @@ class ManualTriggerTask(
                     **kwargs,
                 )
         except LockRetry as retry:
-            if self.request.retries >= TASK_MAX_RETRIES_DEFAULT:
+            if self._has_exceeded_max_attempts(TASK_MAX_RETRIES_DEFAULT):
                 return {
                     "notifications_called": False,
                     "message": "Unable to acquire lock",

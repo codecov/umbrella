@@ -424,8 +424,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         try:
             with lock_manager.locked(
                 LockType.UPLOAD_PROCESSING,
-                retry_num=self.request.retries,
                 max_retries=MAX_RETRIES,
+                retry_num=self.attempts,
             ):
                 report_service = ReportService(commit_yaml)
 
@@ -465,7 +465,26 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            if self.request.retries >= MAX_RETRIES:
+            if self._has_exceeded_max_attempts(MAX_RETRIES):
+                attempts = self.attempts
+                max_attempts = MAX_RETRIES + 1
+                log.error(
+                    "Upload finisher exceeded max retries",
+                    extra={
+                        "attempts": attempts,
+                        "commitid": commitid,
+                        "max_attempts": max_attempts,
+                        "max_retries": MAX_RETRIES,
+                        "repoid": repoid,
+                    },
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
                 return
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
@@ -500,8 +519,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         try:
             with lock_manager.locked(
                 LockType.UPLOAD_FINISHER,
-                retry_num=self.request.retries,
                 max_retries=MAX_RETRIES,
+                retry_num=self.attempts,
             ):
                 result = self.finish_reports_processing(
                     db_session, commit, commit_yaml, processing_results
@@ -564,7 +583,26 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
-            if self.request.retries >= MAX_RETRIES:
+            if self._has_exceeded_max_attempts(MAX_RETRIES):
+                attempts = self.attempts
+                max_attempts = MAX_RETRIES + 1
+                log.error(
+                    "Upload finisher exceeded max retries (finisher lock)",
+                    extra={
+                        "attempts": attempts,
+                        "commitid": commitid,
+                        "max_attempts": max_attempts,
+                        "max_retries": MAX_RETRIES,
+                        "repoid": repoid,
+                    },
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
                 return
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
