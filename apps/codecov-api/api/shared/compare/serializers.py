@@ -55,7 +55,7 @@ class ComparisonSerializer(serializers.Serializer):
             f
             for f, _ in comparison.git_comparison["diff"]["files"].items()
             if f not in (comparison.base_report or [])
-            and f not in comparison.head_report
+            and f not in (comparison.head_report or [])
         ]
 
     def get_diff(self, comparison) -> dict:
