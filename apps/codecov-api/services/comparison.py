@@ -690,9 +690,9 @@ class Comparison:
     def get_file_comparison(
         self, file_name: str, with_src: bool = False, bypass_max_diff: bool = False
     ) -> FileComparison:
-        head_file = (
-            self.head_report.get(file_name) if self.head_report is not None else None
-        )
+        head_file = None
+        if self.head_report is not None:
+            head_file = self.head_report.get(file_name)
         diff_data = self.git_comparison["diff"]["files"].get(file_name)
 
         base_file = None
