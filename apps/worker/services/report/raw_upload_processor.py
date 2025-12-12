@@ -87,7 +87,7 @@ def process_raw_upload(
             report.merge(report_from_file)
 
     if not report:
-        raise ReportEmptyError("No files found in report.")
+        raise ReportEmptyError(archive_path=session.archive)
 
     _sessionid, session = report.add_session(session, use_id_from_session=True)
     session.totals = report.totals
