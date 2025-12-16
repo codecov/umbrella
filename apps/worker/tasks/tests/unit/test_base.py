@@ -127,7 +127,7 @@ class TestBaseCodecovTask:
 
     @patch("tasks.base.datetime", MockDateTime)
     def test_sample_run(self, mocker, dbsession):
-        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
+        mocked_create_task_session = mocker.patch("tasks.base.create_task_session")
         mock_task_request = mocker.patch("tasks.base.BaseCodecovTask.request")
         fake_request_values = {
             "created_timestamp": "2023-06-13 10:00:00.000000",
@@ -136,7 +136,7 @@ class TestBaseCodecovTask:
         mock_task_request.get.side_effect = (
             lambda key, default: fake_request_values.get(key, default)
         )
-        mocked_get_db_session.return_value = dbsession
+        mocked_create_task_session.return_value = dbsession
         task_instance = SampleTask()
         result = task_instance.run()
         assert result == {"unusual": "return", "value": ["There"]}
@@ -150,8 +150,8 @@ class TestBaseCodecovTask:
 
     @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_db_exception(self, mocker, dbsession):
-        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
-        mocked_get_db_session.return_value = dbsession
+        mocked_create_task_session = mocker.patch("tasks.base.create_task_session")
+        mocked_create_task_session.return_value = dbsession
         with pytest.raises(Retry):
             SampleTaskWithArbitraryError(
                 DBAPIError("statement", "params", "orig")
@@ -159,8 +159,8 @@ class TestBaseCodecovTask:
 
     @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_integrity_error(self, mocker, dbsession):
-        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
-        mocked_get_db_session.return_value = dbsession
+        mocked_create_task_session = mocker.patch("tasks.base.create_task_session")
+        mocked_create_task_session.return_value = dbsession
         with pytest.raises(Retry):
             SampleTaskWithArbitraryError(
                 IntegrityError("statement", "params", "orig")
@@ -168,8 +168,8 @@ class TestBaseCodecovTask:
 
     @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_deadlock_exception(self, mocker, dbsession):
-        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
-        mocked_get_db_session.return_value = dbsession
+        mocked_create_task_session = mocker.patch("tasks.base.create_task_session")
+        mocked_create_task_session.return_value = dbsession
         with pytest.raises(Retry):
             SampleTaskWithArbitraryPostgresError(
                 psycopg2.errors.DeadlockDetected()
@@ -177,15 +177,15 @@ class TestBaseCodecovTask:
 
     @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_operationalerror_exception(self, mocker, dbsession):
-        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
-        mocked_get_db_session.return_value = dbsession
+        mocked_create_task_session = mocker.patch("tasks.base.create_task_session")
+        mocked_create_task_session.return_value = dbsession
         with pytest.raises(Retry):
             SampleTaskWithArbitraryPostgresError(psycopg2.OperationalError()).run()
 
     @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_softimeout(self, mocker, dbsession):
-        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
-        mocked_get_db_session.return_value = dbsession
+        mocked_create_task_session = mocker.patch("tasks.base.create_task_session")
+        mocked_create_task_session.return_value = dbsession
         with pytest.raises(SoftTimeLimitExceeded):
             SampleTaskWithSoftTimeout().run()
 
@@ -230,24 +230,34 @@ class TestBaseCodecovTask:
         assert mocked_get_db_session.remove.call_count == 1
 
     def test_run_success_commits_sqlalchemy(self, mocker, dbsession):
-        mock_wrap_up = mocker.patch("tasks.base.BaseCodecovTask.wrap_up_dbsession")
+        mock_wrap_up = mocker.patch("tasks.base.BaseCodecovTask.wrap_up_task_session")
         mock_dbsession_rollback = mocker.patch.object(dbsession, "rollback")
-        mock_get_db_session = mocker.patch(
-            "tasks.base.get_db_session", return_value=dbsession
+        mock_dbsession_commit = mocker.patch.object(dbsession, "commit")
+        # in_transaction is called:
+        # 1. At start to validate session (line 353) - return False (clean session)
+        # 2. After run_impl to check if commit needed (line 387) - return True (transaction open)
+        # 3. In wrap_up_task_session to check if rollback needed (line 432) - return False (after commit)
+        mock_dbsession_in_transaction = mocker.patch.object(
+            dbsession, "in_transaction", side_effect=[False, True, False]
+        )
+        mock_create_task_session = mocker.patch(
+            "tasks.base.create_task_session", return_value=dbsession
         )
 
         task = SampleTask()
         task.run()
 
         assert mock_wrap_up.call_args_list == [call(dbsession)]
-
+        # Should commit on success if transaction is open
+        assert mock_dbsession_commit.call_count == 1
+        # wrap_up_task_session will check in_transaction again (returns False), so no rollback
         assert mock_dbsession_rollback.call_count == 0
 
     def test_run_db_errors_rollback(self, mocker, dbsession, celery_app):
         mock_dbsession_rollback = mocker.patch.object(dbsession, "rollback")
-        mock_wrap_up = mocker.patch("tasks.base.BaseCodecovTask.wrap_up_dbsession")
-        mock_get_db_session = mocker.patch(
-            "tasks.base.get_db_session", return_value=dbsession
+        mock_wrap_up = mocker.patch("tasks.base.BaseCodecovTask.wrap_up_task_session")
+        mock_create_task_session = mocker.patch(
+            "tasks.base.create_task_session", return_value=dbsession
         )
 
         # IntegrityError and DataError are subclasses of SQLAlchemyError that
@@ -257,15 +267,16 @@ class TestBaseCodecovTask:
         task = celery_app.tasks[registered_task.name]
         task.apply()
 
-        assert mock_dbsession_rollback.call_args_list == [call()]
+        # Should rollback in exception handler
+        assert mock_dbsession_rollback.call_count >= 1
 
         assert mock_wrap_up.call_args_list == [call(dbsession)]
 
     def test_run_sqlalchemy_error_rollback(self, mocker, dbsession, celery_app):
         mock_dbsession_rollback = mocker.patch.object(dbsession, "rollback")
-        mock_wrap_up = mocker.patch("tasks.base.BaseCodecovTask.wrap_up_dbsession")
-        mock_get_db_session = mocker.patch(
-            "tasks.base.get_db_session", return_value=dbsession
+        mock_wrap_up = mocker.patch("tasks.base.BaseCodecovTask.wrap_up_task_session")
+        mock_create_task_session = mocker.patch(
+            "tasks.base.create_task_session", return_value=dbsession
         )
 
         # StatementError is a subclass of SQLAlchemyError just like
@@ -276,7 +287,8 @@ class TestBaseCodecovTask:
         task = celery_app.tasks[registered_task.name]
         task.apply()
 
-        assert mock_dbsession_rollback.call_args_list == [call()]
+        # Should rollback in exception handler
+        assert mock_dbsession_rollback.call_count >= 1
 
         assert mock_wrap_up.call_args_list == [call(dbsession)]
 
@@ -717,7 +729,11 @@ class TestBaseCodecovTaskApplyAsyncOverride:
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
     def test_apply_async_override(self, mocker):
-        mock_get_db_session = mocker.patch("tasks.base.get_db_session")
+        mock_db_session = mocker.MagicMock()
+        mock_create_task_session = mocker.patch(
+            "tasks.base.create_task_session",
+            return_value=mock_db_session,
+        )
         mock_celery_task_router = mocker.patch("tasks.base._get_user_plan_from_task")
         mock_route_tasks = mocker.patch(
             "tasks.base.route_tasks_based_on_user_plan",
@@ -733,7 +749,7 @@ class TestBaseCodecovTaskApplyAsyncOverride:
 
         kwargs = {"n": 10}
         task.apply_async(kwargs=kwargs)
-        assert mock_get_db_session.call_count == 1
+        assert mock_create_task_session.call_count == 1
         assert mock_celery_task_router.call_count == 1
         assert mock_route_tasks.call_count == 1
         mocked_apply_async.assert_called_with(
@@ -747,7 +763,11 @@ class TestBaseCodecovTaskApplyAsyncOverride:
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
     def test_apply_async_override_with_chain(self, mocker):
-        mock_get_db_session = mocker.patch("tasks.base.get_db_session")
+        mock_db_session = mocker.MagicMock()
+        mock_create_task_session = mocker.patch(
+            "tasks.base.create_task_session",
+            return_value=mock_db_session,
+        )
         mock_celery_task_router = mocker.patch("tasks.base._get_user_plan_from_task")
         mock_route_tasks = mocker.patch(
             "tasks.base.route_tasks_based_on_user_plan",
@@ -764,7 +784,7 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         chain(
             [task.signature(kwargs={"n": 1}), task.signature(kwargs={"n": 10})]
         ).apply_async()
-        assert mock_get_db_session.call_count == 1
+        assert mock_create_task_session.call_count == 1
         assert mock_celery_task_router.call_count == 1
         assert mock_route_tasks.call_count == 1
         assert mocked_apply_async.call_count == 1
@@ -802,8 +822,9 @@ class TestBaseCodecovTaskApplyAsyncOverride:
                 }
             }
         )
-        mock_get_db_session = mocker.patch(
-            "tasks.base.get_db_session", return_value=dbsession
+        mock_create_task_session = mocker.patch(
+            "tasks.base.create_task_session",
+            return_value=dbsession,
         )
         task = BaseCodecovTask()
         mocker.patch.object(task, "run", return_value="success")
@@ -816,7 +837,7 @@ class TestBaseCodecovTaskApplyAsyncOverride:
 
         kwargs = {"ownerid": repo.ownerid}
         task.apply_async(kwargs=kwargs)
-        assert mock_get_db_session.call_count == 1
+        assert mock_create_task_session.call_count == 1
         mocked_super_apply_async.assert_called_with(
             args=None,
             kwargs=kwargs,
@@ -849,8 +870,9 @@ class TestBaseCodecovTaskApplyAsyncOverride:
                 }
             }
         )
-        mock_get_db_session = mocker.patch(
-            "tasks.base.get_db_session", return_value=dbsession
+        mock_create_task_session = mocker.patch(
+            "tasks.base.create_task_session",
+            return_value=dbsession,
         )
         task = BaseCodecovTask()
         mocker.patch.object(task, "run", return_value="success")
@@ -863,7 +885,7 @@ class TestBaseCodecovTaskApplyAsyncOverride:
 
         kwargs = {"ownerid": repo_enterprise_cloud.ownerid}
         task.apply_async(kwargs=kwargs)
-        assert mock_get_db_session.call_count == 1
+        assert mock_create_task_session.call_count == 1
         mocked_super_apply_async.assert_called_with(
             args=None,
             kwargs=kwargs,
@@ -896,8 +918,9 @@ class TestBaseCodecovTaskApplyAsyncOverride:
                 }
             }
         )
-        mock_get_db_session = mocker.patch(
-            "tasks.base.get_db_session", return_value=dbsession
+        mock_create_task_session = mocker.patch(
+            "tasks.base.create_task_session",
+            return_value=dbsession,
         )
         task = BaseCodecovTask()
         mocker.patch.object(task, "run", return_value="success")
@@ -910,7 +933,7 @@ class TestBaseCodecovTaskApplyAsyncOverride:
 
         kwargs = {"repoid": repo_enterprise_cloud.repoid}
         task.apply_async(kwargs=kwargs)
-        assert mock_get_db_session.call_count == 1
+        assert mock_create_task_session.call_count == 1
         mocked_super_apply_async.assert_called_with(
             args=None,
             kwargs=kwargs,

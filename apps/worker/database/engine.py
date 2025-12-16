@@ -96,3 +96,69 @@ session_factory = SessionFactory(
 session = session_factory.create_session()
 
 get_db_session = session
+
+
+# Per-task session support
+# Cache for sessionmaker to avoid recreating it
+_task_session_maker = None
+
+
+def _get_task_session_maker():
+    """Get or create the sessionmaker for per-task sessions."""
+    global _task_session_maker  # noqa: PLW0603
+
+    if _task_session_maker is None:
+        # Initialize engines if not already done
+        if session_factory.main_engine is None:
+            # Trigger engine creation
+            _ = session_factory.create_session()
+
+        main_engine = session_factory.main_engine
+        timeseries_engine = session_factory.timeseries_engine
+
+        # Create sessionmaker for per-task sessions
+        if is_timeseries_enabled() and timeseries_engine is not None:
+
+            class RoutingSession(Session):
+                def get_bind(self, mapper=None, clause=None, **kwargs):
+                    if mapper is not None and issubclass(
+                        mapper.class_, TimeseriesBaseModel
+                    ):
+                        return timeseries_engine
+                    if (
+                        clause is not None
+                        and hasattr(clause, "table")
+                        and clause.table.name.startswith("timeseries_")
+                    ):
+                        return timeseries_engine
+                    return main_engine
+
+            _task_session_maker = sessionmaker(class_=RoutingSession)
+        else:
+            _task_session_maker = sessionmaker(bind=main_engine)
+
+    return _task_session_maker
+
+
+def create_task_session():
+    """
+    Create a new session for a task.
+
+    This creates an isolated session per task, preventing transaction contamination.
+    The caller is responsible for cleaning up the session (rollback/close).
+
+    Returns:
+        Session: A new SQLAlchemy session instance
+
+    Example:
+        db_session = create_task_session()
+        try:
+            # Use db_session
+            result = db_session.query(...).first()
+            db_session.commit()
+        finally:
+            db_session.rollback()
+            db_session.close()
+    """
+    session_maker = _get_task_session_maker()
+    return session_maker()

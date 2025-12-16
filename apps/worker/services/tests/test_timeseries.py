@@ -1,7 +1,10 @@
+import logging
+import types
 from datetime import UTC, datetime
 
 import pytest
 from celery import group
+from sqlalchemy.orm import Session as SQLAlchemySession
 
 from database.models.timeseries import Dataset, Measurement, MeasurementName
 from database.tests.factories import CommitFactory, RepositoryFactory
@@ -21,6 +24,8 @@ from shared.reports.types import ReportLine
 from shared.utils.sessions import Session
 from shared.yaml import UserYaml
 from tasks.save_commit_measurements import save_commit_measurements
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -587,10 +592,11 @@ class TestTimeseriesService:
         dataset_names,
         mocker,
         mock_repo_provider,
+        dbsession,
     ):
-        dbsession = repository.get_db_session()
+        # Use dbsession fixture directly - repository and commit are bound to it
         mocker.patch.object(dbsession, "close")
-        mocker.patch("tasks.base.get_db_session", return_value=dbsession)
+        mocker.patch("tasks.base.create_task_session", return_value=dbsession)
         mocker.patch.object(group, "apply_async", group.apply)
 
         mocker.patch(
@@ -609,6 +615,32 @@ class TestTimeseriesService:
         dbsession.add(commit)
         dbsession.flush()
 
+        # Ensure commit is properly bound to session
+        dbsession.refresh(commit)
+
+        # Verify commit is bound before patching
+        actual_session = SQLAlchemySession.object_session(commit)
+        assert actual_session is dbsession, (
+            f"Commit should be bound to dbsession, got {actual_session}"
+        )
+
+        # Patch get_db_session directly on the commit instance using MethodType
+        # This properly binds the function as an instance method
+        def mock_get_db_session(self):
+            logger.debug(
+                f"DEBUG mock_get_db_session: Returning dbsession for commit {self.id_}"
+            )
+            return dbsession
+
+        commit.get_db_session = types.MethodType(mock_get_db_session, commit)
+
+        # Verify patch worked
+        patched_result = commit.get_db_session()
+        assert patched_result is dbsession, (
+            f"Patch should return dbsession, got {patched_result}"
+        )
+        logger.debug(f"DEBUG: commit.get_db_session()={patched_result}")
+
         get_repo_yaml = mocker.patch("tasks.save_commit_measurements.get_repo_yaml")
         get_current_yaml = mocker.patch("tasks.upsert_component.get_repo_yaml")
         yaml_dict = {
@@ -626,6 +658,9 @@ class TestTimeseriesService:
         get_repo_yaml.return_value = UserYaml(yaml_dict)
         get_current_yaml.return_value = UserYaml(yaml_dict)
 
+        logger.debug(
+            f"DEBUG: About to call save_commit_measurements, commit.get_db_session()={commit.get_db_session()}"
+        )
         save_commit_measurements(commit, dataset_names=dataset_names)
 
         # Want to commit here to have the results persisted properly.
@@ -938,10 +973,14 @@ class TestTimeseriesService:
         other_commit = CommitFactory.create(branch="foo", repository=other_repository)
         dbsession.add(other_commit)
         dbsession.flush()
+        # Mock other_commit.get_db_session() directly to return the test session
+        mocker.patch.object(other_commit, "get_db_session", return_value=dbsession)
         save_commit_measurements(other_commit, dataset_names=dataset_names)
         other_commit = CommitFactory.create(branch="bar", repository=other_repository)
         dbsession.add(other_commit)
         dbsession.flush()
+        # Mock other_commit.get_db_session() directly to return the test session
+        mocker.patch.object(other_commit, "get_db_session", return_value=dbsession)
         save_commit_measurements(other_commit, dataset_names=dataset_names)
 
         assert (
@@ -1017,9 +1056,9 @@ class TestTimeseriesService:
             "tasks.save_commit_measurements.PARALLEL_COMPONENT_COMPARISON.check_value",
             return_value=True,
         )
-        dbsession = repository.get_db_session()
+        # Use dbsession fixture directly - repository and commit are bound to it
         mocker.patch.object(dbsession, "close")
-        mocker.patch("tasks.base.get_db_session", return_value=dbsession)
+        mocker.patch("tasks.base.create_task_session", return_value=dbsession)
         mocker.patch.object(group, "apply_async", group.apply)
 
         mocker.patch(
@@ -1059,10 +1098,38 @@ class TestTimeseriesService:
         commit = CommitFactory.create(branch="foo", repository=repository)
         dbsession.add(commit)
         dbsession.flush()
+        dbsession.refresh(commit)  # Ensure commit is properly bound
+
+        # Patch get_db_session directly on this commit instance using MethodType
+        def mock_get_db_session(self):
+            return dbsession
+
+        commit.get_db_session = types.MethodType(mock_get_db_session, commit)
+        assert commit.get_db_session() is dbsession, "Patch should return dbsession"
+        logger.debug(
+            f"DEBUG: commit.id_={commit.id_}, commit.get_db_session()={commit.get_db_session()}"
+        )
+        logger.debug(
+            f"DEBUG: About to call save_commit_measurements for commit {commit.id_}"
+        )
         save_commit_measurements(commit, dataset_names=dataset_names)
         commit = CommitFactory.create(branch="bar", repository=repository)
         dbsession.add(commit)
         dbsession.flush()
+        dbsession.refresh(commit)  # Ensure commit is properly bound
+
+        # Patch get_db_session directly on this commit instance using MethodType
+        def mock_get_db_session(self):
+            return dbsession
+
+        commit.get_db_session = types.MethodType(mock_get_db_session, commit)
+        assert commit.get_db_session() is dbsession, "Patch should return dbsession"
+        logger.debug(
+            f"DEBUG: commit.id_={commit.id_}, commit.get_db_session()={commit.get_db_session()}"
+        )
+        logger.debug(
+            f"DEBUG: About to call save_commit_measurements for commit {commit.id_}"
+        )
         save_commit_measurements(commit, dataset_names=dataset_names)
 
         # Another unrelated repository, make sure that this one isn't deleted as a side effect
@@ -1070,10 +1137,28 @@ class TestTimeseriesService:
         other_commit = CommitFactory.create(branch="foo", repository=other_repository)
         dbsession.add(other_commit)
         dbsession.flush()
+        dbsession.refresh(other_commit)  # Ensure commit is properly bound
+
+        # Patch get_db_session directly on this commit instance using MethodType
+        def mock_get_db_session(self):
+            return dbsession
+
+        other_commit.get_db_session = types.MethodType(
+            mock_get_db_session, other_commit
+        )
         save_commit_measurements(other_commit, dataset_names=dataset_names)
         other_commit = CommitFactory.create(branch="bar", repository=other_repository)
         dbsession.add(other_commit)
         dbsession.flush()
+        dbsession.refresh(other_commit)  # Ensure commit is properly bound
+
+        # Patch get_db_session directly on this commit instance using MethodType
+        def mock_get_db_session(self):
+            return dbsession
+
+        other_commit.get_db_session = types.MethodType(
+            mock_get_db_session, other_commit
+        )
         save_commit_measurements(other_commit, dataset_names=dataset_names)
 
         flag_ids = {

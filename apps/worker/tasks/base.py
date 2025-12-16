@@ -14,10 +14,11 @@ from sqlalchemy.exc import (
     InvalidRequestError,
     SQLAlchemyError,
 )
+from sqlalchemy.orm import Session
 
 from app import celery_app
 from celery_task_router import _get_ownerid_from_task, _get_user_plan_from_task
-from database.engine import get_db_session
+from database.engine import create_task_session, get_db_session
 from database.enums import CommitErrorTypes
 from database.models.core import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
@@ -193,9 +194,17 @@ class BaseCodecovTask(celery_app.Task):
 
     @sentry_sdk.trace
     def apply_async(self, args=None, kwargs=None, **options):
-        db_session = get_db_session()
-        user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
-        ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
+        # Use temporary session for routing (read-only, short-lived)
+        routing_session = create_task_session()
+        try:
+            user_plan = _get_user_plan_from_task(routing_session, self.name, kwargs)
+            ownerid = _get_ownerid_from_task(routing_session, self.name, kwargs)
+        finally:
+            # Always cleanup routing session
+            if routing_session.in_transaction():
+                routing_session.rollback()
+            routing_session.close()
+
         route_with_extra_config = route_tasks_based_on_user_plan(
             self.name, user_plan, ownerid
         )
@@ -337,7 +346,19 @@ class BaseCodecovTask(celery_app.Task):
     @sentry_sdk.trace
     def run(self, *args, **kwargs):
         with self.task_full_runtime.time():  # Timer isn't tested
-            db_session = get_db_session()
+            # Create NEW session for this task (per-task session)
+            db_session = create_task_session()
+
+            # Validate session is clean (no inherited transaction)
+            if db_session.in_transaction():
+                log.warning(
+                    "New task session has open transaction, rolling back",
+                    extra={
+                        "task": self.name,
+                        "task_id": getattr(self.request, "id", None),
+                    },
+                )
+                db_session.rollback()
 
             log_context = LogContext(
                 repo_id=kwargs.get("repoid") or kwargs.get("repo_id"),
@@ -361,11 +382,16 @@ class BaseCodecovTask(celery_app.Task):
 
             try:
                 with self.task_core_runtime.time():  # Timer isn't tested
-                    return self.run_impl(db_session, *args, **kwargs)
+                    result = self.run_impl(db_session, *args, **kwargs)
+                    # If we got here, task succeeded - commit if transaction is open
+                    if db_session.in_transaction():
+                        db_session.commit()
+                    return result
             except InterfaceError as ex:
                 sentry_sdk.capture_exception(
                     ex,
                 )
+                db_session.rollback()
             except (DataError, IntegrityError):
                 log.exception(
                     "Errors related to the constraints of database happened",
@@ -382,12 +408,51 @@ class BaseCodecovTask(celery_app.Task):
                     UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
                 if TestResultsFlow.has_begun():
                     TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+                db_session.rollback()
+            except Exception:
+                # Catch-all: rollback on any exception
+                db_session.rollback()
+                raise
             finally:
-                self.wrap_up_dbsession(db_session)
+                # Always cleanup task session
+                self.wrap_up_task_session(db_session)
+
+    def wrap_up_task_session(self, db_session: Session):
+        """
+        Clean up task-specific session.
+
+        Ensures session is properly closed and any remaining transaction is rolled back.
+        This is called for per-task sessions created via create_task_session().
+
+        Args:
+            db_session: The task session to clean up
+        """
+        try:
+            # Rollback any remaining transaction
+            if db_session.in_transaction():
+                db_session.rollback()
+        except Exception as e:
+            log.warning(
+                "Error rolling back task session",
+                extra={"error": str(e), "task": self.name},
+                exc_info=True,
+            )
+        finally:
+            try:
+                db_session.close()
+            except Exception as e:
+                log.warning(
+                    "Error closing task session",
+                    extra={"error": str(e), "task": self.name},
+                    exc_info=True,
+                )
 
     def wrap_up_dbsession(self, db_session):
         """
-        Wraps up dbsession, commita what is relevant and closes the session
+        Wraps up dbsession, commits what is relevant and closes the session.
+
+        LEGACY METHOD: This is kept for backward compatibility (routing, etc.).
+        For task sessions, use wrap_up_task_session() instead.
 
         This function deals with the very corner case of when a `SoftTimeLimitExceeded`
             is raised during the execution of `db_session.commit()`. When it happens,
@@ -397,7 +462,7 @@ class BaseCodecovTask(celery_app.Task):
             same process would also lose access to db.
 
         So we need to do two ugly exception-catching:
-            1) For if `SoftTimeLimitExceeded` was raised  while commiting
+            1) For if `SoftTimeLimitExceeded` was raised while committing
             2) For if the exception left `db_session` in an unusable state
         """
         try:

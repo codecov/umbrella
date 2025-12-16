@@ -26,6 +26,13 @@ log = logging.getLogger(__name__)
 
 def save_commit_measurements(commit: Commit, dataset_names: Sequence[str]) -> None:
     db_session = commit.get_db_session()
+    log.debug(
+        f"DEBUG save_commit_measurements: commit.id_={commit.id_}, db_session={db_session}, db_session type={type(db_session)}"
+    )
+    if db_session is None:
+        raise ValueError(
+            f"commit.get_db_session() returned None for commit {commit.id_}"
+        )
 
     current_yaml = get_repo_yaml(commit.repository)
     report_service = ReportService(current_yaml)

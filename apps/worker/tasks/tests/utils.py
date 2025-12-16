@@ -17,18 +17,27 @@ def run_tasks() -> Generator[None]:
 
 
 GLOBALS_USING_SESSION = [
-    "celery_task_router.get_db_session",
     "database.engine.get_db_session",
     "tasks.base.get_db_session",
+]
+
+GLOBALS_USING_TASK_SESSION = [
+    "tasks.base.create_task_session",
+    "database.engine.create_task_session",
 ]
 
 
 def hook_session(mocker, dbsession: Session):
     """
-    This patches various module-local imports related to `get_db_session`.
+    This patches various module-local imports related to `get_db_session` and `create_task_session`.
+    For tasks, we now use `create_task_session` instead of `get_db_session`.
     """
     mocker.patch("shared.metrics")
+    # Patch get_db_session for routing and legacy code
     for path in GLOBALS_USING_SESSION:
+        mocker.patch(path, return_value=dbsession)
+    # Patch create_task_session for task execution
+    for path in GLOBALS_USING_TASK_SESSION:
         mocker.patch(path, return_value=dbsession)
 
 

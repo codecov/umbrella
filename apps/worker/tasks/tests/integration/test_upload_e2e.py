@@ -133,7 +133,7 @@ def setup_mocks(
     # patch various `get_db_session` imports
     hook_session(mocker, dbsession)
     # to not close the session after each task
-    mocker.patch("tasks.base.BaseCodecovTask.wrap_up_dbsession")
+    mocker.patch("tasks.base.BaseCodecovTask.wrap_up_task_session")
     # patch various `get_repo_provider_service` imports
     hook_repo_provider(mocker, mock_repo_provider)
     # avoid some calls reaching out to git providers
