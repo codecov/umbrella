@@ -1142,3 +1142,43 @@ class OwnerToBeDeleted(BaseModel):
 
     def __str__(self):
         return f"Owner to be deleted: {self.owner_id}"
+
+
+class OwnerExport(BaseCodecovModel):
+    """
+    Tracks owner data export jobs.
+
+    Note: This model's data is for internal tracking only.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending"
+        IN_PROGRESS = "in_progress"
+        COMPLETED = "completed"
+        FAILED = "failed"
+
+    owner = models.ForeignKey(Owner, on_delete=models.CASCADE, related_name="exports")
+
+    since_date = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING
+    )
+    error_message = models.TextField(null=True, blank=True)
+    download_url = models.URLField(max_length=500, null=True, blank=True)
+    download_expires_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="triggered_exports",
+    )
+    task_ids = models.JSONField(null=True, blank=True)
+    stats = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        app_label = CODECOV_AUTH_APP_LABEL
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Export<{self.owner}/{self.status}>"
