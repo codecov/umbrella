@@ -171,10 +171,20 @@ class TestAnalyticsNotifierTask(
         try:
             with lock_manager.locked(
                 LockType.NOTIFICATION,
-                retry_num=self.request.retries,
+                max_retries=5,
+                retry_num=self.attempts,
             ):
                 yield
         except LockRetry as retry:
+            if retry.max_retries_exceeded:
+                log.error(
+                    "Not retrying lock acquisition - max retries exceeded",
+                    extra={
+                        "retry_num": retry.retry_num,
+                        "max_attempts": retry.max_attempts,
+                    },
+                )
+                return
             self.retry(max_retries=5, countdown=retry.countdown)
 
     def _check_fencing_token(
