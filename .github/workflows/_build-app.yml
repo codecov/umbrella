@@ -81,9 +81,11 @@ jobs:
           make save.requirements
 
       - name: Build app
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         run: |
-          make ${{ inputs.make_target_prefix }}build.app
-          make ${{ inputs.make_target_prefix }}save.app
+          make "$MAKE_TARGET_PREFIX"build.app
+          make "$MAKE_TARGET_PREFIX"save.app
 
   build-test-app:
     name: Build Test App
@@ -143,6 +145,8 @@ jobs:
           make save.test-requirements
 
       - name: Build Test App
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         run: |
-          make ${{ inputs.make_target_prefix }}build.test-app
-          make ${{ inputs.make_target_prefix }}save.test-app
+          make "$MAKE_TARGET_PREFIX"build.test-app
+          make "$MAKE_TARGET_PREFIX"save.test-app
