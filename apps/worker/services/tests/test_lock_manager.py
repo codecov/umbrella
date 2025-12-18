@@ -6,7 +6,12 @@ import pytest
 from redis.exceptions import LockError
 
 from database.enums import ReportType
-from services.lock_manager import LockManager, LockRetry, LockType
+from services.lock_manager import (
+    LockManager,
+    LockMaxRetriesExceededError,
+    LockRetry,
+    LockType,
+)
 from tasks.base import BaseCodecovTask
 
 
@@ -151,6 +156,7 @@ class TestLockManager:
 
         assert exc_info.value.countdown > 0
         assert isinstance(exc_info.value.countdown, int)
+        assert exc_info.value.max_retries_exceeded is False
 
     def test_locked_exponential_backoff_retry_0(self, mock_redis):
         """Test exponential backoff calculation for retry_num=0"""
@@ -232,14 +238,24 @@ class TestLockManager:
         assert len(error_logs) == 0
 
     def test_locked_max_retries_exceeded(self, mock_redis, caplog):
-        """Test that max_retries exceeded logs error"""
+        """Test that max_retries exceeded raises LockMaxRetriesExceededError (inherits from LockRetry)"""
         mock_redis.lock.side_effect = LockError()
 
         manager = LockManager(repoid=123, commitid="abc123")
         with caplog.at_level(logging.ERROR):
-            with pytest.raises(LockRetry):
+            with pytest.raises(LockMaxRetriesExceededError) as exc_info:
                 with manager.locked(LockType.UPLOAD, retry_num=5, max_retries=3):
                     pass
+
+        # LockMaxRetriesExceededError inherits from LockRetry, so it can be caught as LockRetry
+        assert isinstance(exc_info.value, LockMaxRetriesExceededError)
+        assert isinstance(exc_info.value, LockRetry)  # Backwards compatibility
+        assert exc_info.value.max_retries_exceeded is True
+        assert exc_info.value.retry_num == 5
+        assert exc_info.value.max_attempts == 4  # max_retries + 1
+        assert exc_info.value.lock_name == "upload_lock_123_abc123"
+        assert exc_info.value.repoid == 123
+        assert exc_info.value.commitid == "abc123"
 
         error_logs = [
             r
@@ -251,14 +267,23 @@ class TestLockManager:
         assert error_logs[0].__dict__["retry_num"] == 5
 
     def test_locked_max_retries_exceeded_at_boundary(self, mock_redis, caplog):
-        """Test that max_retries boundary condition logs error"""
+        """Test that max_retries boundary condition raises LockMaxRetriesExceededError (inherits from LockRetry)"""
         mock_redis.lock.side_effect = LockError()
 
         manager = LockManager(repoid=123, commitid="abc123")
         with caplog.at_level(logging.ERROR):
-            with pytest.raises(LockRetry):
-                with manager.locked(LockType.UPLOAD, retry_num=3, max_retries=3):
+            with pytest.raises(LockMaxRetriesExceededError) as exc_info:
+                # retry_num now represents self.attempts (starts at 1)
+                # max_retries=3 means max_attempts=4, so retry_num=4 should exceed
+                with manager.locked(LockType.UPLOAD, retry_num=4, max_retries=3):
                     pass
+
+        # LockMaxRetriesExceededError inherits from LockRetry, so it can be caught as LockRetry
+        assert isinstance(exc_info.value, LockMaxRetriesExceededError)
+        assert isinstance(exc_info.value, LockRetry)  # Backwards compatibility
+        assert exc_info.value.max_retries_exceeded is True
+        assert exc_info.value.retry_num == 4
+        assert exc_info.value.max_attempts == 4
 
         error_logs = [
             r
