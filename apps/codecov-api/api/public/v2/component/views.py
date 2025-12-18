@@ -47,11 +47,9 @@ class ComponentViewSet(viewsets.ViewSet, RepoPropertyMixin):
         components_with_coverage = []
 
         for component in components:
-            if not report:
-                coverage = None
-            else:
+            coverage = None
+            if report:
                 component_report = component_filtered_report(report, [component])
-                coverage = None
                 if component_report.totals.coverage is not None:
                     coverage = round_decimals_down(
                         float(component_report.totals.coverage), 2
