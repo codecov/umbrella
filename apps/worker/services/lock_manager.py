@@ -71,29 +71,6 @@ class LockRetry(Exception):
             super().__init__(f"Lock acquisition failed, retry in {countdown} seconds")
 
 
-class LockMaxRetriesExceededError(LockRetry):
-    """Deprecated: Use LockRetry with max_retries_exceeded=True instead."""
-
-    def __init__(
-        self,
-        retry_num: int,
-        max_attempts: int,
-        lock_name: str,
-        repoid: int,
-        commitid: str,
-    ):
-        countdown = 0
-        super().__init__(
-            countdown=countdown,
-            max_retries_exceeded=True,
-            retry_num=retry_num,
-            max_attempts=max_attempts,
-            lock_name=lock_name,
-            repoid=repoid,
-            commitid=commitid,
-        )
-
-
 class LockManager:
     def __init__(
         self,
@@ -187,7 +164,9 @@ class LockManager:
 
             if max_retries is not None and retry_num > max_retries:
                 max_attempts = max_retries + 1
-                error = LockMaxRetriesExceededError(
+                error = LockRetry(
+                    countdown=0,
+                    max_retries_exceeded=True,
                     retry_num=retry_num,
                     max_attempts=max_attempts,
                     lock_name=lock_name,
