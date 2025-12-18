@@ -81,6 +81,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         - Invalidating whatever cache is done
     """
 
+    max_retries = UPLOAD_PROCESSOR_MAX_RETRIES
+
     def _find_started_uploads_with_reports(
         self, db_session, commit: Commit
     ) -> set[int]:
