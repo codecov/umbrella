@@ -46,31 +46,23 @@ class ComponentViewSet(viewsets.ViewSet, RepoPropertyMixin):
         components = commit_components(commit, self.owner)
         components_with_coverage = []
 
-        # If there's no report, return components with None coverage
-        if not report:
-            components_with_coverage.extend(
-                {
-                    "component_id": component.component_id,
-                    "name": component.name,
-                    "coverage": None,
-                }
-                for component in components
-            )
-        else:
-            for component in components:
+        for component in components:
+            if not report:
+                coverage = None
+            else:
                 component_report = component_filtered_report(report, [component])
                 coverage = None
                 if component_report.totals.coverage is not None:
                     coverage = round_decimals_down(
                         float(component_report.totals.coverage), 2
                     )
-                components_with_coverage.append(
-                    {
-                        "component_id": component.component_id,
-                        "name": component.name,
-                        "coverage": coverage,
-                    }
-                )
+            components_with_coverage.append(
+                {
+                    "component_id": component.component_id,
+                    "name": component.name,
+                    "coverage": coverage,
+                }
+            )
 
         serializer = ComponentSerializer(components_with_coverage, many=True)
         return Response(serializer.data)
