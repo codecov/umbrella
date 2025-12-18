@@ -1036,7 +1036,6 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         assert (
             call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
-        )
         assert call_kwargs["headers"]["attempts"] == 1  # New header added
         assert call_kwargs["time_limit"] is None
         assert call_kwargs["user_plan"] == "users-pr-inappm"
@@ -1080,13 +1079,12 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         kwargs = {"ownerid": repo_enterprise_cloud.ownerid}
         task.apply_async(kwargs=kwargs)
         assert mock_create_task_session.call_count == 1
-        mocked_super_apply_async.assert_called_with(
-            args=None,
-            kwargs=kwargs,
-            soft_time_limit=500,
-            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
-            time_limit=600,
-            user_plan="users-enterprisey",
+        call_kwargs = mocked_super_apply_async.call_args[1]
+        assert call_kwargs["args"] is None
+        assert call_kwargs["kwargs"] == kwargs
+        assert call_kwargs["soft_time_limit"] == 500
+        assert (
+            call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
         assert call_kwargs["headers"]["attempts"] == 1  # New header added
         assert call_kwargs["time_limit"] == 600
@@ -1131,13 +1129,12 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         kwargs = {"repoid": repo_enterprise_cloud.repoid}
         task.apply_async(kwargs=kwargs)
         assert mock_create_task_session.call_count == 1
-        mocked_super_apply_async.assert_called_with(
-            args=None,
-            kwargs=kwargs,
-            soft_time_limit=400,
-            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
-            time_limit=450,
-            user_plan="users-enterprisey",
+        call_kwargs = mocked_super_apply_async.call_args[1]
+        assert call_kwargs["args"] is None
+        assert call_kwargs["kwargs"] == kwargs
+        assert call_kwargs["soft_time_limit"] == 400
+        assert (
+            call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
         assert call_kwargs["headers"]["attempts"] == 1  # New header added
         assert call_kwargs["time_limit"] == 450
