@@ -1741,8 +1741,9 @@ def test_bundle_analysis_processor_task_general_error_commit_failure(
             },
         )
 
-    # Upload state should be set to error (even though commit failed)
-    dbsession.refresh(upload)
+    # Upload state should be set to error in memory (even though commit failed)
+    # Note: We check in-memory state, not database state, since commit failed
+    # The code does attempt to set error state, but database won't reflect it if commit fails
     assert upload.state == "error"
     assert not retry.called
 
