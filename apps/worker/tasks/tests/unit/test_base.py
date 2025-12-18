@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import call, patch
@@ -26,10 +27,7 @@ from shared.celery_config import (
     upload_breadcrumb_task_name,
     upload_task_name,
 )
-from shared.django_apps.upload_breadcrumbs.models import (
-    BreadcrumbData,
-    Errors,
-)
+from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Errors
 from shared.plan.constants import PlanName
 from shared.torngit.exceptions import TorngitClientError
 from tasks.base import BaseCodecovRequest, BaseCodecovTask
@@ -294,7 +292,10 @@ class TestBaseCodecovTask:
         )
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_not_called()
 
-    def test_get_repo_provider_service_rate_limited(self, mocker, mock_self_app):
+    def test_get_repo_provider_service_rate_limited(
+        self, mocker, mock_self_app, caplog
+    ):
+        """Test that rate limiting causes retry with correct countdown"""
         mocker.patch(
             "tasks.base.get_repo_provider_service",
             side_effect=NoConfiguredAppsAvailable(
@@ -308,32 +309,52 @@ class TestBaseCodecovTask:
         mock_commit.commitid = "abc123"
 
         task = BaseCodecovTask()
-        mock_retry = mocker.patch.object(task, "retry")
+        task.request.retries = 0  # Will retry (below max_retries)
+        task.max_retries = 10
         mock_repo = mocker.MagicMock()
-        assert task.get_repo_provider_service(mock_repo, commit=mock_commit) is None
-        task.retry.assert_called_with(countdown=120)
+
+        # Task should raise Retry exception when rate limited
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(Retry):
+                task.get_repo_provider_service(mock_repo, commit=mock_commit)
+
+        # Verify retry was logged with correct countdown (120 seconds)
+        # Filter for the specific retry log from self.retry() (not the rate limit warning)
+        warning_logs = [
+            r
+            for r in caplog.records
+            if r.levelname == "WARNING"
+            and "Task" in r.message
+            and "retrying" in r.message.lower()
+        ]
+        assert len(warning_logs) == 1
+        assert warning_logs[0].__dict__["countdown"] == 120
+
+        # Verify breadcrumb tasks were called in correct order:
+        # 1. INTERNAL_APP_RATE_LIMITED (error only, no milestone)
+        # 2. INTERNAL_RETRYING (error only, no milestone)
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
                 call(
                     kwargs={
-                        "commit_sha": mock_commit.commitid,
-                        "repo_id": mock_repo.repoid,
                         "breadcrumb_data": BreadcrumbData(
                             error=Errors.INTERNAL_APP_RATE_LIMITED,
                         ),
-                        "upload_ids": [],
+                        "commit_sha": mock_commit.commitid,
+                        "repo_id": mock_repo.repoid,
                         "sentry_trace_id": None,
+                        "upload_ids": [],
                     }
                 ),
                 call(
                     kwargs={
-                        "commit_sha": mock_commit.commitid,
-                        "repo_id": mock_repo.repoid,
                         "breadcrumb_data": BreadcrumbData(
                             error=Errors.INTERNAL_RETRYING,
                         ),
-                        "upload_ids": [],
+                        "commit_sha": mock_commit.commitid,
+                        "repo_id": mock_repo.repoid,
                         "sentry_trace_id": None,
+                        "upload_ids": [],
                     }
                 ),
             ]
@@ -375,13 +396,13 @@ class TestBaseCodecovTask:
             upload_breadcrumb_task_name
         ].apply_async.assert_called_once_with(
             kwargs={
-                "commit_sha": mock_commit.commitid,
-                "repo_id": mock_repo.repoid,
                 "breadcrumb_data": BreadcrumbData(
                     error=Errors.REPO_MISSING_VALID_BOT,
                 ),
-                "upload_ids": [],
+                "commit_sha": mock_commit.commitid,
+                "repo_id": mock_repo.repoid,
                 "sentry_trace_id": None,
+                "upload_ids": [],
             }
         )
 
@@ -402,13 +423,13 @@ class TestBaseCodecovTask:
             upload_breadcrumb_task_name
         ].apply_async.assert_called_once_with(
             kwargs={
-                "commit_sha": mock_commit.commitid,
-                "repo_id": mock_repo.repoid,
                 "breadcrumb_data": BreadcrumbData(
                     error=Errors.GIT_CLIENT_ERROR,
                 ),
-                "upload_ids": [],
+                "commit_sha": mock_commit.commitid,
+                "repo_id": mock_repo.repoid,
                 "sentry_trace_id": None,
+                "upload_ids": [],
             }
         )
 
@@ -430,14 +451,14 @@ class TestBaseCodecovTask:
             upload_breadcrumb_task_name
         ].apply_async.assert_called_once_with(
             kwargs={
-                "commit_sha": mock_commit.commitid,
-                "repo_id": mock_repo.repoid,
                 "breadcrumb_data": BreadcrumbData(
                     error=Errors.UNKNOWN,
                     error_text=repr(exception),
                 ),
-                "upload_ids": [],
+                "commit_sha": mock_commit.commitid,
+                "repo_id": mock_repo.repoid,
                 "sentry_trace_id": None,
+                "upload_ids": [],
             }
         )
 
@@ -535,88 +556,212 @@ class TestBaseCodecovTaskHooks:
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
-class TestBaseCodecovTaskSafeRetry:
-    def test_safe_retry_succeeds_below_max_retries(self, mocker):
+class TestBaseCodecovTaskRetryLogging:
+    """Test retry logging behavior including context extraction"""
+
+    def test_retry_logs_warning_with_context(self, caplog):
+        """Test that normal retry logs a WARNING with context information"""
         task = SampleTask()
         task.request.retries = 2
+        task.request.id = "test-task-id-123"
+        task.max_retries = 10
+
+        # Set kwargs with context information
+        task.request.kwargs = {
+            "repoid": 12345,
+            "commitid": "abc123def456",
+            "report_type": "coverage",
+        }
+
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(Retry):
+                task.retry()
+
+        # Verify WARNING log was written
+        warning_logs = [
+            r
+            for r in caplog.records
+            if r.levelname == "WARNING" and "retrying" in r.message.lower()
+        ]
+        assert len(warning_logs) == 1
+
+        log_record = warning_logs[0]
+        assert log_record.message == f"Task {task.name} retrying"
+        assert log_record.__dict__["task_name"] == task.name
+        assert log_record.__dict__["task_id"] == "test-task-id-123"
+        assert log_record.__dict__["current_retries"] == 2
+        assert log_record.__dict__["max_retries"] == 10
+        assert log_record.__dict__["countdown"] == 80  # 20 * 2^2
+
+        # Verify context is nested and contains expected values
+        context = log_record.__dict__["context"]
+        assert context is not None
+        assert context["repoid"] == 12345
+        assert context["commitid"] == "abc123def456"
+        assert context["report_type"] == "coverage"
+
+    def test_retry_logs_warning_without_context(self, caplog):
+        """Test that retry logs WARNING even when context is not available"""
+        task = SampleTask()
+        task.request.retries = 1
+        task.request.id = "test-task-id-456"
         task.max_retries = 5
+        task.request.kwargs = {}  # No context information
 
-        mock_retry = mocker.patch.object(task, "retry")
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(Retry):
+                task.retry()
 
-        result = task.safe_retry(max_retries=5, countdown=60)
+        # Verify WARNING log was written
+        warning_logs = [
+            r
+            for r in caplog.records
+            if r.levelname == "WARNING" and "retrying" in r.message.lower()
+        ]
+        assert len(warning_logs) == 1
 
-        assert result is True
-        mock_retry.assert_called_once_with(max_retries=5, countdown=60, exc=None)
+        log_record = warning_logs[0]
+        assert log_record.__dict__["task_name"] == task.name
+        assert log_record.__dict__["current_retries"] == 1
 
-    def test_safe_retry_fails_at_max_retries(self, mocker):
+        # Verify context is None when not available
+        assert log_record.__dict__["context"] is None
+
+    def test_retry_logs_warning_with_partial_context(self, caplog):
+        """Test that retry logs WARNING with partial context (only repoid)"""
+        task = SampleTask()
+        task.request.retries = 0
+        task.max_retries = 10
+        task.request.kwargs = {
+            "repoid": 99999
+        }  # Only repoid, no commitid or report_type
+
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(Retry):
+                task.retry()
+
+        warning_logs = [
+            r
+            for r in caplog.records
+            if r.levelname == "WARNING" and "retrying" in r.message.lower()
+        ]
+        assert len(warning_logs) == 1
+
+        context = warning_logs[0].__dict__["context"]
+        assert context is not None
+        assert context["repoid"] == 99999
+        assert "commitid" not in context
+        assert "report_type" not in context
+
+    def test_retry_logs_error_when_max_retries_exceeded_with_context(self, caplog):
+        """Test that max retries exceeded logs ERROR with context"""
         task = SampleTask()
         task.request.retries = 10
         task.max_retries = 10
 
-        mock_retry = mocker.patch.object(task, "retry")
+        task.request.kwargs = {
+            "repoid": 54321,
+            "commitid": "xyz789",
+            "report_type": "bundle_analysis",
+        }
 
-        counter_before = REGISTRY.get_sample_value(
-            "worker_task_counts_max_retries_exceeded_total",
-            labels={"task": task.name},
-        )
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(MaxRetriesExceededError):
+                task.retry()
 
-        result = task.safe_retry(max_retries=10, countdown=60)
+        # Verify ERROR log was written
+        error_logs = [
+            r
+            for r in caplog.records
+            if r.levelname == "ERROR" and "exceeded max retries" in r.message.lower()
+        ]
+        assert len(error_logs) == 1
 
-        assert result is False
-        mock_retry.assert_not_called()
+        log_record = error_logs[0]
+        assert log_record.message == f"Task {task.name} exceeded max retries"
+        assert log_record.__dict__["current_retries"] == 10
+        assert log_record.__dict__["max_retries"] == 10
 
-        counter_after = REGISTRY.get_sample_value(
-            "worker_task_counts_max_retries_exceeded_total",
-            labels={"task": task.name},
-        )
+        # Verify context is nested and contains expected values
+        context = log_record.__dict__["context"]
+        assert context is not None
+        assert context["repoid"] == 54321
+        assert context["commitid"] == "xyz789"
+        assert context["report_type"] == "bundle_analysis"
 
-        expected_increment = 1 if counter_before is not None else 1
-        actual_increment = (counter_after or 0) - (counter_before or 0)
-        assert actual_increment == expected_increment
-
-    def test_safe_retry_uses_exponential_backoff_by_default(self, mocker):
+    def test_retry_logs_error_when_max_retries_exceeded_without_context(self, caplog):
+        """Test that max retries exceeded logs ERROR even without context"""
         task = SampleTask()
-        task.request.retries = 3
+        task.request.retries = 5
+        task.max_retries = 5
+        task.request.kwargs = {}
+
+        with caplog.at_level(logging.ERROR):
+            with pytest.raises(MaxRetriesExceededError):
+                task.retry()
+
+        error_logs = [
+            r
+            for r in caplog.records
+            if r.levelname == "ERROR" and "exceeded max retries" in r.message.lower()
+        ]
+        assert len(error_logs) == 1
+
+        # Verify context is None when not available
+        assert error_logs[0].__dict__["context"] is None
+
+    def test_retry_context_from_kwargs_parameter(self, caplog):
+        """Test that context can be passed via kwargs parameter to retry()"""
+        task = SampleTask()
+        task.request.retries = 1
+        task.max_retries = 10
+        task.request.kwargs = {}  # Empty request kwargs
+
+        # Pass context via kwargs parameter (Celery's special parameter for task kwargs on retry)
+        # This is how UploadTask passes context via upload_context.kwargs_for_retry()
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(Retry):
+                task.retry(kwargs={"commitid": "kwarg-commit", "repoid": 77777})
+
+        warning_logs = [
+            r
+            for r in caplog.records
+            if r.levelname == "WARNING" and "retrying" in r.message.lower()
+        ]
+        assert len(warning_logs) == 1
+
+        context = warning_logs[0].__dict__["context"]
+        assert context is not None
+        assert context["repoid"] == 77777
+        assert context["commitid"] == "kwarg-commit"
+
+    def test_retry_logs_exception_type(self, caplog):
+        """Test that retry logs include exception type when provided"""
+        task = SampleTask()
+        task.request.retries = 0
         task.max_retries = 10
 
-        mock_retry = mocker.patch.object(task, "retry")
+        test_exception = ValueError("test error")
 
-        # Call without countdown - should use exponential backoff
-        # Formula: TASK_RETRY_BACKOFF_BASE_SECONDS * (2 ** retry_count)
-        # For retry 3: 20 * (2 ** 3) = 20 * 8 = 160
-        task.safe_retry(max_retries=10)
+        with caplog.at_level(logging.WARNING):
+            # Celery's retry() raises Retry exception, but the exc parameter
+            # is just metadata about what caused the retry
+            try:
+                task.retry(exc=test_exception)
+            except Retry:
+                pass  # Expected - Celery raises Retry
+            except Exception:
+                # If something else is raised, that's also fine - we're testing logging
+                pass
 
-        mock_retry.assert_called_once()
-        call_kwargs = mock_retry.call_args[1]
-        assert call_kwargs["countdown"] == 160  # 20 * 2^3
+        warning_logs = [
+            r
+            for r in caplog.records
+            if r.levelname == "WARNING" and "retrying" in r.message.lower()
+        ]
+        assert len(warning_logs) == 1
 
-    def test_safe_retry_handles_max_retries_exceeded_exception(self, mocker):
-        task = SampleTask()
-        task.request.retries = 9
-        task.max_retries = 10
-
-        # Make retry raise MaxRetriesExceededError
-        mock_retry = mocker.patch.object(
-            task, "retry", side_effect=MaxRetriesExceededError()
-        )
-
-        counter_before = REGISTRY.get_sample_value(
-            "worker_task_counts_max_retries_exceeded_total",
-            labels={"task": task.name},
-        )
-
-        result = task.safe_retry(max_retries=10, countdown=60)
-
-        assert result is False
-
-        counter_after = REGISTRY.get_sample_value(
-            "worker_task_counts_max_retries_exceeded_total",
-            labels={"task": task.name},
-        )
-
-        expected_increment = 1 if counter_before is not None else 1
-        actual_increment = (counter_after or 0) - (counter_before or 0)
-        assert actual_increment == expected_increment
+        assert warning_logs[0].__dict__["exception_type"] == "ValueError"
 
 
 class TestBaseCodecovRequest:

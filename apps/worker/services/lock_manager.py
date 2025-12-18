@@ -63,7 +63,18 @@ class LockManager:
             return f"{lock_type.value}_lock_{self.repoid}_{self.commitid}_{self.report_type.value}"
 
     @contextmanager
-    def locked(self, lock_type: LockType, retry_num=0, max_retries: int | None = None):
+    def locked(self, lock_type: LockType, retry_num=0):
+        """
+        Context manager for acquiring a distributed lock.
+
+        Args:
+            lock_type: Type of lock to acquire
+            retry_num: Current retry number (used for calculating exponential backoff countdown)
+
+        Raises:
+            LockRetry: If lock cannot be acquired, with countdown for retry scheduling.
+                      The calling task should handle max_retries checking via self.retry().
+        """
         lock_name = self.lock_name(lock_type)
         try:
             log.info(
@@ -88,17 +99,21 @@ class LockManager:
                         "lock_name": lock_name,
                     },
                 )
-                yield
-                lock_duration = time.time() - lock_acquired_time
-                log.info(
-                    "Releasing lock",
-                    extra={
-                        "repoid": self.repoid,
-                        "commitid": self.commitid,
-                        "lock_name": lock_name,
-                        "lock_duration_seconds": lock_duration,
-                    },
-                )
+                try:
+                    yield
+                finally:
+                    # Ensure lock release is logged even if an exception occurs (e.g., timeout)
+                    # The Redis lock's __exit__ will release the lock automatically
+                    lock_duration = time.time() - lock_acquired_time
+                    log.info(
+                        "Releasing lock",
+                        extra={
+                            "repoid": self.repoid,
+                            "commitid": self.commitid,
+                            "lock_name": lock_name,
+                            "lock_duration_seconds": lock_duration,
+                        },
+                    )
         except LockError:
             max_retry_cap = 60 * 60 * 5  # 5 hours
             max_retry_unbounded = 200 * 3**retry_num
@@ -106,18 +121,6 @@ class LockManager:
                 max_retry_unbounded // 2, max_retry_unbounded
             )
             countdown = min(countdown_unbounded, max_retry_cap)
-
-            if max_retries is not None and retry_num >= max_retries:
-                log.error(
-                    "Not retrying since we already had too many retries",
-                    extra={
-                        "repoid": self.repoid,
-                        "commitid": self.commitid,
-                        "lock_name": lock_name,
-                        "max_retries": max_retries,
-                        "retry_num": retry_num,
-                    },
-                )
 
             log.warning(
                 "Unable to acquire lock",
