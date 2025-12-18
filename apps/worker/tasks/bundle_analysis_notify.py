@@ -82,7 +82,7 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
                     "notify_attempted": False,
                     "notify_succeeded": None,
                 }
-            self.retry(countdown=retry.countdown)
+            self.retry(max_retries=self.max_retries, countdown=retry.countdown)
 
     @sentry_sdk.trace
     def process_impl_within_lock(
