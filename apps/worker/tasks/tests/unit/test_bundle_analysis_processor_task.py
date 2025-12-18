@@ -1,6 +1,5 @@
-from unittest.mock import ANY
-
 import pytest
+from celery.exceptions import Retry
 from redis.exceptions import LockError
 
 from database.enums import ReportType
@@ -144,6 +143,7 @@ def test_bundle_analysis_processor_task_error(
 
     task = BundleAnalysisProcessorTask()
     retry = mocker.patch.object(task, "retry")
+    task.request.retries = 0
 
     result = task.run_impl(
         dbsession,
@@ -339,23 +339,123 @@ def test_bundle_analysis_processor_task_locked(
     dbsession.flush()
 
     task = BundleAnalysisProcessorTask()
-    retry = mocker.patch.object(task, "retry")
+    # The task uses self.retry() directly when LockRetry is raised
+    retry_mock = mocker.patch.object(task, "retry", side_effect=Retry())
 
-    result = task.run_impl(
-        dbsession,
-        [{"previous": "result"}],
-        repoid=commit.repoid,
-        commitid=commit.commitid,
-        commit_yaml={},
-        params={
-            "upload_id": upload.id_,
-            "commit": commit.commitid,
-        },
-    )
-    assert result is None
+    # When LockError is raised, LockRetry is raised, which calls self.retry()
+    # self.retry() raises Retry exception
+    with pytest.raises(Retry):
+        task.run_impl(
+            dbsession,
+            [{"previous": "result"}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={
+                "upload_id": upload.id_,
+                "commit": commit.commitid,
+            },
+        )
 
     assert upload.state == "started"
-    retry.assert_called_once_with(countdown=ANY)
+    # Verify retry was called with countdown
+    retry_mock.assert_called_once()
+    call_args = retry_mock.call_args
+    assert "countdown" in call_args.kwargs, (
+        "retry should have been called with countdown parameter"
+    )
+
+
+def test_bundle_analysis_processor_task_uses_default_blocking_timeout(
+    mocker,
+    dbsession,
+    mock_storage,
+    mock_redis,
+):
+    """
+    Test that BundleAnalysisProcessorTask uses default blocking_timeout (not None).
+
+    This test verifies that the task doesn't use blocking_timeout=None, which would
+    cause indefinite blocking and disable retry logic. The task should use the
+    default blocking_timeout to enable proper retry behavior.
+    """
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(
+        state="started",
+        storage_path=storage_path,
+        report=commit_report,
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    # Track what blocking_timeout was passed to Redis
+    blocking_timeouts = []
+
+    # Mock Redis to raise LockError (simulating lock contention)
+    # This should happen immediately with a proper blocking_timeout
+    def mock_lock(*args, **kwargs):
+        blocking_timeouts.append(kwargs.get("blocking_timeout"))
+        raise LockError()
+
+    mock_redis.lock = mock_lock
+
+    task = BundleAnalysisProcessorTask()
+    # The task uses self.retry() directly, not safe_retry()
+    retry_mock = mocker.patch.object(task, "retry", side_effect=Retry())
+
+    # When LockError is raised, LockRetry is raised, which calls self.retry()
+    # self.retry() raises Retry exception
+    with pytest.raises(Retry):
+        task.run_impl(
+            dbsession,
+            [{"previous": "result"}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={
+                "upload_id": upload.id_,
+                "commit": commit.commitid,
+            },
+        )
+
+    # Verify that blocking_timeout was NOT None
+    # The default should be DEFAULT_BLOCKING_TIMEOUT_SECONDS (5)
+    assert None not in blocking_timeouts, (
+        "blocking_timeout=None was used! This causes indefinite blocking "
+        "and disables retry logic. Use default blocking_timeout instead."
+    )
+
+    # Verify that retry logic was triggered
+    assert retry_mock.called, (
+        "self.retry() should have been called when lock contention occurs"
+    )
+
+    # Verify retry was called with countdown
+    retry_mock.assert_called_once()
+    call_args = retry_mock.call_args
+    assert "countdown" in call_args.kwargs or len(call_args.args) > 0, (
+        "retry should have been called with countdown parameter"
+    )
 
 
 def test_bundle_analysis_process_upload_rate_limit_error(
@@ -390,6 +490,7 @@ def test_bundle_analysis_process_upload_rate_limit_error(
 
     task = BundleAnalysisProcessorTask()
     retry = mocker.patch.object(task, "retry")
+    task.request.retries = 0
 
     ingest = mocker.patch("shared.bundle_analysis.BundleAnalysisReport.ingest")
     ingest.side_effect = PutRequestRateLimitError()
