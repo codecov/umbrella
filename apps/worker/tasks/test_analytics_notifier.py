@@ -195,6 +195,7 @@ class TestAnalyticsNotifierTask(
         Context manager to handle the repeated lock acquisition pattern
         with automatic retry handling for LockRetry exceptions.
         """
+        lock_retry_exception = None
         try:
             with lock_manager.locked(
                 LockType.NOTIFICATION,
@@ -202,21 +203,29 @@ class TestAnalyticsNotifierTask(
                 retry_num=self.attempts,
             ):
                 yield
+                return
         except LockRetry as retry:
-            if retry.max_retries_exceeded:
-                log.error(
-                    "Not retrying lock acquisition - max retries exceeded",
-                    extra={
-                        "retry_num": retry.retry_num,
-                        "max_attempts": retry.max_attempts,
-                    },
-                )
-                # Must yield before raising to satisfy @contextmanager contract
-                yield
-                raise MaxRetriesExceededError(
-                    f"Lock acquisition exceeded max retries: {retry.retry_num} >= {retry.max_attempts}"
-                )
-            self.retry(max_retries=5, countdown=retry.countdown)
+            lock_retry_exception = retry
+
+        # If we get here, lock acquisition failed
+        # Yield first to satisfy @contextmanager contract (must yield exactly once)
+        # The exception will be raised immediately after yield, causing the with block to exit
+        yield
+
+        # After yielding, handle the exception
+        # This code runs when __exit__() is called, which happens when the with block exits
+        if lock_retry_exception.max_retries_exceeded:
+            log.error(
+                "Not retrying lock acquisition - max retries exceeded",
+                extra={
+                    "retry_num": lock_retry_exception.retry_num,
+                    "max_attempts": lock_retry_exception.max_attempts,
+                },
+            )
+            raise MaxRetriesExceededError(
+                f"Lock acquisition exceeded max retries: {lock_retry_exception.retry_num} >= {lock_retry_exception.max_attempts}"
+            )
+        self.retry(max_retries=5, countdown=lock_retry_exception.countdown)
 
     def _check_fencing_token(
         self,
