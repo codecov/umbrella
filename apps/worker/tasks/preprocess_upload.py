@@ -123,7 +123,7 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
         report_service = ReportService(
             commit_yaml, gh_app_installation_name=installation_name_to_use
         )
-        commit_report = report_service.initialize_and_save_report(commit)
+        commit_report = report_service.initialize_and_save_report(commit, db_session=db_session)
         # Persist changes from within the lock
         db_session.commit()
         self._call_upload_breadcrumb_task(

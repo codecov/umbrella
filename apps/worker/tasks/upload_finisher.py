@@ -445,7 +445,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     report.apply_diff(diff)
 
                 log.info("run_impl: Saving report")
-                report_service.save_report(commit, report)
+                report_service.save_report(commit, report, db_session=db_session)
 
                 db_session.commit()
 

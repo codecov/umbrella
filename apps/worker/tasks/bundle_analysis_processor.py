@@ -149,9 +149,13 @@ class BundleAnalysisProcessorTask(
                     return processing_results
             else:
                 # If the commit report does not exist, we will create a new one
-                commit_report = report_service.initialize_and_save_report(commit)
+                commit_report = report_service.initialize_and_save_report(
+                    commit, db_session=db_session
+                )
 
-            upload = report_service.create_report_upload({"url": ""}, commit_report)
+            upload = report_service.create_report_upload(
+                {"url": ""}, commit_report, db_session=db_session
+            )
             carriedforward = True
 
         assert upload is not None
@@ -193,7 +197,7 @@ class BundleAnalysisProcessorTask(
                     },
                 )
                 self.retry(countdown=30 * (2**self.request.retries))
-            result.update_upload(carriedforward=carriedforward)
+            result.update_upload(carriedforward=carriedforward, db_session=db_session)
 
             processing_results.append(result.as_dict())
         except (CeleryError, SoftTimeLimitExceeded):

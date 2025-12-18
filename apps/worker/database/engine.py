@@ -99,97 +99,71 @@ session = session_factory.create_session()
 get_db_session = session
 
 
-# Per-task session support
-# Cache for sessionmaker to avoid recreating it
-_task_session_maker = None
+class TaskSessionManager:
+    """Manages per-task database sessions with support for test overrides."""
 
-# Thread-local storage for test session override
-# In tests, this can be set to return a shared test session
-_test_session_factory: Callable[[], Session] | None = None
+    def __init__(self):
+        self._session_maker = None
+        self._test_session_factory: Callable[[], Session] | None = None
+
+    def set_test_session_factory(self, factory: Callable[[], Session] | None):
+        """Override create_task_session() to return a shared test session."""
+        self._test_session_factory = factory
+
+    def _get_session_maker(self):
+        if self._session_maker is None:
+            if session_factory.main_engine is None:
+                _ = session_factory.create_session()
+
+            main_engine = session_factory.main_engine
+            timeseries_engine = session_factory.timeseries_engine
+
+            if main_engine is None:
+                raise RuntimeError(
+                    "Cannot create task session: database engine not initialized"
+                )
+
+            if is_timeseries_enabled() and timeseries_engine is not None:
+                main_engine_ref = main_engine
+                timeseries_engine_ref = timeseries_engine
+
+                class RoutingSession(Session):
+                    def get_bind(self, mapper=None, clause=None, **kwargs):
+                        if mapper is not None and issubclass(
+                            mapper.class_, TimeseriesBaseModel
+                        ):
+                            return timeseries_engine_ref
+                        if (
+                            clause is not None
+                            and hasattr(clause, "table")
+                            and clause.table.name.startswith("timeseries_")
+                        ):
+                            return timeseries_engine_ref
+                        return main_engine_ref
+
+                self._session_maker = sessionmaker(class_=RoutingSession)
+            else:
+                self._session_maker = sessionmaker(bind=main_engine)
+
+        return self._session_maker
+
+    def create_task_session(self):
+        """Create a new isolated session for a task. Caller must clean up (rollback/close)."""
+        if self._test_session_factory is not None:
+            return self._test_session_factory()
+
+        session_maker = self._get_session_maker()
+        return session_maker()
+
+
+_task_session_manager = TaskSessionManager()
 
 
 def set_test_session_factory(factory: Callable[[], Session] | None):
-    """
-    Set a factory function that returns a test session.
-
-    This allows tests to override create_task_session() to return a shared test session
-    instead of creating new sessions. Set to None to use the default behavior.
-
-    Args:
-        factory: Callable that returns a Session, or None to use default behavior
-    """
-    global _test_session_factory  # noqa: PLW0603
-    _test_session_factory = factory
-
-
-def _get_task_session_maker():
-    """Get or create the sessionmaker for per-task sessions."""
-    global _task_session_maker  # noqa: PLW0603
-
-    if _task_session_maker is None:
-        # Initialize engines if not already done
-        if session_factory.main_engine is None:
-            # Trigger engine creation
-            _ = session_factory.create_session()
-
-        main_engine = session_factory.main_engine
-        timeseries_engine = session_factory.timeseries_engine
-
-        if main_engine is None:
-            raise RuntimeError(
-                "Cannot create task session: database engine not initialized"
-            )
-
-        # Create sessionmaker for per-task sessions
-        if is_timeseries_enabled() and timeseries_engine is not None:
-
-            class RoutingSession(Session):
-                def get_bind(self, mapper=None, clause=None, **kwargs):
-                    if mapper is not None and issubclass(
-                        mapper.class_, TimeseriesBaseModel
-                    ):
-                        return timeseries_engine
-                    if (
-                        clause is not None
-                        and hasattr(clause, "table")
-                        and clause.table.name.startswith("timeseries_")
-                    ):
-                        return timeseries_engine
-                    return main_engine
-
-            _task_session_maker = sessionmaker(class_=RoutingSession)
-        else:
-            _task_session_maker = sessionmaker(bind=main_engine)
-
-    return _task_session_maker
+    """Override create_task_session() to return a shared test session."""
+    _task_session_manager.set_test_session_factory(factory)
 
 
 def create_task_session():
-    """
-    Create a new session for a task.
-
-    This creates an isolated session per task, preventing transaction contamination.
-    In tests, this can be overridden to return a shared test session via set_test_session_factory().
-
-    The caller is responsible for cleaning up the session (rollback/close).
-
-    Returns:
-        Session: A new SQLAlchemy session instance
-
-    Example:
-        db_session = create_task_session()
-        try:
-            # Use db_session
-            result = db_session.query(...).first()
-            db_session.commit()
-        finally:
-            db_session.rollback()
-            db_session.close()
-    """
-    # Check if test session factory is set (for testing)
-    if _test_session_factory is not None:
-        return _test_session_factory()
-
-    # Default behavior: create a new isolated session
-    session_maker = _get_task_session_maker()
-    return session_maker()
+    """Create a new isolated session for a task. Caller must clean up (rollback/close)."""
+    return _task_session_manager.create_task_session()

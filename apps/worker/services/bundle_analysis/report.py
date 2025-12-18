@@ -6,7 +6,7 @@ from typing import Any
 
 import sentry_sdk
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, Session as DbSession
 
 from database.enums import ReportType
 from database.models.core import Commit
@@ -68,12 +68,13 @@ class ProcessingResult:
             "error": self.error.as_dict() if self.error else None,
         }
 
-    def update_upload(self, carriedforward: bool | None = False) -> None:
+    def update_upload(self, carriedforward: bool | None = False, db_session: DbSession | None = None) -> None:
         """
         Updates this result's `Upload` record with information from
         this result.
         """
-        db_session = self.upload.get_db_session()
+        if db_session is None:
+            db_session = self.upload.get_db_session()
 
         if self.error:
             self.commit.state = "error"
@@ -106,8 +107,9 @@ class ProcessingResult:
 
 
 class BundleAnalysisReportService(BaseReportService):
-    def initialize_and_save_report(self, commit: Commit) -> CommitReport:
-        db_session = commit.get_db_session()
+    def initialize_and_save_report(self, commit: Commit, db_session: DbSession | None = None) -> CommitReport:
+        if db_session is None:
+            db_session = commit.get_db_session()
 
         commit_report = (
             db_session.query(CommitReport)

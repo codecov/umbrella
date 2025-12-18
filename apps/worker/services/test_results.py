@@ -7,6 +7,7 @@ from typing import Literal, TypedDict, TypeVar
 from urllib.parse import quote_plus
 
 import sentry_sdk
+from sqlalchemy.orm import Session as DbSession
 
 from database.enums import ReportType
 from database.models import (
@@ -47,8 +48,9 @@ class TestResultsReportService(BaseReportService):
         super().__init__(current_yaml)
         self.flag_dict = None
 
-    def initialize_and_save_report(self, commit: Commit) -> CommitReport:
-        db_session = commit.get_db_session()
+    def initialize_and_save_report(self, commit: Commit, db_session: DbSession | None = None) -> CommitReport:
+        if db_session is None:
+            db_session = commit.get_db_session()
         current_report_row = (
             db_session.query(CommitReport)
             .filter_by(
@@ -73,13 +75,13 @@ class TestResultsReportService(BaseReportService):
 
     # support flags in test results
     def create_report_upload(
-        self, arguments: UploadArguments, commit_report: CommitReport
+        self, arguments: UploadArguments, commit_report: CommitReport, db_session: DbSession | None = None
     ) -> Upload:
-        upload = super().create_report_upload(arguments, commit_report)
-        self._attach_flags_to_upload(upload, arguments["flags"])
+        upload = super().create_report_upload(arguments, commit_report, db_session=db_session)
+        self._attach_flags_to_upload(upload, arguments["flags"], db_session=db_session)
         return upload
 
-    def _attach_flags_to_upload(self, upload: Upload, flag_names: Sequence[str]):
+    def _attach_flags_to_upload(self, upload: Upload, flag_names: Sequence[str], db_session: DbSession | None = None):
         """Internal function that manages creating the proper `RepositoryFlag`s and attach the sessions to them
 
         Args:
@@ -90,7 +92,8 @@ class TestResultsReportService(BaseReportService):
             TYPE: Description
         """
         all_flags = []
-        db_session = upload.get_db_session()
+        if db_session is None:
+            db_session = upload.get_db_session()
         repoid = upload.report.commit.repoid
 
         if self.flag_dict is None:

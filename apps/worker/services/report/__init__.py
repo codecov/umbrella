@@ -158,7 +158,10 @@ class BaseReportService:
         raise NotImplementedError()
 
     def create_report_upload(
-        self, arguments: UploadArguments, commit_report: CommitReport
+        self,
+        arguments: UploadArguments,
+        commit_report: CommitReport,
+        db_session: DbSession | None = None,
     ) -> Upload:
         """
         Creates an `Upload` from the user-given arguments to a job
@@ -166,7 +169,8 @@ class BaseReportService:
         The end goal here is that the `Upload` should have all the information needed to
         hypothetically redo the job later.
         """
-        db_session = commit_report.get_db_session()
+        if db_session is None:
+            db_session = commit_report.get_db_session()
         name = arguments.get("name")
         upload = Upload(
             report_id=commit_report.id_,
@@ -208,7 +212,9 @@ class ReportService(BaseReportService):
         )
 
     @sentry_sdk.trace
-    def initialize_and_save_report(self, commit: Commit) -> CommitReport:
+    def initialize_and_save_report(
+        self, commit: Commit, db_session: DbSession | None = None
+    ) -> CommitReport:
         """
             Initializes the commit report
 
@@ -223,11 +229,13 @@ class ReportService(BaseReportService):
 
         Args:
             commit (Commit): The commit we want to initialize
+            db_session: Optional database session to use
 
         Returns:
             CommitReport: The CommitReport for that commit
         """
-        db_session = commit.get_db_session()
+        if db_session is None:
+            db_session = commit.get_db_session()
         current_report_row = (
             db_session.query(CommitReport)
             .filter_by(commit_id=commit.id_, code=None)
@@ -263,7 +271,7 @@ class ReportService(BaseReportService):
                 )
                 # This case means the report exists in our system, it was just not saved
                 #   yet into the new models therefore it needs backfilling
-                self.save_full_report(commit, actual_report)
+                self.save_full_report(commit, actual_report, db_session=db_session)
 
         if not self.has_initialized_report(commit):
             report = self.create_new_report_for_commit(commit)
@@ -277,18 +285,21 @@ class ReportService(BaseReportService):
                         "files_count": report.totals.files,
                     },
                 )
-                self.save_full_report(commit, report)
+                self.save_full_report(commit, report, db_session=db_session)
 
         return current_report_row
 
-    def _attach_flags_to_upload(self, upload: Upload, flag_names: list[str]):
+    def _attach_flags_to_upload(
+        self, upload: Upload, flag_names: list[str], db_session: DbSession | None = None
+    ):
         """
         Internal function that manages creating the proper `RepositoryFlag`s,
         and attach them to the `Upload`
         """
 
         all_flags = []
-        db_session = upload.get_db_session()
+        if db_session is None:
+            db_session = upload.get_db_session()
         repoid = upload.report.commit.repoid
         flag_dict = self.fetch_repo_flags(db_session, repoid)
 
@@ -711,7 +722,9 @@ class ReportService(BaseReportService):
             return result
 
     @sentry_sdk.trace
-    def save_report(self, commit: Commit, report: Report):
+    def save_report(
+        self, commit: Commit, report: Report, db_session: DbSession | None = None
+    ):
         archive_service = ArchiveService(commit.repository)
 
         report_json, chunks, _totals = report.serialize()
@@ -742,15 +755,12 @@ class ReportService(BaseReportService):
         )
         # `report_json` is an `ArchiveField`, so this will trigger an upload
         # FIXME: we do an unnecessary `loads` roundtrip because of this abstraction,
-        # and we should just save the `report_json` to archive storage directly instead.
         commit.report_json = orjson.loads(report_json)
 
-        # `report` is an accessor which implicitly queries `CommitReport`
         if commit_report := commit.report:
-            db_session = commit.get_db_session()
+            if db_session is None:
+                db_session = commit.get_db_session()
 
-            # Query explicitly for ReportLevelTotals to avoid relationship visibility issues
-            # This ensures we see existing totals even if the relationship isn't loaded
             report_totals = (
                 db_session.query(ReportLevelTotals)
                 .filter_by(report_id=commit_report.id_)
@@ -785,7 +795,9 @@ class ReportService(BaseReportService):
         return {"url": chunks_url}
 
     @sentry_sdk.trace
-    def save_full_report(self, commit: Commit, report: Report) -> dict:
+    def save_full_report(
+        self, commit: Commit, report: Report, db_session: DbSession | None = None
+    ) -> dict:
         """
         Saves the report (into database and storage) AND takes care of backfilling its sessions
         like they were never in the database (useful for backfilling and carryforward cases)
@@ -796,8 +808,9 @@ class ReportService(BaseReportService):
         precision: int = read_yaml_field(
             self.current_yaml, ("coverage", "precision"), 2
         )
-        res = self.save_report(commit, report)
-        db_session = commit.get_db_session()
+        res = self.save_report(commit, report, db_session=db_session)
+        if db_session is None:
+            db_session = commit.get_db_session()
         for sess_id, session in report.sessions.items():
             upload = Upload(
                 build_code=session.build,
@@ -820,7 +833,9 @@ class ReportService(BaseReportService):
             )
             db_session.add(upload)
             db_session.flush()
-            self._attach_flags_to_upload(upload, session.flags if session.flags else [])
+            self._attach_flags_to_upload(
+                upload, session.flags if session.flags else [], db_session=db_session
+            )
             if session.totals is not None:
                 upload_totals = UploadLevelTotals(upload_id=upload.id_)
                 db_session.add(upload_totals)

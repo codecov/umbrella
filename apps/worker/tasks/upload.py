@@ -530,7 +530,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
         try:
             log.info("Initializing and saving report", extra=upload_context.log_extra())
-            commit_report = report_service.initialize_and_save_report(commit)
+            commit_report = report_service.initialize_and_save_report(commit, db_session=db_session)
         except NotReadyToBuildReportYetError:
             log.warning(
                 "Commit not yet ready to build its initial report. Retrying in 60s.",
@@ -692,7 +692,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             normalize_flags(arguments)
 
             if "upload_id" not in arguments:
-                upload = report_service.create_report_upload(arguments, commit_report)
+                upload = report_service.create_report_upload(arguments, commit_report, db_session=db_session)
                 arguments["upload_id"] = upload.id_
                 # Adds objects to insert later in bulk
                 upload_flag_map[upload] = arguments.get("flags", [])
