@@ -33,6 +33,16 @@ class UpsertComponentTask(BaseCodecovTask, name=timeseries_upsert_component_task
             .filter(Commit.repoid == repoid, Commit.commitid == commitid)
             .first()
         )
+        
+        if commit is None:
+            raise ValueError(
+                f"Commit not found: repoid={repoid}, commitid={commitid}. "
+                "This may indicate a session visibility issue."
+            )
+        
+        # Ensure repository relationship is loaded
+        if commit.repository is None:
+            db_session.refresh(commit, ["repository"])
 
         current_yaml = get_repo_yaml(commit.repository)
         report_service = ReportService(current_yaml)
@@ -42,7 +52,7 @@ class UpsertComponentTask(BaseCodecovTask, name=timeseries_upsert_component_task
         assert report, "expected a `Report` to exist"
 
         upsert_components_measurements(
-            commit, report, [ComponentForMeasurement(component_id, flags, paths)]
+            commit, report, [ComponentForMeasurement(component_id, flags, paths)], db_session
         )
 
 

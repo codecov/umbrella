@@ -749,9 +749,15 @@ class ReportService(BaseReportService):
         if commit_report := commit.report:
             db_session = commit.get_db_session()
 
-            report_totals = commit_report.totals
+            # Query explicitly for ReportLevelTotals to avoid relationship visibility issues
+            # This ensures we see existing totals even if the relationship isn't loaded
+            report_totals = (
+                db_session.query(ReportLevelTotals)
+                .filter_by(report_id=commit_report.id_)
+                .first()
+            )
             if report_totals is None:
-                report_totals = ReportLevelTotals(report_id=commit_report.id)
+                report_totals = ReportLevelTotals(report_id=commit_report.id_)
                 db_session.add(report_totals)
 
             rounding: str = read_yaml_field(

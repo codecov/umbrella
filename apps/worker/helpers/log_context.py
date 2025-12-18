@@ -80,22 +80,24 @@ class LogContext:
                     .filter(Repository.repoid == self.repo_id)
                 )
 
-                (
-                    self.repo_name,
-                    self.owner_id,
-                    self.owner_username,
-                    self.owner_service,
-                    self.owner_plan,
-                ) = query.first()
+                result = query.first()
+                if result:
+                    (
+                        self.repo_name,
+                        self.owner_id,
+                        self.owner_username,
+                        self.owner_service,
+                        self.owner_plan,
+                    ) = result
 
             elif self.owner_id:
                 query = dbsession.query(
                     Owner.username, Owner.service, Owner.plan
                 ).filter(Owner.ownerid == self.owner_id)
 
-                (self.owner_username, self.owner_service, self.owner_plan) = (
-                    query.first()
-                )
+                result = query.first()
+                if result:
+                    (self.owner_username, self.owner_service, self.owner_plan) = result
 
         except Exception:
             log.exception("Failed to populate log context")
