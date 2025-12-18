@@ -95,7 +95,7 @@ class ProcessingResult:
 
         if carriedforward:
             self.upload.upload_type = SessionType.carriedforward.value
-            self.upload_type_id = UploadType.CARRIEDFORWARD.db_id
+            self.upload.upload_type_id = UploadType.CARRIEDFORWARD.db_id
 
         BUNDLE_ANALYSIS_REPORT_PROCESSOR_COUNTER.labels(
             result="upload_error" if self.error else "processed",
