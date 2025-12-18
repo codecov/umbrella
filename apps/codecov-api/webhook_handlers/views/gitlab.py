@@ -83,9 +83,32 @@ class GitLabWebhookHandler(APIView):
 
         try:
             # all other events should correspond to a repo in the db
-            repo = get_object_or_404(
-                Repository, author__service=self.service_name, service_id=project_id
-            )
+            # Filter out repositories owned by accounts with None usernames
+            # to avoid MultipleObjectsReturned errors
+            repos = Repository.objects.filter(
+                author__service=self.service_name, service_id=project_id
+            ).exclude(author__username=None)
+            
+            if repos.count() == 0:
+                # If no valid repos found, try without the exclusion
+                # This handles the case where the only repo has a None username owner
+                repo = get_object_or_404(
+                    Repository, author__service=self.service_name, service_id=project_id
+                )
+            elif repos.count() == 1:
+                repo = repos.first()
+            else:
+                # Multiple valid repositories found - log and return the first one
+                log.warning(
+                    "Multiple repositories found for service_id",
+                    extra={
+                        "service": self.service_name,
+                        "service_id": project_id,
+                        "repo_count": repos.count(),
+                        "repo_ids": list(repos.values_list("repoid", flat=True)),
+                    },
+                )
+                repo = repos.first()
         except Exception as e:
             self._inc_err("repo_not_found")
             raise e
