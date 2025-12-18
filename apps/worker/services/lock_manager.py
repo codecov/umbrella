@@ -4,6 +4,7 @@ import time
 from contextlib import contextmanager
 from enum import Enum
 
+import sentry_sdk
 from redis import Redis  # type: ignore
 from redis.exceptions import LockError  # type: ignore
 
@@ -16,6 +17,18 @@ from shared.helpers.redis import get_redis_connection  # type: ignore
 
 log = logging.getLogger(__name__)
 
+MAX_RETRY_COUNTDOWN_SECONDS = 60 * 60 * 5
+BASE_RETRY_COUNTDOWN_SECONDS = 200
+RETRY_BACKOFF_MULTIPLIER = 3
+RETRY_COUNTDOWN_RANGE_DIVISOR = 2
+LOCK_NAME_SEPARATOR = "_lock_"
+
+# Exponential backoff calculation: BASE * MULTIPLIER^retry_num
+# With BASE=200 and MULTIPLIER=3, this yields:
+# retry_num=0: 200s (~3.3 min), retry_num=1: 600s (~10 min),
+# retry_num=2: 1800s (~30 min), retry_num=3: 5400s (~90 min),
+# retry_num=4: 16200s (~4.5 hours), retry_num>=4: capped at 5 hours
+
 
 class LockType(Enum):
     BUNDLE_ANALYSIS_PROCESSING = "bundle_analysis_processing"
@@ -26,16 +39,59 @@ class LockType(Enum):
     UPLOAD_FINISHER = "upload_finisher"
     PREPROCESS_UPLOAD = "preprocess_upload"
     MANUAL_TRIGGER = "manual_trigger"
-    # NOTE: All tasks following the repoid+commitid pattern have been migrated to use LockManager.
-    # The following tasks cannot be migrated because they use different lock naming patterns:
-    # - sync_repos.py: owner-based locks (syncrepos_lock_{ownerid}_{using_integration})
-    # - sync_pull.py: pull-based locks (pullsync_{repoid}_{pullid})
-    # - crontasks.py: task-name based locks (worker.executionlock.{task_name})
 
 
 class LockRetry(Exception):
-    def __init__(self, countdown: int):
+    """Raised when lock acquisition fails. Check max_retries_exceeded to determine if retries should stop."""
+
+    def __init__(
+        self,
+        countdown: int,
+        max_retries_exceeded: bool = False,
+        retry_num: int | None = None,
+        max_attempts: int | None = None,
+        lock_name: str | None = None,
+        repoid: int | None = None,
+        commitid: str | None = None,
+    ):
         self.countdown = countdown
+        self.max_retries_exceeded = max_retries_exceeded
+        self.retry_num = retry_num
+        self.max_attempts = max_attempts
+        self.lock_name = lock_name
+        self.repoid = repoid
+        self.commitid = commitid
+        if max_retries_exceeded:
+            error_msg = (
+                f"Lock acquisition failed after {retry_num} retries (max: {max_attempts}). "
+                f"Lock: {lock_name}, Repo: {repoid}, Commit: {commitid}"
+            )
+            super().__init__(error_msg)
+        else:
+            super().__init__(f"Lock acquisition failed, retry in {countdown} seconds")
+
+
+class LockMaxRetriesExceededError(LockRetry):
+    """Deprecated: Use LockRetry with max_retries_exceeded=True instead."""
+
+    def __init__(
+        self,
+        retry_num: int,
+        max_attempts: int,
+        lock_name: str,
+        repoid: int,
+        commitid: str,
+    ):
+        countdown = 0
+        super().__init__(
+            countdown=countdown,
+            max_retries_exceeded=True,
+            retry_num=retry_num,
+            max_attempts=max_attempts,
+            lock_name=lock_name,
+            repoid=repoid,
+            commitid=commitid,
+        )
 
 
 class LockManager:
@@ -57,21 +113,36 @@ class LockManager:
 
     def lock_name(self, lock_type: LockType):
         if self.report_type == ReportType.COVERAGE:
-            # for backward compat this does not include the report type
-            return f"{lock_type.value}_lock_{self.repoid}_{self.commitid}"
+            return (
+                f"{lock_type.value}{LOCK_NAME_SEPARATOR}{self.repoid}_{self.commitid}"
+            )
         else:
-            return f"{lock_type.value}_lock_{self.repoid}_{self.commitid}_{self.report_type.value}"
+            return f"{lock_type.value}{LOCK_NAME_SEPARATOR}{self.repoid}_{self.commitid}_{self.report_type.value}"
 
     @contextmanager
-    def locked(self, lock_type: LockType, retry_num=0, max_retries: int | None = None):
+    def locked(
+        self,
+        lock_type: LockType,
+        retry_num=0,
+        max_retries: int | None = None,
+    ):
+        """Acquire a Redis lock with retry logic.
+
+        Args:
+            lock_type: Type of lock to acquire
+            retry_num: Attempt count (should be self.attempts from BaseCodecovTask).
+                Used for both exponential backoff and max retry checking.
+            max_retries: Maximum number of retries allowed
+        """
         lock_name = self.lock_name(lock_type)
         try:
             log.info(
                 "Acquiring lock",
                 extra={
-                    "repoid": self.repoid,
                     "commitid": self.commitid,
                     "lock_name": lock_name,
+                    "lock_type": lock_type.value,
+                    "repoid": self.repoid,
                 },
             )
             with self.redis_connection.lock(
@@ -83,9 +154,10 @@ class LockManager:
                 log.info(
                     "Acquired lock",
                     extra={
-                        "repoid": self.repoid,
                         "commitid": self.commitid,
                         "lock_name": lock_name,
+                        "lock_type": lock_type.value,
+                        "repoid": self.repoid,
                     },
                 )
                 yield
@@ -93,39 +165,81 @@ class LockManager:
                 log.info(
                     "Releasing lock",
                     extra={
-                        "repoid": self.repoid,
                         "commitid": self.commitid,
-                        "lock_name": lock_name,
                         "lock_duration_seconds": lock_duration,
+                        "lock_name": lock_name,
+                        "lock_type": lock_type.value,
+                        "repoid": self.repoid,
                     },
                 )
         except LockError:
-            max_retry_cap = 60 * 60 * 5  # 5 hours
-            max_retry_unbounded = 200 * 3**retry_num
-            countdown_unbounded = random.randint(
-                max_retry_unbounded // 2, max_retry_unbounded
+            max_retry_unbounded = BASE_RETRY_COUNTDOWN_SECONDS * (
+                RETRY_BACKOFF_MULTIPLIER**retry_num
             )
-            countdown = min(countdown_unbounded, max_retry_cap)
+            if max_retry_unbounded >= MAX_RETRY_COUNTDOWN_SECONDS:
+                countdown = MAX_RETRY_COUNTDOWN_SECONDS
+            else:
+                countdown_unbounded = random.randint(
+                    max_retry_unbounded // RETRY_COUNTDOWN_RANGE_DIVISOR,
+                    max_retry_unbounded,
+                )
+                countdown = countdown_unbounded
 
-            if max_retries is not None and retry_num >= max_retries:
+            if max_retries is not None and retry_num > max_retries:
+                max_attempts = max_retries + 1
+                error = LockMaxRetriesExceededError(
+                    retry_num=retry_num,
+                    max_attempts=max_attempts,
+                    lock_name=lock_name,
+                    repoid=self.repoid,
+                    commitid=self.commitid,
+                )
                 log.error(
                     "Not retrying since we already had too many retries",
                     extra={
-                        "repoid": self.repoid,
                         "commitid": self.commitid,
                         "lock_name": lock_name,
+                        "lock_type": lock_type.value,
+                        "max_attempts": max_attempts,
                         "max_retries": max_retries,
+                        "repoid": self.repoid,
+                        "report_type": self.report_type.value,
                         "retry_num": retry_num,
                     },
+                    exc_info=True,
                 )
+                sentry_sdk.capture_exception(
+                    error,
+                    contexts={
+                        "lock_acquisition": {
+                            "blocking_timeout": self.blocking_timeout,
+                            "commitid": self.commitid,
+                            "lock_name": lock_name,
+                            "lock_timeout": self.lock_timeout,
+                            "lock_type": lock_type.value,
+                            "max_attempts": max_attempts,
+                            "repoid": self.repoid,
+                            "report_type": self.report_type.value,
+                            "retry_num": retry_num,
+                        }
+                    },
+                    tags={
+                        "error_type": "lock_max_retries_exceeded",
+                        "lock_name": lock_name,
+                        "lock_type": lock_type.value,
+                    },
+                )
+                raise error
 
             log.warning(
                 "Unable to acquire lock",
                 extra={
-                    "repoid": self.repoid,
                     "commitid": self.commitid,
-                    "lock_name": lock_name,
                     "countdown": countdown,
+                    "lock_name": lock_name,
+                    "lock_type": lock_type.value,
+                    "max_retries": max_retries,
+                    "repoid": self.repoid,
                     "retry_num": retry_num,
                 },
             )
