@@ -200,7 +200,9 @@ def repository_datasets_query(
     return datasets
 
 
-def repository_flag_ids(repository: Repository, db_session: Session | None = None) -> Mapping[str, int]:
+def repository_flag_ids(
+    repository: Repository, db_session: Session | None = None
+) -> Mapping[str, int]:
     if db_session is None:
         db_session = repository.get_db_session()
     repo_flags = (

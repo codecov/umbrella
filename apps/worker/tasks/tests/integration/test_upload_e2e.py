@@ -176,7 +176,9 @@ def test_full_upload(
     request,
 ):
     mock_all_plans_and_tiers()
-    setup_mocks(mocker, dbsession, mock_configuration, mock_repo_provider, request=request)
+    setup_mocks(
+        mocker, dbsession, mock_configuration, mock_repo_provider, request=request
+    )
 
     repository = RepositoryFactory.create()
     dbsession.add(repository)
@@ -201,7 +203,7 @@ def test_full_upload(
 
     dbsession.add(commit)
     dbsession.flush()
-    
+
     # Ensure commit and repository are properly bound and visible
     dbsession.refresh(commit)
     dbsession.refresh(repository)
@@ -390,7 +392,12 @@ def test_full_carryforward(
     mock_all_plans_and_tiers()
     user_yaml = {"flag_management": {"default_rules": {"carryforward": True}}}
     setup_mocks(
-        mocker, dbsession, mock_configuration, mock_repo_provider, user_yaml=user_yaml, request=request
+        mocker,
+        dbsession,
+        mock_configuration,
+        mock_repo_provider,
+        user_yaml=user_yaml,
+        request=request,
     )
     mocker.patch("tasks.compute_comparison.ComputeComparisonTask.run_impl")
 
@@ -403,7 +410,7 @@ def test_full_carryforward(
     base_commit = CommitFactory.create(repository=repository, commitid=commitid)
     dbsession.add(base_commit)
     dbsession.flush()
-    
+
     # Ensure commit and repository are properly bound and visible
     dbsession.refresh(base_commit)
     dbsession.refresh(repository)

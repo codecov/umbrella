@@ -4,6 +4,7 @@ from collections.abc import Generator
 from sqlalchemy.orm import Session
 
 from app import celery_app
+from database.engine import set_test_session_factory
 
 
 @contextlib.contextmanager
@@ -30,28 +31,29 @@ GLOBALS_USING_TASK_SESSION = [
 
 def hook_session(mocker, dbsession: Session, request=None):
     """Configure all tasks to use the shared test session."""
-    from database.engine import set_test_session_factory
-    
+
     mocker.patch("shared.metrics")
     for path in GLOBALS_USING_SESSION:
         mocker.patch(path, return_value=dbsession)
-    
+
     mocker.patch("tasks.base.close_old_connections")
     mocker.patch.object(dbsession, "close", lambda: None)
     mocker.patch.object(dbsession, "in_transaction", lambda: False)
-    
+
     original_commit = dbsession.commit
+
     def flush_instead_of_commit():
         dbsession.flush()
+
     mocker.patch.object(dbsession, "commit", flush_instead_of_commit)
-    
+
     set_test_session_factory(lambda: dbsession)
-    
+
     def cleanup():
         set_test_session_factory(None)
-        if 'original_commit' in locals():
+        if "original_commit" in locals():
             dbsession.commit = original_commit
-    
+
     if request is not None:
         request.addfinalizer(cleanup)
 
