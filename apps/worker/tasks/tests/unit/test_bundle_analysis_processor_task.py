@@ -144,6 +144,8 @@ def test_bundle_analysis_processor_task_error(
 
     task = BundleAnalysisProcessorTask()
     retry = mocker.patch.object(task, "retry")
+    task.request.retries = 0
+    task.request.headers = {}
 
     result = task.run_impl(
         dbsession,
@@ -171,7 +173,10 @@ def test_bundle_analysis_processor_task_error(
 
     assert commit.state == "error"
     assert upload.state == "error"
-    retry.assert_called_once_with(countdown=30)
+    retry.assert_called_once()
+    assert retry.call_args[1]["max_retries"] == task.max_retries
+    expected_countdown = 30 * (2**task.request.retries)
+    assert retry.call_args[1]["countdown"] == expected_countdown
 
 
 def test_bundle_analysis_processor_task_general_error(
@@ -339,7 +344,7 @@ def test_bundle_analysis_processor_task_locked(
     dbsession.flush()
 
     task = BundleAnalysisProcessorTask()
-    retry = mocker.patch.object(task, "retry")
+    safe_retry = mocker.patch.object(task, "safe_retry", return_value=True)
 
     result = task.run_impl(
         dbsession,
@@ -355,7 +360,7 @@ def test_bundle_analysis_processor_task_locked(
     assert result is None
 
     assert upload.state == "started"
-    retry.assert_called_once_with(countdown=ANY)
+    safe_retry.assert_called_once_with(max_retries=task.max_retries, countdown=ANY)
 
 
 def test_bundle_analysis_process_upload_rate_limit_error(
@@ -390,6 +395,8 @@ def test_bundle_analysis_process_upload_rate_limit_error(
 
     task = BundleAnalysisProcessorTask()
     retry = mocker.patch.object(task, "retry")
+    task.request.retries = 0
+    task.request.headers = {}
 
     ingest = mocker.patch("shared.bundle_analysis.BundleAnalysisReport.ingest")
     ingest.side_effect = PutRequestRateLimitError()
@@ -422,7 +429,10 @@ def test_bundle_analysis_process_upload_rate_limit_error(
 
     assert commit.state == "error"
     assert upload.state == "error"
-    retry.assert_called_once_with(countdown=30)
+    retry.assert_called_once()
+    assert retry.call_args[1]["max_retries"] == task.max_retries
+    expected_countdown = 30 * (2**task.request.retries)
+    assert retry.call_args[1]["countdown"] == expected_countdown
 
 
 def test_bundle_analysis_process_associate_no_parent_commit_id(

@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import call, patch
+from unittest.mock import MagicMock, PropertyMock, call, patch
 
 import psycopg2
 import pytest
@@ -26,10 +26,7 @@ from shared.celery_config import (
     upload_breadcrumb_task_name,
     upload_task_name,
 )
-from shared.django_apps.upload_breadcrumbs.models import (
-    BreadcrumbData,
-    Errors,
-)
+from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Errors
 from shared.plan.constants import PlanName
 from shared.torngit.exceptions import TorngitClientError
 from tasks.base import BaseCodecovRequest, BaseCodecovTask
@@ -148,44 +145,49 @@ class TestBaseCodecovTask:
             == 61.000123
         )
 
-    @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_db_exception(self, mocker, dbsession):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         mocked_get_db_session.return_value = dbsession
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
         with pytest.raises(Retry):
             SampleTaskWithArbitraryError(
                 DBAPIError("statement", "params", "orig")
             ).run()
 
-    @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_integrity_error(self, mocker, dbsession):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         mocked_get_db_session.return_value = dbsession
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
         with pytest.raises(Retry):
             SampleTaskWithArbitraryError(
                 IntegrityError("statement", "params", "orig")
             ).run()
 
-    @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_deadlock_exception(self, mocker, dbsession):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         mocked_get_db_session.return_value = dbsession
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
         with pytest.raises(Retry):
             SampleTaskWithArbitraryPostgresError(
                 psycopg2.errors.DeadlockDetected()
             ).run()
 
-    @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_operationalerror_exception(self, mocker, dbsession):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         mocked_get_db_session.return_value = dbsession
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
         with pytest.raises(Retry):
             SampleTaskWithArbitraryPostgresError(psycopg2.OperationalError()).run()
 
-    @patch("tasks.base.BaseCodecovTask._emit_queue_metrics")
     def test_sample_run_softimeout(self, mocker, dbsession):
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         mocked_get_db_session.return_value = dbsession
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
         with pytest.raises(SoftTimeLimitExceeded):
             SampleTaskWithSoftTimeout().run()
 
@@ -235,6 +237,8 @@ class TestBaseCodecovTask:
         mock_get_db_session = mocker.patch(
             "tasks.base.get_db_session", return_value=dbsession
         )
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
 
         task = SampleTask()
         task.run()
@@ -252,6 +256,8 @@ class TestBaseCodecovTask:
 
         # IntegrityError and DataError are subclasses of SQLAlchemyError that
         # have their own `except` clause.
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
         task = SampleTaskWithArbitraryError(IntegrityError("", {}, None))
         registered_task = celery_app.register_task(task)
         task = celery_app.tasks[registered_task.name]
@@ -267,6 +273,8 @@ class TestBaseCodecovTask:
         mock_get_db_session = mocker.patch(
             "tasks.base.get_db_session", return_value=dbsession
         )
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
 
         # StatementError is a subclass of SQLAlchemyError just like
         # IntegrityError and DataError, but this test case is different because
@@ -471,7 +479,10 @@ class TestBaseCodecovTaskHooks:
         assert prom_run_counter_after - prom_run_counter_before == 1
         assert prom_success_counter_after - prom_success_counter_before == 1
 
-    def test_sample_task_failure(self, celery_app):
+    def test_sample_task_failure(self, celery_app, mocker):
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
+
         class FailureSampleTask(BaseCodecovTask, name="test.FailureSampleTask"):
             def run_impl(self, *args, **kwargs):
                 raise Exception("Whhhhyyyyyyy")
@@ -540,18 +551,34 @@ class TestBaseCodecovTaskSafeRetry:
         task = SampleTask()
         task.request.retries = 2
         task.max_retries = 5
+        task.request.headers = {}
 
-        mock_retry = mocker.patch.object(task, "retry")
+        # Mock the parent class's retry method to raise Retry exception (normal behavior)
+        mock_retry = mocker.patch("celery.app.task.Task.retry", side_effect=Retry())
 
-        result = task.safe_retry(max_retries=5, countdown=60)
+        # safe_retry() raises Retry exception when successful (doesn't return True)
+        with pytest.raises(Retry):
+            task.safe_retry(max_retries=5, countdown=60)
 
-        assert result is True
-        mock_retry.assert_called_once_with(max_retries=5, countdown=60, exc=None)
+        # Verify retry() was called with correct arguments
+        # safe_retry now adds attempts to headers for the NEXT attempt
+        # Current attempt: retries=2, so attempts=3 (2+1)
+        # Next attempt will be: attempts=4 (3+1)
+        assert mock_retry.called
+        call_kwargs = mock_retry.call_args[1]
+        assert call_kwargs["max_retries"] == 5
+        assert call_kwargs["countdown"] == 60
+        assert call_kwargs["exc"] is None
+        assert "headers" in call_kwargs
+        assert (
+            call_kwargs["headers"]["attempts"] == 4
+        )  # (retries 2 + 1) + 1 for next attempt
 
     def test_safe_retry_fails_at_max_retries(self, mocker):
         task = SampleTask()
         task.request.retries = 10
         task.max_retries = 10
+        task.request.headers = {}
 
         mock_retry = mocker.patch.object(task, "retry")
 
@@ -578,8 +605,10 @@ class TestBaseCodecovTaskSafeRetry:
         task = SampleTask()
         task.request.retries = 3
         task.max_retries = 10
+        task.request.headers = {}
 
-        mock_retry = mocker.patch.object(task, "retry")
+        # Mock the parent class's retry method so our overridden retry() still runs
+        mock_retry = mocker.patch("celery.app.task.Task.retry")
 
         # Call without countdown - should use exponential backoff
         # Formula: TASK_RETRY_BACKOFF_BASE_SECONDS * (2 ** retry_count)
@@ -589,15 +618,21 @@ class TestBaseCodecovTaskSafeRetry:
         mock_retry.assert_called_once()
         call_kwargs = mock_retry.call_args[1]
         assert call_kwargs["countdown"] == 160  # 20 * 2^3
+        # Current attempt: retries=3, so attempts=4 (3+1)
+        # Next attempt will be: attempts=5 (4+1)
+        assert (
+            call_kwargs["headers"]["attempts"] == 5
+        )  # (retries 3 + 1) + 1 for next attempt
 
     def test_safe_retry_handles_max_retries_exceeded_exception(self, mocker):
         task = SampleTask()
         task.request.retries = 9
         task.max_retries = 10
+        task.request.headers = {}
 
-        # Make retry raise MaxRetriesExceededError
-        mock_retry = mocker.patch.object(
-            task, "retry", side_effect=MaxRetriesExceededError()
+        # Make parent retry raise MaxRetriesExceededError
+        mock_retry = mocker.patch(
+            "celery.app.task.Task.retry", side_effect=MaxRetriesExceededError()
         )
 
         counter_before = REGISTRY.get_sample_value(
@@ -617,6 +652,160 @@ class TestBaseCodecovTaskSafeRetry:
         expected_increment = 1 if counter_before is not None else 1
         actual_increment = (counter_after or 0) - (counter_before or 0)
         assert actual_increment == expected_increment
+
+    def test_safe_retry_fails_when_attempts_exceeds_max(self, mocker):
+        """Test that safe_retry fails when attempts exceeds max_attempts even if retries don't."""
+        task = SampleTask()
+        task.request.retries = 3  # Below max_retries
+        task.max_retries = 10
+        # Simulate re-delivery: attempts is ahead of retry_count
+        task.request.headers = {"attempts": 12}  # Exceeds max_attempts (10 + 1 = 11)
+
+        mock_retry = mocker.patch("celery.app.task.Task.retry")
+
+        counter_before = REGISTRY.get_sample_value(
+            "worker_task_counts_max_retries_exceeded_total",
+            labels={"task": task.name},
+        )
+
+        result = task.safe_retry(max_retries=10, countdown=60)
+
+        assert result is False
+        mock_retry.assert_not_called()
+
+        counter_after = REGISTRY.get_sample_value(
+            "worker_task_counts_max_retries_exceeded_total",
+            labels={"task": task.name},
+        )
+
+        expected_increment = 1 if counter_before is not None else 1
+        actual_increment = (counter_after or 0) - (counter_before or 0)
+        assert actual_increment == expected_increment
+
+    def test_safe_retry_merges_existing_headers(self, mocker):
+        """Test that safe_retry merges attempts with existing headers."""
+        task = SampleTask()
+        task.request.retries = 1
+        task.max_retries = 5
+        task.request.headers = {"custom_header": "value"}
+
+        # Mock the parent class's retry method so our overridden retry() still runs
+        mock_retry = mocker.patch("celery.app.task.Task.retry")
+
+        task.safe_retry(max_retries=5, countdown=60, custom_kwarg="test")
+
+        call_kwargs = mock_retry.call_args[1]
+        assert call_kwargs["headers"]["attempts"] == 3  # (retries 1 + 1) + 1
+        assert call_kwargs["headers"]["custom_header"] == "value"
+        assert call_kwargs["custom_kwarg"] == "test"
+        assert call_kwargs["headers"]["custom_header"] == "value"
+        assert call_kwargs["custom_kwarg"] == "test"
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+class TestBaseCodecovTaskGetTotalAttempts:
+    def test_get_attempts_without_request(self, mocker):
+        """Test _get_attempts when request doesn't exist."""
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
+        task = SampleTask()
+        assert task.attempts == 0
+
+    def test_get_attempts_without_headers(self):
+        """Test _get_attempts when headers don't have attempts."""
+        task = SampleTask()
+        task.request.retries = 3
+        task.request.headers = {}
+        assert task.attempts == 4  # retries (3) + 1
+
+    def test_get_attempts_with_valid_header(self):
+        """Test _get_attempts when headers have valid attempts."""
+        task = SampleTask()
+        task.request.retries = 2
+        task.request.headers = {"attempts": 5}
+        assert task.attempts == 5  # Uses header value
+
+    def test_get_attempts_with_invalid_header_string(self):
+        """Test _get_attempts when headers have invalid string value."""
+        task = SampleTask()
+        task.request.retries = 2
+        task.request.headers = {"attempts": "invalid"}
+        # Should fallback to retry_count + 1
+        assert task.attempts == 3  # retries (2) + 1
+
+    def test_get_attempts_with_invalid_header_none(self):
+        """Test _get_attempts when headers have None value."""
+        task = SampleTask()
+        task.request.retries = 2
+        task.request.headers = {"attempts": None}
+        # Should fallback to retry_count + 1
+        assert task.attempts == 3  # retries (2) + 1
+
+    def test_get_attempts_without_retries_attribute(self, mocker):
+        """Test _get_attempts when request doesn't have retries attribute."""
+        # Create a mock request without retries attribute
+        mock_request = MagicMock(
+            spec=[]
+        )  # spec=[] prevents auto-creation of attributes
+        mock_request.headers = {}
+        # Mock hasattr to return False for retries on request
+        original_hasattr = hasattr
+
+        def mock_hasattr(obj, name):
+            if obj is mock_request and name == "retries":
+                return False
+            return original_hasattr(obj, name)
+
+        mocker.patch("builtins.hasattr", side_effect=mock_hasattr)
+        # Patch at class level BEFORE creating instance to avoid property setter/deleter issues
+        # This matches the pattern used in test_hard_time_limit_task_with_request_data
+        mock_property = PropertyMock(return_value=mock_request)
+        mocker.patch.object(SampleTask, "request", mock_property, create=True)
+        task = SampleTask()
+        assert task.attempts == 1  # 0 + 1
+
+    def test_get_attempts_with_re_delivery_scenario(self):
+        """Test _get_attempts in re-delivery scenario (attempts > retry_count + 1)."""
+        task = SampleTask()
+        task.request.retries = 2  # Normal retry count
+        task.request.headers = {"attempts": 5}  # Higher due to re-delivery
+        assert task.attempts == 5  # Should use header value
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+class TestBaseCodecovTaskHasExceededMaxAttempts:
+    def test_has_exceeded_max_attempts_none_max_retries(self):
+        """Test _has_exceeded_max_attempts when max_retries is None."""
+        task = SampleTask()
+        task.request.retries = 100
+        task.request.headers = {"attempts": 100}
+        assert task._has_exceeded_max_attempts(max_retries=None) is False
+
+    def test_has_exceeded_max_attempts_by_attempts(self):
+        """Test _has_exceeded_max_attempts when attempts >= max_attempts."""
+        task = SampleTask()
+        task.request.retries = 5
+        task.request.headers = {"attempts": 11}
+        assert task._has_exceeded_max_attempts(max_retries=10) is True
+
+    def test_has_exceeded_max_attempts_not_exceeded(self):
+        """Test _has_exceeded_max_attempts when attempts < max_attempts."""
+        task = SampleTask()
+        task.request.retries = 3
+        task.request.headers = {"attempts": 4}
+        assert task._has_exceeded_max_attempts(max_retries=10) is False
+
+    def test_has_exceeded_max_attempts_without_request(self, mocker):
+        """Test _has_exceeded_max_attempts when request doesn't exist."""
+        task = SampleTask()
+        original_hasattr = hasattr
+
+        def mock_hasattr(obj, name):
+            if obj is task and name == "request":
+                return False
+            return original_hasattr(obj, name)
+
+        mocker.patch("builtins.hasattr", side_effect=mock_hasattr)
+        assert task._has_exceeded_max_attempts(max_retries=10) is False
 
 
 class TestBaseCodecovRequest:
@@ -736,14 +925,16 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         assert mock_get_db_session.call_count == 1
         assert mock_celery_task_router.call_count == 1
         assert mock_route_tasks.call_count == 1
-        mocked_apply_async.assert_called_with(
-            args=None,
-            kwargs=kwargs,
-            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
-            time_limit=400,
-            soft_time_limit=200,
-            user_plan=mock_celery_task_router(),
+        call_kwargs = mocked_apply_async.call_args[1]
+        assert call_kwargs["args"] is None
+        assert call_kwargs["kwargs"] == kwargs
+        assert (
+            call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
+        assert call_kwargs["headers"]["attempts"] == 1  # New header added
+        assert call_kwargs["time_limit"] == 400
+        assert call_kwargs["soft_time_limit"] == 200
+        assert call_kwargs["user_plan"] == mock_celery_task_router()
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
     def test_apply_async_override_with_chain(self, mocker):
@@ -775,9 +966,9 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         assert "chain" in kwargs and len(kwargs.get("chain")) == 1
         assert "task_id" in kwargs
         assert "headers" in kwargs
-        assert kwargs.get("headers") == {
-            "created_timestamp": "2023-06-13T10:01:01.000123"
-        }
+        headers = kwargs.get("headers")
+        assert headers["created_timestamp"] == "2023-06-13T10:01:01.000123"
+        assert headers["attempts"] == 1  # New header added
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
     @pytest.mark.django_db
@@ -817,14 +1008,16 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         kwargs = {"ownerid": repo.ownerid}
         task.apply_async(kwargs=kwargs)
         assert mock_get_db_session.call_count == 1
-        mocked_super_apply_async.assert_called_with(
-            args=None,
-            kwargs=kwargs,
-            soft_time_limit=None,
-            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
-            time_limit=None,
-            user_plan="users-pr-inappm",
+        call_kwargs = mocked_super_apply_async.call_args[1]
+        assert call_kwargs["args"] is None
+        assert call_kwargs["kwargs"] == kwargs
+        assert call_kwargs["soft_time_limit"] is None
+        assert (
+            call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
+        assert call_kwargs["headers"]["attempts"] == 1  # New header added
+        assert call_kwargs["time_limit"] is None
+        assert call_kwargs["user_plan"] == "users-pr-inappm"
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
     @pytest.mark.django_db
@@ -864,14 +1057,16 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         kwargs = {"ownerid": repo_enterprise_cloud.ownerid}
         task.apply_async(kwargs=kwargs)
         assert mock_get_db_session.call_count == 1
-        mocked_super_apply_async.assert_called_with(
-            args=None,
-            kwargs=kwargs,
-            soft_time_limit=500,
-            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
-            time_limit=600,
-            user_plan="users-enterprisey",
+        call_kwargs = mocked_super_apply_async.call_args[1]
+        assert call_kwargs["args"] is None
+        assert call_kwargs["kwargs"] == kwargs
+        assert call_kwargs["soft_time_limit"] == 500
+        assert (
+            call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
+        assert call_kwargs["headers"]["attempts"] == 1  # New header added
+        assert call_kwargs["time_limit"] == 600
+        assert call_kwargs["user_plan"] == "users-enterprisey"
 
     @pytest.mark.freeze_time("2023-06-13T10:01:01.000123")
     @pytest.mark.django_db
@@ -911,14 +1106,16 @@ class TestBaseCodecovTaskApplyAsyncOverride:
         kwargs = {"repoid": repo_enterprise_cloud.repoid}
         task.apply_async(kwargs=kwargs)
         assert mock_get_db_session.call_count == 1
-        mocked_super_apply_async.assert_called_with(
-            args=None,
-            kwargs=kwargs,
-            soft_time_limit=400,
-            headers={"created_timestamp": "2023-06-13T10:01:01.000123"},
-            time_limit=450,
-            user_plan="users-enterprisey",
+        call_kwargs = mocked_super_apply_async.call_args[1]
+        assert call_kwargs["args"] is None
+        assert call_kwargs["kwargs"] == kwargs
+        assert call_kwargs["soft_time_limit"] == 400
+        assert (
+            call_kwargs["headers"]["created_timestamp"] == "2023-06-13T10:01:01.000123"
         )
+        assert call_kwargs["headers"]["attempts"] == 1  # New header added
+        assert call_kwargs["time_limit"] == 450
+        assert call_kwargs["user_plan"] == "users-enterprisey"
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
