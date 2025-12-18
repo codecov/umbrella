@@ -13,15 +13,11 @@ EXPORTABLE_MODELS = [
     "codecov_auth.User",
     # Models depending on Owner
     "codecov_auth.OwnerProfile",
-    "codecov_auth.Session",
-    "codecov_auth.OrganizationLevelToken",
-    "codecov_auth.UserToken",
     "core.Repository",
     # Models depending on Repository
     "core.Branch",
     "core.Commit",
     "core.Pull",
-    "codecov_auth.RepositoryToken",
     "reports.RepositoryFlag",
     # Models depending on Commit
     "core.CommitNotification",
@@ -87,15 +83,15 @@ EXCLUDED_MODELS = [
     "codecov_auth.OktaSettings",
     # GitHub App - this will be a new app
     "codecov_auth.GithubAppInstallation",
+    # Tokens/sessions - must be regenerated
+    "codecov_auth.Session",
+    "codecov_auth.OrganizationLevelToken",
+    "codecov_auth.UserToken",
+    "codecov_auth.RepositoryToken",
 ]
 
 # Fields to completely exclude from export
 EXCLUDED_FIELDS: dict[str, list[str]] = {
-    # Token values - must regenerate
-    "codecov_auth.UserToken": ["token"],
-    "codecov_auth.RepositoryToken": ["key"],
-    "codecov_auth.OrganizationLevelToken": ["token"],
-    "codecov_auth.Session": ["token"],
     # Billing IDs
     "codecov_auth.Owner": ["stripe_customer_id", "stripe_subscription_id"],
 }
