@@ -218,19 +218,33 @@ class BundleAnalysisProcessorTask(
                         },
                     )
                     # Update upload state to "error" before returning
-                    result.update_upload(carriedforward=carriedforward)
                     try:
+                        result.update_upload(carriedforward=carriedforward)
                         db_session.commit()
                     except Exception:
                         # Log commit failure but don't raise - we've already set the error state
                         log.exception(
-                            "Failed to commit upload error state after max retries exceeded",
+                            "Failed to update and commit upload error state after max retries exceeded",
                             extra={
                                 "commit": commitid,
                                 "repoid": repoid,
                                 "upload_id": upload.id_,
                             },
                         )
+                        # Manually set upload state to error as fallback
+                        upload.state_id = UploadState.ERROR.db_id
+                        upload.state = "error"
+                        try:
+                            db_session.commit()
+                        except Exception:
+                            log.exception(
+                                "Failed to commit upload error state fallback",
+                                extra={
+                                    "commit": commitid,
+                                    "repoid": repoid,
+                                    "upload_id": upload.id_,
+                                },
+                            )
                     return processing_results
                 log.warn(
                     "Attempting to retry bundle analysis upload",
