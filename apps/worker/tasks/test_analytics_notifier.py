@@ -43,6 +43,13 @@ from shared.upload.types import TAUploadContext, UploadPipeline
 from shared.yaml.user_yaml import UserYaml
 from tasks.base import BaseCodecovTask
 
+
+class MaxRetriesExceededError(Exception):
+    """Raised when lock acquisition exceeds max retries."""
+
+    pass
+
+
 log = logging.getLogger(__name__)
 
 TA_NOTIFIER_FENCING_TOKEN = "ta_notifier_fence:{}_{}"
@@ -97,26 +104,32 @@ class TestAnalyticsNotifierTask(
         )
 
         if fencing_token is None:
-            with self._notification_lock(lock_manager):
-                # Acquire a fencing token to deduplicate notifications
-                redis_key = TA_NOTIFIER_FENCING_TOKEN.format(
-                    repo_id, upload_context["commit_sha"]
-                )
-                with redis_client.pipeline() as pipeline:
-                    pipeline.incr(redis_key)
-                    # Set expiry to prevent stale keys from accumulating
-                    pipeline.expire(redis_key, 24 * 60 * 60)  # 24 hours
-                    results = pipeline.execute()
-                    fencing_token = int(cast(str, results[0]))
+            try:
+                with self._notification_lock(lock_manager):
+                    # Acquire a fencing token to deduplicate notifications
+                    redis_key = TA_NOTIFIER_FENCING_TOKEN.format(
+                        repo_id, upload_context["commit_sha"]
+                    )
+                    with redis_client.pipeline() as pipeline:
+                        pipeline.incr(redis_key)
+                        # Set expiry to prevent stale keys from accumulating
+                        pipeline.expire(redis_key, 24 * 60 * 60)  # 24 hours
+                        results = pipeline.execute()
+                        fencing_token = int(cast(str, results[0]))
 
-            # Add fencing token to the args and then retry for a debounce period
-            self.extra_dict["fencing_token"] = fencing_token
-            kwargs["fencing_token"] = fencing_token
-            log.info(
-                "Acquired fencing token, retrying for debounce period",
-                extra=self.extra_dict,
-            )
-            self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=kwargs)
+                # Add fencing token to the args and then retry for a debounce period
+                self.extra_dict["fencing_token"] = fencing_token
+                kwargs["fencing_token"] = fencing_token
+                log.info(
+                    "Acquired fencing token, retrying for debounce period",
+                    extra=self.extra_dict,
+                )
+                self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=kwargs)
+            except MaxRetriesExceededError:
+                return NotifierTaskResult(
+                    attempted=False,
+                    succeeded=False,
+                )
 
         # At this point we have a fencing token, but want to check if another
         # notification task has incremented it, indicating a newer notification
@@ -124,12 +137,18 @@ class TestAnalyticsNotifierTask(
         assert fencing_token, "Fencing token not acquired"
         # The lock here is not required for correctness (only the one at the
         # end is), but it reduces duplicated work and database queries
-        with self._notification_lock(lock_manager):
-            stale_token_result = self._check_fencing_token(
-                redis_client, repo_id, upload_context, fencing_token
+        try:
+            with self._notification_lock(lock_manager):
+                stale_token_result = self._check_fencing_token(
+                    redis_client, repo_id, upload_context, fencing_token
+                )
+                if stale_token_result:
+                    return stale_token_result
+        except MaxRetriesExceededError:
+            return NotifierTaskResult(
+                attempted=False,
+                succeeded=False,
             )
-            if stale_token_result:
-                return stale_token_result
 
         # Do preparation work without a lock
         notifier = self.notification_preparation(
@@ -144,23 +163,31 @@ class TestAnalyticsNotifierTask(
                 succeeded=False,
             )
 
-        with self._notification_lock(lock_manager):
-            # Check fencing token again before sending the notification
-            stale_token_result = self._check_fencing_token(
-                redis_client, repo_id, upload_context, fencing_token
+        try:
+            with self._notification_lock(lock_manager):
+                # Check fencing token again before sending the notification
+                stale_token_result = self._check_fencing_token(
+                    redis_client, repo_id, upload_context, fencing_token
+                )
+                if stale_token_result:
+                    return stale_token_result
+
+                # Send notification
+                notifier_result = notifier.notify()
+
+            success = (
+                True if notifier_result is NotifierResult.COMMENT_POSTED else False
             )
-            if stale_token_result:
-                return stale_token_result
-
-            # Send notification
-            notifier_result = notifier.notify()
-
-        success = True if notifier_result is NotifierResult.COMMENT_POSTED else False
-        log.info("Posted TA comment", extra={**self.extra_dict, "success": success})
-        return NotifierTaskResult(
-            attempted=True,
-            succeeded=success,
-        )
+            log.info("Posted TA comment", extra={**self.extra_dict, "success": success})
+            return NotifierTaskResult(
+                attempted=True,
+                succeeded=success,
+            )
+        except MaxRetriesExceededError:
+            return NotifierTaskResult(
+                attempted=False,
+                succeeded=False,
+            )
 
     @contextmanager
     def _notification_lock(self, lock_manager: LockManager):
@@ -168,14 +195,37 @@ class TestAnalyticsNotifierTask(
         Context manager to handle the repeated lock acquisition pattern
         with automatic retry handling for LockRetry exceptions.
         """
+        lock_retry_exception = None
         try:
             with lock_manager.locked(
                 LockType.NOTIFICATION,
-                retry_num=self.request.retries,
+                max_retries=5,
+                retry_num=self.attempts,
             ):
                 yield
+                return
         except LockRetry as retry:
-            self.retry(max_retries=5, countdown=retry.countdown)
+            lock_retry_exception = retry
+
+        # If we get here, lock acquisition failed
+        # Yield first to satisfy @contextmanager contract (must yield exactly once)
+        # The exception will be raised immediately after yield, causing the with block to exit
+        yield
+
+        # After yielding, handle the exception
+        # This code runs when __exit__() is called, which happens when the with block exits
+        if lock_retry_exception.max_retries_exceeded:
+            log.error(
+                "Not retrying lock acquisition - max retries exceeded",
+                extra={
+                    "retry_num": lock_retry_exception.retry_num,
+                    "max_attempts": lock_retry_exception.max_attempts,
+                },
+            )
+            raise MaxRetriesExceededError(
+                f"Lock acquisition exceeded max retries: {lock_retry_exception.retry_num} >= {lock_retry_exception.max_attempts}"
+            )
+        self.retry(max_retries=5, countdown=lock_retry_exception.countdown)
 
     def _check_fencing_token(
         self,

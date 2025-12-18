@@ -831,6 +831,7 @@ class TestUploadFinisherTask:
 
         task = UploadFinisherTask()
         task.request.retries = 0
+        task.request.headers = {}
 
         with pytest.raises(Retry):
             task.run_impl(
@@ -903,6 +904,7 @@ class TestUploadFinisherTask:
 
         task = UploadFinisherTask()
         task.request.retries = 0
+        task.request.headers = {}
 
         # Task should call self.retry() which raises Retry exception
         with pytest.raises(Retry):

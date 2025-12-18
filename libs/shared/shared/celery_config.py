@@ -42,10 +42,6 @@ process_owners_to_be_deleted_cron_task_name = (
     f"app.tasks.{TaskConfigGroup.delete_owner.value}.ProcessOwnersToBeDeletedCron"
 )
 
-# Export tasks
-export_test_analytics_data_task_name = (
-    f"app.tasks.{TaskConfigGroup.export_test_analytics.value}.ExportTestAnalyticsData"
-)
 mark_owner_for_deletion_task_name = (
     f"app.tasks.{TaskConfigGroup.mark_owner_for_deletion.value}.MarkOwnerForDeletion"
 )
@@ -289,6 +285,13 @@ UPLOAD_PROCESSING_MAX_RETRIES = int(
 # Default: 10 retries
 PREPROCESS_UPLOAD_MAX_RETRIES = int(
     get_config("setup", "tasks", "upload", "preprocess_max_retries", default=10)
+)
+
+# Upload processor max retries
+# How many times to retry when upload processor encounters retryable errors
+# Default: 5 retries
+UPLOAD_PROCESSOR_MAX_RETRIES = int(
+    get_config("setup", "tasks", "upload", "processor_max_retries", default=5)
 )
 
 # Bundle analysis processor max retries
@@ -632,15 +635,6 @@ class BaseCeleryConfig:
                 "setup",
                 "tasks",
                 TaskConfigGroup.flush_repo.value,
-                "queue",
-                default=task_default_queue,
-            )
-        },
-        export_test_analytics_data_task_name: {
-            "queue": get_config(
-                "setup",
-                "tasks",
-                TaskConfigGroup.export_test_analytics.value,
                 "queue",
                 default=task_default_queue,
             )
