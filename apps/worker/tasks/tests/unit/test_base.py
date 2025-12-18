@@ -76,7 +76,7 @@ class SampleTaskWithArbitraryError(
     def run_impl(self, dbsession):
         raise self.error
 
-    def retry(self, countdown=None):
+    def retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
         # Fake retry method
         raise Retry()
 
@@ -90,7 +90,7 @@ class SampleTaskWithArbitraryPostgresError(
     def run_impl(self, dbsession):
         raise DBAPIError("statement", "params", self.error)
 
-    def retry(self, countdown=None):
+    def retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
         # Fake retry method
         raise Retry()
 

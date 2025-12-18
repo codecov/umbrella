@@ -1,8 +1,9 @@
 import logging
 from typing import Any, cast
 
-from app import celery_app
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
+
+from app import celery_app
 from database.enums import ReportType
 from database.models import Commit, CommitReport, Upload
 from services.bundle_analysis.report import (

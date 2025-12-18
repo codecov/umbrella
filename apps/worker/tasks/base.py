@@ -433,13 +433,21 @@ class BaseCodecovTask(celery_app.Task):
                 db_session.rollback()
                 retry_count = getattr(self.request, "retries", 0)
                 countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
-                self.retry(countdown=countdown)
+                # Use safe_retry to handle max retries exceeded gracefully
+                # Returns False if max retries exceeded, otherwise raises Retry
+                if not self.safe_retry(countdown=countdown):
+                    # Max retries exceeded - return None to match old behavior
+                    return None
             except SQLAlchemyError as ex:
                 self._analyse_error(ex, args, kwargs)
                 db_session.rollback()
                 retry_count = getattr(self.request, "retries", 0)
                 countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
-                self.retry(countdown=countdown)
+                # Use safe_retry to handle max retries exceeded gracefully
+                # Returns False if max retries exceeded, otherwise raises Retry
+                if not self.safe_retry(countdown=countdown):
+                    # Max retries exceeded - return None to match old behavior
+                    return None
             except MaxRetriesExceededError as ex:
                 if UploadFlow.has_begun():
                     UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
