@@ -102,15 +102,6 @@ NULLIFIED_FIELDS: dict[str, list[str]] = {
     "codecov_auth.Owner": ["oauth_token"],
 }
 
-# Models that require explicit opt-in due to security sensitivity
-# These are excluded by default but can be included if requested
-SENSITIVE_MODELS = [
-    "codecov_auth.UserToken",
-    "codecov_auth.RepositoryToken",
-    "codecov_auth.OrganizationLevelToken",
-    "codecov_auth.Session",
-]
-
 
 def get_model_class(model_path: str):
     """
