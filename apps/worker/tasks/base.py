@@ -1,4 +1,6 @@
 import logging
+import time
+from contextlib import contextmanager
 from datetime import datetime
 
 import sentry_sdk
@@ -173,6 +175,21 @@ class BaseCodecovTask(celery_app.Task):
         if self.time_limit is not None:
             return self.time_limit
         return self.app.conf.task_time_limit or 0
+
+    def get_lock_timeout(self, default_timeout: int) -> int:
+        """
+        Calculate the lock timeout based on hard_time_limit_task.
+
+        Returns the maximum of default_timeout and hard_time_limit_task.
+        In production, hard_time_limit_task always returns a numeric value.
+
+        Args:
+            default_timeout: The default lock timeout to use
+
+        Returns:
+            The calculated lock timeout
+        """
+        return max(default_timeout, self.hard_time_limit_task)
 
     @sentry_sdk.trace
     def apply_async(self, args=None, kwargs=None, **options):
@@ -532,6 +549,60 @@ class BaseCodecovTask(celery_app.Task):
                 )
 
         return None
+
+    @contextmanager
+    def with_logged_lock(self, lock, lock_name: str, **extra_log_context):
+        """
+        Context manager that wraps a Redis lock with standardized logging.
+
+        This method provides consistent lock logging across all tasks:
+        - Logs "Acquiring lock" before attempting to acquire
+        - Logs "Acquired lock" after successful acquisition
+        - Logs "Releasing lock" with duration after release
+
+        Args:
+            lock: A Redis lock object (from redis_connection.lock())
+            lock_name: Name of the lock for logging purposes
+            **extra_log_context: Additional context to include in all log messages
+
+        Example:
+            with self.with_logged_lock(
+                redis_connection.lock(lock_name, timeout=300),
+                lock_name=lock_name,
+                repoid=repoid,
+                commitid=commitid,
+            ):
+                # Your code here
+                pass
+        """
+        log.info(
+            "Acquiring lock",
+            extra={
+                "lock_name": lock_name,
+                **extra_log_context,
+            },
+        )
+        with lock:
+            lock_acquired_time = time.time()
+            log.info(
+                "Acquired lock",
+                extra={
+                    "lock_name": lock_name,
+                    **extra_log_context,
+                },
+            )
+            try:
+                yield
+            finally:
+                lock_duration = time.time() - lock_acquired_time
+                log.info(
+                    "Releasing lock",
+                    extra={
+                        "lock_name": lock_name,
+                        "lock_duration_seconds": lock_duration,
+                        **extra_log_context,
+                    },
+                )
 
     def _call_upload_breadcrumb_task(
         self,

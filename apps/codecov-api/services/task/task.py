@@ -46,9 +46,10 @@ class TaskService:
             **celery_compatible_config,
         )
 
-    def schedule_task(self, task_name, *, kwargs, apply_async_kwargs):
+    def schedule_task(self, task_name, *, args=None, kwargs, apply_async_kwargs):
         return self._create_signature(
             task_name,
+            args=args,
             kwargs=kwargs,
         ).apply_async(**apply_async_kwargs)
 

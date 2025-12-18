@@ -13,7 +13,6 @@ from celery import chain, chord
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from redis import Redis
-from redis.exceptions import LockError
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -23,6 +22,7 @@ from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from services.bundle_analysis.report import BundleAnalysisReportService
+from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.state import ProcessingState
 from services.processing.types import UploadArguments
 from services.report import (
@@ -37,11 +37,7 @@ from services.repository import (
     possibly_update_commit_from_provider_info,
 )
 from services.test_results import TestResultsReportService
-from shared.celery_config import (
-    UPLOAD_PROCESSING_MAX_RETRIES,
-    UPLOAD_PROCESSING_RETRY_DELAY_SECONDS,
-    upload_task_name,
-)
+from shared.celery_config import DEFAULT_LOCK_TIMEOUT_SECONDS, upload_task_name
 from shared.config import get_config
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.django_apps.user_measurements.models import UserMeasurement
@@ -78,18 +74,6 @@ UPLOADS_PER_TASK_SCHEDULE = Histogram(
 
 TA_SCHEDULED_COUNTER = Counter(
     "ta_scheduled_counter", "Number of TA pipelines scheduled", ["product"]
-)
-
-UPLOAD_TASK_PROCESSING_RETRY_COUNTER = Counter(
-    "upload_task_processing_retry",
-    "Number of times upload task retried due to processing lock",
-    ["report_type", "retry_count"],
-)
-
-UPLOAD_TASK_TOO_MANY_RETRIES_COUNTER = Counter(
-    "upload_task_too_many_retries",
-    "Number of times upload task gave up due to too many retries",
-    ["report_type"],
 )
 
 
@@ -324,56 +308,11 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 "tasks_were_scheduled": False,
             }
 
-        if upload_context.is_currently_processing():
-            log.info(
-                f"Currently processing upload. Retrying in {UPLOAD_PROCESSING_RETRY_DELAY_SECONDS}s.",
-                extra=upload_context.log_extra(retry_count=self.request.retries),
-            )
-            inc_counter(
-                UPLOAD_TASK_PROCESSING_RETRY_COUNTER,
-                labels={
-                    "report_type": report_type,
-                    "retry_count": str(self.request.retries),
-                },
-            )
-            self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                error=Errors.INTERNAL_RETRYING,
-            )
-
-            # Use base class safe_retry method (shared by all tasks)
-            # Uses constants from shared config:
-            # - max_retries: UPLOAD_PROCESSING_MAX_RETRIES (default: 10)
-            # - countdown: UPLOAD_PROCESSING_RETRY_DELAY_SECONDS (default: 60)
-            if not self.safe_retry(
-                max_retries=UPLOAD_PROCESSING_MAX_RETRIES,
-                countdown=UPLOAD_PROCESSING_RETRY_DELAY_SECONDS,
-                kwargs=upload_context.kwargs_for_retry(kwargs),
-            ):
-                # Max retries exceeded - give up
-                log.error(
-                    "Upload still processing after too many retries. Giving up.",
-                    extra=upload_context.log_extra(retry_count=self.request.retries),
-                )
-                inc_counter(
-                    UPLOAD_TASK_TOO_MANY_RETRIES_COUNTER,
-                    labels={"report_type": report_type},
-                )
-                self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
-                self._call_upload_breadcrumb_task(
-                    commit_sha=commitid,
-                    repo_id=repoid,
-                    milestone=milestone,
-                    error=Errors.INTERNAL_OUT_OF_RETRIES,
-                )
-                return {
-                    "was_setup": False,
-                    "was_updated": False,
-                    "tasks_were_scheduled": False,
-                    "reason": "too_many_processing_retries",
-                }
+        # Note: We don't check for upload_processing lock here because:
+        # 1. UploadTask should continue processing uploads regardless of processing state
+        # 2. Only UploadFinisherTask blocks on upload_processing lock (via LockManager with LockType.UPLOAD_PROCESSING)
+        # 3. UploadProcessorTask handles the upload_processing lock for individual upload processing
+        # The upload_processing lock prevents concurrent report merging, not upload scheduling
 
         if retry_countdown := _should_debounce_processing(upload_context):
             log.info(
@@ -393,12 +332,20 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 kwargs=upload_context.kwargs_for_retry(kwargs),
             )
 
-        lock_name = upload_context.lock_name("upload")
+        lock_manager = LockManager(
+            repoid=repoid,
+            commitid=commitid,
+            report_type=upload_context.report_type,
+            lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
+            blocking_timeout=None,
+            redis_connection=upload_context.redis_connection,
+        )
+
         try:
-            with upload_context.redis_connection.lock(
-                lock_name,
-                timeout=max(300, self.hard_time_limit_task),
-                blocking_timeout=5,
+            with lock_manager.locked(
+                LockType.UPLOAD,
+                retry_num=self.request.retries,
+                max_retries=3,
             ):
                 # Check whether a different `Upload` task has "stolen" our uploads
                 if not upload_context.has_pending_jobs():
@@ -421,16 +368,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     upload_context,
                     kwargs,
                 )
-        except LockError:
-            log.warning(
-                "Unable to acquire lock for key %s.",
-                lock_name,
-                extra={
-                    "commit": commitid,
-                    "repoid": repoid,
-                    "report_type": report_type,
-                },
-            )
+        except LockRetry as retry:
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -454,11 +392,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "was_updated": False,
                     "tasks_were_scheduled": False,
                 }
-            if self.request.retries > 1:
-                log.info(
-                    "Not retrying since we already had too many retries",
-                    extra=upload_context.log_extra(),
-                )
+            if self.request.retries >= 3:
                 self.maybe_log_upload_checkpoint(UploadFlow.TOO_MANY_RETRIES)
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
@@ -472,7 +406,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "tasks_were_scheduled": False,
                     "reason": "too_many_retries",
                 }
-            retry_countdown = 20 * 2**self.request.retries
+            retry_countdown = max(retry.countdown, 20 * 2**self.request.retries)
             log.warning(
                 "Retrying upload",
                 extra=upload_context.log_extra(countdown=retry_countdown),
@@ -949,10 +883,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         # does whatever extra stuff + enqueues a notify
         if do_notify:
             task_signatures.append(
-                bundle_analysis_notify_task.s(
-                    repoid=commit.repoid,
-                    commitid=commit.commitid,
-                    commit_yaml=commit_yaml,
+                bundle_analysis_notify_task.signature(
+                    kwargs={
+                        "repoid": commit.repoid,
+                        "commitid": commit.commitid,
+                        "commit_yaml": commit_yaml,
+                    }
                 )
             )
 

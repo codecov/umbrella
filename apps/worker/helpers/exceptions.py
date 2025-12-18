@@ -13,7 +13,12 @@ class ReportExpiredException(Exception):
 
 
 class ReportEmptyError(Exception):
-    pass
+    def __init__(self, archive_path=None, reportid=None) -> None:
+        message = "No files found in report."
+        super().__init__(message)
+        self.message = message
+        self.archive_path = archive_path
+        self.reportid = reportid
 
 
 class CorruptRawReportError(Exception):

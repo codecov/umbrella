@@ -1,5 +1,4 @@
 import logging
-import random
 import re
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -7,12 +6,10 @@ from enum import Enum
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
-from redis.exceptions import LockError
-from redis.lock import Lock
 
 from app import celery_app
 from celery_config import notify_error_task_name
-from database.enums import CommitErrorTypes
+from database.enums import CommitErrorTypes, ReportType
 from database.models import Commit, Pull
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.models.reports import Upload
@@ -21,19 +18,21 @@ from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.save_commit_error import save_commit_error
 from services.comparison import get_or_create_comparison
+from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.intermediate import (
     cleanup_intermediate_reports,
     intermediate_report_key,
     load_intermediate_reports,
 )
 from services.processing.merging import merge_reports, update_uploads
-from services.processing.state import ProcessingState, should_trigger_postprocessing
+from services.processing.state import ProcessingState
 from services.processing.types import ProcessingResult
 from services.report import ReportService
 from services.repository import get_repo_provider_service
 from services.timeseries import repository_datasets_query
 from services.yaml import read_yaml_field
 from shared.celery_config import (
+    DEFAULT_LOCK_TIMEOUT_SECONDS,
     compute_comparison_task_name,
     notify_task_name,
     pulls_task_name,
@@ -50,7 +49,7 @@ from shared.timeseries.helpers import is_timeseries_enabled
 from shared.torngit.exceptions import TorngitError
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
-from tasks.upload_processor import MAX_RETRIES, UPLOAD_PROCESSING_LOCK_NAME
+from tasks.upload_processor import MAX_RETRIES
 
 log = logging.getLogger(__name__)
 
@@ -242,7 +241,9 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         log.info(
             "Received upload_finisher task",
-            extra={"processing_results": processing_results},
+            extra={
+                "processing_results": processing_results,
+            },
         )
 
         repoid = int(repoid)
@@ -319,8 +320,25 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 state,
             )
 
-            if not should_trigger_postprocessing(state.get_upload_numbers()):
-                log.info("run_impl: Postprocessing should not be triggered")
+            # Check if there are still unprocessed coverage uploads in the database
+            # Use DB as source of truth - if any coverage uploads are still in UPLOADED state,
+            # another finisher will process them and we shouldn't send notifications yet
+            remaining_uploads = (
+                db_session.query(Upload)
+                .join(Upload.report)
+                .filter(
+                    Upload.report.has(commit=commit),
+                    Upload.report.has(report_type=ReportType.COVERAGE.value),
+                    Upload.state_id == UploadState.UPLOADED.db_id,
+                )
+                .count()
+            )
+
+            if remaining_uploads > 0:
+                log.info(
+                    "run_impl: Postprocessing should not be triggered - uploads still pending",
+                    extra={"remaining_uploads": remaining_uploads},
+                )
                 UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
                 UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
                 self._call_upload_breadcrumb_task(
@@ -396,10 +414,19 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         log.info("run_impl: Loaded commit diff")
 
-        try:
-            with get_report_lock(repoid, commitid, self.hard_time_limit_task):
-                log.info("run_impl: Acquired report lock")
+        lock_manager = LockManager(
+            repoid=repoid,
+            commitid=commitid,
+            lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
+            blocking_timeout=None,
+        )
 
+        try:
+            with lock_manager.locked(
+                LockType.UPLOAD_PROCESSING,
+                retry_num=self.request.retries,
+                max_retries=MAX_RETRIES,
+            ):
                 report_service = ReportService(commit_yaml)
 
                 log.info("run_impl: Performing report merging")
@@ -430,7 +457,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
                 log.info("run_impl: Finished upload_finisher task")
 
-        except LockError:
+        except LockRetry as retry:
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -438,6 +465,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
+            if self.request.retries >= MAX_RETRIES:
+                return
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -445,16 +474,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            max_retry = 200 * 3**self.request.retries
-            retry_in = min(random.randint(max_retry // 2, max_retry), 60 * 60 * 5)
-            log.warning(
-                "Unable to acquire report lock. Retrying",
-                extra={
-                    "countdown": retry_in,
-                    "number_retries": self.request.retries,
-                },
-            )
-            self.retry(max_retries=MAX_RETRIES, countdown=retry_in)
+            self.retry(max_retries=MAX_RETRIES, countdown=retry.countdown)
 
     def _handle_finisher_lock(
         self,
@@ -470,13 +490,19 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commitid = commit.commitid
         repository = commit.repository
 
-        lock_name = f"upload_finisher_lock_{repoid}_{commitid}"
-        redis_connection = get_redis_connection()
+        lock_manager = LockManager(
+            repoid=repoid,
+            commitid=commitid,
+            lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
+            blocking_timeout=None,
+        )
 
         try:
-            with redis_connection.lock(lock_name, timeout=60 * 5, blocking_timeout=5):
-                log.info("handle_finisher_lock: Acquired finisher lock")
-
+            with lock_manager.locked(
+                LockType.UPLOAD_FINISHER,
+                retry_num=self.request.retries,
+                max_retries=MAX_RETRIES,
+            ):
                 result = self.finish_reports_processing(
                     db_session, commit, commit_yaml, processing_results
                 )
@@ -519,7 +545,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     )
 
                 log.info("handle_finisher_lock: Invalidating caches")
-                self.invalidate_caches(redis_connection, commit)
+                self.invalidate_caches(lock_manager.redis_connection, commit)
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,
@@ -529,7 +555,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 log.info("handle_finisher_lock: Finished upload_finisher task")
                 return result
 
-        except LockError:
+        except LockRetry as retry:
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -537,9 +563,17 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            log.warning("Unable to acquire lock", extra={"lock_name": lock_name})
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
-            return
+            if self.request.retries >= MAX_RETRIES:
+                return
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                upload_ids=upload_ids,
+                error=Errors.INTERNAL_RETRYING,
+            )
+            self.retry(max_retries=MAX_RETRIES, countdown=retry.countdown)
 
     def finish_reports_processing(
         self,
@@ -556,7 +590,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         notifications_called = False
         if not regexp_ci_skip.search(commit.message or ""):
             should_call_notifications = self.should_call_notifications(
-                commit, commit_yaml, processing_results
+                commit, commit_yaml, processing_results, db_session
             )
             log.info(
                 "finish_reports_processing: should_call_notifications",
@@ -667,6 +701,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit: Commit,
         commit_yaml: UserYaml,
         processing_results: list[ProcessingResult],
+        db_session=None,
     ) -> ShouldCallNotifyResult:
         extra_dict = {
             "repoid": commit.repoid,
@@ -675,6 +710,26 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             "processing_results": processing_results,
             "parent_task": self.request.parent_id,
         }
+
+        # Check if there are still pending uploads in the database
+        # Use DB as source of truth for upload completion status
+        if db_session:
+            remaining_uploads = (
+                db_session.query(Upload)
+                .join(Upload.report)
+                .filter(
+                    Upload.report.has(commit=commit),
+                    Upload.report.has(report_type=ReportType.COVERAGE.value),
+                    Upload.state_id == UploadState.UPLOADED.db_id,
+                )
+                .count()
+            )
+            if remaining_uploads > 0:
+                log.info(
+                    "Not scheduling notify because there are still pending uploads",
+                    extra={**extra_dict, "remaining_uploads": remaining_uploads},
+                )
+                return ShouldCallNotifyResult.DO_NOT_NOTIFY
 
         manual_trigger = read_yaml_field(
             commit_yaml, ("codecov", "notify", "manual_trigger")
@@ -736,21 +791,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
 RegisteredUploadTask = celery_app.register_task(UploadFinisherTask())
 upload_finisher_task = celery_app.tasks[RegisteredUploadTask.name]
-
-
-def get_report_lock(repoid: int, commitid: str, hard_time_limit: int) -> Lock:
-    lock_name = UPLOAD_PROCESSING_LOCK_NAME(repoid, commitid)
-    redis_connection = get_redis_connection()
-
-    timeout = 60 * 5
-    if hard_time_limit:
-        timeout = max(timeout, hard_time_limit)
-
-    return redis_connection.lock(
-        lock_name,
-        timeout=timeout,
-        blocking_timeout=5,
-    )
 
 
 @sentry_sdk.trace

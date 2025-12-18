@@ -1,9 +1,7 @@
 import logging
-from itertools import groupby
 
 import sentry_sdk
 from django.conf import settings
-from django.views.decorators.gzip import gzip_page
 from rest_framework import serializers, status
 from rest_framework.decorators import (
     api_view,
@@ -12,7 +10,6 @@ from rest_framework.decorators import (
 )
 from rest_framework.response import Response
 
-from api.public.v2.test_results.serializers import TestrunSerializer
 from codecov_auth.models import Account
 from codecov_auth.permissions import JWTAuthenticationPermission
 from shared.django_apps.codecov_auth.models import (
@@ -21,8 +18,6 @@ from shared.django_apps.codecov_auth.models import (
     Plan,
     Service,
 )
-from shared.django_apps.core.models import Repository
-from shared.django_apps.ta_timeseries.models import Testrun
 from shared.plan.constants import PlanName
 
 log = logging.getLogger(__name__)
@@ -246,76 +241,5 @@ def account_unlink(request, *args, **kwargs):
             "message": f"Unlinked {successfully_unlinked} of {total_requested} accounts",
             "successfully_unlinked": successfully_unlinked,
             "total_requested": total_requested,
-        }
-    )
-
-
-class SentryTestAnalyticsEuSerializer(serializers.Serializer):
-    """Serializer for test analytics EU endpoint"""
-
-    integration_names = serializers.ListField(
-        child=serializers.CharField(),
-        help_text="The Sentry integration names",
-        min_length=1,
-    )
-
-
-@gzip_page
-@api_view(["POST"])
-@authentication_classes([])
-@permission_classes([JWTAuthenticationPermission])
-def test_analytics_eu(request, *args, **kwargs):
-    serializer = SentryTestAnalyticsEuSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-
-    integration_names = serializer.validated_data["integration_names"]
-
-    log.info(
-        "Starting data export for the following integrations",
-        extra={"integrations": integration_names},
-    )
-
-    # For every integration name, determine if an Owner record exist by filtering by name and service=github
-    test_runs_per_integration = {}
-    for name in integration_names:
-        try:
-            owner = Owner.objects.get(name=name, service=Service.GITHUB)
-        except Owner.DoesNotExist:
-            log.warning(
-                f"Owner with name {name} and service {Service.GITHUB} not found"
-            )
-            continue
-
-        # Only fetch name and repoid fields
-        repo_id_to_name = dict(
-            Repository.objects.filter(
-                author=owner, test_analytics_enabled=True
-            ).values_list("repoid", "name")
-        )
-
-        if not repo_id_to_name:
-            test_runs_per_integration[name] = {}
-            continue
-
-        # Fetch all test runs for all repositories in a single query
-        test_runs = Testrun.objects.filter(repo_id__in=repo_id_to_name.keys()).order_by(
-            "repo_id", "-timestamp"
-        )
-
-        # Group by repo_id (data is already ordered by repo_id) and serialize each group
-        test_runs_per_repository = {}
-        for repo_id, group in groupby(test_runs, key=lambda tr: tr.repo_id):
-            repo_name = repo_id_to_name[repo_id]  # Safe: we only fetch these repo_ids
-            test_runs_list = list(group)
-            test_runs_per_repository[repo_name] = TestrunSerializer(
-                test_runs_list, many=True
-            ).data
-
-        # Store each test_runs_per_repository in a dictionary
-        test_runs_per_integration[name] = test_runs_per_repository
-
-    return Response(
-        {
-            "test_runs_per_integration": test_runs_per_integration,
         }
     )

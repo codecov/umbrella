@@ -50,36 +50,14 @@ if [[ "${CODECOV_SKIP_MIGRATIONS:-}" != "true" && ("${RUN_ENV:-}" = "ENTERPRISE"
 fi
 
 # Signal handling for graceful shutdown
-shutdown_in_progress=false
+# Forward SIGTERM/SIGINT to the worker process and let Celery handle graceful shutdown
 shutdown() {
-  # Prevent duplicate shutdown attempts (in case both shell and process receive signal)
-  if [[ "$shutdown_in_progress" == "true" ]]; then
-    return 0
-  fi
-  shutdown_in_progress=true
-  
-  echo "Received SIGTERM, shutting down gracefully..."
+  echo "Received shutdown signal, forwarding to worker process..."
   if [[ -n "${worker_pid:-}" ]]; then
-    # Send SIGTERM to the worker process
+    # Forward the signal to the worker process
     kill -TERM "$worker_pid" 2>/dev/null || true
-    
-    # Wait for graceful shutdown with timeout (default 25s, less than K8s terminationGracePeriodSeconds)
-    local timeout=${SHUTDOWN_TIMEOUT:-25}
-    local count=0
-    
-    while kill -0 "$worker_pid" 2>/dev/null && [[ $count -lt $timeout ]]; do
-      sleep 1
-      ((count++))
-    done
-    
-    # If process is still running, force kill
-    if kill -0 "$worker_pid" 2>/dev/null; then
-      echo "Worker did not shutdown gracefully after ${timeout}s, forcing shutdown..."
-      kill -KILL "$worker_pid" 2>/dev/null || true
-      wait "$worker_pid" 2>/dev/null || true
-    else
-      echo "Worker shutdown complete"
-    fi
+    # Wait for the worker to exit (Celery will handle graceful shutdown)
+    wait "$worker_pid" 2>/dev/null || true
   fi
   exit 0
 }

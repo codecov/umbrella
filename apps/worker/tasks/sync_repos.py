@@ -91,10 +91,15 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
         lock_name = f"syncrepos_lock_{ownerid}_{using_integration}"
         redis_connection = get_redis_connection()
         try:
-            with redis_connection.lock(
-                lock_name,
-                timeout=max(300, self.hard_time_limit_task),
-                blocking_timeout=5,
+            with self.with_logged_lock(
+                redis_connection.lock(
+                    lock_name,
+                    timeout=max(300, self.hard_time_limit_task),
+                    blocking_timeout=5,
+                ),
+                lock_name=lock_name,
+                ownerid=ownerid,
+                using_integration=using_integration,
             ):
                 git = get_owner_provider_service(
                     owner,

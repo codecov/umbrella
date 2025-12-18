@@ -50,6 +50,13 @@ WHERE "codecov_auth_usertoken"."ownerid" IN (%s);
 -- [123]
 
 
+-- OwnerExport
+DELETE
+FROM "codecov_auth_ownerexport"
+WHERE "codecov_auth_ownerexport"."owner_id" IN (%s);
+-- [123]
+
+
 -- CacheConfig
 DELETE
 FROM "bundle_analysis_cacheconfig"
