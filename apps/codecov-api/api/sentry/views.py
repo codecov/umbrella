@@ -91,6 +91,8 @@ def account_link(request, *args, **kwargs):
 
         github_orgs.append(org_data)
 
+        print("new orgs")  # noqa:T201
+
         try:
             existing_owner = Owner.objects.get(
                 service_id=org_data["service_id"], service=org_data["provider"]
