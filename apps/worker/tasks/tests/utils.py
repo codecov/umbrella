@@ -51,8 +51,7 @@ def hook_session(mocker, dbsession: Session, request=None):
 
     def cleanup():
         set_test_session_factory(None)
-        if "original_commit" in locals():
-            dbsession.commit = original_commit
+        dbsession.commit = original_commit
 
     if request is not None:
         request.addfinalizer(cleanup)
