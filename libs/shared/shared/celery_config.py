@@ -287,6 +287,13 @@ PREPROCESS_UPLOAD_MAX_RETRIES = int(
     get_config("setup", "tasks", "upload", "preprocess_max_retries", default=10)
 )
 
+# Upload processor max retries
+# How many times to retry when upload processor encounters retryable errors
+# Default: 5 retries
+UPLOAD_PROCESSOR_MAX_RETRIES = int(
+    get_config("setup", "tasks", "upload", "processor_max_retries", default=5)
+)
+
 # Bundle analysis processor max retries
 # How many times to retry when bundle analysis processor lock cannot be acquired
 # Default: matches TASK_MAX_RETRIES_DEFAULT

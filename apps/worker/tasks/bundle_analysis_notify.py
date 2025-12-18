@@ -56,7 +56,8 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
         try:
             with lock_manager.locked(
                 LockType.BUNDLE_ANALYSIS_NOTIFY,
-                retry_num=self.request.retries,
+                max_retries=self.max_retries,
+                retry_num=self.attempts,
             ):
                 return self.process_impl_within_lock(
                     db_session=db_session,
@@ -67,7 +68,21 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
                     **kwargs,
                 )
         except LockRetry as retry:
-            self.retry(countdown=retry.countdown)
+            if retry.max_retries_exceeded:
+                log.error(
+                    "Not retrying lock acquisition - max retries exceeded",
+                    extra={
+                        "commitid": commitid,
+                        "repoid": repoid,
+                        "retry_num": retry.retry_num,
+                        "max_attempts": retry.max_attempts,
+                    },
+                )
+                return {
+                    "notify_attempted": False,
+                    "notify_succeeded": None,
+                }
+            self.retry(max_retries=self.max_retries, countdown=retry.countdown)
 
     @sentry_sdk.trace
     def process_impl_within_lock(
