@@ -236,7 +236,15 @@ class BaseCodecovTask(celery_app.Task):
 
     @property
     def attempts(self) -> int:
-        """Get attempts count including re-deliveries from visibility timeout expiration."""
+        """Get attempts count including re-deliveries from visibility timeout expiration.
+
+        This is a property (not an instance variable) because:
+        1. The request object is set by Celery after task instantiation (not available in __init__)
+        2. We need to handle task reuse across different executions (different request IDs)
+        3. We need to handle cases where request doesn't exist yet
+
+        The value is cached in __dict__ keyed by request ID to avoid recomputation.
+        """
         request = getattr(self, "request", None)
         if request is None:
             return 0
