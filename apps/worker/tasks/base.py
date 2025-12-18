@@ -284,18 +284,21 @@ class BaseCodecovTask(celery_app.Task):
         max_attempts = max_retries + 1
         return self.attempts >= max_attempts
 
-    def safe_retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
-        """Safely retry with max retry limit. Returns False if max exceeded, otherwise raises Retry."""
-        task_max_retries = max_retries if max_retries is not None else self.max_retries
+    def safe_retry(self, countdown=None, exc=None, **kwargs):
+        """Safely retry with max retry limit. Returns False if max exceeded, otherwise raises Retry.
 
-        if self._has_exceeded_max_attempts(task_max_retries):
-            max_attempts = task_max_retries + 1
+        Uses self.max_retries to determine the retry limit. Tasks define max_retries as a class
+        attribute, so it's known at instantiation and doesn't change.
+        """
+        if self._has_exceeded_max_attempts(self.max_retries):
+            # If we're here, self.max_retries is not None (otherwise _has_exceeded_max_attempts returns False)
+            max_attempts = self.max_retries + 1
             log.error(
                 f"Task {self.name} exceeded max retries",
                 extra={
                     "attempts": self.attempts,
                     "max_attempts": max_attempts,
-                    "max_retries": task_max_retries,
+                    "max_retries": self.max_retries,
                     "task_name": self.name,
                 },
             )
@@ -308,7 +311,7 @@ class BaseCodecovTask(celery_app.Task):
                     "task": {
                         "attempts": self.attempts,
                         "max_attempts": max_attempts,
-                        "max_retries": task_max_retries,
+                        "max_retries": self.max_retries,
                         "task_name": self.name,
                     }
                 },
@@ -324,7 +327,7 @@ class BaseCodecovTask(celery_app.Task):
 
         try:
             self.retry(
-                max_retries=task_max_retries, countdown=countdown, exc=exc, **kwargs
+                max_retries=self.max_retries, countdown=countdown, exc=exc, **kwargs
             )
         except MaxRetriesExceededError:
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
@@ -338,7 +341,7 @@ class BaseCodecovTask(celery_app.Task):
                 ),
                 contexts={
                     "task": {
-                        "max_retries": task_max_retries,
+                        "max_retries": self.max_retries,
                         "task_name": self.name,
                     }
                 },

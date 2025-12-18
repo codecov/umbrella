@@ -360,7 +360,7 @@ def test_bundle_analysis_processor_task_locked(
     assert result is None
 
     assert upload.state == "started"
-    safe_retry.assert_called_once_with(max_retries=task.max_retries, countdown=ANY)
+    safe_retry.assert_called_once_with(countdown=ANY)
 
 
 def test_bundle_analysis_process_upload_rate_limit_error(

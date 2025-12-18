@@ -91,9 +91,7 @@ class BundleAnalysisProcessorTask(
                     },
                 )
                 return previous_result
-            if not self.safe_retry(
-                max_retries=self.max_retries, countdown=retry.countdown
-            ):
+            if not self.safe_retry(countdown=retry.countdown):
                 attempts = self.attempts
                 log.error(
                     "Failed to schedule retry for bundle analysis processor",

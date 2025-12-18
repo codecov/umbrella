@@ -558,7 +558,7 @@ class TestBaseCodecovTaskSafeRetry:
 
         # safe_retry() raises Retry exception when successful (doesn't return True)
         with pytest.raises(Retry):
-            task.safe_retry(max_retries=5, countdown=60)
+            task.safe_retry(countdown=60)
 
         # Verify retry() was called with correct arguments
         # safe_retry now adds attempts to headers for the NEXT attempt
@@ -587,7 +587,7 @@ class TestBaseCodecovTaskSafeRetry:
             labels={"task": task.name},
         )
 
-        result = task.safe_retry(max_retries=10, countdown=60)
+        result = task.safe_retry(countdown=60)
 
         assert result is False
         mock_retry.assert_not_called()
@@ -613,7 +613,7 @@ class TestBaseCodecovTaskSafeRetry:
         # Call without countdown - should use exponential backoff
         # Formula: TASK_RETRY_BACKOFF_BASE_SECONDS * (2 ** retry_count)
         # For retry 3: 20 * (2 ** 3) = 20 * 8 = 160
-        task.safe_retry(max_retries=10)
+        task.safe_retry()
 
         mock_retry.assert_called_once()
         call_kwargs = mock_retry.call_args[1]
@@ -640,7 +640,7 @@ class TestBaseCodecovTaskSafeRetry:
             labels={"task": task.name},
         )
 
-        result = task.safe_retry(max_retries=10, countdown=60)
+        result = task.safe_retry(countdown=60)
 
         assert result is False
 
@@ -668,7 +668,7 @@ class TestBaseCodecovTaskSafeRetry:
             labels={"task": task.name},
         )
 
-        result = task.safe_retry(max_retries=10, countdown=60)
+        result = task.safe_retry(countdown=60)
 
         assert result is False
         mock_retry.assert_not_called()
@@ -692,7 +692,7 @@ class TestBaseCodecovTaskSafeRetry:
         # Mock the parent class's retry method so our overridden retry() still runs
         mock_retry = mocker.patch("celery.app.task.Task.retry")
 
-        task.safe_retry(max_retries=5, countdown=60, custom_kwarg="test")
+        task.safe_retry(countdown=60, custom_kwarg="test")
 
         call_kwargs = mock_retry.call_args[1]
         assert call_kwargs["headers"]["attempts"] == 3  # (retries 1 + 1) + 1
