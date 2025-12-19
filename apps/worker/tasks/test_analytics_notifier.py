@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from typing import cast
 
 from asgiref.sync import async_to_sync
+from celery.exceptions import MaxRetriesExceededError as CeleryMaxRetriesExceededError
 from django.conf import settings
 from redis import Redis
 from sqlalchemy.orm import Session
@@ -130,8 +131,14 @@ class TestAnalyticsNotifierTask(
                     attempted=False,
                     succeeded=False,
                 )
-            except LockRetry as retry:
-                self.retry(max_retries=5, countdown=retry.countdown)
+            except LockRetry as e:
+                try:
+                    self.retry(max_retries=5, countdown=e.countdown)
+                except CeleryMaxRetriesExceededError:
+                    return NotifierTaskResult(
+                        attempted=False,
+                        succeeded=False,
+                    )
 
         # At this point we have a fencing token, but want to check if another
         # notification task has incremented it, indicating a newer notification
@@ -151,8 +158,14 @@ class TestAnalyticsNotifierTask(
                 attempted=False,
                 succeeded=False,
             )
-        except LockRetry as retry:
-            self.retry(max_retries=5, countdown=retry.countdown)
+        except LockRetry as e:
+            try:
+                self.retry(max_retries=5, countdown=e.countdown)
+            except CeleryMaxRetriesExceededError:
+                return NotifierTaskResult(
+                    attempted=False,
+                    succeeded=False,
+                )
 
         # Do preparation work without a lock
         notifier = self.notification_preparation(
@@ -192,8 +205,14 @@ class TestAnalyticsNotifierTask(
                 attempted=False,
                 succeeded=False,
             )
-        except LockRetry as retry:
-            self.retry(max_retries=5, countdown=retry.countdown)
+        except LockRetry as e:
+            try:
+                self.retry(max_retries=5, countdown=e.countdown)
+            except CeleryMaxRetriesExceededError:
+                return NotifierTaskResult(
+                    attempted=False,
+                    succeeded=False,
+                )
 
     @contextmanager
     def _notification_lock(self, lock_manager: LockManager):
@@ -209,19 +228,19 @@ class TestAnalyticsNotifierTask(
             ):
                 yield
                 return
-        except LockRetry as retry:
+        except LockRetry as e:
             # Lock acquisition failed - handle immediately without yielding
             # This ensures the with block body never executes without lock protection
-            if retry.max_retries_exceeded:
+            if e.max_retries_exceeded:
                 log.error(
                     "Not retrying lock acquisition - max retries exceeded",
                     extra={
-                        "retry_num": retry.retry_num,
-                        "max_attempts": retry.max_attempts,
+                        "retry_num": e.retry_num,
+                        "max_attempts": e.max_attempts,
                     },
                 )
                 raise MaxRetriesExceededError(
-                    f"Lock acquisition exceeded max retries: {retry.retry_num} >= {retry.max_attempts}"
+                    f"Lock acquisition exceeded max retries: {e.retry_num} >= {e.max_attempts}",
                 )
             # Re-raise LockRetry to be handled by the caller's retry logic
             # The caller will catch this and call self.retry()
