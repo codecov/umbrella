@@ -1484,6 +1484,57 @@ class TestNotifyTask:
             **kwargs,
         )
 
+    def test_debounce_retry_includes_all_required_params(
+        self, dbsession, mock_redis, mocker
+    ):
+        """Test that retry kwargs include all required parameters for debounce retry.
+
+        This test ensures that when the debounce logic triggers a retry, all required
+        parameters are included in the kwargs passed to self.retry(). This prevents
+        TypeError when Celery attempts to retry the task.
+        """
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        # Mock Redis to allow token acquisition
+        mock_redis.pipeline.return_value.__enter__.return_value.execute.return_value = [
+            "1"
+        ]
+        mock_redis.get.return_value = False
+
+        task = NotifyTask()
+        task.request.retries = 0
+        task.max_retries = 5
+
+        # Mock retry to capture kwargs
+        mock_retry = mocker.patch.object(task, "retry", side_effect=Retry())
+
+        current_yaml = {"codecov": {"require_ci_to_pass": True}}
+        empty_upload = None
+
+        with pytest.raises(Retry):
+            task.run_impl(
+                dbsession,
+                repoid=commit.repoid,
+                commitid=commit.commitid,
+                current_yaml=current_yaml,
+                empty_upload=empty_upload,
+                # Don't pass fencing_token - let it go through retry path
+            )
+
+        # Verify retry was called
+        assert mock_retry.called
+
+        # CRITICAL: Verify all required params are in kwargs
+        call_kwargs = mock_retry.call_args[1]["kwargs"]
+        assert call_kwargs["repoid"] == commit.repoid
+        assert call_kwargs["commitid"] == commit.commitid
+        assert call_kwargs["current_yaml"] == current_yaml
+        assert call_kwargs["empty_upload"] == empty_upload
+        assert call_kwargs["fencing_token"] == 1  # Token from acquisition
+        assert mock_retry.call_args[1]["countdown"] == 30  # DEBOUNCE_PERIOD_SECONDS
+
     def test_checkpoints_not_logged_outside_upload_flow(
         self, dbsession, mock_redis, mocker, mock_checkpoint_submit, mock_configuration
     ):
