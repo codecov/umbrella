@@ -191,24 +191,10 @@ class TestTestAnalyticsNotifierTask:
             return_value=mock_redis,
         )
 
-        # First call succeeds (acquires fencing token), second call raises LockRetry
+        # Mock LockManager to raise LockRetry during fencing token check lock acquisition
         lock_manager_mock = mocker.MagicMock()
-        context_manager = mocker.MagicMock()
-
-        # First lock acquisition succeeds (for fencing token)
-        def lock_side_effect(*args, **kwargs):
-            if not hasattr(lock_side_effect, "call_count"):
-                lock_side_effect.call_count = 0
-            lock_side_effect.call_count += 1
-            if lock_side_effect.call_count == 1:
-                # First call succeeds
-                return context_manager
-            else:
-                # Second call raises LockRetry
-                raise LockRetry(60)
-
         lock_manager_mock.return_value.locked.return_value.__enter__.side_effect = (
-            lock_side_effect
+            LockRetry(60)
         )
         mocker.patch("tasks.test_analytics_notifier.LockManager", lock_manager_mock)
 
@@ -223,23 +209,16 @@ class TestTestAnalyticsNotifierTask:
         task.request.headers = {}
         task.max_retries = 5
 
-        # Mock self.retry() to raise MaxRetriesExceededError on the second LockRetry
-        retry_call_count = 0
-
+        # Mock self.retry() to raise MaxRetriesExceededError when called from LockRetry handler
+        # (identified by max_retries=5 parameter)
         def retry_side_effect(*args, **kwargs):
-            nonlocal retry_call_count
-            retry_call_count += 1
-            if retry_call_count == 1:
-                # First retry (for debounce) succeeds
-                raise Retry()
-            else:
-                # Second retry (from LockRetry handler) raises MaxRetriesExceededError
+            # Check if this is the retry call from LockRetry handler (has max_retries=5)
+            if kwargs.get("max_retries") == 5:
                 raise MaxRetriesExceededError()
+            # Otherwise, this is a normal retry - raise Retry exception
+            raise Retry()
 
         mocker.patch.object(task, "retry", side_effect=retry_side_effect)
-
-        # Mock notification_preparation to return None so we don't need to mock all dependencies
-        mocker.patch.object(task, "notification_preparation", return_value=None)
 
         result = task.run_impl(
             dbsession,
