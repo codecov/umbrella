@@ -397,128 +397,136 @@ class BaseCodecovTask(celery_app.Task):
             # Create NEW session for this task (per-task session)
             db_session = create_task_session()
 
-            # Validate session is clean (no inherited transaction)
-            if db_session.in_transaction():
-                log.warning(
-                    "New task session has open transaction, rolling back",
-                    extra={
-                        "task": self.name,
-                        "task_id": getattr(self.request, "id", None),
-                    },
-                )
-                db_session.rollback()
-
-            log_context = LogContext(
-                repo_id=kwargs.get("repoid") or kwargs.get("repo_id"),
-                owner_id=kwargs.get("ownerid"),
-                commit_sha=kwargs.get("commitid") or kwargs.get("commit_id"),
-            )
-
-            task = get_current_task()
-            if task and task.request:
-                log_context.task_name = task.name
-                task_id = getattr(task.request, "id", None)
-                if task_id:
-                    log_context.task_id = task_id
-
-            log_context.populate_from_sqlalchemy(db_session)
-            set_log_context(log_context)
-            load_checkpoints_from_kwargs([UploadFlow, TestResultsFlow], kwargs)
-
-            self.task_run_counter.inc()
-            if (
-                hasattr(self, "request")
-                and self.request is not None
-                and hasattr(self.request, "get")
-            ):
-                created_timestamp = self.request.get("created_timestamp", None)
-                if created_timestamp:
-                    enqueued_time = datetime.fromisoformat(created_timestamp)
-                    now = datetime.now()
-                    delta = now - enqueued_time
-
-                    delivery_info = self.request.get("delivery_info", {})
-                    queue_name = (
-                        delivery_info.get("routing_key", None)
-                        if isinstance(delivery_info, dict)
-                        else None
-                    )
-                    time_in_queue_timer = TASK_TIME_IN_QUEUE.labels(
-                        task=self.name, queue=queue_name
-                    )
-                    time_in_queue_timer.observe(delta.total_seconds())
-
-            close_old_connections()
-
+            # Wrap entire section in try-finally to ensure session cleanup
+            # even if exceptions occur during setup
             try:
-                with self.task_core_runtime.time():  # Timer isn't tested
-                    result = self.run_impl(db_session, *args, **kwargs)
-                    # If we got here, task succeeded - commit if transaction is open
-                    if db_session.in_transaction():
-                        db_session.commit()
-                    return result
-            except InterfaceError as ex:
-                sentry_sdk.capture_exception(
-                    ex,
+                # Validate session is clean (no inherited transaction)
+                if db_session.in_transaction():
+                    log.warning(
+                        "New task session has open transaction, rolling back",
+                        extra={
+                            "task": self.name,
+                            "task_id": getattr(self.request, "id", None),
+                        },
+                    )
+                    db_session.rollback()
+
+                log_context = LogContext(
+                    repo_id=kwargs.get("repoid") or kwargs.get("repo_id"),
+                    owner_id=kwargs.get("ownerid"),
+                    commit_sha=kwargs.get("commitid") or kwargs.get("commit_id"),
                 )
-                db_session.rollback()
-            except (DataError, IntegrityError):
-                log.exception(
-                    "Errors related to the constraints of database happened",
-                    extra={"task_args": args, "task_kwargs": kwargs},
-                )
-                db_session.rollback()
-                retry_count = getattr(self.request, "retries", 0)
-                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
-                # Use safe_retry to handle max retries exceeded gracefully
-                # Returns False if max retries exceeded, otherwise raises Retry
-                # Wrap in try-except to catch MaxRetriesExceededError if it escapes safe_retry
-                # (exceptions raised inside except blocks aren't caught by sibling except clauses)
+
+                task = get_current_task()
+                if task and task.request:
+                    log_context.task_name = task.name
+                    task_id = getattr(task.request, "id", None)
+                    if task_id:
+                        log_context.task_id = task_id
+
+                log_context.populate_from_sqlalchemy(db_session)
+                set_log_context(log_context)
+                load_checkpoints_from_kwargs([UploadFlow, TestResultsFlow], kwargs)
+
+                self.task_run_counter.inc()
+                if (
+                    hasattr(self, "request")
+                    and self.request is not None
+                    and hasattr(self.request, "get")
+                ):
+                    created_timestamp = self.request.get("created_timestamp", None)
+                    if created_timestamp:
+                        enqueued_time = datetime.fromisoformat(created_timestamp)
+                        now = datetime.now()
+                        delta = now - enqueued_time
+
+                        delivery_info = self.request.get("delivery_info", {})
+                        queue_name = (
+                            delivery_info.get("routing_key", None)
+                            if isinstance(delivery_info, dict)
+                            else None
+                        )
+                        time_in_queue_timer = TASK_TIME_IN_QUEUE.labels(
+                            task=self.name, queue=queue_name
+                        )
+                        time_in_queue_timer.observe(delta.total_seconds())
+
+                close_old_connections()
+
                 try:
-                    if not self.safe_retry(countdown=countdown):
-                        # Max retries exceeded - return None to match old behavior
+                    with self.task_core_runtime.time():  # Timer isn't tested
+                        result = self.run_impl(db_session, *args, **kwargs)
+                        # If we got here, task succeeded - commit if transaction is open
+                        if db_session.in_transaction():
+                            db_session.commit()
+                        return result
+                except InterfaceError as ex:
+                    sentry_sdk.capture_exception(
+                        ex,
+                    )
+                    db_session.rollback()
+                except (DataError, IntegrityError):
+                    log.exception(
+                        "Errors related to the constraints of database happened",
+                        extra={"task_args": args, "task_kwargs": kwargs},
+                    )
+                    db_session.rollback()
+                    retry_count = getattr(self.request, "retries", 0)
+                    countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                    # Use safe_retry to handle max retries exceeded gracefully
+                    # Returns False if max retries exceeded, otherwise raises Retry
+                    # Wrap in try-except to catch MaxRetriesExceededError if it escapes safe_retry
+                    # (exceptions raised inside except blocks aren't caught by sibling except clauses)
+                    try:
+                        if not self.safe_retry(countdown=countdown):
+                            # Max retries exceeded - return None to match old behavior
+                            return None
+                    except MaxRetriesExceededError:
+                        # Handle MaxRetriesExceededError if it escapes safe_retry
+                        if UploadFlow.has_begun():
+                            UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                        if TestResultsFlow.has_begun():
+                            TestResultsFlow.log(
+                                TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION
+                            )
+                        # Return None to match old behavior
                         return None
-                except MaxRetriesExceededError:
-                    # Handle MaxRetriesExceededError if it escapes safe_retry
+                except SQLAlchemyError as ex:
+                    self._analyse_error(ex, args, kwargs)
+                    db_session.rollback()
+                    retry_count = getattr(self.request, "retries", 0)
+                    countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                    # Use safe_retry to handle max retries exceeded gracefully
+                    # Returns False if max retries exceeded, otherwise raises Retry
+                    # Wrap in try-except to catch MaxRetriesExceededError if it escapes safe_retry
+                    # (exceptions raised inside except blocks aren't caught by sibling except clauses)
+                    try:
+                        if not self.safe_retry(countdown=countdown):
+                            # Max retries exceeded - return None to match old behavior
+                            return None
+                    except MaxRetriesExceededError:
+                        # Handle MaxRetriesExceededError if it escapes safe_retry
+                        if UploadFlow.has_begun():
+                            UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                        if TestResultsFlow.has_begun():
+                            TestResultsFlow.log(
+                                TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION
+                            )
+                        # Return None to match old behavior
+                        return None
+                except MaxRetriesExceededError as ex:
                     if UploadFlow.has_begun():
                         UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
                     if TestResultsFlow.has_begun():
                         TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
-                    # Return None to match old behavior
-                    return None
-            except SQLAlchemyError as ex:
-                self._analyse_error(ex, args, kwargs)
-                db_session.rollback()
-                retry_count = getattr(self.request, "retries", 0)
-                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
-                # Use safe_retry to handle max retries exceeded gracefully
-                # Returns False if max retries exceeded, otherwise raises Retry
-                # Wrap in try-except to catch MaxRetriesExceededError if it escapes safe_retry
-                # (exceptions raised inside except blocks aren't caught by sibling except clauses)
-                try:
-                    if not self.safe_retry(countdown=countdown):
-                        # Max retries exceeded - return None to match old behavior
-                        return None
-                except MaxRetriesExceededError:
-                    # Handle MaxRetriesExceededError if it escapes safe_retry
-                    if UploadFlow.has_begun():
-                        UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
-                    if TestResultsFlow.has_begun():
-                        TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
-                    # Return None to match old behavior
-                    return None
-            except MaxRetriesExceededError as ex:
-                if UploadFlow.has_begun():
-                    UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
-                if TestResultsFlow.has_begun():
-                    TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
-                db_session.rollback()
-            except Exception:
-                # Catch-all: rollback on any exception
-                db_session.rollback()
-                raise
+                    db_session.rollback()
+                except Exception:
+                    # Catch-all: rollback on any exception
+                    db_session.rollback()
+                    raise
             finally:
                 # Always cleanup task session
+                # This ensures cleanup even if exceptions occur during setup (before inner try)
                 self.wrap_up_task_session(db_session)
 
     def wrap_up_task_session(self, db_session: Session):
