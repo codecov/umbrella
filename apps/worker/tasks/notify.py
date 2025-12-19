@@ -191,7 +191,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     "commit": commit.commitid,
                     "max_retries": max_retries,
                     "next_countdown_would_be": countdown,
-                    "current_yaml": current_yaml.to_dict(),
+                    "current_yaml": current_yaml.to_dict() if current_yaml else None,
                 },
             )
             self.log_checkpoint(UploadFlow.NOTIF_TOO_MANY_RETRIES)
