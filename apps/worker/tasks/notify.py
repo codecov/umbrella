@@ -136,8 +136,15 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                         "fencing_token": fencing_token,
                     },
                 )
-                kwargs["fencing_token"] = fencing_token
-                self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=kwargs)
+                retry_kwargs = {
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "current_yaml": current_yaml,
+                    "empty_upload": empty_upload,
+                    "fencing_token": fencing_token,
+                    **kwargs,
+                }
+                self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=retry_kwargs)
             except LockRetryLimitExceededError:
                 self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
                 self._call_upload_breadcrumb_task(

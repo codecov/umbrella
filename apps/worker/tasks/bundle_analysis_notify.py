@@ -88,8 +88,15 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
                         "fencing_token": fencing_token,
                     },
                 )
-                kwargs["fencing_token"] = fencing_token
-                self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=kwargs)
+                retry_kwargs = {
+                    "previous_result": previous_result,
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "commit_yaml": commit_yaml.to_dict(),
+                    "fencing_token": fencing_token,
+                    **kwargs,
+                }
+                self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=retry_kwargs)
             except LockRetryLimitExceededError:
                 return {
                     "notify_attempted": False,
