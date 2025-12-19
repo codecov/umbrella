@@ -4,6 +4,7 @@ from celery.exceptions import MaxRetriesExceededError, Retry
 from database.tests.factories import CommitFactory
 from helpers.notifier import NotifierResult
 from services.lock_manager import LockRetry
+from services.notification.debounce import SKIP_DEBOUNCE_TOKEN
 from services.test_results import NotifierTaskResult
 from tasks.test_analytics_notifier import TestAnalyticsNotifierTask
 
@@ -23,28 +24,24 @@ class TestTestAnalyticsNotifierTask:
             "pipeline": "codecov",
         }
 
-        # Mock get_redis_connection to return mock_redis
         mocker.patch(
             "tasks.test_analytics_notifier.get_redis_connection",
             return_value=mock_redis,
         )
 
-        # Mock LockManager to raise LockRetry
         m = mocker.MagicMock()
         m.return_value.locked.return_value.__enter__.side_effect = LockRetry(60)
         mocker.patch("tasks.test_analytics_notifier.LockManager", m)
 
-        # Mock Redis operations
         mock_redis.pipeline.return_value.__enter__.return_value.execute.return_value = [
             "1"
         ]
 
         task = TestAnalyticsNotifierTask()
-        task.request.retries = 0  # Will retry
+        task.request.retries = 0
         task.request.headers = {}
         task.max_retries = 5
 
-        # Task should call self.retry() which raises Retry exception
         with pytest.raises(Retry):
             task.run_impl(
                 dbsession,
@@ -68,18 +65,15 @@ class TestTestAnalyticsNotifierTask:
             "pipeline": "codecov",
         }
 
-        # Mock get_redis_connection to return mock_redis
         mocker.patch(
             "tasks.test_analytics_notifier.get_redis_connection",
             return_value=mock_redis,
         )
 
-        # Mock LockManager to raise LockRetry
         m = mocker.MagicMock()
         m.return_value.locked.return_value.__enter__.side_effect = LockRetry(60)
         mocker.patch("tasks.test_analytics_notifier.LockManager", m)
 
-        # Mock Redis operations
         mock_redis.pipeline.return_value.__enter__.return_value.execute.return_value = [
             "1"
         ]
@@ -89,13 +83,9 @@ class TestTestAnalyticsNotifierTask:
         task.request.headers = {}
         task.max_retries = 5
 
-        # Mock self.retry() to raise MaxRetriesExceededError when called from LockRetry handler
-        # We distinguish by checking if max_retries=5 is passed (from LockRetry handler)
         def retry_side_effect(*args, **kwargs):
-            # Check if this is the retry call from LockRetry handler (has max_retries=5)
             if kwargs.get("max_retries") == 5:
                 raise MaxRetriesExceededError()
-            # Otherwise, this is the debounce retry - raise Retry exception
             raise Retry()
 
         mocker.patch.object(task, "retry", side_effect=retry_side_effect)
@@ -114,7 +104,7 @@ class TestTestAnalyticsNotifierTask:
     def test_max_retries_exceeded_from_notification_lock(
         self, mocker, dbsession, mock_redis
     ):
-        """Test that MaxRetriesExceededError from _notification_lock returns graceful failure"""
+        """Test that LockRetryLimitExceededError from notification_lock returns graceful failure"""
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
@@ -126,13 +116,11 @@ class TestTestAnalyticsNotifierTask:
             "pipeline": "codecov",
         }
 
-        # Mock get_redis_connection to return mock_redis
         mocker.patch(
             "tasks.test_analytics_notifier.get_redis_connection",
             return_value=mock_redis,
         )
 
-        # Mock LockManager to raise LockRetry with max_retries_exceeded=True
         m = mocker.MagicMock()
         lock_retry_with_max_exceeded = LockRetry(
             countdown=0,
@@ -148,7 +136,6 @@ class TestTestAnalyticsNotifierTask:
         )
         mocker.patch("tasks.test_analytics_notifier.LockManager", m)
 
-        # Mock Redis operations
         mock_redis.pipeline.return_value.__enter__.return_value.execute.return_value = [
             "1"
         ]
@@ -185,37 +172,30 @@ class TestTestAnalyticsNotifierTask:
             "pipeline": "codecov",
         }
 
-        # Mock get_redis_connection to return mock_redis
         mocker.patch(
             "tasks.test_analytics_notifier.get_redis_connection",
             return_value=mock_redis,
         )
 
-        # Mock LockManager to raise LockRetry during fencing token check lock acquisition
         lock_manager_mock = mocker.MagicMock()
         lock_manager_mock.return_value.locked.return_value.__enter__.side_effect = (
             LockRetry(60)
         )
         mocker.patch("tasks.test_analytics_notifier.LockManager", lock_manager_mock)
 
-        # Mock Redis operations
         mock_redis.pipeline.return_value.__enter__.return_value.execute.return_value = [
             "1"
         ]
-        mock_redis.get.return_value = "1"  # Fencing token check
+        mock_redis.get.return_value = "1"
 
         task = TestAnalyticsNotifierTask()
         task.request.retries = 0
         task.request.headers = {}
         task.max_retries = 5
 
-        # Mock self.retry() to raise MaxRetriesExceededError when called from LockRetry handler
-        # (identified by max_retries=5 parameter)
         def retry_side_effect(*args, **kwargs):
-            # Check if this is the retry call from LockRetry handler (has max_retries=5)
             if kwargs.get("max_retries") == 5:
                 raise MaxRetriesExceededError()
-            # Otherwise, this is a normal retry - raise Retry exception
             raise Retry()
 
         mocker.patch.object(task, "retry", side_effect=retry_side_effect)
@@ -224,7 +204,7 @@ class TestTestAnalyticsNotifierTask:
             dbsession,
             repoid=commit.repoid,
             upload_context=upload_context,
-            fencing_token=1,  # Pass fencing token to skip first lock acquisition
+            fencing_token=SKIP_DEBOUNCE_TOKEN,
         )
 
         assert result == NotifierTaskResult(
@@ -248,13 +228,11 @@ class TestTestAnalyticsNotifierTask:
             "pipeline": "codecov",
         }
 
-        # Mock get_redis_connection to return mock_redis
         mocker.patch(
             "tasks.test_analytics_notifier.get_redis_connection",
             return_value=mock_redis,
         )
 
-        # First lock acquisition succeeds (fencing token check), second raises LockRetry (notification send)
         lock_manager_mock = mocker.MagicMock()
         context_manager = mocker.MagicMock()
 
@@ -263,10 +241,8 @@ class TestTestAnalyticsNotifierTask:
                 lock_side_effect.call_count = 0
             lock_side_effect.call_count += 1
             if lock_side_effect.call_count == 1:
-                # First call succeeds (fencing token check)
                 return context_manager
             else:
-                # Second call raises LockRetry (notification send)
                 raise LockRetry(60)
 
         lock_manager_mock.return_value.locked.return_value.__enter__.side_effect = (
@@ -274,29 +250,23 @@ class TestTestAnalyticsNotifierTask:
         )
         mocker.patch("tasks.test_analytics_notifier.LockManager", lock_manager_mock)
 
-        # Mock Redis operations
         mock_redis.pipeline.return_value.__enter__.return_value.execute.return_value = [
             "1"
         ]
-        mock_redis.get.return_value = "1"  # Fencing token check
+        mock_redis.get.return_value = "1"
 
         task = TestAnalyticsNotifierTask()
         task.request.retries = 0
         task.request.headers = {}
         task.max_retries = 5
 
-        # Mock self.retry() to raise MaxRetriesExceededError when called from LockRetry handler
-        # (identified by max_retries=5 parameter)
         def retry_side_effect(*args, **kwargs):
-            # Check if this is the retry call from LockRetry handler (has max_retries=5)
             if kwargs.get("max_retries") == 5:
                 raise MaxRetriesExceededError()
-            # Otherwise, this is a normal retry - raise Retry exception
             raise Retry()
 
         mocker.patch.object(task, "retry", side_effect=retry_side_effect)
 
-        # Mock notification_preparation to return a mock notifier
         mock_notifier = mocker.MagicMock()
         mock_notifier.notify.return_value = NotifierResult.COMMENT_POSTED
         mocker.patch.object(
@@ -307,7 +277,7 @@ class TestTestAnalyticsNotifierTask:
             dbsession,
             repoid=commit.repoid,
             upload_context=upload_context,
-            fencing_token=1,  # Pass fencing token to skip first lock acquisition
+            fencing_token=SKIP_DEBOUNCE_TOKEN,
         )
 
         assert result == NotifierTaskResult(

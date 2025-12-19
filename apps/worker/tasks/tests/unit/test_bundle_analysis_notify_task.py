@@ -4,6 +4,7 @@ from services.bundle_analysis.notify.types import (
     NotificationSuccess,
     NotificationType,
 )
+from services.notification.debounce import SKIP_DEBOUNCE_TOKEN
 from tasks.bundle_analysis_notify import BundleAnalysisNotifyTask
 
 
@@ -34,6 +35,7 @@ def test_bundle_analysis_notify_task(
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
+        fencing_token=SKIP_DEBOUNCE_TOKEN,
     )
     assert result == {
         "notify_attempted": True,
@@ -51,6 +53,7 @@ def test_bundle_analysis_notify_skips_if_all_processing_fail(dbsession):
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
+        fencing_token=SKIP_DEBOUNCE_TOKEN,
     )
     assert result == {
         "notify_attempted": False,

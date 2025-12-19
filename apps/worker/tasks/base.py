@@ -30,6 +30,7 @@ from helpers.clock import get_seconds_to_next_hour
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from helpers.log_context import LogContext, set_log_context
 from helpers.save_commit_error import save_commit_error
+from services.notification.debounce import LockRetryLimitExceededError
 from services.repository import get_repo_provider_service
 from shared.celery_config import (
     TASK_RETRY_BACKOFF_BASE_SECONDS,
@@ -382,6 +383,24 @@ class BaseCodecovTask(celery_app.Task):
             exc_info=True,
         )
 
+    def _handle_database_error_retry(self, db_session, *args, **kwargs):
+        """Handle database error retry logic with rollback and exponential backoff.
+
+        Returns None if max retries exceeded, otherwise raises Retry exception.
+        safe_retry will raise Retry if retry is possible, so this method will
+        only return None if max retries have been exceeded.
+        """
+        db_session.rollback()
+        retry_count = getattr(self.request, "retries", 0)
+        countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+
+        # safe_retry handles MaxRetriesExceededError internally:
+        # - Returns False if max retries exceeded
+        # - Raises Retry if retry is possible (which propagates up to Celery)
+        if not self.safe_retry(countdown=countdown):
+            # Max retries exceeded - return None to match old behavior
+            return None
+
     @sentry_sdk.trace
     def run(self, *args, **kwargs):
         with self.task_full_runtime.time():
@@ -433,59 +452,38 @@ class BaseCodecovTask(celery_app.Task):
                 with self.task_core_runtime.time():
                     return self.run_impl(db_session, *args, **kwargs)
             except InterfaceError as ex:
-                sentry_sdk.capture_exception(
-                    ex,
-                )
+                sentry_sdk.capture_exception(ex)
+                # InterfaceError indicates a database connection issue
+                # Return None to indicate task failure without retry
+                return None
             except (DataError, IntegrityError):
                 log.exception(
                     "Errors related to the constraints of database happened",
                     extra={"task_args": args, "task_kwargs": kwargs},
                 )
-                db_session.rollback()
-                retry_count = getattr(self.request, "retries", 0)
-                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
-                # Use safe_retry to handle max retries exceeded gracefully
-                # Returns False if max retries exceeded, otherwise raises Retry
-                # Wrap in try-except to catch MaxRetriesExceededError if it escapes safe_retry
-                # (exceptions raised inside except blocks aren't caught by sibling except clauses)
-                try:
-                    if not self.safe_retry(countdown=countdown):
-                        # Max retries exceeded - return None to match old behavior
-                        return None
-                except MaxRetriesExceededError:
-                    # Handle MaxRetriesExceededError if it escapes safe_retry
-                    if UploadFlow.has_begun():
-                        UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
-                    if TestResultsFlow.has_begun():
-                        TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
-                    # Return None to match old behavior
-                    return None
+                return self._handle_database_error_retry(db_session, *args, **kwargs)
             except SQLAlchemyError as ex:
                 self._analyse_error(ex, args, kwargs)
-                db_session.rollback()
-                retry_count = getattr(self.request, "retries", 0)
-                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
-                # Use safe_retry to handle max retries exceeded gracefully
-                # Returns False if max retries exceeded, otherwise raises Retry
-                # Wrap in try-except to catch MaxRetriesExceededError if it escapes safe_retry
-                # (exceptions raised inside except blocks aren't caught by sibling except clauses)
-                try:
-                    if not self.safe_retry(countdown=countdown):
-                        # Max retries exceeded - return None to match old behavior
-                        return None
-                except MaxRetriesExceededError:
-                    # Handle MaxRetriesExceededError if it escapes safe_retry
-                    if UploadFlow.has_begun():
-                        UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
-                    if TestResultsFlow.has_begun():
-                        TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
-                    # Return None to match old behavior
-                    return None
-            except MaxRetriesExceededError as ex:
+                return self._handle_database_error_retry(db_session, *args, **kwargs)
+            except MaxRetriesExceededError:
+                # Log checkpoint if flows have begun
                 if UploadFlow.has_begun():
                     UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
                 if TestResultsFlow.has_begun():
                     TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+                # Return None to indicate task failure after max retries exceeded
+                return None
+            except LockRetryLimitExceededError:
+                log.warning(
+                    "Lock retry limit exceeded in task",
+                    extra={"task": self.name},
+                    exc_info=True,
+                )
+                if UploadFlow.has_begun():
+                    UploadFlow.log(UploadFlow.NOTIF_LOCK_ERROR)
+                if TestResultsFlow.has_begun():
+                    TestResultsFlow.log(TestResultsFlow.NOTIF_LOCK_ERROR)
+                return None
             finally:
                 self.wrap_up_dbsession(db_session)
 

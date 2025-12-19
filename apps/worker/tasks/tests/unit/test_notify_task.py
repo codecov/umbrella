@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, call
 import httpx
 import pytest
 import respx
-from celery.exceptions import MaxRetriesExceededError, Retry
+from celery.exceptions import MaxRetriesExceededError as CeleryMaxRetriesExceededError
+from celery.exceptions import Retry
 from freezegun import freeze_time
 
 from database.enums import Decoration, Notification, NotificationState
@@ -27,6 +28,7 @@ from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValid
 from services.decoration import DecorationDetails
 from services.lock_manager import LockRetry
 from services.notification import NotificationService
+from services.notification.debounce import SKIP_DEBOUNCE_TOKEN
 from services.notification.notifiers.base import (
     AbstractBaseNotifier,
     NotificationResult,
@@ -1286,7 +1288,9 @@ class TestNotifyTask:
         self, dbsession, mocker, mock_repo_provider, mock_self_app
     ):
         mocker.patch.object(NotifyTask, "should_wait_longer", return_value=True)
-        mocker.patch.object(NotifyTask, "retry", side_effect=MaxRetriesExceededError())
+        mocker.patch.object(
+            NotifyTask, "retry", side_effect=CeleryMaxRetriesExceededError()
+        )
         mocked_fetch_and_update_whether_ci_passed = mocker.patch.object(
             NotifyTask, "fetch_and_update_whether_ci_passed"
         )
@@ -1360,12 +1364,14 @@ class TestNotifyTask:
         m = mocker.MagicMock()
         m.return_value.locked.return_value.__enter__.side_effect = LockRetry(60)
         mocker.patch("tasks.notify.LockManager", m)
+        mocker.patch.object(task, "retry", side_effect=CeleryMaxRetriesExceededError())
 
         res = task.run_impl(
             dbsession,
             repoid=commit.repoid,
             commitid=commit.commitid,
             current_yaml=current_yaml,
+            fencing_token=SKIP_DEBOUNCE_TOKEN,
         )
 
         assert res == {
@@ -1464,6 +1470,7 @@ class TestNotifyTask:
             repoid=commit.repoid,
             commitid=commit.commitid,
             current_yaml=current_yaml,
+            fencing_token=SKIP_DEBOUNCE_TOKEN,
             **kwargs,
         )
         assert res == {"notifications": [], "notified": True, "reason": "yay"}

@@ -2,16 +2,13 @@ import logging
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery.exceptions import MaxRetriesExceededError
+from celery.exceptions import MaxRetriesExceededError as CeleryMaxRetriesExceededError
 from sqlalchemy import and_
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
 from database.enums import CommitErrorTypes, Decoration, NotificationState, ReportType
-from database.models import (
-    Commit,
-    Pull,
-)
+from database.models import Commit, Pull
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME, CompareCommit
 from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.clock import get_seconds_to_next_hour
@@ -32,6 +29,10 @@ from services.decoration import determine_decoration_details
 from services.github import get_github_app_for_commit, set_github_app_for_commit
 from services.lock_manager import LockManager, LockRetry, LockType
 from services.notification import NotificationService
+from services.notification.debounce import (
+    LockRetryLimitExceededError,
+    NotificationDebouncer,
+)
 from services.report import ReportService
 from services.repository import (
     EnrichedPull,
@@ -66,8 +67,19 @@ log = logging.getLogger(__name__)
 
 GENERIC_TA_ERROR_MSG = "Test Analytics upload error: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format."
 
+NOTIFIER_FENCING_TOKEN = "notifier_fence:{}_{}"
+DEBOUNCE_PERIOD_SECONDS = 30
+
 
 class NotifyTask(BaseCodecovTask, name=notify_task_name):
+    def __init__(self):
+        super().__init__()
+        self.debouncer = NotificationDebouncer[dict](
+            redis_key_template=NOTIFIER_FENCING_TOKEN,
+            debounce_period_seconds=DEBOUNCE_PERIOD_SECONDS,
+            lock_type=LockType.NOTIFICATION,
+        )
+
     def run_impl(
         self,
         db_session: Session,
@@ -76,6 +88,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         commitid: str,
         current_yaml=None,
         empty_upload=None,
+        fencing_token: int | None = None,
         **kwargs,
     ):
         milestone = Milestones.NOTIFICATIONS_SENT
@@ -105,15 +118,75 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             commitid=commitid,
             report_type=ReportType.COVERAGE,
             lock_timeout=max(80, self.hard_time_limit_task),
+            redis_connection=redis_connection,
         )
 
+        if fencing_token is None:
+            try:
+                with self.debouncer.notification_lock(lock_manager, self.attempts):
+                    fencing_token = self.debouncer.acquire_fencing_token(
+                        redis_connection, repoid, commitid
+                    )
+
+                log.info(
+                    "Acquired fencing token, retrying for debounce period",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "fencing_token": fencing_token,
+                    },
+                )
+                kwargs["fencing_token"] = fencing_token
+                self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=kwargs)
+            except LockRetryLimitExceededError:
+                self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    error=Errors.INTERNAL_LOCK_ERROR,
+                )
+                return {
+                    "notified": False,
+                    "notifications": None,
+                    "reason": "max_retries_exceeded",
+                }
+            except LockRetry as e:
+                result = self.debouncer.handle_lock_retry(
+                    self,
+                    e,
+                    {
+                        "notified": False,
+                        "notifications": None,
+                        "reason": "unobtainable_lock",
+                    },
+                )
+                if result is not None:
+                    self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
+                    self._call_upload_breadcrumb_task(
+                        commit_sha=commitid,
+                        repo_id=repoid,
+                        milestone=milestone,
+                        error=Errors.INTERNAL_LOCK_ERROR,
+                    )
+                    return result
+
+        assert fencing_token, "Fencing token not acquired"
         try:
-            lock_acquired = False
-            with lock_manager.locked(
-                lock_type=LockType.NOTIFICATION,
-                retry_num=self.attempts,
-            ):
-                lock_acquired = True
+            with self.debouncer.notification_lock(lock_manager, self.attempts):
+                if self.debouncer.check_fencing_token_stale(
+                    redis_connection, repoid, commitid, fencing_token
+                ):
+                    log.info(
+                        "Fencing token is stale, another notification task is in progress, exiting",
+                        extra={"repoid": repoid, "commitid": commitid},
+                    )
+                    return {
+                        "notified": False,
+                        "notifications": None,
+                        "reason": "stale_fencing_token",
+                    }
+
                 return self.run_impl_within_lock(
                     db_session,
                     repoid=repoid,
@@ -122,18 +195,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     empty_upload=empty_upload,
                     **kwargs,
                 )
-        except LockRetry as err:
-            (
-                log.info(
-                    "Not notifying because there is another notification already happening",
-                    extra={
-                        "repoid": repoid,
-                        "commitid": commitid,
-                        "error_type": type(err),
-                        "lock_acquired": lock_acquired,
-                    },
-                ),
-            )
+        except LockRetryLimitExceededError:
             self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
@@ -141,17 +203,44 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 milestone=milestone,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                error=Errors.INTERNAL_OTHER_JOB,
-            )
             return {
                 "notified": False,
                 "notifications": None,
-                "reason": "unobtainable_lock",
+                "reason": "max_retries_exceeded",
             }
+        except LockRetry as err:
+            log.info(
+                "Not notifying because there is another notification already happening",
+                extra={
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "error_type": type(err),
+                },
+            )
+            result = self.debouncer.handle_lock_retry(
+                self,
+                err,
+                {
+                    "notified": False,
+                    "notifications": None,
+                    "reason": "unobtainable_lock",
+                },
+            )
+            if result is not None:
+                self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    error=Errors.INTERNAL_LOCK_ERROR,
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    error=Errors.INTERNAL_OTHER_JOB,
+                )
+                return result
 
     def log_checkpoint(self, checkpoint):
         """
@@ -183,7 +272,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 error=Errors.INTERNAL_RETRYING,
             )
             self.retry(max_retries=max_retries, countdown=countdown)
-        except MaxRetriesExceededError:
+        except CeleryMaxRetriesExceededError:
             log.warning(
                 "Not attempting to retry notifications since we already retried too many times",
                 extra={
