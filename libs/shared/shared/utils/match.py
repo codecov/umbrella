@@ -6,48 +6,53 @@ class Matcher:
     def __init__(self, patterns: Sequence[str] | None):
         self._patterns = set(patterns or [])
         self._is_initialized = False
-        # a list of patterns that will result in `True` on a match
-        self._positives: list[re.Pattern] = []
-        # a list of patterns that will result in `False` on a match
-        self._negatives: list[re.Pattern] = []
+        self._combined_positives: re.Pattern | None = None
+        self._combined_negatives: re.Pattern | None = None
 
-    def _get_matchers(self) -> tuple[list[re.Pattern], list[re.Pattern]]:
+    def _get_matchers(self) -> tuple[re.Pattern | None, re.Pattern | None]:
         if not self._is_initialized:
-            for pattern in self._patterns:
-                if not pattern:
-                    continue
-                if pattern.startswith(("^!", "!")):
-                    self._negatives.append(re.compile(pattern.replace("!", "")))
-                else:
-                    self._positives.append(re.compile(pattern))
+            _patterns = [pattern for pattern in self._patterns if pattern]
+            _negative_patterns_set = {
+                pattern for pattern in _patterns if pattern.startswith(("^!", "!"))
+            }
+
+            positive_patterns = [
+                pattern
+                for pattern in _patterns
+                if pattern not in _negative_patterns_set
+            ]
+            negative_patterns = [
+                pattern.replace("!", "") for pattern in _negative_patterns_set
+            ]
+
+            # Combine positive patterns into a single regex for faster matching
+            if positive_patterns:
+                self._combined_positives = re.compile("|".join(positive_patterns))
+
+            # Combine negative patterns into a single regex for faster matching
+            if negative_patterns:
+                self._combined_negatives = re.compile("|".join(negative_patterns))
+
             self._is_initialized = True
 
-        return self._positives, self._negatives
+        return self._combined_positives, self._combined_negatives
 
     def match(self, s: str) -> bool:
         if not self._patterns or s in self._patterns:
             return True
 
-        positives, negatives = self._get_matchers()
+        combined_positives, combined_negatives = self._get_matchers()
 
-        # must not match
-        for pattern in negatives:
-            # matched a negative search
-            if pattern.match(s):
-                return False
-
-        if positives:
-            for pattern in positives:
-                # match was found
-                if pattern.match(s):
-                    return True
-
-            # did not match any required paths
+        # Check negatives first - if any match, return False
+        if combined_negatives is not None and combined_negatives.match(s):
             return False
 
-        else:
-            # no positives: everything else is ok
-            return True
+        # Check positives - if any match, return True; if none match, return False
+        if combined_positives:
+            return bool(combined_positives.match(s))
+
+        # No positives: everything else is ok
+        return True
 
     def match_any(self, strings: Sequence[str] | None) -> bool:
         if not strings:
