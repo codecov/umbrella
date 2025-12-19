@@ -394,12 +394,13 @@ class BaseCodecovTask(celery_app.Task):
     @sentry_sdk.trace
     def run(self, *args, **kwargs):
         with self.task_full_runtime.time():  # Timer isn't tested
-            # Create NEW session for this task (per-task session)
-            db_session = create_task_session()
-
             # Wrap entire section in try-finally to ensure session cleanup
-            # even if exceptions occur during setup
+            # even if exceptions occur during setup or session creation
+            db_session = None
             try:
+                # Create NEW session for this task (per-task session)
+                db_session = create_task_session()
+
                 # Validate session is clean (no inherited transaction)
                 if db_session.in_transaction():
                     log.warning(
@@ -526,8 +527,9 @@ class BaseCodecovTask(celery_app.Task):
                     raise
             finally:
                 # Always cleanup task session
-                # This ensures cleanup even if exceptions occur during setup (before inner try)
-                self.wrap_up_task_session(db_session)
+                # This ensures cleanup even if exceptions occur during setup or session creation
+                if db_session is not None:
+                    self.wrap_up_task_session(db_session)
 
     def wrap_up_task_session(self, db_session: Session):
         """
