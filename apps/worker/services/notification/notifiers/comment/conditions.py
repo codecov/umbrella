@@ -90,6 +90,10 @@ class HasEnoughBuilds(NotifyCondition):
     def check_condition(
         notifier: AbstractBaseNotifier, comparison: ComparisonProxy
     ) -> bool:
+        # If there's no head report, we can't determine build count
+        # We should pass this condition to allow other conditions to be checked
+        if comparison.head.report is None:
+            return True
         expected_builds = notifier.notifier_yaml_settings.get("after_n_builds", 0)
         present_builds = len(comparison.head.report.sessions)
         return present_builds >= expected_builds
@@ -106,6 +110,9 @@ class HasEnoughRequiredChanges(NotifyCondition):
     @staticmethod
     def _check_coverage_change(comparison: ComparisonProxy) -> bool:
         """Returns a bool that indicates wether there is any change in coverage"""
+        # If there's no head report, there are no coverage changes to check
+        if comparison.head.report is None:
+            return False
         diff = comparison.get_diff()
         res = None if diff is None else comparison.head.report.calculate_diff(diff)
         return res is not None and res["general"].lines > 0
@@ -120,6 +127,10 @@ class HasEnoughRequiredChanges(NotifyCondition):
 
     @staticmethod
     def _check_coverage_drop(comparison: ComparisonProxy) -> bool:
+        # If there's no head report, we can't compare coverage
+        # But we default to showing the comment (it might have info about missing report)
+        if comparison.head.report is None:
+            return True
         no_head_coverage = comparison.head.report.totals.coverage is None
         no_base_report = comparison.project_coverage_base.report is None
         no_base_coverage = (
@@ -149,6 +160,9 @@ class HasEnoughRequiredChanges(NotifyCondition):
 
     @staticmethod
     def _check_uncovered_patch(comparison: ComparisonProxy) -> bool:
+        # If there's no head report, we can't check patch coverage
+        if comparison.head.report is None:
+            return False
         diff = comparison.get_diff(use_original_base=True)
         totals = None if diff is None else comparison.head.report.apply_diff(diff)
         coverage_not_affected_by_patch = totals and totals.lines == 0
