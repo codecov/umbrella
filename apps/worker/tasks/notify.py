@@ -149,7 +149,20 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     "fencing_token": fencing_token,
                     **kwargs,
                 }
-                self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=retry_kwargs)
+                try:
+                    self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=retry_kwargs)
+                except CeleryMaxRetriesExceededError:
+                    # Max retries exceeded during debounce retry, but we have a valid token.
+                    # Proceed immediately with notification instead of dropping it.
+                    log.warning(
+                        "Max retries exceeded during debounce retry, proceeding immediately with notification",
+                        extra={
+                            "repoid": repoid,
+                            "commitid": commitid,
+                            "fencing_token": fencing_token,
+                        },
+                    )
+                    # Continue execution to process notification with acquired token
             except LockRetryLimitExceededError:
                 self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
                 self._call_upload_breadcrumb_task(

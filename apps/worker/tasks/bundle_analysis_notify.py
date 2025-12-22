@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 import sentry_sdk
+from celery.exceptions import MaxRetriesExceededError as CeleryMaxRetriesExceededError
 from celery.exceptions import Retry
 
 from app import celery_app
@@ -97,7 +98,20 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
                     "fencing_token": fencing_token,
                     **kwargs,
                 }
-                self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=retry_kwargs)
+                try:
+                    self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=retry_kwargs)
+                except CeleryMaxRetriesExceededError:
+                    # Max retries exceeded during debounce retry, but we have a valid token.
+                    # Proceed immediately with notification instead of dropping it.
+                    log.warning(
+                        "Max retries exceeded during debounce retry, proceeding immediately with notification",
+                        extra={
+                            "repoid": repoid,
+                            "commit": commitid,
+                            "fencing_token": fencing_token,
+                        },
+                    )
+                    # Continue execution to process notification with acquired token
             except LockRetryLimitExceededError:
                 return {
                     "notify_attempted": False,

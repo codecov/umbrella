@@ -1,6 +1,7 @@
 import logging
 
 from asgiref.sync import async_to_sync
+from celery.exceptions import MaxRetriesExceededError as CeleryMaxRetriesExceededError
 from django.conf import settings
 from sqlalchemy.orm import Session
 
@@ -118,7 +119,16 @@ class TestAnalyticsNotifierTask(
                     "Acquired fencing token, retrying for debounce period",
                     extra=self.extra_dict,
                 )
-                self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=kwargs)
+                try:
+                    self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=kwargs)
+                except CeleryMaxRetriesExceededError:
+                    # Max retries exceeded during debounce retry, but we have a valid token.
+                    # Proceed immediately with notification instead of dropping it.
+                    log.warning(
+                        "Max retries exceeded during debounce retry, proceeding immediately with notification",
+                        extra=self.extra_dict,
+                    )
+                    # Continue execution to process notification with acquired token
             except LockRetryLimitExceededError:
                 return NotifierTaskResult(
                     attempted=False,
