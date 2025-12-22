@@ -78,6 +78,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             redis_key_template=NOTIFIER_FENCING_TOKEN,
             debounce_period_seconds=DEBOUNCE_PERIOD_SECONDS,
             lock_type=LockType.NOTIFICATION,
+            max_lock_retries=self.max_retries,
         )
 
     def run_impl(
