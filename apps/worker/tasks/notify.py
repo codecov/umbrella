@@ -72,6 +72,10 @@ DEBOUNCE_PERIOD_SECONDS = 30
 
 
 class NotifyTask(BaseCodecovTask, name=notify_task_name):
+    # Explicitly define max_retries to ensure consistent behavior with debouncer.
+    # Celery's default is 3, which matches the old lock retry behavior.
+    max_retries = 3
+
     def __init__(self):
         super().__init__()
         self.debouncer = NotificationDebouncer[dict](
@@ -369,8 +373,12 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             if exp.rate_limited_count > 0:
                 # There's at least 1 app that we can use to communicate with GitHub,
                 # but this app happens to be rate limited now. We try again later.
-                # Min wait time of 1 minute
-                retry_delay_seconds = max(60, get_seconds_to_next_hour())
+                # Use the actual retry time from GitHub API response if available,
+                # otherwise fall back to waiting until the next hour (minimum 1 minute delay).
+                if exp.earliest_retry_after_seconds is not None:
+                    retry_delay_seconds = max(60, exp.earliest_retry_after_seconds)
+                else:
+                    retry_delay_seconds = max(60, get_seconds_to_next_hour())
                 log.warning(
                     "Unable to start notifications. Retrying again later.",
                     extra={
@@ -380,6 +388,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                         "apps_rate_limited": exp.rate_limited_count,
                         "apps_suspended": exp.suspended_count,
                         "countdown_seconds": retry_delay_seconds,
+                        "earliest_retry_after_seconds": exp.earliest_retry_after_seconds,
                     },
                 )
                 self._call_upload_breadcrumb_task(

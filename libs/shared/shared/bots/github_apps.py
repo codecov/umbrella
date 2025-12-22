@@ -17,7 +17,11 @@ from shared.github import InvalidInstallationError, get_github_integration_token
 from shared.helpers.redis import get_redis_connection
 from shared.helpers.sentry import owner_uses_sentry
 from shared.orms.owner_helper import DjangoSQLAlchemyOwnerWrapper
-from shared.rate_limits import determine_if_entity_is_rate_limited, gh_app_key_name
+from shared.rate_limits import (
+    RATE_LIMIT_REDIS_KEY_PREFIX,
+    determine_if_entity_is_rate_limited,
+    gh_app_key_name,
+)
 from shared.typings.oauth_token_types import Token
 from shared.typings.torngit import GithubInstallationInfo
 
@@ -242,6 +246,61 @@ def _filter_suspended_apps(
     return list(filter(lambda obj: not obj.is_suspended, apps_to_consider))
 
 
+def _get_rate_limited_apps(
+    apps: list[GithubAppInstallation],
+) -> list[GithubAppInstallation]:
+    """
+    Filter and return only the apps that are currently rate-limited.
+    """
+    redis_connection = get_redis_connection()
+    return [
+        app
+        for app in apps
+        if determine_if_entity_is_rate_limited(
+            redis_connection,
+            gh_app_key_name(app_id=app.app_id, installation_id=app.installation_id),
+        )
+    ]
+
+
+def _get_earliest_rate_limit_ttl(
+    apps: list[GithubAppInstallation],
+) -> int | None:
+    """
+    Get the earliest TTL (time-to-live in seconds) from Redis for rate-limited apps.
+
+    Returns the minimum TTL among all rate-limited apps, or None if no apps are rate-limited
+    or if Redis operations fail.
+    """
+    if not apps:
+        return None
+
+    redis_connection = get_redis_connection()
+    ttl_values = []
+
+    for app in apps:
+        key_name = gh_app_key_name(
+            app_id=app.app_id, installation_id=app.installation_id
+        )
+        redis_key = f"{RATE_LIMIT_REDIS_KEY_PREFIX}{key_name}"
+        try:
+            ttl = redis_connection.ttl(redis_key)
+            if ttl > 0:  # TTL > 0 means the key exists and has time remaining
+                ttl_values.append(ttl)
+        except Exception:
+            # If Redis operation fails, log and continue
+            log.warning(
+                "Failed to get TTL for rate-limited app",
+                extra={
+                    "app_id": app.app_id,
+                    "installation_id": app.installation_id,
+                },
+                exc_info=True,
+            )
+
+    return min(ttl_values) if ttl_values else None
+
+
 def get_github_app_info_for_owner(
     owner: Owner,
     *,
@@ -304,9 +363,11 @@ def get_github_app_info_for_owner(
         owner, installation_name, repository
     )
     apps_matching_criteria_count = len(apps_to_consider)
+    # Identify rate-limited apps before filtering them out
+    rate_limited_apps = _get_rate_limited_apps(apps_to_consider)
+    rate_limited_apps_count = len(rate_limited_apps)
     # We can't use apps that are rate limited
     apps_to_consider = _filter_rate_limited_apps(apps_to_consider)
-    rate_limited_apps_count = apps_matching_criteria_count - len(apps_to_consider)
     # We can't use apps that are suspended (by the user)
     apps_to_consider = _filter_suspended_apps(apps_to_consider)
     suspended_apps_count = (
@@ -339,10 +400,17 @@ def get_github_app_info_for_owner(
     elif apps_matching_criteria_count > 0:
         # There are apps that match the criteria, but we can't use them.
         # Either they are currently rate limited or they have been suspended.
+        # Get the earliest retry time from rate-limited apps if any exist
+        earliest_retry_after_seconds = None
+        if rate_limited_apps_count > 0:
+            earliest_retry_after_seconds = _get_earliest_rate_limit_ttl(
+                rate_limited_apps
+            )
         raise NoConfiguredAppsAvailable(
             apps_count=apps_matching_criteria_count,
             rate_limited_count=rate_limited_apps_count,
             suspended_count=suspended_apps_count,
+            earliest_retry_after_seconds=earliest_retry_after_seconds,
         )
     # DEPRECATED FLOW - begin
     if owner.integration_id and (

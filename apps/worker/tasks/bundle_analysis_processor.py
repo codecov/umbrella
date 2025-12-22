@@ -84,8 +84,12 @@ class BundleAnalysisProcessorTask(
             # or other components that need GitHub app access)
             if exp.rate_limited_count > 0:
                 # At least one GitHub app is available but rate-limited
-                # Retry after waiting until the next hour (minimum 1 minute delay)
-                retry_delay_seconds = max(60, get_seconds_to_next_hour())
+                # Use the actual retry time from GitHub API response if available,
+                # otherwise fall back to waiting until the next hour (minimum 1 minute delay)
+                if exp.earliest_retry_after_seconds is not None:
+                    retry_delay_seconds = max(60, exp.earliest_retry_after_seconds)
+                else:
+                    retry_delay_seconds = max(60, get_seconds_to_next_hour())
                 log.warning(
                     "Bundle analysis processor unable to acquire GitHub app due to rate limits. Retrying later.",
                     extra={
@@ -94,6 +98,7 @@ class BundleAnalysisProcessorTask(
                         "apps_suspended": exp.suspended_count,
                         "commitid": commitid,
                         "countdown_seconds": retry_delay_seconds,
+                        "earliest_retry_after_seconds": exp.earliest_retry_after_seconds,
                         "repoid": repoid,
                     },
                 )

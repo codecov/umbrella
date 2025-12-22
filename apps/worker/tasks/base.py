@@ -575,9 +575,13 @@ class BaseCodecovTask(celery_app.Task):
             )
         except NoConfiguredAppsAvailable as exp:
             if exp.rate_limited_count > 0:
-                # At least one GitHub app is available but rate-limited. Retry after
-                # waiting until the next hour (minimum 1 minute delay).
-                retry_delay_seconds = max(60, get_seconds_to_next_hour())
+                # At least one GitHub app is available but rate-limited.
+                # Use the actual retry time from GitHub API response if available,
+                # otherwise fall back to waiting until the next hour (minimum 1 minute delay).
+                if exp.earliest_retry_after_seconds is not None:
+                    retry_delay_seconds = max(60, exp.earliest_retry_after_seconds)
+                else:
+                    retry_delay_seconds = max(60, get_seconds_to_next_hour())
                 log.warning(
                     "Unable to get repo provider service due to rate limits. Retrying again later.",
                     extra={
@@ -585,6 +589,7 @@ class BaseCodecovTask(celery_app.Task):
                         "apps_rate_limited": exp.rate_limited_count,
                         "apps_suspended": exp.suspended_count,
                         "countdown_seconds": retry_delay_seconds,
+                        "earliest_retry_after_seconds": exp.earliest_retry_after_seconds,
                     },
                 )
                 if commit:
