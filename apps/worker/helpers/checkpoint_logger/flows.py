@@ -76,7 +76,11 @@ class UploadFlow(BaseFlow):
 
 
 @failure_events(
-    "TEST_RESULTS_ERROR", "UNCAUGHT_RETRY_EXCEPTION", "CELERY_FAILURE", "CELERY_TIMEOUT"
+    "TEST_RESULTS_ERROR",
+    "NOTIF_LOCK_ERROR",
+    "UNCAUGHT_RETRY_EXCEPTION",
+    "CELERY_FAILURE",
+    "CELERY_TIMEOUT",
 )
 @success_events("TEST_RESULTS_NOTIFY")
 @subflows(
@@ -95,6 +99,7 @@ class TestResultsFlow(BaseFlow):
     FLAKE_DETECTION_NOTIFY = auto()
     TEST_RESULTS_ERROR = auto()
     TEST_RESULTS_FINISHER_BEGIN = auto()
+    NOTIF_LOCK_ERROR = auto()
     UNCAUGHT_RETRY_EXCEPTION = auto()
     CELERY_FAILURE = auto()
     CELERY_TIMEOUT = auto()
