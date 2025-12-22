@@ -114,13 +114,18 @@ class TestAnalyticsNotifierTask(
                     )
 
                 self.extra_dict["fencing_token"] = fencing_token
-                kwargs["fencing_token"] = fencing_token
+                retry_kwargs = {
+                    "repoid": repo_id,
+                    "upload_context": upload_context,
+                    "fencing_token": fencing_token,
+                    **kwargs,
+                }
                 log.info(
                     "Acquired fencing token, retrying for debounce period",
                     extra=self.extra_dict,
                 )
                 try:
-                    self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=kwargs)
+                    self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=retry_kwargs)
                 except CeleryMaxRetriesExceededError:
                     # Max retries exceeded during debounce retry, but we have a valid token.
                     # Proceed immediately with notification instead of dropping it.
