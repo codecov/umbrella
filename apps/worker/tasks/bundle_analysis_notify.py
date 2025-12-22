@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 import sentry_sdk
+from celery.exceptions import Retry
 
 from app import celery_app
 from database.enums import ReportType
@@ -103,16 +104,21 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
                     "notify_succeeded": None,
                 }
             except LockRetry as e:
-                result = self.debouncer.handle_lock_retry(
-                    self,
-                    e,
-                    {
-                        "notify_attempted": False,
-                        "notify_succeeded": None,
-                    },
-                )
-                if result is not None:
-                    return result
+                try:
+                    result = self.debouncer.handle_lock_retry(
+                        self,
+                        e,
+                        {
+                            "notify_attempted": False,
+                            "notify_succeeded": None,
+                        },
+                    )
+                    if result is not None:
+                        return result
+                except Retry:
+                    # Re-raise Retry exception to ensure task retry is scheduled
+                    # and execution doesn't continue past this point
+                    raise
 
         assert fencing_token, "Fencing token not acquired"
         try:
@@ -143,16 +149,21 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
                 "notify_succeeded": None,
             }
         except LockRetry as retry:
-            result = self.debouncer.handle_lock_retry(
-                self,
-                retry,
-                {
-                    "notify_attempted": False,
-                    "notify_succeeded": None,
-                },
-            )
-            if result is not None:
-                return result
+            try:
+                result = self.debouncer.handle_lock_retry(
+                    self,
+                    retry,
+                    {
+                        "notify_attempted": False,
+                        "notify_succeeded": None,
+                    },
+                )
+                if result is not None:
+                    return result
+            except Retry:
+                # Re-raise Retry exception to ensure task retry is scheduled
+                # and execution doesn't continue past this point
+                raise
 
     @sentry_sdk.trace
     def process_impl_within_lock(
