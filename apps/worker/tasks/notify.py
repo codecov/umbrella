@@ -3,6 +3,7 @@ import logging
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import MaxRetriesExceededError as CeleryMaxRetriesExceededError
+from celery.exceptions import Retry
 from sqlalchemy import and_
 from sqlalchemy.orm.session import Session
 
@@ -177,24 +178,29 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     "reason": "max_retries_exceeded",
                 }
             except LockRetry as e:
-                result = self.debouncer.handle_lock_retry(
-                    self,
-                    e,
-                    {
-                        "notified": False,
-                        "notifications": None,
-                        "reason": "unobtainable_lock",
-                    },
-                )
-                if result is not None:
-                    self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
-                    self._call_upload_breadcrumb_task(
-                        commit_sha=commitid,
-                        repo_id=repoid,
-                        milestone=milestone,
-                        error=Errors.INTERNAL_LOCK_ERROR,
+                try:
+                    result = self.debouncer.handle_lock_retry(
+                        self,
+                        e,
+                        {
+                            "notified": False,
+                            "notifications": None,
+                            "reason": "unobtainable_lock",
+                        },
                     )
-                    return result
+                    if result is not None:
+                        self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
+                        self._call_upload_breadcrumb_task(
+                            commit_sha=commitid,
+                            repo_id=repoid,
+                            milestone=milestone,
+                            error=Errors.INTERNAL_LOCK_ERROR,
+                        )
+                        return result
+                except Retry:
+                    # Re-raise Retry exception to ensure task retry is scheduled
+                    # and execution doesn't continue past this point
+                    raise
 
         assert fencing_token, "Fencing token not acquired"
         try:
@@ -242,30 +248,35 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     "error_type": type(err),
                 },
             )
-            result = self.debouncer.handle_lock_retry(
-                self,
-                err,
-                {
-                    "notified": False,
-                    "notifications": None,
-                    "reason": "unobtainable_lock",
-                },
-            )
-            if result is not None:
-                self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
-                self._call_upload_breadcrumb_task(
-                    commit_sha=commitid,
-                    repo_id=repoid,
-                    milestone=milestone,
-                    error=Errors.INTERNAL_LOCK_ERROR,
+            try:
+                result = self.debouncer.handle_lock_retry(
+                    self,
+                    err,
+                    {
+                        "notified": False,
+                        "notifications": None,
+                        "reason": "unobtainable_lock",
+                    },
                 )
-                self._call_upload_breadcrumb_task(
-                    commit_sha=commitid,
-                    repo_id=repoid,
-                    milestone=milestone,
-                    error=Errors.INTERNAL_OTHER_JOB,
-                )
-                return result
+                if result is not None:
+                    self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
+                    self._call_upload_breadcrumb_task(
+                        commit_sha=commitid,
+                        repo_id=repoid,
+                        milestone=milestone,
+                        error=Errors.INTERNAL_LOCK_ERROR,
+                    )
+                    self._call_upload_breadcrumb_task(
+                        commit_sha=commitid,
+                        repo_id=repoid,
+                        milestone=milestone,
+                        error=Errors.INTERNAL_OTHER_JOB,
+                    )
+                    return result
+            except Retry:
+                # Re-raise Retry exception to ensure task retry is scheduled
+                # and execution doesn't continue past this point
+                raise
 
     def log_checkpoint(self, checkpoint):
         """
