@@ -128,19 +128,22 @@ class NotificationDebouncer[T]:
         task,
         lock_retry: LockRetry,
         failure_result: T,
-    ) -> T | None:
+    ) -> T:
         """
         Handle LockRetry exception by attempting to retry the task.
 
         :param task: The Celery task instance
         :param lock_retry: The LockRetry exception
         :param failure_result: The result to return if max retries exceeded
-        :returns: None if retry was scheduled, failure_result if max retries exceeded
+        :returns: failure_result if max retries exceeded
+        :raises Retry: When retry is successfully scheduled (caller should catch this)
         """
         try:
             task.retry(
                 max_retries=self.max_lock_retries, countdown=lock_retry.countdown
             )
-            return None
+            # task.retry() always raises Retry on success, so this is unreachable
+            # but included for type checking
+            raise AssertionError("task.retry() should always raise Retry")
         except CeleryMaxRetriesExceededError:
             return failure_result
