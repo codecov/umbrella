@@ -27,7 +27,6 @@ BOT_USER_EMAILS = [
     "158243242+devin-ai-integration[bot]@users.noreply.github.com",
     "xgopilot[bot]@users.noreply.github.com",  # CCMRG-1850
     "231223108+xgopilot[bot]@users.noreply.github.com",  # CCMRG-1850
-    "google-labs-jules[bot]",  # https://github.com/codecov/umbrella/issues/629
     "161369871+google-labs-jules[bot]@users.noreply.github.com",  # https://github.com/codecov/umbrella/issues/629
 ]
 BOT_USER_IDS = [
