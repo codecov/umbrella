@@ -180,10 +180,14 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         https://docs.djangoproject.com/en/5.2/ref/contrib/admin/#django.contrib.admin.ModelAdmin.get_search_results
         """
         # Default search is by name, author username, and service_id (defined in `search_fields`)
-        queryset, may_have_duplicates = super().get_search_results(
-            request,
-            queryset,
-            search_term,
+        queryset, may_have_duplicates = (
+            super()
+            .get_search_results(
+                request,
+                queryset,
+                search_term,
+            )
+            .select_related("author")
         )
         # Also search by repoid if the search term is numeric
         try:
