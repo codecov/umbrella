@@ -180,15 +180,13 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         https://docs.djangoproject.com/en/5.2/ref/contrib/admin/#django.contrib.admin.ModelAdmin.get_search_results
         """
         # Default search is by name, author username, and service_id (defined in `search_fields`)
-        queryset, may_have_duplicates = (
-            super()
-            .get_search_results(
-                request,
-                queryset,
-                search_term,
-            )
-            .select_related("author")
+        queryset, may_have_duplicates = super().get_search_results(
+            request,
+            queryset,
+            search_term,
         )
+        # Avoid N+1 queries for foreign key author
+        queryset = queryset.select_related("author")
         # Also search by repoid if the search term is numeric
         try:
             search_term_as_int = int(search_term)
@@ -196,7 +194,7 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
             pass
         else:
             queryset |= self.model.objects.filter(repoid=search_term_as_int)
-        # avoid N+1 queries for foreign key author
+        # avoid N+1 queries for with union
         queryset = queryset.select_related("author")
         return queryset, may_have_duplicates
 
