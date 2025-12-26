@@ -37,7 +37,10 @@ from services.test_results import (
     TestResultsNotifier,
     should_do_flaky_detection,
 )
-from shared.celery_config import test_analytics_notifier_task_name
+from shared.celery_config import (
+    TASK_MAX_RETRIES_DEFAULT,
+    test_analytics_notifier_task_name,
+)
 from shared.django_apps.core.models import Repository
 from shared.helpers.redis import get_redis_connection
 from shared.reports.types import UploadType
@@ -60,12 +63,15 @@ class TestAnalyticsNotifierTask(
     data retention policies.
     """
 
+    max_retries = TASK_MAX_RETRIES_DEFAULT
+
     def __init__(self):
         super().__init__()
         self.debouncer = NotificationDebouncer[NotifierTaskResult](
             redis_key_template=TA_NOTIFIER_FENCING_TOKEN,
             debounce_period_seconds=DEBOUNCE_PERIOD_SECONDS,
             lock_type=LockType.NOTIFICATION,
+            max_lock_retries=self.max_retries,
         )
 
     def run_impl(
@@ -128,8 +134,6 @@ class TestAnalyticsNotifierTask(
                 try:
                     self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=retry_kwargs)
                 except CeleryMaxRetriesExceededError:
-                    # Max retries exceeded during debounce retry, but we have a valid token.
-                    # Proceed immediately with notification instead of dropping it.
                     log.warning(
                         "Max retries exceeded during debounce retry, proceeding immediately with notification",
                         extra=self.extra_dict,

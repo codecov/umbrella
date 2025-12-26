@@ -139,11 +139,7 @@ class NotificationDebouncer[T]:
         :raises Retry: When retry is successfully scheduled (caller should catch this)
         """
         try:
-            task.retry(
-                max_retries=self.max_lock_retries, countdown=lock_retry.countdown
-            )
-            # task.retry() always raises Retry on success, so this is unreachable
-            # but included for type checking
+            task.retry(max_retries=task.max_retries, countdown=lock_retry.countdown)
             raise AssertionError("task.retry() should always raise Retry")
         except CeleryMaxRetriesExceededError:
             return failure_result
