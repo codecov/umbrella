@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import celery_app
 from database.enums import ReportType
+from helpers.checkpoint_logger.flows import TestResultsFlow
 from helpers.notifier import NotifierResult
 from helpers.string import shorten_file_paths
 from services.lock_manager import LockManager, LockRetry, LockType
@@ -135,6 +136,8 @@ class TestAnalyticsNotifierTask(
                     )
                     # Continue execution to process notification with acquired token
             except LockRetryLimitExceededError:
+                if TestResultsFlow.has_begun():
+                    TestResultsFlow.log(TestResultsFlow.NOTIF_LOCK_ERROR)
                 return NotifierTaskResult(
                     attempted=False,
                     succeeded=False,
@@ -163,6 +166,8 @@ class TestAnalyticsNotifierTask(
                         succeeded=False,
                     )
         except LockRetryLimitExceededError:
+            if TestResultsFlow.has_begun():
+                TestResultsFlow.log(TestResultsFlow.NOTIF_LOCK_ERROR)
             return NotifierTaskResult(
                 attempted=False,
                 succeeded=False,
@@ -211,6 +216,8 @@ class TestAnalyticsNotifierTask(
                 succeeded=success,
             )
         except LockRetryLimitExceededError:
+            if TestResultsFlow.has_begun():
+                TestResultsFlow.log(TestResultsFlow.NOTIF_LOCK_ERROR)
             return NotifierTaskResult(
                 attempted=False,
                 succeeded=False,
