@@ -9,6 +9,7 @@ from shared.bots.exceptions import NoConfiguredAppsAvailable, RequestedGithubApp
 from shared.bots.github_apps import (
     _get_earliest_rate_limit_ttl,
     _get_rate_limited_apps,
+    _partition_apps_by_rate_limit_status,
     get_github_app_info_for_owner,
     get_github_app_token,
     get_specific_github_app_details,
@@ -351,6 +352,114 @@ class TestGetRateLimitedApps:
         assert len(result) == 1
         assert app1 in result
         assert app2 not in result
+
+
+class TestPartitionAppsByRateLimitStatus:
+    @pytest.mark.django_db
+    def test_partition_apps_by_rate_limit_status_empty_list(self):
+        """Test that empty list returns two empty lists."""
+        rate_limited, non_rate_limited = _partition_apps_by_rate_limit_status([])
+        assert rate_limited == []
+        assert non_rate_limited == []
+
+    @pytest.mark.django_db
+    def test_partition_apps_by_rate_limit_status_all_rate_limited(self, mocker):
+        """Test that all rate-limited apps are partitioned correctly."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app2 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1002,
+            app_id=11,
+            pem_path="pem2",
+        )
+        GithubAppInstallation.objects.bulk_create([app1, app2])
+
+        mocker.patch(
+            "shared.bots.github_apps.determine_if_entity_is_rate_limited",
+            return_value=True,
+        )
+
+        rate_limited, non_rate_limited = _partition_apps_by_rate_limit_status(
+            [app1, app2]
+        )
+        assert len(rate_limited) == 2
+        assert len(non_rate_limited) == 0
+        assert app1 in rate_limited
+        assert app2 in rate_limited
+
+    @pytest.mark.django_db
+    def test_partition_apps_by_rate_limit_status_none_rate_limited(self, mocker):
+        """Test that no rate-limited apps returns empty rate-limited list."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app2 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1002,
+            app_id=11,
+            pem_path="pem2",
+        )
+        GithubAppInstallation.objects.bulk_create([app1, app2])
+
+        mocker.patch(
+            "shared.bots.github_apps.determine_if_entity_is_rate_limited",
+            return_value=False,
+        )
+
+        rate_limited, non_rate_limited = _partition_apps_by_rate_limit_status(
+            [app1, app2]
+        )
+        assert len(rate_limited) == 0
+        assert len(non_rate_limited) == 2
+        assert app1 in non_rate_limited
+        assert app2 in non_rate_limited
+
+    @pytest.mark.django_db
+    def test_partition_apps_by_rate_limit_status_mixed(self, mocker):
+        """Test that apps are correctly partitioned when mixed."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app2 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1002,
+            app_id=11,
+            pem_path="pem2",
+        )
+        GithubAppInstallation.objects.bulk_create([app1, app2])
+
+        def is_rate_limited_side_effect(redis_connection, key_name):
+            # app1 is rate-limited, app2 is not
+            if "10_1001" in key_name:
+                return True
+            return False
+
+        mocker.patch(
+            "shared.bots.github_apps.determine_if_entity_is_rate_limited",
+            side_effect=is_rate_limited_side_effect,
+        )
+
+        rate_limited, non_rate_limited = _partition_apps_by_rate_limit_status(
+            [app1, app2]
+        )
+        assert len(rate_limited) == 1
+        assert len(non_rate_limited) == 1
+        assert app1 in rate_limited
+        assert app2 in non_rate_limited
 
 
 class TestGetEarliestRateLimitTtl:

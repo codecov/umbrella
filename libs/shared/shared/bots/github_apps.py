@@ -246,11 +246,45 @@ def _filter_suspended_apps(
     return list(filter(lambda obj: not obj.is_suspended, apps_to_consider))
 
 
+def _partition_apps_by_rate_limit_status(
+    apps: list[GithubAppInstallation],
+) -> tuple[list[GithubAppInstallation], list[GithubAppInstallation]]:
+    """
+    Partition apps into rate-limited and non-rate-limited lists in a single Redis pass.
+
+    This function checks rate limit status once for all apps and returns both lists,
+    preventing race conditions that could occur if rate limit status changes between
+    separate calls to check and filter.
+
+    Returns:
+        tuple: (rate_limited_apps, non_rate_limited_apps)
+    """
+    redis_connection = get_redis_connection()
+    rate_limited_apps = []
+    non_rate_limited_apps = []
+
+    for app in apps:
+        is_rate_limited = determine_if_entity_is_rate_limited(
+            redis_connection,
+            gh_app_key_name(app_id=app.app_id, installation_id=app.installation_id),
+        )
+        if is_rate_limited:
+            rate_limited_apps.append(app)
+        else:
+            non_rate_limited_apps.append(app)
+
+    return rate_limited_apps, non_rate_limited_apps
+
+
 def _get_rate_limited_apps(
     apps: list[GithubAppInstallation],
 ) -> list[GithubAppInstallation]:
     """
     Filter and return only the apps that are currently rate-limited.
+
+    Note: This function is kept for backward compatibility but should be avoided
+    when you also need to filter apps, as it causes a race condition. Use
+    _partition_apps_by_rate_limit_status instead.
     """
     redis_connection = get_redis_connection()
     return [
@@ -363,11 +397,12 @@ def get_github_app_info_for_owner(
         owner, installation_name, repository
     )
     apps_matching_criteria_count = len(apps_to_consider)
-    # Identify rate-limited apps before filtering them out
-    rate_limited_apps = _get_rate_limited_apps(apps_to_consider)
+    # Partition apps by rate limit status in a single Redis pass to avoid race conditions
+    # where rate limit status changes between checking and filtering
+    rate_limited_apps, apps_to_consider = _partition_apps_by_rate_limit_status(
+        apps_to_consider
+    )
     rate_limited_apps_count = len(rate_limited_apps)
-    # We can't use apps that are rate limited
-    apps_to_consider = _filter_rate_limited_apps(apps_to_consider)
     # We can't use apps that are suspended (by the user)
     apps_to_consider = _filter_suspended_apps(apps_to_consider)
     suspended_apps_count = (
