@@ -1,10 +1,15 @@
 import datetime
+from unittest.mock import MagicMock
 
 import pytest
 from django.test import override_settings
+from redis import RedisError
 
 from shared.bots.exceptions import NoConfiguredAppsAvailable, RequestedGithubAppNotFound
 from shared.bots.github_apps import (
+    _get_earliest_rate_limit_ttl,
+    _get_rate_limited_apps,
+    _partition_apps_by_rate_limit_status,
     get_github_app_info_for_owner,
     get_github_app_token,
     get_specific_github_app_details,
@@ -18,6 +23,7 @@ from shared.django_apps.codecov_auth.models import (
 )
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.github import InvalidInstallationError
+from shared.rate_limits import RATE_LIMIT_REDIS_KEY_PREFIX, gh_app_key_name
 from shared.typings.torngit import GithubInstallationInfo
 
 
@@ -251,3 +257,494 @@ class TestGettingGitHubAppTokenSideEffect:
         installations[0].refresh_from_db()
         installations[1].refresh_from_db()
         assert all(installation.is_suspended == False for installation in installations)
+
+
+class TestGetRateLimitedApps:
+    @pytest.mark.django_db
+    def test_get_rate_limited_apps_empty_list(self):
+        """Test that empty list returns empty list."""
+        assert _get_rate_limited_apps([]) == []
+
+    @pytest.mark.django_db
+    def test_get_rate_limited_apps_all_rate_limited(self, mocker):
+        """Test that all rate-limited apps are returned."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app2 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1002,
+            app_id=11,
+            pem_path="pem2",
+        )
+        GithubAppInstallation.objects.bulk_create([app1, app2])
+
+        mocker.patch(
+            "shared.bots.github_apps.determine_if_entity_is_rate_limited",
+            return_value=True,
+        )
+
+        result = _get_rate_limited_apps([app1, app2])
+        assert len(result) == 2
+        assert app1 in result
+        assert app2 in result
+
+    @pytest.mark.django_db
+    def test_get_rate_limited_apps_none_rate_limited(self, mocker):
+        """Test that no rate-limited apps returns empty list."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app2 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1002,
+            app_id=11,
+            pem_path="pem2",
+        )
+        GithubAppInstallation.objects.bulk_create([app1, app2])
+
+        mocker.patch(
+            "shared.bots.github_apps.determine_if_entity_is_rate_limited",
+            return_value=False,
+        )
+
+        result = _get_rate_limited_apps([app1, app2])
+        assert result == []
+
+    @pytest.mark.django_db
+    def test_get_rate_limited_apps_mixed(self, mocker):
+        """Test that only rate-limited apps are returned when mixed."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app2 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1002,
+            app_id=11,
+            pem_path="pem2",
+        )
+        GithubAppInstallation.objects.bulk_create([app1, app2])
+
+        def is_rate_limited_side_effect(redis_connection, key_name):
+            # app1 is rate-limited, app2 is not
+            if "10_1001" in key_name:
+                return True
+            return False
+
+        mocker.patch(
+            "shared.bots.github_apps.determine_if_entity_is_rate_limited",
+            side_effect=is_rate_limited_side_effect,
+        )
+
+        result = _get_rate_limited_apps([app1, app2])
+        assert len(result) == 1
+        assert app1 in result
+        assert app2 not in result
+
+
+class TestPartitionAppsByRateLimitStatus:
+    @pytest.mark.django_db
+    def test_partition_apps_by_rate_limit_status_empty_list(self):
+        """Test that empty list returns two empty lists."""
+        rate_limited, non_rate_limited = _partition_apps_by_rate_limit_status([])
+        assert rate_limited == []
+        assert non_rate_limited == []
+
+    @pytest.mark.django_db
+    def test_partition_apps_by_rate_limit_status_all_rate_limited(self, mocker):
+        """Test that all rate-limited apps are partitioned correctly."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app2 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1002,
+            app_id=11,
+            pem_path="pem2",
+        )
+        GithubAppInstallation.objects.bulk_create([app1, app2])
+
+        mocker.patch(
+            "shared.bots.github_apps.determine_if_entity_is_rate_limited",
+            return_value=True,
+        )
+
+        rate_limited, non_rate_limited = _partition_apps_by_rate_limit_status(
+            [app1, app2]
+        )
+        assert len(rate_limited) == 2
+        assert len(non_rate_limited) == 0
+        assert app1 in rate_limited
+        assert app2 in rate_limited
+
+    @pytest.mark.django_db
+    def test_partition_apps_by_rate_limit_status_none_rate_limited(self, mocker):
+        """Test that no rate-limited apps returns empty rate-limited list."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app2 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1002,
+            app_id=11,
+            pem_path="pem2",
+        )
+        GithubAppInstallation.objects.bulk_create([app1, app2])
+
+        mocker.patch(
+            "shared.bots.github_apps.determine_if_entity_is_rate_limited",
+            return_value=False,
+        )
+
+        rate_limited, non_rate_limited = _partition_apps_by_rate_limit_status(
+            [app1, app2]
+        )
+        assert len(rate_limited) == 0
+        assert len(non_rate_limited) == 2
+        assert app1 in non_rate_limited
+        assert app2 in non_rate_limited
+
+    @pytest.mark.django_db
+    def test_partition_apps_by_rate_limit_status_mixed(self, mocker):
+        """Test that apps are correctly partitioned when mixed."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app2 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1002,
+            app_id=11,
+            pem_path="pem2",
+        )
+        GithubAppInstallation.objects.bulk_create([app1, app2])
+
+        def is_rate_limited_side_effect(redis_connection, key_name):
+            # app1 is rate-limited, app2 is not
+            if "10_1001" in key_name:
+                return True
+            return False
+
+        mocker.patch(
+            "shared.bots.github_apps.determine_if_entity_is_rate_limited",
+            side_effect=is_rate_limited_side_effect,
+        )
+
+        rate_limited, non_rate_limited = _partition_apps_by_rate_limit_status(
+            [app1, app2]
+        )
+        assert len(rate_limited) == 1
+        assert len(non_rate_limited) == 1
+        assert app1 in rate_limited
+        assert app2 in non_rate_limited
+
+
+class TestGetEarliestRateLimitTtl:
+    @pytest.mark.django_db
+    def test_get_earliest_rate_limit_ttl_empty_list(self):
+        """Test that empty list returns None."""
+        assert _get_earliest_rate_limit_ttl([]) is None
+
+    @pytest.mark.django_db
+    def test_get_earliest_rate_limit_ttl_single_app(self, mocker):
+        """Test that single app TTL is returned."""
+        owner = OwnerFactory(service="github")
+        app = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app.save()
+
+        mock_redis = MagicMock()
+        mock_redis.ttl.return_value = 300  # 5 minutes
+        mocker.patch(
+            "shared.bots.github_apps.get_redis_connection", return_value=mock_redis
+        )
+
+        result = _get_earliest_rate_limit_ttl([app])
+        assert result == 300
+        key_name = gh_app_key_name(
+            app_id=app.app_id, installation_id=app.installation_id
+        )
+        expected_key = f"{RATE_LIMIT_REDIS_KEY_PREFIX}{key_name}"
+        mock_redis.ttl.assert_called_once_with(expected_key)
+
+    @pytest.mark.django_db
+    def test_get_earliest_rate_limit_ttl_multiple_apps_returns_minimum(self, mocker):
+        """Test that minimum TTL is returned when multiple apps have different TTLs."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app2 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1002,
+            app_id=11,
+            pem_path="pem2",
+        )
+        GithubAppInstallation.objects.bulk_create([app1, app2])
+
+        mock_redis = MagicMock()
+        key_name1 = gh_app_key_name(
+            app_id=app1.app_id, installation_id=app1.installation_id
+        )
+        key_name2 = gh_app_key_name(
+            app_id=app2.app_id, installation_id=app2.installation_id
+        )
+        expected_key1 = f"{RATE_LIMIT_REDIS_KEY_PREFIX}{key_name1}"
+        expected_key2 = f"{RATE_LIMIT_REDIS_KEY_PREFIX}{key_name2}"
+
+        def ttl_side_effect(key):
+            if key == expected_key1:
+                return 600  # 10 minutes
+            elif key == expected_key2:
+                return 180  # 3 minutes (minimum)
+            return -1
+
+        mock_redis.ttl.side_effect = ttl_side_effect
+        mocker.patch(
+            "shared.bots.github_apps.get_redis_connection", return_value=mock_redis
+        )
+
+        result = _get_earliest_rate_limit_ttl([app1, app2])
+        assert result == 180  # Should return minimum
+
+    @pytest.mark.django_db
+    def test_get_earliest_rate_limit_ttl_ttl_zero_or_negative_ignored(self, mocker):
+        """Test that TTL <= 0 is ignored."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app2 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1002,
+            app_id=11,
+            pem_path="pem2",
+        )
+        GithubAppInstallation.objects.bulk_create([app1, app2])
+
+        mock_redis = MagicMock()
+        key_name1 = gh_app_key_name(
+            app_id=app1.app_id, installation_id=app1.installation_id
+        )
+        key_name2 = gh_app_key_name(
+            app_id=app2.app_id, installation_id=app2.installation_id
+        )
+        expected_key1 = f"{RATE_LIMIT_REDIS_KEY_PREFIX}{key_name1}"
+        expected_key2 = f"{RATE_LIMIT_REDIS_KEY_PREFIX}{key_name2}"
+
+        def ttl_side_effect(key):
+            if key == expected_key1:
+                return 0  # Key doesn't exist or expired
+            elif key == expected_key2:
+                return -1  # Key doesn't exist
+            return -1
+
+        mock_redis.ttl.side_effect = ttl_side_effect
+        mocker.patch(
+            "shared.bots.github_apps.get_redis_connection", return_value=mock_redis
+        )
+
+        result = _get_earliest_rate_limit_ttl([app1, app2])
+        assert result is None  # No valid TTLs
+
+    @pytest.mark.django_db
+    def test_get_earliest_rate_limit_ttl_redis_exception_continues(self, mocker):
+        """Test that Redis exceptions are caught and processing continues."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app2 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1002,
+            app_id=11,
+            pem_path="pem2",
+        )
+        GithubAppInstallation.objects.bulk_create([app1, app2])
+
+        mock_redis = MagicMock()
+        key_name1 = gh_app_key_name(
+            app_id=app1.app_id, installation_id=app1.installation_id
+        )
+        key_name2 = gh_app_key_name(
+            app_id=app2.app_id, installation_id=app2.installation_id
+        )
+        expected_key1 = f"{RATE_LIMIT_REDIS_KEY_PREFIX}{key_name1}"
+        expected_key2 = f"{RATE_LIMIT_REDIS_KEY_PREFIX}{key_name2}"
+
+        def ttl_side_effect(key):
+            if key == expected_key1:
+                raise RedisError("Redis connection failed")
+            elif key == expected_key2:
+                return 300  # Valid TTL
+            return -1
+
+        mock_redis.ttl.side_effect = ttl_side_effect
+        mocker.patch(
+            "shared.bots.github_apps.get_redis_connection", return_value=mock_redis
+        )
+
+        result = _get_earliest_rate_limit_ttl([app1, app2])
+        assert result == 300  # Should return valid TTL from app2 despite app1 failing
+
+    @pytest.mark.django_db
+    def test_get_earliest_rate_limit_ttl_all_redis_exceptions_returns_none(
+        self, mocker
+    ):
+        """Test that if all Redis operations fail, None is returned."""
+        owner = OwnerFactory(service="github")
+        app1 = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+        )
+        app1.save()
+
+        mock_redis = MagicMock()
+        mock_redis.ttl.side_effect = RedisError("Redis connection failed")
+        mocker.patch(
+            "shared.bots.github_apps.get_redis_connection", return_value=mock_redis
+        )
+
+        result = _get_earliest_rate_limit_ttl([app1])
+        assert result is None  # All operations failed
+
+
+class TestGetGithubAppInfoForOwnerWithEarliestRetryTime:
+    @pytest.mark.django_db
+    def test_get_github_app_info_for_owner_sets_earliest_retry_when_rate_limited(
+        self, mocker
+    ):
+        """Test that earliest_retry_after_seconds is set when rate-limited apps exist."""
+        owner = OwnerFactory(service="github")
+        app = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+            is_suspended=False,
+        )
+        app.save()
+
+        # Mock rate-limited check to return True
+        mocker.patch(
+            "shared.bots.github_apps.determine_if_entity_is_rate_limited",
+            return_value=True,
+        )
+
+        # Mock Redis TTL to return a value
+        mock_redis = MagicMock()
+        mock_redis.ttl.return_value = 240  # 4 minutes
+        mocker.patch(
+            "shared.bots.github_apps.get_redis_connection", return_value=mock_redis
+        )
+
+        with pytest.raises(NoConfiguredAppsAvailable) as exp:
+            get_github_app_info_for_owner(owner)
+
+        assert exp.value.apps_count == 1
+        assert exp.value.rate_limited_count == 1
+        assert exp.value.suspended_count == 0
+        assert exp.value.earliest_retry_after_seconds == 240
+
+    @pytest.mark.django_db
+    def test_get_github_app_info_for_owner_no_earliest_retry_when_not_rate_limited(
+        self, mocker
+    ):
+        """Test that earliest_retry_after_seconds is None when no rate-limited apps."""
+        owner = OwnerFactory(service="github")
+        app = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+            is_suspended=True,  # Suspended but not rate-limited
+        )
+        app.save()
+
+        # Mock rate-limited check to return False
+        mocker.patch(
+            "shared.bots.github_apps.determine_if_entity_is_rate_limited",
+            return_value=False,
+        )
+
+        with pytest.raises(NoConfiguredAppsAvailable) as exp:
+            get_github_app_info_for_owner(owner)
+
+        assert exp.value.apps_count == 1
+        assert exp.value.rate_limited_count == 0
+        assert exp.value.suspended_count == 1
+        assert exp.value.earliest_retry_after_seconds is None
+
+    @pytest.mark.django_db
+    def test_get_github_app_info_for_owner_earliest_retry_none_when_ttl_fails(
+        self, mocker
+    ):
+        """Test that earliest_retry_after_seconds is None when TTL lookup fails."""
+        owner = OwnerFactory(service="github")
+        app = GithubAppInstallation(
+            owner=owner,
+            installation_id=1001,
+            app_id=10,
+            pem_path="pem1",
+            is_suspended=False,
+        )
+        app.save()
+
+        # Mock rate-limited check to return True
+        mocker.patch(
+            "shared.bots.github_apps.determine_if_entity_is_rate_limited",
+            return_value=True,
+        )
+
+        # Mock Redis TTL to raise exception
+        mock_redis = MagicMock()
+        mock_redis.ttl.side_effect = RedisError("Redis connection failed")
+        mocker.patch(
+            "shared.bots.github_apps.get_redis_connection", return_value=mock_redis
+        )
+
+        with pytest.raises(NoConfiguredAppsAvailable) as exp:
+            get_github_app_info_for_owner(owner)
+
+        assert exp.value.apps_count == 1
+        assert exp.value.rate_limited_count == 1
+        assert exp.value.suspended_count == 0
+        assert exp.value.earliest_retry_after_seconds is None  # TTL lookup failed

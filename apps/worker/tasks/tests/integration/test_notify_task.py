@@ -7,6 +7,7 @@ from database.models import Pull
 from database.models.core import CompareCommit
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
 from services.comparison import get_or_create_comparison
+from services.notification.debounce import SKIP_DEBOUNCE_TOKEN
 from services.notification.notifiers.base import NotificationResult
 from services.repository import EnrichedPull
 from shared.api_archive.archive import ArchiveService
@@ -86,7 +87,11 @@ class TestNotifyTask:
 
         task = NotifyTask()
         result = task.run_impl(
-            dbsession, repoid=commit.repoid, commitid=commit.commitid, current_yaml={}
+            dbsession,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            current_yaml={},
+            fencing_token=SKIP_DEBOUNCE_TOKEN,
         )
 
         assert result == {

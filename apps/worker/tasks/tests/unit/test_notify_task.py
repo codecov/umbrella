@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, call
 import httpx
 import pytest
 import respx
-from celery.exceptions import MaxRetriesExceededError, Retry
+from celery.exceptions import MaxRetriesExceededError as CeleryMaxRetriesExceededError
+from celery.exceptions import Retry
 from freezegun import freeze_time
 
 from database.enums import Decoration, Notification, NotificationState
@@ -27,6 +28,7 @@ from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValid
 from services.decoration import DecorationDetails
 from services.lock_manager import LockRetry
 from services.notification import NotificationService
+from services.notification.debounce import SKIP_DEBOUNCE_TOKEN
 from services.notification.notifiers.base import (
     AbstractBaseNotifier,
     NotificationResult,
@@ -1057,6 +1059,7 @@ class TestNotifyTask:
             "tasks.notify.get_repo_provider_service"
         )
         mock_retry = mocker.patch.object(NotifyTask, "retry", return_value=None)
+        mocker.patch("tasks.notify.get_seconds_to_next_hour", return_value=45 * 60)
         get_repo_provider_service.side_effect = NoConfiguredAppsAvailable(
             apps_count=2, rate_limited_count=1, suspended_count=1
         )
@@ -1078,6 +1081,7 @@ class TestNotifyTask:
             current_yaml=current_yaml,
         )
         assert res is None
+        # When earliest_retry_after_seconds is None, falls back to get_seconds_to_next_hour()
         mock_retry.assert_called_with(max_retries=10, countdown=45 * 60)
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
@@ -1107,6 +1111,80 @@ class TestNotifyTask:
                 ),
             ]
         )
+
+    @freeze_time("2024-04-22T11:15:00")
+    def test_notify_task_no_ghapp_available_uses_actual_retry_time(
+        self, dbsession, mocker, mock_self_app
+    ):
+        """Test that notify task uses actual retry time from GitHub API when available."""
+        get_repo_provider_service = mocker.patch(
+            "tasks.notify.get_repo_provider_service"
+        )
+        mock_retry = mocker.patch.object(NotifyTask, "retry", return_value=None)
+        # Provide actual retry time from Redis (300 seconds = 5 minutes)
+        get_repo_provider_service.side_effect = NoConfiguredAppsAvailable(
+            apps_count=2,
+            rate_limited_count=1,
+            suspended_count=0,
+            earliest_retry_after_seconds=300,
+        )
+        commit = CommitFactory.create(
+            message="",
+            pullid=None,
+            branch="test-branch-1",
+            commitid="649eaaf2924e92dc7fd8d370ddb857033231e67a",
+            repository__using_integration=True,
+        )
+        dbsession.add(commit)
+        dbsession.flush()
+        current_yaml = {"codecov": {"require_ci_to_pass": True}}
+        task = NotifyTask()
+        res = task.run_impl_within_lock(
+            dbsession,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            current_yaml=current_yaml,
+        )
+        assert res is None
+        # Should use actual retry time (300 seconds) instead of falling back to next hour
+        mock_retry.assert_called_with(max_retries=10, countdown=300)
+
+    @freeze_time("2024-04-22T11:15:00")
+    def test_notify_task_no_ghapp_available_enforces_minimum_delay(
+        self, dbsession, mocker, mock_self_app
+    ):
+        """Test that notify task enforces minimum 60-second delay even with short retry time."""
+        get_repo_provider_service = mocker.patch(
+            "tasks.notify.get_repo_provider_service"
+        )
+        mock_retry = mocker.patch.object(NotifyTask, "retry", return_value=None)
+        # Provide retry time less than 60 seconds
+        get_repo_provider_service.side_effect = NoConfiguredAppsAvailable(
+            apps_count=2,
+            rate_limited_count=1,
+            suspended_count=0,
+            earliest_retry_after_seconds=30,  # Less than minimum
+        )
+        commit = CommitFactory.create(
+            message="",
+            pullid=None,
+            branch="test-branch-1",
+            commitid="649eaaf2924e92dc7fd8d370ddb857033231e67a",
+            repository__using_integration=True,
+        )
+        dbsession.add(commit)
+        dbsession.flush()
+        current_yaml = {"codecov": {"require_ci_to_pass": True}}
+        task = NotifyTask()
+        res = task.run_impl_within_lock(
+            dbsession,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            current_yaml=current_yaml,
+        )
+        assert res is None
+        # Should enforce minimum 60-second delay
+        mock_retry.assert_called_with(max_retries=10, countdown=60)
 
     @freeze_time("2024-04-22T11:15:00")
     def test_notify_task_no_ghapp_available_all_suspended(
@@ -1286,7 +1364,9 @@ class TestNotifyTask:
         self, dbsession, mocker, mock_repo_provider, mock_self_app
     ):
         mocker.patch.object(NotifyTask, "should_wait_longer", return_value=True)
-        mocker.patch.object(NotifyTask, "retry", side_effect=MaxRetriesExceededError())
+        mocker.patch.object(
+            NotifyTask, "retry", side_effect=CeleryMaxRetriesExceededError()
+        )
         mocked_fetch_and_update_whether_ci_passed = mocker.patch.object(
             NotifyTask, "fetch_and_update_whether_ci_passed"
         )
@@ -1360,12 +1440,14 @@ class TestNotifyTask:
         m = mocker.MagicMock()
         m.return_value.locked.return_value.__enter__.side_effect = LockRetry(60)
         mocker.patch("tasks.notify.LockManager", m)
+        mocker.patch.object(task, "retry", side_effect=CeleryMaxRetriesExceededError())
 
         res = task.run_impl(
             dbsession,
             repoid=commit.repoid,
             commitid=commit.commitid,
             current_yaml=current_yaml,
+            fencing_token=SKIP_DEBOUNCE_TOKEN,
         )
 
         assert res == {
@@ -1464,6 +1546,7 @@ class TestNotifyTask:
             repoid=commit.repoid,
             commitid=commit.commitid,
             current_yaml=current_yaml,
+            fencing_token=SKIP_DEBOUNCE_TOKEN,
             **kwargs,
         )
         assert res == {"notifications": [], "notified": True, "reason": "yay"}
@@ -1476,6 +1559,57 @@ class TestNotifyTask:
             empty_upload=None,
             **kwargs,
         )
+
+    def test_debounce_retry_includes_all_required_params(
+        self, dbsession, mock_redis, mocker
+    ):
+        """Test that retry kwargs include all required parameters for debounce retry.
+
+        This test ensures that when the debounce logic triggers a retry, all required
+        parameters are included in the kwargs passed to self.retry(). This prevents
+        TypeError when Celery attempts to retry the task.
+        """
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        # Mock Redis to allow token acquisition
+        mock_redis.pipeline.return_value.__enter__.return_value.execute.return_value = [
+            "1"
+        ]
+        mock_redis.get.return_value = False
+
+        task = NotifyTask()
+        task.request.retries = 0
+        task.max_retries = 5
+
+        # Mock retry to capture kwargs
+        mock_retry = mocker.patch.object(task, "retry", side_effect=Retry())
+
+        current_yaml = {"codecov": {"require_ci_to_pass": True}}
+        empty_upload = None
+
+        with pytest.raises(Retry):
+            task.run_impl(
+                dbsession,
+                repoid=commit.repoid,
+                commitid=commit.commitid,
+                current_yaml=current_yaml,
+                empty_upload=empty_upload,
+                # Don't pass fencing_token - let it go through retry path
+            )
+
+        # Verify retry was called
+        assert mock_retry.called
+
+        # CRITICAL: Verify all required params are in kwargs
+        call_kwargs = mock_retry.call_args[1]["kwargs"]
+        assert call_kwargs["repoid"] == commit.repoid
+        assert call_kwargs["commitid"] == commit.commitid
+        assert call_kwargs["current_yaml"] == current_yaml
+        assert call_kwargs["empty_upload"] == empty_upload
+        assert call_kwargs["fencing_token"] == 1  # Token from acquisition
+        assert mock_retry.call_args[1]["countdown"] == 30  # DEBOUNCE_PERIOD_SECONDS
 
     def test_checkpoints_not_logged_outside_upload_flow(
         self, dbsession, mock_redis, mocker, mock_checkpoint_submit, mock_configuration
