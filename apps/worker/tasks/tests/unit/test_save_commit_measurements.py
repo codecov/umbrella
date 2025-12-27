@@ -36,6 +36,7 @@ class TestSaveCommitMeasurements:
                 MeasurementName.coverage.value,
                 MeasurementName.flag_coverage.value,
             ],
+            db_session=dbsession,
         )
 
     def test_save_commit_measurements_no_commit(self, dbsession):

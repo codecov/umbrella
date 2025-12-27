@@ -1,5 +1,5 @@
 import shared.celery_config as shared_celery_config
-from database.engine import get_db_session
+from database.engine import create_task_session
 from database.models.core import Commit, CompareCommit, Owner, Repository
 from shared.celery_router import route_tasks_based_on_user_plan
 from shared.plan.constants import DEFAULT_FREE_PLAN
@@ -137,14 +137,24 @@ def _get_user_plan_from_task(dbsession, task_name: str, task_kwargs: dict) -> st
 def route_task(name, args, kwargs, options, task=None, **kw):
     """Function to dynamically route tasks to the proper queue.
     Docs: https://docs.celeryq.dev/en/stable/userguide/routing.html#routers
+
+    Note: Routing happens BEFORE task execution, so we use a temporary session
+    for routing lookups to avoid transaction contamination.
     """
 
     user_plan = options.get("user_plan")
     ownerid = options.get("ownerid")
     if user_plan is None or ownerid is None:
-        db_session = get_db_session()
-        if user_plan is None:
-            user_plan = _get_user_plan_from_task(db_session, name, kwargs)
-        if ownerid is None:
-            ownerid = _get_ownerid_from_task(db_session, name, kwargs)
+        # Use temporary session for routing (read-only, short-lived)
+        routing_session = create_task_session()
+        try:
+            if user_plan is None:
+                user_plan = _get_user_plan_from_task(routing_session, name, kwargs)
+            if ownerid is None:
+                ownerid = _get_ownerid_from_task(routing_session, name, kwargs)
+        finally:
+            # Always cleanup routing session (read-only, so rollback is safe)
+            if routing_session.in_transaction():
+                routing_session.rollback()
+            routing_session.close()
     return route_tasks_based_on_user_plan(name, user_plan, ownerid)

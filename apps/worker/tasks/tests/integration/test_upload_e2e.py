@@ -129,11 +129,12 @@ def setup_mocks(
     mock_configuration,
     mock_repo_provider,
     user_yaml=None,
+    request=None,
 ):
     # patch various `get_db_session` imports
-    hook_session(mocker, dbsession)
+    hook_session(mocker, dbsession, request=request)
     # to not close the session after each task
-    mocker.patch("tasks.base.BaseCodecovTask.wrap_up_dbsession")
+    mocker.patch("tasks.base.BaseCodecovTask.wrap_up_task_session")
     # patch various `get_repo_provider_service` imports
     hook_repo_provider(mocker, mock_repo_provider)
     # avoid some calls reaching out to git providers
@@ -172,9 +173,12 @@ def test_full_upload(
     mock_repo_provider,
     mock_storage,
     mock_configuration,
+    request,
 ):
     mock_all_plans_and_tiers()
-    setup_mocks(mocker, dbsession, mock_configuration, mock_repo_provider)
+    setup_mocks(
+        mocker, dbsession, mock_configuration, mock_repo_provider, request=request
+    )
 
     repository = RepositoryFactory.create()
     dbsession.add(repository)
@@ -199,6 +203,10 @@ def test_full_upload(
 
     dbsession.add(commit)
     dbsession.flush()
+
+    # Ensure commit and repository are properly bound and visible
+    dbsession.refresh(commit)
+    dbsession.refresh(repository)
 
     setup_mock_get_compare(base_commit, commit, mock_repo_provider)
 
@@ -379,11 +387,17 @@ def test_full_carryforward(
     mock_repo_provider,
     mock_storage,
     mock_configuration,
+    request,
 ):
     mock_all_plans_and_tiers()
     user_yaml = {"flag_management": {"default_rules": {"carryforward": True}}}
     setup_mocks(
-        mocker, dbsession, mock_configuration, mock_repo_provider, user_yaml=user_yaml
+        mocker,
+        dbsession,
+        mock_configuration,
+        mock_repo_provider,
+        user_yaml=user_yaml,
+        request=request,
     )
     mocker.patch("tasks.compute_comparison.ComputeComparisonTask.run_impl")
 
@@ -396,6 +410,10 @@ def test_full_carryforward(
     base_commit = CommitFactory.create(repository=repository, commitid=commitid)
     dbsession.add(base_commit)
     dbsession.flush()
+
+    # Ensure commit and repository are properly bound and visible
+    dbsession.refresh(base_commit)
+    dbsession.refresh(repository)
 
     archive_service = ArchiveService(repository)
     do_upload = partial(

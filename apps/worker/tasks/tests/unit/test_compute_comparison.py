@@ -560,7 +560,7 @@ class TestComputeComparisonTask:
     def test_compute_component_comparisons_parallel(
         self, dbsession, mocker, mock_repo_provider, mock_storage, sample_report
     ):
-        mocker.patch("tasks.base.get_db_session", return_value=dbsession)
+        mocker.patch("tasks.base.create_task_session", return_value=dbsession)
 
         mocker.patch.object(group, "apply_async", group.apply)
         mocker.patch.object(

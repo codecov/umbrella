@@ -4,6 +4,7 @@ from collections.abc import Generator
 from sqlalchemy.orm import Session
 
 from app import celery_app
+from database.engine import set_test_session_factory
 
 
 @contextlib.contextmanager
@@ -17,19 +18,43 @@ def run_tasks() -> Generator[None]:
 
 
 GLOBALS_USING_SESSION = [
-    "celery_task_router.get_db_session",
     "database.engine.get_db_session",
     "tasks.base.get_db_session",
 ]
 
+GLOBALS_USING_TASK_SESSION = [
+    "tasks.base.create_task_session",
+    "database.engine.create_task_session",
+    "celery_task_router.create_task_session",
+]
 
-def hook_session(mocker, dbsession: Session):
-    """
-    This patches various module-local imports related to `get_db_session`.
-    """
+
+def hook_session(mocker, dbsession: Session, request=None):
+    """Configure all tasks to use the shared test session."""
+
     mocker.patch("shared.metrics")
     for path in GLOBALS_USING_SESSION:
         mocker.patch(path, return_value=dbsession)
+
+    mocker.patch("tasks.base.close_old_connections")
+    mocker.patch.object(dbsession, "close", lambda: None)
+    mocker.patch.object(dbsession, "in_transaction", lambda: False)
+
+    original_commit = dbsession.commit
+
+    def flush_instead_of_commit():
+        dbsession.flush()
+
+    mocker.patch.object(dbsession, "commit", flush_instead_of_commit)
+
+    set_test_session_factory(lambda: dbsession)
+
+    def cleanup():
+        set_test_session_factory(None)
+        dbsession.commit = original_commit
+
+    if request is not None:
+        request.addfinalizer(cleanup)
 
 
 GLOBALS_USING_REPO_PROVIDER = [
@@ -42,14 +67,7 @@ GLOBALS_USING_REPO_PROVIDER = [
 
 
 def hook_repo_provider(mocker, mock_repo_provider):
-    """
-    Hooks / mocks various `get_repo_provider_service` locals.
-    Due to how import resolution works in python, we have to patch this
-    *everywhere* that is *imported* into, instead of patching the function where
-    it is defined.
-    The reason is that imports are resolved at import time, and overriding the
-    function definition after the fact does not work.
-    """
+    """Patch get_repo_provider_service in all modules that import it."""
     for path in GLOBALS_USING_REPO_PROVIDER:
         mocker.patch(path, return_value=mock_repo_provider)
 
@@ -57,32 +75,14 @@ def hook_repo_provider(mocker, mock_repo_provider):
 def ensure_hard_time_limit_task_is_numeric(
     mocker, task_instance, default_value: int = 720
 ):
-    """
-    Ensures that hard_time_limit_task returns a numeric value for testing.
-
-    This helper patches hard_time_limit_task to return a proper integer value,
-    preventing issues where MagicMock objects might be returned when app.conf
-    is mocked.
-
-    Use this helper when testing code that calls get_lock_timeout() to ensure
-    hard_time_limit_task returns a proper numeric value.
-
-    Args:
-        mocker: The pytest mocker fixture
-        task_instance: The task instance to patch
-        default_value: The default value to return (default: 720)
-    """
-    # Get the original property getter
+    """Patch hard_time_limit_task to return a numeric value instead of MagicMock."""
     original_getter = task_instance.__class__.hard_time_limit_task.fget
 
     def safe_hard_time_limit_task(self):
         try:
             value = original_getter(self)
-            if isinstance(value, int | float):
-                # Use the original value if it's valid and greater than 0
-                # Otherwise fall back to default_value
-                if value > 0:
-                    return int(value)
+            if isinstance(value, int | float) and value > 0:
+                return int(value)
         except AttributeError | TypeError:
             pass
         return default_value

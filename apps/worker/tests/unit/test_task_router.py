@@ -289,11 +289,11 @@ def test_get_ownerid_from_task(
 
 
 def test_route_task(mocker, dbsession, fake_repos):
-    mock_get_db_session = mocker.patch("celery_task_router.get_db_session")
+    mock_create_task_session = mocker.patch("celery_task_router.create_task_session")
     mock_route_tasks_shared = mocker.patch(
         "celery_task_router.route_tasks_based_on_user_plan"
     )
-    mock_get_db_session.return_value = dbsession
+    mock_create_task_session.return_value = dbsession
     mock_route_tasks_shared.return_value = {"queue": "correct queue"}
     repo = fake_repos[0]
     task_kwargs = {
@@ -304,7 +304,7 @@ def test_route_task(mocker, dbsession, fake_repos):
     }
     response = route_task(shared_celery_config.upload_task_name, [], task_kwargs, {})
     assert response == {"queue": "correct queue"}
-    mock_get_db_session.assert_called()
+    mock_create_task_session.assert_called()
     mock_route_tasks_shared.assert_called_with(
         shared_celery_config.upload_task_name,
         PlanName.CODECOV_PRO_MONTHLY.value,
