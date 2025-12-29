@@ -4,9 +4,10 @@ import time
 from contextlib import contextmanager
 from enum import Enum
 
-from database.enums import ReportType
 from redis import Redis  # type: ignore
 from redis.exceptions import LockError  # type: ignore
+
+from database.enums import ReportType
 from shared.celery_config import (
     DEFAULT_BLOCKING_TIMEOUT_SECONDS,
     DEFAULT_LOCK_TIMEOUT_SECONDS,

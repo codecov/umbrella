@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from celery.exceptions import MaxRetriesExceededError
 from sqlalchemy.orm import Session
 
 from app import celery_app
@@ -48,7 +49,6 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
             # since both tests post/edit the same comment
             with lock_manager.locked(
                 LockType.NOTIFICATION,
-                max_retries=5,
                 retry_num=self.attempts,
             ):
                 finisher_result = self.process_impl_within_lock(
@@ -71,18 +71,19 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
             return finisher_result
 
         except LockRetry as retry:
-            if retry.max_retries_exceeded:
+            try:
+                self.retry(countdown=retry.countdown)
+            except MaxRetriesExceededError:
                 log.error(
                     "Not retrying lock acquisition - max retries exceeded",
                     extra={
                         "commitid": commitid,
                         "repoid": repoid,
-                        "retry_num": retry.retry_num,
-                        "max_attempts": retry.max_attempts,
+                        "retry_num": self.request.retries,
+                        "max_attempts": self.max_retries,
                     },
                 )
-                return {"queue_notify": False}
-            self.retry(max_retries=5, countdown=retry.countdown)
+                raise
 
     def process_impl_within_lock(
         self,

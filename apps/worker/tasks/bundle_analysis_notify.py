@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 import sentry_sdk
+from celery.exceptions import MaxRetriesExceededError
 
 from app import celery_app
 from database.enums import ReportType
@@ -56,7 +57,6 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
         try:
             with lock_manager.locked(
                 LockType.BUNDLE_ANALYSIS_NOTIFY,
-                max_retries=self.max_retries,
                 retry_num=self.attempts,
             ):
                 return self.process_impl_within_lock(
@@ -68,21 +68,19 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
                     **kwargs,
                 )
         except LockRetry as retry:
-            if retry.max_retries_exceeded:
+            try:
+                self.retry(countdown=retry.countdown)
+            except MaxRetriesExceededError:
                 log.error(
                     "Not retrying lock acquisition - max retries exceeded",
                     extra={
                         "commitid": commitid,
                         "repoid": repoid,
-                        "retry_num": retry.retry_num,
-                        "max_attempts": retry.max_attempts,
+                        "retry_num": self.request.retries,
+                        "max_attempts": self.max_retries,
                     },
                 )
-                return {
-                    "notify_attempted": False,
-                    "notify_succeeded": None,
-                }
-            self.retry(max_retries=self.max_retries, countdown=retry.countdown)
+                raise
 
     @sentry_sdk.trace
     def process_impl_within_lock(

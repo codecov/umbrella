@@ -5,7 +5,7 @@ from enum import Enum
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery.exceptions import Retry, SoftTimeLimitExceeded
+from celery.exceptions import MaxRetriesExceededError, Retry, SoftTimeLimitExceeded
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -33,6 +33,7 @@ from services.timeseries import repository_datasets_query
 from services.yaml import read_yaml_field
 from shared.celery_config import (
     DEFAULT_LOCK_TIMEOUT_SECONDS,
+    UPLOAD_PROCESSING_MAX_RETRIES,
     compute_comparison_task_name,
     notify_task_name,
     pulls_task_name,
@@ -49,7 +50,6 @@ from shared.timeseries.helpers import is_timeseries_enabled
 from shared.torngit.exceptions import TorngitError
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
-from tasks.upload_processor import MAX_RETRIES
 
 log = logging.getLogger(__name__)
 
@@ -80,6 +80,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         - Schedule notification tasks, depending on the case
         - Invalidating whatever cache is done
     """
+
+    max_retries = UPLOAD_PROCESSING_MAX_RETRIES
 
     def _find_started_uploads_with_reports(
         self, db_session, commit: Commit
@@ -464,16 +466,17 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            if self.request.retries >= MAX_RETRIES:
+            try:
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_RETRYING,
+                )
+                self.retry(countdown=retry.countdown)
+            except MaxRetriesExceededError:
                 return
-            self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                upload_ids=upload_ids,
-                error=Errors.INTERNAL_RETRYING,
-            )
-            self.retry(max_retries=MAX_RETRIES, countdown=retry.countdown)
 
     def _handle_finisher_lock(
         self,
@@ -562,16 +565,17 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
-            if self.request.retries >= MAX_RETRIES:
+            try:
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_RETRYING,
+                )
+                self.retry(countdown=retry.countdown)
+            except MaxRetriesExceededError:
                 return
-            self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                upload_ids=upload_ids,
-                error=Errors.INTERNAL_RETRYING,
-            )
-            self.retry(max_retries=MAX_RETRIES, countdown=retry.countdown)
 
     def finish_reports_processing(
         self,
