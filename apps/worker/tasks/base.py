@@ -144,7 +144,7 @@ TASK_CORE_RUNTIME = Histogram(
 )
 TASK_TIME_IN_QUEUE = Histogram(
     "worker_tasks_timers_time_in_queue_seconds",
-    "Time in {TODO} spent waiting in the queue before being run",
+    "Time in seconds spent waiting in the queue before being run",
     ["task", "queue"],
     buckets=[
         0.05,
@@ -415,13 +415,16 @@ class BaseCodecovTask(celery_app.Task):
         )
 
     def _emit_queue_metrics(self):
-        created_timestamp = self.request.get("created_timestamp", None)
+        request = getattr(self, "request", None)
+        if request is None:
+            return
+        created_timestamp = request.get("created_timestamp", None)
         if created_timestamp:
             enqueued_time = datetime.fromisoformat(created_timestamp)
             now = datetime.now()
             delta = now - enqueued_time
 
-            queue_name = self.request.get("delivery_info", {}).get("routing_key", None)
+            queue_name = request.get("delivery_info", {}).get("routing_key", None)
             time_in_queue_timer = TASK_TIME_IN_QUEUE.labels(
                 task=self.name, queue=queue_name
             )  # TODO is None a valid label value

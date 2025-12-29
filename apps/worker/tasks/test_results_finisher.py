@@ -49,7 +49,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
             # since both tests post/edit the same comment
             with lock_manager.locked(
                 LockType.NOTIFICATION,
-                retry_num=self.attempts,
+                retry_num=self.request.retries,
             ):
                 finisher_result = self.process_impl_within_lock(
                     db_session=db_session,

@@ -57,7 +57,7 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
         try:
             with lock_manager.locked(
                 LockType.BUNDLE_ANALYSIS_NOTIFY,
-                retry_num=self.attempts,
+                retry_num=self.request.retries,
             ):
                 return self.process_impl_within_lock(
                     db_session=db_session,
