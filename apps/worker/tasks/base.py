@@ -367,13 +367,8 @@ class BaseCodecovTask(celery_app.Task):
             "attempts": current_attempts + 1,
         }
 
-        # Use the same logic for Celery's max_retries parameter
-        if max_retries_override != _NOT_PROVIDED:
-            celery_max_retries = max_retries_override
-        elif "max_retries" in other_kwargs:
-            celery_max_retries = other_kwargs.pop("max_retries")
-        else:
-            celery_max_retries = self.max_retries
+        # Use task_max_retries for Celery's max_retries parameter (already extracted above)
+        celery_max_retries = task_max_retries
         retry_kwargs_dict = {
             "countdown": countdown,
             "exc": exc,
@@ -417,6 +412,8 @@ class BaseCodecovTask(celery_app.Task):
     def _emit_queue_metrics(self):
         request = getattr(self, "request", None)
         if request is None:
+            return
+        if not hasattr(request, "get"):
             return
         created_timestamp = request.get("created_timestamp", None)
         if created_timestamp:
