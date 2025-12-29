@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from typing import cast
 
 from asgiref.sync import async_to_sync
-from celery.exceptions import MaxRetriesExceededError as CeleryMaxRetriesExceededError
+from celery.exceptions import MaxRetriesExceededError
 from django.conf import settings
 from redis import Redis
 from sqlalchemy.orm import Session
@@ -43,13 +43,6 @@ from shared.typings.torngit import AdditionalData
 from shared.upload.types import TAUploadContext, UploadPipeline
 from shared.yaml.user_yaml import UserYaml
 from tasks.base import BaseCodecovTask
-
-
-class MaxRetriesExceededError(Exception):
-    """Raised when lock acquisition exceeds max retries."""
-
-    pass
-
 
 log = logging.getLogger(__name__)
 
@@ -133,8 +126,8 @@ class TestAnalyticsNotifierTask(
                 )
             except LockRetry as e:
                 try:
-                    self.retry(max_retries=5, countdown=e.countdown)
-                except CeleryMaxRetriesExceededError:
+                    self.retry(countdown=e.countdown)
+                except MaxRetriesExceededError:
                     return NotifierTaskResult(
                         attempted=False,
                         succeeded=False,
@@ -160,8 +153,8 @@ class TestAnalyticsNotifierTask(
             )
         except LockRetry as e:
             try:
-                self.retry(max_retries=5, countdown=e.countdown)
-            except CeleryMaxRetriesExceededError:
+                self.retry(countdown=e.countdown)
+            except MaxRetriesExceededError:
                 return NotifierTaskResult(
                     attempted=False,
                     succeeded=False,
@@ -207,8 +200,8 @@ class TestAnalyticsNotifierTask(
             )
         except LockRetry as e:
             try:
-                self.retry(max_retries=5, countdown=e.countdown)
-            except CeleryMaxRetriesExceededError:
+                self.retry(countdown=e.countdown)
+            except MaxRetriesExceededError:
                 return NotifierTaskResult(
                     attempted=False,
                     succeeded=False,
@@ -223,25 +216,13 @@ class TestAnalyticsNotifierTask(
         try:
             with lock_manager.locked(
                 LockType.NOTIFICATION,
-                max_retries=5,
-                retry_num=self.attempts,
+                retry_num=self.request.retries,
             ):
                 yield
                 return
         except LockRetry as e:
             # Lock acquisition failed - handle immediately without yielding
             # This ensures the with block body never executes without lock protection
-            if e.max_retries_exceeded:
-                log.error(
-                    "Not retrying lock acquisition - max retries exceeded",
-                    extra={
-                        "retry_num": e.retry_num,
-                        "max_attempts": e.max_attempts,
-                    },
-                )
-                raise MaxRetriesExceededError(
-                    f"Lock acquisition exceeded max retries: {e.retry_num} >= {e.max_attempts}",
-                )
             # Re-raise LockRetry to be handled by the caller's retry logic
             # The caller will catch this and call self.retry()
             raise

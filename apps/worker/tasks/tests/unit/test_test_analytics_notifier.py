@@ -1,5 +1,5 @@
 import pytest
-from celery.exceptions import MaxRetriesExceededError, Retry
+from celery.exceptions import Retry
 
 from database.tests.factories import CommitFactory
 from helpers.notifier import NotifierResult
@@ -85,20 +85,11 @@ class TestTestAnalyticsNotifierTask:
         ]
 
         task = TestAnalyticsNotifierTask()
-        task.request.retries = 0
+        task.request.retries = (
+            5  # Set to max_retries so self.retry() raises MaxRetriesExceededError
+        )
         task.request.headers = {}
         task.max_retries = 5
-
-        # Mock self.retry() to raise MaxRetriesExceededError when called from LockRetry handler
-        # We distinguish by checking if max_retries=5 is passed (from LockRetry handler)
-        def retry_side_effect(*args, **kwargs):
-            # Check if this is the retry call from LockRetry handler (has max_retries=5)
-            if kwargs.get("max_retries") == 5:
-                raise MaxRetriesExceededError()
-            # Otherwise, this is the debounce retry - raise Retry exception
-            raise Retry()
-
-        mocker.patch.object(task, "retry", side_effect=retry_side_effect)
 
         result = task.run_impl(
             dbsession,
@@ -132,20 +123,9 @@ class TestTestAnalyticsNotifierTask:
             return_value=mock_redis,
         )
 
-        # Mock LockManager to raise LockRetry with max_retries_exceeded=True
+        # Mock LockManager to raise LockRetry
         m = mocker.MagicMock()
-        lock_retry_with_max_exceeded = LockRetry(
-            countdown=0,
-            max_retries_exceeded=True,
-            retry_num=5,
-            max_attempts=5,
-            lock_name="notification_lock",
-            repoid=commit.repoid,
-            commitid=commit.commitid,
-        )
-        m.return_value.locked.return_value.__enter__.side_effect = (
-            lock_retry_with_max_exceeded
-        )
+        m.return_value.locked.return_value.__enter__.side_effect = LockRetry(60)
         mocker.patch("tasks.test_analytics_notifier.LockManager", m)
 
         # Mock Redis operations
@@ -154,7 +134,9 @@ class TestTestAnalyticsNotifierTask:
         ]
 
         task = TestAnalyticsNotifierTask()
-        task.request.retries = 0
+        task.request.retries = (
+            5  # Set to max_retries so self.retry() raises MaxRetriesExceededError
+        )
         task.request.headers = {}
         task.max_retries = 5
 
@@ -205,20 +187,11 @@ class TestTestAnalyticsNotifierTask:
         mock_redis.get.return_value = "1"  # Fencing token check
 
         task = TestAnalyticsNotifierTask()
-        task.request.retries = 0
+        task.request.retries = (
+            5  # Set to max_retries so self.retry() raises MaxRetriesExceededError
+        )
         task.request.headers = {}
         task.max_retries = 5
-
-        # Mock self.retry() to raise MaxRetriesExceededError when called from LockRetry handler
-        # (identified by max_retries=5 parameter)
-        def retry_side_effect(*args, **kwargs):
-            # Check if this is the retry call from LockRetry handler (has max_retries=5)
-            if kwargs.get("max_retries") == 5:
-                raise MaxRetriesExceededError()
-            # Otherwise, this is a normal retry - raise Retry exception
-            raise Retry()
-
-        mocker.patch.object(task, "retry", side_effect=retry_side_effect)
 
         result = task.run_impl(
             dbsession,
@@ -281,20 +254,11 @@ class TestTestAnalyticsNotifierTask:
         mock_redis.get.return_value = "1"  # Fencing token check
 
         task = TestAnalyticsNotifierTask()
-        task.request.retries = 0
+        task.request.retries = (
+            5  # Set to max_retries so self.retry() raises MaxRetriesExceededError
+        )
         task.request.headers = {}
         task.max_retries = 5
-
-        # Mock self.retry() to raise MaxRetriesExceededError when called from LockRetry handler
-        # (identified by max_retries=5 parameter)
-        def retry_side_effect(*args, **kwargs):
-            # Check if this is the retry call from LockRetry handler (has max_retries=5)
-            if kwargs.get("max_retries") == 5:
-                raise MaxRetriesExceededError()
-            # Otherwise, this is a normal retry - raise Retry exception
-            raise Retry()
-
-        mocker.patch.object(task, "retry", side_effect=retry_side_effect)
 
         # Mock notification_preparation to return a mock notifier
         mock_notifier = mocker.MagicMock()

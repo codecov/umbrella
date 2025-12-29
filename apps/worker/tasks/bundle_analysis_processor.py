@@ -1,5 +1,5 @@
 import logging
-from typing import Any, cast
+from typing import Any
 
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
 
@@ -65,8 +65,7 @@ class BundleAnalysisProcessorTask(
         try:
             with lock_manager.locked(
                 LockType.BUNDLE_ANALYSIS_PROCESSING,
-                max_retries=self.max_retries,
-                retry_num=self.attempts,
+                retry_num=self.request.retries,
             ):
                 return self.process_impl_within_lock(
                     db_session,
@@ -77,31 +76,7 @@ class BundleAnalysisProcessorTask(
                     previous_result,
                 )
         except LockRetry as retry:
-            if self._has_exceeded_max_attempts(self.max_retries):
-                attempts = self.attempts
-                max_attempts = self.max_retries + 1
-                log.error(
-                    "Bundle analysis processor exceeded max retries",
-                    extra={
-                        "attempts": attempts,
-                        "commitid": commitid,
-                        "max_attempts": max_attempts,
-                        "max_retries": self.max_retries,
-                        "repoid": repoid,
-                    },
-                )
-                return previous_result
-            if not self.safe_retry(countdown=retry.countdown):
-                attempts = self.attempts
-                log.error(
-                    "Failed to schedule retry for bundle analysis processor",
-                    extra={
-                        "attempts": attempts,
-                        "commitid": commitid,
-                        "repoid": repoid,
-                    },
-                )
-                return previous_result
+            self.retry(countdown=retry.countdown)
 
     def process_impl_within_lock(
         self,
@@ -182,9 +157,7 @@ class BundleAnalysisProcessorTask(
         assert upload is not None
 
         # Override base commit of comparisons with a custom commit SHA if applicable
-        compare_sha: str | None = cast(
-            str | None, params.get("bundle_analysis_compare_sha")
-        )
+        compare_sha = params.get("bundle_analysis_compare_sha")
 
         result: ProcessingResult | None = None
         try:
@@ -204,64 +177,18 @@ class BundleAnalysisProcessorTask(
 
             result = report_service.process_upload(commit, upload, compare_sha)
             if result.error and result.error.is_retryable:
-                if self._has_exceeded_max_attempts(self.max_retries):
-                    attempts = self.attempts
-                    max_attempts = self.max_retries + 1
-                    log.error(
-                        "Bundle analysis processor exceeded max retries",
-                        extra={
-                            "attempts": attempts,
-                            "commitid": commitid,
-                            "max_attempts": max_attempts,
-                            "max_retries": self.max_retries,
-                            "repoid": repoid,
-                        },
-                    )
-                    # Update upload state to "error" before returning
-                    try:
-                        result.update_upload(carriedforward=carriedforward)
-                        db_session.commit()
-                    except Exception:
-                        # Log commit failure but don't raise - we've already set the error state
-                        log.exception(
-                            "Failed to update and commit upload error state after max retries exceeded",
-                            extra={
-                                "commit": commitid,
-                                "repoid": repoid,
-                                "upload_id": upload.id_,
-                            },
-                        )
-                        # Manually set upload state to error as fallback
-                        upload.state_id = UploadState.ERROR.db_id
-                        upload.state = "error"
-                        try:
-                            db_session.commit()
-                        except Exception:
-                            log.exception(
-                                "Failed to commit upload error state fallback",
-                                extra={
-                                    "commit": commitid,
-                                    "repoid": repoid,
-                                    "upload_id": upload.id_,
-                                },
-                            )
-                    return processing_results
-                log.warn(
+                log.warning(
                     "Attempting to retry bundle analysis upload",
                     extra={
-                        "commitid": commitid,
                         "repoid": repoid,
+                        "commit": commitid,
                         "commit_yaml": commit_yaml,
                         "params": params,
                         "result": result.as_dict(),
                     },
                 )
-                self.retry(
-                    max_retries=self.max_retries,
-                    countdown=30 * (2**self.request.retries),
-                )
+                self.retry(countdown=30 * (2**self.request.retries))
             result.update_upload(carriedforward=carriedforward)
-            db_session.commit()
 
             processing_results.append(result.as_dict())
         except (CeleryError, SoftTimeLimitExceeded):
@@ -283,24 +210,13 @@ class BundleAnalysisProcessorTask(
             )
             upload.state_id = UploadState.ERROR.db_id
             upload.state = "error"
-            try:
-                db_session.commit()
-            except Exception:
-                # Log commit failure but preserve original exception
-                log.exception(
-                    "Failed to commit upload error state",
-                    extra={
-                        "commit": commitid,
-                        "repoid": repoid,
-                        "upload_id": upload.id_,
-                    },
-                )
             raise
         finally:
-            if result is not None and result.bundle_report:
-                result.bundle_report.cleanup()
-            if result is not None and result.previous_bundle_report:
-                result.previous_bundle_report.cleanup()
+            if result is not None:
+                if result.bundle_report:
+                    result.bundle_report.cleanup()
+                if result.previous_bundle_report:
+                    result.previous_bundle_report.cleanup()
 
         # Create task to save bundle measurements
         self.app.tasks[bundle_analysis_save_measurements_task_name].apply_async(

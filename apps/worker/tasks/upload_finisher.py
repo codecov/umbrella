@@ -5,7 +5,7 @@ from enum import Enum
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery.exceptions import Retry, SoftTimeLimitExceeded
+from celery.exceptions import MaxRetriesExceededError, Retry, SoftTimeLimitExceeded
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -33,7 +33,7 @@ from services.timeseries import repository_datasets_query
 from services.yaml import read_yaml_field
 from shared.celery_config import (
     DEFAULT_LOCK_TIMEOUT_SECONDS,
-    UPLOAD_PROCESSOR_MAX_RETRIES,
+    UPLOAD_PROCESSING_MAX_RETRIES,
     compute_comparison_task_name,
     notify_task_name,
     pulls_task_name,
@@ -81,14 +81,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         - Invalidating whatever cache is done
     """
 
-    max_retries = UPLOAD_PROCESSOR_MAX_RETRIES
+    max_retries = UPLOAD_PROCESSING_MAX_RETRIES
 
     def _find_started_uploads_with_reports(
         self, db_session, commit: Commit
     ) -> set[int]:
-        """Find uploads in "started" state that have intermediate reports in Redis.
+        """
+        Find uploads in "started" state that have intermediate reports in Redis.
 
-        This is the fallback when Redis ProcessingState has expired (TTL: PROCESSING_STATE_TTL).
+        This is the fallback when Redis ProcessingState has expired (24h TTL).
         We check the database for uploads that were processed but never finalized,
         and verify they have intermediate reports before including them.
         """
@@ -134,14 +135,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
     def _reconstruct_processing_results(
         self, db_session, state: ProcessingState, commit: Commit
     ) -> list[ProcessingResult]:
-        """Reconstruct processing_results from ProcessingState when finisher is triggered
+        """
+        Reconstruct processing_results from ProcessingState when finisher is triggered
         outside of a chord (e.g., from orphaned upload recovery).
 
         This ensures ALL uploads that were marked as processed in Redis are included
         in the final merged report, even if they completed via retry/recovery.
 
-        If Redis state has expired (TTL: PROCESSING_STATE_TTL), falls back to database
-        to find uploads in "started" state that have intermediate reports, preventing data loss.
+        If Redis state has expired (24h TTL), falls back to database to find uploads
+        in "started" state that have intermediate reports, preventing data loss.
         """
 
         # Get all upload IDs that are ready to be merged (in "processed" set)
@@ -152,8 +154,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 "No uploads found in Redis processed set, checking database for started uploads",
                 extra={"repoid": commit.repoid, "commitid": commit.commitid},
             )
-            # Fallback: Redis state expired (TTL: PROCESSING_STATE_TTL), check DB for uploads
-            # in "started" state that might have been processed but never finalized
+            # Fallback: Redis state expired (24h TTL), check DB for uploads in "started" state
+            # that might have been processed but never finalized
             upload_ids = self._find_started_uploads_with_reports(db_session, commit)
 
             if not upload_ids:
@@ -424,8 +426,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         try:
             with lock_manager.locked(
                 LockType.UPLOAD_PROCESSING,
-                max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
-                retry_num=self.attempts,
+                retry_num=self.request.retries,
             ):
                 report_service = ReportService(commit_yaml)
 
@@ -465,35 +466,17 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            if self._has_exceeded_max_attempts(UPLOAD_PROCESSOR_MAX_RETRIES):
-                log.error(
-                    "Upload finisher exceeded max retries",
-                    extra={
-                        "attempts": self.attempts,
-                        "commitid": commitid,
-                        "max_attempts": UPLOAD_PROCESSOR_MAX_RETRIES + 1,
-                        "max_retries": UPLOAD_PROCESSOR_MAX_RETRIES,
-                        "repoid": repoid,
-                    },
-                )
+            try:
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,
                     milestone=milestone,
                     upload_ids=upload_ids,
-                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                    error=Errors.INTERNAL_RETRYING,
                 )
+                self.retry(countdown=retry.countdown)
+            except MaxRetriesExceededError:
                 return
-            self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                upload_ids=upload_ids,
-                error=Errors.INTERNAL_RETRYING,
-            )
-            self.retry(
-                max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
-            )
 
     def _handle_finisher_lock(
         self,
@@ -519,8 +502,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         try:
             with lock_manager.locked(
                 LockType.UPLOAD_FINISHER,
-                max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
-                retry_num=self.attempts,
+                retry_num=self.request.retries,
             ):
                 result = self.finish_reports_processing(
                     db_session, commit, commit_yaml, processing_results
@@ -583,35 +565,17 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
-            if self._has_exceeded_max_attempts(UPLOAD_PROCESSOR_MAX_RETRIES):
-                log.error(
-                    "Upload finisher exceeded max retries (finisher lock)",
-                    extra={
-                        "attempts": self.attempts,
-                        "commitid": commitid,
-                        "max_attempts": UPLOAD_PROCESSOR_MAX_RETRIES + 1,
-                        "max_retries": UPLOAD_PROCESSOR_MAX_RETRIES,
-                        "repoid": repoid,
-                    },
-                )
+            try:
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,
                     milestone=milestone,
                     upload_ids=upload_ids,
-                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                    error=Errors.INTERNAL_RETRYING,
                 )
+                self.retry(countdown=retry.countdown)
+            except MaxRetriesExceededError:
                 return
-            self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                upload_ids=upload_ids,
-                error=Errors.INTERNAL_RETRYING,
-            )
-            self.retry(
-                max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
-            )
 
     def finish_reports_processing(
         self,
