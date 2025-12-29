@@ -3,14 +3,14 @@ from uuid import uuid4
 
 import pytest
 from celery import chain
+from redis.exceptions import LockError
 
-from database.models import CommitReport
 from database.tests.factories import CommitFactory, RepositoryFactory, UploadFactory
 from services.bundle_analysis.report import BundleAnalysisReportService
 from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.storage import get_bucket_name
-from shared.yaml import UserYaml
 from shared.celery_config import bundle_analysis_save_measurements_task_name
+from shared.yaml import UserYaml
 from tasks.bundle_analysis_notify import bundle_analysis_notify_task
 from tasks.bundle_analysis_processor import (
     BundleAnalysisProcessorTask,
@@ -24,10 +24,7 @@ def get_sample_bundle_stats_json():
     """Returns a minimal valid bundle stats JSON for testing."""
     return {
         "version": "2",
-        "plugin": {
-            "name": "codecov-vite-bundle-analysis-plugin",
-            "version": "1.0.0"
-        },
+        "plugin": {"name": "codecov-vite-bundle-analysis-plugin", "version": "1.0.0"},
         "builtAt": 1701451048604,
         "duration": 331,
         "bundler": {"name": "rollup", "version": "3.29.4"},
@@ -37,7 +34,7 @@ def get_sample_bundle_stats_json():
                 "name": "assets/index-666d2e09.js",
                 "size": 144577,
                 "gzipSize": 144576,
-                "normalized": "assets/index-*.js"
+                "normalized": "assets/index-*.js",
             }
         ],
         "chunks": [
@@ -47,16 +44,12 @@ def get_sample_bundle_stats_json():
                 "entry": True,
                 "initial": True,
                 "files": ["assets/index-666d2e09.js"],
-                "names": ["index"]
+                "names": ["index"],
             }
         ],
         "modules": [
-            {
-                "name": "./src/main.tsx",
-                "size": 181,
-                "chunkUniqueIds": ["2-index"]
-            }
-        ]
+            {"name": "./src/main.tsx", "size": 181, "chunkUniqueIds": ["2-index"]}
+        ],
     }
 
 
@@ -77,7 +70,7 @@ def test_bundle_analysis_chain_e2e(
     3. Database state is updated correctly
     """
     mock_all_plans_and_tiers()
-    
+
     # Setup mocks similar to test_full_upload
     hook_session(mocker, dbsession)
     mocker.patch("tasks.base.BaseCodecovTask.wrap_up_dbsession")
@@ -87,7 +80,7 @@ def test_bundle_analysis_chain_e2e(
         "tasks.upload.fetch_commit_yaml_and_possibly_store",
         return_value=UserYaml({}),
     )
-    
+
     # Mock the save_measurements task to avoid side effects
     mocker.patch.object(
         BundleAnalysisProcessorTask,
@@ -96,7 +89,7 @@ def test_bundle_analysis_chain_e2e(
             bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
         },
     )
-    
+
     # Mock notify service to avoid actual GitHub API calls
     mocker.patch(
         "services.bundle_analysis.notify.BundleAnalysisNotifyService.notify",
@@ -120,11 +113,11 @@ def test_bundle_analysis_chain_e2e(
     archive_service = ArchiveService(repository)
     bundle_json = get_sample_bundle_stats_json()
     bundle_json_bytes = json.dumps(bundle_json).encode("utf-8")
-    
+
     # Write bundle JSON to storage
     storage_path = f"v1/uploads/{uuid4().hex}.json"
     archive_service.write_file(storage_path, bundle_json_bytes)
-    
+
     # Also write to mock_storage for the bundle analysis processor to read
     mock_storage.write_file(get_bucket_name(), storage_path, bundle_json_bytes)
 
@@ -165,11 +158,11 @@ def test_bundle_analysis_chain_e2e(
     # Verify the chain completed successfully
     # The notify task should return a dict with notify results
     assert result is not None
-    
+
     # Verify database state
     dbsession.refresh(commit)
     dbsession.refresh(upload)
-    
+
     # Commit should be complete, upload should be processed
     assert commit.state == "complete"
     assert upload.state == "processed"
@@ -192,7 +185,7 @@ def test_bundle_analysis_chain_max_retries_exceeded(
     crashing the chain.
     """
     mock_all_plans_and_tiers()
-    
+
     hook_session(mocker, dbsession)
     mocker.patch("tasks.base.BaseCodecovTask.wrap_up_dbsession")
     hook_repo_provider(mocker, mock_repo_provider)
@@ -201,7 +194,7 @@ def test_bundle_analysis_chain_max_retries_exceeded(
         "tasks.upload.fetch_commit_yaml_and_possibly_store",
         return_value=UserYaml({}),
     )
-    
+
     # Mock the save_measurements task
     mocker.patch.object(
         BundleAnalysisProcessorTask,
@@ -227,7 +220,7 @@ def test_bundle_analysis_chain_max_retries_exceeded(
     archive_service = ArchiveService(repository)
     bundle_json = get_sample_bundle_stats_json()
     bundle_json_bytes = json.dumps(bundle_json).encode("utf-8")
-    
+
     storage_path = f"v1/uploads/{uuid4().hex}.json"
     archive_service.write_file(storage_path, bundle_json_bytes)
     mock_storage.write_file(get_bucket_name(), storage_path, bundle_json_bytes)
@@ -242,7 +235,6 @@ def test_bundle_analysis_chain_max_retries_exceeded(
 
     # Mock Redis lock to fail (simulating lock contention)
     # This will cause LockRetry to be raised
-    from redis.exceptions import LockError
     mock_redis.lock.return_value.__enter__.side_effect = LockError("Lock failed")
 
     # Create the chain
@@ -264,18 +256,20 @@ def test_bundle_analysis_chain_max_retries_exceeded(
             }
         ),
     ]
-    task_signatures[0].args = ([{"test": "previous_result"}],)  # Initial previous_result
+    task_signatures[0].args = (
+        [{"test": "previous_result"}],
+    )  # Initial previous_result
 
     # Patch run_impl to set retries to max_retries + 1 before execution
     # This simulates the scenario where max retries are exceeded
     original_run_impl = BundleAnalysisProcessorTask.run_impl
-    
+
     def patched_run_impl(self, *args, **kwargs):
         # Set retries to max_retries + 1 to trigger the max retries exceeded path
-        if hasattr(self, 'request'):
+        if hasattr(self, "request"):
             self.request.retries = self.max_retries + 1
         return original_run_impl(self, *args, **kwargs)
-    
+
     mocker.patch.object(
         BundleAnalysisProcessorTask,
         "run_impl",
@@ -293,4 +287,3 @@ def test_bundle_analysis_chain_max_retries_exceeded(
         except Exception as e:
             # The chain should not crash - if it does, that's a bug
             pytest.fail(f"Chain crashed with max retries exceeded: {e}")
-
