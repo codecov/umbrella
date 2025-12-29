@@ -32,7 +32,7 @@ class CommitStatusLevel(Enum):
     ERROR = auto()
 
     def to_str(self) -> Literal["success"] | Literal["failure"]:
-        if self.value == "ERROR":
+        if self == CommitStatusLevel.ERROR:
             return "failure"
         return "success"
 

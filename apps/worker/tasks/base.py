@@ -4,18 +4,10 @@ from contextlib import contextmanager
 from datetime import datetime
 
 import sentry_sdk
+from app import celery_app
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from django.db import InterfaceError, close_old_connections
-from sqlalchemy.exc import (
-    DataError,
-    IntegrityError,
-    InvalidRequestError,
-    SQLAlchemyError,
-)
-
-from app import celery_app
 from celery_task_router import _get_ownerid_from_task, _get_user_plan_from_task
 from database.engine import get_db_session
 from database.enums import CommitErrorTypes
@@ -24,6 +16,7 @@ from database.models.core import (
     Commit,
     Repository,
 )
+from django.db import InterfaceError, close_old_connections
 from helpers.checkpoint_logger import from_kwargs as load_checkpoints_from_kwargs
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.clock import get_seconds_to_next_hour
@@ -47,6 +40,12 @@ from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
 from shared.typings.torngit import AdditionalData
 from shared.utils.sentry import current_sentry_trace_id
+from sqlalchemy.exc import (
+    DataError,
+    IntegrityError,
+    InvalidRequestError,
+    SQLAlchemyError,
+)
 
 log = logging.getLogger("worker")
 
@@ -229,55 +228,94 @@ class BaseCodecovTask(celery_app.Task):
         }
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
+    @property
+    def attempts(self) -> int:
+        """Get attempts count including re-deliveries from visibility timeout expiration.
+
+        This is a property (not an instance variable) because:
+        1. The request object is set by Celery after task instantiation (not available in __init__)
+        2. We need to handle task reuse across different executions (different request IDs)
+        3. We need to handle cases where request doesn't exist yet
+
+        The value is cached in __dict__ keyed by request ID to avoid recomputation.
+        """
+        request = getattr(self, "request", None)
+        if request is None:
+            return 0
+
+        # Cache the computed value keyed by request ID to handle task reuse across executions
+        request_id = getattr(request, "id", None)
+        cache_key = f"_attempts_{request_id}" if request_id else "_attempts"
+
+        if cache_key in self.__dict__:
+            return self.__dict__[cache_key]
+
+        headers = _get_request_headers(request)
+        attempts_header = headers.get("attempts")
+        if attempts_header is not None:
+            try:
+                attempts_value = int(attempts_header)
+                self.__dict__[cache_key] = attempts_value
+                return attempts_value
+            except (ValueError, TypeError):
+                log.warning(
+                    "Invalid attempts header value",
+                    extra={
+                        "value": attempts_header,
+                        "retry_count": getattr(request, "retries", 0),
+                    },
+                )
+        retry_count = getattr(request, "retries", 0)
+        attempts_value = retry_count + 1
+        self.__dict__[cache_key] = attempts_value
+        return attempts_value
+
     def retry(
         self,
         countdown=None,
         exc=None,
         kwargs=None,
-        max_retries=_NOT_PROVIDED,
+        max_retries_override=_NOT_PROVIDED,
         **other_kwargs,
     ):
-        """
-        Override Celery's retry() to automatically check max_retries and track metrics.
-        If max_retries is not provided, uses self.max_retries from the task class.
-        If max_retries=None is explicitly passed, means unlimited retries (matches Celery behavior).
+        """Override Celery's retry() to automatically check max_retries and track metrics.
+
+        If max_retries_override is not provided, uses self.max_retries from the task class.
+        If max_retries_override=None is explicitly passed, means unlimited retries (matches Celery behavior).
 
         Args:
             countdown: Seconds to wait before retry (optional)
             exc: Exception to include in retry (optional)
             kwargs: Task kwargs to use when retrying (optional, Celery-specific parameter)
-            max_retries: Maximum number of retries allowed (default: task's max_retries).
+            max_retries_override: Maximum number of retries allowed (default: task's max_retries).
                         Pass None explicitly for unlimited retries (matches Celery behavior).
             **other_kwargs: Additional kwargs to pass to Celery's retry()
         """
         request = getattr(self, "request", None)
         if request is None:
-            # If no request, can't retry - this shouldn't happen in normal operation
-            # but handle gracefully by using default values
-            current_retries = 0
-            request_kwargs = {}
-        else:
-            current_retries = request.retries if hasattr(request, "retries") else 0
-            request_kwargs = (
-                request.kwargs if hasattr(request, "kwargs") and request.kwargs else {}
-            )
+            raise RuntimeError("Cannot retry task: request is None")
 
-        if max_retries is _NOT_PROVIDED:
-            task_max_retries = self.max_retries
+        current_retries = request.retries if hasattr(request, "retries") else 0
+        request_kwargs = (
+            request.kwargs if hasattr(request, "kwargs") and request.kwargs else {}
+        )
+
+        # Handle backward compatibility: check both max_retries_override parameter and max_retries in other_kwargs
+        if max_retries_override != _NOT_PROVIDED:
+            task_max_retries = max_retries_override
+        elif "max_retries" in other_kwargs:
+            task_max_retries = other_kwargs.pop("max_retries")
         else:
-            task_max_retries = max_retries
+            task_max_retries = self.max_retries
 
         retry_kwargs = kwargs if kwargs is not None else {}
         all_kwargs = {**request_kwargs, **retry_kwargs}
 
         # Extract context fields into nested dict
         context = {}
-        if all_kwargs.get("commitid") is not None:
-            context["commitid"] = all_kwargs.get("commitid")
-        if all_kwargs.get("repoid") is not None:
-            context["repoid"] = all_kwargs.get("repoid")
-        if all_kwargs.get("report_type") is not None:
-            context["report_type"] = all_kwargs.get("report_type")
+        for key in ["commitid", "repoid", "report_type"]:
+            if all_kwargs.get(key) is not None:
+                context[key] = all_kwargs.get(key)
 
         if task_max_retries is not None and current_retries >= task_max_retries:
             log.error(
@@ -305,14 +343,28 @@ class BaseCodecovTask(celery_app.Task):
                 "current_retries": current_retries,
                 "exception_type": type(exc).__name__ if exc else None,
                 "max_retries": task_max_retries,
-                "task_id": getattr(request, "id", None) if request else None,
+                "task_id": getattr(request, "id", None),
                 "task_name": self.name,
             },
         )
 
-        celery_max_retries = (
-            self.max_retries if max_retries is _NOT_PROVIDED else max_retries
-        )
+        # Update attempts header
+        current_attempts = self.attempts
+        if "headers" not in other_kwargs:
+            other_kwargs["headers"] = {}
+        other_kwargs["headers"] = {
+            **_get_request_headers(request),
+            **other_kwargs["headers"],
+            "attempts": current_attempts + 1,
+        }
+
+        # Use the same logic for Celery's max_retries parameter
+        if max_retries_override != _NOT_PROVIDED:
+            celery_max_retries = max_retries_override
+        elif "max_retries" in other_kwargs:
+            celery_max_retries = other_kwargs.pop("max_retries")
+        else:
+            celery_max_retries = self.max_retries
         retry_kwargs_dict = {
             "countdown": countdown,
             "exc": exc,

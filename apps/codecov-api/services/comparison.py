@@ -3,6 +3,7 @@ import functools
 import json
 import logging
 from collections import Counter
+from collections.abc import Generator
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -657,34 +658,40 @@ class Comparison:
             should_use_sentry_app=self._should_use_sentry_app,
         )
 
-    def validate(self):
+    def validate(self) -> None:
         # make sure head and base reports exist (will throw an error if not)
         self.head_report
         self.base_report
 
     @cached_property
-    def base_commit(self):
+    def base_commit(self) -> Commit:
         return self._base_commit
 
     @cached_property
-    def head_commit(self):
+    def head_commit(self) -> Commit:
         return self._head_commit
 
-    @cached_property
-    def files(self):
-        for file_name in self.head_report.files:
+    @property
+    def files(self) -> Generator[FileComparison]:
+        head_report = self.head_report
+        if head_report is None:
+            return
+        for file_name in head_report.files:
             yield self.get_file_comparison(file_name)
 
-    def get_file_comparison(self, file_name, with_src=False, bypass_max_diff=False):
-        head_file = self.head_report.get(file_name)
+    def get_file_comparison(
+        self, file_name: str, with_src: bool = False, bypass_max_diff: bool = False
+    ) -> FileComparison:
+        head_file = None
+        if self.head_report is not None:
+            head_file = self.head_report.get(file_name)
         diff_data = self.git_comparison["diff"]["files"].get(file_name)
 
+        base_file = None
         if self.base_report is not None:
             base_file = self.base_report.get(file_name)
             if base_file is None and diff_data:
                 base_file = self.base_report.get(diff_data.get("before"))
-        else:
-            base_file = None
 
         if with_src:
             file_content = async_to_sync(self._adapter.get_source)(

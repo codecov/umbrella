@@ -460,3 +460,83 @@ class TestCompareViewSetRetrieve(APITestCase):
 
         assert response.status_code == status.HTTP_200_OK
         assert response.data["files"] == self.expected_files
+
+    def test_get_untracked_handles_none_head_report(
+        self, adapter_mock, base_report_mock, head_report_mock
+    ):
+        """Test that get_untracked handles None head_report gracefully"""
+        # Set up git comparison with multiple files
+        untracked_file = "untracked.py"
+        tracked_file = "tracked.py"
+
+        mock_git_compare_data = {
+            "commits": [],
+            "diff": {
+                "files": {
+                    untracked_file: {
+                        "type": "added",
+                        "segments": [],
+                        "stats": {"added": 10, "removed": 0},
+                        "totals": ReportTotals.default_totals(),
+                    },
+                    tracked_file: {
+                        "type": "modified",
+                        "segments": [],
+                        "stats": {"added": 5, "removed": 2},
+                        "totals": ReportTotals.default_totals(),
+                    },
+                }
+            },
+        }
+
+        adapter_mock.return_value = MockedComparisonAdapter(mock_git_compare_data)
+
+        # Base report contains tracked_file but not untracked_file
+        base_report = MockSerializableReport()
+        base_report.mocked_files = {tracked_file: self.base_file}
+        base_report_mock.return_value = base_report
+
+        # Head report is None (the bug scenario)
+        head_report_mock.return_value = None
+
+        response = self._get_comparison(
+            query_params={"base": self.base.commitid, "head": self.head.commitid}
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        # untracked_file should be in untracked list since it's not in base_report or head_report
+        # tracked_file should NOT be in untracked list since it's in base_report
+        assert untracked_file in response.data["untracked"]
+        assert tracked_file not in response.data["untracked"]
+
+    def test_get_untracked_handles_none_base_and_head_report(
+        self, adapter_mock, base_report_mock, head_report_mock
+    ):
+        """Test that get_untracked handles None base_report and None head_report"""
+        untracked_file = "untracked.py"
+
+        mock_git_compare_data = {
+            "commits": [],
+            "diff": {
+                "files": {
+                    untracked_file: {
+                        "type": "added",
+                        "segments": [],
+                        "stats": {"added": 10, "removed": 0},
+                        "totals": ReportTotals.default_totals(),
+                    },
+                }
+            },
+        }
+
+        adapter_mock.return_value = MockedComparisonAdapter(mock_git_compare_data)
+        base_report_mock.return_value = None
+        head_report_mock.return_value = None
+
+        response = self._get_comparison(
+            query_params={"base": self.base.commitid, "head": self.head.commitid}
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        # When both reports are None, all files in diff should be untracked
+        assert untracked_file in response.data["untracked"]
