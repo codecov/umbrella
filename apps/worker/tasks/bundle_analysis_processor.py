@@ -1,7 +1,11 @@
 import logging
 from typing import Any, cast
 
-from celery.exceptions import CeleryError, SoftTimeLimitExceeded
+from celery.exceptions import (
+    CeleryError,
+    MaxRetriesExceededError,
+    SoftTimeLimitExceeded,
+)
 
 from app import celery_app
 from database.enums import ReportType
@@ -76,7 +80,16 @@ class BundleAnalysisProcessorTask(
                     previous_result,
                 )
         except LockRetry as retry:
-            self.retry(countdown=retry.countdown)
+            # Check max retries using self.request.retries (consistent retry counting)
+            # This prevents infinite retry loops when max retries are exceeded
+            if (
+                self.max_retries is not None
+                and self.request.retries >= self.max_retries
+            ):
+                raise MaxRetriesExceededError(
+                    f"Task {self.name} exceeded max retries ({self.max_retries})"
+                )
+            self.retry(max_retries=self.max_retries, countdown=retry.countdown)
 
     def process_impl_within_lock(
         self,
