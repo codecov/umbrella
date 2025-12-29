@@ -1,5 +1,5 @@
 import pytest
-from celery.exceptions import MaxRetriesExceededError, Retry
+from celery.exceptions import Retry
 from redis.exceptions import LockError
 
 from database.enums import ReportType
@@ -371,10 +371,11 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_raises_error(
     mock_storage,
     mock_redis,
 ):
-    """Test that bundle analysis processor raises MaxRetriesExceededError when max retries exceeded.
+    """Test that bundle analysis processor returns previous_result when max retries exceeded.
 
     This test verifies the fix for infinite retry loops by ensuring that when max retries
-    are exceeded, the task raises MaxRetriesExceededError instead of retrying indefinitely.
+    are exceeded, the task returns previous_result instead of retrying infinitely.
+    This preserves chain behavior while preventing infinite loops.
     """
     storage_path = (
         "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
@@ -414,19 +415,21 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_raises_error(
     task.request.retries = BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
     task.request.headers = {}
 
-    # Task should raise MaxRetriesExceededError (from self.retry()) instead of retrying infinitely
-    with pytest.raises(MaxRetriesExceededError):
-        task.run_impl(
-            dbsession,
-            [{"previous": "result"}],
-            repoid=commit.repoid,
-            commitid=commit.commitid,
-            commit_yaml={},
-            params={
-                "upload_id": upload.id_,
-                "commit": commit.commitid,
-            },
-        )
+    previous_result = [{"previous": "result"}]
+    # Task should return previous_result instead of retrying infinitely
+    # This preserves chain behavior while preventing infinite loops
+    result = task.run_impl(
+        dbsession,
+        previous_result,
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={
+            "upload_id": upload.id_,
+            "commit": commit.commitid,
+        },
+    )
+    assert result == previous_result
 
 
 def test_bundle_analysis_process_upload_rate_limit_error(
@@ -1476,7 +1479,7 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_lock(
     mock_storage,
     mock_redis,
 ):
-    """Test that when max retries are exceeded during lock acquisition, task raises MaxRetriesExceededError."""
+    """Test that when max retries are exceeded during lock acquisition, task returns previous_result."""
     storage_path = (
         "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
     )
@@ -1513,20 +1516,19 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_lock(
     task.request.headers = {}
 
     previous_result = [{"previous": "result"}]
-    # Should raise MaxRetriesExceededError when max retries exceeded
-    with pytest.raises(MaxRetriesExceededError):
-        task.run_impl(
-            dbsession,
-            previous_result,
-            repoid=commit.repoid,
-            commitid=commit.commitid,
-            commit_yaml={},
-            params={
-                "upload_id": upload.id_,
-                "commit": commit.commitid,
-            },
-        )
-
+    # Should return previous_result when max retries exceeded (preserves chain behavior)
+    result = task.run_impl(
+        dbsession,
+        previous_result,
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={
+            "upload_id": upload.id_,
+            "commit": commit.commitid,
+        },
+    )
+    assert result == previous_result
     assert upload.state == "started"  # State should not change
 
 
