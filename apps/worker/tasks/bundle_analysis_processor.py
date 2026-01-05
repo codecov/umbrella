@@ -81,7 +81,9 @@ class BundleAnalysisProcessorTask(
             # This prevents infinite retry loops when max retries are exceeded
             if self._has_exceeded_max_attempts(self.max_retries):
                 attempts = self.attempts
-                max_attempts = self.max_retries + 1 if self.max_retries is not None else None
+                max_attempts = (
+                    self.max_retries + 1 if self.max_retries is not None else None
+                )
                 log.error(
                     "Bundle analysis processor exceeded max retries",
                     extra={
