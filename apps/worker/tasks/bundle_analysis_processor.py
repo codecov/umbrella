@@ -65,8 +65,7 @@ class BundleAnalysisProcessorTask(
         try:
             with lock_manager.locked(
                 LockType.BUNDLE_ANALYSIS_PROCESSING,
-                max_retries=self.max_retries,
-                retry_num=self.attempts,
+                retry_num=self.request.retries,
             ):
                 return self.process_impl_within_lock(
                     db_session,
@@ -77,31 +76,25 @@ class BundleAnalysisProcessorTask(
                     previous_result,
                 )
         except LockRetry as retry:
-            if self._has_exceeded_max_attempts(self.max_retries):
-                attempts = self.attempts
-                max_attempts = self.max_retries + 1
+            # Check max retries using self.request.retries (consistent retry counting)
+            # This prevents infinite retry loops when max retries are exceeded
+            if (
+                self.max_retries is not None
+                and self.request.retries >= self.max_retries
+            ):
                 log.error(
                     "Bundle analysis processor exceeded max retries",
                     extra={
-                        "attempts": attempts,
                         "commitid": commitid,
-                        "max_attempts": max_attempts,
                         "max_retries": self.max_retries,
                         "repoid": repoid,
+                        "retry_num": self.request.retries,
                     },
                 )
+                # Return previous_result to preserve chain behavior when max retries exceeded
+                # This allows the chain to continue with partial results rather than failing entirely
                 return previous_result
-            if not self.safe_retry(countdown=retry.countdown):
-                attempts = self.attempts
-                log.error(
-                    "Failed to schedule retry for bundle analysis processor",
-                    extra={
-                        "attempts": attempts,
-                        "commitid": commitid,
-                        "repoid": repoid,
-                    },
-                )
-                return previous_result
+            self.retry(max_retries=self.max_retries, countdown=retry.countdown)
 
     def process_impl_within_lock(
         self,
