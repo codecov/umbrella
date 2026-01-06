@@ -4,6 +4,7 @@ from django.conf import settings
 from rest_framework.exceptions import ErrorDetail
 
 from billing.tests.mocks import mock_all_plans_and_tiers
+from reports.models import CommitReport
 from reports.tests.factories import (
     CommitReportFactory,
     RepositoryFlagFactory,
@@ -266,3 +267,89 @@ def test_commit_report_serializer(db):
         "code": report.code,
     }
     assert serializer.data == expected_data
+
+
+def test_commit_report_serializer_creates_new_report(db):
+    """Test that create() returns (report, True) for new reports."""
+    commit = CommitFactory.create()
+    serializer = CommitReportSerializer()
+    report, created = serializer.create({
+        "code": None,
+        "commit_id": commit.id,
+    })
+    assert created is True
+    assert report.report_type == CommitReport.ReportType.COVERAGE
+    assert report.commit_id == commit.id
+    assert report.code is None
+
+
+def test_commit_report_serializer_upgrades_legacy_report(db):
+    """Test that create() upgrades legacy reports with report_type=None."""
+    commit = CommitFactory.create()
+    legacy_report = CommitReport.objects.create(
+        commit=commit,
+        code=None,
+        report_type=None,  # Legacy report
+    )
+
+    serializer = CommitReportSerializer()
+    report, created = serializer.create({
+        "code": None,
+        "commit_id": commit.id,
+    })
+
+    assert created is False
+    assert report.id == legacy_report.id
+    legacy_report.refresh_from_db()
+    assert legacy_report.report_type == CommitReport.ReportType.COVERAGE
+
+
+def test_commit_report_serializer_returns_existing_report(db):
+    """Test that create() returns existing report without creating duplicate."""
+    commit = CommitFactory.create()
+    existing_report = CommitReport.objects.create(
+        commit=commit,
+        code=None,
+        report_type=CommitReport.ReportType.COVERAGE,
+    )
+
+    serializer = CommitReportSerializer()
+    report, created = serializer.create({
+        "code": None,
+        "commit_id": commit.id,
+    })
+
+    assert created is False
+    assert report.id == existing_report.id
+    # Ensure no duplicate was created
+    assert CommitReport.objects.filter(commit=commit, code=None).count() == 1
+
+
+def test_commit_report_serializer_handles_concurrent_creation(db):
+    """Test that create() handles race condition by using get_or_create atomically.
+    
+    This test verifies that calling create() twice for the same commit/code
+    does not create duplicate reports (simulating concurrent requests).
+    """
+    commit = CommitFactory.create()
+    serializer = CommitReportSerializer()
+
+    # First call - should create
+    report1, created1 = serializer.create({
+        "code": None,
+        "commit_id": commit.id,
+    })
+    assert created1 is True
+
+    # Second call - should return existing (simulates concurrent request that lost the race)
+    report2, created2 = serializer.create({
+        "code": None,
+        "commit_id": commit.id,
+    })
+    assert created2 is False
+    assert report1.id == report2.id
+
+    # Verify only one report exists
+    assert CommitReport.objects.filter(
+        commit=commit, code=None, report_type=CommitReport.ReportType.COVERAGE
+    ).count() == 1
