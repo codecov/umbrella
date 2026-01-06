@@ -1,6 +1,7 @@
 from typing import Any
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models import QuerySet
 from rest_framework import serializers
 
@@ -197,17 +198,36 @@ class CommitReportSerializer(serializers.ModelSerializer):
         return None
 
     def create(self, validated_data: dict[str, Any]) -> tuple[CommitReport, bool]:
-        report = (
-            CommitReport.objects.coverage_reports()
-            .filter(
-                code=validated_data.get("code"),
-                commit_id=validated_data.get("commit_id"),
+        code = validated_data.get("code")
+        commit_id = validated_data.get("commit_id")
+        report_type = validated_data.get("report_type", CommitReport.ReportType.COVERAGE)
+
+        # Use atomic transaction to prevent race conditions
+        with transaction.atomic():
+            # First try to get existing report with report_type=None (legacy)
+            # Use select_for_update to lock the row
+            legacy_report = (
+                CommitReport.objects.select_for_update()
+                .filter(
+                    code=code,
+                    commit_id=commit_id,
+                    report_type=None,
+                )
+                .first()
             )
-            .first()
-        )
-        if report:
-            if report.report_type is None:
-                report.report_type = CommitReport.ReportType.COVERAGE
-                report.save()
-            return report, False
-        return super().create(validated_data), True
+
+            if legacy_report:
+                # Update legacy report to have correct type
+                legacy_report.report_type = report_type
+                legacy_report.save()
+                return legacy_report, False
+
+            # Now use get_or_create for the normal case
+            # This is atomic and handles concurrent requests
+            report, was_created = CommitReport.objects.get_or_create(
+                code=code,
+                commit_id=commit_id,
+                report_type=report_type,
+            )
+
+            return report, was_created
