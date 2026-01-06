@@ -2,7 +2,11 @@ from unittest.mock import patch
 
 import pytest
 
-from shared.celery_config import timeseries_backfill_task_name, upload_task_name
+from shared.celery_config import (
+    timeseries_backfill_task_name,
+    upload_finisher_task_name,
+    upload_task_name,
+)
 from shared.celery_router import route_tasks_based_on_user_plan
 from shared.config import ConfigHelper
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
@@ -106,3 +110,38 @@ class TestCeleryRouter:
         assert route_tasks_based_on_user_plan(
             upload_task_name, PlanName.ENTERPRISE_CLOUD_MONTHLY.value, 1
         ) == {"queue": "enterprise_uploads_super_special", "extra_config": {}}
+
+    @patch.dict(
+        "shared.celery_config.BaseCeleryConfig.task_routes",
+        {
+            upload_finisher_task_name: {"queue": "upload_finisher"},
+            "app.tasks.upload.*": {"queue": "uploads"},
+        },
+    )
+    @pytest.mark.django_db
+    def test_upload_finisher_has_separate_queue(self, mocker):
+        """UploadFinisher should route to its own queue, separate from UploadProcessor."""
+        mock_all_plans_and_tiers()
+
+        # Non-enterprise: upload_finisher goes to upload_finisher queue
+        assert route_tasks_based_on_user_plan(
+            upload_finisher_task_name, DEFAULT_FREE_PLAN, None
+        ) == {
+            "queue": "upload_finisher",
+            "extra_config": {},
+        }
+        # Non-enterprise: other upload tasks go to uploads queue
+        assert route_tasks_based_on_user_plan(
+            upload_task_name, DEFAULT_FREE_PLAN, None
+        ) == {
+            "queue": "uploads",
+            "extra_config": {},
+        }
+        # Enterprise: upload_finisher goes to enterprise_upload_finisher queue
+        assert route_tasks_based_on_user_plan(
+            upload_finisher_task_name, PlanName.ENTERPRISE_CLOUD_MONTHLY.value, None
+        ) == {"queue": "enterprise_upload_finisher", "extra_config": {}}
+        # Enterprise: other upload tasks go to enterprise_uploads queue
+        assert route_tasks_based_on_user_plan(
+            upload_task_name, PlanName.ENTERPRISE_CLOUD_MONTHLY.value, None
+        ) == {"queue": "enterprise_uploads", "extra_config": {}}
