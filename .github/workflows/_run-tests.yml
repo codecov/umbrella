@@ -41,18 +41,26 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'recursive'
-      - name: Cache Test App
-        id: cache-test-app
-        uses: actions/cache@v4
-        env:
-          cache-name: ${{ inputs.repo }}-test-app
+          
+      - id: "auth"
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v2.1.2"
         with:
-          path: |
-            ${{ inputs.output_directory }}/test-app.tar
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
-      - name: Load built image
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.CODECOV_GCP_WIDP }}
+          service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
+
+      - name: Docker configuration
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        run: |-
+          echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
+
+      - name: Pull or build test image
         run: |
-          docker load --input ${{ inputs.output_directory }}/test-app.tar
+          echo "Pulling test image from registry"
+          make ${{ inputs.make_target_prefix }}pull.test-app-temp
+
       - name: Install docker compose
         run: |
           sudo curl -SL https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
