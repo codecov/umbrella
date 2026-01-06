@@ -80,14 +80,13 @@ class BundleAnalysisProcessorTask(
             # Check max retries using self.attempts (includes visibility timeout re-deliveries)
             # This prevents infinite retry loops when max retries are exceeded
             if self._has_exceeded_max_attempts(self.max_retries):
-                attempts = self.attempts
                 max_attempts = (
                     self.max_retries + 1 if self.max_retries is not None else None
                 )
                 log.error(
                     "Bundle analysis processor exceeded max retries",
                     extra={
-                        "attempts": attempts,
+                        "attempts": self.attempts,
                         "commitid": commitid,
                         "max_attempts": max_attempts,
                         "max_retries": self.max_retries,

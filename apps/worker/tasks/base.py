@@ -213,13 +213,12 @@ class BaseCodecovTask(celery_app.Task):
         # Track creation time and attempts in headers for queue time metrics
         # and visibility timeout re-delivery detection
         current_time = datetime.now()
-        # Preserve existing attempts if present (e.g., from retry or re-delivery)
-        # Only set to 1 if this is a new task creation
-        attempts = opt_headers.get("attempts", 1)
         headers = {
             **opt_headers,
             "created_timestamp": current_time.isoformat(),
-            "attempts": attempts,
+            # Preserve existing attempts if present (e.g., from retry or re-delivery)
+            # Only set to 1 if this is a new task creation
+            "attempts": opt_headers.get("attempts", 1),
         }
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
