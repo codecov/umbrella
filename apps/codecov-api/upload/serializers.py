@@ -200,7 +200,9 @@ class CommitReportSerializer(serializers.ModelSerializer):
     def create(self, validated_data: dict[str, Any]) -> tuple[CommitReport, bool]:
         code = validated_data.get("code")
         commit_id = validated_data.get("commit_id")
-        report_type = validated_data.get("report_type", CommitReport.ReportType.COVERAGE)
+        report_type = validated_data.get(
+            "report_type", CommitReport.ReportType.COVERAGE
+        )
 
         # Use atomic transaction to prevent race conditions
         with transaction.atomic():

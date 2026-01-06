@@ -273,10 +273,12 @@ def test_commit_report_serializer_creates_new_report(db):
     """Test that create() returns (report, True) for new reports."""
     commit = CommitFactory.create()
     serializer = CommitReportSerializer()
-    report, created = serializer.create({
-        "code": None,
-        "commit_id": commit.id,
-    })
+    report, created = serializer.create(
+        {
+            "code": None,
+            "commit_id": commit.id,
+        }
+    )
     assert created is True
     assert report.report_type == CommitReport.ReportType.COVERAGE
     assert report.commit_id == commit.id
@@ -293,10 +295,12 @@ def test_commit_report_serializer_upgrades_legacy_report(db):
     )
 
     serializer = CommitReportSerializer()
-    report, created = serializer.create({
-        "code": None,
-        "commit_id": commit.id,
-    })
+    report, created = serializer.create(
+        {
+            "code": None,
+            "commit_id": commit.id,
+        }
+    )
 
     assert created is False
     assert report.id == legacy_report.id
@@ -314,10 +318,12 @@ def test_commit_report_serializer_returns_existing_report(db):
     )
 
     serializer = CommitReportSerializer()
-    report, created = serializer.create({
-        "code": None,
-        "commit_id": commit.id,
-    })
+    report, created = serializer.create(
+        {
+            "code": None,
+            "commit_id": commit.id,
+        }
+    )
 
     assert created is False
     assert report.id == existing_report.id
@@ -327,7 +333,7 @@ def test_commit_report_serializer_returns_existing_report(db):
 
 def test_commit_report_serializer_handles_concurrent_creation(db):
     """Test that create() handles race condition by using get_or_create atomically.
-    
+
     This test verifies that calling create() twice for the same commit/code
     does not create duplicate reports (simulating concurrent requests).
     """
@@ -335,21 +341,28 @@ def test_commit_report_serializer_handles_concurrent_creation(db):
     serializer = CommitReportSerializer()
 
     # First call - should create
-    report1, created1 = serializer.create({
-        "code": None,
-        "commit_id": commit.id,
-    })
+    report1, created1 = serializer.create(
+        {
+            "code": None,
+            "commit_id": commit.id,
+        }
+    )
     assert created1 is True
 
     # Second call - should return existing (simulates concurrent request that lost the race)
-    report2, created2 = serializer.create({
-        "code": None,
-        "commit_id": commit.id,
-    })
+    report2, created2 = serializer.create(
+        {
+            "code": None,
+            "commit_id": commit.id,
+        }
+    )
     assert created2 is False
     assert report1.id == report2.id
 
     # Verify only one report exists
-    assert CommitReport.objects.filter(
-        commit=commit, code=None, report_type=CommitReport.ReportType.COVERAGE
-    ).count() == 1
+    assert (
+        CommitReport.objects.filter(
+            commit=commit, code=None, report_type=CommitReport.ReportType.COVERAGE
+        ).count()
+        == 1
+    )
