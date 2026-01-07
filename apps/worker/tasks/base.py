@@ -196,14 +196,27 @@ class BaseCodecovTask(celery_app.Task):
     def apply_async(self, args=None, kwargs=None, **options):
         # Use temporary session for routing (read-only, short-lived)
         routing_session = create_task_session()
+        log.debug(
+            "Created routing session for apply_async",
+            extra={"task": self.name, "session_id": id(routing_session)},
+        )
         try:
             user_plan = _get_user_plan_from_task(routing_session, self.name, kwargs)
             ownerid = _get_ownerid_from_task(routing_session, self.name, kwargs)
         finally:
             # Always cleanup routing session
-            if routing_session.in_transaction():
+            had_transaction = routing_session.in_transaction()
+            if had_transaction:
                 routing_session.rollback()
             routing_session.close()
+            log.debug(
+                "Closed routing session for apply_async",
+                extra={
+                    "task": self.name,
+                    "session_id": id(routing_session),
+                    "had_transaction": had_transaction,
+                },
+            )
 
         route_with_extra_config = route_tasks_based_on_user_plan(
             self.name, user_plan, ownerid
@@ -225,7 +238,9 @@ class BaseCodecovTask(celery_app.Task):
         headers = {
             **opt_headers,
             "created_timestamp": current_time.isoformat(),
-            "attempts": 1,
+            # Preserve existing attempts if present (e.g., from retry or re-delivery)
+            # Only set to 1 if this is a new task creation
+            "attempts": opt_headers.get("attempts", 1),
         }
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
@@ -400,6 +415,15 @@ class BaseCodecovTask(celery_app.Task):
             try:
                 # Create NEW session for this task (per-task session)
                 db_session = create_task_session()
+                task_id = getattr(self.request, "id", None)
+                log.debug(
+                    "Created task session",
+                    extra={
+                        "task": self.name,
+                        "task_id": task_id,
+                        "session_id": id(db_session),
+                    },
+                )
 
                 # Validate session is clean (no inherited transaction)
                 if db_session.in_transaction():
@@ -407,7 +431,8 @@ class BaseCodecovTask(celery_app.Task):
                         "New task session has open transaction, rolling back",
                         extra={
                             "task": self.name,
-                            "task_id": getattr(self.request, "id", None),
+                            "task_id": task_id,
+                            "session_id": id(db_session),
                         },
                     )
                     db_session.rollback()
@@ -541,23 +566,38 @@ class BaseCodecovTask(celery_app.Task):
         Args:
             db_session: The task session to clean up
         """
+        session_id = id(db_session)
+        had_transaction = False
         try:
             # Rollback any remaining transaction
-            if db_session.in_transaction():
+            had_transaction = db_session.in_transaction()
+            if had_transaction:
                 db_session.rollback()
         except Exception as e:
             log.warning(
                 "Error rolling back task session",
-                extra={"error": str(e), "task": self.name},
+                extra={"error": str(e), "task": self.name, "session_id": session_id},
                 exc_info=True,
             )
         finally:
             try:
                 db_session.close()
+                log.debug(
+                    "Closed task session",
+                    extra={
+                        "task": self.name,
+                        "session_id": session_id,
+                        "had_transaction": had_transaction,
+                    },
+                )
             except Exception as e:
                 log.warning(
                     "Error closing task session",
-                    extra={"error": str(e), "task": self.name},
+                    extra={
+                        "error": str(e),
+                        "task": self.name,
+                        "session_id": session_id,
+                    },
                     exc_info=True,
                 )
 
