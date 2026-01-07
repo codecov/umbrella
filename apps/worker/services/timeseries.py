@@ -98,7 +98,10 @@ def get_relevant_components(
 
 
 def upsert_components_measurements(
-    commit: Commit, report: Report, components: list[ComponentForMeasurement]
+    commit: Commit,
+    report: Report,
+    components: list[ComponentForMeasurement],
+    db_session: Session | None = None,
 ):
     measurements = []
     for component in components:
@@ -114,7 +117,8 @@ def upsert_components_measurements(
             )
 
     if len(measurements) > 0:
-        db_session = commit.get_db_session()
+        if db_session is None:
+            db_session = commit.get_db_session()
         upsert_measurements(db_session, measurements)
         log.info(
             "Upserted component coverage measurements",

@@ -24,8 +24,11 @@ from tasks.upsert_component import upsert_component_task
 log = logging.getLogger(__name__)
 
 
-def save_commit_measurements(commit: Commit, dataset_names: Sequence[str]) -> None:
-    db_session = commit.get_db_session()
+def save_commit_measurements(
+    commit: Commit, dataset_names: Sequence[str], db_session: Session | None = None
+) -> None:
+    if db_session is None:
+        db_session = commit.get_db_session()
 
     current_yaml = get_repo_yaml(commit.repository)
     report_service = ReportService(current_yaml)
@@ -59,7 +62,7 @@ def save_commit_measurements(commit: Commit, dataset_names: Sequence[str]) -> No
                 ]
                 group(task_signatures).apply_async()
             else:
-                upsert_components_measurements(commit, report, components)
+                upsert_components_measurements(commit, report, components, db_session)
 
     maybe_upsert_flag_measurements(commit, dataset_names, db_session, report)
 
