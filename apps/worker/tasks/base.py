@@ -448,23 +448,24 @@ class BaseCodecovTask(celery_app.Task):
                 try:
                     with self.task_core_runtime.time():
                         result = self.run_impl(db_session, *args, **kwargs)
-                        # Commit on success, handling SoftTimeLimitExceeded during commit
+                    # Commit on success OUTSIDE timer (metric excludes db commits)
+                    # Handle SoftTimeLimitExceeded during commit
+                    try:
+                        db_session.commit()
+                    except SoftTimeLimitExceeded:
+                        log.warning(
+                            "Timeout during DB commit, attempting to complete",
+                            exc_info=True,
+                        )
                         try:
                             db_session.commit()
-                        except SoftTimeLimitExceeded:
+                        except InvalidRequestError:
                             log.warning(
-                                "Timeout during DB commit, attempting to complete",
+                                "DB session unusable after timeout during commit",
                                 exc_info=True,
                             )
-                            try:
-                                db_session.commit()
-                            except InvalidRequestError:
-                                log.warning(
-                                    "DB session unusable after timeout during commit",
-                                    exc_info=True,
-                                )
-                                db_session.rollback()
-                        return result
+                            db_session.rollback()
+                    return result
                 except InterfaceError as ex:
                     sentry_sdk.capture_exception(ex)
                     log.exception(
