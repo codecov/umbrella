@@ -21,6 +21,7 @@ from shared.reports.types import ReportLine
 from shared.utils.sessions import Session
 from shared.yaml import UserYaml
 from tasks.save_commit_measurements import save_commit_measurements
+from tasks.tests.utils import hook_session
 
 
 @pytest.fixture
@@ -587,10 +588,10 @@ class TestTimeseriesService:
         dataset_names,
         mocker,
         mock_repo_provider,
+        dbsession,
+        request,
     ):
-        dbsession = repository.get_db_session()
-        mocker.patch.object(dbsession, "close")
-        mocker.patch("tasks.base.get_db_session", return_value=dbsession)
+        hook_session(mocker, dbsession, request=request)
         mocker.patch.object(group, "apply_async", group.apply)
 
         mocker.patch(
@@ -626,11 +627,12 @@ class TestTimeseriesService:
         get_repo_yaml.return_value = UserYaml(yaml_dict)
         get_current_yaml.return_value = UserYaml(yaml_dict)
 
-        save_commit_measurements(commit, dataset_names=dataset_names)
+        save_commit_measurements(
+            commit, dataset_names=dataset_names, db_session=dbsession
+        )
 
-        # Want to commit here to have the results persisted properly.
-        # Otherwise the results aren't going to be reflected in the select below.
-        # dbsession.commit()
+        # Flush to ensure measurements created by parallel tasks are visible
+        dbsession.flush()
 
         measurements = (
             dbsession.query(Measurement)
@@ -991,6 +993,7 @@ class TestTimeseriesService:
         dataset_names,
         mocker,
         mock_repo_provider,
+        request,
     ):
         def validate_invariants(repository, other_repository):
             assert (
@@ -1017,9 +1020,7 @@ class TestTimeseriesService:
             "tasks.save_commit_measurements.PARALLEL_COMPONENT_COMPARISON.check_value",
             return_value=True,
         )
-        dbsession = repository.get_db_session()
-        mocker.patch.object(dbsession, "close")
-        mocker.patch("tasks.base.get_db_session", return_value=dbsession)
+        hook_session(mocker, dbsession, request=request)
         mocker.patch.object(group, "apply_async", group.apply)
 
         mocker.patch(
@@ -1059,22 +1060,30 @@ class TestTimeseriesService:
         commit = CommitFactory.create(branch="foo", repository=repository)
         dbsession.add(commit)
         dbsession.flush()
-        save_commit_measurements(commit, dataset_names=dataset_names)
+        save_commit_measurements(
+            commit, dataset_names=dataset_names, db_session=dbsession
+        )
         commit = CommitFactory.create(branch="bar", repository=repository)
         dbsession.add(commit)
         dbsession.flush()
-        save_commit_measurements(commit, dataset_names=dataset_names)
+        save_commit_measurements(
+            commit, dataset_names=dataset_names, db_session=dbsession
+        )
 
         # Another unrelated repository, make sure that this one isn't deleted as a side effect
         other_repository = _create_repository(dbsession)
         other_commit = CommitFactory.create(branch="foo", repository=other_repository)
         dbsession.add(other_commit)
         dbsession.flush()
-        save_commit_measurements(other_commit, dataset_names=dataset_names)
+        save_commit_measurements(
+            other_commit, dataset_names=dataset_names, db_session=dbsession
+        )
         other_commit = CommitFactory.create(branch="bar", repository=other_repository)
         dbsession.add(other_commit)
         dbsession.flush()
-        save_commit_measurements(other_commit, dataset_names=dataset_names)
+        save_commit_measurements(
+            other_commit, dataset_names=dataset_names, db_session=dbsession
+        )
 
         flag_ids = {
             flag.measurable_id

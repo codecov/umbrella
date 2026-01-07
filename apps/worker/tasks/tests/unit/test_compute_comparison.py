@@ -13,6 +13,7 @@ from shared.reports.types import ReportTotals
 from shared.torngit.exceptions import TorngitRateLimitError
 from shared.yaml import UserYaml
 from tasks.compute_comparison import ComputeComparisonTask
+from tasks.tests.utils import hook_session
 
 
 class TestComputeComparisonTask:
@@ -558,9 +559,15 @@ class TestComputeComparisonTask:
         }
 
     def test_compute_component_comparisons_parallel(
-        self, dbsession, mocker, mock_repo_provider, mock_storage, sample_report
+        self,
+        dbsession,
+        mocker,
+        mock_repo_provider,
+        mock_storage,
+        sample_report,
+        request,
     ):
-        mocker.patch("tasks.base.get_db_session", return_value=dbsession)
+        hook_session(mocker, dbsession, request=request)
 
         mocker.patch.object(group, "apply_async", group.apply)
         mocker.patch.object(
