@@ -551,8 +551,6 @@ class BaseCodecovTask(celery_app.Task):
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         """Handle task failure, logging flow checkpoints and incrementing metrics."""
-        self._capture_failure_to_sentry(exc, task_id, args, kwargs)
-
         res = super().on_failure(exc, task_id, args, kwargs, einfo)
         self.task_failure_counter.inc()
 
@@ -561,20 +559,32 @@ class BaseCodecovTask(celery_app.Task):
         if TestResultsFlow.has_begun():
             TestResultsFlow.log(TestResultsFlow.CELERY_FAILURE)
 
+        try:
+            self._capture_failure_to_sentry(exc, task_id, args, kwargs)
+        except Exception:
+            pass
+
         return res
 
     def _capture_failure_to_sentry(self, exc, task_id, args, kwargs):
         """Capture task failure to Sentry with rich context."""
         scope = sentry_sdk.get_current_scope()
         scope.set_tag("failure_type", "task_failure")
+
+        def safe_str(obj, max_len=500):
+            try:
+                return str(obj)[:max_len]
+            except Exception:
+                return "<unserializable>"
+
         scope.set_context(
             "celery",
             {
                 "task_name": self.name,
                 "task_id": task_id,
-                "args": str(args)[:500] if args else None,
+                "args": safe_str(args) if args else None,
                 "kwargs": (
-                    {k: str(v)[:100] for k, v in kwargs.items()} if kwargs else None
+                    {k: safe_str(v, 100) for k, v in kwargs.items()} if kwargs else None
                 ),
                 "retries": getattr(self.request, "retries", 0),
                 "attempts": self.attempts,
