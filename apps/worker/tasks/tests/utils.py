@@ -26,26 +26,22 @@ GLOBALS_USING_SESSION = [
 def hook_session(mocker, dbsession: Session, request=None):
     """Configure all tasks to use the shared test session.
 
-    This patches session methods to work with pytest's transactional test fixtures
-    which use savepoints. We prevent close/rollback operations that would interfere
-    with the test's transaction management.
+    Patches get_db_session to return the test session for legacy code paths,
+    and sets up create_task_session to return it for new per-task session code.
     """
-    # Always reset test session factory first (defensive cleanup from prior tests)
-    set_test_session_factory(None)
-
     mocker.patch("shared.metrics")
     for path in GLOBALS_USING_SESSION:
         mocker.patch(path, return_value=dbsession)
 
-    # Prevent session operations that would interfere with test transaction
+    # Prevent Django connection cleanup which doesn't apply in tests
     mocker.patch("tasks.base.close_old_connections")
+
+    # Prevent session cleanup that would interfere with test transaction
     mocker.patch.object(dbsession, "close", lambda: None)
-    mocker.patch.object(dbsession, "in_transaction", lambda: False)
-    mocker.patch.object(dbsession, "rollback", lambda: None)  # Prevent rollback in tests
+    mocker.patch("tasks.base.BaseCodecovTask.wrap_up_task_session")
 
-    # Replace commit with flush to keep data visible within test transaction
-    original_commit = dbsession.commit
-
+    # Replace commit with flush - allows data to be visible within test transaction
+    # without actually committing (which would break the test's rollback cleanup)
     def flush_instead_of_commit():
         dbsession.flush()
 
