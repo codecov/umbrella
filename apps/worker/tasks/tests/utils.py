@@ -4,6 +4,7 @@ from collections.abc import Generator
 from sqlalchemy.orm import Session
 
 from app import celery_app
+from database.engine import set_test_session_factory
 
 
 @contextlib.contextmanager
@@ -17,19 +18,39 @@ def run_tasks() -> Generator[None]:
 
 
 GLOBALS_USING_SESSION = [
-    "celery_task_router.get_db_session",
     "database.engine.get_db_session",
     "tasks.base.get_db_session",
 ]
 
 
-def hook_session(mocker, dbsession: Session):
-    """
-    This patches various module-local imports related to `get_db_session`.
-    """
+def hook_session(mocker, dbsession: Session, request=None):
+    """Configure all tasks to use the shared test session."""
     mocker.patch("shared.metrics")
     for path in GLOBALS_USING_SESSION:
         mocker.patch(path, return_value=dbsession)
+
+    # Prevent session from being closed during tests
+    mocker.patch("tasks.base.close_old_connections")
+    mocker.patch.object(dbsession, "close", lambda: None)
+    mocker.patch.object(dbsession, "in_transaction", lambda: False)
+
+    # Replace commit with flush to keep data visible within test transaction
+    original_commit = dbsession.commit
+
+    def flush_instead_of_commit():
+        dbsession.flush()
+
+    mocker.patch.object(dbsession, "commit", flush_instead_of_commit)
+
+    # Configure create_task_session to return the test session
+    set_test_session_factory(lambda: dbsession)
+
+    def cleanup():
+        set_test_session_factory(None)
+        dbsession.commit = original_commit
+
+    if request is not None:
+        request.addfinalizer(cleanup)
 
 
 GLOBALS_USING_REPO_PROVIDER = [

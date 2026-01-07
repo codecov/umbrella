@@ -4,26 +4,19 @@ from contextlib import contextmanager
 from datetime import datetime
 
 import sentry_sdk
+from app import celery_app
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from django.db import InterfaceError, close_old_connections
-from sqlalchemy.exc import (
-    DataError,
-    IntegrityError,
-    InvalidRequestError,
-    SQLAlchemyError,
-)
-
-from app import celery_app
 from celery_task_router import _get_ownerid_from_task, _get_user_plan_from_task
-from database.engine import get_db_session
+from database.engine import create_task_session, get_db_session
 from database.enums import CommitErrorTypes
 from database.models.core import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
     Commit,
     Repository,
 )
+from django.db import InterfaceError, close_old_connections
 from helpers.checkpoint_logger import from_kwargs as load_checkpoints_from_kwargs
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.clock import get_seconds_to_next_hour
@@ -46,6 +39,12 @@ from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
 from shared.typings.torngit import AdditionalData
 from shared.utils.sentry import current_sentry_trace_id
+from sqlalchemy.exc import (
+    DataError,
+    IntegrityError,
+    InvalidRequestError,
+    SQLAlchemyError,
+)
 
 log = logging.getLogger("worker")
 
@@ -193,9 +192,16 @@ class BaseCodecovTask(celery_app.Task):
 
     @sentry_sdk.trace
     def apply_async(self, args=None, kwargs=None, **options):
-        db_session = get_db_session()
-        user_plan = _get_user_plan_from_task(db_session, self.name, kwargs)
-        ownerid = _get_ownerid_from_task(db_session, self.name, kwargs)
+        # Use temporary session for routing (read-only, short-lived)
+        routing_session = create_task_session()
+        try:
+            user_plan = _get_user_plan_from_task(routing_session, self.name, kwargs)
+            ownerid = _get_ownerid_from_task(routing_session, self.name, kwargs)
+        finally:
+            # Always cleanup routing session
+            if routing_session.in_transaction():
+                routing_session.rollback()
+            routing_session.close()
         route_with_extra_config = route_tasks_based_on_user_plan(
             self.name, user_plan, ownerid
         )
@@ -387,109 +393,118 @@ class BaseCodecovTask(celery_app.Task):
     @sentry_sdk.trace
     def run(self, *args, **kwargs):
         with self.task_full_runtime.time():
-            db_session = get_db_session()
-
-            log_context = LogContext(
-                repo_id=kwargs.get("repoid") or kwargs.get("repo_id"),
-                owner_id=kwargs.get("ownerid"),
-                commit_sha=kwargs.get("commitid") or kwargs.get("commit_id"),
-            )
-
-            task = get_current_task()
-            if task and task.request:
-                log_context.task_name = task.name
-                task_id = getattr(task.request, "id", None)
-                if task_id:
-                    log_context.task_id = task_id
-
-            log_context.populate_from_sqlalchemy(db_session)
-            set_log_context(log_context)
-            load_checkpoints_from_kwargs([UploadFlow, TestResultsFlow], kwargs)
-
-            self.task_run_counter.inc()
-            if (
-                hasattr(self, "request")
-                and self.request is not None
-                and hasattr(self.request, "get")
-            ):
-                created_timestamp = self.request.get("created_timestamp", None)
-                if created_timestamp:
-                    enqueued_time = datetime.fromisoformat(created_timestamp)
-                    now = datetime.now()
-                    delta = now - enqueued_time
-
-                    delivery_info = self.request.get("delivery_info", {})
-                    queue_name = (
-                        delivery_info.get("routing_key", None)
-                        if isinstance(delivery_info, dict)
-                        else None
-                    )
-                    time_in_queue_timer = TASK_TIME_IN_QUEUE.labels(
-                        task=self.name, queue=queue_name
-                    )
-                    time_in_queue_timer.observe(delta.total_seconds())
-
-            close_old_connections()
+            # Create NEW session for this task (per-task session isolation)
+            db_session = create_task_session()
 
             try:
-                with self.task_core_runtime.time():
-                    return self.run_impl(db_session, *args, **kwargs)
-            except InterfaceError as ex:
-                sentry_sdk.capture_exception(
-                    ex,
+                log_context = LogContext(
+                    repo_id=kwargs.get("repoid") or kwargs.get("repo_id"),
+                    owner_id=kwargs.get("ownerid"),
+                    commit_sha=kwargs.get("commitid") or kwargs.get("commit_id"),
                 )
-            except (DataError, IntegrityError):
-                log.exception(
-                    "Errors related to the constraints of database happened",
-                    extra={"task_args": args, "task_kwargs": kwargs},
-                )
-                db_session.rollback()
-                retry_count = getattr(self.request, "retries", 0)
-                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
-                # Use safe_retry to handle max retries exceeded gracefully
-                # Returns False if max retries exceeded, otherwise raises Retry
-                # Wrap in try-except to catch MaxRetriesExceededError if it escapes safe_retry
-                # (exceptions raised inside except blocks aren't caught by sibling except clauses)
+
+                task = get_current_task()
+                if task and task.request:
+                    log_context.task_name = task.name
+                    task_id = getattr(task.request, "id", None)
+                    if task_id:
+                        log_context.task_id = task_id
+
+                log_context.populate_from_sqlalchemy(db_session)
+                set_log_context(log_context)
+                load_checkpoints_from_kwargs([UploadFlow, TestResultsFlow], kwargs)
+
+                self.task_run_counter.inc()
+                if (
+                    hasattr(self, "request")
+                    and self.request is not None
+                    and hasattr(self.request, "get")
+                ):
+                    created_timestamp = self.request.get("created_timestamp", None)
+                    if created_timestamp:
+                        enqueued_time = datetime.fromisoformat(created_timestamp)
+                        now = datetime.now()
+                        delta = now - enqueued_time
+
+                        delivery_info = self.request.get("delivery_info", {})
+                        queue_name = (
+                            delivery_info.get("routing_key", None)
+                            if isinstance(delivery_info, dict)
+                            else None
+                        )
+                        time_in_queue_timer = TASK_TIME_IN_QUEUE.labels(
+                            task=self.name, queue=queue_name
+                        )
+                        time_in_queue_timer.observe(delta.total_seconds())
+
+                close_old_connections()
+
                 try:
-                    if not self.safe_retry(countdown=countdown):
-                        # Max retries exceeded - return None to match old behavior
+                    with self.task_core_runtime.time():
+                        result = self.run_impl(db_session, *args, **kwargs)
+                        # Commit on success
+                        db_session.commit()
+                        return result
+                except InterfaceError as ex:
+                    sentry_sdk.capture_exception(ex)
+                    db_session.rollback()
+                except (DataError, IntegrityError):
+                    log.exception(
+                        "Errors related to the constraints of database happened",
+                        extra={"task_args": args, "task_kwargs": kwargs},
+                    )
+                    db_session.rollback()
+                    retry_count = getattr(self.request, "retries", 0)
+                    countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                    try:
+                        if not self.safe_retry(countdown=countdown):
+                            return None
+                    except MaxRetriesExceededError:
+                        if UploadFlow.has_begun():
+                            UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                        if TestResultsFlow.has_begun():
+                            TestResultsFlow.log(
+                                TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION
+                            )
+                        return None
+                except SQLAlchemyError as ex:
+                    self._analyse_error(ex, args, kwargs)
+                    db_session.rollback()
+                    retry_count = getattr(self.request, "retries", 0)
+                    countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                    try:
+                        if not self.safe_retry(countdown=countdown):
+                            return None
+                    except MaxRetriesExceededError:
+                        if UploadFlow.has_begun():
+                            UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                        if TestResultsFlow.has_begun():
+                            TestResultsFlow.log(
+                                TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION
+                            )
                         return None
                 except MaxRetriesExceededError:
-                    # Handle MaxRetriesExceededError if it escapes safe_retry
                     if UploadFlow.has_begun():
                         UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
                     if TestResultsFlow.has_begun():
                         TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
-                    # Return None to match old behavior
-                    return None
-            except SQLAlchemyError as ex:
-                self._analyse_error(ex, args, kwargs)
-                db_session.rollback()
-                retry_count = getattr(self.request, "retries", 0)
-                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
-                # Use safe_retry to handle max retries exceeded gracefully
-                # Returns False if max retries exceeded, otherwise raises Retry
-                # Wrap in try-except to catch MaxRetriesExceededError if it escapes safe_retry
-                # (exceptions raised inside except blocks aren't caught by sibling except clauses)
-                try:
-                    if not self.safe_retry(countdown=countdown):
-                        # Max retries exceeded - return None to match old behavior
-                        return None
-                except MaxRetriesExceededError:
-                    # Handle MaxRetriesExceededError if it escapes safe_retry
-                    if UploadFlow.has_begun():
-                        UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
-                    if TestResultsFlow.has_begun():
-                        TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
-                    # Return None to match old behavior
-                    return None
-            except MaxRetriesExceededError as ex:
-                if UploadFlow.has_begun():
-                    UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
-                if TestResultsFlow.has_begun():
-                    TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    db_session.rollback()
             finally:
-                self.wrap_up_dbsession(db_session)
+                # Always cleanup per-task session
+                self._cleanup_task_session(db_session)
+
+    def _cleanup_task_session(self, db_session):
+        """Clean up per-task session. Rollback any uncommitted transaction and close."""
+        try:
+            if db_session.in_transaction():
+                db_session.rollback()
+        except Exception:
+            log.warning("Error rolling back task session", exc_info=True)
+        finally:
+            try:
+                db_session.close()
+            except Exception:
+                log.warning("Error closing task session", exc_info=True)
 
     def wrap_up_dbsession(self, db_session):
         """Commit and close database session, handling timeout edge cases.
