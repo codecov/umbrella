@@ -198,10 +198,16 @@ class BaseCodecovTask(celery_app.Task):
             user_plan = _get_user_plan_from_task(routing_session, self.name, kwargs)
             ownerid = _get_ownerid_from_task(routing_session, self.name, kwargs)
         finally:
-            # Always cleanup routing session
-            if routing_session.in_transaction():
-                routing_session.rollback()
-            routing_session.close()
+            # Always cleanup routing session with robust error handling
+            try:
+                if routing_session.in_transaction():
+                    routing_session.rollback()
+            except Exception:
+                pass
+            try:
+                routing_session.close()
+            except Exception:
+                pass
         route_with_extra_config = route_tasks_based_on_user_plan(
             self.name, user_plan, ownerid
         )
@@ -442,8 +448,22 @@ class BaseCodecovTask(celery_app.Task):
                 try:
                     with self.task_core_runtime.time():
                         result = self.run_impl(db_session, *args, **kwargs)
-                        # Commit on success
-                        db_session.commit()
+                        # Commit on success, handling SoftTimeLimitExceeded during commit
+                        try:
+                            db_session.commit()
+                        except SoftTimeLimitExceeded:
+                            log.warning(
+                                "Timeout during DB commit, attempting to complete",
+                                exc_info=True,
+                            )
+                            try:
+                                db_session.commit()
+                            except InvalidRequestError:
+                                log.warning(
+                                    "DB session unusable after timeout during commit",
+                                    exc_info=True,
+                                )
+                                db_session.rollback()
                         return result
                 except InterfaceError as ex:
                     sentry_sdk.capture_exception(ex)

@@ -153,8 +153,14 @@ def route_task(name, args, kwargs, options, task=None, **kw):
             if ownerid is None:
                 ownerid = _get_ownerid_from_task(routing_session, name, kwargs)
         finally:
-            # Always cleanup routing session (read-only, so rollback is safe)
-            if routing_session.in_transaction():
-                routing_session.rollback()
-            routing_session.close()
+            # Always cleanup routing session with robust error handling
+            try:
+                if routing_session.in_transaction():
+                    routing_session.rollback()
+            except Exception:
+                pass
+            try:
+                routing_session.close()
+            except Exception:
+                pass
     return route_tasks_based_on_user_plan(name, user_plan, ownerid)

@@ -49,8 +49,20 @@ def hook_session(mocker, dbsession: Session, request=None):
         set_test_session_factory(None)
         dbsession.commit = original_commit
 
+    # Always register cleanup - use request.addfinalizer if available,
+    # otherwise use mocker's stopall which runs after each test
     if request is not None:
         request.addfinalizer(cleanup)
+    else:
+        # Fallback: register cleanup with mocker's stopall mechanism
+        mocker.stopall  # noqa: B018 - access triggers registration
+        original_stopall = mocker.stopall
+
+        def cleanup_and_stopall():
+            cleanup()
+            original_stopall()
+
+        mocker.stopall = cleanup_and_stopall
 
 
 GLOBALS_USING_REPO_PROVIDER = [
