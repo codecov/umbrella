@@ -81,7 +81,10 @@ class BaseCodecovRequest(Request):
         res = super().on_timeout(soft, timeout)
         if not soft:
             REQUEST_HARD_TIMEOUT_COUNTER.labels(task=self.name).inc()
-            self._capture_hard_timeout_to_sentry(timeout)
+            try:
+                self._capture_hard_timeout_to_sentry(timeout)
+            except Exception:
+                pass
 
         REQUEST_TIMEOUT_COUNTER.labels(task=self.name).inc()
 

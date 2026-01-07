@@ -76,6 +76,14 @@ def flush_sentry_on_shutdown(**kwargs):
         client.flush(timeout=10)
 
 
+def _safe_str(obj, max_len=500):
+    """Safely convert object to string, handling broken __str__ methods."""
+    try:
+        return str(obj)[:max_len]
+    except Exception:
+        return "<unserializable>"
+
+
 @signals.task_prerun.connect
 def set_sentry_task_context(task_id, task, args, kwargs, **kw):
     """Set Sentry context at the start of each task execution.
@@ -88,8 +96,8 @@ def set_sentry_task_context(task_id, task, args, kwargs, **kw):
         {
             "task_name": task.name,
             "task_id": task_id,
-            "args": str(args)[:500] if args else None,
-            "kwargs": str(kwargs)[:500] if kwargs else None,
+            "args": _safe_str(args) if args else None,
+            "kwargs": _safe_str(kwargs) if kwargs else None,
         },
     )
 
