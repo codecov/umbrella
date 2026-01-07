@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app import celery_app
 from database.engine import set_test_session_factory
+from tasks.base import BaseCodecovTask
 
 
 @contextlib.contextmanager
@@ -38,7 +39,7 @@ def hook_session(mocker, dbsession: Session, request=None):
 
     # Prevent session cleanup that would interfere with test transaction
     mocker.patch.object(dbsession, "close", lambda: None)
-    mocker.patch("tasks.base.BaseCodecovTask.wrap_up_task_session")
+    mocker.patch.object(BaseCodecovTask, "_cleanup_task_session", lambda self, s: None)
 
     # Replace commit with flush - allows data to be visible within test transaction
     # without actually committing (which would break the test's rollback cleanup)
