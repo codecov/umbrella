@@ -47,7 +47,16 @@ def hook_session(mocker, dbsession: Session, request=None):
     def flush_instead_of_commit():
         dbsession.flush()
 
+    def always_false():
+        return False
+
     mocker.patch.object(dbsession, "close", noop)
+    mocker.patch.object(
+        dbsession, "rollback", noop
+    )  # Prevent rollback of test transaction
+    mocker.patch.object(
+        dbsession, "in_transaction", always_false
+    )  # Avoid rollback trigger
     mocker.patch.object(BaseCodecovTask, "_cleanup_task_session", noop_cleanup)
     mocker.patch.object(dbsession, "commit", flush_instead_of_commit)
 
