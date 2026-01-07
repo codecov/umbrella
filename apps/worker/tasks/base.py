@@ -563,14 +563,19 @@ class BaseCodecovTask(celery_app.Task):
             TestResultsFlow.log(TestResultsFlow.CELERY_FAILURE)
 
         try:
-            self._capture_failure_to_sentry(exc, task_id, args, kwargs)
+            self._enrich_sentry_context_for_failure(exc, task_id, args, kwargs)
         except Exception:
             pass
 
         return res
 
-    def _capture_failure_to_sentry(self, exc, task_id, args, kwargs):
-        """Capture task failure to Sentry with rich context."""
+    def _enrich_sentry_context_for_failure(self, exc, task_id, args, kwargs):
+        """Enrich Sentry context for task failure.
+
+        Sets additional context that will be included when CeleryIntegration
+        automatically captures the exception. We don't call capture_exception
+        here to avoid duplicate events.
+        """
         scope = sentry_sdk.get_current_scope()
         scope.set_tag("failure_type", "task_failure")
 
@@ -593,7 +598,6 @@ class BaseCodecovTask(celery_app.Task):
                 "attempts": self.attempts,
             },
         )
-        sentry_sdk.capture_exception(exc)
 
     def get_repo_provider_service(
         self,
