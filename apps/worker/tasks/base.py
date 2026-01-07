@@ -467,7 +467,24 @@ class BaseCodecovTask(celery_app.Task):
                         return result
                 except InterfaceError as ex:
                     sentry_sdk.capture_exception(ex)
+                    log.exception(
+                        "Database interface error (connection issue)",
+                        extra={"task_args": args, "task_kwargs": kwargs},
+                    )
                     db_session.rollback()
+                    retry_count = getattr(self.request, "retries", 0)
+                    countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                    try:
+                        if not self.safe_retry(countdown=countdown):
+                            return None
+                    except MaxRetriesExceededError:
+                        if UploadFlow.has_begun():
+                            UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                        if TestResultsFlow.has_begun():
+                            TestResultsFlow.log(
+                                TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION
+                            )
+                        return None
                 except (DataError, IntegrityError):
                     log.exception(
                         "Errors related to the constraints of database happened",
