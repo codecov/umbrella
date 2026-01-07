@@ -3,6 +3,7 @@ import gc
 import logging
 from datetime import timedelta
 
+import sentry_sdk
 from celery import signals
 from celery.beat import BeatLazyFunc
 from celery.schedules import crontab
@@ -10,6 +11,7 @@ from celery.schedules import crontab
 from celery_task_router import route_task
 from helpers.clock import get_utc_now_as_iso_format
 from helpers.health_check import get_health_check_interval_seconds
+from helpers.sentry import initialize_sentry, is_sentry_enabled
 from shared.celery_config import (
     BaseCeleryConfig,
     brolly_stats_rollup_task_name,
@@ -49,6 +51,47 @@ def initialize_cache(**kwargs):
     log.info("Initialized cache")
     redis_cache_backend = RedisBackend(get_redis_connection())
     cache.configure(redis_cache_backend)
+
+
+@signals.worker_process_init.connect
+def initialize_sentry_for_worker_process(**kwargs):
+    """Initialize Sentry in each forked worker process.
+
+    Celery workers fork from the main process, so Sentry must be re-initialized
+    in each worker to ensure proper error tracking and trace propagation.
+    """
+    if is_sentry_enabled():
+        initialize_sentry()
+
+
+@signals.worker_shutting_down.connect
+def flush_sentry_on_shutdown(**kwargs):
+    """Flush pending Sentry events before worker shutdown.
+
+    This ensures crash data is sent before the process terminates, which is
+    especially important for graceful shutdowns (SIGTERM before SIGKILL).
+    """
+    client = sentry_sdk.get_client()
+    if client.is_active():
+        client.flush(timeout=10)
+
+
+@signals.task_prerun.connect
+def set_sentry_task_context(task_id, task, args, kwargs, **kw):
+    """Set Sentry context at the start of each task execution.
+
+    This adds task args/kwargs to Sentry events for debugging. Note that
+    task_name and task_id tags are already set by LogContext.add_to_sentry().
+    """
+    sentry_sdk.set_context(
+        "celery_task",
+        {
+            "task_name": task.name,
+            "task_id": task_id,
+            "args": str(args)[:500] if args else None,
+            "kwargs": str(kwargs)[:500] if kwargs else None,
+        },
+    )
 
 
 # Cron task names
