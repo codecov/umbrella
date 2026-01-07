@@ -102,9 +102,9 @@ EXCLUDED_MODELS = [
     "core.CommitNotification",
 ]
 
-# Fields to nullify
+# Fields to nullify (must have null=True in model definition)
 NULLIFIED_FIELDS: dict[str, list[str]] = {
-    # OAuth tokens
+    # OAuth tokens and billing info
     "codecov_auth.Owner": [
         "oauth_token",
         "stripe_customer_id",
@@ -120,7 +120,6 @@ NULLIFIED_FIELDS: dict[str, list[str]] = {
         "trial_fired_by",
         "pretrial_users_count",
         "invoice_details",
-        "uses_invoice",
         "delinquent",
         "organizations",
         "admins",
@@ -132,11 +131,20 @@ NULLIFIED_FIELDS: dict[str, list[str]] = {
         "user_id",
     ],
     "core.Repository": [
-        "upload_token",
         "using_integration",
         "webhook_secret",
         "image_token",
     ],
+}
+
+# Fields with NOT NULL constraints that need default values instead of null
+DEFAULT_FIELDS: dict[str, dict[str, any]] = {
+    "codecov_auth.Owner": {
+        "uses_invoice": False,
+    },
+    "core.Repository": {
+        "upload_token": None,
+    },
 }
 
 
@@ -150,5 +158,13 @@ def get_model_class(model_path: str):
 
 
 def get_nullified_fields(model_path: str) -> list[str]:
-    """Get fields to nullify in export for a model."""
-    return NULLIFIED_FIELDS.get(model_path, [])
+    """Get fields to nullify (set to NULL) in export for a model."""
+    return list(NULLIFIED_FIELDS.get(model_path, []))
+
+
+def get_default_fields(model_path: str) -> dict[str, any]:
+    """
+    Get fields that need default values in export for a model.
+    These are sensitive fields with NOT NULL constraints.
+    """
+    return dict(DEFAULT_FIELDS.get(model_path, {}))
