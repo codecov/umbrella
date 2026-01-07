@@ -38,14 +38,17 @@ def hook_session(mocker, dbsession: Session, request=None):
     mocker.patch("tasks.base.close_old_connections")
 
     # Prevent session cleanup that would interfere with test transaction
-    mocker.patch.object(dbsession, "close", lambda: None)
-    mocker.patch.object(BaseCodecovTask, "_cleanup_task_session", lambda self, s: None)
+    def noop():
+        pass
 
-    # Replace commit with flush - allows data to be visible within test transaction
-    # without actually committing (which would break the test's rollback cleanup)
+    def noop_cleanup(self, session):
+        pass
+
     def flush_instead_of_commit():
         dbsession.flush()
 
+    mocker.patch.object(dbsession, "close", noop)
+    mocker.patch.object(BaseCodecovTask, "_cleanup_task_session", noop_cleanup)
     mocker.patch.object(dbsession, "commit", flush_instead_of_commit)
 
     # Configure create_task_session to return the test session
