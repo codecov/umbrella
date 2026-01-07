@@ -216,7 +216,9 @@ class BaseCodecovTask(celery_app.Task):
         headers = {
             **opt_headers,
             "created_timestamp": current_time.isoformat(),
-            "attempts": 1,
+            # Preserve existing attempts if present (e.g., from retry or re-delivery)
+            # Only set to 1 if this is a new task creation
+            "attempts": opt_headers.get("attempts", 1),
         }
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 

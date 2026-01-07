@@ -65,7 +65,8 @@ class BundleAnalysisProcessorTask(
         try:
             with lock_manager.locked(
                 LockType.BUNDLE_ANALYSIS_PROCESSING,
-                retry_num=self.request.retries,
+                retry_num=self.attempts,
+                max_retries=self.max_retries,
             ):
                 return self.process_impl_within_lock(
                     db_session,
@@ -76,16 +77,18 @@ class BundleAnalysisProcessorTask(
                     previous_result,
                 )
         except LockRetry as retry:
-            # Check max retries using self.request.retries (consistent retry counting)
+            # Check max retries using self.attempts (includes visibility timeout re-deliveries)
             # This prevents infinite retry loops when max retries are exceeded
-            if (
-                self.max_retries is not None
-                and self.request.retries >= self.max_retries
-            ):
+            if self._has_exceeded_max_attempts(self.max_retries):
+                max_attempts = (
+                    self.max_retries + 1 if self.max_retries is not None else None
+                )
                 log.error(
                     "Bundle analysis processor exceeded max retries",
                     extra={
+                        "attempts": self.attempts,
                         "commitid": commitid,
+                        "max_attempts": max_attempts,
                         "max_retries": self.max_retries,
                         "repoid": repoid,
                         "retry_num": self.request.retries,

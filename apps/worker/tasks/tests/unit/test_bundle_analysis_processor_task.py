@@ -1669,6 +1669,80 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_processing(
     assert commit.state == "error"
 
 
+def test_bundle_analysis_processor_task_max_retries_exceeded_visibility_timeout(
+    mocker,
+    dbsession,
+    mock_storage,
+    mock_redis,
+):
+    """Test that task stops retrying when max attempts exceeded due to visibility timeout re-deliveries.
+
+    This test verifies the fix for the bug where tasks would continue retrying after max retries
+    when visibility timeout caused re-deliveries. The issue was that self.request.retries doesn't
+    account for visibility timeout re-deliveries, but self.attempts does.
+
+    Scenario:
+    - self.request.retries = 5 (below max_retries of 10)
+    - self.attempts = 11 (exceeds max_retries due to visibility timeout re-deliveries)
+    - Task should stop retrying and return previous_result
+    """
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+    # Mock Redis to simulate lock failure - this will cause LockManager to raise LockRetry
+    mock_redis.lock.return_value.__enter__.side_effect = LockError()
+
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(
+        state="started",
+        storage_path=storage_path,
+        report=commit_report,
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    task = BundleAnalysisProcessorTask()
+    # Simulate visibility timeout re-delivery scenario:
+    # - request.retries is low (5) because intentional retries haven't exceeded max
+    # - attempts header is high (11) due to visibility timeout re-deliveries
+    # This simulates the bug where tasks kept retrying after max attempts
+    task.request.retries = 5  # Below max_retries (10)
+    task.request.headers = {"attempts": 11}  # Exceeds max_retries + 1 (11 > 10 + 1)
+
+    previous_result = [{"previous": "result"}]
+    # Task should return previous_result when max attempts exceeded (via attempts header)
+    # even though request.retries hasn't exceeded max_retries
+    result = task.run_impl(
+        dbsession,
+        previous_result,
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={
+            "upload_id": upload.id_,
+            "commit": commit.commitid,
+        },
+    )
+    assert result == previous_result
+    assert upload.state == "started"  # State should not change
+
+
 def test_bundle_analysis_processor_task_max_retries_exceeded_commit_failure(
     mocker,
     dbsession,
