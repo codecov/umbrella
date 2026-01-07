@@ -20,10 +20,8 @@ EXPORTABLE_MODELS = [
     "core.Pull",
     "reports.RepositoryFlag",
     # Models depending on Commit
-    "core.CommitNotification",
     "core.CommitError",
     "reports.CommitReport",
-    "compare.CommitComparison",
     # Models depending on CommitReport
     "reports.ReportResults",
     "reports.ReportLevelTotals",
@@ -32,16 +30,12 @@ EXPORTABLE_MODELS = [
     "reports.UploadError",
     "reports.UploadLevelTotals",
     "reports.UploadFlagMembership",
-    # Models depending on CommitComparison
-    "compare.FlagComparison",
-    "compare.ComponentComparison",
 ]
 
 # Models exported to TimescaleDB - separate SQL file
 TIMESCALE_MODELS = [
     "timeseries.Dataset",
     "timeseries.Measurement",
-    "ta_timeseries.Testrun",
 ]
 
 # Models excluded from export
@@ -51,6 +45,16 @@ EXCLUDED_MODELS = [
     # Test Analytics models
     "test_analytics.Flake",
     "test_analytics.TAUpload",
+    "test_analytics.TAPullComment",
+    "ta_timeseries.Testrun",
+    "ta_timeseries.AggregateHourly",
+    "ta_timeseries.AggregateDaily",
+    "ta_timeseries.BranchAggregateHourly",
+    "ta_timeseries.BranchAggregateDaily",
+    "ta_timeseries.TestAggregateHourly",
+    "ta_timeseries.TestAggregateDaily",
+    "ta_timeseries.BranchTestAggregateHourly",
+    "ta_timeseries.BranchTestAggregateDaily",
     # Static analysis models
     "staticanalysis.StaticAnalysisSuite",
     "staticanalysis.StaticAnalysisSingleFileSnapshot",
@@ -64,6 +68,7 @@ EXCLUDED_MODELS = [
     "codecov_metrics.UserOnboardingLifeCycleMetrics",
     "user_measurements.UserMeasurement",
     "upload_breadcrumbs.UploadBreadcrumb",
+    # BA - can likely be reinstated when self-hosting
     "bundle_analysis.CacheConfig",
     # Internal cleanup tracking
     "codecov_auth.OwnerToBeDeleted",
@@ -74,13 +79,18 @@ EXCLUDED_MODELS = [
     # Account/billing
     "codecov_auth.Account",
     "codecov_auth.AccountsUsers",
+    "codecov_auth.OktaUser",
     "codecov_auth.StripeBilling",
     "codecov_auth.InvoiceBilling",
+    "codecov_auth.SentryUser",
+    "codecov_auth.OktaSettings",
+    # Can be ignored when app is run in self-hosted mode
     "codecov_auth.Plan",
     "codecov_auth.Tier",
-    "codecov_auth.SentryUser",
-    "codecov_auth.OktaUser",
-    "codecov_auth.OktaSettings",
+    # Comparison models can be recreated during runtime
+    "compare.CommitComparison",
+    "compare.FlagComparison",
+    "compare.ComponentComparison",
     # GitHub App - this will be a new app
     "codecov_auth.GithubAppInstallation",
     # Tokens/sessions - must be regenerated
@@ -88,18 +98,45 @@ EXCLUDED_MODELS = [
     "codecov_auth.OrganizationLevelToken",
     "codecov_auth.UserToken",
     "codecov_auth.RepositoryToken",
+    # Data doesn't make sense within self-hosted mode
+    "core.CommitNotification",
 ]
-
-# Fields to completely exclude from export
-EXCLUDED_FIELDS: dict[str, list[str]] = {
-    # Billing IDs
-    "codecov_auth.Owner": ["stripe_customer_id", "stripe_subscription_id"],
-}
 
 # Fields to nullify
 NULLIFIED_FIELDS: dict[str, list[str]] = {
     # OAuth tokens
-    "codecov_auth.Owner": ["oauth_token"],
+    "codecov_auth.Owner": [
+        "oauth_token",
+        "stripe_customer_id",
+        "stripe_subscription_id",
+        "stripe_coupon_id",
+        "plan",
+        "plan_provider",
+        "plan_user_count",
+        "plan_auto_activate",
+        "trial_start_date",
+        "trial_end_date",
+        "trial_status",
+        "trial_fired_by",
+        "pretrial_users_count",
+        "invoice_details",
+        "uses_invoice",
+        "delinquent",
+        "organizations",
+        "admins",
+        "integration_id",
+        "permission",
+        "sentry_user_id",
+        "sentry_user_data",
+        "account_id",
+        "user_id",
+    ],
+    "core.Repository": [
+        "upload_token",
+        "using_integration",
+        "webhook_secret",
+        "image_token",
+    ],
 }
 
 
@@ -110,11 +147,6 @@ def get_model_class(model_path: str):
     """
     app_label, model_name = model_path.split(".")
     return apps.get_model(app_label, model_name)
-
-
-def get_excluded_fields(model_path: str) -> list[str]:
-    """Get fields to exclude from export for a model."""
-    return EXCLUDED_FIELDS.get(model_path, [])
 
 
 def get_nullified_fields(model_path: str) -> list[str]:
