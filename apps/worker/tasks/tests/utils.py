@@ -24,15 +24,24 @@ GLOBALS_USING_SESSION = [
 
 
 def hook_session(mocker, dbsession: Session, request=None):
-    """Configure all tasks to use the shared test session."""
+    """Configure all tasks to use the shared test session.
+
+    This patches session methods to work with pytest's transactional test fixtures
+    which use savepoints. We prevent close/rollback operations that would interfere
+    with the test's transaction management.
+    """
+    # Always reset test session factory first (defensive cleanup from prior tests)
+    set_test_session_factory(None)
+
     mocker.patch("shared.metrics")
     for path in GLOBALS_USING_SESSION:
         mocker.patch(path, return_value=dbsession)
 
-    # Prevent session from being closed during tests
+    # Prevent session operations that would interfere with test transaction
     mocker.patch("tasks.base.close_old_connections")
     mocker.patch.object(dbsession, "close", lambda: None)
     mocker.patch.object(dbsession, "in_transaction", lambda: False)
+    mocker.patch.object(dbsession, "rollback", lambda: None)  # Prevent rollback in tests
 
     # Replace commit with flush to keep data visible within test transaction
     original_commit = dbsession.commit
@@ -47,22 +56,10 @@ def hook_session(mocker, dbsession: Session, request=None):
 
     def cleanup():
         set_test_session_factory(None)
-        dbsession.commit = original_commit
 
-    # Always register cleanup - use request.addfinalizer if available,
-    # otherwise use mocker's stopall which runs after each test
+    # Register cleanup via request.addfinalizer if available
     if request is not None:
         request.addfinalizer(cleanup)
-    else:
-        # Fallback: register cleanup with mocker's stopall mechanism
-        mocker.stopall  # noqa: B018 - access triggers registration
-        original_stopall = mocker.stopall
-
-        def cleanup_and_stopall():
-            cleanup()
-            original_stopall()
-
-        mocker.stopall = cleanup_and_stopall
 
 
 GLOBALS_USING_REPO_PROVIDER = [
