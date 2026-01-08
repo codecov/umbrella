@@ -11,8 +11,8 @@ This ensures UPSERT imports don't violate foreign key constraints.
 
 EXPORTABLE_MODELS = [
     # Root models
-    "codecov_auth.Owner",
     "codecov_auth.User",
+    "codecov_auth.Owner",
     # Models depending on Owner
     "codecov_auth.OwnerProfile",
     "core.Repository",
