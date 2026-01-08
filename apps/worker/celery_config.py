@@ -88,8 +88,10 @@ def _safe_str(obj, max_len=500):
 def set_sentry_task_context(task_id, task, args, kwargs, **kw):
     """Set Sentry context at the start of each task execution.
 
-    This adds task args/kwargs to Sentry events for debugging. Note that
-    task_name and task_id tags are already set by LogContext.add_to_sentry().
+    This adds task args/kwargs to Sentry events for debugging, and ensures
+    context is set BEFORE any exceptions occur so CeleryIntegration captures
+    it. Note that task_name and task_id tags are already set by
+    LogContext.add_to_sentry().
     """
     sentry_sdk.set_context(
         "celery_task",
@@ -98,6 +100,7 @@ def set_sentry_task_context(task_id, task, args, kwargs, **kw):
             "task_id": task_id,
             "args": _safe_str(args) if args else None,
             "kwargs": _safe_str(kwargs) if kwargs else None,
+            "retries": getattr(task.request, "retries", 0),
         },
     )
 
