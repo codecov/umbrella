@@ -130,7 +130,6 @@ NULLIFIED_FIELDS: dict[str, list[str]] = {
         "sentry_user_id",
         "sentry_user_data",
         "account_id",
-        "user_id",
     ],
     "core.Repository": [
         "using_integration",
