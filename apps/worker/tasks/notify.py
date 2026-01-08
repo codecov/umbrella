@@ -110,7 +110,8 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         try:
             lock_acquired = False
             with lock_manager.locked(
-                lock_type=LockType.NOTIFICATION, retry_num=self.request.retries
+                lock_type=LockType.NOTIFICATION,
+                retry_num=self.attempts,
             ):
                 lock_acquired = True
                 return self.run_impl_within_lock(
@@ -190,7 +191,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     "commit": commit.commitid,
                     "max_retries": max_retries,
                     "next_countdown_would_be": countdown,
-                    "current_yaml": current_yaml.to_dict(),
+                    "current_yaml": current_yaml.to_dict() if current_yaml else None,
                 },
             )
             self.log_checkpoint(UploadFlow.NOTIF_TOO_MANY_RETRIES)

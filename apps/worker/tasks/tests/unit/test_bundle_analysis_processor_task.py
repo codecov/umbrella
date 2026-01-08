@@ -1,13 +1,14 @@
-from unittest.mock import ANY
-
 import pytest
+from celery.exceptions import Retry
 from redis.exceptions import LockError
 
 from database.enums import ReportType
 from database.models import CommitReport, Upload
 from database.tests.factories import CommitFactory, RepositoryFactory, UploadFactory
+from services.bundle_analysis.report import ProcessingError, ProcessingResult
 from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.storage import get_bucket_name
+from shared.celery_config import BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.storage.exceptions import PutRequestRateLimitError
 from tasks.bundle_analysis_processor import BundleAnalysisProcessorTask
@@ -144,6 +145,8 @@ def test_bundle_analysis_processor_task_error(
 
     task = BundleAnalysisProcessorTask()
     retry = mocker.patch.object(task, "retry")
+    task.request.retries = 0
+    task.request.headers = {}
 
     result = task.run_impl(
         dbsession,
@@ -171,7 +174,10 @@ def test_bundle_analysis_processor_task_error(
 
     assert commit.state == "error"
     assert upload.state == "error"
-    retry.assert_called_once_with(countdown=30)
+    retry.assert_called_once()
+    assert retry.call_args[1]["max_retries"] == task.max_retries
+    expected_countdown = 30 * (2**task.request.retries)
+    assert retry.call_args[1]["countdown"] == expected_countdown
 
 
 def test_bundle_analysis_processor_task_general_error(
@@ -308,6 +314,7 @@ def test_bundle_analysis_processor_task_locked(
     mock_storage,
     mock_redis,
 ):
+    """Test that bundle analysis processor retries when lock cannot be acquired."""
     storage_path = (
         "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
     )
@@ -339,11 +346,81 @@ def test_bundle_analysis_processor_task_locked(
     dbsession.flush()
 
     task = BundleAnalysisProcessorTask()
-    retry = mocker.patch.object(task, "retry")
+    task.request.retries = 0  # Will retry (below max_retries)
 
+    # Task should raise Retry (from self.retry()) when lock cannot be acquired
+    with pytest.raises(Retry):
+        task.run_impl(
+            dbsession,
+            [{"previous": "result"}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={
+                "upload_id": upload.id_,
+                "commit": commit.commitid,
+            },
+        )
+
+    assert upload.state == "started"
+
+
+def test_bundle_analysis_processor_task_max_retries_exceeded_raises_error(
+    mocker,
+    dbsession,
+    mock_storage,
+    mock_redis,
+):
+    """Test that bundle analysis processor returns previous_result when max retries exceeded.
+
+    This test verifies the fix for infinite retry loops by ensuring that when max retries
+    are exceeded, the task returns previous_result instead of retrying infinitely.
+    This preserves chain behavior while preventing infinite loops.
+    """
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+    # Mock Redis to simulate lock failure - this will cause LockManager to raise LockRetry
+    mock_redis.lock.return_value.__enter__.side_effect = LockError()
+
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(
+        state="started",
+        storage_path=storage_path,
+        report=commit_report,
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    task = BundleAnalysisProcessorTask()
+    # Set retries to max_retries to simulate max retries exceeded scenario
+    # Our code checks if retries >= max_retries, so retries = max_retries should exceed
+    # This tests the real retry logic without mocking safe_retry or _has_exceeded_max_attempts
+    task.request.retries = BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
+    task.request.headers = {}
+
+    previous_result = [{"previous": "result"}]
+    # Task should return previous_result instead of retrying infinitely
+    # This preserves chain behavior while preventing infinite loops
     result = task.run_impl(
         dbsession,
-        [{"previous": "result"}],
+        previous_result,
         repoid=commit.repoid,
         commitid=commit.commitid,
         commit_yaml={},
@@ -352,10 +429,7 @@ def test_bundle_analysis_processor_task_locked(
             "commit": commit.commitid,
         },
     )
-    assert result is None
-
-    assert upload.state == "started"
-    retry.assert_called_once_with(countdown=ANY)
+    assert result == previous_result
 
 
 def test_bundle_analysis_process_upload_rate_limit_error(
@@ -390,6 +464,8 @@ def test_bundle_analysis_process_upload_rate_limit_error(
 
     task = BundleAnalysisProcessorTask()
     retry = mocker.patch.object(task, "retry")
+    task.request.retries = 0
+    task.request.headers = {}
 
     ingest = mocker.patch("shared.bundle_analysis.BundleAnalysisReport.ingest")
     ingest.side_effect = PutRequestRateLimitError()
@@ -422,7 +498,10 @@ def test_bundle_analysis_process_upload_rate_limit_error(
 
     assert commit.state == "error"
     assert upload.state == "error"
-    retry.assert_called_once_with(countdown=30)
+    retry.assert_called_once()
+    assert retry.call_args[1]["max_retries"] == task.max_retries
+    expected_countdown = 30 * (2**task.request.retries)
+    assert retry.call_args[1]["countdown"] == expected_countdown
 
 
 def test_bundle_analysis_process_associate_no_parent_commit_id(
@@ -1392,3 +1471,476 @@ def test_bundle_analysis_processor_task_carryforward_error(
         dbsession.query(CommitReport).filter_by(commit_id=commit.id).count()
     )
     assert total_ba_reports == 1
+
+
+def test_bundle_analysis_processor_task_max_retries_exceeded_lock(
+    mocker,
+    dbsession,
+    mock_storage,
+    mock_redis,
+):
+    """Test that when max retries are exceeded during lock acquisition, task returns previous_result."""
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+    mock_redis.lock.return_value.__enter__.side_effect = LockError()
+
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(
+        state="started",
+        storage_path=storage_path,
+        report=commit_report,
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    task = BundleAnalysisProcessorTask()
+    # Set retries to max_retries to exceed limit (using self.request.retries, not self.attempts)
+    task.request.retries = task.max_retries
+    task.request.headers = {}
+
+    previous_result = [{"previous": "result"}]
+    # Should return previous_result when max retries exceeded (preserves chain behavior)
+    result = task.run_impl(
+        dbsession,
+        previous_result,
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={
+            "upload_id": upload.id_,
+            "commit": commit.commitid,
+        },
+    )
+    assert result == previous_result
+    assert upload.state == "started"  # State should not change
+
+
+def test_bundle_analysis_processor_task_safe_retry_fails(
+    mocker,
+    dbsession,
+    mock_storage,
+    mock_redis,
+):
+    """Test that when retries are below max, task raises Retry (not MaxRetriesExceededError).
+
+    This test verifies that tasks below max retries will retry normally.
+    Note: safe_retry() no longer exists - this tests the new retry behavior.
+    """
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+    mock_redis.lock.return_value.__enter__.side_effect = LockError()
+
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(
+        state="started",
+        storage_path=storage_path,
+        report=commit_report,
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    task = BundleAnalysisProcessorTask()
+    task.request.retries = 0  # Below max_retries, so should retry
+    task.request.headers = {}
+
+    previous_result = [{"previous": "result"}]
+    # Should raise Retry when retries are below max (not MaxRetriesExceededError)
+    with pytest.raises(Retry):
+        task.run_impl(
+            dbsession,
+            previous_result,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={
+                "upload_id": upload.id_,
+                "commit": commit.commitid,
+            },
+        )
+
+    assert upload.state == "started"  # State should not change
+
+
+def test_bundle_analysis_processor_task_max_retries_exceeded_processing(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that when max retries are exceeded during processing with retryable error, upload is set to error."""
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    task = BundleAnalysisProcessorTask()
+    task.request.retries = task.max_retries
+    task.request.headers = {"attempts": task.max_retries + 1}
+    mocker.patch.object(task, "_has_exceeded_max_attempts", return_value=True)
+
+    # Create a ProcessingResult with a retryable error
+    retryable_error = ProcessingError(
+        code="rate_limit_error",
+        params={"location": storage_path},
+        is_retryable=True,
+    )
+    processing_result = ProcessingResult(
+        upload=upload,
+        commit=commit,
+        error=retryable_error,
+    )
+
+    process_upload = mocker.patch(
+        "services.bundle_analysis.report.BundleAnalysisReportService.process_upload"
+    )
+    process_upload.return_value = processing_result
+
+    previous_result = [{"previous": "result"}]
+    result = task.run_impl(
+        dbsession,
+        previous_result,
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={
+            "upload_id": upload.id_,
+            "commit": commit.commitid,
+        },
+    )
+
+    # Should return previous_result (not append new result)
+    assert result == previous_result
+    # Upload should be set to error state
+    dbsession.refresh(upload)
+    assert upload.state == "error"
+    assert commit.state == "error"
+
+
+def test_bundle_analysis_processor_task_max_retries_exceeded_visibility_timeout(
+    mocker,
+    dbsession,
+    mock_storage,
+    mock_redis,
+):
+    """Test that task stops retrying when max attempts exceeded due to visibility timeout re-deliveries.
+
+    This test verifies the fix for the bug where tasks would continue retrying after max retries
+    when visibility timeout caused re-deliveries. The issue was that self.request.retries doesn't
+    account for visibility timeout re-deliveries, but self.attempts does.
+
+    Scenario:
+    - self.request.retries = 5 (below max_retries of 10)
+    - self.attempts = 11 (exceeds max_retries due to visibility timeout re-deliveries)
+    - Task should stop retrying and return previous_result
+    """
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+    # Mock Redis to simulate lock failure - this will cause LockManager to raise LockRetry
+    mock_redis.lock.return_value.__enter__.side_effect = LockError()
+
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(
+        state="started",
+        storage_path=storage_path,
+        report=commit_report,
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    task = BundleAnalysisProcessorTask()
+    # Simulate visibility timeout re-delivery scenario:
+    # - request.retries is low (5) because intentional retries haven't exceeded max
+    # - attempts header is high (11) due to visibility timeout re-deliveries
+    # This simulates the bug where tasks kept retrying after max attempts
+    task.request.retries = 5  # Below max_retries (10)
+    task.request.headers = {"attempts": 11}  # Exceeds max_retries + 1 (11 > 10 + 1)
+
+    previous_result = [{"previous": "result"}]
+    # Task should return previous_result when max attempts exceeded (via attempts header)
+    # even though request.retries hasn't exceeded max_retries
+    result = task.run_impl(
+        dbsession,
+        previous_result,
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={
+            "upload_id": upload.id_,
+            "commit": commit.commitid,
+        },
+    )
+    assert result == previous_result
+    assert upload.state == "started"  # State should not change
+
+
+def test_bundle_analysis_processor_task_max_retries_exceeded_commit_failure(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that when max retries are exceeded and commit fails, fallback error handling works."""
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    task = BundleAnalysisProcessorTask()
+    task.request.retries = task.max_retries
+    task.request.headers = {"attempts": task.max_retries + 1}
+    mocker.patch.object(task, "_has_exceeded_max_attempts", return_value=True)
+
+    # Create a ProcessingResult with a retryable error
+    retryable_error = ProcessingError(
+        code="rate_limit_error",
+        params={"location": storage_path},
+        is_retryable=True,
+    )
+    processing_result = ProcessingResult(
+        upload=upload,
+        commit=commit,
+        error=retryable_error,
+    )
+
+    process_upload = mocker.patch(
+        "services.bundle_analysis.report.BundleAnalysisReportService.process_upload"
+    )
+    process_upload.return_value = processing_result
+
+    # Mock commit to fail first time, succeed second time (fallback)
+    commit_mock = mocker.patch.object(dbsession, "commit")
+    commit_mock.side_effect = [
+        Exception("Commit failed"),  # First commit fails
+        None,  # Fallback commit succeeds
+    ]
+
+    previous_result = [{"previous": "result"}]
+    result = task.run_impl(
+        dbsession,
+        previous_result,
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={
+            "upload_id": upload.id_,
+            "commit": commit.commitid,
+        },
+    )
+
+    # Should return previous_result
+    assert result == previous_result
+    # Upload should be set to error state via fallback
+    dbsession.refresh(upload)
+    assert upload.state == "error"
+
+
+def test_bundle_analysis_processor_task_general_error_commit_failure(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that when general exception occurs and commit fails, error is logged but exception is preserved."""
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    process_upload = mocker.patch(
+        "services.bundle_analysis.report.BundleAnalysisReportService.process_upload"
+    )
+    process_upload.side_effect = ValueError("Processing failed")
+
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(
+        state="started",
+        storage_path=storage_path,
+        report=commit_report,
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    task = BundleAnalysisProcessorTask()
+    retry = mocker.patch.object(task, "retry")
+
+    # Mock commit to fail
+    commit_mock = mocker.patch.object(dbsession, "commit")
+    commit_mock.side_effect = Exception("Commit failed")
+
+    with pytest.raises(ValueError, match="Processing failed"):
+        task.run_impl(
+            dbsession,
+            [{"previous": "result"}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={
+                "upload_id": upload.id_,
+                "commit": commit.commitid,
+            },
+        )
+
+    # Upload state should be set to error in memory (even though commit failed)
+    # Note: We check in-memory state, not database state, since commit failed
+    # The code does attempt to set error state, but database won't reflect it if commit fails
+    assert upload.state == "error"
+    assert not retry.called
+
+
+def test_bundle_analysis_processor_task_cleanup_with_none_result(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that cleanup handles None result gracefully."""
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    # Mock process_upload to raise exception before result is set
+    process_upload = mocker.patch(
+        "services.bundle_analysis.report.BundleAnalysisReportService.process_upload"
+    )
+    process_upload.side_effect = ValueError("Processing failed")
+
+    task = BundleAnalysisProcessorTask()
+
+    with pytest.raises(ValueError, match="Processing failed"):
+        task.run_impl(
+            dbsession,
+            [{"previous": "result"}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={
+                "upload_id": upload.id_,
+                "commit": commit.commitid,
+            },
+        )
+
+    # Should not crash even though result is None
+    # The finally block should handle None result gracefully

@@ -48,7 +48,8 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
             # since both tests post/edit the same comment
             with lock_manager.locked(
                 LockType.NOTIFICATION,
-                retry_num=self.request.retries,
+                max_retries=5,
+                retry_num=self.attempts,
             ):
                 finisher_result = self.process_impl_within_lock(
                     db_session=db_session,
@@ -70,6 +71,17 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
             return finisher_result
 
         except LockRetry as retry:
+            if retry.max_retries_exceeded:
+                log.error(
+                    "Not retrying lock acquisition - max retries exceeded",
+                    extra={
+                        "commitid": commitid,
+                        "repoid": repoid,
+                        "retry_num": retry.retry_num,
+                        "max_attempts": retry.max_attempts,
+                    },
+                )
+                return {"queue_notify": False}
             self.retry(max_retries=5, countdown=retry.countdown)
 
     def process_impl_within_lock(

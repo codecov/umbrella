@@ -287,6 +287,13 @@ PREPROCESS_UPLOAD_MAX_RETRIES = int(
     get_config("setup", "tasks", "upload", "preprocess_max_retries", default=10)
 )
 
+# Upload processor max retries
+# How many times to retry when upload processor encounters retryable errors
+# Default: 5 retries
+UPLOAD_PROCESSOR_MAX_RETRIES = int(
+    get_config("setup", "tasks", "upload", "processor_max_retries", default=5)
+)
+
 # Bundle analysis processor max retries
 # How many times to retry when bundle analysis processor lock cannot be acquired
 # Default: matches TASK_MAX_RETRIES_DEFAULT
@@ -469,6 +476,16 @@ class BaseCeleryConfig:
         },
     }
 
+    # Get the upload queue for backward-compatible fallback
+    # This ensures upload_finisher continues to use the upload queue if no dedicated queue is configured
+    _upload_queue = get_config(
+        "setup",
+        "tasks",
+        TaskConfigGroup.upload.value,
+        "queue",
+        default=task_default_queue,
+    )
+
     task_routes = {
         sync_teams_task_name: {
             "queue": get_config(
@@ -560,6 +577,18 @@ class BaseCeleryConfig:
                 default=task_default_queue,
             )
         },
+        # UploadFinisher gets its own queue to avoid being blocked by UploadProcessor tasks.
+        # Falls back to the upload queue if no dedicated queue is configured (backward-compatible).
+        upload_finisher_task_name: {
+            "queue": get_config(
+                "setup",
+                "tasks",
+                "upload_finisher",
+                "queue",
+                default=_upload_queue,
+            )
+        },
+        # All other upload tasks (Upload, UploadProcessor, PreProcessUpload, etc.)
         f"app.tasks.{TaskConfigGroup.upload.value}.*": {
             "queue": get_config(
                 "setup",

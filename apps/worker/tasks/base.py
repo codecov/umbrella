@@ -60,14 +60,11 @@ REQUEST_HARD_TIMEOUT_COUNTER = Counter(
     ["task"],
 )
 
-# Task retry tracking with retry count
 TASK_RETRY_WITH_COUNT_COUNTER = Counter(
     "worker_task_counts_retries_by_count",
     "Number of times this task was retried, labeled by retry count",
     ["task", "retry_count"],
 )
-
-# Task max retries exceeded counter
 TASK_MAX_RETRIES_EXCEEDED_COUNTER = Counter(
     "worker_task_counts_max_retries_exceeded",
     "Number of times this task exceeded maximum retry limit",
@@ -127,7 +124,7 @@ TASK_CORE_RUNTIME = Histogram(
 )
 TASK_TIME_IN_QUEUE = Histogram(
     "worker_tasks_timers_time_in_queue_seconds",
-    "Time in {TODO} spent waiting in the queue before being run",
+    "Time in seconds spent waiting in the queue before being run",
     ["task", "queue"],
     buckets=[
         0.05,
@@ -150,6 +147,13 @@ TASK_TIME_IN_QUEUE = Histogram(
 )
 
 
+def _get_request_headers(request) -> dict:
+    """Extract headers from Celery request object, returning empty dict if None."""
+    if request is None:
+        return {}
+    return getattr(request, "headers", {}) or {}
+
+
 class BaseCodecovTask(celery_app.Task):
     Request = BaseCodecovRequest
 
@@ -157,14 +161,10 @@ class BaseCodecovTask(celery_app.Task):
         cls.name = name
 
         cls.metrics_prefix = f"worker.task.{name}"
-
-        # Task reliability metrics
         cls.task_run_counter = TASK_RUN_COUNTER.labels(task=name)
         cls.task_retry_counter = TASK_RETRY_COUNTER.labels(task=name)
         cls.task_success_counter = TASK_SUCCESS_COUNTER.labels(task=name)
         cls.task_failure_counter = TASK_FAILURE_COUNTER.labels(task=name)
-
-        # Task runtime metrics
         cls.task_full_runtime = TASK_FULL_RUNTIME.labels(task=name)
         cls.task_core_runtime = TASK_CORE_RUNTIME.labels(task=name)
 
@@ -210,88 +210,149 @@ class BaseCodecovTask(celery_app.Task):
         opt_headers = options.pop("headers", {})
         opt_headers = opt_headers if opt_headers is not None else {}
 
-        # Pass current time in task headers so we can emit a metric of
-        # how long the task was in the queue for
+        # Track creation time and attempts in headers for queue time metrics
+        # and visibility timeout re-delivery detection
         current_time = datetime.now()
         headers = {
             **opt_headers,
             "created_timestamp": current_time.isoformat(),
+            # Preserve existing attempts if present (e.g., from retry or re-delivery)
+            # Only set to 1 if this is a new task creation
+            "attempts": opt_headers.get("attempts", 1),
         }
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
-    # Called when attempting to retry the task on db error
-    def _retry(self, countdown=None):
-        if not countdown:
-            countdown = self.default_retry_delay
+    def retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
+        """Override Celery's retry to always update attempts header."""
+        request = getattr(self, "request", None)
+        current_attempts = self.attempts
+        kwargs["headers"] = {
+            **_get_request_headers(request),
+            **(kwargs.get("headers") or {}),
+            "attempts": current_attempts + 1,
+        }
 
-        try:
-            self.retry(countdown=countdown)
-        except MaxRetriesExceededError:
-            if UploadFlow.has_begun():
-                UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
-            if TestResultsFlow.has_begun():
-                TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+        return super().retry(
+            max_retries=max_retries, countdown=countdown, exc=exc, **kwargs
+        )
 
-    def safe_retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
+    @property
+    def attempts(self) -> int:
+        """Get attempts count including re-deliveries from visibility timeout expiration.
+
+        This is a property (not an instance variable) because:
+        1. The request object is set by Celery after task instantiation (not available in __init__)
+        2. We need to handle task reuse across different executions (different request IDs)
+        3. We need to handle cases where request doesn't exist yet
+
+        The value is cached in __dict__ keyed by request ID to avoid recomputation.
         """
-        Safely retry with max retry limit and proper metrics tracking.
+        request = getattr(self, "request", None)
+        if request is None:
+            return 0
 
-        This method provides a common retry pattern for all tasks with:
-        - Configurable max retry limit
-        - Automatic metric tracking
-        - Consistent error handling
+        # Cache the computed value keyed by request ID to handle task reuse across executions
+        request_id = getattr(request, "id", None)
+        cache_key = f"_attempts_{request_id}" if request_id else "_attempts"
 
-        Args:
-            max_retries: Maximum number of retries allowed (default: task's max_retries)
-            countdown: Seconds to wait before retry (default: exponential backoff)
-            exc: Exception to include in retry (optional)
-            **kwargs: Additional kwargs to pass to self.retry()
+        if cache_key in self.__dict__:
+            return self.__dict__[cache_key]
 
-        Returns:
-            True if retry was scheduled
-            False if max retries exceeded
+        headers = _get_request_headers(request)
+        attempts_header = headers.get("attempts")
+        if attempts_header is not None:
+            try:
+                attempts_value = int(attempts_header)
+                self.__dict__[cache_key] = attempts_value
+                return attempts_value
+            except (ValueError, TypeError):
+                log.warning(
+                    "Invalid attempts header value",
+                    extra={
+                        "value": attempts_header,
+                        "retry_count": getattr(request, "retries", 0),
+                    },
+                )
+        retry_count = getattr(request, "retries", 0)
+        attempts_value = retry_count + 1
+        self.__dict__[cache_key] = attempts_value
+        return attempts_value
 
-        Example:
-            if some_condition_requires_retry:
-                if not self.safe_retry(max_retries=5, countdown=60):
-                    # Max retries exceeded
-                    log.error("Giving up after too many retries")
-                    return {"success": False, "reason": "max_retries"}
+    def _has_exceeded_max_attempts(self, max_retries: int | None) -> bool:
+        """Check if task has exceeded max attempts."""
+        if max_retries is None:
+            return False
+
+        max_attempts = max_retries + 1
+        return self.attempts >= max_attempts
+
+    def safe_retry(self, countdown=None, exc=None, **kwargs):
+        """Safely retry with max retry limit. Returns False if max exceeded, otherwise raises Retry.
+
+        Uses self.max_retries to determine the retry limit. Tasks define max_retries as a class
+        attribute, so it's known at instantiation and doesn't change.
         """
-        current_retries = self.request.retries if hasattr(self, "request") else 0
-        task_max_retries = max_retries if max_retries is not None else self.max_retries
-
-        if task_max_retries is not None and current_retries >= task_max_retries:
+        if self._has_exceeded_max_attempts(self.max_retries):
+            # If we're here, self.max_retries is not None (otherwise _has_exceeded_max_attempts returns False)
+            max_attempts = self.max_retries + 1
             log.error(
                 f"Task {self.name} exceeded max retries",
                 extra={
+                    "attempts": self.attempts,
+                    "max_attempts": max_attempts,
+                    "max_retries": self.max_retries,
                     "task_name": self.name,
-                    "current_retries": current_retries,
-                    "max_retries": task_max_retries,
                 },
             )
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
+            sentry_sdk.capture_exception(
+                MaxRetriesExceededError(
+                    f"Task {self.name} exceeded max retries: {self.attempts} >= {max_attempts}"
+                ),
+                contexts={
+                    "task": {
+                        "attempts": self.attempts,
+                        "max_attempts": max_attempts,
+                        "max_retries": self.max_retries,
+                        "task_name": self.name,
+                    }
+                },
+                tags={"error_type": "max_retries_exceeded", "task": self.name},
+            )
             return False
 
-        # Default countdown: exponential backoff
-        # Uses TASK_RETRY_BACKOFF_BASE_SECONDS from shared config (default: 20s)
+        retry_count = (
+            getattr(self.request, "retries", 0) if hasattr(self, "request") else 0
+        )
         if countdown is None:
-            countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**current_retries)
+            countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
 
         try:
             self.retry(
-                max_retries=task_max_retries, countdown=countdown, exc=exc, **kwargs
+                max_retries=self.max_retries, countdown=countdown, exc=exc, **kwargs
             )
-            return True
         except MaxRetriesExceededError:
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
             if UploadFlow.has_begun():
                 UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
             if TestResultsFlow.has_begun():
                 TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+            sentry_sdk.capture_exception(
+                MaxRetriesExceededError(
+                    f"Task {self.name} exceeded max retries during retry() call"
+                ),
+                contexts={
+                    "task": {
+                        "max_retries": self.max_retries,
+                        "task_name": self.name,
+                    }
+                },
+                tags={"error_type": "max_retries_exceeded", "task": self.name},
+            )
             return False
 
     def _analyse_error(self, exception: SQLAlchemyError, *args, **kwargs):
+        """Analyze SQLAlchemy errors and log appropriate messages for PostgreSQL-specific issues."""
         try:
             import psycopg2  # noqa: PLC0415
 
@@ -314,29 +375,18 @@ class BaseCodecovTask(celery_app.Task):
                 )
                 return
         except ImportError:
-            pass
+            log.debug(
+                "psycopg2 not available, skipping PostgreSQL-specific error analysis"
+            )
         log.exception(
             "An error talking to the database occurred",
             extra={"task_args": args, "task_kwargs": kwargs},
             exc_info=True,
         )
 
-    def _emit_queue_metrics(self):
-        created_timestamp = self.request.get("created_timestamp", None)
-        if created_timestamp:
-            enqueued_time = datetime.fromisoformat(created_timestamp)
-            now = datetime.now()
-            delta = now - enqueued_time
-
-            queue_name = self.request.get("delivery_info", {}).get("routing_key", None)
-            time_in_queue_timer = TASK_TIME_IN_QUEUE.labels(
-                task=self.name, queue=queue_name
-            )  # TODO is None a valid label value
-            time_in_queue_timer.observe(delta.total_seconds())
-
     @sentry_sdk.trace
     def run(self, *args, **kwargs):
-        with self.task_full_runtime.time():  # Timer isn't tested
+        with self.task_full_runtime.time():
             db_session = get_db_session()
 
             log_context = LogContext(
@@ -348,19 +398,41 @@ class BaseCodecovTask(celery_app.Task):
             task = get_current_task()
             if task and task.request:
                 log_context.task_name = task.name
-                log_context.task_id = task.request.id
+                task_id = getattr(task.request, "id", None)
+                if task_id:
+                    log_context.task_id = task_id
 
             log_context.populate_from_sqlalchemy(db_session)
             set_log_context(log_context)
             load_checkpoints_from_kwargs([UploadFlow, TestResultsFlow], kwargs)
 
             self.task_run_counter.inc()
-            self._emit_queue_metrics()
+            if (
+                hasattr(self, "request")
+                and self.request is not None
+                and hasattr(self.request, "get")
+            ):
+                created_timestamp = self.request.get("created_timestamp", None)
+                if created_timestamp:
+                    enqueued_time = datetime.fromisoformat(created_timestamp)
+                    now = datetime.now()
+                    delta = now - enqueued_time
+
+                    delivery_info = self.request.get("delivery_info", {})
+                    queue_name = (
+                        delivery_info.get("routing_key", None)
+                        if isinstance(delivery_info, dict)
+                        else None
+                    )
+                    time_in_queue_timer = TASK_TIME_IN_QUEUE.labels(
+                        task=self.name, queue=queue_name
+                    )
+                    time_in_queue_timer.observe(delta.total_seconds())
 
             close_old_connections()
 
             try:
-                with self.task_core_runtime.time():  # Timer isn't tested
+                with self.task_core_runtime.time():
                     return self.run_impl(db_session, *args, **kwargs)
             except InterfaceError as ex:
                 sentry_sdk.capture_exception(
@@ -372,11 +444,45 @@ class BaseCodecovTask(celery_app.Task):
                     extra={"task_args": args, "task_kwargs": kwargs},
                 )
                 db_session.rollback()
-                self._retry()
+                retry_count = getattr(self.request, "retries", 0)
+                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                # Use safe_retry to handle max retries exceeded gracefully
+                # Returns False if max retries exceeded, otherwise raises Retry
+                # Wrap in try-except to catch MaxRetriesExceededError if it escapes safe_retry
+                # (exceptions raised inside except blocks aren't caught by sibling except clauses)
+                try:
+                    if not self.safe_retry(countdown=countdown):
+                        # Max retries exceeded - return None to match old behavior
+                        return None
+                except MaxRetriesExceededError:
+                    # Handle MaxRetriesExceededError if it escapes safe_retry
+                    if UploadFlow.has_begun():
+                        UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    if TestResultsFlow.has_begun():
+                        TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    # Return None to match old behavior
+                    return None
             except SQLAlchemyError as ex:
                 self._analyse_error(ex, args, kwargs)
                 db_session.rollback()
-                self._retry()
+                retry_count = getattr(self.request, "retries", 0)
+                countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
+                # Use safe_retry to handle max retries exceeded gracefully
+                # Returns False if max retries exceeded, otherwise raises Retry
+                # Wrap in try-except to catch MaxRetriesExceededError if it escapes safe_retry
+                # (exceptions raised inside except blocks aren't caught by sibling except clauses)
+                try:
+                    if not self.safe_retry(countdown=countdown):
+                        # Max retries exceeded - return None to match old behavior
+                        return None
+                except MaxRetriesExceededError:
+                    # Handle MaxRetriesExceededError if it escapes safe_retry
+                    if UploadFlow.has_begun():
+                        UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    if TestResultsFlow.has_begun():
+                        TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    # Return None to match old behavior
+                    return None
             except MaxRetriesExceededError as ex:
                 if UploadFlow.has_begun():
                     UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
@@ -386,19 +492,12 @@ class BaseCodecovTask(celery_app.Task):
                 self.wrap_up_dbsession(db_session)
 
     def wrap_up_dbsession(self, db_session):
-        """
-        Wraps up dbsession, commita what is relevant and closes the session
+        """Commit and close database session, handling timeout edge cases.
 
-        This function deals with the very corner case of when a `SoftTimeLimitExceeded`
-            is raised during the execution of `db_session.commit()`. When it happens,
-            the dbsession gets into a bad state, which disallows further operations in it.
-
-        And because we reuse dbsessions, this would mean future tasks happening inside the
-            same process would also lose access to db.
-
-        So we need to do two ugly exception-catching:
-            1) For if `SoftTimeLimitExceeded` was raised  while commiting
-            2) For if the exception left `db_session` in an unusable state
+        Handles the corner case where `SoftTimeLimitExceeded` is raised during
+        `db_session.commit()`, which can leave the session in an unusable state.
+        Since we reuse sessions across tasks, this would break future tasks in
+        the same process, so we catch both timeout and invalid state exceptions.
         """
         try:
             db_session.commit()
@@ -427,8 +526,9 @@ class BaseCodecovTask(celery_app.Task):
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         res = super().on_retry(exc, task_id, args, kwargs, einfo)
         self.task_retry_counter.inc()
-        # Track retry count for better observability
-        retry_count = self.request.retries if hasattr(self, "request") else 0
+        retry_count = (
+            getattr(self.request, "retries", 0) if hasattr(self, "request") else 0
+        )
         TASK_RETRY_WITH_COUNT_COUNTER.labels(
             task=self.name, retry_count=str(retry_count)
         ).inc()
@@ -440,9 +540,7 @@ class BaseCodecovTask(celery_app.Task):
         return res
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
-        """
-        Includes SoftTimeLimitExceeded, for example
-        """
+        """Handle task failure, logging flow checkpoints and incrementing metrics."""
         res = super().on_failure(exc, task_id, args, kwargs, einfo)
         self.task_failure_counter.inc()
 
@@ -481,9 +579,8 @@ class BaseCodecovTask(celery_app.Task):
             )
         except NoConfiguredAppsAvailable as exp:
             if exp.rate_limited_count > 0:
-                # There's at least 1 app that we can use to communicate with GitHub,
-                # but this app happens to be rate limited now. We try again later.
-                # Min wait time of 1 minute
+                # At least one GitHub app is available but rate-limited. Retry after
+                # waiting until the next hour (minimum 1 minute delay).
                 retry_delay_seconds = max(60, get_seconds_to_next_hour())
                 log.warning(
                     "Unable to get repo provider service due to rate limits. Retrying again later.",
@@ -505,7 +602,7 @@ class BaseCodecovTask(celery_app.Task):
                         repo_id=repository.repoid,
                         error=Errors.INTERNAL_RETRYING,
                     )
-                self._retry(countdown=retry_delay_seconds)
+                self.retry(countdown=retry_delay_seconds)
             else:
                 log.warning(
                     "Unable to get repo provider service. Apps appear to be suspended.",

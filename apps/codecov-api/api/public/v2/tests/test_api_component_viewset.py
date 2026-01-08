@@ -128,3 +128,43 @@ class ComponentViewSetTestCase(TestCase):
                 "coverage": None,
             }
         ]
+
+    @patch("api.public.v2.component.views.commit_components")
+    @patch("shared.reports.api_report_service.build_report_from_commit")
+    def test_component_list_no_report(
+        self, build_report_from_commit, commit_components, get_repo_permissions
+    ) -> None:
+        get_repo_permissions.return_value = (True, True)
+        build_report_from_commit.return_value = None
+        commit_components.return_value = [
+            Component(
+                component_id="foo",
+                paths=[r".*foo"],
+                name="Foo",
+                flag_regexes=[],
+                statuses=[],
+            ),
+            Component(
+                component_id="bar",
+                paths=[r".*bar"],
+                name="Bar",
+                flag_regexes=[],
+                statuses=[],
+            ),
+        ]
+
+        res = self._request_components()
+        commit_components.assert_called_once_with(self.commit, self.org)
+        assert res.status_code == 200
+        assert res.json() == [
+            {
+                "component_id": "foo",
+                "name": "Foo",
+                "coverage": None,
+            },
+            {
+                "component_id": "bar",
+                "name": "Bar",
+                "coverage": None,
+            },
+        ]

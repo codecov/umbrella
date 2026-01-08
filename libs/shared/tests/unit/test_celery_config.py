@@ -51,6 +51,7 @@ def test_celery_config():
         "app.tasks.test_results.*",
         "app.tasks.timeseries.*",
         "app.tasks.upload.*",
+        "app.tasks.upload.UploadFinisher",
     ]
     assert config.broker_transport_options == {"visibility_timeout": 900}
     assert config.result_extended is True
