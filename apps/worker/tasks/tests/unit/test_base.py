@@ -319,7 +319,54 @@ class TestBaseCodecovTask:
         mock_retry = mocker.patch.object(task, "retry")
         mock_repo = mocker.MagicMock()
         assert task.get_repo_provider_service(mock_repo, commit=mock_commit) is None
+        # When earliest_retry_after_seconds is None, falls back to get_seconds_to_next_hour()
         task.retry.assert_called_with(countdown=120)
+
+    def test_get_repo_provider_service_rate_limited_uses_actual_retry_time(
+        self, mocker, mock_self_app
+    ):
+        """Test that base task uses actual retry time from GitHub API when available."""
+        mocker.patch(
+            "tasks.base.get_repo_provider_service",
+            side_effect=NoConfiguredAppsAvailable(
+                apps_count=2,
+                rate_limited_count=2,
+                suspended_count=0,
+                earliest_retry_after_seconds=180,  # 3 minutes
+            ),
+        )
+        mock_commit = mocker.MagicMock()
+        mock_commit.commitid = "abc123"
+
+        task = BaseCodecovTask()
+        mock_retry = mocker.patch.object(task, "retry")
+        mock_repo = mocker.MagicMock()
+        assert task.get_repo_provider_service(mock_repo, commit=mock_commit) is None
+        # Should use actual retry time (180 seconds) instead of falling back
+        task.retry.assert_called_with(countdown=180)
+
+    def test_get_repo_provider_service_rate_limited_enforces_minimum_delay(
+        self, mocker, mock_self_app
+    ):
+        """Test that base task enforces minimum 60-second delay even with short retry time."""
+        mocker.patch(
+            "tasks.base.get_repo_provider_service",
+            side_effect=NoConfiguredAppsAvailable(
+                apps_count=2,
+                rate_limited_count=2,
+                suspended_count=0,
+                earliest_retry_after_seconds=30,  # Less than minimum
+            ),
+        )
+        mock_commit = mocker.MagicMock()
+        mock_commit.commitid = "abc123"
+
+        task = BaseCodecovTask()
+        mock_retry = mocker.patch.object(task, "retry")
+        mock_repo = mocker.MagicMock()
+        assert task.get_repo_provider_service(mock_repo, commit=mock_commit) is None
+        # Should enforce minimum 60-second delay
+        task.retry.assert_called_with(countdown=60)
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
                 call(
