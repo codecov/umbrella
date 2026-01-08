@@ -1,3 +1,5 @@
+import uuid
+
 from django.apps import apps
 
 """
@@ -143,7 +145,7 @@ DEFAULT_FIELDS: dict[str, dict[str, any]] = {
         "uses_invoice": False,
     },
     "core.Repository": {
-        "upload_token": None,
+        "upload_token": uuid.uuid4,
     },
 }
 
