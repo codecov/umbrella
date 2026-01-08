@@ -1,3 +1,5 @@
+import uuid
+
 from django.apps import apps
 
 """
@@ -128,7 +130,6 @@ NULLIFIED_FIELDS: dict[str, list[str]] = {
         "sentry_user_id",
         "sentry_user_data",
         "account_id",
-        "user_id",
     ],
     "core.Repository": [
         "using_integration",
@@ -143,7 +144,7 @@ DEFAULT_FIELDS: dict[str, dict[str, any]] = {
         "uses_invoice": False,
     },
     "core.Repository": {
-        "upload_token": None,
+        "upload_token": uuid.uuid4,
     },
 }
 
@@ -166,5 +167,10 @@ def get_default_fields(model_path: str) -> dict[str, any]:
     """
     Get fields that need default values in export for a model.
     These are sensitive fields with NOT NULL constraints.
+    Values can be direct values or callables (factories) that generate values.
     """
-    return dict(DEFAULT_FIELDS.get(model_path, {}))
+    defaults = DEFAULT_FIELDS.get(model_path, {})
+    return {
+        field: value() if callable(value) else value
+        for field, value in defaults.items()
+    }
