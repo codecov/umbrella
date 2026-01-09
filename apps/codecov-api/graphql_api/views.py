@@ -22,6 +22,7 @@ from django.http import (
     JsonResponse,
 )
 from graphql import DocumentNode
+from rest_framework.exceptions import APIException
 from sentry_sdk import capture_exception
 
 from codecov.commands.exceptions import BaseException
@@ -356,6 +357,11 @@ class AsyncGraphqlView(GraphQLAsyncView):
             original_error, ServiceException
         ):
             formatted["message"] = original_error.message  # type: ignore
+            formatted["type"] = type(original_error).__name__
+        elif isinstance(original_error, APIException):
+            # APIException from torngit_safe decorator - expected client errors
+            # (e.g., unauthorized, forbidden) that shouldn't be sent to Sentry
+            formatted["message"] = str(original_error.detail)
             formatted["type"] = type(original_error).__name__
         else:
             # otherwise it's not supposed to happen, so we log it
