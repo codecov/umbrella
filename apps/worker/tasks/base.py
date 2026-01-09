@@ -81,6 +81,11 @@ class BaseCodecovRequest(Request):
         res = super().on_timeout(soft, timeout)
         if not soft:
             REQUEST_HARD_TIMEOUT_COUNTER.labels(task=self.name).inc()
+            try:
+                self._capture_hard_timeout_to_sentry(timeout)
+            except Exception:
+                pass
+
         REQUEST_TIMEOUT_COUNTER.labels(task=self.name).inc()
 
         if UploadFlow.has_begun():
@@ -89,6 +94,28 @@ class BaseCodecovRequest(Request):
             TestResultsFlow.log(TestResultsFlow.CELERY_TIMEOUT)
 
         return res
+
+    def _capture_hard_timeout_to_sentry(self, timeout: int):
+        """Capture hard timeout to Sentry with immediate flush.
+
+        Hard timeouts result in SIGKILL, so we must flush immediately
+        to ensure the event is sent before the process is killed.
+        """
+        scope = sentry_sdk.get_current_scope()
+        scope.set_tag("failure_type", "hard_timeout")
+        scope.set_context(
+            "timeout",
+            {
+                "task_name": self.name,
+                "task_id": self.id,
+                "timeout_seconds": timeout,
+            },
+        )
+        sentry_sdk.capture_message(
+            f"Hard timeout in task {self.name} after {timeout}s",
+            level="error",
+        )
+        sentry_sdk.flush(timeout=2)
 
 
 # Task reliability metrics
@@ -446,42 +473,28 @@ class BaseCodecovTask(celery_app.Task):
                 db_session.rollback()
                 retry_count = getattr(self.request, "retries", 0)
                 countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
-                # Use safe_retry to handle max retries exceeded gracefully
-                # Returns False if max retries exceeded, otherwise raises Retry
-                # Wrap in try-except to catch MaxRetriesExceededError if it escapes safe_retry
-                # (exceptions raised inside except blocks aren't caught by sibling except clauses)
                 try:
                     if not self.safe_retry(countdown=countdown):
-                        # Max retries exceeded - return None to match old behavior
                         return None
                 except MaxRetriesExceededError:
-                    # Handle MaxRetriesExceededError if it escapes safe_retry
                     if UploadFlow.has_begun():
                         UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
                     if TestResultsFlow.has_begun():
                         TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
-                    # Return None to match old behavior
                     return None
             except SQLAlchemyError as ex:
                 self._analyse_error(ex, args, kwargs)
                 db_session.rollback()
                 retry_count = getattr(self.request, "retries", 0)
                 countdown = TASK_RETRY_BACKOFF_BASE_SECONDS * (2**retry_count)
-                # Use safe_retry to handle max retries exceeded gracefully
-                # Returns False if max retries exceeded, otherwise raises Retry
-                # Wrap in try-except to catch MaxRetriesExceededError if it escapes safe_retry
-                # (exceptions raised inside except blocks aren't caught by sibling except clauses)
                 try:
                     if not self.safe_retry(countdown=countdown):
-                        # Max retries exceeded - return None to match old behavior
                         return None
                 except MaxRetriesExceededError:
-                    # Handle MaxRetriesExceededError if it escapes safe_retry
                     if UploadFlow.has_begun():
                         UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
                     if TestResultsFlow.has_begun():
                         TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
-                    # Return None to match old behavior
                     return None
             except MaxRetriesExceededError as ex:
                 if UploadFlow.has_begun():
