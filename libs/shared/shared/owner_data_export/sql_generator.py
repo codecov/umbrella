@@ -7,6 +7,7 @@ for additive imports that don't conflict with existing data.
 
 import json
 import logging
+import math
 from collections.abc import Generator
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
@@ -52,6 +53,14 @@ DATE_FILTERED_VIA_HIERARCHY = {
 
 COMPOSITE_CONFLICT_COLUMNS: dict[str, list[str]] = {
     "core.Branch": ["branch", "repoid"],
+    "timeseries.Measurement": [
+        "name",
+        "owner_id",
+        "repo_id",
+        "measurable_id",
+        "commit_sha",
+        "timestamp",
+    ],
 }
 
 
@@ -216,7 +225,21 @@ def serialize_value(value: Any) -> str:
     if isinstance(value, bool):
         return "TRUE" if value else "FALSE"
 
-    if isinstance(value, int | float | Decimal):
+    if isinstance(value, int):
+        return str(value)
+
+    if isinstance(value, float):
+        if math.isnan(value):
+            return "'NaN'::float8"
+        if math.isinf(value):
+            return "'Infinity'::float8" if value > 0 else "'-Infinity'::float8"
+        return str(value)
+
+    if isinstance(value, Decimal):
+        if value.is_nan():
+            return "'NaN'::float8"
+        if value.is_infinite():
+            return "'Infinity'::float8" if value > 0 else "'-Infinity'::float8"
         return str(value)
 
     if isinstance(value, str):
@@ -250,10 +273,15 @@ def get_row_values(instance: Model, model_path: str, fields: list) -> list[str]:
 
     values = []
     for f in fields:
-        if f.name in nullified:
+        # Check both f.name and f.attname for ForeignKey fields:
+        # f.name is the relation name (e.g., "account")
+        # f.attname is the column name (e.g., "account_id")
+        if f.name in nullified or f.attname in nullified:
             value = None
         elif f.name in defaults:
             value = defaults[f.name]
+        elif f.attname in defaults:
+            value = defaults[f.attname]
         else:
             value = getattr(instance, f.attname)
         values.append(serialize_value(value))
@@ -381,12 +409,10 @@ def generate_full_export(
         gen = generate_upsert_sql(model_path, context)
 
         model_rows = 0
-        for sql in gen:
-            output_file.write(sql)
-
-        # Get final stats from generator
         try:
-            gen.send(None)
+            while True:
+                sql = next(gen)
+                output_file.write(sql)
         except StopIteration as e:
             if e.value:
                 model_rows = e.value.get("rows", 0)
