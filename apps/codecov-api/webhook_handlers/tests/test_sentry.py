@@ -536,14 +536,22 @@ class TestSentryWebhook:
         client,
         url,
         create_valid_jwt_token,
+        mocker,
     ):
         """
         Regression test for AttributeError: 'GithubWebhookHandler' has no attribute 'request'.
 
         When SentryWebhookHandler delegates to GithubWebhookHandler methods and those
         methods fail (e.g., repo not found), _inc_err() is called which accesses
-        self.request. This test ensures the request is properly set on the handler.
+        self.request. Without the fix, this would raise AttributeError instead of NotFound.
+
+        We verify the fix by mocking sentry_sdk.capture_exception and checking that
+        it's called with NotFound (the expected error) rather than AttributeError.
         """
+        mock_capture = mocker.patch(
+            "webhook_handlers.views.sentry.sentry_sdk.capture_exception"
+        )
+
         account = AccountFactory(sentry_org_id=999999)
         owner = OwnerFactory(service="github", account=account)
 
@@ -564,3 +572,12 @@ class TestSentryWebhook:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "Error handling webhook" in response.data.get("detail", "")
+
+        # Verify sentry captured NotFound (expected) not AttributeError (the bug)
+        assert mock_capture.called
+        captured_exception = mock_capture.call_args[0][0]
+        assert type(captured_exception).__name__ == "NotFound", (
+            f"Expected NotFound to be captured, got {type(captured_exception).__name__}. "
+            "If AttributeError was captured, the fix for setting request on "
+            "GithubWebhookHandler may have regressed."
+        )
