@@ -314,81 +314,39 @@ class TestLockManager:
         This test detects the bug where blocking_timeout=None causes Redis to block
         indefinitely, preventing LockError from being raised and disabling retry logic.
         """
-        # Simulate a lock that's already held - Redis would block indefinitely
-        # when blocking_timeout=None
-        blocking_lock = MagicMock()
-        blocking_lock.__enter__ = MagicMock()
-        blocking_lock.__exit__ = MagicMock(return_value=None)
-
-        # Track what blocking_timeout was passed
+        # Track blocking_timeout and simulate behavior
         blocking_timeouts = []
-        lock_called = threading.Event()
+        lock_acquired = threading.Event()
 
-        def mock_lock(*args, **kwargs):
+        def simulate_redis_lock(*args, **kwargs):
             blocking_timeouts.append(kwargs.get("blocking_timeout"))
-            lock_called.set()
-            if kwargs.get("blocking_timeout") is None:
-                # With blocking_timeout=None, Redis blocks forever and never raises LockError
-                # This simulates the blocking behavior - it would hang indefinitely
-                # We use a longer sleep to ensure the thread hangs
-                time.sleep(1.0)  # Simulate blocking (longer than thread timeout)
-                return blocking_lock
-            else:
-                # With blocking_timeout set, Redis raises LockError immediately
+            if kwargs.get("blocking_timeout") is not None:
                 raise LockError()
+            # With blocking_timeout=None, Redis blocks indefinitely
+            time.sleep(1.0)
+            lock_acquired.set()
+            mock_lock = MagicMock()
+            mock_lock.__enter__ = MagicMock()
+            mock_lock.__exit__ = MagicMock(return_value=None)
+            return mock_lock
 
-        mock_redis.lock = mock_lock
+        mock_redis.lock.side_effect = simulate_redis_lock
 
         manager = LockManager(repoid=123, commitid="abc123", blocking_timeout=None)
 
-        # Use threading to detect if the code hangs
-        exception_raised = []
-        completed = threading.Event()
-
-        def test_locked():
-            try:
-                with manager.locked(LockType.UPLOAD):
-                    pass
-                completed.set()
-            except LockRetry:
-                exception_raised.append("LockRetry")
-                completed.set()
-            except Exception as e:
-                exception_raised.append(f"Other: {type(e).__name__}")
-                completed.set()
-
-        thread = threading.Thread(target=test_locked)
-        thread.daemon = True
+        # Run lock acquisition in a thread to detect blocking
+        thread = threading.Thread(
+            target=lambda: manager.locked(LockType.UPLOAD).__enter__(),
+            daemon=True,
+        )
         thread.start()
+        thread.join(timeout=0.3)
 
-        # Wait for lock to be called
-        lock_called.wait(timeout=1.0)
-
-        # Wait a short time to see if it completes (it shouldn't with blocking_timeout=None)
-        completed.wait(timeout=0.3)
-
-        # Join with a short timeout to detect if thread is still running
-        thread.join(timeout=0.2)
-
-        # Verify that blocking_timeout=None was passed to Redis
-        assert None in blocking_timeouts, (
-            "blocking_timeout=None should have been passed to Redis"
-        )
-
-        # With the bug, the thread hangs because blocking_timeout=None causes indefinite blocking
-        # The thread should still be alive (BUG!) - this documents the bug behavior
-        # This test passes when it correctly identifies the bug: indefinite blocking prevents retry logic
+        # Verify blocking_timeout=None was passed and thread is still blocking
+        assert None in blocking_timeouts
         assert thread.is_alive(), (
-            "Expected thread to hang with blocking_timeout=None (bug behavior), "
-            "but thread completed. This test documents that blocking_timeout=None "
-            "causes indefinite blocking, preventing LockError from being raised."
-        )
-
-        # Verify that LockRetry was NOT raised (because LockError never happens)
-        assert "LockRetry" not in exception_raised, (
-            "LockRetry should NOT be raised with blocking_timeout=None because "
-            "LockError is never raised (Redis blocks indefinitely). "
-            "This is the bug: retry logic is disabled."
+            "Expected thread to hang with blocking_timeout=None. "
+            "This documents that blocking_timeout=None prevents LockError from being raised."
         )
 
     def test_locked_blocking_timeout_enables_retry_logic(self, mock_redis):
