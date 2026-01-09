@@ -104,7 +104,7 @@ class ExportContext:
                     "repoid", flat=True
                 )
             )
-            log.info(f"Pre-fetched {len(self._repository_ids)} repository IDs")
+            log.info("Pre-fetched %d repository IDs", len(self._repository_ids))
         return self._repository_ids
 
     @property
@@ -117,7 +117,7 @@ class ExportContext:
                     updatestamp__gte=self.since_date,
                 ).values_list("id", flat=True)
             )
-            log.info(f"Pre-fetched {len(self._commit_ids)} commit IDs")
+            log.info("Pre-fetched %d commit IDs", len(self._commit_ids))
         return self._commit_ids
 
     @property
@@ -129,7 +129,7 @@ class ExportContext:
                     "id", flat=True
                 )
             )
-            log.info(f"Pre-fetched {len(self._commit_report_ids)} commit report IDs")
+            log.info("Pre-fetched %d commit report IDs", len(self._commit_report_ids))
         return self._commit_report_ids
 
     @property
@@ -141,7 +141,7 @@ class ExportContext:
                     report_id__in=self.commit_report_ids
                 ).values_list("id", flat=True)
             )
-            log.info(f"Pre-fetched {len(self._report_session_ids)} report session IDs")
+            log.info("Pre-fetched %d report session IDs", len(self._report_session_ids))
         return self._report_session_ids
 
     def get_queryset(self, model_path: str) -> QuerySet:
@@ -154,7 +154,9 @@ class ExportContext:
 
         return qs
 
-    def _apply_date_filter(self, model_path: str, model, qs: QuerySet) -> QuerySet:
+    def _apply_date_filter(
+        self, model_path: str, model: type[Model], qs: QuerySet
+    ) -> QuerySet:
         """Apply date filtering based on available timestamp field."""
         if model_path in DATE_FILTERED_VIA_HIERARCHY:
             return qs
@@ -168,7 +170,7 @@ class ExportContext:
 
         return qs
 
-    def _get_base_queryset(self, model_path: str, model) -> QuerySet:
+    def _get_base_queryset(self, model_path: str, model: type[Model]) -> QuerySet:
         """Get the base queryset with ownership filtering."""
         if model_path == "codecov_auth.Owner":
             return model.objects.filter(ownerid=self.owner_id)
@@ -249,7 +251,7 @@ def serialize_value(value: Any) -> str:
         return f"'{value.isoformat()}'"
 
     if isinstance(value, timedelta):
-        return f"'{int(value.total_seconds())} seconds'::interval"
+        return f"'{value.total_seconds()} seconds'::interval"
 
     if isinstance(value, UUID):
         return f"'{value}'"
@@ -344,11 +346,17 @@ def _build_upsert_statement(
     set_clause: str,
 ) -> str:
     """Build a single UPSERT statement from batched rows."""
+    conflict_clause = ", ".join(conflict_columns)
+    if set_clause:
+        on_conflict = f"ON CONFLICT ({conflict_clause}) DO UPDATE SET\n  {set_clause}"
+    else:
+        # All fields are conflict columns, nothing to update
+        on_conflict = f"ON CONFLICT ({conflict_clause}) DO NOTHING"
+
     return f"""INSERT INTO {table_name} ({columns_str})
 VALUES
 {",".join(value_rows)}
-ON CONFLICT ({", ".join(conflict_columns)}) DO UPDATE SET
-  {set_clause};
+{on_conflict};
 
 """
 
@@ -399,7 +407,7 @@ def generate_full_export(
         f"-- Owner Data Export\n"
         f"-- Owner ID: {owner_id}\n"
         f"-- Since: {context.since_date.isoformat()}\n"
-        f"-- Generated: {datetime.utcnow().isoformat()}\n"
+        f"-- Generated: {timezone.now().isoformat()}\n"
         f"-- Run with: psql -d your_database -f this_file.sql\n\n"
         f"BEGIN;\n\n"
     )
