@@ -287,7 +287,9 @@ class AsyncGraphqlView(GraphQLAsyncView):
             try:
                 data = json.loads(content)
             except json.JSONDecodeError:
-                log.error(
+                # Client sent invalid request - log as warning, not error
+                # This is expected behavior for malformed client requests
+                log.warning(
                     "Failed to decode JSON response",
                     extra={"content": content, "request_body": req_body},
                 )
