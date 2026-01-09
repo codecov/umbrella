@@ -184,13 +184,15 @@ class BundleAnalysisCommentMarkdownStrategy(MessageStrategyInterface):
                 notification_successful=True,
                 github_app_used=get_github_app_used(repository_service),
             )
-        except TorngitClientError:
+        except TorngitClientError as e:
             log.error(
                 "Error creating/updating PR comment",
                 extra={
                     "commit": context.commit.commitid,
                     "report_key": context.commit_report.external_id,
                     "pullid": pull.pullid,
+                    "error_code": getattr(e, "code", None),
+                    "error_message": str(e),
                 },
             )
             return NotificationResult(

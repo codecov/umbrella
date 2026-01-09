@@ -130,7 +130,7 @@ class BaseNotifier:
                     )
             return True
 
-        except TorngitClientError:
+        except TorngitClientError as e:
             log.error(
                 "Error creating/updating PR comment",
                 extra={
@@ -138,6 +138,8 @@ class BaseNotifier:
                     if isinstance(self.commit, Commit)
                     else self.commit["commit_sha"],
                     "pullid": pullid,
+                    "error_code": getattr(e, "code", None),
+                    "error_message": str(e),
                 },
             )
             return False
