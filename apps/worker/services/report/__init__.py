@@ -658,7 +658,6 @@ class ReportService(BaseReportService):
             )
             return result
         except ReportExpiredException as r:
-            sentry_sdk.capture_exception(r)
             log.info(
                 "Report is expired",
                 extra={
@@ -674,7 +673,6 @@ class ReportService(BaseReportService):
             return result
         except ReportEmptyError as e:
             e.reportid = reportid
-            sentry_sdk.capture_exception(e)
             log.warning(
                 "Report is empty",
                 extra={
