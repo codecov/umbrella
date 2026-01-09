@@ -4,9 +4,8 @@ import time
 from unittest.mock import MagicMock
 
 import pytest
-from redis.exceptions import LockError
-
 from database.enums import ReportType
+from redis.exceptions import LockError
 from services.lock_manager import LockManager, LockRetry, LockType
 from tasks.base import BaseCodecovTask
 
