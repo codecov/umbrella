@@ -530,3 +530,37 @@ class TestSentryWebhook:
         assert ghapp_installation.app_id == settings.GITHUB_SENTRY_APP_ID
         assert ghapp_installation.name == settings.GITHUB_SENTRY_APP_NAME
         assert ghapp_installation.pem_path is None
+
+    def test_github_webhook_handler_has_request_attribute_when_handler_fails(
+        self,
+        client,
+        url,
+        create_valid_jwt_token,
+    ):
+        """
+        Regression test for AttributeError: 'GithubWebhookHandler' has no attribute 'request'.
+
+        When SentryWebhookHandler delegates to GithubWebhookHandler methods and those
+        methods fail (e.g., repo not found), _inc_err() is called which accesses
+        self.request. This test ensures the request is properly set on the handler.
+        """
+        account = AccountFactory(sentry_org_id=999999)
+        owner = OwnerFactory(service="github", account=account)
+
+        response = client.post(
+            url,
+            data={
+                "action": "deleted",
+                "repository": {
+                    "id": "nonexistent-repo-id",
+                    "full_name": f"{owner.username}/nonexistent",
+                    "owner": {"id": owner.service_id},
+                },
+            },
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "repository"},
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Error handling webhook" in response.data.get("detail", "")
