@@ -58,20 +58,30 @@ jobs:
           sudo curl -SL https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
           sudo chmod +x /usr/local/bin/docker-compose
       - name: Bring test env up
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         run: |
-          make ${{ inputs.make_target_prefix }}test_env.up
+          make "$MAKE_TARGET_PREFIX"test_env.up
       - name: Prepare for tests
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         run: |
-          make ${{ inputs.make_target_prefix }}test_env.prepare
-          make ${{ inputs.make_target_prefix }}test_env.check_db
+          make "$MAKE_TARGET_PREFIX"test_env.prepare
+          make "$MAKE_TARGET_PREFIX"test_env.check_db
 
       - name: Run unit tests
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
+          PYTEST_ROOTDIR: ${{ inputs.pytest_rootdir }}
         run: |
-          make ${{ inputs.make_target_prefix }}test_env.run_unit PYTEST_ROOTDIR=${{ inputs.pytest_rootdir }}
+          make "$MAKE_TARGET_PREFIX"test_env.run_unit PYTEST_ROOTDIR="$PYTEST_ROOTDIR"
       - name: Run integration tests
         if: ${{ !cancelled() && inputs.run_integration == true }}
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
+          PYTEST_ROOTDIR: ${{ inputs.pytest_rootdir }}
         run: |
-          make ${{ inputs.make_target_prefix }}test_env.run_integration PYTEST_ROOTDIR=${{ inputs.pytest_rootdir }}
+          make "$MAKE_TARGET_PREFIX"test_env.run_integration PYTEST_ROOTDIR="$PYTEST_ROOTDIR"
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

@@ -88,15 +88,19 @@ jobs:
           make save.requirements
 
       - name: Load built image
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         if: ${{ steps.cache-self-hosted.outputs.cache-hit == 'true' }}
         run: |
-          make ${{ inputs.make_target_prefix }}load.self-hosted
+          make "$MAKE_TARGET_PREFIX"load.self-hosted
 
       - name: Build self hosted
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         if: ${{ steps.cache-self-hosted.outputs.cache-hit != 'true' }}
         run: |
-          make ${{ inputs.make_target_prefix }}build.self-hosted
-          make ${{ inputs.make_target_prefix }}save.self-hosted
+          make "$MAKE_TARGET_PREFIX"build.self-hosted
+          make "$MAKE_TARGET_PREFIX"save.self-hosted
 
   self-hosted:
     name: Push Self Hosted Image
@@ -121,17 +125,21 @@ jobs:
             ${{ inputs.output_directory }}/self-hosted.tar
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
       - name: Load built image
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         run: |
-          make ${{ inputs.make_target_prefix }}load.self-hosted
+          make "$MAKE_TARGET_PREFIX"load.self-hosted
       - name: Log in to Docker Hub
         uses: docker/login-action@v3.1.0
         with:
           username: ${{ secrets.CODECOV_DEVOPS_DOCKER_USERNAME }}
           password: ${{ secrets.CODECOV_DEVOPS_DOCKER_PASSWORD }}
       - name: Push Self Hosted Rolling
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         run: |
-          make ${{ inputs.make_target_prefix }}tag.self-hosted-rolling
-          make ${{ inputs.make_target_prefix }}push.self-hosted-rolling
+          make "$MAKE_TARGET_PREFIX"tag.self-hosted-rolling
+          make "$MAKE_TARGET_PREFIX"push.self-hosted-rolling
   self-hosted-release:
     name: Push Self Hosted Release Image
     needs: [build-self-hosted]
@@ -155,15 +163,19 @@ jobs:
             ${{ inputs.output_directory }}/self-hosted.tar
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
       - name: Load built image
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         run: |
-          make ${{ inputs.make_target_prefix }}load.self-hosted
+          make "$MAKE_TARGET_PREFIX"load.self-hosted
       - name: Log in to Docker Hub
         uses: docker/login-action@v3.1.0
         with:
           username: ${{ secrets.CODECOV_DEVOPS_DOCKER_USERNAME }}
           password: ${{ secrets.CODECOV_DEVOPS_DOCKER_PASSWORD }}
       - name: Push self hosted release
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         run: |
-          make ${{ inputs.make_target_prefix }}tag.self-hosted-release
-          make ${{ inputs.make_target_prefix }}push.self-hosted-release
+          make "$MAKE_TARGET_PREFIX"tag.self-hosted-release
+          make "$MAKE_TARGET_PREFIX"push.self-hosted-release
 
