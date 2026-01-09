@@ -75,6 +75,7 @@ class SentryWebhookHandler(APIView):
 
         try:
             self.github_webhook_handler.event = event
+            self.github_webhook_handler.request = request
             handler(request)
         except Exception as e:
             sentry_sdk.capture_exception(e)
