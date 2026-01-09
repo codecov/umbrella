@@ -332,7 +332,7 @@ def test_commit_report_serializer_returns_existing_report(db):
 
 
 def test_commit_report_serializer_handles_concurrent_creation(db):
-    """Test that create() handles race condition by using get_or_create atomically.
+    """Test that create() handles race condition by serializing access.
 
     This test verifies that calling create() twice for the same commit/code
     does not create duplicate reports (simulating concurrent requests).
@@ -366,3 +366,74 @@ def test_commit_report_serializer_handles_concurrent_creation(db):
         ).count()
         == 1
     )
+
+
+def test_commit_report_serializer_handles_existing_duplicates(db):
+    """Regression test: create() handles pre-existing duplicate reports gracefully.
+
+    This test verifies that if duplicate CommitReports already exist in the database
+    (from before the race condition fix), create() returns one of them without crashing.
+    Previously, get_or_create would raise MultipleObjectsReturned in this case.
+    """
+    commit = CommitFactory.create()
+
+    # Create duplicate reports directly in the database (simulating pre-existing duplicates)
+    report1 = CommitReport.objects.create(
+        commit=commit,
+        code=None,
+        report_type=CommitReport.ReportType.COVERAGE,
+    )
+    report2 = CommitReport.objects.create(
+        commit=commit,
+        code=None,
+        report_type=CommitReport.ReportType.COVERAGE,
+    )
+    assert report1.id != report2.id  # Confirm we have duplicates
+
+    # Call create() - should return one of the existing reports, not crash
+    serializer = CommitReportSerializer()
+    report, created = serializer.create(
+        {
+            "code": None,
+            "commit_id": commit.id,
+        }
+    )
+
+    assert created is False
+    assert report.id in (report1.id, report2.id)
+
+
+def test_commit_report_serializer_handles_duplicate_legacy_reports(db):
+    """Regression test: create() handles duplicate legacy reports gracefully.
+
+    This test verifies that if duplicate legacy CommitReports (report_type=None)
+    exist in the database, create() returns one of them and upgrades its type.
+    """
+    commit = CommitFactory.create()
+
+    # Create duplicate legacy reports
+    legacy1 = CommitReport.objects.create(
+        commit=commit,
+        code=None,
+        report_type=None,  # Legacy
+    )
+    legacy2 = CommitReport.objects.create(
+        commit=commit,
+        code=None,
+        report_type=None,  # Legacy
+    )
+    assert legacy1.id != legacy2.id  # Confirm we have duplicates
+
+    # Call create() - should return one of the existing reports
+    serializer = CommitReportSerializer()
+    report, created = serializer.create(
+        {
+            "code": None,
+            "commit_id": commit.id,
+        }
+    )
+
+    assert created is False
+    assert report.id in (legacy1.id, legacy2.id)
+    # The returned report should be upgraded
+    assert report.report_type == CommitReport.ReportType.COVERAGE

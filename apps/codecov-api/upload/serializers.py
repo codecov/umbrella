@@ -1,8 +1,9 @@
+import logging
 from typing import Any
 
 from django.conf import settings
-from django.db import transaction
-from django.db.models import QuerySet
+from django.db import IntegrityError, transaction
+from django.db.models import Q, QuerySet
 from rest_framework import serializers
 
 from codecov_auth.models import Owner
@@ -11,6 +12,8 @@ from reports.models import CommitReport, ReportSession, RepositoryFlag
 from services.task import TaskService
 from shared.api_archive.archive import ArchiveService
 from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Milestones
+
+log = logging.getLogger(__name__)
 
 
 class FlagListField(serializers.ListField):
@@ -204,32 +207,54 @@ class CommitReportSerializer(serializers.ModelSerializer):
             "report_type", CommitReport.ReportType.COVERAGE
         )
 
-        # Use atomic transaction to prevent race conditions
+        # Use atomic transaction with select_for_update to serialize concurrent access.
+        # This prevents race conditions where multiple requests create duplicate reports.
+        # We lock ALL matching reports (legacy and non-legacy) before checking/creating.
         with transaction.atomic():
-            # First try to get existing report with report_type=None (legacy)
-            # Use select_for_update to lock the row
-            legacy_report = (
+            # Lock all coverage reports for this commit/code to serialize concurrent access.
+            # Using .first() handles the case where duplicates already exist (returns one).
+            # The Q filter matches both legacy (report_type=None) and coverage reports.
+            existing_report = (
                 CommitReport.objects.select_for_update()
                 .filter(
+                    Q(report_type=None) | Q(report_type=report_type),
                     code=code,
                     commit_id=commit_id,
-                    report_type=None,
                 )
                 .first()
             )
 
-            if legacy_report:
-                # Update legacy report to have correct type
-                legacy_report.report_type = report_type
-                legacy_report.save()
-                return legacy_report, False
+            if existing_report:
+                # If it's a legacy report, upgrade it to the correct type
+                if existing_report.report_type is None:
+                    existing_report.report_type = report_type
+                    existing_report.save()
+                return existing_report, False
 
-            # Now use get_or_create for the normal case
-            # This is atomic and handles concurrent requests
-            report, was_created = CommitReport.objects.get_or_create(
-                code=code,
-                commit_id=commit_id,
-                report_type=report_type,
-            )
-
-            return report, was_created
+            # No existing report found while holding the lock - safe to create.
+            # Wrap in try/except as a belt-and-suspenders approach in case of
+            # any edge cases we haven't considered.
+            try:
+                report = CommitReport.objects.create(
+                    code=code,
+                    commit_id=commit_id,
+                    report_type=report_type,
+                )
+                return report, True
+            except IntegrityError:
+                # Another request created a report between our check and create.
+                # This shouldn't happen with select_for_update but handle defensively.
+                log.warning(
+                    "IntegrityError during CommitReport creation, fetching existing",
+                    extra={"commit_id": commit_id, "code": code},
+                )
+                # Re-query to get the report that was created
+                existing = CommitReport.objects.filter(
+                    Q(report_type=None) | Q(report_type=report_type),
+                    code=code,
+                    commit_id=commit_id,
+                ).first()
+                if existing:
+                    return existing, False
+                # This should never happen, but re-raise if it does
+                raise
