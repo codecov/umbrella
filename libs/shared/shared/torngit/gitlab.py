@@ -849,6 +849,7 @@ class Gitlab(TorngitBaseAdapter):
                         "parent_id": g["parent_id"],
                     }
                     for g in groups
+                    if g.get("full_path")  # Filter out groups with null/missing full_path
                 ]
             )
         return all_groups
