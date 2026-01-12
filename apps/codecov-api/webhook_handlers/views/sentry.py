@@ -1,7 +1,7 @@
 import logging
 
 import sentry_sdk
-from rest_framework.exceptions import ParseError
+from rest_framework.exceptions import NotFound, ParseError, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -77,6 +77,10 @@ class SentryWebhookHandler(APIView):
             self.github_webhook_handler.event = event
             self.github_webhook_handler.request = request
             handler(request)
+        except (NotFound, PermissionDenied):
+            # Expected HTTP exceptions for webhooks about repos/orgs we don't track
+            # or don't have permission to access - don't send to Sentry
+            pass
         except Exception as e:
             sentry_sdk.capture_exception(e)
             log.exception(

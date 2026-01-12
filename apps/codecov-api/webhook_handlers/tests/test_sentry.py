@@ -536,6 +536,7 @@ class TestSentryWebhook:
         client,
         url,
         create_valid_jwt_token,
+        mocker,
     ):
         """
         Regression test for AttributeError: 'GithubWebhookHandler' has no attribute 'request'.
@@ -543,7 +544,14 @@ class TestSentryWebhook:
         When SentryWebhookHandler delegates to GithubWebhookHandler methods and those
         methods fail (e.g., repo not found), _inc_err() is called which accesses
         self.request. This test ensures the request is properly set on the handler.
+
+        Also verifies that NotFound exceptions (expected for repos we don't track)
+        are NOT sent to Sentry - they return 200 OK silently.
         """
+        mock_capture = mocker.patch(
+            "webhook_handlers.views.sentry.sentry_sdk.capture_exception"
+        )
+
         account = AccountFactory(sentry_org_id=999999)
         owner = OwnerFactory(service="github", account=account)
 
@@ -562,5 +570,50 @@ class TestSentryWebhook:
             **{GitHubHTTPHeaders.EVENT: "repository"},
         )
 
+        # NotFound is expected for repos we don't track - should return 200 OK
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data == {"status": "ok"}
+        # Verify sentry_sdk.capture_exception was NOT called
+        mock_capture.assert_not_called()
+
+    def test_unexpected_exception_is_sent_to_sentry(
+        self,
+        client,
+        url,
+        create_valid_jwt_token,
+        mocker,
+    ):
+        """
+        Test that unexpected exceptions ARE sent to Sentry and return 400.
+        """
+        mock_capture = mocker.patch(
+            "webhook_handlers.views.sentry.sentry_sdk.capture_exception"
+        )
+        # Mock the handler to raise an unexpected exception
+        mocker.patch(
+            "webhook_handlers.views.sentry.GithubWebhookHandler.repository",
+            side_effect=RuntimeError("Unexpected error"),
+        )
+
+        account = AccountFactory(sentry_org_id=999999)
+        owner = OwnerFactory(service="github", account=account)
+
+        response = client.post(
+            url,
+            data={
+                "action": "deleted",
+                "repository": {
+                    "id": "some-repo-id",
+                    "full_name": f"{owner.username}/some-repo",
+                    "owner": {"id": owner.service_id},
+                },
+            },
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {create_valid_jwt_token}",
+            **{GitHubHTTPHeaders.EVENT: "repository"},
+        )
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "Error handling webhook" in response.data.get("detail", "")
+        # Verify sentry_sdk.capture_exception WAS called
+        mock_capture.assert_called_once()
