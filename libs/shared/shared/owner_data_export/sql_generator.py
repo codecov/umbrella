@@ -259,7 +259,9 @@ def serialize_value(value: Any) -> str:
         return f"'{value}'"
 
     if isinstance(value, dict | list):
-        return f"'{json.dumps(value).replace(chr(39), chr(39) + chr(39))}'::jsonb"
+        # Strip NULL bytes which are invalid in PostgreSQL text columns
+        cleaned = json.dumps(value).replace("\x00", "")
+        return f"'{cleaned.replace(chr(39), chr(39) + chr(39))}'::jsonb"
 
     if isinstance(value, bytes):
         return f"'\\x{value.hex()}'::bytea"
@@ -267,7 +269,9 @@ def serialize_value(value: Any) -> str:
     if hasattr(value, "value"):  # Enum
         return serialize_value(value.value)
 
-    return f"'{str(value).replace(chr(39), chr(39) + chr(39))}'"
+    # Strip NULL bytes which are invalid in PostgreSQL text columns
+    cleaned = str(value).replace("\x00", "")
+    return f"'{cleaned.replace(chr(39), chr(39) + chr(39))}'"
 
 
 def get_row_values(instance: Model, model_path: str, fields: list) -> list[str]:
