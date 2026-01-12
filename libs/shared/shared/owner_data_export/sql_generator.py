@@ -245,7 +245,9 @@ def serialize_value(value: Any) -> str:
         return str(value)
 
     if isinstance(value, str):
-        return f"'{value.replace(chr(39), chr(39) + chr(39))}'"
+        # Strip NULL bytes which are invalid in PostgreSQL text columns
+        cleaned = value.replace("\x00", "")
+        return f"'{cleaned.replace(chr(39), chr(39) + chr(39))}'"
 
     if isinstance(value, datetime | date | time):
         return f"'{value.isoformat()}'"
