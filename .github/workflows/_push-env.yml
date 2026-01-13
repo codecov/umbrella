@@ -76,14 +76,19 @@ jobs:
           echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
 
       - name: Push ${{ inputs.environment }}
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
+          ENVIRONMENT: ${{ inputs.environment }}
         run: |
-          make ${{ inputs.make_target_prefix }}tag.${{ inputs.environment }}
-          make ${{ inputs.make_target_prefix }}push.${{ inputs.environment }}
+          make "$MAKE_TARGET_PREFIX"tag."$ENVIRONMENT"
+          make "$MAKE_TARGET_PREFIX"push."$ENVIRONMENT"
       - name: Push latest
         if: inputs.environment == 'production'
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         run: |
-          make ${{ inputs.make_target_prefix }}tag.latest
-          make ${{ inputs.make_target_prefix }}push.latest
+          make "$MAKE_TARGET_PREFIX"tag.latest
+          make "$MAKE_TARGET_PREFIX"push.latest
 
       - name: Create Sentry release
         if: inputs.create_sentry_release
@@ -116,17 +121,21 @@ jobs:
             ${{ inputs.output_directory }}/app.tar
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
       - name: Load built image
+        env:
+          OUTPUT_DIRECTORY: ${{ inputs.output_directory }}
         run: |
-          docker load --input ${{ inputs.output_directory }}/app.tar
+          docker load --input "${OUTPUT_DIRECTORY}"/app.tar
       - name: Log in to Docker Hub
         uses: docker/login-action@v3.1.0
         with:
           username: ${{ secrets.CODECOV_DEVOPS_DOCKER_USERNAME }}
           password: ${{ secrets.CODECOV_DEVOPS_DOCKER_PASSWORD }}
       - name: Push Rolling
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         run: |
-          make ${{ inputs.make_target_prefix }}tag.rolling
-          make ${{ inputs.make_target_prefix }}push.rolling
+          make "$MAKE_TARGET_PREFIX"tag.rolling
+          make "$MAKE_TARGET_PREFIX"push.rolling
   release:
     name: Push Release Image
     if: inputs.push_release == true && github.repository_owner == 'codecov' && !github.event.pull_request.head.repo.fork
@@ -147,15 +156,19 @@ jobs:
             ${{ inputs.output_directory }}/app.tar
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ github.run_id }}
       - name: Load built image
+        env:
+          OUTPUT_DIRECTORY: ${{ inputs.output_directory }}
         run: |
-          docker load --input ${{ inputs.output_directory }}/app.tar
+          docker load --input "${OUTPUT_DIRECTORY}"/app.tar
       - name: Log in to Docker Hub
         uses: docker/login-action@v3.1.0
         with:
           username: ${{ secrets.CODECOV_DEVOPS_DOCKER_USERNAME }}
           password: ${{ secrets.CODECOV_DEVOPS_DOCKER_PASSWORD }}
       - name: Push release
+        env:
+          MAKE_TARGET_PREFIX: ${{ inputs.make_target_prefix }}
         run: |
-          make ${{ inputs.make_target_prefix }}tag.release
-          make ${{ inputs.make_target_prefix }}push.release
+          make "$MAKE_TARGET_PREFIX"tag.release
+          make "$MAKE_TARGET_PREFIX"push.release
 
