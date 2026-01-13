@@ -574,7 +574,7 @@ class TestSentryWebhook:
         assert "Error handling webhook" in response.data.get("detail", "")
 
         # Verify sentry captured NotFound (expected) not AttributeError (the bug)
-        assert mock_capture.called
+        mock_capture.assert_called_once()
         captured_exception = mock_capture.call_args[0][0]
         assert type(captured_exception).__name__ == "NotFound", (
             f"Expected NotFound to be captured, got {type(captured_exception).__name__}. "
