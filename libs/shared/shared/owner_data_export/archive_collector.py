@@ -179,11 +179,15 @@ def copy_archive_file_streaming(
             tmp.seek(0)
 
             # Stream write from temp file to destination
+            # Pass compression_type=None to avoid setting Content-Encoding header,
+            # since the source file's compression format is unknown (could be gzip,
+            # zstd, or uncompressed).
             storage.write_file(
                 dest_bucket,
                 file.dest_path,
                 tmp,
                 is_compressed=True,  # Don't re-compress, preserve original
+                compression_type=None,  # Don't set Content-Encoding header
             )
             return True, bytes_copied
     except FileNotInStorageError:
@@ -234,23 +238,25 @@ def collect_archives_for_export(
 
     file_gen = discover_archive_files(context, owner_id, export_id)
 
-    for file in file_gen:
-        stats["files_found"] += 1
-
-        # Use file-specific bucket if specified, otherwise default archive bucket
-        file_source_bucket = file.source_bucket or source_bucket
-        success, bytes_copied = copy_archive_file_streaming(
-            file_source_bucket, dest_bucket, file, storage
-        )
-
-        if success:
-            stats["files_copied"] += 1
-            stats["total_bytes"] += bytes_copied
-        else:
-            stats["files_failed"] += 1
-
+    # Manually iterate using next() to capture the generator's return value.
+    # A for loop would catch and discard the StopIteration exception,
+    # losing the stats dict returned by discover_archive_files().
     try:
-        file_gen.send(None)
+        while True:
+            file = next(file_gen)
+            stats["files_found"] += 1
+
+            # Use file-specific bucket if specified, otherwise default archive bucket
+            file_source_bucket = file.source_bucket or source_bucket
+            success, bytes_copied = copy_archive_file_streaming(
+                file_source_bucket, dest_bucket, file, storage
+            )
+
+            if success:
+                stats["files_copied"] += 1
+                stats["total_bytes"] += bytes_copied
+            else:
+                stats["files_failed"] += 1
     except StopIteration as e:
         if e.value:
             stats["discovery_stats"] = e.value
