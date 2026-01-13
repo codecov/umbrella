@@ -80,7 +80,10 @@ class SentryWebhookHandler(APIView):
         except (NotFound, PermissionDenied):
             # Expected HTTP exceptions for webhooks about repos/orgs we don't track
             # or don't have permission to access - don't send to Sentry
-            pass
+            log.info(
+                "sentry webhooks: Ignoring expected exception for untracked resource",
+                extra={"event": event, "payload": request.data},
+            )
         except Exception as e:
             sentry_sdk.capture_exception(e)
             log.exception(
