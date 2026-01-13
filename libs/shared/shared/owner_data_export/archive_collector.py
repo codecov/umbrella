@@ -178,16 +178,13 @@ def copy_archive_file_streaming(
             bytes_copied = tmp.tell()
             tmp.seek(0)
 
-            # Stream write from temp file to destination
-            # Pass compression_type=None to avoid setting Content-Encoding header,
-            # since the source file's compression format is unknown (could be gzip,
-            # zstd, or uncompressed).
+            # Stream write from temp file to destination.
+            # Note: read_file automatically decompresses content (zstd/gzip),
+            # so we let write_file re-compress with zstd (the default).
             storage.write_file(
                 dest_bucket,
                 file.dest_path,
                 tmp,
-                is_compressed=True,  # Don't re-compress, preserve original
-                compression_type=None,  # Don't set Content-Encoding header
             )
             return True, bytes_copied
     except FileNotInStorageError:
@@ -314,11 +311,14 @@ def collect_archives_for_repository(
     ReportSession = get_model_class("reports.ReportSession")
     CommitReport = get_model_class("reports.CommitReport")
 
-    # Get the repository
     try:
-        repo = Repository.objects.get(repoid=repository_id)
+        repo = Repository.objects.get(repoid=repository_id, author_id=owner_id)
     except Repository.DoesNotExist:
-        log.error("Repository %d not found", repository_id)
+        log.error(
+            "Repository %d not found or does not belong to owner %d",
+            repository_id,
+            owner_id,
+        )
         return stats
 
     repo_hash = ArchiveService.get_archive_hash(repo)
