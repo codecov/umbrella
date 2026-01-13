@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
     """
 
     dependencies = [
-        ("core", "0076_increment_version"),
+        ("core", "0078_increment_version"),
     ]
 
     operations = [
