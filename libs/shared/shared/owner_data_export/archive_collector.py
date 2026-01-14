@@ -3,13 +3,16 @@ Archive Collector for owner data export.
 
 Discovers and copies GCS archive files from the archive bucket to the export bucket.
 Uses streaming copy to handle large files without loading them entirely into memory.
+Uses parallel copying with a thread pool for improved performance.
 """
 
 import logging
 import tempfile
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from threading import Lock
 
 from django.utils import timezone
 
@@ -21,6 +24,7 @@ from shared.storage.base import BaseStorageService
 from shared.storage.exceptions import FileNotInStorageError
 
 from .config import (
+    ARCHIVE_COPY_WORKERS,
     EXPORT_DAYS_DEFAULT,
     get_archive_bucket,
     get_archive_destination_path,
@@ -209,6 +213,7 @@ def collect_archives_for_export(
     Discover and copy all archive files for an owner export.
 
     Uses streaming copy to handle large files efficiently.
+    Uses parallel copying with a thread pool for improved performance.
 
     Args:
         owner_id: The owner ID
@@ -216,14 +221,13 @@ def collect_archives_for_export(
         context: ExportContext
 
     Returns:
-        Dict with collection statistics
+        Dict with collection statistics including list of copied file paths
     """
     if context is None:
         context = ExportContext(owner_id=owner_id)
 
     source_bucket = get_archive_bucket()
     dest_bucket = get_export_bucket()
-    storage = shared.storage.get_appropriate_storage_service()
 
     stats = {
         "files_found": 0,
@@ -231,32 +235,55 @@ def collect_archives_for_export(
         "files_failed": 0,
         "total_bytes": 0,
         "discovery_stats": {},
+        "copied_files": [],
     }
+    stats_lock = Lock()
 
+    def copy_single_file(file: ArchiveFile) -> tuple[bool, int, str]:
+        """Copy a single file and return (success, bytes, dest_path)."""
+        # Each thread gets its own storage client to avoid connection issues
+        storage = shared.storage.get_appropriate_storage_service()
+        file_source_bucket = file.source_bucket or source_bucket
+        success, bytes_copied = copy_archive_file_streaming(
+            file_source_bucket, dest_bucket, file, storage
+        )
+        return success, bytes_copied, file.dest_path
+
+    files_to_copy: list[ArchiveFile] = []
     file_gen = discover_archive_files(context, owner_id, export_id)
 
-    # Manually iterate using next() to capture the generator's return value.
-    # A for loop would catch and discard the StopIteration exception,
-    # losing the stats dict returned by discover_archive_files().
     try:
         while True:
             file = next(file_gen)
-            stats["files_found"] += 1
-
-            # Use file-specific bucket if specified, otherwise default archive bucket
-            file_source_bucket = file.source_bucket or source_bucket
-            success, bytes_copied = copy_archive_file_streaming(
-                file_source_bucket, dest_bucket, file, storage
-            )
-
-            if success:
-                stats["files_copied"] += 1
-                stats["total_bytes"] += bytes_copied
-            else:
-                stats["files_failed"] += 1
+            files_to_copy.append(file)
     except StopIteration as e:
         if e.value:
             stats["discovery_stats"] = e.value
+
+    stats["files_found"] = len(files_to_copy)
+    log.info("Discovered %d archive files to copy", len(files_to_copy))
+
+    # Copy files in parallel using thread pool
+    with ThreadPoolExecutor(max_workers=ARCHIVE_COPY_WORKERS) as executor:
+        futures = {
+            executor.submit(copy_single_file, file): file for file in files_to_copy
+        }
+
+        for future in as_completed(futures):
+            try:
+                success, bytes_copied, dest_path = future.result()
+                with stats_lock:
+                    if success:
+                        stats["files_copied"] += 1
+                        stats["total_bytes"] += bytes_copied
+                        stats["copied_files"].append(dest_path)
+                    else:
+                        stats["files_failed"] += 1
+            except Exception as e:
+                file = futures[future]
+                log.error("Unexpected error copying %s: %s", file.source_path, str(e))
+                with stats_lock:
+                    stats["files_failed"] += 1
 
     log.info(
         "Archive collection complete: %d found, %d copied, %d failed, %d bytes",

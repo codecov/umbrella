@@ -287,9 +287,11 @@ def get_row_values(instance: Model, model_path: str, fields: list) -> list[str]:
         if f.name in nullified or f.attname in nullified:
             value = None
         elif f.name in defaults:
-            value = defaults[f.name]
+            default_value = defaults[f.name]
+            value = default_value() if callable(default_value) else default_value
         elif f.attname in defaults:
-            value = defaults[f.attname]
+            default_value = defaults[f.attname]
+            value = default_value() if callable(default_value) else default_value
         else:
             value = getattr(instance, f.attname)
         values.append(serialize_value(value))

@@ -42,6 +42,18 @@ process_owners_to_be_deleted_cron_task_name = (
     f"app.tasks.{TaskConfigGroup.delete_owner.value}.ProcessOwnersToBeDeletedCron"
 )
 
+# Export owner data tasks
+export_owner_task_name = f"app.tasks.{TaskConfigGroup.export_owner.value}.ExportOwner"
+export_owner_sql_task_name = (
+    f"app.tasks.{TaskConfigGroup.export_owner.value}.ExportOwnerSQL"
+)
+export_owner_archives_task_name = (
+    f"app.tasks.{TaskConfigGroup.export_owner.value}.ExportOwnerArchives"
+)
+export_owner_finalize_task_name = (
+    f"app.tasks.{TaskConfigGroup.export_owner.value}.ExportOwnerFinalize"
+)
+
 mark_owner_for_deletion_task_name = (
     f"app.tasks.{TaskConfigGroup.mark_owner_for_deletion.value}.MarkOwnerForDeletion"
 )
