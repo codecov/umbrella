@@ -29,7 +29,11 @@ from shared.celery_config import (
 from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Errors
 from shared.plan.constants import PlanName
 from shared.torngit.exceptions import TorngitClientError
-from tasks.base import BaseCodecovRequest, BaseCodecovTask
+from tasks.base import (
+    BaseCodecovRequest,
+    BaseCodecovTask,
+    use_per_task_db_sessions,
+)
 from tasks.base import celery_app as base_celery_app
 from tests.helpers import mock_all_plans_and_tiers
 
@@ -231,6 +235,156 @@ class TestBaseCodecovTask:
         assert fake_session.close.call_count == 0
         assert mocked_get_db_session.remove.call_count == 1
 
+    def test_use_per_task_db_sessions_disabled_globally(self, mock_configuration):
+        """Test that feature is off when enabled=False."""
+        mock_configuration.set_params(
+            {"setup": {"tasks": {"per_task_db_sessions": {"enabled": False}}}}
+        )
+        assert use_per_task_db_sessions() is False
+        assert use_per_task_db_sessions(task_name="any.task") is False
+        assert use_per_task_db_sessions(queue_name="any-queue") is False
+
+    def test_use_per_task_db_sessions_enabled_globally(self, mock_configuration):
+        """Test that feature is on for all when enabled=True and no filters."""
+        mock_configuration.set_params(
+            {"setup": {"tasks": {"per_task_db_sessions": {"enabled": True}}}}
+        )
+        assert use_per_task_db_sessions() is True
+        assert use_per_task_db_sessions(task_name="any.task") is True
+        assert use_per_task_db_sessions(queue_name="any-queue") is True
+
+    def test_use_per_task_db_sessions_queue_filter(self, mock_configuration):
+        """Test that feature only applies to specified queues."""
+        mock_configuration.set_params(
+            {
+                "setup": {
+                    "tasks": {
+                        "per_task_db_sessions": {
+                            "enabled": True,
+                            "queues": ["timeseries", "celery"],
+                        }
+                    }
+                }
+            }
+        )
+        # Matching queues should be enabled
+        assert use_per_task_db_sessions(queue_name="timeseries") is True
+        assert use_per_task_db_sessions(queue_name="celery") is True
+        # Non-matching queues should be disabled
+        assert use_per_task_db_sessions(queue_name="other-queue") is False
+        # No queue specified should be disabled (when filters are set)
+        assert use_per_task_db_sessions() is False
+
+    def test_use_per_task_db_sessions_task_filter(self, mock_configuration):
+        """Test that feature only applies to specified tasks."""
+        mock_configuration.set_params(
+            {
+                "setup": {
+                    "tasks": {
+                        "per_task_db_sessions": {
+                            "enabled": True,
+                            "tasks": ["app.tasks.upload.Upload"],
+                        }
+                    }
+                }
+            }
+        )
+        # Matching task should be enabled
+        assert use_per_task_db_sessions(task_name="app.tasks.upload.Upload") is True
+        # Non-matching task should be disabled
+        assert use_per_task_db_sessions(task_name="app.tasks.notify.Notify") is False
+
+    def test_use_per_task_db_sessions_combined_filters(self, mock_configuration):
+        """Test that either queue OR task match enables the feature."""
+        mock_configuration.set_params(
+            {
+                "setup": {
+                    "tasks": {
+                        "per_task_db_sessions": {
+                            "enabled": True,
+                            "queues": ["timeseries"],
+                            "tasks": ["app.tasks.upload.Upload"],
+                        }
+                    }
+                }
+            }
+        )
+        # Queue match should enable
+        assert use_per_task_db_sessions(queue_name="timeseries") is True
+        # Task match should enable
+        assert use_per_task_db_sessions(task_name="app.tasks.upload.Upload") is True
+        # Neither match should disable
+        assert (
+            use_per_task_db_sessions(
+                task_name="app.tasks.notify.Notify", queue_name="celery"
+            )
+            is False
+        )
+
+    def test_wrap_up_dbsession_per_task_sessions_removes_session_on_success(
+        self, mocker
+    ):
+        """Test that per-task sessions are removed after successful commit."""
+        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
+        task = BaseCodecovTask()
+        fake_session = mocker.MagicMock()
+
+        task.wrap_up_dbsession(
+            fake_session, per_task_sessions=True, session_id="abc123"
+        )
+
+        assert fake_session.commit.call_count == 1
+        assert fake_session.close.call_count == 1
+        # Session should be removed when per_task_sessions is enabled
+        assert mocked_get_db_session.remove.call_count == 1
+
+    def test_wrap_up_dbsession_per_task_sessions_false_does_not_remove(self, mocker):
+        """Test that sessions are NOT removed when per_task_sessions is False."""
+        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
+        task = BaseCodecovTask()
+        fake_session = mocker.MagicMock()
+
+        task.wrap_up_dbsession(fake_session, per_task_sessions=False)
+
+        assert fake_session.commit.call_count == 1
+        assert fake_session.close.call_count == 1
+        # Session should NOT be removed when per_task_sessions is False
+        assert mocked_get_db_session.remove.call_count == 0
+
+    def test_run_with_per_task_sessions_enabled(self, mocker, dbsession):
+        """Test that per-task sessions removes session at start and end."""
+        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
+        mocked_get_db_session.return_value = dbsession
+        # Enable per-task sessions globally
+        mocker.patch("tasks.base.use_per_task_db_sessions", return_value=True)
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
+
+        task = SampleTask()
+        result = task.run()
+
+        assert result == {"unusual": "return", "value": ["There"]}
+        # Session should be removed at the start (to clear any stale session)
+        # and at the end (to clean up for the next task)
+        # Total: 2 remove() calls
+        assert mocked_get_db_session.remove.call_count == 2
+
+    def test_run_with_per_task_sessions_disabled(self, mocker, dbsession):
+        """Test that sessions are NOT removed when per-task sessions is disabled."""
+        mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
+        mocked_get_db_session.return_value = dbsession
+        # Disable per-task sessions
+        mocker.patch("tasks.base.use_per_task_db_sessions", return_value=False)
+        # Mock request to skip queue metrics
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
+
+        task = SampleTask()
+        result = task.run()
+
+        assert result == {"unusual": "return", "value": ["There"]}
+        # Session should NOT be removed when per_task_sessions is False
+        assert mocked_get_db_session.remove.call_count == 0
+
     def test_run_success_commits_sqlalchemy(self, mocker, dbsession):
         mock_wrap_up = mocker.patch("tasks.base.BaseCodecovTask.wrap_up_dbsession")
         mock_dbsession_rollback = mocker.patch.object(dbsession, "rollback")
@@ -239,11 +393,18 @@ class TestBaseCodecovTask:
         )
         # Mock request to skip queue metrics
         mocker.patch("tasks.base.BaseCodecovTask.request", None)
+        # Ensure per-task sessions is disabled for this test
+        mocker.patch("tasks.base.use_per_task_db_sessions", return_value=False)
 
         task = SampleTask()
         task.run()
 
-        assert mock_wrap_up.call_args_list == [call(dbsession)]
+        # wrap_up_dbsession is called with (session, per_task_sessions=False, session_id=None)
+        assert mock_wrap_up.call_count == 1
+        call_args = mock_wrap_up.call_args
+        assert call_args[0][0] == dbsession
+        assert call_args[0][1] is False  # per_task_sessions
+        assert call_args[0][2] is None  # session_id
 
         assert mock_dbsession_rollback.call_count == 0
 
@@ -253,6 +414,8 @@ class TestBaseCodecovTask:
         mock_get_db_session = mocker.patch(
             "tasks.base.get_db_session", return_value=dbsession
         )
+        # Ensure per-task sessions is disabled for this test
+        mocker.patch("tasks.base.use_per_task_db_sessions", return_value=False)
 
         # IntegrityError and DataError are subclasses of SQLAlchemyError that
         # have their own `except` clause.
@@ -265,7 +428,10 @@ class TestBaseCodecovTask:
 
         assert mock_dbsession_rollback.call_args_list == [call()]
 
-        assert mock_wrap_up.call_args_list == [call(dbsession)]
+        # wrap_up_dbsession is called with (session, per_task_sessions=False, session_id=None)
+        assert mock_wrap_up.call_count == 1
+        call_args = mock_wrap_up.call_args
+        assert call_args[0][0] == dbsession
 
     def test_run_sqlalchemy_error_rollback(self, mocker, dbsession, celery_app):
         mock_dbsession_rollback = mocker.patch.object(dbsession, "rollback")
@@ -273,6 +439,8 @@ class TestBaseCodecovTask:
         mock_get_db_session = mocker.patch(
             "tasks.base.get_db_session", return_value=dbsession
         )
+        # Ensure per-task sessions is disabled for this test
+        mocker.patch("tasks.base.use_per_task_db_sessions", return_value=False)
         # Mock request to skip queue metrics
         mocker.patch("tasks.base.BaseCodecovTask.request", None)
 
@@ -286,7 +454,10 @@ class TestBaseCodecovTask:
 
         assert mock_dbsession_rollback.call_args_list == [call()]
 
-        assert mock_wrap_up.call_args_list == [call(dbsession)]
+        # wrap_up_dbsession is called with (session, per_task_sessions=False, session_id=None)
+        assert mock_wrap_up.call_count == 1
+        call_args = mock_wrap_up.call_args
+        assert call_args[0][0] == dbsession
 
     def test_get_repo_provider_service_working(self, mocker, mock_self_app):
         mock_repo_provider = mocker.MagicMock()
