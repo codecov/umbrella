@@ -204,9 +204,69 @@ class TestProcessRawUpload:
         }
 
     def test_none(self):
-        with pytest.raises(ReportEmptyError, match="No files found in report."):
+        with pytest.raises(
+            ReportEmptyError, match="No coverage files found in upload."
+        ):
             parsed_report = LegacyReportParser().parse_raw_report_from_bytes(b"")
             process.process_raw_upload(None, parsed_report, Session())
+
+    def test_empty_files_tracked_in_error(self):
+        """Test that empty files are tracked and included in the error."""
+        # Create a report with files that have no contents
+        parsed_report = LegacyParsedRawReport(
+            toc=None,
+            env=None,
+            report_fixes=None,
+            uploaded_files=[
+                ParsedUploadedReportFile(
+                    filename="empty1.xml",
+                    file_contents=b"",  # Empty contents
+                ),
+                ParsedUploadedReportFile(
+                    filename="empty2.xml",
+                    file_contents=b"",  # Empty contents
+                ),
+            ],
+        )
+        with pytest.raises(ReportEmptyError) as exc_info:
+            process.process_raw_upload(None, parsed_report, Session())
+
+        error = exc_info.value
+        assert error.total_files == 2
+        assert len(error.empty_files) == 2
+        assert "empty1.xml" in error.empty_files
+        assert "empty2.xml" in error.empty_files
+        # When all files are empty, we use a simpler message
+        assert "No coverage files found in upload." in str(error)
+
+    def test_some_empty_files_tracked_in_error(self):
+        """Test that when some (not all) files are empty, they are listed."""
+        # Create a report with one valid file and one empty file
+        # The valid file contains content that won't parse to a valid report
+        parsed_report = LegacyParsedRawReport(
+            toc=None,
+            env=None,
+            report_fixes=None,
+            uploaded_files=[
+                ParsedUploadedReportFile(
+                    filename="empty1.xml",
+                    file_contents=b"",  # Empty contents
+                ),
+                ParsedUploadedReportFile(
+                    filename="valid_but_unparseable.xml",
+                    file_contents=b"some unparseable content",
+                ),
+            ],
+        )
+        with pytest.raises(ReportEmptyError) as exc_info:
+            process.process_raw_upload(None, parsed_report, Session())
+
+        error = exc_info.value
+        assert error.total_files == 2
+        # Both files end up being "empty" (one was empty, one didn't produce coverage)
+        assert len(error.empty_files) == 2
+        assert "empty1.xml" in error.empty_files
+        assert "valid_but_unparseable.xml" in error.empty_files
 
 
 class TestProcessRawUploadFixed:
