@@ -44,18 +44,21 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
         original_timestamp = xml.get("timestamp")
         # Normalize millisecond timestamps to seconds
         timestamp = normalize_timestamp(original_timestamp)
-        try:
-            parsed_datetime = Date(timestamp)
-            is_valid_timestamp = True
-        except TimestringInvalid:
-            parsed_datetime = None
-            is_valid_timestamp = False
 
-        if timestamp and is_valid_timestamp and parsed_datetime < max_age:
-            # report expired over 12 hours ago
-            raise ReportExpiredException(
-                "Cobertura report expired " + original_timestamp
-            )
+        # Only attempt to parse if we have a timestamp
+        if timestamp:
+            try:
+                parsed_datetime = Date(timestamp)
+                is_valid_timestamp = True
+            except TimestringInvalid:
+                parsed_datetime = None
+                is_valid_timestamp = False
+
+            if is_valid_timestamp and parsed_datetime < max_age:
+                # report expired over 12 hours ago
+                raise ReportExpiredException(
+                    "Cobertura report expired " + original_timestamp
+                )
 
     handle_missing_conditions = report_builder_session.yaml_field(
         ("parsers", "cobertura", "handle_missing_conditions"),
