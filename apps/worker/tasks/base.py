@@ -1,5 +1,6 @@
 import logging
 import time
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -36,6 +37,7 @@ from shared.celery_config import (
     upload_breadcrumb_task_name,
 )
 from shared.celery_router import route_tasks_based_on_user_plan
+from shared.config import get_config
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
     Errors,
@@ -48,6 +50,19 @@ from shared.typings.torngit import AdditionalData
 from shared.utils.sentry import current_sentry_trace_id
 
 log = logging.getLogger("worker")
+
+
+def use_per_task_db_sessions() -> bool:
+    """Check if per-task database sessions are enabled.
+
+    When enabled, each task gets a fresh database session that is cleaned up
+    after the task completes. This prevents session contamination between tasks
+    when a task crashes or times out mid-transaction.
+
+    Controlled by setup.tasks.use_per_task_db_sessions config (default: False).
+    """
+    return get_config("setup", "tasks", "use_per_task_db_sessions", default=False)
+
 
 REQUEST_TIMEOUT_COUNTER = Counter(
     "worker_task_counts_timeouts",
@@ -414,6 +429,25 @@ class BaseCodecovTask(celery_app.Task):
     @sentry_sdk.trace
     def run(self, *args, **kwargs):
         with self.task_full_runtime.time():
+            # Per-task session management: ensure we start with a clean session
+            per_task_sessions = use_per_task_db_sessions()
+            session_id = None
+
+            if per_task_sessions:
+                # Generate a unique session ID for logging/debugging
+                session_id = str(uuid.uuid4())[:8]
+                # Remove any existing session to ensure we start fresh
+                # This prevents session contamination from previous tasks
+                get_db_session.remove()
+                log.info(
+                    "Per-task DB session: starting fresh session",
+                    extra={
+                        "session_id": session_id,
+                        "task_name": self.name,
+                        "task_id": getattr(getattr(self, "request", None), "id", None),
+                    },
+                )
+
             db_session = get_db_session()
 
             log_context = LogContext(
@@ -502,22 +536,39 @@ class BaseCodecovTask(celery_app.Task):
                 if TestResultsFlow.has_begun():
                     TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
             finally:
-                self.wrap_up_dbsession(db_session)
+                self.wrap_up_dbsession(db_session, per_task_sessions, session_id)
 
-    def wrap_up_dbsession(self, db_session):
+    def wrap_up_dbsession(
+        self, db_session, per_task_sessions: bool = False, session_id: str | None = None
+    ):
         """Commit and close database session, handling timeout edge cases.
 
         Handles the corner case where `SoftTimeLimitExceeded` is raised during
         `db_session.commit()`, which can leave the session in an unusable state.
-        Since we reuse sessions across tasks, this would break future tasks in
-        the same process, so we catch both timeout and invalid state exceptions.
+
+        When per_task_sessions is enabled, we always remove the session at the end
+        to ensure the next task gets a fresh session. This prevents session
+        contamination between tasks.
+
+        Args:
+            db_session: The SQLAlchemy session to clean up
+            per_task_sessions: If True, always remove session after cleanup
+            session_id: Optional session ID for logging correlation
         """
+        log_extra = {"session_id": session_id} if session_id else {}
+
         try:
             db_session.commit()
             db_session.close()
+            if per_task_sessions:
+                log.info(
+                    "Per-task DB session: committed and closed successfully",
+                    extra={**log_extra, "task_name": self.name},
+                )
         except SoftTimeLimitExceeded:
             log.warning(
-                "We had an issue where a timeout happened directly during the DB commit",
+                "Timeout during DB commit - attempting recovery",
+                extra=log_extra,
                 exc_info=True,
             )
             try:
@@ -525,16 +576,28 @@ class BaseCodecovTask(celery_app.Task):
                 db_session.close()
             except InvalidRequestError:
                 log.warning(
-                    "DB session cannot be operated on any longer. Closing it and removing it",
+                    "DB session in invalid state after timeout - removing session",
+                    extra=log_extra,
                     exc_info=True,
                 )
                 get_db_session.remove()
+                return  # Already removed, skip the per_task removal below
         except InvalidRequestError:
             log.warning(
-                "DB session cannot be operated on any longer. Closing it and removing it",
+                "DB session in invalid state - removing session",
+                extra=log_extra,
                 exc_info=True,
             )
             get_db_session.remove()
+            return  # Already removed, skip the per_task removal below
+
+        # Per-task session cleanup: always remove the session to prevent contamination
+        if per_task_sessions:
+            get_db_session.remove()
+            log.info(
+                "Per-task DB session: session removed for next task",
+                extra={**log_extra, "task_name": self.name},
+            )
 
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         res = super().on_retry(exc, task_id, args, kwargs, einfo)
