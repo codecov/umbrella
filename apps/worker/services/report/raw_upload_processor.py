@@ -61,7 +61,8 @@ def process_raw_upload(
         if current_filename in skip_files:
             continue
         if not report_file.contents:
-            empty_files.append(current_filename)
+            if current_filename:
+                empty_files.append(current_filename)
             continue
 
         path_fixer_to_use = path_fixer.get_relative_path_aware_pathfixer(
@@ -80,7 +81,8 @@ def process_raw_upload(
             raise
 
         if not report_from_file:
-            empty_files.append(current_filename)
+            if current_filename:
+                empty_files.append(current_filename)
             continue
         if report.is_empty():
             # if the initial report is empty, we can avoid a costly merge operation

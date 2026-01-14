@@ -673,8 +673,6 @@ class ReportService(BaseReportService):
             raw_report_info.error = result.error
             return result
         except ReportEmptyError as e:
-            # Empty reports are expected user behavior (e.g., no coverage data in upload)
-            # Log as warning only - no need to report to Sentry
             log.warning(
                 "Report is empty",
                 extra={
