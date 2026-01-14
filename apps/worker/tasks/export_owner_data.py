@@ -49,7 +49,7 @@ from shared.owner_data_export.config import (
     FINALIZE_TASK_TIME_LIMIT,
     SQL_TASK_SOFT_TIME_LIMIT,
     SQL_TASK_TIME_LIMIT,
-    get_export_bucket,
+    get_archive_bucket,
     get_export_path,
     get_manifest_path,
     get_postgres_sql_path,
@@ -138,7 +138,7 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
         log.info("Generating SQL export for owner %d, export %d", owner_id, export_id)
 
         storage = get_appropriate_storage_service()
-        bucket = get_export_bucket()
+        bucket = get_archive_bucket()
 
         stats = {
             "postgres": {},
@@ -147,7 +147,7 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
 
         try:
             # Generate PostgreSQL export using temp file for streaming
-            postgres_path = get_postgres_sql_path(owner_id, export_id)
+            postgres_path = get_postgres_sql_path(owner_id)
             postgres_stats, postgres_size = self._generate_and_upload_sql(
                 owner_id, postgres_path, bucket, storage, generate_full_export
             )
@@ -161,7 +161,7 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
             )
 
             # Generate TimescaleDB export using temp file for streaming
-            timescale_path = get_timescale_sql_path(owner_id, export_id)
+            timescale_path = get_timescale_sql_path(owner_id)
             timescale_stats, timescale_size = self._generate_and_upload_sql(
                 owner_id, timescale_path, bucket, storage, generate_timescale_export
             )
@@ -233,7 +233,7 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
 
 class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_name):
     """
-    Collect archive files from GCS and copy them to the export bucket.
+    Collect archive files and copy them to the exports/<owner_id>/ folder.
 
     Uses streaming copy and parallel workers for efficient handling
     of large numbers of files.
@@ -259,7 +259,6 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
             context = ExportContext(owner_id=owner_id)
             archive_stats = collect_archives_for_export(
                 owner_id=owner_id,
-                export_id=export_id,
                 context=context,
             )
 
@@ -322,8 +321,8 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         log.info("Finalizing export for owner %d, export %d", owner_id, export_id)
 
         storage = get_appropriate_storage_service()
-        bucket = get_export_bucket()
-        export_path = get_export_path(owner_id, export_id)
+        bucket = get_archive_bucket()
+        export_path = get_export_path(owner_id)
 
         try:
             export = OwnerExport.objects.get(id=export_id)
@@ -341,13 +340,13 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
             manifest = self._create_manifest(
                 owner_id, export_id, sql_stats, archive_stats
             )
-            manifest_path = get_manifest_path(owner_id, export_id)
+            manifest_path = get_manifest_path(owner_id)
             manifest_bytes = json.dumps(manifest, indent=2).encode("utf-8")
             storage.write_file(bucket, manifest_path, BytesIO(manifest_bytes))
             log.info("Manifest written to %s", manifest_path)
 
             # 2. Create tarball using temp file to avoid memory issues
-            tarball_path = get_tarball_path(owner_id, export_id)
+            tarball_path = get_tarball_path(owner_id)
             tarball_size = self._create_and_upload_tarball(
                 storage,
                 bucket,
@@ -457,6 +456,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
             "version": "1.0",
             "export_id": export_id,
             "owner": owner_info,
+            "export_path": f"exports/{owner_id}/",
             "export_date": timezone.now().isoformat(),
             "since_date": context.since_date.isoformat(),
             "days_exported": EXPORT_DAYS_DEFAULT,

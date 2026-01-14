@@ -1,7 +1,7 @@
 """
 Archive Collector for owner data export.
 
-Discovers and copies GCS archive files from the archive bucket to the export bucket.
+Copies GCS archive files within the same bucket to the exports/<owner_name>/ folder.
 Uses streaming copy to handle large files without loading them entirely into memory.
 Uses parallel copying with a thread pool for improved performance.
 """
@@ -28,7 +28,6 @@ from .config import (
     EXPORT_DAYS_DEFAULT,
     get_archive_bucket,
     get_archive_destination_path,
-    get_export_bucket,
 )
 from .models_registry import get_model_class
 from .sql_generator import ExportContext
@@ -51,7 +50,6 @@ class ArchiveFile:
 def discover_archive_files(
     context: ExportContext,
     owner_id: int,
-    export_id: int,
 ) -> Generator[ArchiveFile, None, dict]:
     """
     Discover all archive files that need to be exported.
@@ -77,9 +75,7 @@ def discover_archive_files(
             stats["commits_with_report"] += 1
             yield ArchiveFile(
                 source_path=storage_path,
-                dest_path=get_archive_destination_path(
-                    owner_id, export_id, storage_path
-                ),
+                dest_path=get_archive_destination_path(owner_id, storage_path),
                 source_model=f"core.Commit:{commit_id}",
             )
 
@@ -95,9 +91,7 @@ def discover_archive_files(
             stats["uploads_with_storage"] += 1
             yield ArchiveFile(
                 source_path=storage_path,
-                dest_path=get_archive_destination_path(
-                    owner_id, export_id, storage_path
-                ),
+                dest_path=get_archive_destination_path(owner_id, storage_path),
                 source_model=f"reports.ReportSession:{session_id}",
             )
 
@@ -120,9 +114,7 @@ def discover_archive_files(
             stats["chunks_files"] += 1
             yield ArchiveFile(
                 source_path=chunks_path,
-                dest_path=get_archive_destination_path(
-                    owner_id, export_id, chunks_path
-                ),
+                dest_path=get_archive_destination_path(owner_id, chunks_path),
                 source_model=f"chunks:{commitid}",
             )
 
@@ -146,9 +138,7 @@ def discover_archive_files(
             stats["bundle_analysis_reports"] += 1
             yield ArchiveFile(
                 source_path=bundle_path,
-                dest_path=get_archive_destination_path(
-                    owner_id, export_id, bundle_path
-                ),
+                dest_path=get_archive_destination_path(owner_id, bundle_path),
                 source_model=f"reports.CommitReport:{bundle_report.id}",
                 source_bucket=bundle_bucket,
             )
@@ -157,19 +147,25 @@ def discover_archive_files(
 
 
 def copy_archive_file_streaming(
-    source_bucket: str,
-    dest_bucket: str,
+    bucket: str,
     file: ArchiveFile,
     storage: BaseStorageService,
 ) -> tuple[bool, int]:
     """
-    Copy a single file from source to destination bucket using streaming.
+    Copy a file within the same bucket using streaming.
 
     Uses a temp file to avoid loading the entire file into memory,
     which is critical for large files (chunks.txt, bundle_report.sqlite).
 
+    Args:
+        bucket: The destination bucket
+        file: The ArchiveFile to copy
+        storage: The storage service to use
+
     Returns (success, bytes_copied).
     """
+    source_bucket = file.source_bucket or bucket
+
     try:
         with tempfile.SpooledTemporaryFile(
             max_size=STREAMING_THRESHOLD_BYTES,
@@ -186,7 +182,7 @@ def copy_archive_file_streaming(
             # Note: read_file automatically decompresses content (zstd/gzip),
             # so we let write_file re-compress with zstd (the default).
             storage.write_file(
-                dest_bucket,
+                bucket,
                 file.dest_path,
                 tmp,
             )
@@ -206,18 +202,17 @@ def copy_archive_file_streaming(
 
 def collect_archives_for_export(
     owner_id: int,
-    export_id: int,
     context: ExportContext | None = None,
 ) -> dict:
     """
     Discover and copy all archive files for an owner export.
 
+    Files are copied within the same bucket to exports/<owner_id>/archives/.
     Uses streaming copy to handle large files efficiently.
     Uses parallel copying with a thread pool for improved performance.
 
     Args:
         owner_id: The owner ID
-        export_id: The export ID
         context: ExportContext
 
     Returns:
@@ -226,8 +221,7 @@ def collect_archives_for_export(
     if context is None:
         context = ExportContext(owner_id=owner_id)
 
-    source_bucket = get_archive_bucket()
-    dest_bucket = get_export_bucket()
+    bucket = get_archive_bucket()
 
     stats = {
         "files_found": 0,
@@ -243,14 +237,11 @@ def collect_archives_for_export(
         """Copy a single file and return (success, bytes, dest_path)."""
         # Each thread gets its own storage client to avoid connection issues
         storage = shared.storage.get_appropriate_storage_service()
-        file_source_bucket = file.source_bucket or source_bucket
-        success, bytes_copied = copy_archive_file_streaming(
-            file_source_bucket, dest_bucket, file, storage
-        )
+        success, bytes_copied = copy_archive_file_streaming(bucket, file, storage)
         return success, bytes_copied, file.dest_path
 
     files_to_copy: list[ArchiveFile] = []
-    file_gen = discover_archive_files(context, owner_id, export_id)
+    file_gen = discover_archive_files(context, owner_id)
 
     try:
         while True:
@@ -261,7 +252,9 @@ def collect_archives_for_export(
             stats["discovery_stats"] = e.value
 
     stats["files_found"] = len(files_to_copy)
-    log.info("Discovered %d archive files to copy", len(files_to_copy))
+    log.info(
+        "Discovered %d archive files to copy for owner %d", len(files_to_copy), owner_id
+    )
 
     # Copy files in parallel using thread pool
     with ThreadPoolExecutor(max_workers=ARCHIVE_COPY_WORKERS) as executor:
@@ -286,7 +279,8 @@ def collect_archives_for_export(
                     stats["files_failed"] += 1
 
     log.info(
-        "Archive collection complete: %d found, %d copied, %d failed, %d bytes",
+        "Archive collection complete for owner %d: %d found, %d copied, %d failed, %d bytes",
+        owner_id,
         stats["files_found"],
         stats["files_copied"],
         stats["files_failed"],
@@ -298,7 +292,6 @@ def collect_archives_for_export(
 
 def collect_archives_for_repository(
     owner_id: int,
-    export_id: int,
     repository_id: int,
     since_date: datetime | None = None,
 ) -> dict:
@@ -310,7 +303,6 @@ def collect_archives_for_repository(
 
     Args:
         owner_id: The owner ID
-        export_id: The export ID
         repository_id: The specific repository to export
         since_date: Only export commits updated after this date (default: 60 days ago)
 
@@ -320,8 +312,7 @@ def collect_archives_for_repository(
     if since_date is None:
         since_date = timezone.now() - timedelta(days=EXPORT_DAYS_DEFAULT)
 
-    source_bucket = get_archive_bucket()
-    dest_bucket = get_export_bucket()
+    bucket = get_archive_bucket()
     bundle_bucket = get_bundle_analysis_bucket()
     storage = shared.storage.get_appropriate_storage_service()
 
@@ -370,15 +361,11 @@ def collect_archives_for_repository(
         if storage_path:
             file = ArchiveFile(
                 source_path=storage_path,
-                dest_path=get_archive_destination_path(
-                    owner_id, export_id, storage_path
-                ),
+                dest_path=get_archive_destination_path(owner_id, storage_path),
                 source_model=f"core.Commit:{commit_id}",
             )
             stats["files_found"] += 1
-            success, size = copy_archive_file_streaming(
-                source_bucket, dest_bucket, file, storage
-            )
+            success, size = copy_archive_file_streaming(bucket, file, storage)
             if success:
                 stats["files_copied"] += 1
                 stats["total_bytes"] += size
@@ -390,13 +377,11 @@ def collect_archives_for_repository(
         chunks_path = f"v4/repos/{repo_hash}/commits/{commitid}/chunks.txt"
         file = ArchiveFile(
             source_path=chunks_path,
-            dest_path=get_archive_destination_path(owner_id, export_id, chunks_path),
+            dest_path=get_archive_destination_path(owner_id, chunks_path),
             source_model=f"chunks:{commitid}",
         )
         stats["files_found"] += 1
-        success, size = copy_archive_file_streaming(
-            source_bucket, dest_bucket, file, storage
-        )
+        success, size = copy_archive_file_streaming(bucket, file, storage)
         if success:
             stats["files_copied"] += 1
             stats["total_bytes"] += size
@@ -419,22 +404,18 @@ def collect_archives_for_repository(
         if storage_path:
             file = ArchiveFile(
                 source_path=storage_path,
-                dest_path=get_archive_destination_path(
-                    owner_id, export_id, storage_path
-                ),
+                dest_path=get_archive_destination_path(owner_id, storage_path),
                 source_model=f"reports.ReportSession:{session_id}",
             )
             stats["files_found"] += 1
-            success, size = copy_archive_file_streaming(
-                source_bucket, dest_bucket, file, storage
-            )
+            success, size = copy_archive_file_streaming(bucket, file, storage)
             if success:
                 stats["files_copied"] += 1
                 stats["total_bytes"] += size
             else:
                 stats["files_failed"] += 1
 
-    # 4. Bundle Analysis reports
+    # 4. Bundle Analysis reports (from separate bucket)
     for bundle_report in (
         CommitReport.objects.filter(
             commit__in=commits_qs,
@@ -449,14 +430,12 @@ def collect_archives_for_repository(
         )
         file = ArchiveFile(
             source_path=bundle_path,
-            dest_path=get_archive_destination_path(owner_id, export_id, bundle_path),
+            dest_path=get_archive_destination_path(owner_id, bundle_path),
             source_model=f"reports.CommitReport:{bundle_report.id}",
             source_bucket=bundle_bucket,
         )
         stats["files_found"] += 1
-        success, size = copy_archive_file_streaming(
-            bundle_bucket, dest_bucket, file, storage
-        )
+        success, size = copy_archive_file_streaming(bucket, file, storage)
         if success:
             stats["files_copied"] += 1
             stats["total_bytes"] += size
