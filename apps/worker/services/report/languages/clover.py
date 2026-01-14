@@ -3,7 +3,7 @@ from lxml.etree import Element
 from timestring import Date
 
 from helpers.exceptions import ReportExpiredException
-from services.report.languages.base import BaseLanguageProcessor
+from services.report.languages.base import BaseLanguageProcessor, normalize_timestamp
 from services.report.report_builder import CoverageType, ReportBuilderSession
 
 
@@ -38,12 +38,18 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
     ):
         try:
             timestamp = next(xml.iter("coverage")).get("generated")
-            if "-" in timestamp:
+            original_timestamp = timestamp  # Preserve for error message
+            # Handle date formats like "01-12-2026" (DD-MM-YYYY) -> "12-01-2026" (MM-DD-YYYY)
+            if timestamp and "-" in timestamp:
                 t = timestamp.split("-")
                 timestamp = t[1] + "-" + t[0] + "-" + t[2]
+            # Normalize millisecond timestamps to seconds
+            timestamp = normalize_timestamp(timestamp)
             if timestamp and Date(timestamp) < max_age:
                 # report expired over 12 hours ago
-                raise ReportExpiredException(f"Clover report expired {timestamp}")
+                raise ReportExpiredException(
+                    f"Clover report expired {original_timestamp}"
+                )
         except StopIteration:
             pass
 

@@ -3,6 +3,36 @@ from typing import Any
 from services.report.report_builder import ReportBuilderSession
 
 
+def normalize_timestamp(timestamp: str | None) -> str | None:
+    """
+    Normalize a timestamp string for use with timestring.Date().
+
+    Handles millisecond Unix timestamps (13+ digits) by converting them to
+    seconds, since timestring.Date() expects seconds-based timestamps.
+
+    Args:
+        timestamp: A timestamp string, which may be:
+            - A millisecond Unix timestamp (e.g., "1768258631332")
+            - A seconds Unix timestamp (e.g., "1768258631")
+            - A date string (e.g., "2026-01-12")
+
+    Returns:
+        The normalized timestamp string, or None if input is None/empty.
+    """
+    if not timestamp:
+        return None
+
+    # Check if it's a pure numeric timestamp (Unix epoch)
+    if timestamp.isdigit():
+        # 13+ digits indicates milliseconds (e.g., 1768258631332)
+        # 10 digits indicates seconds (e.g., 1768258631)
+        if len(timestamp) >= 13:
+            # Convert milliseconds to seconds
+            return str(int(timestamp) // 1000)
+
+    return timestamp
+
+
 class BaseLanguageProcessor:
     def __init__(self, *args, **kwargs) -> None:
         pass

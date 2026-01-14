@@ -139,9 +139,34 @@ class TestCloverProcessor:
             .replace(minute=0, second=0)
             .strftime("%s"),
             "01-01-2014",
+            # Millisecond timestamp from 48 hours ago
+            str(
+                int(
+                    (datetime.datetime.now() - datetime.timedelta(seconds=172800))
+                    .replace(minute=0, second=0)
+                    .timestamp()
+                    * 1000
+                )
+            ),
         ],
     )
     def test_expired(self, date):
         report_builder_session = create_report_builder_session()
         with pytest.raises(ReportExpiredException, match="Clover report expired"):
             clover.from_xml(etree.fromstring(xml % date), report_builder_session)
+
+    def test_millisecond_timestamp_not_expired(self):
+        """Test that recent millisecond timestamps are correctly parsed and not flagged as expired."""
+        # Generate a millisecond timestamp from 1 hour ago (should NOT be expired)
+        recent_ms_timestamp = str(
+            int(
+                (datetime.datetime.now() - datetime.timedelta(hours=1)).timestamp()
+                * 1000
+            )
+        )
+        report_builder_session = create_report_builder_session()
+
+        # This should NOT raise ReportExpiredException
+        clover.from_xml(
+            etree.fromstring(xml % recent_ms_timestamp), report_builder_session
+        )

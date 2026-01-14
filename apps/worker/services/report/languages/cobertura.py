@@ -7,7 +7,7 @@ from lxml.etree import Element
 from timestring import Date, TimestringInvalid
 
 from helpers.exceptions import ReportExpiredException
-from services.report.languages.base import BaseLanguageProcessor
+from services.report.languages.base import BaseLanguageProcessor, normalize_timestamp
 from services.report.report_builder import CoverageType, ReportBuilderSession
 
 log = logging.getLogger(__name__)
@@ -41,8 +41,10 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
     if max_age := report_builder_session.yaml_field(
         ("codecov", "max_report_age"), "12h ago"
     ):
+        original_timestamp = xml.get("timestamp")
+        # Normalize millisecond timestamps to seconds
+        timestamp = normalize_timestamp(original_timestamp)
         try:
-            timestamp = xml.get("timestamp")
             parsed_datetime = Date(timestamp)
             is_valid_timestamp = True
         except TimestringInvalid:
@@ -51,7 +53,9 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
 
         if timestamp and is_valid_timestamp and parsed_datetime < max_age:
             # report expired over 12 hours ago
-            raise ReportExpiredException("Cobertura report expired " + timestamp)
+            raise ReportExpiredException(
+                "Cobertura report expired " + original_timestamp
+            )
 
     handle_missing_conditions = report_builder_session.yaml_field(
         ("parsers", "cobertura", "handle_missing_conditions"),
