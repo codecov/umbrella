@@ -29,7 +29,11 @@ from shared.celery_config import (
 from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Errors
 from shared.plan.constants import PlanName
 from shared.torngit.exceptions import TorngitClientError
-from tasks.base import BaseCodecovRequest, BaseCodecovTask
+from tasks.base import (
+    BaseCodecovRequest,
+    BaseCodecovTask,
+    use_per_task_db_sessions,
+)
 from tasks.base import celery_app as base_celery_app
 from tests.helpers import mock_all_plans_and_tiers
 
@@ -231,6 +235,92 @@ class TestBaseCodecovTask:
         assert fake_session.close.call_count == 0
         assert mocked_get_db_session.remove.call_count == 1
 
+    def test_use_per_task_db_sessions_disabled_globally(self, mock_configuration):
+        """Test that feature is off when enabled=False."""
+        mock_configuration.set_params(
+            {"setup": {"tasks": {"per_task_db_sessions": {"enabled": False}}}}
+        )
+        assert use_per_task_db_sessions() is False
+        assert use_per_task_db_sessions(task_name="any.task") is False
+        assert use_per_task_db_sessions(queue_name="any-queue") is False
+
+    def test_use_per_task_db_sessions_enabled_globally(self, mock_configuration):
+        """Test that feature is on for all when enabled=True and no filters."""
+        mock_configuration.set_params(
+            {"setup": {"tasks": {"per_task_db_sessions": {"enabled": True}}}}
+        )
+        assert use_per_task_db_sessions() is True
+        assert use_per_task_db_sessions(task_name="any.task") is True
+        assert use_per_task_db_sessions(queue_name="any-queue") is True
+
+    def test_use_per_task_db_sessions_queue_filter(self, mock_configuration):
+        """Test that feature only applies to specified queues."""
+        mock_configuration.set_params(
+            {
+                "setup": {
+                    "tasks": {
+                        "per_task_db_sessions": {
+                            "enabled": True,
+                            "queues": ["timeseries", "celery"],
+                        }
+                    }
+                }
+            }
+        )
+        # Matching queues should be enabled
+        assert use_per_task_db_sessions(queue_name="timeseries") is True
+        assert use_per_task_db_sessions(queue_name="celery") is True
+        # Non-matching queues should be disabled
+        assert use_per_task_db_sessions(queue_name="other-queue") is False
+        # No queue specified should be disabled (when filters are set)
+        assert use_per_task_db_sessions() is False
+
+    def test_use_per_task_db_sessions_task_filter(self, mock_configuration):
+        """Test that feature only applies to specified tasks."""
+        mock_configuration.set_params(
+            {
+                "setup": {
+                    "tasks": {
+                        "per_task_db_sessions": {
+                            "enabled": True,
+                            "tasks": ["app.tasks.upload.Upload"],
+                        }
+                    }
+                }
+            }
+        )
+        # Matching task should be enabled
+        assert use_per_task_db_sessions(task_name="app.tasks.upload.Upload") is True
+        # Non-matching task should be disabled
+        assert use_per_task_db_sessions(task_name="app.tasks.notify.Notify") is False
+
+    def test_use_per_task_db_sessions_combined_filters(self, mock_configuration):
+        """Test that either queue OR task match enables the feature."""
+        mock_configuration.set_params(
+            {
+                "setup": {
+                    "tasks": {
+                        "per_task_db_sessions": {
+                            "enabled": True,
+                            "queues": ["timeseries"],
+                            "tasks": ["app.tasks.upload.Upload"],
+                        }
+                    }
+                }
+            }
+        )
+        # Queue match should enable
+        assert use_per_task_db_sessions(queue_name="timeseries") is True
+        # Task match should enable
+        assert use_per_task_db_sessions(task_name="app.tasks.upload.Upload") is True
+        # Neither match should disable
+        assert (
+            use_per_task_db_sessions(
+                task_name="app.tasks.notify.Notify", queue_name="celery"
+            )
+            is False
+        )
+
     def test_wrap_up_dbsession_per_task_sessions_removes_session_on_success(
         self, mocker
     ):
@@ -265,7 +355,7 @@ class TestBaseCodecovTask:
         """Test that per-task sessions removes session at start and end."""
         mocked_get_db_session = mocker.patch("tasks.base.get_db_session")
         mocked_get_db_session.return_value = dbsession
-        # Enable per-task sessions
+        # Enable per-task sessions globally
         mocker.patch("tasks.base.use_per_task_db_sessions", return_value=True)
         # Mock request to skip queue metrics
         mocker.patch("tasks.base.BaseCodecovTask.request", None)

@@ -52,16 +52,67 @@ from shared.utils.sentry import current_sentry_trace_id
 log = logging.getLogger("worker")
 
 
-def use_per_task_db_sessions() -> bool:
-    """Check if per-task database sessions are enabled.
+def use_per_task_db_sessions(
+    task_name: str | None = None, queue_name: str | None = None
+) -> bool:
+    """Check if per-task database sessions are enabled for this task/queue.
 
     When enabled, each task gets a fresh database session that is cleaned up
     after the task completes. This prevents session contamination between tasks
     when a task crashes or times out mid-transaction.
 
-    Controlled by setup.tasks.use_per_task_db_sessions config (default: False).
+    Supports gradual rollout by enabling for specific queues or tasks first.
+
+    Config options:
+        setup.tasks.per_task_db_sessions.enabled: bool (default: False)
+            Master switch. If False, feature is disabled for all tasks.
+
+        setup.tasks.per_task_db_sessions.queues: list[str] (default: [])
+            If non-empty, only enable for tasks running on these queues.
+            Example: ["timeseries", "celery"]
+
+        setup.tasks.per_task_db_sessions.tasks: list[str] (default: [])
+            If non-empty, only enable for these specific task names.
+            Example: ["app.tasks.upload.Upload", "app.tasks.notify.Notify"]
+
+    If both queues and tasks lists are empty, the feature applies to all tasks
+    (when enabled=True).
+
+    Args:
+        task_name: The name of the task (e.g., "app.tasks.upload.Upload")
+        queue_name: The queue the task is running on (e.g., "celery", "timeseries")
+
+    Returns:
+        True if per-task sessions should be used for this task/queue.
     """
-    return get_config("setup", "tasks", "use_per_task_db_sessions", default=False)
+    # Master switch - if not enabled, feature is off for everyone
+    if not get_config(
+        "setup", "tasks", "per_task_db_sessions", "enabled", default=False
+    ):
+        return False
+
+    # Check if specific queues are configured
+    enabled_queues = get_config(
+        "setup", "tasks", "per_task_db_sessions", "queues", default=[]
+    )
+    # Check if specific tasks are configured
+    enabled_tasks = get_config(
+        "setup", "tasks", "per_task_db_sessions", "tasks", default=[]
+    )
+
+    # If no specific queues or tasks configured, enable for all
+    if not enabled_queues and not enabled_tasks:
+        return True
+
+    # Check if this queue is in the enabled list
+    if enabled_queues and queue_name and queue_name in enabled_queues:
+        return True
+
+    # Check if this task is in the enabled list
+    if enabled_tasks and task_name and task_name in enabled_tasks:
+        return True
+
+    return False
 
 
 REQUEST_TIMEOUT_COUNTER = Counter(
@@ -430,7 +481,16 @@ class BaseCodecovTask(celery_app.Task):
     def run(self, *args, **kwargs):
         with self.task_full_runtime.time():
             # Per-task session management: ensure we start with a clean session
-            per_task_sessions = use_per_task_db_sessions()
+            # Get queue name from request delivery info for granular rollout
+            queue_name = None
+            if hasattr(self, "request") and self.request is not None:
+                delivery_info = getattr(self.request, "delivery_info", None)
+                if isinstance(delivery_info, dict):
+                    queue_name = delivery_info.get("routing_key")
+
+            per_task_sessions = use_per_task_db_sessions(
+                task_name=self.name, queue_name=queue_name
+            )
             session_id = None
 
             if per_task_sessions:
@@ -445,6 +505,7 @@ class BaseCodecovTask(celery_app.Task):
                         "session_id": session_id,
                         "task_name": self.name,
                         "task_id": getattr(getattr(self, "request", None), "id", None),
+                        "queue_name": queue_name,
                     },
                 )
 
