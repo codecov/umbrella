@@ -397,12 +397,17 @@ def generate_full_export(
     owner_id: int,
     output_file: TextIO,
     models: list[str] | None = None,
+    since_date: datetime | None = None,
 ) -> dict:
     """Generate complete SQL export for an owner."""
     if models is None:
         models = EXPORTABLE_MODELS
 
-    context = ExportContext(owner_id=owner_id)
+    context = (
+        ExportContext(owner_id=owner_id, since_date=since_date)
+        if since_date
+        else ExportContext(owner_id=owner_id)
+    )
     stats = {
         "owner_id": owner_id,
         "since_date": context.since_date.isoformat(),
@@ -446,6 +451,12 @@ def generate_full_export(
     return stats
 
 
-def generate_timescale_export(owner_id: int, output_file: TextIO) -> dict:
+def generate_timescale_export(
+    owner_id: int,
+    output_file: TextIO,
+    since_date: datetime | None = None,
+) -> dict:
     """Generate SQL export for TimescaleDB models."""
-    return generate_full_export(owner_id, output_file, TIMESCALE_MODELS)
+    return generate_full_export(
+        owner_id, output_file, TIMESCALE_MODELS, since_date=since_date
+    )

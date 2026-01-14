@@ -24,7 +24,7 @@ import logging
 import os
 import tarfile
 import tempfile
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import BytesIO
 
 from celery import chord
@@ -94,11 +94,21 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
         export.status = OwnerExport.Status.IN_PROGRESS
         export.save(update_fields=["status", "updated_at"])
 
+        since_date_iso = export.since_date.isoformat() if export.since_date else None
+
         # Run SQL and Archives in parallel, then finalize
         workflow = chord(
             [
-                export_owner_sql_task.s(owner_id=owner_id, export_id=export_id),
-                export_owner_archives_task.s(owner_id=owner_id, export_id=export_id),
+                export_owner_sql_task.s(
+                    owner_id=owner_id,
+                    export_id=export_id,
+                    since_date_iso=since_date_iso,
+                ),
+                export_owner_archives_task.s(
+                    owner_id=owner_id,
+                    export_id=export_id,
+                    since_date_iso=since_date_iso,
+                ),
             ],
             export_owner_finalize_task.s(owner_id=owner_id, export_id=export_id),
         )
@@ -134,11 +144,16 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
         *,
         owner_id: int,
         export_id: int,
+        since_date_iso: str | None = None,
     ) -> dict:
         log.info("Generating SQL export for owner %d, export %d", owner_id, export_id)
 
         storage = get_appropriate_storage_service()
         bucket = get_archive_bucket()
+
+        since_date = None
+        if since_date_iso:
+            since_date = datetime.fromisoformat(since_date_iso)
 
         stats = {
             "postgres": {},
@@ -149,7 +164,12 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
             # Generate PostgreSQL export using temp file for streaming
             postgres_path = get_postgres_sql_path(owner_id)
             postgres_stats, postgres_size = self._generate_and_upload_sql(
-                owner_id, postgres_path, bucket, storage, generate_full_export
+                owner_id,
+                postgres_path,
+                bucket,
+                storage,
+                generate_full_export,
+                since_date,
             )
             stats["postgres"] = postgres_stats
             stats["postgres"]["bytes"] = postgres_size
@@ -163,7 +183,12 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
             # Generate TimescaleDB export using temp file for streaming
             timescale_path = get_timescale_sql_path(owner_id)
             timescale_stats, timescale_size = self._generate_and_upload_sql(
-                owner_id, timescale_path, bucket, storage, generate_timescale_export
+                owner_id,
+                timescale_path,
+                bucket,
+                storage,
+                generate_timescale_export,
+                since_date,
             )
             stats["timescale"] = timescale_stats
             stats["timescale"]["bytes"] = timescale_size
@@ -197,6 +222,7 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
         bucket: str,
         storage,
         generator_func,
+        since_date=None,
     ) -> tuple[dict, int]:
         """
         Generate SQL to a temp file and stream upload to GCS.
@@ -211,7 +237,7 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
             encoding="utf-8",
         ) as tmp:
             # Generate SQL directly to temp file
-            stats = generator_func(owner_id, tmp)
+            stats = generator_func(owner_id, tmp, since_date=since_date)
             tmp.flush()
 
             file_size = os.path.getsize(tmp.name)
@@ -250,13 +276,22 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
         *,
         owner_id: int,
         export_id: int,
+        since_date_iso: str | None = None,
     ) -> dict:
         log.info(
             "Collecting archive files for owner %d, export %d", owner_id, export_id
         )
 
+        since_date = None
+        if since_date_iso:
+            since_date = datetime.fromisoformat(since_date_iso)
+
         try:
-            context = ExportContext(owner_id=owner_id)
+            context = (
+                ExportContext(owner_id=owner_id, since_date=since_date)
+                if since_date
+                else ExportContext(owner_id=owner_id)
+            )
             archive_stats = collect_archives_for_export(
                 owner_id=owner_id,
                 context=context,
@@ -337,9 +372,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
 
         try:
             # 1. Write manifest
-            manifest = self._create_manifest(
-                owner_id, export_id, sql_stats, archive_stats
-            )
+            manifest = self._create_manifest(owner_id, export, sql_stats, archive_stats)
             manifest_path = get_manifest_path(owner_id)
             manifest_bytes = json.dumps(manifest, indent=2).encode("utf-8")
             storage.write_file(bucket, manifest_path, BytesIO(manifest_bytes))
@@ -434,7 +467,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
     def _create_manifest(
         self,
         owner_id: int,
-        export_id: int,
+        export: OwnerExport,
         sql_stats: dict,
         archive_stats: dict,
     ) -> dict:
@@ -450,15 +483,15 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         except Owner.DoesNotExist:
             owner_info = {"ownerid": owner_id}
 
-        context = ExportContext(owner_id=owner_id)
+        since_date = export.since_date
 
         return {
             "version": "1.0",
-            "export_id": export_id,
+            "export_id": export.id,
             "owner": owner_info,
             "export_path": f"exports/{owner_id}/",
             "export_date": timezone.now().isoformat(),
-            "since_date": context.since_date.isoformat(),
+            "since_date": since_date.isoformat() if since_date else None,
             "days_exported": EXPORT_DAYS_DEFAULT,
             "stats": {
                 "sql": sql_stats,
