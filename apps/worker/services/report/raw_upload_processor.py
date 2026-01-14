@@ -53,9 +53,15 @@ def process_raw_upload(
     # ---------------
     # Process reports
     # ---------------
-    for report_file in raw_reports.get_uploaded_files():
+    empty_files: list[str] = []
+    uploaded_files = raw_reports.get_uploaded_files()
+
+    for report_file in uploaded_files:
         current_filename = report_file.filename
-        if current_filename in skip_files or not report_file.contents:
+        if current_filename in skip_files:
+            continue
+        if not report_file.contents:
+            empty_files.append(current_filename)
             continue
 
         path_fixer_to_use = path_fixer.get_relative_path_aware_pathfixer(
@@ -74,6 +80,7 @@ def process_raw_upload(
             raise
 
         if not report_from_file:
+            empty_files.append(current_filename)
             continue
         if report.is_empty():
             # if the initial report is empty, we can avoid a costly merge operation
@@ -87,7 +94,11 @@ def process_raw_upload(
             report.merge(report_from_file)
 
     if not report:
-        raise ReportEmptyError(archive_path=session.archive)
+        raise ReportEmptyError(
+            archive_path=session.archive,
+            empty_files=empty_files,
+            total_files=len(uploaded_files),
+        )
 
     _sessionid, session = report.add_session(session, use_id_from_session=True)
     session.totals = report.totals

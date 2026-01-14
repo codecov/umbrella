@@ -13,12 +13,28 @@ class ReportExpiredException(Exception):
 
 
 class ReportEmptyError(Exception):
-    def __init__(self, archive_path=None, reportid=None) -> None:
-        message = "No files found in report."
+    def __init__(
+        self,
+        archive_path=None,
+        reportid=None,
+        empty_files: list[str] | None = None,
+        total_files: int | None = None,
+    ) -> None:
+        # Build a more informative message
+        if total_files == 0:
+            message = "No coverage files found in upload."
+        elif empty_files:
+            message = f"No coverage data extracted. {len(empty_files)} of {total_files} file(s) were empty: {', '.join(empty_files[:5])}"
+            if len(empty_files) > 5:
+                message += f" (and {len(empty_files) - 5} more)"
+        else:
+            message = "No coverage data found in report."
         super().__init__(message)
         self.message = message
         self.archive_path = archive_path
         self.reportid = reportid
+        self.empty_files = empty_files or []
+        self.total_files = total_files
 
 
 class CorruptRawReportError(Exception):
