@@ -245,6 +245,33 @@ class TaskService:
             celery_config.mark_owner_for_deletion_task_name, kwargs={"ownerid": ownerid}
         ).apply_async()
 
+    def export_owner_data(
+        self, owner_id: int, export_id: int, user_id: int | None = None
+    ):
+        """
+        Trigger owner data export task.
+
+        Creates SQL dumps and copies archive files for the owner.
+        The export result will be a downloadable tarball with a presigned URL.
+
+        Args:
+            owner_id: The owner ID to export data for
+            export_id: The OwnerExport record ID for tracking
+            user_id: Optional user ID who triggered the export
+        """
+        log.info(
+            "Triggering export_owner_data task",
+            extra={"owner_id": owner_id, "export_id": export_id, "user_id": user_id},
+        )
+        return self._create_signature(
+            celery_config.export_owner_task_name,
+            kwargs={
+                "owner_id": owner_id,
+                "export_id": export_id,
+                "user_id": user_id,
+            },
+        ).apply_async()
+
     def backfill_repo(
         self,
         repository: Repository,
