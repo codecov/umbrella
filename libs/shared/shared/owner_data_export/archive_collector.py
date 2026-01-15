@@ -175,12 +175,13 @@ def copy_archive_file(
 
     try:
         if source_bucket == bucket and hasattr(storage, "minio_client"):
-            result = storage.minio_client.copy_object(
+            storage.minio_client.copy_object(
                 bucket,
                 file.dest_path,
                 CopySource(bucket, file.source_path),
             )
-            return True, result.size or 0
+            stat = storage.minio_client.stat_object(bucket, file.dest_path)
+            return True, stat.size
         else:
             data = storage.read_file(source_bucket, file.source_path)
             storage.write_file(bucket, file.dest_path, data)
