@@ -653,6 +653,9 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
             "Cleaning up failed export for owner %d, export %d", owner_id, export_id
         )
 
+        error_message = self._get_error_message(exc)
+        export_marked = self._mark_export_failed(export_id, error_message)
+
         storage = get_appropriate_storage_service()
         bucket = get_archive_bucket()
 
@@ -685,9 +688,10 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
         deleted_files.extend(archive_files_deleted)
 
         log.info(
-            "Export cleanup complete for owner %d: %d files deleted",
+            "Export cleanup complete for owner %d: %d files deleted, export marked failed: %s",
             owner_id,
             len(deleted_files),
+            export_marked,
         )
 
         return {
@@ -695,6 +699,7 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
             "owner_id": owner_id,
             "deleted_files": deleted_files,
             "failed_deletes": failed_deletes,
+            "export_marked_failed": export_marked,
         }
 
     def _cleanup_archive_files(self, storage, bucket: str, prefix: str) -> list[str]:
@@ -734,6 +739,47 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
             )
 
         return deleted
+
+    def _get_error_message(self, exc) -> str:
+        """Extract error message from exception passed to link_error callback."""
+        if exc is None:
+            return "Export failed (unknown error)"
+        return f"Export failed: {str(exc)[:450]}"
+
+    def _mark_export_failed(self, export_id: int, error_message: str) -> bool:
+        """
+        Mark the export as failed if it's not already in a terminal state.
+
+        Returns True if the export was marked as failed, False otherwise.
+        """
+        try:
+            export = OwnerExport.objects.get(id=export_id)
+
+            if export.status in (
+                OwnerExport.Status.COMPLETED,
+                OwnerExport.Status.FAILED,
+            ):
+                log.info(
+                    "Export %d already in terminal state %s, not updating",
+                    export_id,
+                    export.status,
+                )
+                return False
+
+            export.status = OwnerExport.Status.FAILED
+            export.error_message = error_message[:500]
+            export.save(update_fields=["status", "error_message", "updated_at"])
+            log.info("Marked export %d as FAILED: %s", export_id, error_message)
+            return True
+
+        except OwnerExport.DoesNotExist:
+            log.warning(
+                "OwnerExport %d not found when trying to mark as failed", export_id
+            )
+            return False
+        except Exception as e:
+            log.error("Failed to mark export %d as failed: %s", export_id, str(e))
+            return False
 
 
 # Register tasks
