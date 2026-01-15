@@ -1,17 +1,21 @@
 """
 Archive Collector for owner data export.
 
-Discovers and copies GCS archive files from the archive bucket to the export bucket.
-Uses streaming copy to handle large files without loading them entirely into memory.
+Copies GCS archive files within the same bucket to the exports/<owner_id>/<export_id>/ folder.
+Uses server-side copy for efficiency when source and destination are in the same bucket.
+Uses parallel copying with a thread pool for improved performance.
 """
 
 import logging
-import tempfile
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from threading import Lock
 
 from django.utils import timezone
+from minio.commonconfig import CopySource
+from minio.error import S3Error
 
 import shared.storage
 from shared.api_archive.archive import ArchiveService
@@ -21,17 +25,15 @@ from shared.storage.base import BaseStorageService
 from shared.storage.exceptions import FileNotInStorageError
 
 from .config import (
+    ARCHIVE_COPY_WORKERS,
     EXPORT_DAYS_DEFAULT,
     get_archive_bucket,
     get_archive_destination_path,
-    get_export_bucket,
 )
 from .models_registry import get_model_class
 from .sql_generator import ExportContext
 
 log = logging.getLogger(__name__)
-
-STREAMING_THRESHOLD_BYTES = 10 * 1024 * 1024  # 10MB
 
 
 @dataclass
@@ -152,51 +154,50 @@ def discover_archive_files(
     return stats
 
 
-def copy_archive_file_streaming(
-    source_bucket: str,
-    dest_bucket: str,
+def copy_archive_file(
+    bucket: str,
     file: ArchiveFile,
     storage: BaseStorageService,
 ) -> tuple[bool, int]:
     """
-    Copy a single file from source to destination bucket using streaming.
+    Copy a file to the export location.
 
-    Uses a temp file to avoid loading the entire file into memory,
-    which is critical for large files (chunks.txt, bundle_report.sqlite).
+    Uses server-side copy when source and destination are in the same bucket.    For cross-bucket copies (bundle analysis), reads and writes.
+
+    Args:
+        bucket: The destination bucket
+        file: The ArchiveFile to copy
+        storage: The storage service to use
 
     Returns (success, bytes_copied).
     """
+    source_bucket = file.source_bucket or bucket
+
     try:
-        with tempfile.SpooledTemporaryFile(
-            max_size=STREAMING_THRESHOLD_BYTES,
-            mode="w+b",
-        ) as tmp:
-            # Stream read from source to temp file
-            storage.read_file(source_bucket, file.source_path, file_obj=tmp)
-
-            # Get size and reset for reading
-            bytes_copied = tmp.tell()
-            tmp.seek(0)
-
-            # Stream write from temp file to destination.
-            # Note: read_file automatically decompresses content (zstd/gzip),
-            # so we let write_file re-compress with zstd (the default).
-            storage.write_file(
-                dest_bucket,
+        if source_bucket == bucket and hasattr(storage, "minio_client"):
+            result = storage.minio_client.copy_object(
+                bucket,
                 file.dest_path,
-                tmp,
+                CopySource(bucket, file.source_path),
             )
-            return True, bytes_copied
+            return True, result.size or 0
+        else:
+            data = storage.read_file(source_bucket, file.source_path)
+            storage.write_file(bucket, file.dest_path, data)
+            return True, len(data)
     except FileNotInStorageError:
         log.warning("File not found: %s (from %s)", file.source_path, file.source_model)
         return False, 0
+    except S3Error as e:
+        if e.code == "NoSuchKey":
+            log.warning(
+                "File not found: %s (from %s)", file.source_path, file.source_model
+            )
+            return False, 0
+        log.error("Failed to copy %s: %s", file.source_path, str(e), exc_info=True)
+        return False, 0
     except Exception as e:
-        log.error(
-            "Failed to copy %s: %s",
-            file.source_path,
-            str(e),
-            exc_info=True,
-        )
+        log.error("Failed to copy %s: %s", file.source_path, str(e), exc_info=True)
         return False, 0
 
 
@@ -208,22 +209,22 @@ def collect_archives_for_export(
     """
     Discover and copy all archive files for an owner export.
 
+    Files are copied within the same bucket to exports/<owner_id>/<export_id>/archives/.
     Uses streaming copy to handle large files efficiently.
+    Uses parallel copying with a thread pool for improved performance.
 
     Args:
         owner_id: The owner ID
-        export_id: The export ID
+        export_id: The export ID (ensures unique paths for concurrent exports)
         context: ExportContext
 
     Returns:
-        Dict with collection statistics
+        Dict with collection statistics including list of copied file paths
     """
     if context is None:
         context = ExportContext(owner_id=owner_id)
 
-    source_bucket = get_archive_bucket()
-    dest_bucket = get_export_bucket()
-    storage = shared.storage.get_appropriate_storage_service()
+    bucket = get_archive_bucket()
 
     stats = {
         "files_found": 0,
@@ -231,35 +232,58 @@ def collect_archives_for_export(
         "files_failed": 0,
         "total_bytes": 0,
         "discovery_stats": {},
+        "copied_files": [],
     }
+    stats_lock = Lock()
 
+    def copy_single_file(file: ArchiveFile) -> tuple[bool, int, str]:
+        """Copy a single file and return (success, bytes, dest_path)."""
+        # Each thread gets its own storage client to avoid connection issues
+        storage = shared.storage.get_appropriate_storage_service()
+        success, bytes_copied = copy_archive_file(bucket, file, storage)
+        return success, bytes_copied, file.dest_path
+
+    files_to_copy: list[ArchiveFile] = []
     file_gen = discover_archive_files(context, owner_id, export_id)
 
-    # Manually iterate using next() to capture the generator's return value.
-    # A for loop would catch and discard the StopIteration exception,
-    # losing the stats dict returned by discover_archive_files().
     try:
         while True:
             file = next(file_gen)
-            stats["files_found"] += 1
-
-            # Use file-specific bucket if specified, otherwise default archive bucket
-            file_source_bucket = file.source_bucket or source_bucket
-            success, bytes_copied = copy_archive_file_streaming(
-                file_source_bucket, dest_bucket, file, storage
-            )
-
-            if success:
-                stats["files_copied"] += 1
-                stats["total_bytes"] += bytes_copied
-            else:
-                stats["files_failed"] += 1
+            files_to_copy.append(file)
     except StopIteration as e:
         if e.value:
             stats["discovery_stats"] = e.value
 
+    stats["files_found"] = len(files_to_copy)
     log.info(
-        "Archive collection complete: %d found, %d copied, %d failed, %d bytes",
+        "Discovered %d archive files to copy for owner %d", len(files_to_copy), owner_id
+    )
+
+    # Copy files in parallel using thread pool
+    with ThreadPoolExecutor(max_workers=ARCHIVE_COPY_WORKERS) as executor:
+        futures = {
+            executor.submit(copy_single_file, file): file for file in files_to_copy
+        }
+
+        for future in as_completed(futures):
+            try:
+                success, bytes_copied, dest_path = future.result()
+                with stats_lock:
+                    if success:
+                        stats["files_copied"] += 1
+                        stats["total_bytes"] += bytes_copied
+                        stats["copied_files"].append(dest_path)
+                    else:
+                        stats["files_failed"] += 1
+            except Exception as e:
+                file = futures[future]
+                log.error("Unexpected error copying %s: %s", file.source_path, str(e))
+                with stats_lock:
+                    stats["files_failed"] += 1
+
+    log.info(
+        "Archive collection complete for owner %d: %d found, %d copied, %d failed, %d bytes",
+        owner_id,
         stats["files_found"],
         stats["files_copied"],
         stats["files_failed"],
@@ -283,7 +307,7 @@ def collect_archives_for_repository(
 
     Args:
         owner_id: The owner ID
-        export_id: The export ID
+        export_id: The export ID (ensures unique paths for concurrent exports)
         repository_id: The specific repository to export
         since_date: Only export commits updated after this date (default: 60 days ago)
 
@@ -293,8 +317,7 @@ def collect_archives_for_repository(
     if since_date is None:
         since_date = timezone.now() - timedelta(days=EXPORT_DAYS_DEFAULT)
 
-    source_bucket = get_archive_bucket()
-    dest_bucket = get_export_bucket()
+    bucket = get_archive_bucket()
     bundle_bucket = get_bundle_analysis_bucket()
     storage = shared.storage.get_appropriate_storage_service()
 
@@ -349,9 +372,7 @@ def collect_archives_for_repository(
                 source_model=f"core.Commit:{commit_id}",
             )
             stats["files_found"] += 1
-            success, size = copy_archive_file_streaming(
-                source_bucket, dest_bucket, file, storage
-            )
+            success, size = copy_archive_file(bucket, file, storage)
             if success:
                 stats["files_copied"] += 1
                 stats["total_bytes"] += size
@@ -367,9 +388,7 @@ def collect_archives_for_repository(
             source_model=f"chunks:{commitid}",
         )
         stats["files_found"] += 1
-        success, size = copy_archive_file_streaming(
-            source_bucket, dest_bucket, file, storage
-        )
+        success, size = copy_archive_file(bucket, file, storage)
         if success:
             stats["files_copied"] += 1
             stats["total_bytes"] += size
@@ -398,16 +417,14 @@ def collect_archives_for_repository(
                 source_model=f"reports.ReportSession:{session_id}",
             )
             stats["files_found"] += 1
-            success, size = copy_archive_file_streaming(
-                source_bucket, dest_bucket, file, storage
-            )
+            success, size = copy_archive_file(bucket, file, storage)
             if success:
                 stats["files_copied"] += 1
                 stats["total_bytes"] += size
             else:
                 stats["files_failed"] += 1
 
-    # 4. Bundle Analysis reports
+    # 4. Bundle Analysis reports (from separate bucket)
     for bundle_report in (
         CommitReport.objects.filter(
             commit__in=commits_qs,
@@ -427,9 +444,7 @@ def collect_archives_for_repository(
             source_bucket=bundle_bucket,
         )
         stats["files_found"] += 1
-        success, size = copy_archive_file_streaming(
-            bundle_bucket, dest_bucket, file, storage
-        )
+        success, size = copy_archive_file(bucket, file, storage)
         if success:
             stats["files_copied"] += 1
             stats["total_bytes"] += size
