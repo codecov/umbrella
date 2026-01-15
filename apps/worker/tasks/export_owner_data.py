@@ -127,7 +127,7 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
 
         # Cleanup task runs if any header task fails, preventing orphaned files
         result = workflow.apply_async(
-            link_error=export_owner_cleanup_task.si(
+            link_error=export_owner_cleanup_task.s(
                 owner_id=owner_id, export_id=export_id
             )
         )
@@ -380,8 +380,10 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         try:
             export = OwnerExport.objects.get(id=export_id)
         except OwnerExport.DoesNotExist:
-            log.error("OwnerExport %d not found", export_id)
-            return {"error": "Export not found"}
+            log.error("OwnerExport %d not found during finalization", export_id)
+            raise ValueError(
+                f"Export {export_id} not found - export record may have been deleted during processing"
+            )
 
         if export.owner_id != owner_id:
             log.error(
@@ -390,7 +392,13 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
                 export.owner_id,
                 owner_id,
             )
-            return {"error": "Owner ID mismatch"}
+            self._mark_export_failed(
+                export,
+                f"Owner ID mismatch: expected {owner_id}, found {export.owner_id}",
+            )
+            raise ValueError(
+                f"Owner ID mismatch for export {export_id}: expected {owner_id}, found {export.owner_id}"
+            )
 
         # Merge results from parallel SQL and Archive tasks
         combined_result = self._merge_parallel_results(parallel_results)
@@ -409,7 +417,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
 
             # 2. Create tarball using temp file to avoid memory issues
             tarball_path = get_tarball_path(owner_id, export_id)
-            tarball_size = self._create_and_upload_tarball(
+            tarball_result = self._create_and_upload_tarball(
                 storage,
                 bucket,
                 export_path,
@@ -418,7 +426,22 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
                 archive_stats,
                 manifest_path,
             )
-            log.info("Tarball created and uploaded: %d bytes", tarball_size)
+            tarball_size = tarball_result["tarball_size"]
+            tarball_files_failed = tarball_result["files_failed"]
+
+            if tarball_files_failed > 0:
+                log.warning(
+                    "Tarball created with %d files failed to add: %s",
+                    tarball_files_failed,
+                    tarball_result["failed_files"][:10],
+                )
+
+            log.info(
+                "Tarball created and uploaded: %d bytes, %d files added, %d files failed",
+                tarball_size,
+                tarball_result["files_added"],
+                tarball_files_failed,
+            )
 
             # 3. Generate presigned download URL
             expires_at = timezone.now() + timedelta(seconds=DOWNLOAD_URL_EXPIRY_SECONDS)
@@ -434,6 +457,9 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
                 "sql_stats": sql_stats,
                 "archive_stats": archive_stats,
                 "tarball_bytes": tarball_size,
+                "tarball_files_added": tarball_result["files_added"],
+                "tarball_files_failed": tarball_files_failed,
+                "tarball_failed_files": tarball_result["failed_files"],
             }
             export.save(
                 update_fields=[
@@ -547,41 +573,55 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         sql_stats: dict,
         archive_stats: dict,
         manifest_path: str,
-    ) -> int:
+    ) -> dict:
         """
         Create a tarball using a temp file and stream upload to GCS.
 
         This avoids holding the entire tarball in memory.
-        Returns the tarball size in bytes.
+        Returns a dict with tarball_size, files_added, and files_failed.
+        Raises ValueError if critical files (SQL, manifest) fail to be added.
         """
+        files_added = []
+        files_failed = []
+
         with tempfile.NamedTemporaryFile(
             suffix=".tar.gz",
             delete=True,
         ) as tmp:
             with tarfile.open(fileobj=tmp, mode="w:gz") as tar:
-                # Add SQL files
                 sql_files = [
-                    sql_stats.get("postgres", {}).get("path"),
-                    sql_stats.get("timescale", {}).get("path"),
+                    ("postgres", sql_stats.get("postgres", {}).get("path")),
+                    ("timescale", sql_stats.get("timescale", {}).get("path")),
                 ]
 
-                for file_path in sql_files:
+                for sql_name, file_path in sql_files:
                     if file_path:
-                        self._add_file_to_tarball(
+                        if self._add_file_to_tarball(
                             tar, storage, bucket, file_path, export_path
-                        )
+                        ):
+                            files_added.append(file_path)
+                        else:
+                            raise ValueError(
+                                f"Failed to add critical file {sql_name}.sql to tarball"
+                            )
 
                 # Add manifest
-                self._add_file_to_tarball(
+                if self._add_file_to_tarball(
                     tar, storage, bucket, manifest_path, export_path
-                )
+                ):
+                    files_added.append(manifest_path)
+                else:
+                    raise ValueError("Failed to add manifest.json to tarball")
 
                 # Add archive files
                 archive_files = archive_stats.get("copied_files") or []
                 for file_path in archive_files:
-                    self._add_file_to_tarball(
+                    if self._add_file_to_tarball(
                         tar, storage, bucket, file_path, export_path
-                    )
+                    ):
+                        files_added.append(file_path)
+                    else:
+                        files_failed.append(file_path)
 
             # Get file size and upload
             tmp.flush()
@@ -589,7 +629,12 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
             tmp.seek(0)
             storage.write_file(bucket, tarball_path, tmp)
 
-            return tarball_size
+            return {
+                "tarball_size": tarball_size,
+                "files_added": len(files_added),
+                "files_failed": len(files_failed),
+                "failed_files": files_failed,
+            }
 
     def _add_file_to_tarball(
         self,
@@ -598,8 +643,12 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         bucket: str,
         file_path: str,
         export_path: str,
-    ):
-        """Add a single file from GCS to the tarball."""
+    ) -> bool:
+        """
+        Add a single file from GCS to the tarball.
+
+        Returns True if the file was added successfully, False otherwise.
+        """
         try:
             file_content = BytesIO()
             storage.read_file(bucket, file_path, file_obj=file_content)
@@ -615,9 +664,11 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
             tar.addfile(tarinfo, file_content)
 
             log.debug("Added to tarball: %s", arcname)
+            return True
 
         except Exception as e:
             log.warning("Failed to add %s to tarball: %s", file_path, str(e))
+            return False
 
     def _mark_export_failed(self, export: OwnerExport, error_message: str):
         export.status = OwnerExport.Status.FAILED
