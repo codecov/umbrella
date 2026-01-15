@@ -2,7 +2,8 @@
 Configuration constants and helpers for owner data export.
 
 All exports are stored in the same bucket as archive files (the minio/archive bucket),
-under the `exports/<owner_name>/` prefix.
+under the `exports/<owner_id>/<export_id>/` prefix. Each export gets its own unique
+directory to prevent concurrent exports from overwriting each other's files.
 """
 
 from shared.config import get_config
@@ -85,55 +86,60 @@ def get_archive_bucket() -> str:
     return get_config("services", "minio", "bucket", default="archive")
 
 
-def get_export_path(owner_id: int) -> str:
+def get_export_path(owner_id: int, export_id: int) -> str:
     """
     Get the base GCS path for an owner's export.
+
+    Each export gets its own unique directory to prevent concurrent exports
+    from overwriting each other's files.
     """
-    return f"exports/{owner_id}/"
+    return f"exports/{owner_id}/{export_id}/"
 
 
-def get_postgres_sql_path(owner_id: int) -> str:
+def get_postgres_sql_path(owner_id: int, export_id: int) -> str:
     """
     Get the GCS path for the postgres SQL export file.
     """
-    return f"{get_export_path(owner_id)}postgres.sql"
+    return f"{get_export_path(owner_id, export_id)}postgres.sql"
 
 
-def get_timescale_sql_path(owner_id: int) -> str:
+def get_timescale_sql_path(owner_id: int, export_id: int) -> str:
     """
     Get the GCS path for the timescale SQL export file.
     """
-    return f"{get_export_path(owner_id)}timescale.sql"
+    return f"{get_export_path(owner_id, export_id)}timescale.sql"
 
 
-def get_manifest_path(owner_id: int) -> str:
+def get_manifest_path(owner_id: int, export_id: int) -> str:
     """
     Get the GCS path for the export manifest file.
     """
-    return f"{get_export_path(owner_id)}manifest.json"
+    return f"{get_export_path(owner_id, export_id)}manifest.json"
 
 
-def get_archives_path(owner_id: int) -> str:
+def get_archives_path(owner_id: int, export_id: int) -> str:
     """
     Get the GCS path prefix for archived files.
     """
-    return f"{get_export_path(owner_id)}archives/"
+    return f"{get_export_path(owner_id, export_id)}archives/"
 
 
-def get_archive_destination_path(owner_id: int, source_path: str) -> str:
+def get_archive_destination_path(
+    owner_id: int, export_id: int, source_path: str
+) -> str:
     """
     Get the destination path for an archive file in the export.
 
     The source path is preserved under the archives/ prefix.
     Example:
         source: v4/repos/ABC123/commits/sha/chunks.txt
-        dest:   exports/12345/archives/v4/repos/ABC123/commits/sha/chunks.txt
+        dest:   exports/12345/67890/archives/v4/repos/ABC123/commits/sha/chunks.txt
     """
-    return f"{get_archives_path(owner_id)}{source_path}"
+    return f"{get_archives_path(owner_id, export_id)}{source_path}"
 
 
-def get_tarball_path(owner_id: int) -> str:
+def get_tarball_path(owner_id: int, export_id: int) -> str:
     """
     Get the GCS path for the export tarball.
     """
-    return f"{get_export_path(owner_id)}export.tar.gz"
+    return f"{get_export_path(owner_id, export_id)}export.tar.gz"

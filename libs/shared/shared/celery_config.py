@@ -53,6 +53,9 @@ export_owner_archives_task_name = (
 export_owner_finalize_task_name = (
     f"app.tasks.{TaskConfigGroup.export_owner.value}.ExportOwnerFinalize"
 )
+export_owner_cleanup_task_name = (
+    f"app.tasks.{TaskConfigGroup.export_owner.value}.ExportOwnerCleanup"
+)
 
 mark_owner_for_deletion_task_name = (
     f"app.tasks.{TaskConfigGroup.mark_owner_for_deletion.value}.MarkOwnerForDeletion"

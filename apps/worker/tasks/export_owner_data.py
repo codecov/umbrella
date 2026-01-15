@@ -34,6 +34,7 @@ from django.utils import timezone
 from app import celery_app
 from shared.celery_config import (
     export_owner_archives_task_name,
+    export_owner_cleanup_task_name,
     export_owner_finalize_task_name,
     export_owner_sql_task_name,
     export_owner_task_name,
@@ -50,6 +51,7 @@ from shared.owner_data_export.config import (
     SQL_TASK_SOFT_TIME_LIMIT,
     SQL_TASK_TIME_LIMIT,
     get_archive_bucket,
+    get_archives_path,
     get_export_path,
     get_manifest_path,
     get_postgres_sql_path,
@@ -91,12 +93,22 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
             log.error("OwnerExport %d not found", export_id)
             return {"error": "Export not found"}
 
+        if export.owner_id != owner_id:
+            log.error(
+                "Owner ID mismatch: export %d belongs to owner %d, not %d",
+                export_id,
+                export.owner_id,
+                owner_id,
+            )
+            return {"error": "Owner ID mismatch"}
+
         export.status = OwnerExport.Status.IN_PROGRESS
         export.save(update_fields=["status", "updated_at"])
 
         since_date_iso = export.since_date.isoformat() if export.since_date else None
 
         # Run SQL and Archives in parallel, then finalize
+        # Use link_error to trigger cleanup if any header task fails
         workflow = chord(
             [
                 export_owner_sql_task.s(
@@ -113,7 +125,12 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
             export_owner_finalize_task.s(owner_id=owner_id, export_id=export_id),
         )
 
-        result = workflow.apply_async()
+        # Cleanup task runs if any header task fails, preventing orphaned files
+        result = workflow.apply_async(
+            link_error=export_owner_cleanup_task.si(
+                owner_id=owner_id, export_id=export_id
+            )
+        )
 
         export.task_ids = {"chord_id": result.id}
         export.save(update_fields=["task_ids", "updated_at"])
@@ -162,7 +179,7 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
 
         try:
             # Generate PostgreSQL export using temp file for streaming
-            postgres_path = get_postgres_sql_path(owner_id)
+            postgres_path = get_postgres_sql_path(owner_id, export_id)
             postgres_stats, postgres_size = self._generate_and_upload_sql(
                 owner_id,
                 postgres_path,
@@ -181,7 +198,7 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
             )
 
             # Generate TimescaleDB export using temp file for streaming
-            timescale_path = get_timescale_sql_path(owner_id)
+            timescale_path = get_timescale_sql_path(owner_id, export_id)
             timescale_stats, timescale_size = self._generate_and_upload_sql(
                 owner_id,
                 timescale_path,
@@ -259,7 +276,7 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
 
 class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_name):
     """
-    Collect archive files and copy them to the exports/<owner_id>/ folder.
+    Collect archive files and copy them to the exports/<owner_id>/<export_id>/ folder.
 
     Uses streaming copy and parallel workers for efficient handling
     of large numbers of files.
@@ -294,6 +311,7 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
             )
             archive_stats = collect_archives_for_export(
                 owner_id=owner_id,
+                export_id=export_id,
                 context=context,
             )
 
@@ -357,13 +375,22 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
 
         storage = get_appropriate_storage_service()
         bucket = get_archive_bucket()
-        export_path = get_export_path(owner_id)
+        export_path = get_export_path(owner_id, export_id)
 
         try:
             export = OwnerExport.objects.get(id=export_id)
         except OwnerExport.DoesNotExist:
             log.error("OwnerExport %d not found", export_id)
             return {"error": "Export not found"}
+
+        if export.owner_id != owner_id:
+            log.error(
+                "Owner ID mismatch: export %d belongs to owner %d, not %d",
+                export_id,
+                export.owner_id,
+                owner_id,
+            )
+            return {"error": "Owner ID mismatch"}
 
         # Merge results from parallel SQL and Archive tasks
         combined_result = self._merge_parallel_results(parallel_results)
@@ -372,14 +399,16 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
 
         try:
             # 1. Write manifest
-            manifest = self._create_manifest(owner_id, export, sql_stats, archive_stats)
-            manifest_path = get_manifest_path(owner_id)
+            manifest = self._create_manifest(
+                owner_id, export_id, export, sql_stats, archive_stats
+            )
+            manifest_path = get_manifest_path(owner_id, export_id)
             manifest_bytes = json.dumps(manifest, indent=2).encode("utf-8")
             storage.write_file(bucket, manifest_path, BytesIO(manifest_bytes))
             log.info("Manifest written to %s", manifest_path)
 
             # 2. Create tarball using temp file to avoid memory issues
-            tarball_path = get_tarball_path(owner_id)
+            tarball_path = get_tarball_path(owner_id, export_id)
             tarball_size = self._create_and_upload_tarball(
                 storage,
                 bucket,
@@ -467,6 +496,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
     def _create_manifest(
         self,
         owner_id: int,
+        export_id: int,
         export: OwnerExport,
         sql_stats: dict,
         archive_stats: dict,
@@ -489,7 +519,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
             "version": "1.0",
             "export_id": export.id,
             "owner": owner_info,
-            "export_path": f"exports/{owner_id}/",
+            "export_path": f"exports/{owner_id}/{export_id}/",
             "export_date": timezone.now().isoformat(),
             "since_date": since_date.isoformat() if since_date else None,
             "days_exported": EXPORT_DAYS_DEFAULT,
@@ -595,13 +625,126 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         export.save(update_fields=["status", "error_message", "updated_at"])
 
 
+class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_name):
+    """
+    Cleanup task that runs when the export chord fails.
+
+    Removes any partial files that were uploaded before the failure to prevent
+    orphaned resources in GCS. This task is triggered via link_error on the chord.
+
+    Note: Archive files under exports/<owner_id>/archives/ are cleaned up by
+    listing and deleting objects with that prefix using the minio client directly.
+    """
+
+    acks_late = True
+    max_retries = 3
+
+    def run_impl(
+        self,
+        _db_session,
+        request=None,
+        exc=None,
+        traceback=None,
+        *,
+        owner_id: int,
+        export_id: int,
+    ) -> dict:
+        log.info(
+            "Cleaning up failed export for owner %d, export %d", owner_id, export_id
+        )
+
+        storage = get_appropriate_storage_service()
+        bucket = get_archive_bucket()
+
+        deleted_files = []
+        failed_deletes = []
+
+        # Known files that might have been created before failure
+        files_to_delete = [
+            get_postgres_sql_path(owner_id),
+            get_timescale_sql_path(owner_id),
+            get_manifest_path(owner_id),
+            get_tarball_path(owner_id),
+        ]
+
+        for file_path in files_to_delete:
+            try:
+                storage.delete_file(bucket, file_path)
+                deleted_files.append(file_path)
+                log.debug("Deleted partial file: %s", file_path)
+            except Exception as e:
+                # File may not exist if the task failed before creating it
+                log.debug("Could not delete %s: %s", file_path, str(e))
+                failed_deletes.append(file_path)
+
+        # Clean up archive files by listing and deleting objects with the archives prefix
+        archives_prefix = get_archives_path(owner_id)
+        archive_files_deleted = self._cleanup_archive_files(
+            storage, bucket, archives_prefix
+        )
+        deleted_files.extend(archive_files_deleted)
+
+        log.info(
+            "Export cleanup complete for owner %d: %d files deleted",
+            owner_id,
+            len(deleted_files),
+        )
+
+        return {
+            "export_id": export_id,
+            "owner_id": owner_id,
+            "deleted_files": deleted_files,
+            "failed_deletes": failed_deletes,
+        }
+
+    def _cleanup_archive_files(self, storage, bucket: str, prefix: str) -> list[str]:
+        """
+        Delete all files under the given prefix.
+
+        Uses the minio client directly to list objects since the storage service
+        doesn't expose a list method.
+        """
+        deleted = []
+        try:
+            # Access minio client directly for listing objects
+            if hasattr(storage, "minio_client"):
+                objects = storage.minio_client.list_objects(
+                    bucket, prefix=prefix, recursive=True
+                )
+                for obj in objects:
+                    try:
+                        storage.delete_file(bucket, obj.object_name)
+                        deleted.append(obj.object_name)
+                        log.debug("Deleted archive file: %s", obj.object_name)
+                    except Exception as e:
+                        log.warning(
+                            "Failed to delete archive file %s: %s",
+                            obj.object_name,
+                            str(e),
+                        )
+            else:
+                log.warning(
+                    "Storage service does not support listing objects, "
+                    "archive files under %s may be orphaned",
+                    prefix,
+                )
+        except Exception as e:
+            log.error(
+                "Failed to list/delete archive files under %s: %s", prefix, str(e)
+            )
+
+        return deleted
+
+
 # Register tasks
 RegisteredExportOwnerTask = celery_app.register_task(ExportOwnerTask())
 RegisteredExportOwnerSQLTask = celery_app.register_task(ExportOwnerSQLTask())
 RegisteredExportOwnerArchivesTask = celery_app.register_task(ExportOwnerArchivesTask())
 RegisteredExportOwnerFinalizeTask = celery_app.register_task(ExportOwnerFinalizeTask())
+RegisteredExportOwnerCleanupTask = celery_app.register_task(ExportOwnerCleanupTask())
 
 export_owner_task = celery_app.tasks[ExportOwnerTask.name]
 export_owner_sql_task = celery_app.tasks[ExportOwnerSQLTask.name]
 export_owner_archives_task = celery_app.tasks[ExportOwnerArchivesTask.name]
 export_owner_finalize_task = celery_app.tasks[ExportOwnerFinalizeTask.name]
+export_owner_cleanup_task = celery_app.tasks[ExportOwnerCleanupTask.name]

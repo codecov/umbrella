@@ -1,7 +1,7 @@
 """
 Archive Collector for owner data export.
 
-Copies GCS archive files within the same bucket to the exports/<owner_name>/ folder.
+Copies GCS archive files within the same bucket to the exports/<owner_id>/<export_id>/ folder.
 Uses streaming copy to handle large files without loading them entirely into memory.
 Uses parallel copying with a thread pool for improved performance.
 """
@@ -50,6 +50,7 @@ class ArchiveFile:
 def discover_archive_files(
     context: ExportContext,
     owner_id: int,
+    export_id: int,
 ) -> Generator[ArchiveFile, None, dict]:
     """
     Discover all archive files that need to be exported.
@@ -75,7 +76,9 @@ def discover_archive_files(
             stats["commits_with_report"] += 1
             yield ArchiveFile(
                 source_path=storage_path,
-                dest_path=get_archive_destination_path(owner_id, storage_path),
+                dest_path=get_archive_destination_path(
+                    owner_id, export_id, storage_path
+                ),
                 source_model=f"core.Commit:{commit_id}",
             )
 
@@ -91,7 +94,9 @@ def discover_archive_files(
             stats["uploads_with_storage"] += 1
             yield ArchiveFile(
                 source_path=storage_path,
-                dest_path=get_archive_destination_path(owner_id, storage_path),
+                dest_path=get_archive_destination_path(
+                    owner_id, export_id, storage_path
+                ),
                 source_model=f"reports.ReportSession:{session_id}",
             )
 
@@ -114,7 +119,9 @@ def discover_archive_files(
             stats["chunks_files"] += 1
             yield ArchiveFile(
                 source_path=chunks_path,
-                dest_path=get_archive_destination_path(owner_id, chunks_path),
+                dest_path=get_archive_destination_path(
+                    owner_id, export_id, chunks_path
+                ),
                 source_model=f"chunks:{commitid}",
             )
 
@@ -138,7 +145,9 @@ def discover_archive_files(
             stats["bundle_analysis_reports"] += 1
             yield ArchiveFile(
                 source_path=bundle_path,
-                dest_path=get_archive_destination_path(owner_id, bundle_path),
+                dest_path=get_archive_destination_path(
+                    owner_id, export_id, bundle_path
+                ),
                 source_model=f"reports.CommitReport:{bundle_report.id}",
                 source_bucket=bundle_bucket,
             )
@@ -202,17 +211,19 @@ def copy_archive_file_streaming(
 
 def collect_archives_for_export(
     owner_id: int,
+    export_id: int,
     context: ExportContext | None = None,
 ) -> dict:
     """
     Discover and copy all archive files for an owner export.
 
-    Files are copied within the same bucket to exports/<owner_id>/archives/.
+    Files are copied within the same bucket to exports/<owner_id>/<export_id>/archives/.
     Uses streaming copy to handle large files efficiently.
     Uses parallel copying with a thread pool for improved performance.
 
     Args:
         owner_id: The owner ID
+        export_id: The export ID (ensures unique paths for concurrent exports)
         context: ExportContext
 
     Returns:
@@ -241,7 +252,7 @@ def collect_archives_for_export(
         return success, bytes_copied, file.dest_path
 
     files_to_copy: list[ArchiveFile] = []
-    file_gen = discover_archive_files(context, owner_id)
+    file_gen = discover_archive_files(context, owner_id, export_id)
 
     try:
         while True:
@@ -292,6 +303,7 @@ def collect_archives_for_export(
 
 def collect_archives_for_repository(
     owner_id: int,
+    export_id: int,
     repository_id: int,
     since_date: datetime | None = None,
 ) -> dict:
@@ -303,6 +315,7 @@ def collect_archives_for_repository(
 
     Args:
         owner_id: The owner ID
+        export_id: The export ID (ensures unique paths for concurrent exports)
         repository_id: The specific repository to export
         since_date: Only export commits updated after this date (default: 60 days ago)
 
@@ -361,7 +374,9 @@ def collect_archives_for_repository(
         if storage_path:
             file = ArchiveFile(
                 source_path=storage_path,
-                dest_path=get_archive_destination_path(owner_id, storage_path),
+                dest_path=get_archive_destination_path(
+                    owner_id, export_id, storage_path
+                ),
                 source_model=f"core.Commit:{commit_id}",
             )
             stats["files_found"] += 1
@@ -377,7 +392,7 @@ def collect_archives_for_repository(
         chunks_path = f"v4/repos/{repo_hash}/commits/{commitid}/chunks.txt"
         file = ArchiveFile(
             source_path=chunks_path,
-            dest_path=get_archive_destination_path(owner_id, chunks_path),
+            dest_path=get_archive_destination_path(owner_id, export_id, chunks_path),
             source_model=f"chunks:{commitid}",
         )
         stats["files_found"] += 1
@@ -404,7 +419,9 @@ def collect_archives_for_repository(
         if storage_path:
             file = ArchiveFile(
                 source_path=storage_path,
-                dest_path=get_archive_destination_path(owner_id, storage_path),
+                dest_path=get_archive_destination_path(
+                    owner_id, export_id, storage_path
+                ),
                 source_model=f"reports.ReportSession:{session_id}",
             )
             stats["files_found"] += 1
@@ -430,7 +447,7 @@ def collect_archives_for_repository(
         )
         file = ArchiveFile(
             source_path=bundle_path,
-            dest_path=get_archive_destination_path(owner_id, bundle_path),
+            dest_path=get_archive_destination_path(owner_id, export_id, bundle_path),
             source_model=f"reports.CommitReport:{bundle_report.id}",
             source_bucket=bundle_bucket,
         )
