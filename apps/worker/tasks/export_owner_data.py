@@ -661,10 +661,10 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
 
         # Known files that might have been created before failure
         files_to_delete = [
-            get_postgres_sql_path(owner_id),
-            get_timescale_sql_path(owner_id),
-            get_manifest_path(owner_id),
-            get_tarball_path(owner_id),
+            get_postgres_sql_path(owner_id, export_id),
+            get_timescale_sql_path(owner_id, export_id),
+            get_manifest_path(owner_id, export_id),
+            get_tarball_path(owner_id, export_id),
         ]
 
         for file_path in files_to_delete:
@@ -678,7 +678,7 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
                 failed_deletes.append(file_path)
 
         # Clean up archive files by listing and deleting objects with the archives prefix
-        archives_prefix = get_archives_path(owner_id)
+        archives_prefix = get_archives_path(owner_id, export_id)
         archive_files_deleted = self._cleanup_archive_files(
             storage, bucket, archives_prefix
         )
