@@ -5,6 +5,7 @@ from redis.exceptions import LockError
 from database.enums import ReportType
 from database.models import CommitReport, Upload
 from database.tests.factories import CommitFactory, RepositoryFactory, UploadFactory
+from helpers.exceptions import NoConfiguredAppsAvailable
 from services.bundle_analysis.report import ProcessingError, ProcessingResult
 from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.storage import get_bucket_name
@@ -2021,3 +2022,118 @@ def test_bundle_analysis_processor_task_cleanup_with_none_result(
 
     # Should not crash even though result is None
     # The finally block should handle None result gracefully
+
+    def test_bundle_analysis_processor_no_apps_available_rate_limited_uses_actual_retry_time(
+        self, mocker, dbsession, mock_redis
+    ):
+        """Test that bundle analysis processor uses actual retry time from GitHub API when available."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        mocker.patch(
+            "tasks.bundle_analysis_processor.get_repo_provider_service",
+            side_effect=NoConfiguredAppsAvailable(
+                apps_count=2,
+                rate_limited_count=1,
+                suspended_count=0,
+                earliest_retry_after_seconds=240,  # 4 minutes
+            ),
+        )
+
+        task = BundleAnalysisProcessorTask()
+        task.request.retries = 0
+        task.max_retries = 5
+        mock_safe_retry = mocker.patch.object(task, "safe_retry", return_value=True)
+
+        previous_result = [{"error": None}]
+        result = task.run_impl(
+            dbsession,
+            previous_result,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={"upload_id": "test", "commit": commit.commitid},
+        )
+
+        # Should return previous result and retry with actual retry time
+        assert result == previous_result
+        mock_safe_retry.assert_called_once_with(countdown=240)
+
+    def test_bundle_analysis_processor_no_apps_available_rate_limited_fallback(
+        self, mocker, dbsession, mock_redis
+    ):
+        """Test that bundle analysis processor falls back to next hour when retry time is None."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        mocker.patch(
+            "tasks.bundle_analysis_processor.get_repo_provider_service",
+            side_effect=NoConfiguredAppsAvailable(
+                apps_count=2,
+                rate_limited_count=1,
+                suspended_count=0,
+                earliest_retry_after_seconds=None,  # No retry time available
+            ),
+        )
+        mocker.patch(
+            "tasks.bundle_analysis_processor.get_seconds_to_next_hour",
+            return_value=1800,
+        )
+
+        task = BundleAnalysisProcessorTask()
+        task.request.retries = 0
+        task.max_retries = 5
+        mock_safe_retry = mocker.patch.object(task, "safe_retry", return_value=True)
+
+        previous_result = [{"error": None}]
+        result = task.run_impl(
+            dbsession,
+            previous_result,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={"upload_id": "test", "commit": commit.commitid},
+        )
+
+        # Should return previous result and retry with fallback time
+        assert result == previous_result
+        mock_safe_retry.assert_called_once_with(countdown=1800)
+
+    def test_bundle_analysis_processor_no_apps_available_enforces_minimum_delay(
+        self, mocker, dbsession, mock_redis
+    ):
+        """Test that bundle analysis processor enforces minimum 60-second delay."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        mocker.patch(
+            "tasks.bundle_analysis_processor.get_repo_provider_service",
+            side_effect=NoConfiguredAppsAvailable(
+                apps_count=2,
+                rate_limited_count=1,
+                suspended_count=0,
+                earliest_retry_after_seconds=30,  # Less than minimum
+            ),
+        )
+
+        task = BundleAnalysisProcessorTask()
+        task.request.retries = 0
+        task.max_retries = 5
+        mock_safe_retry = mocker.patch.object(task, "safe_retry", return_value=True)
+
+        previous_result = [{"error": None}]
+        result = task.run_impl(
+            dbsession,
+            previous_result,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={"upload_id": "test", "commit": commit.commitid},
+        )
+
+        # Should return previous result and retry with minimum delay
+        assert result == previous_result
+        mock_safe_retry.assert_called_once_with(countdown=60)
