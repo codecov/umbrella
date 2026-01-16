@@ -42,10 +42,8 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
         ("codecov", "max_report_age"), "12h ago"
     ):
         original_timestamp = xml.get("timestamp")
-        # Normalize millisecond timestamps to seconds
         timestamp = normalize_timestamp(original_timestamp)
 
-        # Only attempt to parse if we have a timestamp
         if timestamp:
             try:
                 parsed_datetime = Date(timestamp)

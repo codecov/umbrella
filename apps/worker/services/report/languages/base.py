@@ -22,13 +22,9 @@ def normalize_timestamp(timestamp: str | None) -> str | None:
     if not timestamp:
         return None
 
-    # Check if it's a pure numeric timestamp (Unix epoch)
-    if timestamp.isdigit():
-        # 13+ digits indicates milliseconds (e.g., 1768258631332)
-        # 10 digits indicates seconds (e.g., 1768258631)
-        if len(timestamp) >= 13:
-            # Convert milliseconds to seconds
-            return str(int(timestamp) // 1000)
+    if timestamp.isdigit() and len(timestamp) >= 13:
+        # Convert milliseconds to seconds for timestring.Date()
+        return str(int(timestamp) // 1000)
 
     return timestamp
 

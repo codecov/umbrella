@@ -38,12 +38,11 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
     ):
         try:
             timestamp = next(xml.iter("coverage")).get("generated")
-            original_timestamp = timestamp  # Preserve for error message
-            # Handle date formats like "01-12-2026" (DD-MM-YYYY) -> "12-01-2026" (MM-DD-YYYY)
+            original_timestamp = timestamp
+            # Swap DD-MM-YYYY to MM-DD-YYYY for timestring parsing
             if timestamp and "-" in timestamp:
                 t = timestamp.split("-")
                 timestamp = t[1] + "-" + t[0] + "-" + t[2]
-            # Normalize millisecond timestamps to seconds
             timestamp = normalize_timestamp(timestamp)
             if timestamp and Date(timestamp) < max_age:
                 # report expired over 12 hours ago

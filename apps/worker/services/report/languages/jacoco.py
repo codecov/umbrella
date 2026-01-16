@@ -38,8 +38,7 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
     ):
         try:
             timestamp = next(xml.iter("sessioninfo")).get("start")
-            original_timestamp = timestamp  # Preserve for error message
-            # Normalize millisecond timestamps to seconds
+            original_timestamp = timestamp
             timestamp = normalize_timestamp(timestamp)
             if timestamp and Date(timestamp) < max_age:
                 # report expired over 12 hours ago
