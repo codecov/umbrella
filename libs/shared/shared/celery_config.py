@@ -556,6 +556,15 @@ class BaseCeleryConfig:
                 default=task_default_queue,
             )
         },
+        f"app.tasks.{TaskConfigGroup.export_owner.value}.*": {
+            "queue": get_config(
+                "setup",
+                "tasks",
+                TaskConfigGroup.export_owner.value,
+                "queue",
+                default=task_default_queue,
+            )
+        },
         activate_account_user_task_name: {
             "queue": get_config(
                 "setup",
