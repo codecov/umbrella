@@ -20,6 +20,7 @@ from database.tests.factories.core import (
     RepositoryFactory,
 )
 from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
+from tests.helpers import mock_all_plans_and_tiers
 
 
 @pytest.fixture
@@ -310,3 +311,238 @@ def test_route_task(mocker, dbsession, fake_repos):
         PlanName.CODECOV_PRO_MONTHLY.value,
         repo.ownerid,
     )
+
+
+class TestBundleAnalysisTaskRouting:
+    """Tests for bundle analysis task routing to enterprise queues."""
+
+    def test_get_user_plan_from_task_bundle_analysis_processor(
+        self, dbsession, fake_repos
+    ):
+        """Test that bundle_analysis_processor_task routes based on repoid."""
+        (repo, repo_enterprise_cloud) = fake_repos
+
+        # Regular plan repo
+        task_kwargs = {"repoid": repo.repoid, "commitid": "abc123"}
+        assert (
+            _get_user_plan_from_task(
+                dbsession,
+                shared_celery_config.bundle_analysis_processor_task_name,
+                task_kwargs,
+            )
+            == PlanName.CODECOV_PRO_MONTHLY.value
+        )
+
+        # Enterprise plan repo
+        task_kwargs = {"repoid": repo_enterprise_cloud.repoid, "commitid": "abc123"}
+        assert (
+            _get_user_plan_from_task(
+                dbsession,
+                shared_celery_config.bundle_analysis_processor_task_name,
+                task_kwargs,
+            )
+            == PlanName.ENTERPRISE_CLOUD_YEARLY.value
+        )
+
+    def test_get_user_plan_from_task_bundle_analysis_notify(
+        self, dbsession, fake_repos
+    ):
+        """Test that bundle_analysis_notify_task routes based on repoid."""
+        (repo, repo_enterprise_cloud) = fake_repos
+
+        # Regular plan repo
+        task_kwargs = {"repoid": repo.repoid, "commitid": "abc123"}
+        assert (
+            _get_user_plan_from_task(
+                dbsession,
+                shared_celery_config.bundle_analysis_notify_task_name,
+                task_kwargs,
+            )
+            == PlanName.CODECOV_PRO_MONTHLY.value
+        )
+
+        # Enterprise plan repo
+        task_kwargs = {"repoid": repo_enterprise_cloud.repoid, "commitid": "abc123"}
+        assert (
+            _get_user_plan_from_task(
+                dbsession,
+                shared_celery_config.bundle_analysis_notify_task_name,
+                task_kwargs,
+            )
+            == PlanName.ENTERPRISE_CLOUD_YEARLY.value
+        )
+
+    def test_get_user_plan_from_task_bundle_analysis_save_measurements(
+        self, dbsession, fake_repos
+    ):
+        """Test that bundle_analysis_save_measurements_task routes based on repoid."""
+        (repo, repo_enterprise_cloud) = fake_repos
+
+        # Regular plan repo
+        task_kwargs = {"repoid": repo.repoid, "commitid": "abc123"}
+        assert (
+            _get_user_plan_from_task(
+                dbsession,
+                shared_celery_config.bundle_analysis_save_measurements_task_name,
+                task_kwargs,
+            )
+            == PlanName.CODECOV_PRO_MONTHLY.value
+        )
+
+        # Enterprise plan repo
+        task_kwargs = {"repoid": repo_enterprise_cloud.repoid, "commitid": "abc123"}
+        assert (
+            _get_user_plan_from_task(
+                dbsession,
+                shared_celery_config.bundle_analysis_save_measurements_task_name,
+                task_kwargs,
+            )
+            == PlanName.ENTERPRISE_CLOUD_YEARLY.value
+        )
+
+    def test_get_ownerid_from_task_bundle_analysis_processor(
+        self, dbsession, fake_repos
+    ):
+        """Test that bundle_analysis_processor_task gets ownerid from repoid."""
+        (repo, repo_enterprise_cloud) = fake_repos
+
+        task_kwargs = {"repoid": repo.repoid, "commitid": "abc123"}
+        assert (
+            _get_ownerid_from_task(
+                dbsession,
+                shared_celery_config.bundle_analysis_processor_task_name,
+                task_kwargs,
+            )
+            == repo.ownerid
+        )
+
+        task_kwargs = {"repoid": repo_enterprise_cloud.repoid, "commitid": "abc123"}
+        assert (
+            _get_ownerid_from_task(
+                dbsession,
+                shared_celery_config.bundle_analysis_processor_task_name,
+                task_kwargs,
+            )
+            == repo_enterprise_cloud.ownerid
+        )
+
+    def test_get_ownerid_from_task_bundle_analysis_notify(self, dbsession, fake_repos):
+        """Test that bundle_analysis_notify_task gets ownerid from repoid."""
+        (repo, repo_enterprise_cloud) = fake_repos
+
+        task_kwargs = {"repoid": repo.repoid, "commitid": "abc123"}
+        assert (
+            _get_ownerid_from_task(
+                dbsession,
+                shared_celery_config.bundle_analysis_notify_task_name,
+                task_kwargs,
+            )
+            == repo.ownerid
+        )
+
+    def test_get_ownerid_from_task_bundle_analysis_save_measurements(
+        self, dbsession, fake_repos
+    ):
+        """Test that bundle_analysis_save_measurements_task gets ownerid from repoid."""
+        (repo, repo_enterprise_cloud) = fake_repos
+
+        task_kwargs = {"repoid": repo.repoid, "commitid": "abc123"}
+        assert (
+            _get_ownerid_from_task(
+                dbsession,
+                shared_celery_config.bundle_analysis_save_measurements_task_name,
+                task_kwargs,
+            )
+            == repo.ownerid
+        )
+
+
+@pytest.mark.django_db(databases={"default"})
+class TestBundleAnalysisRoutingIntegration:
+    """End-to-end integration tests for bundle analysis task routing.
+
+    These tests verify the complete routing flow WITHOUT mocking
+    route_tasks_based_on_user_plan, ensuring that bundle analysis tasks
+    are correctly routed to enterprise queues for enterprise customers.
+    """
+
+    @pytest.fixture
+    def setup_plans(self):
+        """Populate the Plan model with all plan definitions."""
+        mock_all_plans_and_tiers()
+
+    def test_bundle_analysis_processor_routes_to_enterprise_queue(
+        self, mocker, dbsession, fake_repos, setup_plans
+    ):
+        """Integration test: enterprise repo bundle_analysis_processor → enterprise queue."""
+        mocker.patch("celery_task_router.get_db_session", return_value=dbsession)
+        (repo, repo_enterprise_cloud) = fake_repos
+
+        task_kwargs = {"repoid": repo_enterprise_cloud.repoid, "commitid": "abc123"}
+        result = route_task(
+            shared_celery_config.bundle_analysis_processor_task_name,
+            [],
+            task_kwargs,
+            {},
+        )
+
+        assert "enterprise" in result["queue"], (
+            f"Expected enterprise queue for enterprise repo, got: {result['queue']}"
+        )
+
+    def test_bundle_analysis_notify_routes_to_enterprise_queue(
+        self, mocker, dbsession, fake_repos, setup_plans
+    ):
+        """Integration test: enterprise repo bundle_analysis_notify → enterprise queue."""
+        mocker.patch("celery_task_router.get_db_session", return_value=dbsession)
+        (repo, repo_enterprise_cloud) = fake_repos
+
+        task_kwargs = {"repoid": repo_enterprise_cloud.repoid, "commitid": "abc123"}
+        result = route_task(
+            shared_celery_config.bundle_analysis_notify_task_name,
+            [],
+            task_kwargs,
+            {},
+        )
+
+        assert "enterprise" in result["queue"], (
+            f"Expected enterprise queue for enterprise repo, got: {result['queue']}"
+        )
+
+    def test_bundle_analysis_save_measurements_routes_to_enterprise_queue(
+        self, mocker, dbsession, fake_repos, setup_plans
+    ):
+        """Integration test: enterprise repo bundle_analysis_save_measurements → enterprise queue."""
+        mocker.patch("celery_task_router.get_db_session", return_value=dbsession)
+        (repo, repo_enterprise_cloud) = fake_repos
+
+        task_kwargs = {"repoid": repo_enterprise_cloud.repoid, "commitid": "abc123"}
+        result = route_task(
+            shared_celery_config.bundle_analysis_save_measurements_task_name,
+            [],
+            task_kwargs,
+            {},
+        )
+
+        assert "enterprise" in result["queue"], (
+            f"Expected enterprise queue for enterprise repo, got: {result['queue']}"
+        )
+
+    def test_bundle_analysis_non_enterprise_routes_to_default_queue(
+        self, mocker, dbsession, fake_repos, setup_plans
+    ):
+        """Integration test: non-enterprise repo → default queue (not enterprise)."""
+        mocker.patch("celery_task_router.get_db_session", return_value=dbsession)
+        (repo, repo_enterprise_cloud) = fake_repos
+
+        task_kwargs = {"repoid": repo.repoid, "commitid": "abc123"}
+        result = route_task(
+            shared_celery_config.bundle_analysis_processor_task_name,
+            [],
+            task_kwargs,
+            {},
+        )
+
+        assert "enterprise" not in result["queue"], (
+            f"Expected non-enterprise queue for non-enterprise repo, got: {result['queue']}"
+        )
