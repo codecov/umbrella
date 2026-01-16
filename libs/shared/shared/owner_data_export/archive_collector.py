@@ -160,9 +160,7 @@ def copy_archive_file(
     storage: BaseStorageService,
 ) -> tuple[bool, int]:
     """
-    Copy a file to the export location.
-
-    Uses server-side copy when source and destination are in the same bucket.    For cross-bucket copies (bundle analysis), reads and writes.
+    Copy a file to the export location using server-side copy.
 
     Args:
         bucket: The destination bucket
@@ -174,18 +172,13 @@ def copy_archive_file(
     source_bucket = file.source_bucket or bucket
 
     try:
-        if source_bucket == bucket and hasattr(storage, "minio_client"):
-            storage.minio_client.copy_object(
-                bucket,
-                file.dest_path,
-                CopySource(bucket, file.source_path),
-            )
-            stat = storage.minio_client.stat_object(bucket, file.dest_path)
-            return True, stat.size
-        else:
-            data = storage.read_file(source_bucket, file.source_path)
-            storage.write_file(bucket, file.dest_path, data)
-            return True, len(data)
+        storage.minio_client.copy_object(
+            bucket,
+            file.dest_path,
+            CopySource(source_bucket, file.source_path),
+        )
+        stat = storage.minio_client.stat_object(bucket, file.dest_path)
+        return True, stat.size
     except FileNotInStorageError:
         log.warning("File not found: %s (from %s)", file.source_path, file.source_model)
         return False, 0
