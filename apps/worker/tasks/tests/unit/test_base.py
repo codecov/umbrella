@@ -20,7 +20,11 @@ from sqlalchemy.exc import (
 from database.enums import CommitErrorTypes
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import OwnerFactory, RepositoryFactory
-from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
+from helpers.exceptions import (
+    NoConfiguredAppsAvailable,
+    OwnerWithoutValidBotError,
+    RepositoryWithoutValidBotError,
+)
 from shared.celery_config import (
     sync_repos_task_name,
     upload_breadcrumb_task_name,
@@ -28,7 +32,7 @@ from shared.celery_config import (
 )
 from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Errors
 from shared.plan.constants import PlanName
-from shared.torngit.exceptions import TorngitClientError
+from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
 from tasks.base import BaseCodecovRequest, BaseCodecovTask
 from tasks.base import celery_app as base_celery_app
 from tests.helpers import mock_all_plans_and_tiers
@@ -448,6 +452,215 @@ class TestBaseCodecovTask:
                 "sentry_trace_id": None,
             }
         )
+
+
+class TestGetProviderService:
+    def test_returns_service_on_success(self, mocker, mock_self_app):
+        mock_service = mocker.MagicMock()
+        fetch_fn = mocker.MagicMock(return_value=mock_service)
+
+        task = BaseCodecovTask()
+        result = task.get_provider_service(fetch_fn, repoid=123)
+
+        assert result == mock_service
+        fetch_fn.assert_called_once()
+
+    def test_handles_repository_without_valid_bot_error(self, mocker, mock_self_app):
+        fetch_fn = mocker.MagicMock(side_effect=RepositoryWithoutValidBotError())
+        mock_save_commit_error = mocker.patch("tasks.base.save_commit_error")
+
+        mock_commit = mocker.MagicMock()
+        mock_commit.commitid = "abc123"
+        mock_commit.repoid = 5
+
+        task = BaseCodecovTask()
+        result = task.get_provider_service(fetch_fn, commit=mock_commit)
+
+        assert result is None
+        mock_save_commit_error.assert_called_once()
+
+    def test_handles_owner_without_valid_bot_error(self, mocker, mock_self_app):
+        fetch_fn = mocker.MagicMock(side_effect=OwnerWithoutValidBotError())
+
+        task = BaseCodecovTask()
+        result = task.get_provider_service(fetch_fn, repoid=123)
+
+        assert result is None
+
+    def test_handles_owner_without_valid_bot_error_with_commit(
+        self, mocker, mock_self_app
+    ):
+        fetch_fn = mocker.MagicMock(side_effect=OwnerWithoutValidBotError())
+        mock_save_commit_error = mocker.patch("tasks.base.save_commit_error")
+
+        mock_commit = mocker.MagicMock()
+        mock_commit.commitid = "abc123"
+        mock_commit.repoid = 5
+
+        task = BaseCodecovTask()
+        result = task.get_provider_service(fetch_fn, commit=mock_commit)
+
+        assert result is None
+        mock_save_commit_error.assert_called_once()
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once()
+
+    def test_rate_limited_triggers_retry(self, mocker, mock_self_app):
+        fetch_fn = mocker.MagicMock(
+            side_effect=NoConfiguredAppsAvailable(
+                apps_count=2,
+                rate_limited_count=2,
+                suspended_count=0,
+            )
+        )
+        mocker.patch("tasks.base.get_seconds_to_next_hour", return_value=120)
+
+        task = BaseCodecovTask()
+        mock_retry = mocker.patch.object(task, "retry")
+
+        result = task.get_provider_service(fetch_fn, repoid=123)
+
+        assert result is None
+        mock_retry.assert_called_once_with(countdown=120)
+
+    def test_rate_limited_uses_earliest_retry_time(self, mocker, mock_self_app):
+        fetch_fn = mocker.MagicMock(
+            side_effect=NoConfiguredAppsAvailable(
+                apps_count=2,
+                rate_limited_count=2,
+                suspended_count=0,
+                earliest_retry_after_seconds=180,
+            )
+        )
+
+        task = BaseCodecovTask()
+        mock_retry = mocker.patch.object(task, "retry")
+
+        result = task.get_provider_service(fetch_fn, repoid=123)
+
+        assert result is None
+        mock_retry.assert_called_once_with(countdown=180)
+
+    def test_rate_limited_enforces_minimum_delay(self, mocker, mock_self_app):
+        fetch_fn = mocker.MagicMock(
+            side_effect=NoConfiguredAppsAvailable(
+                apps_count=2,
+                rate_limited_count=2,
+                suspended_count=0,
+                earliest_retry_after_seconds=30,
+            )
+        )
+
+        task = BaseCodecovTask()
+        mock_retry = mocker.patch.object(task, "retry")
+
+        result = task.get_provider_service(fetch_fn, repoid=123)
+
+        assert result is None
+        mock_retry.assert_called_once_with(countdown=60)
+
+    def test_suspended_apps_returns_none_without_retry(self, mocker, mock_self_app):
+        fetch_fn = mocker.MagicMock(
+            side_effect=NoConfiguredAppsAvailable(
+                apps_count=2,
+                rate_limited_count=0,
+                suspended_count=2,
+            )
+        )
+
+        task = BaseCodecovTask()
+        mock_retry = mocker.patch.object(task, "retry")
+
+        result = task.get_provider_service(fetch_fn, repoid=123)
+
+        assert result is None
+        mock_retry.assert_not_called()
+
+    def test_handles_torngit_repo_not_found_error(self, mocker, mock_self_app):
+        fetch_fn = mocker.MagicMock(
+            side_effect=TorngitRepoNotFoundError(
+                response_data={}, message="repo not found"
+            )
+        )
+
+        task = BaseCodecovTask()
+        result = task.get_provider_service(fetch_fn, repoid=123)
+
+        assert result is None
+
+    def test_handles_torngit_client_error(self, mocker, mock_self_app):
+        fetch_fn = mocker.MagicMock(side_effect=TorngitClientError())
+
+        task = BaseCodecovTask()
+        result = task.get_provider_service(fetch_fn, repoid=123)
+
+        assert result is None
+
+    def test_handles_unknown_exception(self, mocker, mock_self_app):
+        fetch_fn = mocker.MagicMock(side_effect=ValueError("unexpected"))
+
+        task = BaseCodecovTask()
+        result = task.get_provider_service(fetch_fn, repoid=123)
+
+        assert result is None
+
+    def test_logs_include_repoid_context(self, mocker, mock_self_app):
+        fetch_fn = mocker.MagicMock(side_effect=OwnerWithoutValidBotError())
+        mock_log = mocker.patch("tasks.base.log")
+
+        task = BaseCodecovTask()
+        task.get_provider_service(fetch_fn, repoid=456)
+
+        warning_calls = list(mock_log.warning.call_args_list)
+        assert len(warning_calls) == 1
+        assert warning_calls[0][1]["extra"]["repoid"] == 456
+
+    def test_logs_include_commit_context(self, mocker, mock_self_app):
+        fetch_fn = mocker.MagicMock(side_effect=OwnerWithoutValidBotError())
+        mock_log = mocker.patch("tasks.base.log")
+        mocker.patch("tasks.base.save_commit_error")
+
+        mock_commit = mocker.MagicMock()
+        mock_commit.commitid = "abc123"
+        mock_commit.repoid = 789
+
+        task = BaseCodecovTask()
+        task.get_provider_service(fetch_fn, commit=mock_commit)
+
+        warning_calls = list(mock_log.warning.call_args_list)
+        assert len(warning_calls) == 1
+        assert warning_calls[0][1]["extra"]["commit"] == "abc123"
+        assert warning_calls[0][1]["extra"]["repoid"] == 789
+
+    def test_rate_limited_with_commit_sends_breadcrumbs(self, mocker, mock_self_app):
+        fetch_fn = mocker.MagicMock(
+            side_effect=NoConfiguredAppsAvailable(
+                apps_count=2,
+                rate_limited_count=2,
+                suspended_count=0,
+            )
+        )
+        mocker.patch("tasks.base.get_seconds_to_next_hour", return_value=120)
+
+        mock_commit = mocker.MagicMock()
+        mock_commit.commitid = "abc123"
+        mock_commit.repoid = 5
+
+        task = BaseCodecovTask()
+        mocker.patch.object(task, "retry")
+
+        task.get_provider_service(fetch_fn, commit=mock_commit)
+
+        assert (
+            mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.call_count == 2
+        )
+        calls = mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.call_args_list
+        errors = [c[1]["kwargs"]["breadcrumb_data"].error for c in calls]
+        assert Errors.INTERNAL_APP_RATE_LIMITED in errors
+        assert Errors.INTERNAL_RETRYING in errors
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})

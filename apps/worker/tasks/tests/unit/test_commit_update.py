@@ -1,10 +1,11 @@
 import datetime as dt
 
 import pytest
+from celery.exceptions import Retry
 
 from database.models import Branch
 from database.tests.factories import BranchFactory, CommitFactory, PullFactory
-from helpers.exceptions import RepositoryWithoutValidBotError
+from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from shared.celery_config import upload_breadcrumb_task_name
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
@@ -358,6 +359,78 @@ class TestCommitUpdate:
                 "repo_id": commit.repository.repoid,
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.COMMIT_PROCESSED
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
+
+    def test_update_commit_no_configured_apps_rate_limited(
+        self,
+        mocker,
+        mock_configuration,
+        dbsession,
+        mock_redis,
+        mock_self_app,
+    ):
+        """Test that rate-limited NoConfiguredAppsAvailable triggers a retry."""
+        mock_get_repo_service = mocker.patch(
+            "tasks.commit_update.get_repo_provider_service"
+        )
+        mock_get_repo_service.side_effect = NoConfiguredAppsAvailable(
+            apps_count=2,
+            rate_limited_count=2,
+            suspended_count=0,
+        )
+        mocker.patch("tasks.commit_update.get_seconds_to_next_hour", return_value=120)
+
+        commit = CommitFactory.create(
+            message="",
+            parent_commit_id=None,
+        )
+        dbsession.add(commit)
+        dbsession.flush()
+
+        with pytest.raises(Retry):
+            CommitUpdateTask().run_impl(dbsession, commit.repoid, commit.commitid)
+
+    def test_update_commit_no_configured_apps_suspended(
+        self,
+        mocker,
+        mock_configuration,
+        dbsession,
+        mock_redis,
+        mock_self_app,
+    ):
+        """Test that suspended apps (not rate-limited) returns an error."""
+        mock_get_repo_service = mocker.patch(
+            "tasks.commit_update.get_repo_provider_service"
+        )
+        mock_get_repo_service.side_effect = NoConfiguredAppsAvailable(
+            apps_count=1,
+            rate_limited_count=0,
+            suspended_count=1,
+        )
+
+        commit = CommitFactory.create(
+            message="",
+            parent_commit_id=None,
+        )
+        dbsession.add(commit)
+        dbsession.flush()
+
+        result = CommitUpdateTask().run_impl(dbsession, commit.repoid, commit.commitid)
+        expected_result = {"was_updated": False}
+        assert expected_result == result
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED,
+                    error=Errors.REPO_MISSING_VALID_BOT,
                 ),
                 "upload_ids": [],
                 "sentry_trace_id": None,

@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -27,7 +28,11 @@ from database.models.core import (
 from helpers.checkpoint_logger import from_kwargs as load_checkpoints_from_kwargs
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
 from helpers.clock import get_seconds_to_next_hour
-from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
+from helpers.exceptions import (
+    NoConfiguredAppsAvailable,
+    OwnerWithoutValidBotError,
+    RepositoryWithoutValidBotError,
+)
 from helpers.log_context import LogContext, set_log_context
 from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
@@ -564,40 +569,48 @@ class BaseCodecovTask(celery_app.Task):
 
         return res
 
-    def get_repo_provider_service(
+    def get_provider_service(
         self,
-        repository: Repository,
-        installation_name_to_use: str = GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-        additional_data: AdditionalData | None = None,
+        fetch_service: Callable[[], TorngitBaseAdapter],
+        *,
+        repoid: int | None = None,
         commit: Commit | None = None,
     ) -> TorngitBaseAdapter | None:
+        log_extra = {}
+        if repoid:
+            log_extra["repoid"] = repoid
+        if commit:
+            log_extra["commit"] = commit.commitid
+            log_extra["repoid"] = commit.repoid
+
         try:
-            return get_repo_provider_service(
-                repository, installation_name_to_use, additional_data
-            )
-        except RepositoryWithoutValidBotError:
+            return fetch_service()
+        except (RepositoryWithoutValidBotError, OwnerWithoutValidBotError):
             if commit:
                 save_commit_error(
                     commit,
                     error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
-                    error_params={"repoid": repository.repoid},
+                    error_params=log_extra,
                 )
                 self._call_upload_breadcrumb_task(
                     commit_sha=commit.commitid,
-                    repo_id=repository.repoid,
+                    repo_id=commit.repoid,
                     error=Errors.REPO_MISSING_VALID_BOT,
                 )
             log.warning(
-                "Unable to reach git provider because repo doesn't have a valid bot"
+                "Unable to reach git provider because owner/repo doesn't have a valid bot",
+                extra=log_extra,
             )
         except NoConfiguredAppsAvailable as exp:
             if exp.rate_limited_count > 0:
-                # At least one GitHub app is available but rate-limited. Retry after
-                # waiting until the next hour (minimum 1 minute delay).
-                retry_delay_seconds = max(60, get_seconds_to_next_hour())
+                if exp.earliest_retry_after_seconds is not None:
+                    retry_delay_seconds = max(60, exp.earliest_retry_after_seconds)
+                else:
+                    retry_delay_seconds = max(60, get_seconds_to_next_hour())
                 log.warning(
-                    "Unable to get repo provider service due to rate limits. Retrying again later.",
+                    "Unable to reach git provider due to rate limits, retrying",
                     extra={
+                        **log_extra,
                         "apps_available": exp.apps_count,
                         "apps_rate_limited": exp.rate_limited_count,
                         "apps_suspended": exp.suspended_count,
@@ -607,19 +620,20 @@ class BaseCodecovTask(celery_app.Task):
                 if commit:
                     self._call_upload_breadcrumb_task(
                         commit_sha=commit.commitid,
-                        repo_id=repository.repoid,
+                        repo_id=commit.repoid,
                         error=Errors.INTERNAL_APP_RATE_LIMITED,
                     )
                     self._call_upload_breadcrumb_task(
                         commit_sha=commit.commitid,
-                        repo_id=repository.repoid,
+                        repo_id=commit.repoid,
                         error=Errors.INTERNAL_RETRYING,
                     )
                 self.retry(countdown=retry_delay_seconds)
             else:
                 log.warning(
-                    "Unable to get repo provider service. Apps appear to be suspended.",
+                    "Unable to reach git provider, apps are suspended or unavailable",
                     extra={
+                        **log_extra,
                         "apps_available": exp.apps_count,
                         "apps_rate_limited": exp.rate_limited_count,
                         "apps_suspended": exp.suspended_count,
@@ -629,36 +643,54 @@ class BaseCodecovTask(celery_app.Task):
             if commit:
                 self._call_upload_breadcrumb_task(
                     commit_sha=commit.commitid,
-                    repo_id=repository.repoid,
+                    repo_id=commit.repoid,
                     error=Errors.REPO_NOT_FOUND,
                 )
             log.warning(
-                "Unable to reach git provider because this specific bot/integration can't see that repository",
-                extra={"repoid": repository.repoid},
+                "Unable to reach git provider because bot can't see repository",
+                extra=log_extra,
             )
         except TorngitClientError:
             if commit:
                 self._call_upload_breadcrumb_task(
                     commit_sha=commit.commitid,
-                    repo_id=repository.repoid,
+                    repo_id=commit.repoid,
                     error=Errors.GIT_CLIENT_ERROR,
                 )
             log.warning(
-                "Unable to get repo provider service",
-                extra={"repoid": repository.repoid},
+                "Unable to reach git provider due to client error",
+                extra=log_extra,
                 exc_info=True,
             )
         except Exception as e:
-            log.exception("Uncaught exception when trying to get repository service")
+            log.exception(
+                "Uncaught exception when trying to get provider service",
+                extra=log_extra,
+            )
             if commit:
                 self._call_upload_breadcrumb_task(
                     commit_sha=commit.commitid,
-                    repo_id=repository.repoid,
+                    repo_id=commit.repoid,
                     error=Errors.UNKNOWN,
                     error_text=repr(e),
                 )
 
         return None
+
+    def get_repo_provider_service(
+        self,
+        repository: Repository,
+        installation_name_to_use: str = GITHUB_APP_INSTALLATION_DEFAULT_NAME,
+        additional_data: AdditionalData | None = None,
+        commit: Commit | None = None,
+    ) -> TorngitBaseAdapter | None:
+        return self.get_provider_service(
+            lambda: get_repo_provider_service(
+                repository, installation_name_to_use, additional_data
+            ),
+            repoid=repository.repoid,
+            commit=commit,
+        )
 
     @contextmanager
     def with_logged_lock(self, lock, lock_name: str, **extra_log_context):
