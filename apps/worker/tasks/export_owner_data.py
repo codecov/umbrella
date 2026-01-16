@@ -108,7 +108,7 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
         since_date_iso = export.since_date.isoformat() if export.since_date else None
 
         # Run SQL and Archives in parallel, then finalize
-        # Use link_error to trigger cleanup if any header task fails
+        # Use link_error to trigger cleanup if any task fails
         workflow = chord(
             [
                 export_owner_sql_task.s(
@@ -129,7 +129,8 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
         result = workflow.apply_async(
             link_error=export_owner_cleanup_task.s(
                 owner_id=owner_id, export_id=export_id
-            )
+            ),
+            allow_error_cb_on_chord_header=True,
         )
 
         export.task_ids = {"chord_id": result.id}
