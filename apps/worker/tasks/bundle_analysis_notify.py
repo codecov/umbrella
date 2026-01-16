@@ -12,7 +12,6 @@ from services.bundle_analysis.notify.types import NotificationSuccess
 from services.lock_manager import LockManager, LockRetry, LockType
 from shared.celery_config import (
     BUNDLE_ANALYSIS_NOTIFY_MAX_RETRIES,
-    DEFAULT_LOCK_TIMEOUT_SECONDS,
     bundle_analysis_notify_task_name,
 )
 from shared.yaml import UserYaml
@@ -52,7 +51,6 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
             repoid=repoid,
             commitid=commitid,
             report_type=ReportType.BUNDLE_ANALYSIS,
-            lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
         )
 
         try:
