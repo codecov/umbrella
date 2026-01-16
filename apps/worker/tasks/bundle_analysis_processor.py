@@ -14,6 +14,7 @@ from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.types import UploadArguments
 from shared.celery_config import (
     BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES,
+    DEFAULT_LOCK_TIMEOUT_SECONDS,
     bundle_analysis_processor_task_name,
 )
 from shared.reports.enums import UploadState
@@ -60,6 +61,7 @@ class BundleAnalysisProcessorTask(
             repoid=repoid,
             commitid=commitid,
             report_type=ReportType.BUNDLE_ANALYSIS,
+            lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
         )
 
         try:
