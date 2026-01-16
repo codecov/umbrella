@@ -6,7 +6,7 @@ from lxml.etree import Element
 from timestring import Date
 
 from helpers.exceptions import ReportExpiredException
-from services.report.languages.base import BaseLanguageProcessor
+from services.report.languages.base import BaseLanguageProcessor, normalize_timestamp
 from services.report.report_builder import CoverageType, ReportBuilderSession
 from shared.utils.merge import LineType, branch_type
 
@@ -38,9 +38,13 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
     ):
         try:
             timestamp = next(xml.iter("sessioninfo")).get("start")
+            original_timestamp = timestamp
+            timestamp = normalize_timestamp(timestamp)
             if timestamp and Date(timestamp) < max_age:
                 # report expired over 12 hours ago
-                raise ReportExpiredException(f"Jacoco report expired {timestamp}")
+                raise ReportExpiredException(
+                    f"Jacoco report expired {original_timestamp}"
+                )
 
         except StopIteration:
             pass
