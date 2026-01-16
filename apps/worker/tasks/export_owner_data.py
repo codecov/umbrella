@@ -29,6 +29,7 @@ from io import BytesIO
 
 from celery import chord
 from celery.exceptions import SoftTimeLimitExceeded
+from celery.result import AsyncResult
 from django.utils import timezone
 
 from app import celery_app
@@ -94,12 +95,17 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
             return {"error": "Export not found"}
 
         if export.owner_id != owner_id:
+            error_msg = (
+                f"Owner ID mismatch: export belongs to owner {export.owner_id}, "
+                f"not {owner_id}"
+            )
             log.error(
                 "Owner ID mismatch: export %d belongs to owner %d, not %d",
                 export_id,
                 export.owner_id,
                 owner_id,
             )
+            self._mark_export_failed(export, error_msg)
             return {"error": "Owner ID mismatch"}
 
         export.status = OwnerExport.Status.IN_PROGRESS
@@ -141,6 +147,12 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
             "owner_id": owner_id,
             "chord_id": result.id,
         }
+
+    def _mark_export_failed(self, export: OwnerExport, error_message: str):
+        """Mark the export as failed with an error message."""
+        export.status = OwnerExport.Status.FAILED
+        export.error_message = error_message[:500]
+        export.save(update_fields=["status", "error_message", "updated_at"])
 
 
 class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
@@ -694,9 +706,7 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
     def run_impl(
         self,
         _db_session,
-        request=None,
-        exc=None,
-        traceback=None,
+        failed_task_id: str | None = None,
         *,
         owner_id: int,
         export_id: int,
@@ -705,7 +715,7 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
             "Cleaning up failed export for owner %d, export %d", owner_id, export_id
         )
 
-        error_message = self._get_error_message(exc)
+        error_message = self._get_error_message_from_task(failed_task_id)
         export_marked = self._mark_export_failed(export_id, error_message)
 
         storage = get_appropriate_storage_service()
@@ -792,11 +802,29 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
 
         return deleted
 
-    def _get_error_message(self, exc) -> str:
-        """Extract error message from exception passed to link_error callback."""
-        if exc is None:
+    def _get_error_message_from_task(self, failed_task_id: str | None) -> str:
+        """
+        Extract error message from a failed task using AsyncResult.
+
+        Celery's link_error callback receives the failed task's ID, not the exception.
+        We use AsyncResult to retrieve the actual exception from the task result backend.
+        """
+        if failed_task_id is None:
             return "Export failed (unknown error)"
-        return f"Export failed: {str(exc)[:450]}"
+
+        try:
+            result = AsyncResult(failed_task_id)
+            if result.failed() and result.result is not None:
+                exc = result.result
+                return f"Export failed: {str(exc)[:450]}"
+            return f"Export failed (task {failed_task_id} failed)"
+        except Exception as e:
+            log.warning(
+                "Could not retrieve exception from failed task %s: %s",
+                failed_task_id,
+                str(e),
+            )
+            return f"Export failed (task {failed_task_id})"
 
     def _mark_export_failed(self, export_id: int, error_message: str) -> bool:
         """
