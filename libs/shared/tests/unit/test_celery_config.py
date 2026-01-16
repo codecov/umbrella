@@ -34,6 +34,7 @@ def test_celery_config():
         "app.tasks.commit_update.CommitUpdate",
         "app.tasks.compute_comparison.ComputeComparison",
         "app.tasks.delete_owner.DeleteOwner",
+        "app.tasks.export_owner.*",
         "app.tasks.flakes.*",
         "app.tasks.flush_repo.FlushRepo",
         "app.tasks.mark_owner_for_deletion.MarkOwnerForDeletion",
@@ -77,6 +78,16 @@ def test_celery_config():
             TaskConfigGroup.compute_comparison.value,
         ),
         ("app.tasks.delete_owner.DeleteOwner", TaskConfigGroup.delete_owner.value),
+        ("app.tasks.export_owner.ExportOwner", TaskConfigGroup.export_owner.value),
+        ("app.tasks.export_owner.ExportOwnerSQL", TaskConfigGroup.export_owner.value),
+        (
+            "app.tasks.export_owner.ExportOwnerArchives",
+            TaskConfigGroup.export_owner.value,
+        ),
+        (
+            "app.tasks.export_owner.ExportOwnerFinalize",
+            TaskConfigGroup.export_owner.value,
+        ),
         ("app.tasks.flush_repo.FlushRepo", TaskConfigGroup.flush_repo.value),
         ("app.tasks.sync_plans.SyncPlans", TaskConfigGroup.sync_plans.value),
         (
