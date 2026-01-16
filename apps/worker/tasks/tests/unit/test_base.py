@@ -318,10 +318,12 @@ class TestBaseCodecovTask:
         mocker.patch("tasks.base.get_seconds_to_next_hour", return_value=120)
         mock_commit = mocker.MagicMock()
         mock_commit.commitid = "abc123"
+        mock_commit.repoid = 8
 
         task = BaseCodecovTask()
         mock_retry = mocker.patch.object(task, "retry")
         mock_repo = mocker.MagicMock()
+        mock_repo.repoid = 8
         assert task.get_repo_provider_service(mock_repo, commit=mock_commit) is None
         task.retry.assert_called_with(countdown=120)
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
@@ -329,7 +331,7 @@ class TestBaseCodecovTask:
                 call(
                     kwargs={
                         "commit_sha": mock_commit.commitid,
-                        "repo_id": mock_repo.repoid,
+                        "repo_id": 8,
                         "breadcrumb_data": BreadcrumbData(
                             error=Errors.INTERNAL_APP_RATE_LIMITED,
                         ),
@@ -340,7 +342,7 @@ class TestBaseCodecovTask:
                 call(
                     kwargs={
                         "commit_sha": mock_commit.commitid,
-                        "repo_id": mock_repo.repoid,
+                        "repo_id": 8,
                         "breadcrumb_data": BreadcrumbData(
                             error=Errors.INTERNAL_RETRYING,
                         ),
@@ -377,18 +379,20 @@ class TestBaseCodecovTask:
         mock_repo = mocker.MagicMock()
         mock_repo.repoid = 5
         mock_commit = mocker.MagicMock()
+        mock_commit.commitid = "abc123"
+        mock_commit.repoid = 5
         assert task.get_repo_provider_service(mock_repo, commit=mock_commit) is None
         mock_save_commit_error.assert_called_with(
             mock_commit,
             error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
-            error_params={"repoid": 5},
+            error_params={"repoid": 5, "commit": "abc123"},
         )
         mock_self_app.tasks[
             upload_breadcrumb_task_name
         ].apply_async.assert_called_once_with(
             kwargs={
-                "commit_sha": mock_commit.commitid,
-                "repo_id": mock_repo.repoid,
+                "commit_sha": "abc123",
+                "repo_id": 5,
                 "breadcrumb_data": BreadcrumbData(
                     error=Errors.REPO_MISSING_VALID_BOT,
                 ),
@@ -409,13 +413,14 @@ class TestBaseCodecovTask:
         mock_repo.repoid = 8
         mock_commit = mocker.MagicMock()
         mock_commit.commitid = "abc123"
+        mock_commit.repoid = 8
         task.get_repo_provider_service(mock_repo, commit=mock_commit)
         mock_self_app.tasks[
             upload_breadcrumb_task_name
         ].apply_async.assert_called_once_with(
             kwargs={
-                "commit_sha": mock_commit.commitid,
-                "repo_id": mock_repo.repoid,
+                "commit_sha": "abc123",
+                "repo_id": 8,
                 "breadcrumb_data": BreadcrumbData(
                     error=Errors.GIT_CLIENT_ERROR,
                 ),
@@ -436,14 +441,15 @@ class TestBaseCodecovTask:
         mock_repo.repoid = 8
         mock_commit = mocker.MagicMock()
         mock_commit.commitid = "abc123"
+        mock_commit.repoid = 8
         # Ensure the exception from _call_upload_breadcrumb_task does not propagate
         task.get_repo_provider_service(mock_repo, commit=mock_commit)
         mock_self_app.tasks[
             upload_breadcrumb_task_name
         ].apply_async.assert_called_once_with(
             kwargs={
-                "commit_sha": mock_commit.commitid,
-                "repo_id": mock_repo.repoid,
+                "commit_sha": "abc123",
+                "repo_id": 8,
                 "breadcrumb_data": BreadcrumbData(
                     error=Errors.UNKNOWN,
                     error_text=repr(exception),
