@@ -177,8 +177,6 @@ def copy_archive_file(
             file.dest_path,
             CopySource(source_bucket, file.source_path),
         )
-        stat = storage.minio_client.stat_object(bucket, file.dest_path)
-        return True, stat.size
     except FileNotInStorageError:
         log.warning("File not found: %s (from %s)", file.source_path, file.source_model)
         return False, 0
@@ -193,6 +191,13 @@ def copy_archive_file(
     except Exception as e:
         log.error("Failed to copy %s: %s", file.source_path, str(e), exc_info=True)
         return False, 0
+
+    try:
+        stat = storage.minio_client.stat_object(bucket, file.dest_path)
+        return True, stat.size
+    except Exception as e:
+        log.warning("Copy succeeded but failed to stat %s: %s", file.dest_path, str(e))
+        return True, 0
 
 
 def collect_archives_for_export(
