@@ -9,6 +9,7 @@ from sqlalchemy.orm.session import Session
 
 from app import celery_app
 from database.models import Owner, Repository
+from helpers.exceptions import OwnerWithoutValidBotError
 from services.owner import clear_identical_owners, get_owner_provider_service
 from shared.celery_config import (
     sync_repo_languages_gql_task_name,
@@ -101,10 +102,19 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
                 ownerid=ownerid,
                 using_integration=using_integration,
             ):
-                git = get_owner_provider_service(
-                    owner,
-                    ignore_installation=(not using_integration),
+                git = self.get_provider_service(
+                    lambda: get_owner_provider_service(
+                        owner,
+                        ignore_installation=(not using_integration),
+                    ),
                 )
+                if git is None:
+                    log.warning(
+                        "Unable to sync repos, no provider service available",
+                        extra={"ownerid": ownerid, "username": username},
+                    )
+                    return None
+
                 sync_repos_output = {}
                 if using_integration:
                     sync_repos_output = async_to_sync(
@@ -131,6 +141,11 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
                     )
         except LockError:
             log.warning("Unable to sync repos because another task is already doing it")
+        except OwnerWithoutValidBotError:
+            log.warning(
+                "Unable to sync repos because owner does not have a valid bot configured",
+                extra={"ownerid": ownerid, "username": username},
+            )
 
     async def sync_repos_affected_repos_known(
         self,

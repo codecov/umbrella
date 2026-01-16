@@ -3,13 +3,17 @@ import logging
 
 from app import celery_app
 from database.models import Branch, Commit, Pull
-from helpers.exceptions import RepositoryWithoutValidBotError
+from helpers.clock import get_seconds_to_next_hour
+from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from services.repository import (
     get_repo_provider_service,
     possibly_update_commit_from_provider_info,
 )
-from shared.celery_config import commit_update_task_name
+from shared.celery_config import (
+    UPLOAD_PROCESSOR_MAX_RETRIES,
+    commit_update_task_name,
+)
 from shared.django_apps.upload_breadcrumbs.models import (
     Errors,
     Milestones,
@@ -129,6 +133,37 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
                 extra={"repoid": repoid, "commit": commitid},
             )
             error = Errors.REPO_MISSING_VALID_BOT
+        except NoConfiguredAppsAvailable as exp:
+            if exp.rate_limited_count > 0:
+                # At least one GitHub app is available but rate-limited. Retry after
+                # waiting until the next hour (minimum 1 minute delay).
+                retry_delay_seconds = max(60, get_seconds_to_next_hour())
+                log.warning(
+                    "Unable to reach git provider due to rate limits. Retrying again later.",
+                    extra={
+                        "repoid": repoid,
+                        "commit": commitid,
+                        "apps_available": exp.apps_count,
+                        "apps_rate_limited": exp.rate_limited_count,
+                        "apps_suspended": exp.suspended_count,
+                        "countdown_seconds": retry_delay_seconds,
+                    },
+                )
+                self.retry(
+                    max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
+                    countdown=retry_delay_seconds,
+                )
+            else:
+                log.warning(
+                    "Unable to reach git provider because no GitHub apps are configured for this owner",
+                    extra={
+                        "repoid": repoid,
+                        "commit": commitid,
+                        "apps_available": exp.apps_count,
+                        "apps_suspended": exp.suspended_count,
+                    },
+                )
+                error = Errors.REPO_MISSING_VALID_BOT
         except TorngitRepoNotFoundError:
             log.warning(
                 "Unable to reach git provider because this specific bot/integration can't see that repository",

@@ -3,7 +3,8 @@ import logging
 from app import celery_app
 from database.enums import CommitErrorTypes
 from database.models import Commit
-from helpers.exceptions import RepositoryWithoutValidBotError
+from helpers.clock import get_seconds_to_next_hour
+from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.save_commit_error import save_commit_error
 from services.lock_manager import LockManager, LockRetry, LockType
@@ -165,6 +166,50 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
                 "Unable to reach git provider because repo doesn't have a valid bot",
                 extra={"repoid": commit.repoid, "commit": commit.commitid},
             )
+        except NoConfiguredAppsAvailable as exp:
+            if exp.rate_limited_count > 0:
+                # At least one GitHub app is available but rate-limited. Retry after
+                # waiting until the next hour (minimum 1 minute delay).
+                retry_delay_seconds = max(60, get_seconds_to_next_hour())
+                log.warning(
+                    "Unable to reach git provider due to rate limits. Retrying again later.",
+                    extra={
+                        "repoid": commit.repoid,
+                        "commit": commit.commitid,
+                        "apps_available": exp.apps_count,
+                        "apps_rate_limited": exp.rate_limited_count,
+                        "apps_suspended": exp.suspended_count,
+                        "countdown_seconds": retry_delay_seconds,
+                    },
+                )
+                self.retry(
+                    max_retries=PREPROCESS_UPLOAD_MAX_RETRIES,
+                    countdown=retry_delay_seconds,
+                )
+            else:
+                save_commit_error(
+                    commit,
+                    error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
+                    error_params={
+                        "repoid": commit.repoid,
+                        "repository_service": repository_service,
+                    },
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=commit.repoid,
+                    milestone=Milestones.READY_FOR_REPORT,
+                    error=Errors.REPO_MISSING_VALID_BOT,
+                )
+                log.warning(
+                    "Unable to reach git provider because no GitHub apps are configured for this owner",
+                    extra={
+                        "repoid": commit.repoid,
+                        "commit": commit.commitid,
+                        "apps_available": exp.apps_count,
+                        "apps_suspended": exp.suspended_count,
+                    },
+                )
 
         return repository_service
 

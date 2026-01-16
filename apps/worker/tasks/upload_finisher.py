@@ -14,7 +14,8 @@ from database.models import Commit, Pull
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.models.reports import Upload
 from helpers.checkpoint_logger.flows import UploadFlow
-from helpers.exceptions import RepositoryWithoutValidBotError
+from helpers.clock import get_seconds_to_next_hour
+from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.save_commit_error import save_commit_error
 from services.comparison import get_or_create_comparison
@@ -362,6 +363,88 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         except Retry:
             raise
+
+        except RepositoryWithoutValidBotError:
+            log.warning(
+                "Unable to load commit diff because repo doesn't have a valid bot",
+                extra={"repoid": repoid, "commit": commitid},
+            )
+            save_commit_error(
+                commit,
+                error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
+            )
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                upload_ids=upload_ids,
+                error=Errors.REPO_MISSING_VALID_BOT,
+            )
+            return {
+                "error": "Repository does not have a valid bot",
+                "upload_ids": upload_ids,
+            }
+
+        except NoConfiguredAppsAvailable as exp:
+            if exp.rate_limited_count > 0:
+                # At least one GitHub app is available but rate-limited. Retry after
+                # waiting until the next hour (minimum 1 minute delay).
+                retry_delay_seconds = max(60, get_seconds_to_next_hour())
+                log.warning(
+                    "Unable to load commit diff due to rate limits. Retrying again later.",
+                    extra={
+                        "repoid": repoid,
+                        "commit": commitid,
+                        "apps_available": exp.apps_count,
+                        "apps_rate_limited": exp.rate_limited_count,
+                        "apps_suspended": exp.suspended_count,
+                        "countdown_seconds": retry_delay_seconds,
+                    },
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_APP_RATE_LIMITED,
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.INTERNAL_RETRYING,
+                )
+                self.retry(
+                    max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
+                    countdown=retry_delay_seconds,
+                )
+            else:
+                log.warning(
+                    "Unable to load commit diff. Apps appear to be suspended.",
+                    extra={
+                        "repoid": repoid,
+                        "commit": commitid,
+                        "apps_available": exp.apps_count,
+                        "apps_rate_limited": exp.rate_limited_count,
+                        "apps_suspended": exp.suspended_count,
+                    },
+                )
+                save_commit_error(
+                    commit,
+                    error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                    error=Errors.REPO_MISSING_VALID_BOT,
+                )
+                return {
+                    "error": "No configured GitHub apps available",
+                    "upload_ids": upload_ids,
+                }
 
         except SoftTimeLimitExceeded:
             log.warning("run_impl: soft time limit exceeded")
@@ -917,5 +1000,35 @@ def load_commit_diff(commit: Commit, task_name: str | None = None) -> dict | Non
             "Could not apply diff to report because there is no valid bot found for that repo",
             exc_info=True,
         )
+    except NoConfiguredAppsAvailable as exp:
+        if exp.rate_limited_count > 0:
+            # At least one GitHub app is available but rate-limited.
+            # Re-raise the exception so the caller can retry.
+            log.warning(
+                "Could not apply diff to report because configured GitHub apps are rate-limited",
+                extra={
+                    "apps_available": exp.apps_count,
+                    "apps_rate_limited": exp.rate_limited_count,
+                    "apps_suspended": exp.suspended_count,
+                },
+                exc_info=True,
+            )
+            raise
+        else:
+            # No apps are configured or all are suspended.
+            save_commit_error(
+                commit,
+                error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
+            )
+
+            log.warning(
+                "Could not apply diff to report because there are no configured GitHub apps available",
+                extra={
+                    "apps_available": exp.apps_count,
+                    "apps_rate_limited": exp.rate_limited_count,
+                    "apps_suspended": exp.suspended_count,
+                },
+                exc_info=True,
+            )
 
     return None

@@ -7,7 +7,11 @@ from database.tests.factories.core import (
     ReportFactory,
     RepositoryFactory,
 )
-from helpers.exceptions import OwnerWithoutValidBotError, RepositoryWithoutValidBotError
+from helpers.exceptions import (
+    NoConfiguredAppsAvailable,
+    OwnerWithoutValidBotError,
+    RepositoryWithoutValidBotError,
+)
 from services.lock_manager import LockRetry
 from services.report import ReportService
 from shared.celery_config import upload_breadcrumb_task_name
@@ -278,6 +282,66 @@ class TestPreProcessUpload:
             "updated_commit": False,
             "error": "Failed to get repository_service",
         }
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.READY_FOR_REPORT,
+                    error=Errors.REPO_MISSING_VALID_BOT,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
+
+    def test_get_repo_service_no_configured_apps_rate_limited(
+        self, dbsession, mocker, mock_self_app
+    ):
+        """Test that rate-limited NoConfiguredAppsAvailable triggers a retry."""
+        mock_get_repo_service = mocker.patch(
+            "tasks.preprocess_upload.get_repo_provider_service"
+        )
+        mock_get_repo_service.side_effect = NoConfiguredAppsAvailable(
+            apps_count=2,
+            rate_limited_count=2,
+            suspended_count=0,
+        )
+        mocker.patch(
+            "tasks.preprocess_upload.get_seconds_to_next_hour", return_value=120
+        )
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        with pytest.raises(Retry):
+            PreProcessUpload().get_repo_service(commit, None)
+
+    def test_get_repo_service_no_configured_apps_suspended(
+        self, dbsession, mocker, mock_self_app
+    ):
+        """Test that suspended apps (not rate-limited) returns None and saves error."""
+        mock_get_repo_service = mocker.patch(
+            "tasks.preprocess_upload.get_repo_provider_service"
+        )
+        mock_get_repo_service.side_effect = NoConfiguredAppsAvailable(
+            apps_count=1,
+            rate_limited_count=0,
+            suspended_count=1,
+        )
+        mock_save_error = mocker.patch("tasks.preprocess_upload.save_commit_error")
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        repo_service = PreProcessUpload().get_repo_service(commit, None)
+
+        assert repo_service is None
+        mock_save_error.assert_called()
         mock_self_app.tasks[
             upload_breadcrumb_task_name
         ].apply_async.assert_called_once_with(

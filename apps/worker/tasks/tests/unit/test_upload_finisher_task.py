@@ -13,7 +13,7 @@ from database.tests.factories.core import UploadFactory
 from database.tests.factories.timeseries import DatasetFactory
 from helpers.checkpoint_logger import _kwargs_key
 from helpers.checkpoint_logger.flows import UploadFlow
-from helpers.exceptions import RepositoryWithoutValidBotError
+from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from helpers.log_context import LogContext, set_log_context
 from services.lock_manager import LockRetry
 from services.processing.intermediate import intermediate_report_key
@@ -96,6 +96,44 @@ def test_load_commit_diff_no_bot(mocker, mock_configuration, dbsession):
     mock_get_repo_service.side_effect = RepositoryWithoutValidBotError()
     diff = load_commit_diff(commit)
     assert diff is None
+
+
+def test_load_commit_diff_no_configured_apps_suspended(
+    mocker, mock_configuration, dbsession
+):
+    """Test that suspended apps (rate_limited_count=0) returns None and logs warning."""
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+    mock_get_repo_service = mocker.patch(
+        "tasks.upload_finisher.get_repo_provider_service"
+    )
+    mock_get_repo_service.side_effect = NoConfiguredAppsAvailable(
+        apps_count=1,
+        rate_limited_count=0,
+        suspended_count=1,
+    )
+    diff = load_commit_diff(commit)
+    assert diff is None
+
+
+def test_load_commit_diff_no_configured_apps_rate_limited(
+    mocker, mock_configuration, dbsession
+):
+    """Test that rate-limited apps (rate_limited_count>0) re-raises for retry."""
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+    mock_get_repo_service = mocker.patch(
+        "tasks.upload_finisher.get_repo_provider_service"
+    )
+    mock_get_repo_service.side_effect = NoConfiguredAppsAvailable(
+        apps_count=2,
+        rate_limited_count=2,
+        suspended_count=0,
+    )
+    with pytest.raises(NoConfiguredAppsAvailable):
+        load_commit_diff(commit)
 
 
 def test_mark_uploads_as_failed(dbsession):
@@ -1032,6 +1070,98 @@ class TestUploadFinisherTask:
                 "sentry_trace_id": None,
             }
         )
+
+    @pytest.mark.django_db
+    def test_repository_without_valid_bot_error_handling(
+        self, dbsession, mocker, mock_self_app
+    ):
+        """Test that RepositoryWithoutValidBotError is handled gracefully."""
+        mocker.patch(
+            "tasks.upload_finisher.UploadFinisherTask._process_reports_with_lock",
+            side_effect=RepositoryWithoutValidBotError(),
+        )
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        previous_results = [{"upload_id": 0, "successful": True, "arguments": {}}]
+
+        result = UploadFinisherTask().run_impl(
+            dbsession,
+            previous_results,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert result == {
+            "error": "Repository does not have a valid bot",
+            "upload_ids": [0],
+        }
+
+    @pytest.mark.django_db
+    def test_no_configured_apps_rate_limited_retries(
+        self, dbsession, mocker, mock_self_app
+    ):
+        """Test that rate-limited NoConfiguredAppsAvailable triggers a retry."""
+        mocker.patch(
+            "tasks.upload_finisher.UploadFinisherTask._process_reports_with_lock",
+            side_effect=NoConfiguredAppsAvailable(
+                apps_count=2,
+                rate_limited_count=2,
+                suspended_count=0,
+            ),
+        )
+        mocker.patch("tasks.upload_finisher.get_seconds_to_next_hour", return_value=120)
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        previous_results = [{"upload_id": 0, "successful": True, "arguments": {}}]
+
+        with pytest.raises(Retry):
+            UploadFinisherTask().run_impl(
+                dbsession,
+                previous_results,
+                repoid=commit.repoid,
+                commitid=commit.commitid,
+                commit_yaml={},
+            )
+
+    @pytest.mark.django_db
+    def test_no_configured_apps_suspended_returns_error(
+        self, dbsession, mocker, mock_self_app
+    ):
+        """Test that suspended apps (not rate-limited) returns an error."""
+        mocker.patch(
+            "tasks.upload_finisher.UploadFinisherTask._process_reports_with_lock",
+            side_effect=NoConfiguredAppsAvailable(
+                apps_count=1,
+                rate_limited_count=0,
+                suspended_count=1,
+            ),
+        )
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        previous_results = [{"upload_id": 0, "successful": True, "arguments": {}}]
+
+        result = UploadFinisherTask().run_impl(
+            dbsession,
+            previous_results,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert result == {
+            "error": "No configured GitHub apps available",
+            "upload_ids": [0],
+        }
 
     @pytest.mark.django_db
     def test_idempotency_check_skips_already_processed_uploads(

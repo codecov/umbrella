@@ -15,6 +15,7 @@ from database.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
+from helpers.exceptions import OwnerWithoutValidBotError
 from shared.celery_config import (
     sync_repo_languages_gql_task_name,
     sync_repo_languages_task_name,
@@ -452,6 +453,31 @@ class TestSyncReposTaskUnit:
             dbsession, ownerid=user.ownerid, using_integration=False
         )
         assert user.permission == []  # there were no private repos to add
+
+    def test_sync_repos_owner_without_valid_bot(self, dbsession, mock_redis, mocker):
+        """Test that OwnerWithoutValidBotError is handled gracefully."""
+        user = OwnerFactory.create(
+            organizations=[],
+            service="github",
+            username="test_user",
+            permission=[],
+            service_id="12345678",
+        )
+        dbsession.add(user)
+        dbsession.flush()
+
+        mocker.patch(
+            "tasks.sync_repos.get_owner_provider_service",
+            side_effect=OwnerWithoutValidBotError(),
+        )
+
+        # Should not raise - the exception is caught and logged
+        result = SyncReposTask().run_impl(
+            dbsession, ownerid=user.ownerid, using_integration=False
+        )
+
+        # Task should complete without error (returns None implicitly)
+        assert result is None
 
     @reuse_cassette(
         "tasks/tests/unit/cassetes/test_sync_repos_task/TestSyncReposTaskUnit/test_only_public_repos_not_in_db.yaml"
