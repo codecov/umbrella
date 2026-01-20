@@ -147,7 +147,7 @@ class MinioStorageService(BaseStorageService, PresignedURLService):
     def __init__(self, minio_config):
         self.minio_config = minio_config
 
-        log.debug("Connecting to minio with config %s", self.minio_config)
+        log.debug("Connecting to minio with config")
 
         self.minio_client = get_cached_minio_client(**self.minio_config)
 
