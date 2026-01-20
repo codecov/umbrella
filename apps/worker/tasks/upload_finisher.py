@@ -388,8 +388,11 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         except NoConfiguredAppsAvailable as exp:
             if exp.rate_limited_count > 0:
                 # At least one GitHub app is available but rate-limited. Retry after
-                # waiting until the next hour (minimum 1 minute delay).
-                retry_delay_seconds = max(60, get_seconds_to_next_hour())
+                # using the API-provided retry time or fall back to next hour (minimum 1 minute).
+                if exp.earliest_retry_after_seconds is not None:
+                    retry_delay_seconds = max(60, exp.earliest_retry_after_seconds)
+                else:
+                    retry_delay_seconds = max(60, get_seconds_to_next_hour())
                 log.warning(
                     "Unable to load commit diff due to rate limits. Retrying again later.",
                     extra={
