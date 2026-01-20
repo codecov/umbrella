@@ -24,10 +24,13 @@ from shared.django_apps.codecov_auth.models import (
     Account,
     AccountsUsers,
     InvoiceBilling,
+    OwnerExport,
     Plan,
     StripeBilling,
     Tier,
 )
+from shared.django_apps.codecov_auth.models import User as CodecovUser
+from shared.owner_data_export.config import EXPORT_DAYS_DEFAULT
 from shared.plan.service import PlanService
 from utils.services import get_short_service_name
 
@@ -143,6 +146,76 @@ def refresh_owner(self, request, queryset):
 
 
 refresh_owner.short_description = "Sync repos and teams for the selected owner"
+
+
+def export_owner_data(self, request, queryset):
+    """
+    Trigger an export of all data for the selected owner.
+
+    Creates an OwnerExport record and triggers the export task pipeline.
+    """
+    if queryset.count() != 1:
+        self.message_user(
+            request,
+            "You must export exactly one Owner at a time.",
+            level=messages.ERROR,
+        )
+        return
+
+    owner = queryset.first()
+
+    existing_export = OwnerExport.objects.filter(
+        owner=owner,
+        status__in=[OwnerExport.Status.PENDING, OwnerExport.Status.IN_PROGRESS],
+    ).first()
+    if existing_export:
+        self.message_user(
+            request,
+            f"An export is already in progress for {owner.username} "
+            f"(Export ID: {existing_export.id}, Status: {existing_export.status}). "
+            "Please wait for it to complete or fail before starting a new one.",
+            level=messages.ERROR,
+        )
+        return
+
+    user = getattr(owner, "user", None)
+    if hasattr(request, "user") and hasattr(request.user, "id"):
+        try:
+            user = CodecovUser.objects.filter(id=request.user.id).first()
+        except Exception:
+            pass
+
+    since_date = timezone.now() - timedelta(days=EXPORT_DAYS_DEFAULT)
+
+    export = OwnerExport.objects.create(
+        owner=owner,
+        since_date=since_date,
+        status=OwnerExport.Status.PENDING,
+        created_by=user,
+    )
+
+    task_service = TaskService()
+    task_service.export_owner_data(
+        owner_id=owner.ownerid,
+        export_id=export.id,
+        user_id=user.id if user else None,
+    )
+
+    self.message_user(
+        request,
+        f"Export task triggered for {owner.username} (ownerid: {owner.ownerid}). "
+        f"Export ID: {export.id}. Check OwnerExport admin for status and download link.",
+        level=messages.SUCCESS,
+    )
+    History.log(
+        Owner.objects.get(ownerid=owner.ownerid),
+        f"Data export triggered (export_id: {export.id})",
+        request.user,
+    )
+    return
+
+
+export_owner_data.short_description = "Export owner data (SQL dumps + archives)"
 
 
 class AccountsUsersInline(admin.TabularInline):
@@ -593,7 +666,7 @@ class OwnerAdmin(AdminMixin, admin.ModelAdmin):
     list_display = ("name", "username", "email", "service")
     readonly_fields = []
     search_fields = ("name__iregex", "username__iregex", "email__iregex", "ownerid")
-    actions = [impersonate_owner, extend_trial, refresh_owner]
+    actions = [impersonate_owner, extend_trial, refresh_owner, export_owner_data]
     autocomplete_fields = ("bot", "account")
     inlines = [OrgUploadTokenInline]
 
@@ -915,3 +988,65 @@ class PlanAdmin(admin.ModelAdmin):
         Plan._meta.get_field("benefits"): {"widget": Textarea(attrs={"rows": 3})},
     }
     autocomplete_fields = ["tier"]  # a dropdown for selecting related Tiers
+
+
+# TBD: Presigned URL might be manually created by infra so still adding this but may be removed later.
+@admin.register(OwnerExport)
+class OwnerExportAdmin(AdminMixin, admin.ModelAdmin):
+    """Admin for viewing and managing owner data exports."""
+
+    list_display = (
+        "id",
+        "owner_link",
+        "status",
+        "created_at",
+        "download_expires_at",
+        "download_link",
+    )
+    list_filter = ("status",)
+    search_fields = ("owner__username__iregex", "owner__ownerid")
+    readonly_fields = (
+        "id",
+        "owner",
+        "since_date",
+        "status",
+        "error_message",
+        "download_url",
+        "download_expires_at",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "task_ids",
+        "stats",
+    )
+
+    def owner_link(self, obj):
+        if obj.owner:
+            return format_html(
+                '<a href="/admin/codecov_auth/owner/{}/change/">{}</a>',
+                obj.owner.ownerid,
+                obj.owner.username,
+            )
+        return "-"
+
+    owner_link.short_description = "Owner"
+
+    def download_link(self, obj):
+        if obj.download_url and obj.status == OwnerExport.Status.COMPLETED:
+            expires = obj.download_expires_at
+            if expires and expires > timezone.now():
+                return format_html(
+                    '<a href="{}" target="_blank">Download</a> (expires {})',
+                    obj.download_url,
+                    expires.strftime("%Y-%m-%d %H:%M"),
+                )
+            return "Expired"
+        return "-"
+
+    download_link.short_description = "Download"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return True
