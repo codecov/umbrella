@@ -128,6 +128,7 @@ class CommitUpdateTask(BaseCodecovTask, name=commit_update_task_name):
                 db_session.flush()
 
         except RepositoryWithoutValidBotError:
+            # Repository doesn't have a valid bot configured for git provider access
             log.warning(
                 "Unable to reach git provider because repo doesn't have a valid bot",
                 extra={"repoid": repoid, "commit": commitid},
