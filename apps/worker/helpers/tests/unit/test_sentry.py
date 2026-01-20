@@ -180,6 +180,26 @@ class TestBeforeSend:
         result = before_send(event, {})
         assert result is None or result == event
 
+    def test_before_send_passes_through_when_event_id_missing(self):
+        """Test that events without event_id are passed through (not sampled)."""
+        event = {
+            # No event_id
+            "exception": {"values": [{"type": "LockError"}]},
+            "tags": {"repo_name": "square-web"},
+        }
+        result = before_send(event, {})
+        assert result == event  # Should pass through, not be dropped
+
+    def test_before_send_passes_through_when_event_id_empty(self):
+        """Test that events with empty event_id are passed through (not sampled)."""
+        event = {
+            "event_id": "",
+            "exception": {"values": [{"type": "LockError"}]},
+            "tags": {"repo_name": "square-web"},
+        }
+        result = before_send(event, {})
+        assert result == event  # Should pass through, not be dropped
+
 
 class TestShouldSampleEvent:
     """Tests for the _should_sample_event helper function."""

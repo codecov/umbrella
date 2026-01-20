@@ -106,7 +106,11 @@ def before_send(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] |
         return event
 
     # Deterministically sample based on event ID
-    event_id = event.get("event_id", "")
+    # If event_id is missing, pass the event through (don't risk dropping all events)
+    event_id = event.get("event_id")
+    if not event_id:
+        return event
+
     if not _should_sample_event(event_id, sample_rate):
         return None  # Drop the event
 
