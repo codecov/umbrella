@@ -1,3 +1,4 @@
+import hashlib
 import os
 from typing import Any
 
@@ -27,8 +28,8 @@ def _should_sample_event(event_id: str, sample_rate: float) -> bool:
     """
     Deterministically decide whether to sample an event based on its ID.
 
-    Uses a hash of the event ID to ensure consistent sampling decisions -
-    the same event_id will always produce the same result.
+    Uses MD5 hash of the event ID to ensure consistent sampling decisions
+    across all processes - the same event_id will always produce the same result.
 
     Args:
         event_id: The unique Sentry event ID
@@ -42,9 +43,11 @@ def _should_sample_event(event_id: str, sample_rate: float) -> bool:
     if sample_rate <= 0.0:
         return False
 
-    # Use hash to get a deterministic value between 0 and 1
-    # Python's hash() is deterministic within a single process run
-    hash_value = hash(event_id) % 10000
+    # Use MD5 for deterministic hashing across processes
+    # (Python's hash() uses randomization and varies per process)
+    hash_bytes = hashlib.md5(event_id.encode(), usedforsecurity=False).digest()
+    # Use first 4 bytes as an integer for uniform distribution
+    hash_value = int.from_bytes(hash_bytes[:4], byteorder="big") % 10000
     threshold = int(sample_rate * 10000)
     return hash_value < threshold
 
