@@ -287,9 +287,11 @@ def get_row_values(instance: Model, model_path: str, fields: list) -> list[str]:
         if f.name in nullified or f.attname in nullified:
             value = None
         elif f.name in defaults:
-            value = defaults[f.name]
+            default_value = defaults[f.name]
+            value = default_value() if callable(default_value) else default_value
         elif f.attname in defaults:
-            value = defaults[f.attname]
+            default_value = defaults[f.attname]
+            value = default_value() if callable(default_value) else default_value
         else:
             value = getattr(instance, f.attname)
         values.append(serialize_value(value))
@@ -395,12 +397,17 @@ def generate_full_export(
     owner_id: int,
     output_file: TextIO,
     models: list[str] | None = None,
+    since_date: datetime | None = None,
 ) -> dict:
     """Generate complete SQL export for an owner."""
     if models is None:
         models = EXPORTABLE_MODELS
 
-    context = ExportContext(owner_id=owner_id)
+    context = (
+        ExportContext(owner_id=owner_id, since_date=since_date)
+        if since_date
+        else ExportContext(owner_id=owner_id)
+    )
     stats = {
         "owner_id": owner_id,
         "since_date": context.since_date.isoformat(),
@@ -444,6 +451,12 @@ def generate_full_export(
     return stats
 
 
-def generate_timescale_export(owner_id: int, output_file: TextIO) -> dict:
+def generate_timescale_export(
+    owner_id: int,
+    output_file: TextIO,
+    since_date: datetime | None = None,
+) -> dict:
     """Generate SQL export for TimescaleDB models."""
-    return generate_full_export(owner_id, output_file, TIMESCALE_MODELS)
+    return generate_full_export(
+        owner_id, output_file, TIMESCALE_MODELS, since_date=since_date
+    )
