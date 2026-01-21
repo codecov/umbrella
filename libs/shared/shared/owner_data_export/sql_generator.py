@@ -89,6 +89,7 @@ class ExportContext:
 
     owner_id: int
     since_date: datetime = field(default_factory=get_since_date)
+    export_id: int | None = None
 
     _repository_ids: list[int] | None = field(default=None, repr=False)
     _commit_ids: list[int] | None = field(default=None, repr=False)
@@ -104,7 +105,6 @@ class ExportContext:
                     "repoid", flat=True
                 )
             )
-            log.info("Pre-fetched %d repository IDs", len(self._repository_ids))
         return self._repository_ids
 
     @property
@@ -117,7 +117,6 @@ class ExportContext:
                     updatestamp__gte=self.since_date,
                 ).values_list("id", flat=True)
             )
-            log.info("Pre-fetched %d commit IDs", len(self._commit_ids))
         return self._commit_ids
 
     @property
@@ -129,7 +128,6 @@ class ExportContext:
                     "id", flat=True
                 )
             )
-            log.info("Pre-fetched %d commit report IDs", len(self._commit_report_ids))
         return self._commit_report_ids
 
     @property
@@ -141,7 +139,6 @@ class ExportContext:
                     report_id__in=self.commit_report_ids
                 ).values_list("id", flat=True)
             )
-            log.info("Pre-fetched %d report session IDs", len(self._report_session_ids))
         return self._report_session_ids
 
     def get_queryset(self, model_path: str) -> QuerySet:
@@ -398,15 +395,16 @@ def generate_full_export(
     output_file: TextIO,
     models: list[str] | None = None,
     since_date: datetime | None = None,
+    export_id: int | None = None,
 ) -> dict:
     """Generate complete SQL export for an owner."""
     if models is None:
         models = EXPORTABLE_MODELS
 
     context = (
-        ExportContext(owner_id=owner_id, since_date=since_date)
+        ExportContext(owner_id=owner_id, since_date=since_date, export_id=export_id)
         if since_date
-        else ExportContext(owner_id=owner_id)
+        else ExportContext(owner_id=owner_id, export_id=export_id)
     )
     stats = {
         "owner_id": owner_id,
@@ -448,6 +446,11 @@ def generate_full_export(
     output_file.write(generate_sequence_resets(models))
     output_file.write("\nCOMMIT;\n")
 
+    log.info(
+        "SQL generation completed",
+        extra={"export_id": export_id, "total_rows": stats["total_rows"]},
+    )
+
     return stats
 
 
@@ -455,8 +458,13 @@ def generate_timescale_export(
     owner_id: int,
     output_file: TextIO,
     since_date: datetime | None = None,
+    export_id: int | None = None,
 ) -> dict:
     """Generate SQL export for TimescaleDB models."""
     return generate_full_export(
-        owner_id, output_file, TIMESCALE_MODELS, since_date=since_date
+        owner_id,
+        output_file,
+        TIMESCALE_MODELS,
+        since_date=since_date,
+        export_id=export_id,
     )

@@ -158,6 +158,8 @@ def copy_archive_file(
     bucket: str,
     file: ArchiveFile,
     storage: BaseStorageService,
+    export_id: int | None = None,
+    owner_id: int | None = None,
 ) -> tuple[bool, int]:
     """
     Copy a file to the export location using server-side copy.
@@ -166,6 +168,8 @@ def copy_archive_file(
         bucket: The destination bucket
         file: The ArchiveFile to copy
         storage: The storage service to use
+        export_id: The export ID for logging
+        owner_id: The owner ID for logging
 
     Returns (success, bytes_copied).
     """
@@ -178,25 +182,36 @@ def copy_archive_file(
             CopySource(source_bucket, file.source_path),
         )
     except FileNotInStorageError:
-        log.warning("File not found: %s (from %s)", file.source_path, file.source_model)
+        # File not found is expected for some files, don't log as it's noisy
         return False, 0
     except S3Error as e:
         if e.code == "NoSuchKey":
-            log.warning(
-                "File not found: %s (from %s)", file.source_path, file.source_model
-            )
             return False, 0
-        log.error("Failed to copy %s: %s", file.source_path, str(e), exc_info=True)
+        log.error(
+            "Failed to copy archive file",
+            extra={
+                "export_id": export_id,
+                "source_path": file.source_path,
+                "error": str(e),
+            },
+        )
         return False, 0
     except Exception as e:
-        log.error("Failed to copy %s: %s", file.source_path, str(e), exc_info=True)
+        log.error(
+            "Failed to copy archive file",
+            extra={
+                "export_id": export_id,
+                "source_path": file.source_path,
+                "error": str(e),
+            },
+        )
         return False, 0
 
     try:
         stat = storage.minio_client.stat_object(bucket, file.dest_path)
         return True, stat.size
-    except Exception as e:
-        log.warning("Copy succeeded but failed to stat %s: %s", file.dest_path, str(e))
+    except Exception:
+        # Stat failure after successful copy is rare, return success anyway
         return True, 0
 
 
@@ -239,7 +254,9 @@ def collect_archives_for_export(
         """Copy a single file and return (success, bytes, dest_path)."""
         # Each thread gets its own storage client to avoid connection issues
         storage = shared.storage.get_appropriate_storage_service()
-        success, bytes_copied = copy_archive_file(bucket, file, storage)
+        success, bytes_copied = copy_archive_file(
+            bucket, file, storage, export_id, owner_id
+        )
         return success, bytes_copied, file.dest_path
 
     files_to_copy: list[ArchiveFile] = []
@@ -254,9 +271,6 @@ def collect_archives_for_export(
             stats["discovery_stats"] = e.value
 
     stats["files_found"] = len(files_to_copy)
-    log.info(
-        "Discovered %d archive files to copy for owner %d", len(files_to_copy), owner_id
-    )
 
     # Copy files in parallel using thread pool
     with ThreadPoolExecutor(max_workers=ARCHIVE_COPY_WORKERS) as executor:
@@ -276,17 +290,24 @@ def collect_archives_for_export(
                         stats["files_failed"] += 1
             except Exception as e:
                 file = futures[future]
-                log.error("Unexpected error copying %s: %s", file.source_path, str(e))
+                log.error(
+                    "Unexpected error copying archive file",
+                    extra={
+                        "export_id": export_id,
+                        "source_path": file.source_path,
+                        "error": str(e),
+                    },
+                )
                 with stats_lock:
                     stats["files_failed"] += 1
 
     log.info(
-        "Archive collection complete for owner %d: %d found, %d copied, %d failed, %d bytes",
-        owner_id,
-        stats["files_found"],
-        stats["files_copied"],
-        stats["files_failed"],
-        stats["total_bytes"],
+        "Archive collection finished",
+        extra={
+            "export_id": export_id,
+            "files_copied": stats["files_copied"],
+            "files_failed": stats["files_failed"],
+        },
     )
 
     return stats
@@ -337,9 +358,8 @@ def collect_archives_for_repository(
         repo = Repository.objects.get(repoid=repository_id, author_id=owner_id)
     except Repository.DoesNotExist:
         log.error(
-            "Repository %d not found or does not belong to owner %d",
-            repository_id,
-            owner_id,
+            "Repository not found or does not belong to owner",
+            extra={"export_id": export_id, "repository_id": repository_id},
         )
         return stats
 
@@ -351,9 +371,6 @@ def collect_archives_for_repository(
     )
 
     if not commits_qs.exists():
-        log.info(
-            "No commits found for repository %d since %s", repository_id, since_date
-        )
         return stats
 
     # 1. Commit report storage paths
@@ -371,7 +388,9 @@ def collect_archives_for_repository(
                 source_model=f"core.Commit:{commit_id}",
             )
             stats["files_found"] += 1
-            success, size = copy_archive_file(bucket, file, storage)
+            success, size = copy_archive_file(
+                bucket, file, storage, export_id, owner_id
+            )
             if success:
                 stats["files_copied"] += 1
                 stats["total_bytes"] += size
@@ -387,7 +406,7 @@ def collect_archives_for_repository(
             source_model=f"chunks:{commitid}",
         )
         stats["files_found"] += 1
-        success, size = copy_archive_file(bucket, file, storage)
+        success, size = copy_archive_file(bucket, file, storage, export_id, owner_id)
         if success:
             stats["files_copied"] += 1
             stats["total_bytes"] += size
@@ -416,7 +435,9 @@ def collect_archives_for_repository(
                 source_model=f"reports.ReportSession:{session_id}",
             )
             stats["files_found"] += 1
-            success, size = copy_archive_file(bucket, file, storage)
+            success, size = copy_archive_file(
+                bucket, file, storage, export_id, owner_id
+            )
             if success:
                 stats["files_copied"] += 1
                 stats["total_bytes"] += size
@@ -443,7 +464,7 @@ def collect_archives_for_repository(
             source_bucket=bundle_bucket,
         )
         stats["files_found"] += 1
-        success, size = copy_archive_file(bucket, file, storage)
+        success, size = copy_archive_file(bucket, file, storage, export_id, owner_id)
         if success:
             stats["files_copied"] += 1
             stats["total_bytes"] += size
@@ -451,12 +472,13 @@ def collect_archives_for_repository(
             stats["files_failed"] += 1
 
     log.info(
-        "Repository %d archive collection: %d found, %d copied, %d failed, %d bytes",
-        repository_id,
-        stats["files_found"],
-        stats["files_copied"],
-        stats["files_failed"],
-        stats["total_bytes"],
+        "Repository archive collection completed",
+        extra={
+            "export_id": export_id,
+            "repository_id": repository_id,
+            "files_copied": stats["files_copied"],
+            "files_failed": stats["files_failed"],
+        },
     )
 
     return stats
