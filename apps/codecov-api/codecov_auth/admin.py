@@ -169,6 +169,12 @@ def export_owner_data(self, request, queryset):
         status__in=[OwnerExport.Status.PENDING, OwnerExport.Status.IN_PROGRESS],
     ).first()
     if existing_export:
+        log.warning(
+            "Export blocked: existing export in progress",
+            extra={
+                "export_id": existing_export.id,
+            },
+        )
         self.message_user(
             request,
             f"An export is already in progress for {owner.username} "
@@ -192,6 +198,11 @@ def export_owner_data(self, request, queryset):
         since_date=since_date,
         status=OwnerExport.Status.PENDING,
         created_by=user,
+    )
+
+    log.info(
+        "Owner data export initiated",
+        extra={"export_id": export.id},
     )
 
     task_service = TaskService()
