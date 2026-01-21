@@ -139,6 +139,7 @@ class ExportContext:
                     report_id__in=self.commit_report_ids
                 ).values_list("id", flat=True)
             )
+        return self._report_session_ids
 
     def get_queryset(self, model_path: str) -> QuerySet:
         """Get a queryset for the model, filtered by pre-fetched IDs."""
