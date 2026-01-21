@@ -6,6 +6,8 @@ from celery.exceptions import CeleryError, SoftTimeLimitExceeded
 from app import celery_app
 from database.enums import ReportType
 from database.models import Commit, CommitReport, Upload
+from helpers.clock import get_seconds_to_next_hour
+from helpers.exceptions import NoConfiguredAppsAvailable
 from services.bundle_analysis.report import (
     BundleAnalysisReportService,
     ProcessingResult,
@@ -76,6 +78,54 @@ class BundleAnalysisProcessorTask(
                     params,
                     previous_result,
                 )
+        except NoConfiguredAppsAvailable as exp:
+            # Handle NoConfiguredAppsAvailable errors that may occur during
+            # repository service initialization (e.g., in BundleAnalysisReportLoader
+            # or other components that need GitHub app access)
+            if exp.rate_limited_count > 0:
+                # At least one GitHub app is available but rate-limited
+                # Use the actual retry time from GitHub API response if available,
+                # otherwise fall back to waiting until the next hour (minimum 1 minute delay)
+                if exp.earliest_retry_after_seconds is not None:
+                    retry_delay_seconds = max(60, exp.earliest_retry_after_seconds)
+                else:
+                    retry_delay_seconds = max(60, get_seconds_to_next_hour())
+                log.warning(
+                    "Bundle analysis processor unable to acquire GitHub app due to rate limits. Retrying later.",
+                    extra={
+                        "apps_available": exp.apps_count,
+                        "apps_rate_limited": exp.rate_limited_count,
+                        "apps_suspended": exp.suspended_count,
+                        "commitid": commitid,
+                        "countdown_seconds": retry_delay_seconds,
+                        "earliest_retry_after_seconds": exp.earliest_retry_after_seconds,
+                        "repoid": repoid,
+                    },
+                )
+                if not self.safe_retry(countdown=retry_delay_seconds):
+                    log.error(
+                        "Bundle analysis processor exceeded max retries after rate limit",
+                        extra={
+                            "attempts": self.attempts,
+                            "commitid": commitid,
+                            "max_attempts": self.max_retries + 1,
+                            "repoid": repoid,
+                        },
+                    )
+                return previous_result
+            else:
+                # No apps available or all apps are suspended - skip processing
+                log.warning(
+                    "Bundle analysis processor skipping processing due to no configured GitHub apps available",
+                    extra={
+                        "apps_available": exp.apps_count,
+                        "apps_rate_limited": exp.rate_limited_count,
+                        "apps_suspended": exp.suspended_count,
+                        "commitid": commitid,
+                        "repoid": repoid,
+                    },
+                )
+                return previous_result
         except LockRetry as retry:
             # Check max retries using self.attempts (includes visibility timeout re-deliveries)
             # This prevents infinite retry loops when max retries are exceeded

@@ -1,18 +1,20 @@
 import logging
-from contextlib import contextmanager
-from typing import cast
 
 from asgiref.sync import async_to_sync
 from celery.exceptions import MaxRetriesExceededError as CeleryMaxRetriesExceededError
 from django.conf import settings
-from redis import Redis
 from sqlalchemy.orm import Session
 
 from app import celery_app
 from database.enums import ReportType
+from helpers.checkpoint_logger.flows import TestResultsFlow
 from helpers.notifier import NotifierResult
 from helpers.string import shorten_file_paths
 from services.lock_manager import LockManager, LockRetry, LockType
+from services.notification.debounce import (
+    LockAcquisitionLimitError,
+    NotificationDebouncer,
+)
 from services.repository import (
     fetch_pull_request_information,
     get_repo_provider_service,
@@ -35,7 +37,10 @@ from services.test_results import (
     TestResultsNotifier,
     should_do_flaky_detection,
 )
-from shared.celery_config import test_analytics_notifier_task_name
+from shared.celery_config import (
+    TASK_MAX_RETRIES_DEFAULT,
+    test_analytics_notifier_task_name,
+)
 from shared.django_apps.core.models import Repository
 from shared.helpers.redis import get_redis_connection
 from shared.reports.types import UploadType
@@ -43,13 +48,6 @@ from shared.typings.torngit import AdditionalData
 from shared.upload.types import TAUploadContext, UploadPipeline
 from shared.yaml.user_yaml import UserYaml
 from tasks.base import BaseCodecovTask
-
-
-class MaxRetriesExceededError(Exception):
-    """Raised when lock acquisition exceeds max retries."""
-
-    pass
-
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +62,17 @@ class TestAnalyticsNotifierTask(
     Send test analytics notifications while ensuring compliance with Sentry's
     data retention policies.
     """
+
+    max_retries = TASK_MAX_RETRIES_DEFAULT
+
+    def __init__(self):
+        super().__init__()
+        self.debouncer = NotificationDebouncer[NotifierTaskResult](
+            redis_key_template=TA_NOTIFIER_FENCING_TOKEN,
+            debounce_period_seconds=DEBOUNCE_PERIOD_SECONDS,
+            lock_type=LockType.NOTIFICATION,
+            max_lock_retries=self.max_retries,
+        )
 
     def run_impl(
         self,
@@ -106,68 +115,76 @@ class TestAnalyticsNotifierTask(
 
         if fencing_token is None:
             try:
-                with self._notification_lock(lock_manager):
-                    # Acquire a fencing token to deduplicate notifications
-                    redis_key = TA_NOTIFIER_FENCING_TOKEN.format(
-                        repo_id, upload_context["commit_sha"]
+                with self.debouncer.notification_lock(lock_manager, self.attempts):
+                    fencing_token = self.debouncer.acquire_fencing_token(
+                        redis_client, repo_id, upload_context["commit_sha"]
                     )
-                    with redis_client.pipeline() as pipeline:
-                        pipeline.incr(redis_key)
-                        # Set expiry to prevent stale keys from accumulating
-                        pipeline.expire(redis_key, 24 * 60 * 60)  # 24 hours
-                        results = pipeline.execute()
-                        fencing_token = int(cast(str, results[0]))
 
-                # Add fencing token to the args and then retry for a debounce period
                 self.extra_dict["fencing_token"] = fencing_token
-                kwargs["fencing_token"] = fencing_token
+                retry_kwargs = {
+                    "repoid": repo_id,
+                    "upload_context": upload_context,
+                    "fencing_token": fencing_token,
+                    **kwargs,
+                }
                 log.info(
                     "Acquired fencing token, retrying for debounce period",
                     extra=self.extra_dict,
                 )
-                self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=kwargs)
-            except MaxRetriesExceededError:
+                try:
+                    self.retry(countdown=DEBOUNCE_PERIOD_SECONDS, kwargs=retry_kwargs)
+                except CeleryMaxRetriesExceededError:
+                    log.warning(
+                        "Max retries exceeded during debounce retry, proceeding immediately with notification",
+                        extra=self.extra_dict,
+                    )
+                    # Continue execution to process notification with acquired token
+            except LockAcquisitionLimitError:
+                if TestResultsFlow.has_begun():
+                    TestResultsFlow.log(TestResultsFlow.NOTIF_LOCK_ERROR)
                 return NotifierTaskResult(
                     attempted=False,
                     succeeded=False,
                 )
             except LockRetry as e:
-                try:
-                    self.retry(max_retries=5, countdown=e.countdown)
-                except CeleryMaxRetriesExceededError:
+                result = self.debouncer.handle_lock_retry(
+                    self,
+                    e,
+                    NotifierTaskResult(attempted=False, succeeded=False),
+                )
+                if result is not None:
+                    return result
+
+        assert fencing_token, "Fencing token not acquired"
+        try:
+            with self.debouncer.notification_lock(lock_manager, self.attempts):
+                if self.debouncer.check_fencing_token_stale(
+                    redis_client, repo_id, upload_context["commit_sha"], fencing_token
+                ):
+                    log.info(
+                        "Fencing token is stale, another notification task is in progress, exiting",
+                        extra=self.extra_dict,
+                    )
                     return NotifierTaskResult(
                         attempted=False,
                         succeeded=False,
                     )
-
-        # At this point we have a fencing token, but want to check if another
-        # notification task has incremented it, indicating a newer notification
-        # task is in progress and can take over
-        assert fencing_token, "Fencing token not acquired"
-        # The lock here is not required for correctness (only the one at the
-        # end is), but it reduces duplicated work and database queries
-        try:
-            with self._notification_lock(lock_manager):
-                stale_token_result = self._check_fencing_token(
-                    redis_client, repo_id, upload_context, fencing_token
-                )
-                if stale_token_result:
-                    return stale_token_result
-        except MaxRetriesExceededError:
+        except LockAcquisitionLimitError:
+            if TestResultsFlow.has_begun():
+                TestResultsFlow.log(TestResultsFlow.NOTIF_LOCK_ERROR)
             return NotifierTaskResult(
                 attempted=False,
                 succeeded=False,
             )
         except LockRetry as e:
-            try:
-                self.retry(max_retries=5, countdown=e.countdown)
-            except CeleryMaxRetriesExceededError:
-                return NotifierTaskResult(
-                    attempted=False,
-                    succeeded=False,
-                )
+            result = self.debouncer.handle_lock_retry(
+                self,
+                e,
+                NotifierTaskResult(attempted=False, succeeded=False),
+            )
+            if result is not None:
+                return result
 
-        # Do preparation work without a lock
         notifier = self.notification_preparation(
             repo_id=repo_id,
             upload_context=upload_context,
@@ -181,121 +198,49 @@ class TestAnalyticsNotifierTask(
             )
 
         try:
-            with self._notification_lock(lock_manager):
-                # Check fencing token again before sending the notification
-                stale_token_result = self._check_fencing_token(
-                    redis_client, repo_id, upload_context, fencing_token
-                )
-                if stale_token_result:
-                    return stale_token_result
+            with self.debouncer.notification_lock(lock_manager, self.attempts):
+                if self.debouncer.check_fencing_token_stale(
+                    redis_client, repo_id, upload_context["commit_sha"], fencing_token
+                ):
+                    log.info(
+                        "Fencing token is stale, another notification task is in progress, exiting",
+                        extra=self.extra_dict,
+                    )
+                    return NotifierTaskResult(
+                        attempted=False,
+                        succeeded=False,
+                    )
 
-                # Send notification
                 notifier_result = notifier.notify()
 
-            success = (
-                True if notifier_result is NotifierResult.COMMENT_POSTED else False
-            )
+            success = notifier_result is NotifierResult.COMMENT_POSTED
             log.info("Posted TA comment", extra={**self.extra_dict, "success": success})
             return NotifierTaskResult(
                 attempted=True,
                 succeeded=success,
             )
-        except MaxRetriesExceededError:
+        except LockAcquisitionLimitError:
+            if TestResultsFlow.has_begun():
+                TestResultsFlow.log(TestResultsFlow.NOTIF_LOCK_ERROR)
             return NotifierTaskResult(
                 attempted=False,
                 succeeded=False,
             )
         except LockRetry as e:
-            try:
-                self.retry(max_retries=5, countdown=e.countdown)
-            except CeleryMaxRetriesExceededError:
-                return NotifierTaskResult(
-                    attempted=False,
-                    succeeded=False,
-                )
-
-    @contextmanager
-    def _notification_lock(self, lock_manager: LockManager):
-        """
-        Context manager to handle the repeated lock acquisition pattern
-        with automatic retry handling for LockRetry exceptions.
-        """
-        try:
-            with lock_manager.locked(
-                LockType.NOTIFICATION,
-                max_retries=5,
-                retry_num=self.attempts,
-            ):
-                yield
-                return
-        except LockRetry as e:
-            # Lock acquisition failed - handle immediately without yielding
-            # This ensures the with block body never executes without lock protection
-            if e.max_retries_exceeded:
-                log.error(
-                    "Not retrying lock acquisition - max retries exceeded",
-                    extra={
-                        "retry_num": e.retry_num,
-                        "max_attempts": e.max_attempts,
-                    },
-                )
-                raise MaxRetriesExceededError(
-                    f"Lock acquisition exceeded max retries: {e.retry_num} >= {e.max_attempts}",
-                )
-            # Re-raise LockRetry to be handled by the caller's retry logic
-            # The caller will catch this and call self.retry()
-            raise
-
-    def _check_fencing_token(
-        self,
-        redis_client: Redis,
-        repo_id: int,
-        upload_context: TAUploadContext,
-        fencing_token: int,
-    ) -> NotifierTaskResult | None:
-        """
-        Check if the fencing token is stale, indicating another notification task
-        is in progress and can take over.
-
-        This method should be called within a lock context.
-
-        :returns:
-            NotifierTaskResult if the token is stale (task should exit early),
-            None if the token is current (task should continue).
-        """
-        current_token = int(
-            cast(
-                str,
-                redis_client.get(
-                    TA_NOTIFIER_FENCING_TOKEN.format(
-                        repo_id, upload_context["commit_sha"]
-                    )
-                )
-                or "0",
+            result = self.debouncer.handle_lock_retry(
+                self,
+                e,
+                NotifierTaskResult(attempted=False, succeeded=False),
             )
-        )
-
-        # We do a less than comparison since it guarantees safety at
-        # the cost of no debouncing for that commit in the case of
-        # losing the key in Redis
-        if fencing_token < current_token:
-            log.info(
-                "Fencing token is stale, another notification task is in progress, exiting",
-                extra=self.extra_dict,
-            )
-            return NotifierTaskResult(
-                attempted=False,
-                succeeded=False,
-            )
-
-        return None
+            if result is not None:
+                return result
 
     def notification_preparation(
         self,
         *,
         repo_id: int,
         upload_context: TAUploadContext,
-        commit_yaml: UserYaml = UserYaml({}),  # TODO: Actual commit_yaml
+        commit_yaml: UserYaml = UserYaml({}),
     ) -> TestResultsNotifier | None:
         """
         Prepare the test results notifier.
@@ -312,9 +257,6 @@ class TestAnalyticsNotifierTask(
             log.info("Comment is disabled, not posting comment", extra=self.extra_dict)
             return None
 
-        # TODO: Add upload errors in a compliant way
-
-        # TODO: Remove impl label
         with read_tests_totals_summary.labels(impl="new").time():
             summary = get_pr_comment_agg(repo_id, upload_context["commit_sha"])
 
@@ -358,8 +300,6 @@ class TestAnalyticsNotifierTask(
             _repo_service=repo_service,
         )
 
-        # TODO: Seat activation
-
         with read_failures_summary.labels(impl="new").time():
             failures = get_pr_comment_failures(repo_id, upload_context["commit_sha"])
 
@@ -385,24 +325,23 @@ class TestAnalyticsNotifierTask(
 def transform_failures(
     failures: list[FailedTestInstance],
 ) -> list[TestResultsNotificationFailure[bytes]]:
-    notif_failures = []
+    result = []
     for failure in failures:
-        if failure["failure_message"] is not None:
-            failure["failure_message"] = shorten_file_paths(
-                failure["failure_message"]
-            ).replace("\r", "")
+        failure_message = failure["failure_message"]
+        if failure_message is not None:
+            failure_message = shorten_file_paths(failure_message).replace("\r", "")
 
-        notif_failures.append(
+        result.append(
             TestResultsNotificationFailure(
                 display_name=failure["computed_name"],
-                failure_message=failure["failure_message"],
+                failure_message=failure_message,
                 test_id=failure["test_id"],
                 envs=failure["flags"],
                 duration_seconds=failure["duration_seconds"] or 0,
-                build_url=None,  # TODO: Figure out how we can save this in a compliant way
+                build_url=None,
             )
         )
-    return notif_failures
+    return result
 
 
 RegisteredTestAnalyticsNotifierTask = celery_app.register_task(
