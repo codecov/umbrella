@@ -57,15 +57,19 @@ log = logging.getLogger(__name__)
 
 
 def _mark_export_failed_by_id(export_id: int, error_message: str) -> bool:
-    """Mark export as failed by ID. Returns True if updated, False otherwise."""
+    """
+    Atomically mark export as failed if it's still in progress.
+    """
     try:
-        export = OwnerExport.objects.get(id=export_id)
-        if export.status in (OwnerExport.Status.COMPLETED, OwnerExport.Status.FAILED):
-            return False
-        export.status = OwnerExport.Status.FAILED
-        export.error_message = error_message[:500]
-        export.save(update_fields=["status", "error_message", "updated_at"])
-        return True
+        updated = OwnerExport.objects.filter(
+            id=export_id,
+            status=OwnerExport.Status.IN_PROGRESS,
+        ).update(
+            status=OwnerExport.Status.FAILED,
+            error_message=error_message[:500],
+            updated_at=timezone.now(),
+        )
+        return updated > 0
     except Exception:
         return False
 
@@ -139,6 +143,7 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
             link_error=export_owner_cleanup_task.s(
                 ownerid=ownerid, export_id=export_id
             ),
+            allow_error_cb_on_chord_header=True,
         )
 
         export.task_ids = {"chord_id": result.id}
@@ -236,14 +241,12 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
                 "SQL export timed out",
                 extra={"export_id": export_id},
             )
-            _mark_export_failed_by_id(export_id, "SQL export timed out")
             raise
         except Exception as e:
             log.error(
                 "SQL export failed",
                 extra={"export_id": export_id, "error": str(e)},
             )
-            _mark_export_failed_by_id(export_id, str(e))
             raise
 
         log.info(
@@ -322,14 +325,12 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
                 "Archive collection timed out",
                 extra={"export_id": export_id},
             )
-            _mark_export_failed_by_id(export_id, "Archive collection timed out")
             raise
         except Exception as e:
             log.error(
                 "Archive collection failed",
                 extra={"export_id": export_id, "error": str(e)},
             )
-            _mark_export_failed_by_id(export_id, str(e))
             raise
 
         return {
@@ -379,11 +380,6 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
                     "actual": export.owner_id,
                 },
             )
-            export.status = OwnerExport.Status.FAILED
-            export.error_message = (
-                f"Owner ID mismatch: expected {ownerid}, found {export.owner_id}"
-            )
-            export.save(update_fields=["status", "error_message", "updated_at"])
             raise ValueError(f"Owner ID mismatch for export {export_id}")
 
         # Merge results from parallel tasks
@@ -464,18 +460,12 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
                 "Export finalization timed out",
                 extra={"export_id": export_id},
             )
-            export.status = OwnerExport.Status.FAILED
-            export.error_message = "Finalization timed out"
-            export.save(update_fields=["status", "error_message", "updated_at"])
             raise
         except Exception as e:
             log.error(
                 "Export finalization failed",
                 extra={"export_id": export_id, "error": str(e)},
             )
-            export.status = OwnerExport.Status.FAILED
-            export.error_message = str(e)[:500]
-            export.save(update_fields=["status", "error_message", "updated_at"])
             raise
 
     def _create_manifest(
@@ -619,7 +609,19 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
         # Extract error info (handles both old-style and new-style Celery errbacks)
         failed_task_id = self._extract_task_id(failed_task_id_or_request)
         error_message = self._get_error_message(failed_task_id, exc)
+
         export_marked = _mark_export_failed_by_id(export_id, error_message)
+        if not export_marked:
+            log.info(
+                "Cleanup skipped - export already handled by another cleanup or in terminal state",
+                extra={"export_id": export_id, "failed_task_id": failed_task_id},
+            )
+            return {
+                "export_id": export_id,
+                "ownerid": ownerid,
+                "skipped": True,
+                "reason": "Export already in terminal state or handled by another cleanup",
+            }
 
         storage = get_appropriate_storage_service()
         bucket = get_archive_bucket()
