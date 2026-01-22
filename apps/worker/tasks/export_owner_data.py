@@ -119,29 +119,27 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
 
         since_date_iso = export.since_date.isoformat() if export.since_date else None
 
-        error_callback = export_owner_cleanup_task.s(
-            ownerid=ownerid, export_id=export_id
-        )
-
         workflow = chord(
             [
                 export_owner_sql_task.s(
                     ownerid=ownerid,
                     export_id=export_id,
                     since_date_iso=since_date_iso,
-                ).on_error(error_callback),
+                ),
                 export_owner_archives_task.s(
                     ownerid=ownerid,
                     export_id=export_id,
                     since_date_iso=since_date_iso,
-                ).on_error(error_callback),
+                ),
             ],
-            export_owner_finalize_task.s(ownerid=ownerid, export_id=export_id).on_error(
-                error_callback
-            ),
+            export_owner_finalize_task.s(ownerid=ownerid, export_id=export_id),
         )
 
-        result = workflow.apply_async()
+        result = workflow.apply_async(
+            link_error=export_owner_cleanup_task.s(
+                ownerid=ownerid, export_id=export_id
+            ),
+        )
 
         export.task_ids = {"chord_id": result.id}
         export.save(update_fields=["task_ids", "updated_at"])
