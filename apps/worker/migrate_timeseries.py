@@ -55,6 +55,7 @@ def run_migrate_commands():
                 logger.info(f"Skipping {app} migrations")
         except Exception as e:
             logger.error(f"An error occurred: {e}")
+            raise
 
 
 if __name__ == "__main__":

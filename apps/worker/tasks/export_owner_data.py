@@ -84,20 +84,28 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
         export_id: int,
         user_id: int | None = None,
     ) -> dict:
-        log.info("Starting export for owner %d, export %d", owner_id, export_id)
+        log.info(
+            "Export orchestrator started",
+            extra={"export_id": export_id},
+        )
 
         try:
             export = OwnerExport.objects.get(id=export_id)
         except OwnerExport.DoesNotExist:
-            log.error("OwnerExport %d not found", export_id)
+            log.error(
+                "OwnerExport record not found",
+                extra={"export_id": export_id},
+            )
             return {"error": "Export not found"}
 
         if export.owner_id != owner_id:
             log.error(
-                "Owner ID mismatch: export %d belongs to owner %d, not %d",
-                export_id,
-                export.owner_id,
-                owner_id,
+                "Owner ID mismatch in export record",
+                extra={
+                    "export_id": export_id,
+                    "expected": owner_id,
+                    "actual": export.owner_id,
+                },
             )
             export.status = OwnerExport.Status.FAILED
             export.error_message = (
@@ -137,6 +145,11 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
         export.task_ids = {"chord_id": result.id}
         export.save(update_fields=["task_ids", "updated_at"])
 
+        log.info(
+            "Export workflow dispatched",
+            extra={"export_id": export_id, "chord_id": result.id},
+        )
+
         return {
             "export_id": export_id,
             "owner_id": owner_id,
@@ -160,7 +173,10 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
         export_id: int,
         since_date_iso: str | None = None,
     ) -> dict:
-        log.info("Generating SQL export for owner %d, export %d", owner_id, export_id)
+        log.info(
+            "SQL export task started",
+            extra={"export_id": export_id, "owner_id": owner_id},
+        )
 
         storage = get_appropriate_storage_service()
         bucket = get_archive_bucket()
@@ -170,6 +186,10 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
 
         try:
             # PostgreSQL export
+            log.info(
+                "Generating PostgreSQL export",
+                extra={"export_id": export_id},
+            )
             postgres_path = get_postgres_sql_path(owner_id, export_id)
             postgres_stats, postgres_size = self._generate_and_upload_sql(
                 owner_id,
@@ -178,14 +198,25 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
                 storage,
                 generate_full_export,
                 since_date,
+                export_id,
             )
             stats["postgres"] = {
                 **postgres_stats,
                 "bytes": postgres_size,
                 "path": postgres_path,
             }
+            log.info(
+                "PostgreSQL export completed",
+                extra={
+                    "export_id": export_id,
+                },
+            )
 
             # TimescaleDB export
+            log.info(
+                "Generating TimescaleDB export",
+                extra={"export_id": export_id},
+            )
             timescale_path = get_timescale_sql_path(owner_id, export_id)
             timescale_stats, timescale_size = self._generate_and_upload_sql(
                 owner_id,
@@ -194,6 +225,7 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
                 storage,
                 generate_timescale_export,
                 since_date,
+                export_id,
             )
             stats["timescale"] = {
                 **timescale_stats,
@@ -201,24 +233,47 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
                 "path": timescale_path,
             }
         except SoftTimeLimitExceeded:
-            log.error("SQL export timed out for owner %d", owner_id)
+            log.error(
+                "SQL export timed out",
+                extra={"export_id": export_id},
+            )
             _mark_export_failed_by_id(export_id, "SQL export timed out")
             raise
         except Exception as e:
-            log.error("SQL export failed for owner %d: %s", owner_id, str(e))
+            log.error(
+                "SQL export failed",
+                extra={"export_id": export_id, "error": str(e)},
+            )
             _mark_export_failed_by_id(export_id, str(e))
             raise
 
+        log.info(
+            "SQL export task completed",
+            extra={
+                "export_id": export_id,
+                "postgres_rows": stats["postgres"].get("total_rows", 0),
+                "timescale_rows": stats["timescale"].get("total_rows", 0),
+            },
+        )
         return {"sql_stats": stats, "owner_id": owner_id, "export_id": export_id}
 
     def _generate_and_upload_sql(
-        self, owner_id, gcs_path, bucket, storage, generator_func, since_date=None
+        self,
+        owner_id,
+        gcs_path,
+        bucket,
+        storage,
+        generator_func,
+        since_date=None,
+        export_id=None,
     ) -> tuple[dict, int]:
         """Generate SQL to temp file and upload to GCS. Returns (stats, file_size)."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".sql", delete=True, encoding="utf-8"
         ) as tmp:
-            stats = generator_func(owner_id, tmp, since_date=since_date)
+            stats = generator_func(
+                owner_id, tmp, since_date=since_date, export_id=export_id
+            )
             tmp.flush()
             file_size = os.path.getsize(tmp.name)
             with open(tmp.name, "rb") as f:
@@ -242,9 +297,7 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
         export_id: int,
         since_date_iso: str | None = None,
     ) -> dict:
-        log.info(
-            "Collecting archive files for owner %d, export %d", owner_id, export_id
-        )
+        log.info("Collecting archive files", extra={"export_id": export_id})
 
         since_date = datetime.fromisoformat(since_date_iso) if since_date_iso else None
 
@@ -258,16 +311,25 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
                 owner_id=owner_id, export_id=export_id, context=context
             )
             log.info(
-                "Archive collection complete: %d copied, %d failed",
-                archive_stats.get("files_copied", 0),
-                archive_stats.get("files_failed", 0),
+                "Archive collection task completed",
+                extra={
+                    "export_id": export_id,
+                    "files_copied": archive_stats.get("files_copied", 0),
+                    "files_failed": archive_stats.get("files_failed", 0),
+                },
             )
         except SoftTimeLimitExceeded:
-            log.error("Archive collection timed out for owner %d", owner_id)
+            log.error(
+                "Archive collection timed out",
+                extra={"export_id": export_id},
+            )
             _mark_export_failed_by_id(export_id, "Archive collection timed out")
             raise
         except Exception as e:
-            log.error("Archive collection failed for owner %d: %s", owner_id, str(e))
+            log.error(
+                "Archive collection failed",
+                extra={"export_id": export_id, "error": str(e)},
+            )
             _mark_export_failed_by_id(export_id, str(e))
             raise
 
@@ -294,7 +356,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         owner_id: int,
         export_id: int,
     ) -> dict:
-        log.info("Finalizing export for owner %d, export %d", owner_id, export_id)
+        log.info("Finalizing export", extra={"export_id": export_id})
 
         storage = get_appropriate_storage_service()
         bucket = get_archive_bucket()
@@ -303,9 +365,21 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         try:
             export = OwnerExport.objects.get(id=export_id)
         except OwnerExport.DoesNotExist:
+            log.error(
+                "Export record not found in finalize",
+                extra={"export_id": export_id},
+            )
             raise ValueError(f"Export {export_id} not found")
 
         if export.owner_id != owner_id:
+            log.error(
+                "Owner ID mismatch in finalize",
+                extra={
+                    "export_id": export_id,
+                    "expected": owner_id,
+                    "actual": export.owner_id,
+                },
+            )
             export.status = OwnerExport.Status.FAILED
             export.error_message = (
                 f"Owner ID mismatch: expected {owner_id}, found {export.owner_id}"
@@ -340,6 +414,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
                 sql_stats,
                 archive_stats,
                 manifest_path,
+                export_id,
             )
 
             # Generate presigned URL
@@ -371,9 +446,11 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
             )
 
             log.info(
-                "Export %d completed. Download URL expires at %s",
-                export_id,
-                expires_at.isoformat(),
+                "Export completed successfully",
+                extra={
+                    "export_id": export_id,
+                    "tarball_bytes": tarball_result["tarball_size"],
+                },
             )
             return {
                 "export_id": export_id,
@@ -384,13 +461,19 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
             }
 
         except SoftTimeLimitExceeded:
-            log.error("Export finalization timed out for owner %d", owner_id)
+            log.error(
+                "Export finalization timed out",
+                extra={"export_id": export_id},
+            )
             export.status = OwnerExport.Status.FAILED
             export.error_message = "Finalization timed out"
             export.save(update_fields=["status", "error_message", "updated_at"])
             raise
         except Exception as e:
-            log.error("Export finalization failed for owner %d: %s", owner_id, str(e))
+            log.error(
+                "Export finalization failed",
+                extra={"export_id": export_id, "error": str(e)},
+            )
             export.status = OwnerExport.Status.FAILED
             export.error_message = str(e)[:500]
             export.save(update_fields=["status", "error_message", "updated_at"])
@@ -439,7 +522,9 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         sql_stats,
         archive_stats,
         manifest_path,
+        export_id=None,
     ) -> dict:
+        log.info("Creating and uploading tarball", extra={"export_id": export_id})
         files_added, files_failed = [], []
 
         sql_files = [
@@ -455,7 +540,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
                 for name, path in sql_files:
                     if path:
                         if self._add_file_to_tarball(
-                            tar, storage, bucket, path, export_path
+                            tar, storage, bucket, path, export_path, export_id
                         ):
                             files_added.append(path)
                         else:
@@ -463,7 +548,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
 
                 # Add manifest (critical)
                 if self._add_file_to_tarball(
-                    tar, storage, bucket, manifest_path, export_path
+                    tar, storage, bucket, manifest_path, export_path, export_id
                 ):
                     files_added.append(manifest_path)
                 else:
@@ -472,7 +557,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
                 # Add archive files (non-critical)
                 for path in archive_stats.get("copied_files") or []:
                     if self._add_file_to_tarball(
-                        tar, storage, bucket, path, export_path
+                        tar, storage, bucket, path, export_path, export_id
                     ):
                         files_added.append(path)
                     else:
@@ -491,7 +576,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         }
 
     def _add_file_to_tarball(
-        self, tar, storage, bucket, file_path, export_path
+        self, tar, storage, bucket, file_path, export_path, export_id=None
     ) -> bool:
         try:
             file_content = BytesIO()
@@ -507,7 +592,10 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
             tar.addfile(tarinfo, file_content)
             return True
         except Exception as e:
-            log.warning("Failed to add %s to tarball: %s", file_path, str(e))
+            log.warning(
+                "Failed to add file to tarball",
+                extra={"export_id": export_id, "file_path": file_path, "error": str(e)},
+            )
             return False
 
 
@@ -527,9 +615,7 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
         owner_id: int,
         export_id: int,
     ) -> dict:
-        log.info(
-            "Cleaning up failed export for owner %d, export %d", owner_id, export_id
-        )
+        log.info("Cleaning up failed export", extra={"export_id": export_id})
 
         # Extract error info (handles both old-style and new-style Celery errbacks)
         failed_task_id = self._extract_task_id(failed_task_id_or_request)
@@ -557,14 +643,17 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
         # Delete archive files by prefix
         deleted_files.extend(
             self._cleanup_archive_files(
-                storage, bucket, get_archives_path(owner_id, export_id)
+                storage, bucket, get_archives_path(owner_id, export_id), export_id
             )
         )
 
         log.info(
-            "Export cleanup complete: %d files deleted, marked failed: %s",
-            len(deleted_files),
-            export_marked,
+            "Cleanup task completed",
+            extra={
+                "export_id": export_id,
+                "files_deleted": len(deleted_files),
+                "error_message": error_message,
+            },
         )
         return {
             "export_id": export_id,
@@ -574,7 +663,9 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
             "export_marked_failed": export_marked,
         }
 
-    def _cleanup_archive_files(self, storage, bucket: str, prefix: str) -> list[str]:
+    def _cleanup_archive_files(
+        self, storage, bucket: str, prefix: str, export_id: int | None = None
+    ) -> list[str]:
         deleted = []
         try:
             if hasattr(storage, "minio_client"):
@@ -587,7 +678,10 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
                     except Exception:
                         pass
         except Exception as e:
-            log.error("Failed to cleanup archive files under %s: %s", prefix, str(e))
+            log.error(
+                "Failed to cleanup archive files",
+                extra={"export_id": export_id, "error": str(e)},
+            )
         return deleted
 
     def _extract_task_id(self, failed_task_id_or_request) -> str | None:
