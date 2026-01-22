@@ -246,7 +246,7 @@ class TaskService:
         ).apply_async()
 
     def export_owner_data(
-        self, owner_id: int, export_id: int, user_id: int | None = None
+        self, ownerid: int, export_id: int, user_id: int | None = None
     ):
         """
         Trigger owner data export task.
@@ -255,18 +255,18 @@ class TaskService:
         The export result will be a downloadable tarball with a presigned URL.
 
         Args:
-            owner_id: The owner ID to export data for
+            ownerid: The owner ID to export data for
             export_id: The OwnerExport record ID for tracking
             user_id: Optional user ID who triggered the export
         """
         log.info(
             "Triggering export_owner_data task",
-            extra={"owner_id": owner_id, "export_id": export_id, "user_id": user_id},
+            extra={"ownerid": ownerid, "export_id": export_id, "user_id": user_id},
         )
         return self._create_signature(
             celery_config.export_owner_task_name,
             kwargs={
-                "owner_id": owner_id,
+                "ownerid": ownerid,
                 "export_id": export_id,
                 "user_id": user_id,
             },

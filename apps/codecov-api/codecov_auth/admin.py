@@ -207,7 +207,7 @@ def export_owner_data(self, request, queryset):
 
     task_service = TaskService()
     task_service.export_owner_data(
-        owner_id=owner.ownerid,
+        ownerid=owner.ownerid,
         export_id=export.id,
         user_id=user.id if user else None,
     )
