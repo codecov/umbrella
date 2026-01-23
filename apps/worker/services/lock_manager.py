@@ -62,11 +62,11 @@ class LockRetry(Exception):
         self.repoid = repoid
         self.commitid = commitid
         if max_retries_exceeded:
-            error_msg = (
-                f"Lock acquisition failed after {retry_num} retries (max: {max_attempts}). "
-                f"Repo: {repoid}, Commit: {commitid}"
+            # Keep message generic for proper Sentry grouping - identifying info is in
+            # exception attributes (lock_name, repoid, commitid) and Sentry context/tags
+            super().__init__(
+                f"Lock acquisition failed after {retry_num} retries (max: {max_attempts})."
             )
-            super().__init__(error_msg)
         else:
             super().__init__(f"Lock acquisition failed, retry in {countdown} seconds")
 
