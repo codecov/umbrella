@@ -13,15 +13,13 @@ import tempfile
 from datetime import datetime, timedelta
 from io import BytesIO
 
-from celery import chord
+from celery import chain
 from celery.exceptions import SoftTimeLimitExceeded
-from celery.result import AsyncResult
 from django.utils import timezone
 
 from app import celery_app
 from shared.celery_config import (
     export_owner_archives_task_name,
-    export_owner_cleanup_task_name,
     export_owner_finalize_task_name,
     export_owner_sql_task_name,
     export_owner_task_name,
@@ -38,7 +36,6 @@ from shared.owner_data_export.config import (
     SQL_TASK_SOFT_TIME_LIMIT,
     SQL_TASK_TIME_LIMIT,
     get_archive_bucket,
-    get_archives_path,
     get_export_path,
     get_manifest_path,
     get_postgres_sql_path,
@@ -123,41 +120,30 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
 
         since_date_iso = export.since_date.isoformat() if export.since_date else None
 
-        workflow = chord(
-            [
-                export_owner_sql_task.s(
-                    ownerid=ownerid,
-                    export_id=export_id,
-                    since_date_iso=since_date_iso,
-                ),
-                export_owner_archives_task.s(
-                    ownerid=ownerid,
-                    export_id=export_id,
-                    since_date_iso=since_date_iso,
-                ),
-            ],
-            export_owner_finalize_task.s(ownerid=ownerid, export_id=export_id),
-        )
-
-        result = workflow.apply_async(
-            link_error=export_owner_cleanup_task.s(
-                ownerid=ownerid, export_id=export_id
+        workflow = chain(
+            export_owner_sql_task.s(
+                ownerid=ownerid,
+                export_id=export_id,
+                since_date_iso=since_date_iso,
             ),
-            allow_error_cb_on_chord_header=True,
+            export_owner_archives_task.s(),
+            export_owner_finalize_task.s(),
         )
 
-        export.task_ids = {"chord_id": result.id}
+        result = workflow.apply_async()
+
+        export.task_ids = {"chain_id": result.id}
         export.save(update_fields=["task_ids", "updated_at"])
 
         log.info(
             "Export workflow dispatched",
-            extra={"export_id": export_id, "chord_id": result.id},
+            extra={"export_id": export_id, "chain_id": result.id},
         )
 
         return {
             "export_id": export_id,
             "ownerid": ownerid,
-            "chord_id": result.id,
+            "chain_id": result.id,
         }
 
 
@@ -241,12 +227,14 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
                 "SQL export timed out",
                 extra={"export_id": export_id},
             )
+            _mark_export_failed_by_id(export_id, "SQL export timed out")
             raise
         except Exception as e:
             log.error(
                 "SQL export failed",
                 extra={"export_id": export_id, "error": str(e)},
             )
+            _mark_export_failed_by_id(export_id, f"SQL export failed: {str(e)}")
             raise
 
         log.info(
@@ -257,7 +245,12 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
                 "timescale_rows": stats["timescale"].get("total_rows", 0),
             },
         )
-        return {"sql_stats": stats, "ownerid": ownerid, "export_id": export_id}
+        return {
+            "sql_stats": stats,
+            "ownerid": ownerid,
+            "export_id": export_id,
+            "since_date_iso": since_date_iso,
+        }
 
     def _generate_and_upload_sql(
         self,
@@ -294,11 +287,23 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
     def run_impl(
         self,
         _db_session,
-        *,
-        ownerid: int,
-        export_id: int,
-        since_date_iso: str | None = None,
+        previous_result: dict | None = None,
     ) -> dict:
+        if previous_result is None:
+            raise ValueError(
+                "ExportOwnerArchivesTask requires previous_result from chain"
+            )
+        if "ownerid" not in previous_result or "export_id" not in previous_result:
+            raise ValueError(
+                "previous_result must contain 'ownerid' and 'export_id' keys"
+            )
+
+        # Extract values from previous task in chain
+        ownerid = previous_result["ownerid"]
+        export_id = previous_result["export_id"]
+        since_date_iso = previous_result.get("since_date_iso")
+        sql_stats = previous_result.get("sql_stats", {})
+
         log.info("Collecting archive files", extra={"export_id": export_id})
 
         since_date = datetime.fromisoformat(since_date_iso) if since_date_iso else None
@@ -325,15 +330,18 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
                 "Archive collection timed out",
                 extra={"export_id": export_id},
             )
+            _mark_export_failed_by_id(export_id, "Archive collection timed out")
             raise
         except Exception as e:
             log.error(
                 "Archive collection failed",
                 extra={"export_id": export_id, "error": str(e)},
             )
+            _mark_export_failed_by_id(export_id, f"Archive collection failed: {str(e)}")
             raise
 
         return {
+            "sql_stats": sql_stats,
             "archive_stats": archive_stats,
             "ownerid": ownerid,
             "export_id": export_id,
@@ -351,11 +359,23 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
     def run_impl(
         self,
         _db_session,
-        parallel_results: list[dict] | None = None,
-        *,
-        ownerid: int,
-        export_id: int,
+        previous_result: dict | None = None,
     ) -> dict:
+        if previous_result is None:
+            raise ValueError(
+                "ExportOwnerFinalizeTask requires previous_result from chain"
+            )
+        if "ownerid" not in previous_result or "export_id" not in previous_result:
+            raise ValueError(
+                "previous_result must contain 'ownerid' and 'export_id' keys"
+            )
+
+        # Extract values from previous task in chain
+        ownerid = previous_result["ownerid"]
+        export_id = previous_result["export_id"]
+        sql_stats = previous_result.get("sql_stats", {})
+        archive_stats = previous_result.get("archive_stats", {})
+
         log.info("Finalizing export", extra={"export_id": export_id})
 
         storage = get_appropriate_storage_service()
@@ -380,14 +400,10 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
                     "actual": export.owner_id,
                 },
             )
+            _mark_export_failed_by_id(
+                export_id, f"Owner ID mismatch for export {export_id}"
+            )
             raise ValueError(f"Owner ID mismatch for export {export_id}")
-
-        # Merge results from parallel tasks
-        sql_stats, archive_stats = {}, {}
-        for result in parallel_results or []:
-            if isinstance(result, dict):
-                sql_stats = result.get("sql_stats", sql_stats)
-                archive_stats = result.get("archive_stats", archive_stats)
 
         try:
             # Write manifest
@@ -460,11 +476,15 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
                 "Export finalization timed out",
                 extra={"export_id": export_id},
             )
+            _mark_export_failed_by_id(export_id, "Export finalization timed out")
             raise
         except Exception as e:
             log.error(
                 "Export finalization failed",
                 extra={"export_id": export_id, "error": str(e)},
+            )
+            _mark_export_failed_by_id(
+                export_id, f"Export finalization failed: {str(e)}"
             )
             raise
 
@@ -588,143 +608,12 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
             return False
 
 
-class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_name):
-    """Cleanup task that runs when export fails. Removes partial files from GCS."""
-
-    acks_late = True
-    max_retries = 3
-
-    def run_impl(
-        self,
-        _db_session,
-        failed_task_id_or_request=None,
-        exc=None,
-        _traceback=None,
-        *,
-        ownerid: int,
-        export_id: int,
-    ) -> dict:
-        log.info("Cleaning up failed export", extra={"export_id": export_id})
-
-        # Extract error info (handles both old-style and new-style Celery errbacks)
-        failed_task_id = self._extract_task_id(failed_task_id_or_request)
-        error_message = self._get_error_message(failed_task_id, exc)
-
-        try:
-            export = OwnerExport.objects.get(id=export_id)
-            if export.status == OwnerExport.Status.COMPLETED:
-                log.info(
-                    "Cleanup skipped - export already completed successfully",
-                    extra={"export_id": export_id},
-                )
-                return {
-                    "export_id": export_id,
-                    "ownerid": ownerid,
-                    "skipped": True,
-                    "reason": "Export already completed successfully",
-                }
-        except OwnerExport.DoesNotExist:
-            log.warning(
-                "Export record not found during cleanup",
-                extra={"export_id": export_id},
-            )
-        export_marked = _mark_export_failed_by_id(export_id, error_message)
-
-        storage = get_appropriate_storage_service()
-        bucket = get_archive_bucket()
-
-        deleted_files, failed_deletes = [], []
-
-        # Delete known files
-        for path in [
-            get_postgres_sql_path(ownerid, export_id),
-            get_timescale_sql_path(ownerid, export_id),
-            get_manifest_path(ownerid, export_id),
-            get_tarball_path(ownerid, export_id),
-        ]:
-            try:
-                storage.delete_file(bucket, path)
-                deleted_files.append(path)
-            except Exception:
-                failed_deletes.append(path)
-
-        # Delete archive files by prefix
-        deleted_files.extend(
-            self._cleanup_archive_files(
-                storage, bucket, get_archives_path(ownerid, export_id), export_id
-            )
-        )
-
-        log.info(
-            "Cleanup task completed",
-            extra={
-                "export_id": export_id,
-                "files_deleted": len(deleted_files),
-                "error_message": error_message,
-            },
-        )
-        return {
-            "export_id": export_id,
-            "ownerid": ownerid,
-            "deleted_files": deleted_files,
-            "failed_deletes": failed_deletes,
-            "export_marked_failed": export_marked,
-        }
-
-    def _cleanup_archive_files(
-        self, storage, bucket: str, prefix: str, export_id: int | None = None
-    ) -> list[str]:
-        deleted = []
-        try:
-            if hasattr(storage, "minio_client"):
-                for obj in storage.minio_client.list_objects(
-                    bucket, prefix=prefix, recursive=True
-                ):
-                    try:
-                        storage.delete_file(bucket, obj.object_name)
-                        deleted.append(obj.object_name)
-                    except Exception:
-                        pass
-        except Exception as e:
-            log.error(
-                "Failed to cleanup archive files",
-                extra={"export_id": export_id, "error": str(e)},
-            )
-        return deleted
-
-    def _extract_task_id(self, failed_task_id_or_request) -> str | None:
-        if failed_task_id_or_request is None:
-            return None
-        if hasattr(failed_task_id_or_request, "id"):
-            return failed_task_id_or_request.id
-        if isinstance(failed_task_id_or_request, str):
-            return failed_task_id_or_request
-        return None
-
-    def _get_error_message(
-        self, failed_task_id: str | None, exc: Exception | None
-    ) -> str:
-        if exc is not None:
-            return f"Export failed: {str(exc)[:450]}"
-        if failed_task_id is None:
-            return "Export failed (unknown error)"
-        try:
-            result = AsyncResult(failed_task_id)
-            if result.failed() and result.result:
-                return f"Export failed: {str(result.result)[:450]}"
-        except Exception:
-            pass
-        return f"Export failed (task {failed_task_id})"
-
-
 celery_app.register_task(ExportOwnerTask())
 celery_app.register_task(ExportOwnerSQLTask())
 celery_app.register_task(ExportOwnerArchivesTask())
 celery_app.register_task(ExportOwnerFinalizeTask())
-celery_app.register_task(ExportOwnerCleanupTask())
 
 export_owner_task = celery_app.tasks[ExportOwnerTask.name]
 export_owner_sql_task = celery_app.tasks[ExportOwnerSQLTask.name]
 export_owner_archives_task = celery_app.tasks[ExportOwnerArchivesTask.name]
 export_owner_finalize_task = celery_app.tasks[ExportOwnerFinalizeTask.name]
-export_owner_cleanup_task = celery_app.tasks[ExportOwnerCleanupTask.name]

@@ -1010,6 +1010,7 @@ class OwnerExportAdmin(AdminMixin, admin.ModelAdmin):
         "id",
         "owner_link",
         "status",
+        "error_message",
         "created_at",
         "download_expires_at",
         "download_link",
