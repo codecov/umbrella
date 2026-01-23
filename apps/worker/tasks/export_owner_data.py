@@ -610,18 +610,25 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
         failed_task_id = self._extract_task_id(failed_task_id_or_request)
         error_message = self._get_error_message(failed_task_id, exc)
 
-        export_marked = _mark_export_failed_by_id(export_id, error_message)
-        if not export_marked:
-            log.info(
-                "Cleanup skipped - export already handled by another cleanup or in terminal state",
-                extra={"export_id": export_id, "failed_task_id": failed_task_id},
+        try:
+            export = OwnerExport.objects.get(id=export_id)
+            if export.status == OwnerExport.Status.COMPLETED:
+                log.info(
+                    "Cleanup skipped - export already completed successfully",
+                    extra={"export_id": export_id},
+                )
+                return {
+                    "export_id": export_id,
+                    "ownerid": ownerid,
+                    "skipped": True,
+                    "reason": "Export already completed successfully",
+                }
+        except OwnerExport.DoesNotExist:
+            log.warning(
+                "Export record not found during cleanup",
+                extra={"export_id": export_id},
             )
-            return {
-                "export_id": export_id,
-                "ownerid": ownerid,
-                "skipped": True,
-                "reason": "Export already in terminal state or handled by another cleanup",
-            }
+        export_marked = _mark_export_failed_by_id(export_id, error_message)
 
         storage = get_appropriate_storage_service()
         bucket = get_archive_bucket()
