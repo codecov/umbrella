@@ -185,8 +185,6 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
             queryset,
             search_term,
         )
-        # Avoid N+1 queries for foreign key author
-        queryset = queryset.select_related("author")
         # Also search by repoid if the search term is numeric
         try:
             search_term_as_int = int(search_term)
