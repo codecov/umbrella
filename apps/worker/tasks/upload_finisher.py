@@ -427,6 +427,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
                 retry_num=self.attempts,
             ):
+                db_session.refresh(commit)
                 report_service = ReportService(commit_yaml)
 
                 log.info("run_impl: Performing report merging")
