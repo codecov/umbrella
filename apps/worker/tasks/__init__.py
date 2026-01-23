@@ -23,7 +23,6 @@ from tasks.delete_owner import delete_owner_task
 from tasks.detect_flakes import detect_flakes_task
 from tasks.export_owner_data import (
     export_owner_archives_task,
-    export_owner_cleanup_task,
     export_owner_finalize_task,
     export_owner_sql_task,
     export_owner_task,
