@@ -227,7 +227,6 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
                 "SQL export timed out",
                 extra={"export_id": export_id},
             )
-            _mark_export_failed_by_id(export_id, "SQL export timed out")
             raise
         except Exception as e:
             log.error(
@@ -321,7 +320,6 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
                 "Archive collection timed out",
                 extra={"export_id": export_id},
             )
-            _mark_export_failed_by_id(export_id, "Archive collection timed out")
             raise
         except Exception as e:
             log.error(
