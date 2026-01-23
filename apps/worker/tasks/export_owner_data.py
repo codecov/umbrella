@@ -57,15 +57,19 @@ log = logging.getLogger(__name__)
 
 
 def _mark_export_failed_by_id(export_id: int, error_message: str) -> bool:
-    """Mark export as failed by ID. Returns True if updated, False otherwise."""
+    """
+    Atomically mark export as failed if it's still in progress.
+    """
     try:
-        export = OwnerExport.objects.get(id=export_id)
-        if export.status in (OwnerExport.Status.COMPLETED, OwnerExport.Status.FAILED):
-            return False
-        export.status = OwnerExport.Status.FAILED
-        export.error_message = error_message[:500]
-        export.save(update_fields=["status", "error_message", "updated_at"])
-        return True
+        updated = OwnerExport.objects.filter(
+            id=export_id,
+            status=OwnerExport.Status.IN_PROGRESS,
+        ).update(
+            status=OwnerExport.Status.FAILED,
+            error_message=error_message[:500],
+            updated_at=timezone.now(),
+        )
+        return updated > 0
     except Exception:
         return False
 
@@ -80,7 +84,7 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
         self,
         _db_session,
         *,
-        owner_id: int,
+        ownerid: int,
         export_id: int,
         user_id: int | None = None,
     ) -> dict:
@@ -98,12 +102,12 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
             )
             return {"error": "Export not found"}
 
-        if export.owner_id != owner_id:
+        if export.owner_id != ownerid:
             log.error(
                 "Owner ID mismatch in export record",
                 extra={
                     "export_id": export_id,
-                    "expected": owner_id,
+                    "expected": ownerid,
                     "actual": export.owner_id,
                 },
             )
@@ -122,22 +126,22 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
         workflow = chord(
             [
                 export_owner_sql_task.s(
-                    owner_id=owner_id,
+                    ownerid=ownerid,
                     export_id=export_id,
                     since_date_iso=since_date_iso,
                 ),
                 export_owner_archives_task.s(
-                    owner_id=owner_id,
+                    ownerid=ownerid,
                     export_id=export_id,
                     since_date_iso=since_date_iso,
                 ),
             ],
-            export_owner_finalize_task.s(owner_id=owner_id, export_id=export_id),
+            export_owner_finalize_task.s(ownerid=ownerid, export_id=export_id),
         )
 
         result = workflow.apply_async(
             link_error=export_owner_cleanup_task.s(
-                owner_id=owner_id, export_id=export_id
+                ownerid=ownerid, export_id=export_id
             ),
             allow_error_cb_on_chord_header=True,
         )
@@ -152,7 +156,7 @@ class ExportOwnerTask(BaseCodecovTask, name=export_owner_task_name):
 
         return {
             "export_id": export_id,
-            "owner_id": owner_id,
+            "ownerid": ownerid,
             "chord_id": result.id,
         }
 
@@ -169,13 +173,13 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
         self,
         _db_session,
         *,
-        owner_id: int,
+        ownerid: int,
         export_id: int,
         since_date_iso: str | None = None,
     ) -> dict:
         log.info(
             "SQL export task started",
-            extra={"export_id": export_id, "owner_id": owner_id},
+            extra={"export_id": export_id, "ownerid": ownerid},
         )
 
         storage = get_appropriate_storage_service()
@@ -190,9 +194,9 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
                 "Generating PostgreSQL export",
                 extra={"export_id": export_id},
             )
-            postgres_path = get_postgres_sql_path(owner_id, export_id)
+            postgres_path = get_postgres_sql_path(ownerid, export_id)
             postgres_stats, postgres_size = self._generate_and_upload_sql(
-                owner_id,
+                ownerid,
                 postgres_path,
                 bucket,
                 storage,
@@ -217,9 +221,9 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
                 "Generating TimescaleDB export",
                 extra={"export_id": export_id},
             )
-            timescale_path = get_timescale_sql_path(owner_id, export_id)
+            timescale_path = get_timescale_sql_path(ownerid, export_id)
             timescale_stats, timescale_size = self._generate_and_upload_sql(
-                owner_id,
+                ownerid,
                 timescale_path,
                 bucket,
                 storage,
@@ -237,14 +241,12 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
                 "SQL export timed out",
                 extra={"export_id": export_id},
             )
-            _mark_export_failed_by_id(export_id, "SQL export timed out")
             raise
         except Exception as e:
             log.error(
                 "SQL export failed",
                 extra={"export_id": export_id, "error": str(e)},
             )
-            _mark_export_failed_by_id(export_id, str(e))
             raise
 
         log.info(
@@ -255,11 +257,11 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
                 "timescale_rows": stats["timescale"].get("total_rows", 0),
             },
         )
-        return {"sql_stats": stats, "owner_id": owner_id, "export_id": export_id}
+        return {"sql_stats": stats, "ownerid": ownerid, "export_id": export_id}
 
     def _generate_and_upload_sql(
         self,
-        owner_id,
+        ownerid,
         gcs_path,
         bucket,
         storage,
@@ -272,7 +274,7 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
             mode="w", suffix=".sql", delete=True, encoding="utf-8"
         ) as tmp:
             stats = generator_func(
-                owner_id, tmp, since_date=since_date, export_id=export_id
+                ownerid, tmp, since_date=since_date, export_id=export_id
             )
             tmp.flush()
             file_size = os.path.getsize(tmp.name)
@@ -293,7 +295,7 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
         self,
         _db_session,
         *,
-        owner_id: int,
+        ownerid: int,
         export_id: int,
         since_date_iso: str | None = None,
     ) -> dict:
@@ -303,12 +305,12 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
 
         try:
             context = (
-                ExportContext(owner_id=owner_id, since_date=since_date)
+                ExportContext(owner_id=ownerid, since_date=since_date)
                 if since_date
-                else ExportContext(owner_id=owner_id)
+                else ExportContext(owner_id=ownerid)
             )
             archive_stats = collect_archives_for_export(
-                owner_id=owner_id, export_id=export_id, context=context
+                owner_id=ownerid, export_id=export_id, context=context
             )
             log.info(
                 "Archive collection task completed",
@@ -323,19 +325,17 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
                 "Archive collection timed out",
                 extra={"export_id": export_id},
             )
-            _mark_export_failed_by_id(export_id, "Archive collection timed out")
             raise
         except Exception as e:
             log.error(
                 "Archive collection failed",
                 extra={"export_id": export_id, "error": str(e)},
             )
-            _mark_export_failed_by_id(export_id, str(e))
             raise
 
         return {
             "archive_stats": archive_stats,
-            "owner_id": owner_id,
+            "ownerid": ownerid,
             "export_id": export_id,
         }
 
@@ -353,14 +353,14 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         _db_session,
         parallel_results: list[dict] | None = None,
         *,
-        owner_id: int,
+        ownerid: int,
         export_id: int,
     ) -> dict:
         log.info("Finalizing export", extra={"export_id": export_id})
 
         storage = get_appropriate_storage_service()
         bucket = get_archive_bucket()
-        export_path = get_export_path(owner_id, export_id)
+        export_path = get_export_path(ownerid, export_id)
 
         try:
             export = OwnerExport.objects.get(id=export_id)
@@ -371,20 +371,15 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
             )
             raise ValueError(f"Export {export_id} not found")
 
-        if export.owner_id != owner_id:
+        if export.owner_id != ownerid:
             log.error(
                 "Owner ID mismatch in finalize",
                 extra={
                     "export_id": export_id,
-                    "expected": owner_id,
+                    "expected": ownerid,
                     "actual": export.owner_id,
                 },
             )
-            export.status = OwnerExport.Status.FAILED
-            export.error_message = (
-                f"Owner ID mismatch: expected {owner_id}, found {export.owner_id}"
-            )
-            export.save(update_fields=["status", "error_message", "updated_at"])
             raise ValueError(f"Owner ID mismatch for export {export_id}")
 
         # Merge results from parallel tasks
@@ -397,15 +392,15 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         try:
             # Write manifest
             manifest = self._create_manifest(
-                owner_id, export_id, export, sql_stats, archive_stats
+                ownerid, export_id, export, sql_stats, archive_stats
             )
-            manifest_path = get_manifest_path(owner_id, export_id)
+            manifest_path = get_manifest_path(ownerid, export_id)
             storage.write_file(
                 bucket, manifest_path, BytesIO(json.dumps(manifest, indent=2).encode())
             )
 
             # Create tarball
-            tarball_path = get_tarball_path(owner_id, export_id)
+            tarball_path = get_tarball_path(ownerid, export_id)
             tarball_result = self._create_and_upload_tarball(
                 storage,
                 bucket,
@@ -454,7 +449,7 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
             )
             return {
                 "export_id": export_id,
-                "owner_id": owner_id,
+                "ownerid": ownerid,
                 "download_url": download_url,
                 "expires_at": expires_at.isoformat(),
                 "tarball_bytes": tarball_result["tarball_size"],
@@ -465,25 +460,19 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
                 "Export finalization timed out",
                 extra={"export_id": export_id},
             )
-            export.status = OwnerExport.Status.FAILED
-            export.error_message = "Finalization timed out"
-            export.save(update_fields=["status", "error_message", "updated_at"])
             raise
         except Exception as e:
             log.error(
                 "Export finalization failed",
                 extra={"export_id": export_id, "error": str(e)},
             )
-            export.status = OwnerExport.Status.FAILED
-            export.error_message = str(e)[:500]
-            export.save(update_fields=["status", "error_message", "updated_at"])
             raise
 
     def _create_manifest(
-        self, owner_id, export_id, export, sql_stats, archive_stats
+        self, ownerid, export_id, export, sql_stats, archive_stats
     ) -> dict:
         try:
-            owner = Owner.objects.get(ownerid=owner_id)
+            owner = Owner.objects.get(ownerid=ownerid)
             owner_info = {
                 "ownerid": owner.ownerid,
                 "username": owner.username,
@@ -491,13 +480,13 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
                 "service_id": owner.service_id,
             }
         except Owner.DoesNotExist:
-            owner_info = {"ownerid": owner_id}
+            owner_info = {"ownerid": ownerid}
 
         return {
             "version": "1.0",
             "export_id": export.id,
             "owner": owner_info,
-            "export_path": f"exports/{owner_id}/{export_id}/",
+            "export_path": f"exports/{ownerid}/{export_id}/",
             "export_date": timezone.now().isoformat(),
             "since_date": export.since_date.isoformat() if export.since_date else None,
             "days_exported": EXPORT_DAYS_DEFAULT,
@@ -612,7 +601,7 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
         exc=None,
         _traceback=None,
         *,
-        owner_id: int,
+        ownerid: int,
         export_id: int,
     ) -> dict:
         log.info("Cleaning up failed export", extra={"export_id": export_id})
@@ -620,6 +609,25 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
         # Extract error info (handles both old-style and new-style Celery errbacks)
         failed_task_id = self._extract_task_id(failed_task_id_or_request)
         error_message = self._get_error_message(failed_task_id, exc)
+
+        try:
+            export = OwnerExport.objects.get(id=export_id)
+            if export.status == OwnerExport.Status.COMPLETED:
+                log.info(
+                    "Cleanup skipped - export already completed successfully",
+                    extra={"export_id": export_id},
+                )
+                return {
+                    "export_id": export_id,
+                    "ownerid": ownerid,
+                    "skipped": True,
+                    "reason": "Export already completed successfully",
+                }
+        except OwnerExport.DoesNotExist:
+            log.warning(
+                "Export record not found during cleanup",
+                extra={"export_id": export_id},
+            )
         export_marked = _mark_export_failed_by_id(export_id, error_message)
 
         storage = get_appropriate_storage_service()
@@ -629,10 +637,10 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
 
         # Delete known files
         for path in [
-            get_postgres_sql_path(owner_id, export_id),
-            get_timescale_sql_path(owner_id, export_id),
-            get_manifest_path(owner_id, export_id),
-            get_tarball_path(owner_id, export_id),
+            get_postgres_sql_path(ownerid, export_id),
+            get_timescale_sql_path(ownerid, export_id),
+            get_manifest_path(ownerid, export_id),
+            get_tarball_path(ownerid, export_id),
         ]:
             try:
                 storage.delete_file(bucket, path)
@@ -643,7 +651,7 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
         # Delete archive files by prefix
         deleted_files.extend(
             self._cleanup_archive_files(
-                storage, bucket, get_archives_path(owner_id, export_id), export_id
+                storage, bucket, get_archives_path(ownerid, export_id), export_id
             )
         )
 
@@ -657,7 +665,7 @@ class ExportOwnerCleanupTask(BaseCodecovTask, name=export_owner_cleanup_task_nam
         )
         return {
             "export_id": export_id,
-            "owner_id": owner_id,
+            "ownerid": ownerid,
             "deleted_files": deleted_files,
             "failed_deletes": failed_deletes,
             "export_marked_failed": export_marked,

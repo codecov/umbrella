@@ -42,6 +42,7 @@ def _get_user_plan_from_task(task_name: str, task_kwargs: dict) -> str:
         shared_celery_config.delete_owner_task_name: _get_user_plan_from_ownerid,
         shared_celery_config.sync_repos_task_name: _get_user_plan_from_ownerid,
         shared_celery_config.sync_teams_task_name: _get_user_plan_from_ownerid,
+        shared_celery_config.export_owner_task_name: _get_user_plan_from_ownerid,
         # from repoid
         shared_celery_config.upload_task_name: _get_user_plan_from_repoid,
         shared_celery_config.notify_task_name: _get_user_plan_from_repoid,
@@ -89,6 +90,7 @@ def _get_ownerid_from_task(task_name: str, task_kwargs: dict) -> int | None:
         shared_celery_config.delete_owner_task_name: _get_ownerid_from_ownerid,
         shared_celery_config.sync_repos_task_name: _get_ownerid_from_ownerid,
         shared_celery_config.sync_teams_task_name: _get_ownerid_from_ownerid,
+        shared_celery_config.export_owner_task_name: _get_ownerid_from_ownerid,
         # from repoid
         shared_celery_config.upload_task_name: _get_ownerid_from_repoid,
         shared_celery_config.notify_task_name: _get_ownerid_from_repoid,
