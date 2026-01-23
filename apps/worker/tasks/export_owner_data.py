@@ -227,6 +227,7 @@ class ExportOwnerSQLTask(BaseCodecovTask, name=export_owner_sql_task_name):
                 "SQL export timed out",
                 extra={"export_id": export_id},
             )
+            _mark_export_failed_by_id(export_id, "SQL export timed out")
             raise
         except Exception as e:
             log.error(
@@ -288,6 +289,15 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
         _db_session,
         previous_result: dict | None = None,
     ) -> dict:
+        if previous_result is None:
+            raise ValueError(
+                "ExportOwnerArchivesTask requires previous_result from chain"
+            )
+        if "ownerid" not in previous_result or "export_id" not in previous_result:
+            raise ValueError(
+                "previous_result must contain 'ownerid' and 'export_id' keys"
+            )
+
         # Extract values from previous task in chain
         ownerid = previous_result["ownerid"]
         export_id = previous_result["export_id"]
@@ -320,6 +330,7 @@ class ExportOwnerArchivesTask(BaseCodecovTask, name=export_owner_archives_task_n
                 "Archive collection timed out",
                 extra={"export_id": export_id},
             )
+            _mark_export_failed_by_id(export_id, "Archive collection timed out")
             raise
         except Exception as e:
             log.error(
@@ -350,6 +361,15 @@ class ExportOwnerFinalizeTask(BaseCodecovTask, name=export_owner_finalize_task_n
         _db_session,
         previous_result: dict | None = None,
     ) -> dict:
+        if previous_result is None:
+            raise ValueError(
+                "ExportOwnerFinalizeTask requires previous_result from chain"
+            )
+        if "ownerid" not in previous_result or "export_id" not in previous_result:
+            raise ValueError(
+                "previous_result must contain 'ownerid' and 'export_id' keys"
+            )
+
         # Extract values from previous task in chain
         ownerid = previous_result["ownerid"]
         export_id = previous_result["export_id"]
