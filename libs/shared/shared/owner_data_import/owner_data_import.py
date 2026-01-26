@@ -7,6 +7,8 @@ import logging
 import sys
 from pathlib import Path
 
+from minio.error import S3Error
+
 from shared.storage.minio import MinioStorageService
 
 log = logging.getLogger(__name__)
@@ -85,7 +87,11 @@ def run_import(
 
     if not storage.minio_client.bucket_exists(bucket):
         log.info("Creating bucket: %s", bucket)
-        storage.minio_client.make_bucket(bucket)
+        try:
+            storage.minio_client.make_bucket(bucket)
+        except S3Error as e:
+            if e.code not in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
+                raise
 
     uploaded, failed = import_archives(input_dir, storage, bucket)
 
