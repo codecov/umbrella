@@ -169,6 +169,12 @@ def export_owner_data(self, request, queryset):
         status__in=[OwnerExport.Status.PENDING, OwnerExport.Status.IN_PROGRESS],
     ).first()
     if existing_export:
+        log.warning(
+            "Export blocked: existing export in progress",
+            extra={
+                "export_id": existing_export.id,
+            },
+        )
         self.message_user(
             request,
             f"An export is already in progress for {owner.username} "
@@ -194,9 +200,14 @@ def export_owner_data(self, request, queryset):
         created_by=user,
     )
 
+    log.info(
+        "Owner data export initiated",
+        extra={"export_id": export.id},
+    )
+
     task_service = TaskService()
     task_service.export_owner_data(
-        owner_id=owner.ownerid,
+        ownerid=owner.ownerid,
         export_id=export.id,
         user_id=user.id if user else None,
     )
@@ -999,6 +1010,7 @@ class OwnerExportAdmin(AdminMixin, admin.ModelAdmin):
         "id",
         "owner_link",
         "status",
+        "error_message",
         "created_at",
         "download_expires_at",
         "download_link",

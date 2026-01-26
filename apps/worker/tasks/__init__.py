@@ -21,6 +21,12 @@ from tasks.compute_comparison import compute_comparison_task
 from tasks.compute_component_comparison import compute_component_comparison_task
 from tasks.delete_owner import delete_owner_task
 from tasks.detect_flakes import detect_flakes_task
+from tasks.export_owner_data import (
+    export_owner_archives_task,
+    export_owner_finalize_task,
+    export_owner_sql_task,
+    export_owner_task,
+)
 from tasks.flush_repo import flush_repo
 from tasks.github_app_webhooks_check import gh_webhook_check_task
 from tasks.github_marketplace import ghm_sync_plans_task

@@ -64,7 +64,7 @@ class LockRetry(Exception):
         if max_retries_exceeded:
             error_msg = (
                 f"Lock acquisition failed after {retry_num} retries (max: {max_attempts}). "
-                f"Lock: {lock_name}, Repo: {repoid}, Commit: {commitid}"
+                f"Repo: {repoid}, Commit: {commitid}"
             )
             super().__init__(error_msg)
         else:

@@ -89,6 +89,7 @@ class ExportContext:
 
     owner_id: int
     since_date: datetime = field(default_factory=get_since_date)
+    export_id: int | None = None
 
     _repository_ids: list[int] | None = field(default=None, repr=False)
     _commit_ids: list[int] | None = field(default=None, repr=False)
@@ -104,7 +105,6 @@ class ExportContext:
                     "repoid", flat=True
                 )
             )
-            log.info("Pre-fetched %d repository IDs", len(self._repository_ids))
         return self._repository_ids
 
     @property
@@ -117,7 +117,6 @@ class ExportContext:
                     updatestamp__gte=self.since_date,
                 ).values_list("id", flat=True)
             )
-            log.info("Pre-fetched %d commit IDs", len(self._commit_ids))
         return self._commit_ids
 
     @property
@@ -129,7 +128,6 @@ class ExportContext:
                     "id", flat=True
                 )
             )
-            log.info("Pre-fetched %d commit report IDs", len(self._commit_report_ids))
         return self._commit_report_ids
 
     @property
@@ -141,7 +139,6 @@ class ExportContext:
                     report_id__in=self.commit_report_ids
                 ).values_list("id", flat=True)
             )
-            log.info("Pre-fetched %d report session IDs", len(self._report_session_ids))
         return self._report_session_ids
 
     def get_queryset(self, model_path: str) -> QuerySet:
@@ -219,7 +216,7 @@ class ExportContext:
         raise ValueError(f"Unknown model: {model_path}")
 
 
-def serialize_value(value: Any) -> str:
+def serialize_value(value: Any, field: Any = None) -> str:
     """Convert a Python value to a SQL literal string."""
     if value is None:
         return "NULL"
@@ -258,7 +255,13 @@ def serialize_value(value: Any) -> str:
     if isinstance(value, UUID):
         return f"'{value}'"
 
-    if isinstance(value, dict | list):
+    if isinstance(value, list):
+        if field is not None and field.get_internal_type() == "ArrayField":
+            return _serialize_pg_array(value, field)
+        cleaned = json.dumps(value).replace("\x00", "")
+        return f"'{cleaned.replace(chr(39), chr(39) + chr(39))}'::jsonb"
+
+    if isinstance(value, dict):
         # Strip NULL bytes which are invalid in PostgreSQL text columns
         cleaned = json.dumps(value).replace("\x00", "")
         return f"'{cleaned.replace(chr(39), chr(39) + chr(39))}'::jsonb"
@@ -267,11 +270,59 @@ def serialize_value(value: Any) -> str:
         return f"'\\x{value.hex()}'::bytea"
 
     if hasattr(value, "value"):  # Enum
-        return serialize_value(value.value)
+        return serialize_value(value.value, field)
 
     # Strip NULL bytes which are invalid in PostgreSQL text columns
     cleaned = str(value).replace("\x00", "")
     return f"'{cleaned.replace(chr(39), chr(39) + chr(39))}'"
+
+
+def _serialize_pg_array(value: list, field: Any) -> str:
+    """Serialize a Python list to PostgreSQL array literal syntax."""
+    base_field = field.base_field
+    base_type = base_field.get_internal_type()
+    pg_type_map = {
+        "IntegerField": "integer",
+        "BigIntegerField": "bigint",
+        "SmallIntegerField": "smallint",
+        "CharField": "text",
+        "TextField": "text",
+        "BooleanField": "boolean",
+        "FloatField": "float8",
+        "DecimalField": "numeric",
+        "UUIDField": "uuid",
+    }
+
+    pg_type = pg_type_map.get(base_type, "text")
+
+    if not value:
+        return f"'{{}}'::{pg_type}[]"
+
+    elements = []
+    for item in value:
+        if item is None:
+            elements.append("NULL")
+        elif isinstance(item, bool):
+            elements.append("TRUE" if item else "FALSE")
+        elif isinstance(item, int | float | Decimal):
+            elements.append(str(item))
+        elif isinstance(item, str):
+            cleaned = item.replace("\x00", "")
+            escaped = (
+                cleaned.replace("\\", "\\\\").replace('"', '\\"').replace("'", "''")
+            )
+            elements.append(f'"{escaped}"')
+        elif isinstance(item, UUID):
+            elements.append(str(item))
+        else:
+            cleaned = str(item).replace("\x00", "")
+            escaped = (
+                cleaned.replace("\\", "\\\\").replace('"', '\\"').replace("'", "''")
+            )
+            elements.append(f'"{escaped}"')
+
+    array_literal = "{" + ",".join(elements) + "}"
+    return f"'{array_literal}'::{pg_type}[]"
 
 
 def get_row_values(instance: Model, model_path: str, fields: list) -> list[str]:
@@ -281,9 +332,6 @@ def get_row_values(instance: Model, model_path: str, fields: list) -> list[str]:
 
     values = []
     for f in fields:
-        # Check both f.name and f.attname for ForeignKey fields:
-        # f.name is the relation name (e.g., "account")
-        # f.attname is the column name (e.g., "account_id")
         if f.name in nullified or f.attname in nullified:
             value = None
         elif f.name in defaults:
@@ -294,7 +342,7 @@ def get_row_values(instance: Model, model_path: str, fields: list) -> list[str]:
             value = default_value() if callable(default_value) else default_value
         else:
             value = getattr(instance, f.attname)
-        values.append(serialize_value(value))
+        values.append(serialize_value(value, f))
 
     return values
 
@@ -398,15 +446,16 @@ def generate_full_export(
     output_file: TextIO,
     models: list[str] | None = None,
     since_date: datetime | None = None,
+    export_id: int | None = None,
 ) -> dict:
     """Generate complete SQL export for an owner."""
     if models is None:
         models = EXPORTABLE_MODELS
 
     context = (
-        ExportContext(owner_id=owner_id, since_date=since_date)
+        ExportContext(owner_id=owner_id, since_date=since_date, export_id=export_id)
         if since_date
-        else ExportContext(owner_id=owner_id)
+        else ExportContext(owner_id=owner_id, export_id=export_id)
     )
     stats = {
         "owner_id": owner_id,
@@ -448,6 +497,11 @@ def generate_full_export(
     output_file.write(generate_sequence_resets(models))
     output_file.write("\nCOMMIT;\n")
 
+    log.info(
+        "SQL generation completed",
+        extra={"export_id": export_id, "total_rows": stats["total_rows"]},
+    )
+
     return stats
 
 
@@ -455,8 +509,13 @@ def generate_timescale_export(
     owner_id: int,
     output_file: TextIO,
     since_date: datetime | None = None,
+    export_id: int | None = None,
 ) -> dict:
     """Generate SQL export for TimescaleDB models."""
     return generate_full_export(
-        owner_id, output_file, TIMESCALE_MODELS, since_date=since_date
+        owner_id,
+        output_file,
+        TIMESCALE_MODELS,
+        since_date=since_date,
+        export_id=export_id,
     )

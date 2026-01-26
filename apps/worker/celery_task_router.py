@@ -100,6 +100,10 @@ def _get_ownerid_from_task(dbsession, task_name: str, task_kwargs: dict) -> int 
         shared_celery_config.manual_upload_completion_trigger_task_name: _get_ownerid_from_repoid,
         # from comparison_id
         shared_celery_config.compute_comparison_task_name: _get_ownerid_from_comparison_id,
+        # bundle analysis tasks (from repoid)
+        shared_celery_config.bundle_analysis_processor_task_name: _get_ownerid_from_repoid,
+        shared_celery_config.bundle_analysis_notify_task_name: _get_ownerid_from_repoid,
+        shared_celery_config.bundle_analysis_save_measurements_task_name: _get_ownerid_from_repoid,
     }
     func_to_use = owner_lookup_funcs.get(task_name, lambda *args, **kwargs: None)
     return func_to_use(dbsession, **task_kwargs)
@@ -127,6 +131,10 @@ def _get_user_plan_from_task(dbsession, task_name: str, task_kwargs: dict) -> st
         shared_celery_config.manual_upload_completion_trigger_task_name: _get_user_plan_from_repoid,
         # from comparison_id
         shared_celery_config.compute_comparison_task_name: _get_user_plan_from_comparison_id,
+        # bundle analysis tasks (from repoid)
+        shared_celery_config.bundle_analysis_processor_task_name: _get_user_plan_from_repoid,
+        shared_celery_config.bundle_analysis_notify_task_name: _get_user_plan_from_repoid,
+        shared_celery_config.bundle_analysis_save_measurements_task_name: _get_user_plan_from_repoid,
     }
     func_to_use = owner_plan_lookup_funcs.get(
         task_name, lambda *args, **kwargs: DEFAULT_FREE_PLAN
