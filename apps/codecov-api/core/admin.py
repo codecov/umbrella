@@ -135,7 +135,11 @@ class RepositoryAdminForm(forms.ModelForm):
 class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
     inlines = [RepositoryTokenInline]
     list_display = ("name", "service_id", "author")
-    search_fields = ("author__username__exact",)
+    search_fields = (
+        "name",
+        "author__username__exact",
+        "service_id__exact",
+    )
     show_full_result_count = False
     autocomplete_fields = ("bot",)
     form = RepositoryAdminForm
@@ -172,21 +176,24 @@ class RepositoryAdmin(AdminMixin, admin.ModelAdmin):
         search_term: str,
     ) -> tuple[QuerySet[Repository], bool]:
         """
-        Search for repositories by name or repoid.
+        Search for repositories by name, service_id, author username, or repoid.
         https://docs.djangoproject.com/en/5.2/ref/contrib/admin/#django.contrib.admin.ModelAdmin.get_search_results
         """
-        # Default search is by author username (defined in `search_fields`)
+        # Default search is by name, author username, and service_id (defined in `search_fields`)
         queryset, may_have_duplicates = super().get_search_results(
             request,
             queryset,
             search_term,
         )
+        # Also search by repoid if the search term is numeric
         try:
             search_term_as_int = int(search_term)
         except ValueError:
             pass
         else:
             queryset |= self.model.objects.filter(repoid=search_term_as_int)
+        # avoid N+1 queries for with union
+        queryset = queryset.select_related("author")
         return queryset, may_have_duplicates
 
     def has_add_permission(self, _, obj=None):
