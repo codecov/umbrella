@@ -130,11 +130,23 @@ NULLIFIED_FIELDS: dict[str, list[str]] = {
         "sentry_user_id",
         "sentry_user_data",
         "account_id",
+        "bot",
+    ],
+    "codecov_auth.OwnerProfile": [
+        "default_org",
     ],
     "core.Repository": [
         "using_integration",
         "webhook_secret",
         "image_token",
+        "fork",
+        "bot",
+    ],
+    "core.Commit": [
+        "author",
+    ],
+    "core.Pull": [
+        "author",
     ],
 }
 

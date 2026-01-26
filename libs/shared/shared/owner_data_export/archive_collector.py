@@ -26,6 +26,7 @@ from shared.storage.exceptions import FileNotInStorageError
 
 from .config import (
     ARCHIVE_COPY_WORKERS,
+    BATCH_SIZE,
     EXPORT_DAYS_DEFAULT,
     get_archive_bucket,
     get_archive_destination_path,
@@ -70,7 +71,7 @@ def discover_archive_files(
         _report_storage_path__isnull=False,
     ).values_list("id", "_report_storage_path", "repository_id")
 
-    for commit_id, storage_path, repo_id in commits_qs.iterator():
+    for commit_id, storage_path, repo_id in commits_qs.iterator(chunk_size=BATCH_SIZE):
         if storage_path:
             stats["commits_with_report"] += 1
             yield ArchiveFile(
@@ -88,7 +89,7 @@ def discover_archive_files(
         storage_path__isnull=False,
     ).values_list("id", "storage_path")
 
-    for session_id, storage_path in uploads_qs.iterator():
+    for session_id, storage_path in uploads_qs.iterator(chunk_size=BATCH_SIZE):
         if storage_path:
             stats["uploads_with_storage"] += 1
             yield ArchiveFile(
@@ -110,7 +111,7 @@ def discover_archive_files(
         id__in=context.commit_ids,
     ).values_list("commitid", "repository_id")
 
-    for commitid, repo_id in commits_for_chunks.iterator():
+    for commitid, repo_id in commits_for_chunks.iterator(chunk_size=BATCH_SIZE):
         repo = repos.get(repo_id)
         if repo:
             repo_hash = ArchiveService.get_archive_hash(repo)
@@ -132,7 +133,7 @@ def discover_archive_files(
     ).select_related("commit__repository")
 
     bundle_bucket = get_bundle_analysis_bucket()
-    for bundle_report in bundle_reports_qs.iterator():
+    for bundle_report in bundle_reports_qs.iterator(chunk_size=BATCH_SIZE):
         commit = bundle_report.commit
         repo = commit.repository
         if repo:
@@ -377,7 +378,7 @@ def collect_archives_for_repository(
     for commit_id, storage_path in (
         commits_qs.filter(_report_storage_path__isnull=False)
         .values_list("id", "_report_storage_path")
-        .iterator()
+        .iterator(chunk_size=BATCH_SIZE)
     ):
         if storage_path:
             file = ArchiveFile(
@@ -398,7 +399,9 @@ def collect_archives_for_repository(
                 stats["files_failed"] += 1
 
     # 2. Chunks files
-    for commitid in commits_qs.values_list("commitid", flat=True).iterator():
+    for commitid in commits_qs.values_list("commitid", flat=True).iterator(
+        chunk_size=BATCH_SIZE
+    ):
         chunks_path = f"v4/repos/{repo_hash}/commits/{commitid}/chunks.txt"
         file = ArchiveFile(
             source_path=chunks_path,
@@ -424,7 +427,7 @@ def collect_archives_for_repository(
             storage_path__isnull=False,
         )
         .values_list("id", "storage_path")
-        .iterator()
+        .iterator(chunk_size=BATCH_SIZE)
     ):
         if storage_path:
             file = ArchiveFile(
@@ -451,7 +454,7 @@ def collect_archives_for_repository(
             report_type="bundle_analysis",
         )
         .select_related("commit")
-        .iterator()
+        .iterator(chunk_size=BATCH_SIZE)
     ):
         bundle_path = BundleStoragePaths.bundle_report.path(
             repo_key=repo_hash,

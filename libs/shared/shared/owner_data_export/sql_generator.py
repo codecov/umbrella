@@ -35,6 +35,7 @@ FULL_EXPORT_MODELS = {
     "codecov_auth.Owner",
     "codecov_auth.OwnerProfile",
     "core.Repository",
+    "reports.RepositoryFlag",
 }
 
 # Models already date-filtered via commit_ids
@@ -375,7 +376,7 @@ def generate_upsert_sql(
     row_count = 0
     batch = []
 
-    for instance in queryset.iterator():
+    for instance in queryset.iterator(chunk_size=BATCH_SIZE):
         values = get_row_values(instance, model_path, fields)
         batch.append(f"  ({', '.join(values)})")
         row_count += 1
