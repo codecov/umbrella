@@ -279,9 +279,6 @@ def serialize_value(value: Any, field: Any = None) -> str:
 
 def _serialize_pg_array(value: list, field: Any) -> str:
     """Serialize a Python list to PostgreSQL array literal syntax."""
-    if not value:
-        return "'{}'"
-
     base_field = field.base_field
     base_type = base_field.get_internal_type()
     pg_type_map = {
@@ -298,6 +295,9 @@ def _serialize_pg_array(value: list, field: Any) -> str:
 
     pg_type = pg_type_map.get(base_type, "text")
 
+    if not value:
+        return f"'{{}}'::{pg_type}[]"
+
     elements = []
     for item in value:
         if item is None:
@@ -307,12 +307,16 @@ def _serialize_pg_array(value: list, field: Any) -> str:
         elif isinstance(item, int | float | Decimal):
             elements.append(str(item))
         elif isinstance(item, str):
-            escaped = item.replace("\\", "\\\\").replace('"', '\\"')
+            cleaned = item.replace("\x00", "")
+            escaped = (
+                cleaned.replace("\\", "\\\\").replace('"', '\\"').replace("'", "''")
+            )
             elements.append(f'"{escaped}"')
         elif isinstance(item, UUID):
             elements.append(str(item))
         else:
-            elements.append(str(item))
+            cleaned = str(item).replace("\x00", "")
+            elements.append(cleaned)
 
     array_literal = "{" + ",".join(elements) + "}"
     return f"'{array_literal}'::{pg_type}[]"
