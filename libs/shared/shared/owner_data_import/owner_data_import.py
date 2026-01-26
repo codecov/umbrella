@@ -38,7 +38,7 @@ def import_archives(
             relative_path = str(file_path.relative_to(archives_dir))
             try:
                 with open(file_path, "rb") as f:
-                    storage.write_file(bucket, relative_path, f)
+                    storage.write_file(bucket, relative_path, f, is_compressed=True)
                 uploaded += 1
                 log.info("Uploaded: %s", relative_path)
             except Exception as e:
