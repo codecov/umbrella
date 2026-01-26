@@ -316,7 +316,10 @@ def _serialize_pg_array(value: list, field: Any) -> str:
             elements.append(str(item))
         else:
             cleaned = str(item).replace("\x00", "")
-            elements.append(cleaned)
+            escaped = (
+                cleaned.replace("\\", "\\\\").replace('"', '\\"').replace("'", "''")
+            )
+            elements.append(f'"{escaped}"')
 
     array_literal = "{" + ",".join(elements) + "}"
     return f"'{array_literal}'::{pg_type}[]"
