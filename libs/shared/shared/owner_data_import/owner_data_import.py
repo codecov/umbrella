@@ -35,7 +35,7 @@ def import_archives(
 
     for file_path in archives_dir.rglob("*"):
         if file_path.is_file():
-            relative_path = str(file_path.relative_to(archives_dir))
+            relative_path = file_path.relative_to(archives_dir).as_posix()
             try:
                 with open(file_path, "rb") as f:
                     storage.write_file(bucket, relative_path, f, is_compressed=True)
