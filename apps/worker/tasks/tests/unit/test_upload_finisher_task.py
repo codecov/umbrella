@@ -1363,3 +1363,105 @@ class TestUploadFinisherTask:
         # Verify that _handle_finisher_lock WAS called (notifications should proceed)
         # This is the key assertion - notifications should NOT be blocked by test_results uploads
         mock_handle_finisher_lock.assert_called_once()
+
+
+class TestCommitRefreshAfterLock:
+    """Tests for CCMRG-2028: commit must be refreshed after acquiring lock."""
+
+    @pytest.mark.django_db
+    def test_commit_is_refreshed_after_acquiring_lock(
+        self,
+        dbsession,
+        mocker,
+        mock_redis,
+        mock_self_app,
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        refresh_calls = []
+        original_refresh = dbsession.refresh
+
+        def tracking_refresh(obj):
+            refresh_calls.append(obj)
+            return original_refresh(obj)
+
+        mocker.patch.object(dbsession, "refresh", side_effect=tracking_refresh)
+        mock_redis.scard.return_value = 0
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        mocker.patch("tasks.upload_finisher.update_uploads")
+        mocker.patch("tasks.upload_finisher.cleanup_intermediate_reports")
+        mocker.patch.object(
+            UploadFinisherTask, "_handle_finisher_lock", return_value={}
+        )
+
+        task = UploadFinisherTask()
+        task.request.retries = 0
+        task.request.headers = {}
+
+        task.run_impl(
+            dbsession,
+            [{"upload_id": 0, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert any(obj.commitid == commit.commitid for obj in refresh_calls)
+
+    @pytest.mark.django_db
+    def test_stale_commit_sees_report_after_refresh(
+        self,
+        dbsession,
+        mocker,
+        mock_redis,
+        mock_self_app,
+        mock_storage,
+        mock_configuration,
+        mock_repo_provider,
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        commit.report_json = {"files": {}, "sessions": {}}
+        dbsession.commit()
+
+        # Simulate stale commit by expiring the cached attributes
+        dbsession.expire(commit, ["_report_json", "_report_json_storage_path"])
+
+        mock_redis.scard.return_value = 0
+        mocker.patch("tasks.upload_finisher.load_commit_diff", return_value=None)
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        mocker.patch("tasks.upload_finisher.update_uploads")
+        mocker.patch("tasks.upload_finisher.cleanup_intermediate_reports")
+        mocker.patch.object(
+            UploadFinisherTask, "_handle_finisher_lock", return_value={}
+        )
+
+        original_get_existing = ReportService.get_existing_report_for_commit
+        get_existing_calls = []
+
+        def tracking_get_existing(self, commit, report_class=None):
+            has_report = commit._report_json is not None
+            get_existing_calls.append(has_report)
+            return original_get_existing(self, commit, report_class)
+
+        mocker.patch.object(
+            ReportService, "get_existing_report_for_commit", tracking_get_existing
+        )
+
+        task = UploadFinisherTask()
+        task.request.retries = 0
+        task.request.headers = {}
+
+        task.run_impl(
+            dbsession,
+            [{"upload_id": 0, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert get_existing_calls and get_existing_calls[0] is True
