@@ -52,64 +52,39 @@ from shared.utils.sentry import current_sentry_trace_id
 log = logging.getLogger("worker")
 
 
+def _get_per_task_session_config():
+    """Get per-task session configuration from setup.tasks.per_task_db_sessions."""
+    base_path = ("setup", "tasks", "per_task_db_sessions")
+    return {
+        "enabled": get_config(*base_path, "enabled", default=False),
+        "queues": get_config(*base_path, "queues", default=[]),
+        "tasks": get_config(*base_path, "tasks", default=[]),
+    }
+
+
 def use_per_task_db_sessions(
     task_name: str | None = None, queue_name: str | None = None
 ) -> bool:
     """Check if per-task database sessions are enabled for this task/queue.
 
-    When enabled, each task gets a fresh database session that is cleaned up
-    after the task completes. This prevents session contamination between tasks
-    when a task crashes or times out mid-transaction.
-
-    Supports gradual rollout by enabling for specific queues or tasks first.
-
-    Config options:
-        setup.tasks.per_task_db_sessions.enabled: bool (default: False)
-            Master switch. If False, feature is disabled for all tasks.
-
-        setup.tasks.per_task_db_sessions.queues: list[str] (default: [])
-            If non-empty, only enable for tasks running on these queues.
-            Example: ["timeseries", "celery"]
-
-        setup.tasks.per_task_db_sessions.tasks: list[str] (default: [])
-            If non-empty, only enable for these specific task names.
-            Example: ["app.tasks.upload.Upload", "app.tasks.notify.Notify"]
-
-    If both queues and tasks lists are empty, the feature applies to all tasks
-    (when enabled=True).
-
-    Args:
-        task_name: The name of the task (e.g., "app.tasks.upload.Upload")
-        queue_name: The queue the task is running on (e.g., "celery", "timeseries")
-
-    Returns:
-        True if per-task sessions should be used for this task/queue.
+    Prevents session contamination when tasks crash or timeout mid-transaction.
+    Supports gradual rollout via queue/task allowlists.
     """
-    # Master switch - if not enabled, feature is off for everyone
-    if not get_config(
-        "setup", "tasks", "per_task_db_sessions", "enabled", default=False
-    ):
+    config = _get_per_task_session_config()
+
+    if not config["enabled"]:
         return False
 
-    # Check if specific queues are configured
-    enabled_queues = get_config(
-        "setup", "tasks", "per_task_db_sessions", "queues", default=[]
-    )
-    # Check if specific tasks are configured
-    enabled_tasks = get_config(
-        "setup", "tasks", "per_task_db_sessions", "tasks", default=[]
-    )
+    enabled_queues = config["queues"]
+    enabled_tasks = config["tasks"]
 
-    # If no specific queues or tasks configured, enable for all
     if not enabled_queues and not enabled_tasks:
         return True
 
-    # Check if this queue is in the enabled list
-    if enabled_queues and queue_name and queue_name in enabled_queues:
+    if enabled_queues and queue_name in enabled_queues:
         return True
 
-    # Check if this task is in the enabled list
-    if enabled_tasks and task_name and task_name in enabled_tasks:
+    if enabled_tasks and task_name in enabled_tasks:
         return True
 
     return False
@@ -477,37 +452,38 @@ class BaseCodecovTask(celery_app.Task):
             exc_info=True,
         )
 
+    def _get_queue_name(self) -> str | None:
+        """Extract queue name from request delivery info."""
+        if not hasattr(self, "request") or self.request is None:
+            return None
+        delivery_info = getattr(self.request, "delivery_info", None)
+        if isinstance(delivery_info, dict):
+            return delivery_info.get("routing_key")
+        return None
+
+    def _setup_per_task_session(self, queue_name: str | None) -> tuple[bool, str | None]:
+        """Initialize per-task session if enabled. Returns (enabled, session_id)."""
+        if not use_per_task_db_sessions(task_name=self.name, queue_name=queue_name):
+            return False, None
+
+        session_id = str(uuid.uuid4())[:8]
+        get_db_session.remove()
+        log.info(
+            "Per-task DB session started",
+            extra={
+                "session_id": session_id,
+                "task_name": self.name,
+                "task_id": getattr(getattr(self, "request", None), "id", None),
+                "queue_name": queue_name,
+            },
+        )
+        return True, session_id
+
     @sentry_sdk.trace
     def run(self, *args, **kwargs):
         with self.task_full_runtime.time():
-            # Per-task session management: ensure we start with a clean session
-            # Get queue name from request delivery info for granular rollout
-            queue_name = None
-            if hasattr(self, "request") and self.request is not None:
-                delivery_info = getattr(self.request, "delivery_info", None)
-                if isinstance(delivery_info, dict):
-                    queue_name = delivery_info.get("routing_key")
-
-            per_task_sessions = use_per_task_db_sessions(
-                task_name=self.name, queue_name=queue_name
-            )
-            session_id = None
-
-            if per_task_sessions:
-                # Generate a unique session ID for logging/debugging
-                session_id = str(uuid.uuid4())[:8]
-                # Remove any existing session to ensure we start fresh
-                # This prevents session contamination from previous tasks
-                get_db_session.remove()
-                log.info(
-                    "Per-task DB session: starting fresh session",
-                    extra={
-                        "session_id": session_id,
-                        "task_name": self.name,
-                        "task_id": getattr(getattr(self, "request", None), "id", None),
-                        "queue_name": queue_name,
-                    },
-                )
+            queue_name = self._get_queue_name()
+            per_task_sessions, session_id = self._setup_per_task_session(queue_name)
 
             db_session = get_db_session()
 
@@ -602,63 +578,29 @@ class BaseCodecovTask(celery_app.Task):
     def wrap_up_dbsession(
         self, db_session, per_task_sessions: bool = False, session_id: str | None = None
     ):
-        """Commit and close database session, handling timeout edge cases.
-
-        Handles the corner case where `SoftTimeLimitExceeded` is raised during
-        `db_session.commit()`, which can leave the session in an unusable state.
-
-        When per_task_sessions is enabled, we always remove the session at the end
-        to ensure the next task gets a fresh session. This prevents session
-        contamination between tasks.
-
-        Args:
-            db_session: The SQLAlchemy session to clean up
-            per_task_sessions: If True, always remove session after cleanup
-            session_id: Optional session ID for logging correlation
-        """
-        log_extra = {"session_id": session_id} if session_id else {}
+        """Commit and close database session, handling timeout and invalid state errors."""
+        log_extra = {"session_id": session_id, "task_name": self.name}
 
         try:
             db_session.commit()
             db_session.close()
-            if per_task_sessions:
-                log.info(
-                    "Per-task DB session: committed and closed successfully",
-                    extra={**log_extra, "task_name": self.name},
-                )
         except SoftTimeLimitExceeded:
-            log.warning(
-                "Timeout during DB commit - attempting recovery",
-                extra=log_extra,
-                exc_info=True,
-            )
+            log.warning("Timeout during DB commit", extra=log_extra, exc_info=True)
             try:
                 db_session.commit()
                 db_session.close()
             except InvalidRequestError:
-                log.warning(
-                    "DB session in invalid state after timeout - removing session",
-                    extra=log_extra,
-                    exc_info=True,
-                )
+                log.warning("DB session invalid after timeout", extra=log_extra, exc_info=True)
                 get_db_session.remove()
-                return  # Already removed, skip the per_task removal below
+                return
         except InvalidRequestError:
-            log.warning(
-                "DB session in invalid state - removing session",
-                extra=log_extra,
-                exc_info=True,
-            )
+            log.warning("DB session invalid", extra=log_extra, exc_info=True)
             get_db_session.remove()
-            return  # Already removed, skip the per_task removal below
+            return
 
-        # Per-task session cleanup: always remove the session to prevent contamination
         if per_task_sessions:
             get_db_session.remove()
-            log.info(
-                "Per-task DB session: session removed for next task",
-                extra={**log_extra, "task_name": self.name},
-            )
+            log.info("Per-task DB session removed", extra=log_extra)
 
     def on_retry(self, exc, task_id, args, kwargs, einfo):
         res = super().on_retry(exc, task_id, args, kwargs, einfo)
