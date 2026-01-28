@@ -54,6 +54,7 @@ DATE_FILTERED_VIA_HIERARCHY = {
 
 COMPOSITE_CONFLICT_COLUMNS: dict[str, list[str]] = {
     "core.Branch": ["branch", "repoid"],
+    "core.Pull": ["repoid", "pullid"],
     "timeseries.Measurement": [
         "name",
         "owner_id",
