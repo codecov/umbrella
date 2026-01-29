@@ -2021,3 +2021,194 @@ def test_bundle_analysis_processor_task_cleanup_with_none_result(
 
     # Should not crash even though result is None
     # The finally block should handle None result gracefully
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_file_not_in_storage(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that _pre_download_upload_file returns None when file is not in storage"""
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    # Create upload with a storage path that doesn't exist in mock_storage
+    upload = UploadFactory.create(
+        storage_path="v1/uploads/nonexistent.json", report=commit_report
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    task = BundleAnalysisProcessorTask()
+    params = {"upload_id": upload.id_, "commit": commit.commitid}
+
+    # The file doesn't exist in mock_storage, so it should return None
+    result = task._pre_download_upload_file(dbsession, commit.repoid, params)
+    assert result is None
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_general_error(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that _pre_download_upload_file returns None on general error"""
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    storage_path = "v1/uploads/test.json"
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    # Mock storage to raise a general exception
+    mocker.patch.object(
+        mock_storage, "read_file", side_effect=Exception("Connection error")
+    )
+
+    task = BundleAnalysisProcessorTask()
+    params = {"upload_id": upload.id_, "commit": commit.commitid}
+
+    result = task._pre_download_upload_file(dbsession, commit.repoid, params)
+    assert result is None
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_no_upload_id(
+    mocker,
+    dbsession,
+):
+    """Test that _pre_download_upload_file returns None when no upload_id in params"""
+    task = BundleAnalysisProcessorTask()
+    params = {"commit": "abc123"}  # No upload_id
+
+    result = task._pre_download_upload_file(dbsession, 123, params)
+    assert result is None
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_upload_not_found(
+    mocker,
+    dbsession,
+):
+    """Test that _pre_download_upload_file returns None when upload doesn't exist"""
+    task = BundleAnalysisProcessorTask()
+    params = {"upload_id": 99999, "commit": "abc123"}  # Non-existent upload_id
+
+    result = task._pre_download_upload_file(dbsession, 123, params)
+    assert result is None
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_success(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that _pre_download_upload_file returns local path when successful"""
+    import os
+
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    storage_path = "v1/uploads/test.json"
+    mock_storage.write_file(get_bucket_name(), storage_path, b'{"bundleName": "test"}')
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    task = BundleAnalysisProcessorTask()
+    params = {"upload_id": upload.id_, "commit": commit.commitid}
+
+    result = task._pre_download_upload_file(dbsession, commit.repoid, params)
+
+    try:
+        assert result is not None
+        assert os.path.exists(result)
+        with open(result) as f:
+            content = f.read()
+        assert "bundleName" in content
+    finally:
+        # Clean up the temp file
+        if result and os.path.exists(result):
+            os.remove(result)
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_bundle_analysis_processor_passes_pre_downloaded_path(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that process_upload is called with pre_downloaded_path when pre-download succeeds"""
+    storage_path = "v1/uploads/test_bundle.json"
+    mock_storage.write_file(
+        get_bucket_name(), storage_path, b'{"bundleName": "test-bundle"}'
+    )
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    # Mock ingest to track what path was passed (following pattern from success tests)
+    ingest_mock = mocker.patch("shared.bundle_analysis.BundleAnalysisReport.ingest")
+    ingest_mock.return_value = (123, "test-bundle")
+
+    # Track if using pre-downloaded path by spying on logging
+    log_spy = mocker.patch("services.bundle_analysis.report.log")
+
+    result = BundleAnalysisProcessorTask().run_impl(
+        dbsession,
+        [{"previous": "result"}],
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={
+            "upload_id": upload.id_,
+            "commit": commit.commitid,
+        },
+    )
+
+    # Verify the task completed successfully
+    assert result[-1]["error"] is None
+    assert result[-1]["session_id"] == 123
+    assert result[-1]["bundle_name"] == "test-bundle"
+
+    # Verify that pre-download logging occurred (indicates pre_downloaded_path was used)
+    log_calls = [str(call) for call in log_spy.info.call_args_list]
+    pre_download_logged = any("pre-downloaded" in call.lower() for call in log_calls)
+    assert pre_download_logged, "Expected log message about using pre-downloaded file"

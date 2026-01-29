@@ -1,4 +1,6 @@
 import logging
+import os
+import tempfile
 from typing import Any, cast
 
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
@@ -12,11 +14,13 @@ from services.bundle_analysis.report import (
 )
 from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.types import UploadArguments
+from shared.bundle_analysis.storage import get_bucket_name
 from shared.celery_config import (
     BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES,
     bundle_analysis_processor_task_name,
 )
 from shared.reports.enums import UploadState
+from shared.storage.exceptions import FileNotInStorageError
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.bundle_analysis_save_measurements import (
@@ -30,6 +34,66 @@ class BundleAnalysisProcessorTask(
     BaseCodecovTask, name=bundle_analysis_processor_task_name
 ):
     max_retries = BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
+
+    def _pre_download_upload_file(
+        self, db_session, repoid: int, params: UploadArguments
+    ) -> str | None:
+        """
+        Download the upload file BEFORE acquiring the lock to reduce time spent holding the lock.
+        This is an optimization that allows the GCS download to happen in parallel with other
+        workers that may be holding the commit-level lock.
+
+        Returns the local file path if successful, None if the file is not yet available.
+        The caller is responsible for cleaning up the file.
+        """
+        upload_id = params.get("upload_id")
+        if upload_id is None:
+            return None
+
+        upload = db_session.query(Upload).filter_by(id_=upload_id).first()
+        if upload is None or not upload.storage_path:
+            return None
+
+        # Get storage service from the repository
+        from shared.api_archive.archive import ArchiveService
+
+        commit = upload.report.commit
+        archive_service = ArchiveService(commit.repository)
+        storage_service = archive_service.storage
+
+        # Download the upload file before acquiring lock
+        _, local_path = tempfile.mkstemp()
+        try:
+            with open(local_path, "wb") as f:
+                storage_service.read_file(
+                    get_bucket_name(), upload.storage_path, file_obj=f
+                )
+            log.info(
+                "Pre-downloaded upload file before acquiring lock",
+                extra={
+                    "repoid": repoid,
+                    "upload_id": upload_id,
+                    "local_path": local_path,
+                },
+            )
+            return local_path
+        except FileNotInStorageError:
+            # File not yet available, will retry inside lock
+            log.info(
+                "Upload file not yet in storage for pre-download",
+                extra={"repoid": repoid, "upload_id": upload_id},
+            )
+            if os.path.exists(local_path):
+                os.remove(local_path)
+            return None
+        except Exception as e:
+            log.warning(
+                "Failed to pre-download upload file",
+                extra={"repoid": repoid, "upload_id": upload_id, "error": str(e)},
+            )
+            if os.path.exists(local_path):
+                os.remove(local_path)
+            return None
 
     def run_impl(
         self,
@@ -56,6 +120,12 @@ class BundleAnalysisProcessorTask(
             },
         )
 
+        # Pre-download the upload file before acquiring lock to reduce lock contention.
+        # This allows the GCS download to happen while another worker holds the lock.
+        # Note: We still use per-commit locking because all bundles share the same
+        # SQLite report file, which requires serialized access to prevent data loss.
+        pre_downloaded_path = self._pre_download_upload_file(db_session, repoid, params)
+
         lock_manager = LockManager(
             repoid=repoid,
             commitid=commitid,
@@ -75,6 +145,7 @@ class BundleAnalysisProcessorTask(
                     UserYaml.from_dict(commit_yaml),
                     params,
                     previous_result,
+                    pre_downloaded_path=pre_downloaded_path,
                 )
         except LockRetry as retry:
             # Check max retries using self.attempts (includes visibility timeout re-deliveries)
@@ -98,6 +169,10 @@ class BundleAnalysisProcessorTask(
                 # This allows the chain to continue with partial results rather than failing entirely
                 return previous_result
             self.retry(max_retries=self.max_retries, countdown=retry.countdown)
+        finally:
+            # Clean up pre-downloaded file if it exists
+            if pre_downloaded_path and os.path.exists(pre_downloaded_path):
+                os.remove(pre_downloaded_path)
 
     def process_impl_within_lock(
         self,
@@ -107,6 +182,7 @@ class BundleAnalysisProcessorTask(
         commit_yaml: UserYaml,
         params: UploadArguments,
         previous_result: list[dict[str, Any]],
+        pre_downloaded_path: str | None = None,
     ):
         log.info(
             "Running bundle analysis processor",
@@ -198,7 +274,9 @@ class BundleAnalysisProcessorTask(
             )
             assert params.get("commit") == commit.commitid
 
-            result = report_service.process_upload(commit, upload, compare_sha)
+            result = report_service.process_upload(
+                commit, upload, compare_sha, pre_downloaded_path
+            )
             if result.error and result.error.is_retryable:
                 if self._has_exceeded_max_attempts(self.max_retries):
                     attempts = self.attempts
