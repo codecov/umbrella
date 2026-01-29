@@ -82,6 +82,7 @@ class LockManager:
         blocking_timeout: int | None = DEFAULT_BLOCKING_TIMEOUT_SECONDS,
         redis_connection: Redis | None = None,
         base_retry_countdown: int = BASE_RETRY_COUNTDOWN_SECONDS,
+        lock_key_suffix: str | None = None,
     ):
         self.repoid = repoid
         self.commitid = commitid
@@ -90,14 +91,20 @@ class LockManager:
         self.blocking_timeout = blocking_timeout
         self.redis_connection = redis_connection or get_redis_connection()
         self.base_retry_countdown = base_retry_countdown
+        self.lock_key_suffix = lock_key_suffix
 
     def lock_name(self, lock_type: LockType):
         if self.report_type == ReportType.COVERAGE:
-            return (
+            base_name = (
                 f"{lock_type.value}{LOCK_NAME_SEPARATOR}{self.repoid}_{self.commitid}"
             )
         else:
-            return f"{lock_type.value}{LOCK_NAME_SEPARATOR}{self.repoid}_{self.commitid}_{self.report_type.value}"
+            base_name = f"{lock_type.value}{LOCK_NAME_SEPARATOR}{self.repoid}_{self.commitid}_{self.report_type.value}"
+
+        # Append optional suffix for more granular locking (e.g., bundle name)
+        if self.lock_key_suffix:
+            return f"{base_name}_{self.lock_key_suffix}"
+        return base_name
 
     def _clear_lock_attempt_counter(self, attempt_key: str, lock_name: str) -> None:
         """Clear the lock attempt counter. Log and swallow Redis errors so teardown does not mask other failures."""

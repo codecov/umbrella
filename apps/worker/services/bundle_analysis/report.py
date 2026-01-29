@@ -4,6 +4,7 @@ import tempfile
 from dataclasses import dataclass
 from typing import Any
 
+import ijson
 import sentry_sdk
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
@@ -27,6 +28,29 @@ from shared.storage.exceptions import FileNotInStorageError, PutRequestRateLimit
 from shared.utils.sessions import SessionType
 
 log = logging.getLogger(__name__)
+
+
+def extract_bundle_name_from_file(file_path: str) -> str | None:
+    """
+    Extract the bundle name from a bundle stats JSON file using streaming parser.
+    Returns None if the bundle name cannot be extracted.
+
+    This is used to determine the lock key before processing, allowing different
+    bundles for the same commit to be processed in parallel.
+    """
+    try:
+        with open(file_path, "rb") as f:
+            for prefix, event, value in ijson.parse(f):
+                if prefix == "bundleName":
+                    return value
+                # Stop after reading the first ~100 events to avoid parsing the whole file
+                # bundleName should appear early in the file structure
+    except Exception as e:
+        log.warning(
+            "Failed to extract bundle name from file",
+            extra={"file_path": file_path, "error": str(e)},
+        )
+    return None
 
 
 BUNDLE_ANALYSIS_REPORT_PROCESSOR_COUNTER = Counter(
@@ -224,11 +248,22 @@ class BundleAnalysisReportService(BaseReportService):
 
     @sentry_sdk.trace
     def process_upload(
-        self, commit: Commit, upload: Upload, compare_sha: str | None = None
+        self,
+        commit: Commit,
+        upload: Upload,
+        compare_sha: str | None = None,
+        pre_downloaded_path: str | None = None,
     ) -> ProcessingResult:
         """
         Download and parse the data associated with the given upload and
         merge the results into a bundle report.
+
+        Args:
+            commit: The commit being processed
+            upload: The upload record
+            compare_sha: Optional SHA for comparison
+            pre_downloaded_path: Optional path to pre-downloaded upload file.
+                If provided, skips the GCS download (optimization for reducing lock time).
         """
         commit_report: CommitReport = upload.report
         bundle_loader = BundleAnalysisReportLoader(commit_report.commit.repository)
@@ -241,15 +276,31 @@ class BundleAnalysisReportService(BaseReportService):
                 commit, bundle_loader
             )
 
-        # download raw upload data to local tempfile
-        _, local_path = tempfile.mkstemp()
+        # Use pre-downloaded file if available, otherwise download to tempfile
+        if pre_downloaded_path and os.path.exists(pre_downloaded_path):
+            local_path = pre_downloaded_path
+            should_cleanup_local = False
+            log.info(
+                "Using pre-downloaded upload file",
+                extra={
+                    "repoid": commit.repoid,
+                    "commit": commit.commitid,
+                    "local_path": local_path,
+                },
+            )
+        else:
+            _, local_path = tempfile.mkstemp()
+            should_cleanup_local = True
+
         try:
             session_id, prev_bar, bundle_name = None, None, None
             if upload.storage_path != "":
-                with open(local_path, "wb") as f:
-                    storage_service.read_file(
-                        get_bucket_name(), upload.storage_path, file_obj=f
-                    )
+                # Only download if we don't have a pre-downloaded file
+                if should_cleanup_local:
+                    with open(local_path, "wb") as f:
+                        storage_service.read_file(
+                            get_bucket_name(), upload.storage_path, file_obj=f
+                        )
 
                 # load the downloaded data into the bundle report
                 session_id, bundle_name = bundle_report.ingest(local_path, compare_sha)
@@ -332,7 +383,9 @@ class BundleAnalysisReportService(BaseReportService):
                 ),
             )
         finally:
-            os.remove(local_path)
+            # Only clean up if we created the tempfile (not if pre-downloaded)
+            if should_cleanup_local and os.path.exists(local_path):
+                os.remove(local_path)
 
         return ProcessingResult(
             upload=upload,

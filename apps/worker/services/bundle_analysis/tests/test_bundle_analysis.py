@@ -1,3 +1,5 @@
+import os
+import tempfile
 from textwrap import dedent
 from unittest.mock import PropertyMock
 
@@ -15,6 +17,7 @@ from services.bundle_analysis.notify.types import NotificationType
 from services.bundle_analysis.report import (
     BundleAnalysisReportService,
     ProcessingResult,
+    extract_bundle_name_from_file,
 )
 from services.repository import EnrichedPull
 from services.urls import get_bundle_analysis_pull_url
@@ -30,6 +33,135 @@ from shared.bundle_analysis.storage import get_bucket_name
 from shared.config import PATCH_CENTRIC_DEFAULT_CONFIG
 from shared.yaml import UserYaml
 from tests.helpers import mock_all_plans_and_tiers
+
+# Path to sample bundle stats files
+SAMPLE_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "..",
+    "..",
+    "..",
+    "..",
+    "libs",
+    "shared",
+    "tests",
+    "samples",
+)
+
+
+class TestExtractBundleName:
+    """Tests for the extract_bundle_name_from_file helper function"""
+
+    def test_extract_bundle_name_success(self):
+        """Test extracting bundle name from a valid bundle stats file"""
+        sample_path = os.path.join(SAMPLE_DIR, "sample_bundle_stats.json")
+        bundle_name = extract_bundle_name_from_file(sample_path)
+        assert bundle_name == "sample"
+
+    def test_extract_bundle_name_v1_format(self):
+        """Test extracting bundle name from v1 format file"""
+        sample_path = os.path.join(SAMPLE_DIR, "sample_bundle_stats_v1.json")
+        bundle_name = extract_bundle_name_from_file(sample_path)
+        assert bundle_name == "sample"
+
+    def test_extract_bundle_name_another_bundle(self):
+        """Test extracting different bundle name"""
+        sample_path = os.path.join(
+            SAMPLE_DIR, "sample_bundle_stats_another_bundle.json"
+        )
+        bundle_name = extract_bundle_name_from_file(sample_path)
+        assert bundle_name == "sample2"
+
+    def test_extract_bundle_name_file_not_found(self):
+        """Test that missing file returns None"""
+        bundle_name = extract_bundle_name_from_file("/nonexistent/path/file.json")
+        assert bundle_name is None
+
+    def test_extract_bundle_name_invalid_json(self):
+        """Test that invalid JSON returns None"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("not valid json {{{")
+            temp_path = f.name
+        try:
+            bundle_name = extract_bundle_name_from_file(temp_path)
+            assert bundle_name is None
+        finally:
+            os.unlink(temp_path)
+
+    def test_extract_bundle_name_no_bundle_name_field(self):
+        """Test that file without bundleName returns None"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write('{"version": "2", "assets": []}')
+            temp_path = f.name
+        try:
+            bundle_name = extract_bundle_name_from_file(temp_path)
+            assert bundle_name is None
+        finally:
+            os.unlink(temp_path)
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_process_upload_with_pre_downloaded_path(dbsession, mocker, mock_storage):
+    """Test that process_upload uses pre_downloaded_path and skips GCS download"""
+    from database.models import CommitReport
+    from database.tests.factories import CommitFactory, UploadFactory
+    from services.bundle_analysis.report import BundleAnalysisReportService
+    from shared.bundle_analysis.storage import get_bucket_name
+    from shared.yaml import UserYaml
+
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    commit = CommitFactory()
+    dbsession.add(commit)
+    dbsession.commit()
+
+    commit_report = CommitReport(
+        commit=commit, report_type=ReportType.BUNDLE_ANALYSIS.value
+    )
+    dbsession.add(commit_report)
+    dbsession.commit()
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.commit()
+
+    # Create a pre-downloaded file with test content
+    sample_path = os.path.join(SAMPLE_DIR, "sample_bundle_stats.json")
+
+    # Mock ingest to track calls
+    mock_ingest = mocker.patch(
+        "shared.bundle_analysis.BundleAnalysisReport.ingest",
+        return_value=(123, "sample"),
+    )
+
+    # Mock storage read to track that it's NOT called when pre_downloaded_path is provided
+    storage_read_spy = mocker.spy(mock_storage, "read_file")
+
+    report_service = BundleAnalysisReportService(UserYaml.from_dict({}))
+    result = report_service.process_upload(
+        commit, upload, pre_downloaded_path=sample_path
+    )
+
+    assert result.session_id == 123
+    assert result.bundle_name == "sample"
+    assert result.error is None
+
+    # Verify ingest was called with the pre-downloaded path
+    mock_ingest.assert_called_once()
+    call_args = mock_ingest.call_args
+    assert call_args[0][0] == sample_path  # First positional arg should be the path
+
+    # Verify storage read was NOT called to download the upload file
+    # (it may be called once to load the existing bundle report)
+    for call in storage_read_spy.call_args_list:
+        # The upload's storage_path should not have been read
+        if len(call[0]) >= 2:
+            assert call[0][1] != upload.storage_path, (
+                "Storage should not download upload file when pre_downloaded_path is provided"
+            )
 
 
 class MockBundleReport:
