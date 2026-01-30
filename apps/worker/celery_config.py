@@ -11,7 +11,6 @@ from celery.schedules import crontab
 from celery_task_router import route_task
 from helpers.clock import get_utc_now_as_iso_format
 from helpers.health_check import get_health_check_interval_seconds
-from helpers.sentry import initialize_sentry, is_sentry_enabled
 from shared.celery_config import (
     BaseCeleryConfig,
     brolly_stats_rollup_task_name,
@@ -51,17 +50,6 @@ def initialize_cache(**kwargs):
     log.info("Initialized cache")
     redis_cache_backend = RedisBackend(get_redis_connection())
     cache.configure(redis_cache_backend)
-
-
-@signals.worker_process_init.connect
-def initialize_sentry_for_worker_process(**kwargs):
-    """Initialize Sentry in each forked worker process.
-
-    Celery workers fork from the main process, so Sentry must be re-initialized
-    in each worker to ensure proper error tracking and trace propagation.
-    """
-    if is_sentry_enabled():
-        initialize_sentry()
 
 
 @signals.worker_shutting_down.connect
