@@ -406,7 +406,7 @@ class BaseCeleryConfig:
     # Can be overridden via: setup.tasks.celery.reject_on_worker_lost config
     # Celery docs: https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-reject-on-worker-lost
     task_reject_on_worker_lost = bool(
-        get_config("setup", "tasks", "celery", "reject_on_worker_lost", default=True)
+        get_config("setup", "tasks", "celery", "reject_on_worker_lost", default=False)
     )
 
     # http://celery.readthedocs.org/en/latest/userguide/optimizing.html#prefetch-limits
