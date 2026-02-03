@@ -74,8 +74,7 @@ def get_since_date() -> datetime:
 @dataclass
 class ExportContext:
     """
-    Provides efficient querysets for owner data export using subqueries.
-
+    Provides efficient querysets for owner data export.
     Hierarchy:
         Owner
         ├── User, OwnerProfile
@@ -93,6 +92,9 @@ class ExportContext:
     since_date: datetime = field(default_factory=get_since_date)
     export_id: int | None = None
 
+    _commit_report_ids: list[int] | None = field(default=None, init=False, repr=False)
+    _report_session_ids: list[int] | None = field(default=None, init=False, repr=False)
+
     def _repository_subquery(self) -> QuerySet:
         Repository = get_model_class("core.Repository")
         return Repository.objects.filter(author_id=self.owner_id).values("repoid")
@@ -101,23 +103,45 @@ class ExportContext:
         Commit = get_model_class("core.Commit")
         return Commit.objects.filter(
             repository_id__in=self._repository_subquery(),
-            updatestamp__gte=self.since_date,
+            timestamp__gte=self.since_date,
         ).values("id")
 
-    def _commit_report_subquery(self) -> QuerySet:
-        CommitReport = get_model_class("reports.CommitReport")
-        return CommitReport.objects.filter(
-            commit_id__in=self._commit_subquery()
-        ).values("id")
+    def _get_commit_report_ids(self) -> list[int]:
+        if self._commit_report_ids is None:
+            CommitReport = get_model_class("reports.CommitReport")
+            self._commit_report_ids = list(
+                CommitReport.objects.filter(
+                    commit_id__in=self._commit_subquery()
+                ).values_list("id", flat=True)
+            )
+            log.info(
+                "Materialized commit_report IDs",
+                extra={
+                    "export_id": self.export_id,
+                    "count": len(self._commit_report_ids),
+                },
+            )
+        return self._commit_report_ids
 
-    def _report_session_subquery(self) -> QuerySet:
-        ReportSession = get_model_class("reports.ReportSession")
-        return ReportSession.objects.filter(
-            report_id__in=self._commit_report_subquery()
-        ).values("id")
+    def _get_report_session_ids(self) -> list[int]:
+        if self._report_session_ids is None:
+            ReportSession = get_model_class("reports.ReportSession")
+            self._report_session_ids = list(
+                ReportSession.objects.filter(
+                    report_id__in=self._get_commit_report_ids()
+                ).values_list("id", flat=True)
+            )
+            log.info(
+                "Materialized report_session IDs",
+                extra={
+                    "export_id": self.export_id,
+                    "count": len(self._report_session_ids),
+                },
+            )
+        return self._report_session_ids
 
     def get_queryset(self, model_path: str) -> QuerySet:
-        """Get a queryset for the model, filtered by subqueries."""
+        """Get a queryset for the model, filtered appropriately."""
         model = get_model_class(model_path)
         qs = self._get_base_queryset(model_path, model)
 
@@ -143,7 +167,9 @@ class ExportContext:
         return qs
 
     def _get_base_queryset(self, model_path: str, model: type[Model]) -> QuerySet:
-        """Get the base queryset with ownership filtering using subqueries."""
+        """
+        Get the base queryset with ownership filtering.
+        """
         if model_path == "codecov_auth.Owner":
             return model.objects.filter(ownerid=self.owner_id)
 
@@ -170,7 +196,7 @@ class ExportContext:
             "reports.ReportLevelTotals",
             "reports.ReportSession",
         ):
-            return model.objects.filter(report_id__in=self._commit_report_subquery())
+            return model.objects.filter(report_id__in=self._get_commit_report_ids())
 
         if model_path in (
             "reports.UploadError",
@@ -178,11 +204,19 @@ class ExportContext:
             "reports.UploadFlagMembership",
         ):
             return model.objects.filter(
-                report_session_id__in=self._report_session_subquery()
+                report_session_id__in=self._get_report_session_ids()
             )
 
         if model_path == "timeseries.Dataset":
-            return model.objects.filter(repository_id__in=self._repository_subquery())
+            # Must use explicit list of IDs because Dataset is in
+            # TimescaleDB which doesn't have the repos table
+            Repository = get_model_class("core.Repository")
+            repo_ids = list(
+                Repository.objects.filter(author_id=self.owner_id).values_list(
+                    "repoid", flat=True
+                )
+            )
+            return model.objects.filter(repository_id__in=repo_ids)
 
         if model_path == "timeseries.Measurement":
             return model.objects.filter(
@@ -374,6 +408,8 @@ def generate_upsert_sql(
 
     row_count = 0
     batch = []
+    batch_count = 0
+    log_interval = 10
 
     for instances in _paginate_queryset(queryset, BATCH_SIZE):
         for instance in instances:
@@ -386,6 +422,18 @@ def generate_upsert_sql(
                     table_name, columns_str, batch, conflict_columns, set_clause
                 )
                 batch = []
+                batch_count += 1
+
+                if batch_count % log_interval == 0:
+                    log.info(
+                        "Model export progress",
+                        extra={
+                            "export_id": context.export_id,
+                            "model": model_path,
+                            "rows_processed": row_count,
+                            "batches_completed": batch_count,
+                        },
+                    )
 
     if batch:
         yield _build_upsert_statement(
@@ -475,7 +523,18 @@ def generate_full_export(
         f"BEGIN;\n\n"
     )
 
-    for model_path in models:
+    for model_index, model_path in enumerate(models):
+        model_start = timezone.now()
+        log.info(
+            "Exporting model",
+            extra={
+                "export_id": export_id,
+                "model": model_path,
+                "model_index": model_index,
+                "total_models": len(models),
+            },
+        )
+
         output_file.write(f"-- {model_path}\n")
         gen = generate_upsert_sql(model_path, context)
 
@@ -490,6 +549,18 @@ def generate_full_export(
 
         stats["models"][model_path] = model_rows
         stats["total_rows"] += model_rows
+
+        elapsed_seconds = (timezone.now() - model_start).total_seconds()
+        log.info(
+            "Model export completed",
+            extra={
+                "export_id": export_id,
+                "model": model_path,
+                "model_index": model_index,
+                "rows": model_rows,
+                "elapsed_seconds": round(elapsed_seconds, 2),
+            },
+        )
 
         if model_rows == 0:
             output_file.write("-- (no rows)\n\n")
