@@ -112,7 +112,6 @@ NULLIFIED_FIELDS: dict[str, list[str]] = {
         "stripe_customer_id",
         "stripe_subscription_id",
         "stripe_coupon_id",
-        "plan",
         "plan_provider",
         "plan_user_count",
         "plan_auto_activate",
@@ -154,6 +153,7 @@ NULLIFIED_FIELDS: dict[str, list[str]] = {
 DEFAULT_FIELDS: dict[str, dict[str, any]] = {
     "codecov_auth.Owner": {
         "uses_invoice": False,
+        "plan": "users-pr-inappy",
     },
     "core.Repository": {
         "upload_token": uuid.uuid4,

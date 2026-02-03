@@ -74,7 +74,7 @@ def get_since_date() -> datetime:
 @dataclass
 class ExportContext:
     """
-    Pre-fetches IDs at each level of the ownership hierarchy to avoid expensive JOINs.
+    Provides efficient querysets for owner data export using subqueries.
 
     Hierarchy:
         Owner
@@ -93,58 +93,31 @@ class ExportContext:
     since_date: datetime = field(default_factory=get_since_date)
     export_id: int | None = None
 
-    _repository_ids: list[int] | None = field(default=None, repr=False)
-    _commit_ids: list[int] | None = field(default=None, repr=False)
-    _commit_report_ids: list[int] | None = field(default=None, repr=False)
-    _report_session_ids: list[int] | None = field(default=None, repr=False)
+    def _repository_subquery(self) -> QuerySet:
+        Repository = get_model_class("core.Repository")
+        return Repository.objects.filter(author_id=self.owner_id).values("repoid")
 
-    @property
-    def repository_ids(self) -> list[int]:
-        if self._repository_ids is None:
-            Repository = get_model_class("core.Repository")
-            self._repository_ids = list(
-                Repository.objects.filter(author_id=self.owner_id).values_list(
-                    "repoid", flat=True
-                )
-            )
-        return self._repository_ids
+    def _commit_subquery(self) -> QuerySet:
+        Commit = get_model_class("core.Commit")
+        return Commit.objects.filter(
+            repository_id__in=self._repository_subquery(),
+            updatestamp__gte=self.since_date,
+        ).values("id")
 
-    @property
-    def commit_ids(self) -> list[int]:
-        if self._commit_ids is None:
-            Commit = get_model_class("core.Commit")
-            self._commit_ids = list(
-                Commit.objects.filter(
-                    repository_id__in=self.repository_ids,
-                    updatestamp__gte=self.since_date,
-                ).values_list("id", flat=True)
-            )
-        return self._commit_ids
+    def _commit_report_subquery(self) -> QuerySet:
+        CommitReport = get_model_class("reports.CommitReport")
+        return CommitReport.objects.filter(
+            commit_id__in=self._commit_subquery()
+        ).values("id")
 
-    @property
-    def commit_report_ids(self) -> list[int]:
-        if self._commit_report_ids is None:
-            CommitReport = get_model_class("reports.CommitReport")
-            self._commit_report_ids = list(
-                CommitReport.objects.filter(commit_id__in=self.commit_ids).values_list(
-                    "id", flat=True
-                )
-            )
-        return self._commit_report_ids
-
-    @property
-    def report_session_ids(self) -> list[int]:
-        if self._report_session_ids is None:
-            ReportSession = get_model_class("reports.ReportSession")
-            self._report_session_ids = list(
-                ReportSession.objects.filter(
-                    report_id__in=self.commit_report_ids
-                ).values_list("id", flat=True)
-            )
-        return self._report_session_ids
+    def _report_session_subquery(self) -> QuerySet:
+        ReportSession = get_model_class("reports.ReportSession")
+        return ReportSession.objects.filter(
+            report_id__in=self._commit_report_subquery()
+        ).values("id")
 
     def get_queryset(self, model_path: str) -> QuerySet:
-        """Get a queryset for the model, filtered by pre-fetched IDs."""
+        """Get a queryset for the model, filtered by subqueries."""
         model = get_model_class(model_path)
         qs = self._get_base_queryset(model_path, model)
 
@@ -170,7 +143,7 @@ class ExportContext:
         return qs
 
     def _get_base_queryset(self, model_path: str, model: type[Model]) -> QuerySet:
-        """Get the base queryset with ownership filtering."""
+        """Get the base queryset with ownership filtering using subqueries."""
         if model_path == "codecov_auth.Owner":
             return model.objects.filter(ownerid=self.owner_id)
 
@@ -184,30 +157,32 @@ class ExportContext:
             return model.objects.filter(author_id=self.owner_id)
 
         if model_path in ("core.Branch", "core.Pull", "reports.RepositoryFlag"):
-            return model.objects.filter(repository_id__in=self.repository_ids)
+            return model.objects.filter(repository_id__in=self._repository_subquery())
 
         if model_path == "core.Commit":
-            return model.objects.filter(id__in=self.commit_ids)
+            return model.objects.filter(id__in=self._commit_subquery())
 
         if model_path in ("core.CommitError", "reports.CommitReport"):
-            return model.objects.filter(commit_id__in=self.commit_ids)
+            return model.objects.filter(commit_id__in=self._commit_subquery())
 
         if model_path in (
             "reports.ReportResults",
             "reports.ReportLevelTotals",
             "reports.ReportSession",
         ):
-            return model.objects.filter(report_id__in=self.commit_report_ids)
+            return model.objects.filter(report_id__in=self._commit_report_subquery())
 
         if model_path in (
             "reports.UploadError",
             "reports.UploadLevelTotals",
             "reports.UploadFlagMembership",
         ):
-            return model.objects.filter(report_session_id__in=self.report_session_ids)
+            return model.objects.filter(
+                report_session_id__in=self._report_session_subquery()
+            )
 
         if model_path == "timeseries.Dataset":
-            return model.objects.filter(repository_id__in=self.repository_ids)
+            return model.objects.filter(repository_id__in=self._repository_subquery())
 
         if model_path == "timeseries.Measurement":
             return model.objects.filter(
@@ -354,6 +329,29 @@ def get_conflict_columns(model_path: str, model) -> list[str]:
     return COMPOSITE_CONFLICT_COLUMNS.get(model_path, [model._meta.pk.column])
 
 
+def _paginate_queryset(queryset: QuerySet, batch_size: int) -> Generator[list]:
+    """
+    This approach uses explicit pagination with fresh queries per batch
+    """
+    pk_field = queryset.model._meta.pk.attname
+    ordered_qs = queryset.order_by(pk_field)
+
+    last_pk = None
+    while True:
+        if last_pk is not None:
+            page_qs = ordered_qs.filter(**{f"{pk_field}__gt": last_pk})
+        else:
+            page_qs = ordered_qs
+
+        batch = list(page_qs[:batch_size])
+
+        if not batch:
+            break
+
+        yield batch
+        last_pk = getattr(batch[-1], pk_field)
+
+
 def generate_upsert_sql(
     model_path: str,
     context: ExportContext,
@@ -377,16 +375,17 @@ def generate_upsert_sql(
     row_count = 0
     batch = []
 
-    for instance in queryset.iterator(chunk_size=BATCH_SIZE):
-        values = get_row_values(instance, model_path, fields)
-        batch.append(f"  ({', '.join(values)})")
-        row_count += 1
+    for instances in _paginate_queryset(queryset, BATCH_SIZE):
+        for instance in instances:
+            values = get_row_values(instance, model_path, fields)
+            batch.append(f"  ({', '.join(values)})")
+            row_count += 1
 
-        if len(batch) >= BATCH_SIZE:
-            yield _build_upsert_statement(
-                table_name, columns_str, batch, conflict_columns, set_clause
-            )
-            batch = []
+            if len(batch) >= BATCH_SIZE:
+                yield _build_upsert_statement(
+                    table_name, columns_str, batch, conflict_columns, set_clause
+                )
+                batch = []
 
     if batch:
         yield _build_upsert_statement(
