@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from threading import Lock
 
+from django.db.models import QuerySet
 from django.utils import timezone
 from minio.commonconfig import CopySource
 from minio.error import S3Error
@@ -47,6 +48,39 @@ class ArchiveFile:
     source_bucket: str | None = None
 
 
+def _paginate_queryset_values(queryset: "QuerySet", batch_size: int):
+    """
+    Paginate a values queryset using primary key ordering.
+    """
+    pk_field = queryset.model._meta.pk.attname
+    ordered_qs = queryset.order_by(pk_field)
+
+    last_pk = None
+    while True:
+        if last_pk is not None:
+            page_qs = ordered_qs.filter(**{f"{pk_field}__gt": last_pk})
+        else:
+            page_qs = ordered_qs
+
+        batch = list(page_qs[:batch_size])
+
+        if not batch:
+            break
+
+        yield from batch
+
+        if hasattr(batch[-1], pk_field):
+            last_pk = getattr(batch[-1], pk_field)
+        elif isinstance(batch[-1], tuple):
+            last_pk = batch[-1][0]
+        elif isinstance(batch[-1], dict):
+            last_pk = (
+                batch[-1].get(pk_field) or batch[-1].get("id") or batch[-1].get("pk")
+            )
+        else:
+            last_pk = batch[-1]
+
+
 def discover_archive_files(
     context: ExportContext,
     owner_id: int,
@@ -64,14 +98,28 @@ def discover_archive_files(
         "bundle_analysis_reports": 0,
     }
 
-    # 1. Commit report storage paths
+    Repository = get_model_class("core.Repository")
     Commit = get_model_class("core.Commit")
+    ReportSession = get_model_class("reports.ReportSession")
+    CommitReport = get_model_class("reports.CommitReport")
+
+    repo_subquery = Repository.objects.filter(author_id=owner_id).values("repoid")
+    commit_subquery = Commit.objects.filter(
+        repository_id__in=repo_subquery,
+        updatestamp__gte=context.since_date,
+    ).values("id")
+
+    repos = {r.repoid: r for r in Repository.objects.filter(author_id=owner_id)}
+
     commits_qs = Commit.objects.filter(
-        id__in=context.commit_ids,
+        id__in=commit_subquery,
         _report_storage_path__isnull=False,
     ).values_list("id", "_report_storage_path", "repository_id")
 
-    for commit_id, storage_path, repo_id in commits_qs.iterator(chunk_size=BATCH_SIZE):
+    # 1. Commit report storage paths
+    for commit_id, storage_path, repo_id in _paginate_queryset_values(
+        commits_qs, BATCH_SIZE
+    ):
         if storage_path:
             stats["commits_with_report"] += 1
             yield ArchiveFile(
@@ -83,13 +131,15 @@ def discover_archive_files(
             )
 
     # 2. ReportSession (Upload) storage paths
-    ReportSession = get_model_class("reports.ReportSession")
+    commit_report_subquery = CommitReport.objects.filter(
+        commit_id__in=commit_subquery
+    ).values("id")
     uploads_qs = ReportSession.objects.filter(
-        report_id__in=context.commit_report_ids,
+        report_id__in=commit_report_subquery,
         storage_path__isnull=False,
     ).values_list("id", "storage_path")
 
-    for session_id, storage_path in uploads_qs.iterator(chunk_size=BATCH_SIZE):
+    for session_id, storage_path in _paginate_queryset_values(uploads_qs, BATCH_SIZE):
         if storage_path:
             stats["uploads_with_storage"] += 1
             yield ArchiveFile(
@@ -101,17 +151,13 @@ def discover_archive_files(
             )
 
     # 3. Chunks files - constructed from commit + repository info
-    Repository = get_model_class("core.Repository")
-    repos = {
-        r.repoid: r
-        for r in Repository.objects.filter(repoid__in=context.repository_ids)
-    }
-
     commits_for_chunks = Commit.objects.filter(
-        id__in=context.commit_ids,
-    ).values_list("commitid", "repository_id")
+        id__in=commit_subquery,
+    ).values_list("id", "commitid", "repository_id")
 
-    for commitid, repo_id in commits_for_chunks.iterator(chunk_size=BATCH_SIZE):
+    for commit_pk, commitid, repo_id in _paginate_queryset_values(
+        commits_for_chunks, BATCH_SIZE
+    ):
         repo = repos.get(repo_id)
         if repo:
             repo_hash = ArchiveService.get_archive_hash(repo)
@@ -126,31 +172,48 @@ def discover_archive_files(
             )
 
     # 4. Bundle Analysis reports (stored in separate bucket)
-    CommitReport = get_model_class("reports.CommitReport")
-    bundle_reports_qs = CommitReport.objects.filter(
-        id__in=context.commit_report_ids,
-        report_type="bundle_analysis",
-    ).select_related("commit__repository")
+    bundle_reports_qs = (
+        CommitReport.objects.filter(
+            id__in=commit_report_subquery,
+            report_type="bundle_analysis",
+        )
+        .select_related("commit__repository")
+        .order_by("id")
+    )
 
     bundle_bucket = get_bundle_analysis_bucket()
-    for bundle_report in bundle_reports_qs.iterator(chunk_size=BATCH_SIZE):
-        commit = bundle_report.commit
-        repo = commit.repository
-        if repo:
-            repo_hash = ArchiveService.get_archive_hash(repo)
-            bundle_path = BundleStoragePaths.bundle_report.path(
-                repo_key=repo_hash,
-                report_key=commit.commitid,
-            )
-            stats["bundle_analysis_reports"] += 1
-            yield ArchiveFile(
-                source_path=bundle_path,
-                dest_path=get_archive_destination_path(
-                    owner_id, export_id, bundle_path
-                ),
-                source_model=f"reports.CommitReport:{bundle_report.id}",
-                source_bucket=bundle_bucket,
-            )
+
+    # Use keyset pagination for bundle reports
+    last_pk = None
+    while True:
+        page_qs = bundle_reports_qs
+        if last_pk is not None:
+            page_qs = page_qs.filter(id__gt=last_pk)
+
+        batch = list(page_qs[:BATCH_SIZE])
+        if not batch:
+            break
+
+        for bundle_report in batch:
+            commit = bundle_report.commit
+            repo = commit.repository
+            if repo:
+                repo_hash = ArchiveService.get_archive_hash(repo)
+                bundle_path = BundleStoragePaths.bundle_report.path(
+                    repo_key=repo_hash,
+                    report_key=commit.commitid,
+                )
+                stats["bundle_analysis_reports"] += 1
+                yield ArchiveFile(
+                    source_path=bundle_path,
+                    dest_path=get_archive_destination_path(
+                        owner_id, export_id, bundle_path
+                    ),
+                    source_model=f"reports.CommitReport:{bundle_report.id}",
+                    source_bucket=bundle_bucket,
+                )
+
+        last_pk = batch[-1].id
 
     return stats
 
