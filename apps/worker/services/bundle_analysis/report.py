@@ -38,13 +38,20 @@ def extract_bundle_name_from_file(file_path: str) -> str | None:
     This is used to determine the lock key before processing, allowing different
     bundles for the same commit to be processed in parallel.
     """
+    MAX_EVENTS = 100  # Stop after this many events to avoid parsing large files
     try:
         with open(file_path, "rb") as f:
-            for prefix, event, value in ijson.parse(f):
+            for event_count, (prefix, event, value) in enumerate(ijson.parse(f)):
                 if prefix == "bundleName":
                     return value
                 # Stop after reading the first ~100 events to avoid parsing the whole file
                 # bundleName should appear early in the file structure
+                if event_count >= MAX_EVENTS:
+                    log.debug(
+                        "Bundle name not found within first events, stopping early",
+                        extra={"file_path": file_path, "events_parsed": event_count},
+                    )
+                    return None
     except Exception as e:
         log.warning(
             "Failed to extract bundle name from file",
