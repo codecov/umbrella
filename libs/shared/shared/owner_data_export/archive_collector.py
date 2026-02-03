@@ -104,11 +104,7 @@ def discover_archive_files(
     ReportSession = get_model_class("reports.ReportSession")
     CommitReport = get_model_class("reports.CommitReport")
 
-    repo_subquery = Repository.objects.filter(author_id=owner_id).values("repoid")
-    commit_subquery = Commit.objects.filter(
-        repository_id__in=repo_subquery,
-        updatestamp__gte=context.since_date,
-    ).values("id")
+    commit_subquery = context._commit_subquery()
 
     repos = {r.repoid: r for r in Repository.objects.filter(author_id=owner_id)}
 
@@ -415,7 +411,7 @@ def collect_archives_for_repository(
 
     commits_qs = Commit.objects.filter(
         repository_id=repository_id,
-        updatestamp__gte=since_date,
+        timestamp__gte=since_date,
     )
 
     if not commits_qs.exists():
