@@ -99,6 +99,29 @@ class TestExtractBundleName:
         finally:
             os.unlink(temp_path)
 
+    def test_extract_bundle_name_early_termination(self):
+        """Test that extraction stops after MAX_EVENTS to avoid parsing large files"""
+        # Create a large JSON file with bundleName appearing after many events
+        # This tests the early termination logic
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            # Write a JSON with many array elements before bundleName
+            # Each array element generates multiple events in ijson
+            f.write('{"assets": [')
+            for i in range(50):  # 50 objects with multiple fields = many events
+                if i > 0:
+                    f.write(",")
+                f.write(f'{{"id": {i}, "name": "asset{i}", "size": {i * 100}}}')
+            f.write('], "bundleName": "late-bundle"}')
+            temp_path = f.name
+        try:
+            # bundleName appears after many events, so early termination should return None
+            bundle_name = extract_bundle_name_from_file(temp_path)
+            # The function should return None because it stops after ~100 events
+            # and bundleName appears much later in the file
+            assert bundle_name is None
+        finally:
+            os.unlink(temp_path)
+
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
 def test_process_upload_with_pre_downloaded_path(dbsession, mocker, mock_storage):
