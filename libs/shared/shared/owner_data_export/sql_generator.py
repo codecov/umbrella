@@ -94,12 +94,10 @@ class ExportContext:
     export_id: int | None = None
 
     def _repository_subquery(self) -> QuerySet:
-        """Subquery for repository IDs owned by this owner."""
         Repository = get_model_class("core.Repository")
         return Repository.objects.filter(author_id=self.owner_id).values("repoid")
 
     def _commit_subquery(self) -> QuerySet:
-        """Subquery for commit IDs within date range."""
         Commit = get_model_class("core.Commit")
         return Commit.objects.filter(
             repository_id__in=self._repository_subquery(),
@@ -107,14 +105,12 @@ class ExportContext:
         ).values("id")
 
     def _commit_report_subquery(self) -> QuerySet:
-        """Subquery for commit report IDs."""
         CommitReport = get_model_class("reports.CommitReport")
         return CommitReport.objects.filter(
             commit_id__in=self._commit_subquery()
         ).values("id")
 
     def _report_session_subquery(self) -> QuerySet:
-        """Subquery for report session IDs."""
         ReportSession = get_model_class("reports.ReportSession")
         return ReportSession.objects.filter(
             report_id__in=self._commit_report_subquery()

@@ -51,6 +51,7 @@ class ArchiveFile:
 def _paginate_queryset_values(queryset: "QuerySet", batch_size: int):
     """
     Paginate a values queryset using primary key ordering.
+    Primary key must be the first column.
     """
     pk_field = queryset.model._meta.pk.attname
     ordered_qs = queryset.order_by(pk_field)
@@ -172,48 +173,31 @@ def discover_archive_files(
             )
 
     # 4. Bundle Analysis reports (stored in separate bucket)
-    bundle_reports_qs = (
-        CommitReport.objects.filter(
-            id__in=commit_report_subquery,
-            report_type="bundle_analysis",
-        )
-        .select_related("commit__repository")
-        .order_by("id")
-    )
+    bundle_reports_qs = CommitReport.objects.filter(
+        id__in=commit_report_subquery,
+        report_type="bundle_analysis",
+    ).select_related("commit__repository")
 
     bundle_bucket = get_bundle_analysis_bucket()
 
-    # Use keyset pagination for bundle reports
-    last_pk = None
-    while True:
-        page_qs = bundle_reports_qs
-        if last_pk is not None:
-            page_qs = page_qs.filter(id__gt=last_pk)
-
-        batch = list(page_qs[:BATCH_SIZE])
-        if not batch:
-            break
-
-        for bundle_report in batch:
-            commit = bundle_report.commit
-            repo = commit.repository
-            if repo:
-                repo_hash = ArchiveService.get_archive_hash(repo)
-                bundle_path = BundleStoragePaths.bundle_report.path(
-                    repo_key=repo_hash,
-                    report_key=commit.commitid,
-                )
-                stats["bundle_analysis_reports"] += 1
-                yield ArchiveFile(
-                    source_path=bundle_path,
-                    dest_path=get_archive_destination_path(
-                        owner_id, export_id, bundle_path
-                    ),
-                    source_model=f"reports.CommitReport:{bundle_report.id}",
-                    source_bucket=bundle_bucket,
-                )
-
-        last_pk = batch[-1].id
+    for bundle_report in _paginate_queryset_values(bundle_reports_qs, BATCH_SIZE):
+        commit = bundle_report.commit
+        repo = commit.repository
+        if repo:
+            repo_hash = ArchiveService.get_archive_hash(repo)
+            bundle_path = BundleStoragePaths.bundle_report.path(
+                repo_key=repo_hash,
+                report_key=commit.commitid,
+            )
+            stats["bundle_analysis_reports"] += 1
+            yield ArchiveFile(
+                source_path=bundle_path,
+                dest_path=get_archive_destination_path(
+                    owner_id, export_id, bundle_path
+                ),
+                source_model=f"reports.CommitReport:{bundle_report.id}",
+                source_bucket=bundle_bucket,
+            )
 
     return stats
 
