@@ -182,7 +182,15 @@ class ExportContext:
             )
 
         if model_path == "timeseries.Dataset":
-            return model.objects.filter(repository_id__in=self._repository_subquery())
+            # Must use explicit list of IDs, not subquery, because Dataset is in
+            # TimescaleDB which doesn't have the repos table
+            Repository = get_model_class("core.Repository")
+            repo_ids = list(
+                Repository.objects.filter(author_id=self.owner_id).values_list(
+                    "repoid", flat=True
+                )
+            )
+            return model.objects.filter(repository_id__in=repo_ids)
 
         if model_path == "timeseries.Measurement":
             return model.objects.filter(
