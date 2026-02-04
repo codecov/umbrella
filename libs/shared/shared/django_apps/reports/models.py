@@ -56,6 +56,9 @@ class CommitReport(
 
     class Meta:
         app_label = REPORTS_APP_LABEL
+        indexes = [
+            models.Index(fields=["commit_id", "id"], name="commitreport_commit_id_idx"),
+        ]
 
     objects = CommitReportManager()
 
@@ -97,6 +100,11 @@ class UploadError(ExportModelOperationsMixin("reports.upload_error"), BaseCodeco
     class Meta:
         app_label = REPORTS_APP_LABEL
         db_table = "reports_uploaderror"
+        indexes = [
+            models.Index(
+                fields=["report_session_id", "id"], name="uploaderror_session_id_idx"
+            ),
+        ]
 
 
 class UploadFlagMembership(
@@ -111,6 +119,11 @@ class UploadFlagMembership(
     class Meta:
         app_label = REPORTS_APP_LABEL
         db_table = "reports_uploadflagmembership"
+        indexes = [
+            models.Index(
+                fields=["report_session_id", "id"], name="uploadflag_session_id_idx"
+            ),
+        ]
 
 
 class RepositoryFlag(
@@ -124,6 +137,9 @@ class RepositoryFlag(
 
     class Meta:
         app_label = REPORTS_APP_LABEL
+        indexes = [
+            models.Index(fields=["repository_id", "id"], name="repoflag_repo_id_idx"),
+        ]
 
 
 class ReportSession(
@@ -160,6 +176,10 @@ class ReportSession(
             models.Index(
                 name="upload_storage_path_idx",
                 fields=["storage_path"],
+            ),
+            models.Index(
+                name="upload_report_id_idx",
+                fields=["report_id", "id"],
             ),
         ]
 

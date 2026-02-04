@@ -164,6 +164,10 @@ class Dataset(ExportModelOperationsMixin("timeseries.dataset"), models.Model):
                     "repository_id",
                 ]
             ),
+            models.Index(
+                fields=["repository_id", "id"],
+                name="dataset_repo_id_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
