@@ -77,8 +77,12 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
         storage_service = archive_service.storage
 
         # Download the upload file to a temporary location
-        _, local_path = tempfile.mkstemp()
+        fd, local_path = tempfile.mkstemp()
         should_cleanup = True
+
+        # Close the file descriptor immediately since we only need the path
+        # and will open it again for writing. This prevents file descriptor leaks.
+        os.close(fd)
 
         try:
             with open(local_path, "wb") as f:
