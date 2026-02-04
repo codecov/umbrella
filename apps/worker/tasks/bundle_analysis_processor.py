@@ -58,6 +58,7 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
             # File is automatically cleaned up here
     """
     local_path = None
+    should_cleanup = False
 
     try:
         upload_id = upload_params.get("upload_id")
@@ -77,6 +78,7 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
 
         # Download the upload file to a temporary location
         _, local_path = tempfile.mkstemp()
+        should_cleanup = True
 
         try:
             with open(local_path, "wb") as f:
@@ -92,7 +94,6 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
                     "local_path": local_path,
                 },
             )
-            yield local_path
 
         except FileNotInStorageError:
             # File not yet available in storage, will retry inside lock
@@ -100,18 +101,21 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
                 "Upload file not yet available in storage for pre-download",
                 extra={"repoid": repoid, "upload_id": upload_id},
             )
-            yield None
+            local_path = None
 
         except Exception as e:
             log.warning(
                 "Failed to pre-download upload file",
                 extra={"repoid": repoid, "upload_id": upload_id, "error": str(e)},
             )
-            yield None
+            local_path = None
+
+        # Yield outside the nested try block to properly handle exceptions from caller
+        yield local_path
 
     finally:
         # Ensure temporary file is always cleaned up
-        if local_path and os.path.exists(local_path):
+        if should_cleanup and local_path and os.path.exists(local_path):
             try:
                 os.remove(local_path)
                 log.debug(
