@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from celery.exceptions import Retry
 from redis.exceptions import LockError
@@ -12,7 +14,10 @@ from shared.bundle_analysis.storage import get_bucket_name
 from shared.celery_config import BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.storage.exceptions import PutRequestRateLimitError
-from tasks.bundle_analysis_processor import BundleAnalysisProcessorTask
+from tasks.bundle_analysis_processor import (
+    BundleAnalysisProcessorTask,
+    temporary_upload_file,
+)
 from tasks.bundle_analysis_save_measurements import (
     bundle_analysis_save_measurements_task_name,
 )
@@ -2125,7 +2130,7 @@ def test_pre_download_upload_file_file_not_in_storage(
     dbsession,
     mock_storage,
 ):
-    """Test that _pre_download_upload_file returns None when file is not in storage"""
+    """Test that temporary_upload_file returns None when file is not in storage"""
     commit = CommitFactory.create(state="pending")
     dbsession.add(commit)
     dbsession.flush()
@@ -2141,12 +2146,11 @@ def test_pre_download_upload_file_file_not_in_storage(
     dbsession.add(upload)
     dbsession.flush()
 
-    task = BundleAnalysisProcessorTask()
     params = {"upload_id": upload.id_, "commit": commit.commitid}
 
     # The file doesn't exist in mock_storage, so it should return None
-    result = task._pre_download_upload_file(dbsession, commit.repoid, params)
-    assert result is None
+    with temporary_upload_file(dbsession, commit.repoid, params) as result:
+        assert result is None
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
@@ -2155,7 +2159,7 @@ def test_pre_download_upload_file_general_error(
     dbsession,
     mock_storage,
 ):
-    """Test that _pre_download_upload_file returns None on general error"""
+    """Test that temporary_upload_file returns None on general error"""
     commit = CommitFactory.create(state="pending")
     dbsession.add(commit)
     dbsession.flush()
@@ -2174,11 +2178,10 @@ def test_pre_download_upload_file_general_error(
         mock_storage, "read_file", side_effect=Exception("Connection error")
     )
 
-    task = BundleAnalysisProcessorTask()
     params = {"upload_id": upload.id_, "commit": commit.commitid}
 
-    result = task._pre_download_upload_file(dbsession, commit.repoid, params)
-    assert result is None
+    with temporary_upload_file(dbsession, commit.repoid, params) as result:
+        assert result is None
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
@@ -2186,12 +2189,11 @@ def test_pre_download_upload_file_no_upload_id(
     mocker,
     dbsession,
 ):
-    """Test that _pre_download_upload_file returns None when no upload_id in params"""
-    task = BundleAnalysisProcessorTask()
+    """Test that temporary_upload_file returns None when no upload_id in params"""
     params = {"commit": "abc123"}  # No upload_id
 
-    result = task._pre_download_upload_file(dbsession, 123, params)
-    assert result is None
+    with temporary_upload_file(dbsession, 123, params) as result:
+        assert result is None
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
@@ -2199,12 +2201,11 @@ def test_pre_download_upload_file_upload_not_found(
     mocker,
     dbsession,
 ):
-    """Test that _pre_download_upload_file returns None when upload doesn't exist"""
-    task = BundleAnalysisProcessorTask()
+    """Test that temporary_upload_file returns None when upload doesn't exist"""
     params = {"upload_id": 99999, "commit": "abc123"}  # Non-existent upload_id
 
-    result = task._pre_download_upload_file(dbsession, 123, params)
-    assert result is None
+    with temporary_upload_file(dbsession, 123, params) as result:
+        assert result is None
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
@@ -2213,9 +2214,7 @@ def test_pre_download_upload_file_success(
     dbsession,
     mock_storage,
 ):
-    """Test that _pre_download_upload_file returns local path when successful"""
-    import os
-
+    """Test that temporary_upload_file returns local path when successful"""
     commit = CommitFactory.create(state="pending")
     dbsession.add(commit)
     dbsession.flush()
@@ -2231,21 +2230,17 @@ def test_pre_download_upload_file_success(
     dbsession.add(upload)
     dbsession.flush()
 
-    task = BundleAnalysisProcessorTask()
     params = {"upload_id": upload.id_, "commit": commit.commitid}
 
-    result = task._pre_download_upload_file(dbsession, commit.repoid, params)
-
-    try:
+    with temporary_upload_file(dbsession, commit.repoid, params) as result:
         assert result is not None
         assert os.path.exists(result)
         with open(result) as f:
             content = f.read()
         assert "bundleName" in content
-    finally:
-        # Clean up the temp file
-        if result and os.path.exists(result):
-            os.remove(result)
+
+    # After context manager exits, file should be cleaned up
+    assert not os.path.exists(result)
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
