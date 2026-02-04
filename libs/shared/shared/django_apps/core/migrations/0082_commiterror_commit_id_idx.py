@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     """
 
     dependencies = [
-        ("core", "0080_repository_repos_name_trgm_idx"),
+        ("core", "0081_increment_version"),
     ]
 
     operations = [
