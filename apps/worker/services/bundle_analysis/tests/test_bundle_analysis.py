@@ -126,12 +126,6 @@ class TestExtractBundleName:
 @pytest.mark.django_db(databases={"default", "timeseries"})
 def test_process_upload_with_pre_downloaded_path(dbsession, mocker, mock_storage):
     """Test that process_upload uses pre_downloaded_path and skips GCS download"""
-    from database.models import CommitReport
-    from database.tests.factories import CommitFactory, UploadFactory
-    from services.bundle_analysis.report import BundleAnalysisReportService
-    from shared.bundle_analysis.storage import get_bucket_name
-    from shared.yaml import UserYaml
-
     storage_path = (
         "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
     )
