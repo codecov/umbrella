@@ -4,7 +4,6 @@ from django.test import TestCase, override_settings
 
 from codecov_auth.models import Owner
 from services.self_hosted import (
-    LicenseException,
     activate_owner,
     activated_owners,
     admin_owners,
@@ -12,13 +11,12 @@ from services.self_hosted import (
     deactivate_owner,
     disable_autoactivation,
     enable_autoactivation,
+    enterprise_has_seats_left,
     is_activated_owner,
     is_admin_owner,
     is_autoactivation_enabled,
-    license_seats,
 )
 from shared.django_apps.core.tests.factories import OwnerFactory
-from shared.license import LicenseInformation
 
 
 @override_settings(IS_ENTERPRISE=True)
@@ -85,45 +83,22 @@ class SelfHostedTestCase(TestCase):
         assert is_activated_owner(owner2) == True
         assert is_activated_owner(owner3) == False
 
-    @patch("services.self_hosted.get_current_license")
-    def test_license_seats(self, get_current_license):
-        get_current_license.return_value = LicenseInformation(
-            number_allowed_users=123, is_valid=True
-        )
-        assert license_seats() == 123
+    def test_enterprise_has_seats_left(self):
+        """Enterprise deployments always have seats left (unlimited)."""
+        assert enterprise_has_seats_left() == True
 
-    @patch("services.self_hosted.get_current_license")
-    def test_license_seats_not_specified(self, get_current_license):
-        get_current_license.return_value = LicenseInformation(is_valid=True)
-        assert license_seats() == 0
-
-    @patch("services.self_hosted.activated_owners")
-    @patch("services.self_hosted.license_seats")
-    def test_can_activate_owner(self, license_seats, activated_owners):
-        license_seats.return_value = 1
-
+    def test_can_activate_owner(self):
+        """Enterprise deployments can always activate any owner (unlimited seats)."""
         owner1 = OwnerFactory(service="github", username="foo")
         owner2 = OwnerFactory(service="github", username="bar")
         owner3 = OwnerFactory(service="gitlab", username="foo")
 
-        activated_owners.return_value = Owner.objects.filter(
-            pk__in=[owner1.pk, owner2.pk]
-        )
-
-        assert can_activate_owner(owner1) == True
-        assert can_activate_owner(owner2) == True
-        assert can_activate_owner(owner3) == False
-
-        license_seats.return_value = 5
-
+        # All owners can be activated in enterprise mode
         assert can_activate_owner(owner1) == True
         assert can_activate_owner(owner2) == True
         assert can_activate_owner(owner3) == True
 
-    @patch("services.self_hosted.can_activate_owner")
-    def test_activate_owner(self, can_activate_owner):
-        can_activate_owner.return_value = True
-
+    def test_activate_owner(self):
         other_owner = OwnerFactory()
         org1 = OwnerFactory(plan_activated_users=[other_owner.pk])
         org2 = OwnerFactory(plan_activated_users=[])
@@ -148,24 +123,6 @@ class SelfHostedTestCase(TestCase):
         assert org2.plan_activated_users == [owner.pk]
         org3.refresh_from_db()
         assert org3.plan_activated_users == [other_owner.pk]
-
-    @patch("services.self_hosted.can_activate_owner")
-    def test_activate_owner_cannot_activate(self, can_activate_owner):
-        can_activate_owner.return_value = False
-
-        other_owner = OwnerFactory()
-        org1 = OwnerFactory(plan_activated_users=[other_owner.pk])
-        org2 = OwnerFactory(plan_activated_users=[])
-        owner = OwnerFactory(organizations=[org2.pk])
-
-        with self.assertRaises(LicenseException) as e:
-            activate_owner(owner)
-            assert e.message == "no more seats available"
-
-        org1.refresh_from_db()
-        assert org1.plan_activated_users == [other_owner.pk]
-        org2.refresh_from_db()
-        assert org2.plan_activated_users == []
 
     def test_deactivate_owner(self):
         owner1 = OwnerFactory()

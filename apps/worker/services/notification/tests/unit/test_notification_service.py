@@ -7,9 +7,7 @@ import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 
 from database.enums import Decoration, Notification, NotificationState
-from database.models.core import (
-    GITHUB_APP_INSTALLATION_DEFAULT_NAME,
-)
+from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories import (
     CommitFactory,
     GithubAppInstallationFactory,
@@ -1047,22 +1045,6 @@ class TestNotificationService:
                 Notification.comment,
                 Notification.status_patch,
             )
-
-    @pytest.mark.django_db
-    def test_not_licensed_enterprise(self, mocker, dbsession, sample_comparison):
-        mocker.patch("services.notification.is_properly_licensed", return_value=False)
-        mock_notify_individual_notifier = mocker.patch.object(
-            NotificationService, "notify_individual_notifier"
-        )
-        current_yaml = {}
-        commit = sample_comparison.head.commit
-        notifications_service = NotificationService(
-            commit.repository, current_yaml, None
-        )
-        expected_result = []
-        res = notifications_service.notify(sample_comparison)
-        assert expected_result == res
-        assert not mock_notify_individual_notifier.called
 
     @pytest.mark.django_db
     def test_get_statuses(self, mocker, dbsession, sample_comparison):

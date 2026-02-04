@@ -1,17 +1,14 @@
-from datetime import datetime, timedelta
-from unittest.mock import patch
+from datetime import timedelta
 
 import pytest
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from freezegun import freeze_time
 
 from billing.tests.mocks import mock_all_plans_and_tiers
 from shared.django_apps.codecov_auth.tests.factories import AccountFactory
 from shared.django_apps.core.tests.factories import OwnerFactory
-from shared.license import LicenseInformation
 from shared.plan.constants import PlanName, TrialStatus
-from shared.utils.test_utils import mock_config_helper
 
 from .helper import GraphQLTestHelper
 
@@ -162,27 +159,11 @@ class TestPlanType(GraphQLTestHelper, TestCase):
         data = self.gql_request(query, owner=current_org)
         assert data["owner"]["plan"] == {"hasSeatsLeft": True}
 
-    @patch("shared.self_hosted.service.get_current_license")
-    def test_plan_user_count_for_enterprise_org(self, mocked_license):
+    @override_settings(IS_ENTERPRISE=True)
+    def test_plan_user_count_for_enterprise_org(self):
         """
-        If an Org has an enterprise license, number_allowed_users from their license
-        should be used instead of plan_user_count on the Org object.
+        Enterprise deployments have unlimited users (plan_user_count = 0).
         """
-        mock_enterprise_license = LicenseInformation(
-            is_valid=True,
-            message=None,
-            url="https://codeov.mysite.com",
-            number_allowed_users=5,
-            number_allowed_repos=10,
-            expires=datetime.strptime("2020-05-09 00:00:00", "%Y-%m-%d %H:%M:%S"),
-            is_trial=False,
-            is_pr_billing=True,
-        )
-        mocked_license.return_value = mock_enterprise_license
-        mock_config_helper(
-            self.mocker, configs={"setup.enterprise_license": mock_enterprise_license}
-        )
-
         enterprise_org = OwnerFactory(
             username="random-plan-user",
             service="github",
@@ -195,17 +176,6 @@ class TestPlanType(GraphQLTestHelper, TestCase):
             enterprise_org.plan_activated_users.append(new_owner.ownerid)
         enterprise_org.save()
 
-        other_org_in_enterprise = OwnerFactory(
-            service="github",
-            plan=PlanName.CODECOV_PRO_YEARLY.value,
-            plan_user_count=1,
-            plan_activated_users=[],
-        )
-        for i in range(4):
-            new_owner = OwnerFactory()
-            other_org_in_enterprise.plan_activated_users.append(new_owner.ownerid)
-        other_org_in_enterprise.save()
-
         query = f"""{{
                     owner(username: "{enterprise_org.username}") {{
                         plan {{
@@ -216,19 +186,15 @@ class TestPlanType(GraphQLTestHelper, TestCase):
                 }}
                 """
         data = self.gql_request(query, owner=enterprise_org)
-        assert data["owner"]["plan"]["planUserCount"] == 5
-        assert data["owner"]["plan"]["hasSeatsLeft"] == False
+        # Enterprise has unlimited users (0) and always has seats left
+        assert data["owner"]["plan"]["planUserCount"] == 0
+        assert data["owner"]["plan"]["hasSeatsLeft"] == True
 
-    @patch("shared.self_hosted.service.get_current_license")
-    def test_plan_user_count_for_enterprise_org_invaild_license(self, mocked_license):
-        mock_enterprise_license = LicenseInformation(
-            is_valid=False,
-        )
-        mocked_license.return_value = mock_enterprise_license
-        mock_config_helper(
-            self.mocker, configs={"setup.enterprise_license": mock_enterprise_license}
-        )
-
+    @override_settings(IS_ENTERPRISE=True)
+    def test_plan_for_enterprise_org_always_has_seats(self):
+        """
+        Enterprise deployments always have seats available.
+        """
         enterprise_org = OwnerFactory(
             username="random-plan-user",
             service="github",
@@ -246,8 +212,9 @@ class TestPlanType(GraphQLTestHelper, TestCase):
                     }}
                     """
         data = self.gql_request(query, owner=enterprise_org)
+        # Enterprise has unlimited users and always has seats left
         assert data["owner"]["plan"]["planUserCount"] == 0
-        assert data["owner"]["plan"]["hasSeatsLeft"] == False
+        assert data["owner"]["plan"]["hasSeatsLeft"] == True
 
     def test_owner_plan_data_when_trial_status_is_none(self):
         now = timezone.now()

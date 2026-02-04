@@ -5,10 +5,8 @@ from functools import cached_property
 from django.conf import settings
 from django.utils import timezone
 
-from shared.config import get_config
 from shared.django_apps.codecov.commands.exceptions import ValidationError
 from shared.django_apps.codecov_auth.models import Owner, Plan, Service
-from shared.license import get_current_license
 from shared.plan.constants import (
     DEFAULT_FREE_PLAN,
     TEAM_PLAN_MAX_USERS,
@@ -19,7 +17,6 @@ from shared.plan.constants import (
     TrialDaysAmount,
     TrialStatus,
 )
-from shared.self_hosted.service import enterprise_has_seats_left, license_seats
 
 log = logging.getLogger(__name__)
 
@@ -100,8 +97,8 @@ class PlanService:
     @property
     def plan_user_count(self) -> int:
         """Returns the number of users allowed by the organization's plan."""
-        if get_config("setup", "enterprise_license"):
-            return license_seats()
+        if settings.IS_ENTERPRISE:
+            return 0  # Unlimited for enterprise
         if self.current_org.has_billing_account:
             return self.current_org.account.total_seat_count
         return self.current_org.total_seat_count
@@ -315,8 +312,8 @@ class PlanService:
 
     @property
     def has_seats_left(self) -> bool:
-        if get_config("setup", "enterprise_license"):
-            return enterprise_has_seats_left()
+        if settings.IS_ENTERPRISE:
+            return True  # Unlimited seats for enterprise
         if self.current_org.has_billing_account:
             # edge case: IF the User is already a plan_activated_user on any of the Orgs in the Account,
             # AND their Account is at capacity,
@@ -360,4 +357,4 @@ class PlanService:
                 PlanName.CODECOV_PRO_YEARLY_LEGACY.value,
             ]
         else:
-            return get_current_license().is_pr_billing
+            return True  # Enterprise defaults to PR billing

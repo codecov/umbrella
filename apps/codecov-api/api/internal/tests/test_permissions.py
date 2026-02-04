@@ -139,11 +139,8 @@ class TestRepositoryPermissionsService(TestCase):
         owner.refresh_from_db()
         assert user.ownerid in owner.plan_activated_users
 
-    @patch("services.self_hosted.license_seats")
     @override_settings(IS_ENTERPRISE=True)
-    def test_user_is_activated_when_self_hosted(self, license_seats):
-        license_seats.return_value = 5
-
+    def test_user_is_activated_when_self_hosted(self):
         user = OwnerFactory()
         owner = OwnerFactory(plan_auto_activate=True)
         user.organizations = [owner.ownerid]

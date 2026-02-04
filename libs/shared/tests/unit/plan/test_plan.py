@@ -419,17 +419,13 @@ class PlanServiceTests(TestCase):
         plan_service = PlanService(current_org=current_org)
         assert plan_service.plan_user_count == 15
 
-    def test_plan_service_plan_user_count_with_enterprise_license(self):
-        """Test plan_user_count when enterprise license is configured"""
-        with patch("shared.plan.service.get_config") as mock_get_config:
-            mock_get_config.return_value = True
-            with patch("shared.plan.service.license_seats") as mock_license_seats:
-                mock_license_seats.return_value = 20
-                current_org = OwnerFactory(
-                    plan=DEFAULT_FREE_PLAN, plan_user_count=5, free=3
-                )
-                plan_service = PlanService(current_org=current_org)
-                assert plan_service.plan_user_count == 20
+    @override_settings(IS_ENTERPRISE=True)
+    def test_plan_service_plan_user_count_enterprise(self):
+        """Test plan_user_count returns 0 (unlimited) for enterprise deployments"""
+        current_org = OwnerFactory(plan=DEFAULT_FREE_PLAN, plan_user_count=5, free=3)
+        plan_service = PlanService(current_org=current_org)
+        # Enterprise deployments have unlimited users (represented as 0)
+        assert plan_service.plan_user_count == 0
 
     def test_plan_service_free_seat_count_with_no_account(self):
         """Test free_seat_count when owner has no account"""

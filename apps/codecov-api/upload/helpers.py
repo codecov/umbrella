@@ -690,7 +690,7 @@ def validate_upload(
         if (
             repository.private
             and not repository.activated
-            and not bool(get_config("setup", "enterprise_license", default=False))
+            and not settings.IS_ENTERPRISE
         ):
             owner = _determine_responsible_owner(repository)
 

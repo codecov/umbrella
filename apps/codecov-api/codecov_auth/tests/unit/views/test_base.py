@@ -17,7 +17,6 @@ from shared.django_apps.codecov_auth.tests.factories import (
     SessionFactory,
     UserFactory,
 )
-from shared.license import LicenseInformation
 
 
 def set_up_mixin(to=None):
@@ -338,10 +337,6 @@ class LoginMixinTests(TestCase):
         "codecov_auth.views.base.LoginMixin.get_or_create_org", mock_get_or_create_owner
     )
     @patch("services.refresh.RefreshService.trigger_refresh", lambda *args: None)
-    @patch(
-        "codecov_auth.views.base.LoginMixin._check_user_count_limitations",
-        lambda *args: True,
-    )
     @patch("codecov_auth.views.base.get_config")
     def test_get_and_modify_user_enterprise_raise_usernotinorganization_error(
         self, mock_get_config: Mock
@@ -365,10 +360,6 @@ class LoginMixinTests(TestCase):
         "codecov_auth.views.base.LoginMixin.get_or_create_org", mock_get_or_create_owner
     )
     @patch("services.refresh.RefreshService.trigger_refresh", lambda *args: None)
-    @patch(
-        "codecov_auth.views.base.LoginMixin._check_user_count_limitations",
-        lambda *args: True,
-    )
     @patch("codecov_auth.views.base.get_config")
     @override_settings(IS_ENTERPRISE=True)
     def test_get_and_modify_user_enterprise_orgs_passes_if_user_in_org(
@@ -393,10 +384,6 @@ class LoginMixinTests(TestCase):
         "codecov_auth.views.base.LoginMixin.get_or_create_org", mock_get_or_create_owner
     )
     @patch("services.refresh.RefreshService.trigger_refresh", lambda *args: None)
-    @patch(
-        "codecov_auth.views.base.LoginMixin._check_user_count_limitations",
-        lambda *args: True,
-    )
     @patch("codecov_auth.views.base.get_config")
     @override_settings(IS_ENTERPRISE=False)
     def test_get_and_modify_user_passes_if_not_enterprise(self, mock_get_config: Mock):
@@ -408,118 +395,8 @@ class LoginMixinTests(TestCase):
             "github", "student_disabled", default=False
         )
 
-    @override_settings(IS_ENTERPRISE=False)
-    @patch("codecov_auth.views.base.get_current_license")
-    def test_check_user_account_limitations_not_enterprise(
-        self, mock_get_current_license: Mock
-    ):
-        login_data = {"id": 121}
-        license = LicenseInformation(
-            is_valid=True,
-            message=None,
-            number_allowed_users=2,
-        )
-        mock_get_current_license.return_value = license
-        self.mixin_instance._check_user_count_limitations(login_data)
-        mock_get_current_license.assert_not_called()
-
-    def owner_factory_side_effect(self, serivce_id, token):
-        owner = OwnerFactory(serivce_id=serivce_id, service="github")
-        owner.oauth_token = token
-        return owner
-
-    @override_settings(IS_ENTERPRISE=True)
-    @patch("codecov_auth.models.Owner.objects")
-    @patch("codecov_auth.views.base.get_current_license")
-    def test_check_user_account_limitations_enterprise_user_exists_not_pr_billing(
-        self, mock_get_current_license: Mock, mock_owner_objects: Mock
-    ):
-        login_data = {"id": 121}
-        license = LicenseInformation(
-            is_valid=True, message=None, number_allowed_users=2, is_pr_billing=False
-        )
-        mock_get_current_license.return_value = license
-        mock_owner_objects.get.return_value = self.owner_factory_side_effect(
-            1200, token="somethingsomething"
-        )
-        self.mixin_instance._check_user_count_limitations(login_data)
-        mock_get_current_license.assert_called_once()
-        mock_owner_objects.get.assert_called_once()
-
-    @override_settings(IS_ENTERPRISE=True)
-    @patch("codecov_auth.views.base.get_current_license")
-    def test_check_user_account_limitations_enterprise_user_new_not_pr_billing(
-        self, mock_get_current_license: Mock
-    ):
-        login_data = {"id": 121}
-        license = LicenseInformation(
-            is_valid=True, message=None, number_allowed_users=1, is_pr_billing=False
-        )
-        mock_get_current_license.return_value = license
-        # If the number of users is smaller than the limit, no exception is raised
-        # In this case
-        self.mixin_instance._check_user_count_limitations(login_data)
-        mock_get_current_license.assert_called_once()
-        assert (
-            Owner.objects.filter(oauth_token__isnull=False, service="github").count()
-            == 0
-        )
-        # If the number of users is larger than the limit, raise error
-        with pytest.raises(PermissionDenied):
-            OwnerFactory(service="github", ownerid=12, oauth_token="very-fake-token")
-            OwnerFactory(service="github", ownerid=13, oauth_token=None)
-            OwnerFactory(service="github", ownerid=14, oauth_token="very-fake-token")
-            assert (
-                Owner.objects.filter(
-                    oauth_token__isnull=False, service="github"
-                ).count()
-                == 2
-            )
-            self.mixin_instance._check_user_count_limitations(login_data)
-            mock_get_current_license.assert_called()
-
-    @override_settings(IS_ENTERPRISE=True)
-    @patch("codecov_auth.views.base.get_current_license")
-    def test_check_user_account_limitations_enterprise_pr_billing(
-        self, mock_get_current_license: Mock
-    ):
-        license = LicenseInformation(
-            is_valid=True, message=None, number_allowed_users=1, is_pr_billing=True
-        )
-        mock_get_current_license.return_value = license
-        # User doesn't exist, and existing users will raise error
-        with pytest.raises(PermissionDenied):
-            OwnerFactory(ownerid=1, service="github", plan_activated_users=[1, 2, 3])
-            OwnerFactory(
-                ownerid=2,
-                service="github",
-                service_id="batata_frita",
-                plan_activated_users=[],
-            )
-            OwnerFactory(ownerid=3, service="github", plan_activated_users=None)
-            assert (
-                Owner.objects.exclude(plan_activated_users__len=0)
-                .exclude(plan_activated_users__isnull=True)
-                .count()
-                == 1
-            )
-            assert Owner.objects.exclude(plan_activated_users__len=0)[
-                0
-            ].plan_activated_users == [1, 2, 3]
-            self.mixin_instance._check_user_count_limitations({"id": 121})
-            mock_get_current_license.assert_called()
-        # If user exists, don't raise exception
-        assert (
-            Owner.objects.get(service="github", service_id="batata_frita").ownerid == 2
-        )
-        self.mixin_instance._check_user_count_limitations({"id": "batata_frita"})
-
     @override_settings(IS_ENTERPRISE=True)
     @patch("services.refresh.RefreshService.trigger_refresh", lambda *args: None)
-    @patch(
-        "codecov_auth.views.base.LoginMixin._check_user_count_limitations",
-        lambda *args: True,
-    )
     @patch(
         "codecov_auth.views.base.LoginMixin._get_or_create_owner",
         mock_get_or_create_owner,
@@ -562,10 +439,6 @@ class LoginMixinTests(TestCase):
 
     @override_settings(IS_ENTERPRISE=True)
     @patch("services.refresh.RefreshService.trigger_refresh", lambda *args: None)
-    @patch(
-        "codecov_auth.views.base.LoginMixin._check_user_count_limitations",
-        lambda *args: True,
-    )
     @patch(
         "codecov_auth.views.base.LoginMixin._get_or_create_owner",
         mock_get_or_create_owner,

@@ -5,7 +5,7 @@ from enum import Enum
 from urllib.parse import parse_qs, quote_plus, urlencode, urlparse, urlunparse
 
 from database.models import Commit, Pull, Repository
-from services.license import requires_license
+from helpers.environment import is_enterprise
 from shared.config import get_config
 from shared.django_apps.codecov_auth.models import Service
 
@@ -48,7 +48,7 @@ def get_dashboard_base_url() -> str:
     configured_base_url = get_base_url()
     # Enterprise users usually configure the base url not the dashboard one,
     # app.codecov.io is for cloud users so we want to prioritize the values correctly
-    if requires_license():
+    if is_enterprise():
         return configured_dashboard_url or configured_base_url
     else:
         return configured_dashboard_url or "https://app.codecov.io"
@@ -147,7 +147,7 @@ def get_pull_graph_url(pull: Pull, graph_filename: str, **kwargs) -> str:
 def get_members_url(pull: Pull) -> str:
     repository = pull.repository
     username = _get_username_for_url(repository=repository)
-    if not requires_license():
+    if not is_enterprise():
         return SiteUrls.members_url.get_url(
             dashboard_base_url=get_dashboard_base_url(),
             service_short=services_short_dict.get(repository.service),

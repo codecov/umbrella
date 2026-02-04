@@ -16,8 +16,8 @@ from database.models import (
     RepositoryFlag,
     Upload,
 )
+from helpers.environment import is_enterprise
 from helpers.notifier import BaseNotifier
-from services.license import requires_license
 from services.processing.types import UploadArguments
 from services.report import BaseReportService
 from services.repository import EnrichedPull
@@ -471,7 +471,7 @@ class TestResultsNotifier[T: (str, bytes)](BaseNotifier):
 
         author_username = provider_pull["author"].get("username")
 
-        if not requires_license():
+        if not is_enterprise():
             message = "\n".join(
                 [
                     f"The author of this PR, {author_username}, is not an activated member of this organization on Codecov.",

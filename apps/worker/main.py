@@ -15,7 +15,6 @@ from helpers.version import get_current_version
 from shared.celery_config import BaseCeleryConfig
 from shared.config import get_config
 from shared.django_apps.utils.config import get_settings_module
-from shared.license import startup_license_logging
 from shared.metrics import start_prometheus
 from shared.storage.exceptions import BucketAlreadyExistsError
 
@@ -94,8 +93,6 @@ def setup_worker():
         f"Configuring Django with settings in {os.environ['DJANGO_SETTINGS_MODULE']}"
     )
     django.setup()
-
-    startup_license_logging()
 
 
 @cli.command()

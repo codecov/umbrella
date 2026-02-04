@@ -211,7 +211,7 @@ class TestUpgradeMessage:
             provider_pull={"author": {"username": "PR_author_username"}},
         )
         mocker.patch(
-            "services.bundle_analysis.notify.messages.comment.requires_license",
+            "services.bundle_analysis.notify.messages.comment.is_enterprise",
             return_value=False,
         )
         mocker.patch(
@@ -240,7 +240,7 @@ class TestUpgradeMessage:
             provider_pull={"author": {"username": "PR_author_username"}},
         )
         mocker.patch(
-            "services.bundle_analysis.notify.messages.comment.requires_license",
+            "services.bundle_analysis.notify.messages.comment.is_enterprise",
             return_value=True,
         )
         mocker.patch(

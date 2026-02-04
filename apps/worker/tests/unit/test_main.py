@@ -48,47 +48,37 @@ def test_get_queues_param_from_queue_input_does_not_double_enterprise():
     )
 
 
-@mock.patch("main.startup_license_logging")
 @mock.patch("main.start_prometheus")
-def test_run_empty_config(
-    mock_prometheus, mock_license_logging, mock_storage, mock_configuration
-):
+def test_run_empty_config(mock_prometheus, mock_storage, mock_configuration):
     assert not mock_storage.root_storage_created
     res = setup_worker()
     assert res is None
     assert not mock_storage.root_storage_created
     assert mock_storage.config == {}
-    mock_license_logging.assert_called_once()
 
 
-@mock.patch("main.startup_license_logging")
 @mock.patch("main.start_prometheus")
 def test_sys_path_append_on_enterprise(
-    mock_prometheus, mock_license_logging, mock_storage, mock_configuration
+    mock_prometheus, mock_storage, mock_configuration
 ):
     sys.frozen = True
     res = setup_worker()
     assert res is None
     assert "./external_deps" in sys.path
-    mock_license_logging.assert_called_once()
 
 
-@mock.patch("main.startup_license_logging")
 @mock.patch("main.start_prometheus")
 def test_run_already_existing_root_storage(
-    mock_prometheus, mock_license_logging, mock_storage, mock_configuration
+    mock_prometheus, mock_storage, mock_configuration
 ):
     mock_storage.root_storage_created = True
     res = setup_worker()
     assert res is None
     assert mock_storage.config == {}
     assert mock_storage.root_storage_created
-    mock_license_logging.assert_called_once()
 
 
-@mock.patch("main.startup_license_logging")
-@mock.patch("main.start_prometheus")
-def test_get_cli_help(mocker, mock_license_logging):
+def test_get_cli_help():
     runner = CliRunner()
     res = runner.invoke(cli, ["--help"])
     expected_output = "\n".join(
@@ -105,14 +95,10 @@ def test_get_cli_help(mocker, mock_license_logging):
     )
 
     assert res.output == expected_output
-    mock_license_logging.assert_not_called()
 
 
-@mock.patch("main.startup_license_logging")
 @mock.patch("main.start_prometheus")
-def test_deal_worker_command_default(
-    mock_prometheus, mock_license_logging, mocker, mock_storage
-):
+def test_deal_worker_command_default(mock_prometheus, mocker, mock_storage):
     mocker.patch.dict(os.environ, {"HOSTNAME": "simpleworker"})
     mocked_get_current_version = mocker.patch(
         "main.get_current_version", return_value="some_version_12.3"
@@ -150,14 +136,10 @@ def test_deal_worker_command_default(
             "/home/codecov/celerybeat-schedule",
         ]
     )
-    mock_license_logging.assert_called_once()
 
 
-@mock.patch("main.startup_license_logging")
 @mock.patch("main.start_prometheus")
-def test_deal_worker_command(
-    mock_prometheus, mock_license_logging, mocker, mock_storage
-):
+def test_deal_worker_command(mock_prometheus, mocker, mock_storage):
     mocker.patch.dict(os.environ, {"HOSTNAME": "simpleworker"})
     mocked_get_current_version = mocker.patch(
         "main.get_current_version", return_value="some_version_12.3"
@@ -195,13 +177,11 @@ def test_deal_worker_command(
             "/home/codecov/celerybeat-schedule",
         ]
     )
-    mock_license_logging.assert_called_once()
 
 
-@mock.patch("main.startup_license_logging")
 @mock.patch("main.start_prometheus")
 def test_deal_worker_no_beat(
-    mock_prometheus, mock_license_logging, mocker, mock_storage, empty_configuration
+    mock_prometheus, mocker, mock_storage, empty_configuration
 ):
     mocker.patch.dict(
         os.environ, {"HOSTNAME": "simpleworker", "SETUP__CELERY_BEAT_ENABLED": "False"}
@@ -239,13 +219,11 @@ def test_deal_worker_no_beat(
             f"simple,one,two,some,enterprise_simple,enterprise_one,enterprise_two,enterprise_some,{BaseCeleryConfig.health_check_default_queue}",
         ]
     )
-    mock_license_logging.assert_called_once()
 
 
-@mock.patch("main.startup_license_logging")
 @mock.patch("main.start_prometheus")
 def test_deal_worker_no_queues(
-    mock_prometheus, mock_license_logging, mocker, mock_storage, empty_configuration
+    mock_prometheus, mocker, mock_storage, empty_configuration
 ):
     mocker.patch.dict(
         os.environ,
@@ -285,13 +263,11 @@ def test_deal_worker_no_queues(
             "/home/codecov/celerybeat-schedule",
         ]
     )
-    mock_license_logging.assert_called_once()
 
 
-@mock.patch("main.startup_license_logging")
 @mock.patch("main.start_prometheus")
 def test_deal_worker_no_queues_or_beat(
-    mock_prometheus, mock_license_logging, mocker, mock_storage, empty_configuration
+    mock_prometheus, mocker, mock_storage, empty_configuration
 ):
     env = {
         "HOSTNAME": "simpleworker",
@@ -331,13 +307,9 @@ def test_deal_worker_no_queues_or_beat(
             "info",
         ]
     )
-    mock_license_logging.assert_called_once()
 
 
-@mock.patch("main.startup_license_logging")
-@mock.patch("main.start_prometheus")
-def test_main(mock_prometheus, mock_license_logging, mocker):
+def test_main(mocker):
     mock_cli = mocker.patch("main.cli")
     assert main() is None
     mock_cli.assert_called_with(obj={})
-    mock_license_logging.assert_not_called()

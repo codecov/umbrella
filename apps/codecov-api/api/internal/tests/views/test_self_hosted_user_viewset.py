@@ -58,10 +58,7 @@ class UserViewsetAuthenticatedTestCase(UserViewsetTestCase):
             "activated": False,
         }
 
-    @patch("services.self_hosted.license_seats")
-    def test_current_update(self, license_seats):
-        license_seats.return_value = 5
-
+    def test_current_update(self):
         org = OwnerFactory()
         self.current_owner.organizations = [org.pk]
         self.current_owner.save()
@@ -220,11 +217,9 @@ class UserViewsetAdminTestCase(UserViewsetTestCase):
             "activated": False,
         }
 
-    @patch("services.self_hosted.license_seats")
     @patch("services.self_hosted.admin_owners")
-    def test_update_activate(self, admin_owners, license_seats):
+    def test_update_activate(self, admin_owners):
         admin_owners.return_value = Owner.objects.filter(pk__in=[self.current_owner.pk])
-        license_seats.return_value = 5
 
         org = OwnerFactory()
         other_owner = OwnerFactory(organizations=[org.pk])
@@ -245,31 +240,9 @@ class UserViewsetAdminTestCase(UserViewsetTestCase):
         }
         assert is_activated_owner(other_owner) == True
 
-    @patch("services.self_hosted.license_seats")
     @patch("services.self_hosted.admin_owners")
-    def test_update_activate_no_more_seats(self, admin_owners, license_seats):
+    def test_update_deactivate(self, admin_owners):
         admin_owners.return_value = Owner.objects.filter(pk__in=[self.current_owner.pk])
-        license_seats.return_value = 0
-
-        org = OwnerFactory()
-        other_owner = OwnerFactory(organizations=[org.pk])
-
-        res = self.client.patch(
-            reverse("selfhosted-users-detail", kwargs={"pk": other_owner.pk}),
-            data={"activated": True},
-            format="json",
-        )
-        assert res.status_code == 403
-        assert res.json() == {
-            "detail": "No seats remaining. Please contact Codecov support or deactivate users."
-        }
-        assert is_activated_owner(other_owner) == False
-
-    @patch("services.self_hosted.license_seats")
-    @patch("services.self_hosted.admin_owners")
-    def test_update_deactivate(self, admin_owners, license_seats):
-        admin_owners.return_value = Owner.objects.filter(pk__in=[self.current_owner.pk])
-        license_seats.return_value = 5
 
         org = OwnerFactory()
         other_owner = OwnerFactory(organizations=[org.pk])

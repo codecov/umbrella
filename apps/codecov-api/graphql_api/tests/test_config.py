@@ -1,9 +1,6 @@
-from datetime import datetime
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
-
-from shared.license import LicenseInformation
 
 from .helper import GraphQLTestHelper
 
@@ -98,13 +95,12 @@ class TestConfigType(GraphQLTestHelper, TestCase):
         }
 
     @override_settings(IS_ENTERPRISE=True)
-    @patch("services.self_hosted.license_seats")
-    def test_seats_limit_self_hosted(self, license_seats):
-        license_seats.return_value = 123
+    def test_seats_limit_self_hosted(self):
+        """Enterprise deployments have no seat limits."""
         data = self.gql_request("query { config { seatsLimit }}")
         assert data == {
             "config": {
-                "seatsLimit": 123,
+                "seatsLimit": None,
             },
         }
 
@@ -257,39 +253,15 @@ class TestConfigType(GraphQLTestHelper, TestCase):
         }
 
     @override_settings(IS_ENTERPRISE=True)
-    @patch("services.self_hosted.get_current_license")
-    def test_self_hosted_license_returns_null_if_invalid_license(self, license_mock):
-        license_mock.return_value = LicenseInformation(is_valid=False)
+    def test_self_hosted_license_returns_valid_for_enterprise(self):
+        """Enterprise deployments always have a valid license (no enforcement)."""
         data = self.gql_request(
             "query { config { selfHostedLicense { expirationDate } } }"
         )
+        # License is always valid, but expires is None (no expiration)
         assert data == {
             "config": {
-                "selfHostedLicense": None,
-            },
-        }
-
-    @override_settings(IS_ENTERPRISE=True)
-    @patch("services.self_hosted.get_current_license")
-    def test_self_hosted_license_returns_expiration_date_if_valid_license(
-        self, license_mock
-    ):
-        license_mock.return_value = LicenseInformation(
-            is_valid=True,
-            message=None,
-            url=None,
-            number_allowed_users=5,
-            number_allowed_repos=None,
-            expires=datetime.strptime("2020-05-09 00:00:00", "%Y-%m-%d %H:%M:%S"),
-            is_trial=True,
-            is_pr_billing=False,
-        )
-        data = self.gql_request(
-            "query { config { selfHostedLicense { expirationDate } } }"
-        )
-        assert data == {
-            "config": {
-                "selfHostedLicense": {"expirationDate": "2020-05-09T00:00:00"},
+                "selfHostedLicense": {"expirationDate": None},
             },
         }
 

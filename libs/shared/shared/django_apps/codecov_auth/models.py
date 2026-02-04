@@ -6,6 +6,7 @@ from datetime import datetime
 from hashlib import md5
 from typing import Optional, Self
 
+from django.conf import settings
 from django.contrib.postgres.fields import ArrayField, CITextField
 from django.contrib.sessions.models import Session as DjangoSession
 from django.db import models
@@ -16,7 +17,6 @@ from django.forms import ValidationError
 from django.utils import timezone
 from django_prometheus.models import ExportModelOperationsMixin
 from model_utils import FieldTracker
-
 from shared.config import get_config
 from shared.django_apps.codecov.models import BaseCodecovModel, BaseModel
 from shared.django_apps.codecov_auth.constants import (
@@ -657,6 +657,9 @@ class Owner(ExportModelOperationsMixin("codecov_auth.owner"), models.Model):
     def can_activate_user(self, owner_user: Self) -> bool:
         owner_org = self
         if owner_user.student:
+            return True
+        # Enterprise deployments have unlimited seats
+        if settings.IS_ENTERPRISE:
             return True
         if owner_org.has_billing_account:
             return owner_org.account.can_activate_user(owner_user.user)

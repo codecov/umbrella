@@ -129,7 +129,6 @@ config_schema = {
             "webhook_url": {"type": "string"},
             "api_cors_allowed_origins": {"type": "string"},
             "codecov_dashboard_url": {"type": "string"},
-            "enterprise_license": {"type": "string"},
             "hide_all_codecov_tokens": {"type": "boolean"},
             "admins": {
                 "type": "list",

@@ -5,6 +5,7 @@ import sentry_sdk
 from asgiref.sync import async_to_sync
 from django.template import loader
 
+from helpers.environment import is_enterprise
 from services.bundle_analysis.notify.contexts.comment import (
     BundleAnalysisPRCommentNotificationContext,
 )
@@ -14,7 +15,6 @@ from services.bundle_analysis.notify.helpers import (
     is_bundle_change_within_configured_threshold,
 )
 from services.bundle_analysis.notify.messages import MessageStrategyInterface
-from services.license import requires_license
 from services.notification.notifiers.base import NotificationResult
 from services.urls import get_bundle_analysis_pull_url, get_members_url
 from shared.bundle_analysis import (
@@ -157,7 +157,7 @@ class BundleAnalysisCommentMarkdownStrategy(MessageStrategyInterface):
         template = loader.get_template("bundle_analysis_notify/upgrade_comment.md")
         context = UpgradeCommentTemplateContext(
             activation_link=get_members_url(context.pull.database_pull),
-            is_saas=not requires_license(),
+            is_saas=not is_enterprise(),
             author_username=context.pull.provider_pull["author"].get("username"),
         )
         return template.render(context)

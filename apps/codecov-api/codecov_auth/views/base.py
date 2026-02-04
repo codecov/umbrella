@@ -1,7 +1,6 @@
 import logging
 import re
 import uuid
-from functools import reduce
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
@@ -22,7 +21,6 @@ from services.refresh import RefreshService
 from shared.encryption.token import encode_token
 from shared.events.amplitude import AmplitudeEventPublisher
 from shared.helpers.redis import get_redis_connection
-from shared.license import LICENSE_ERRORS_MESSAGES, get_current_license
 from utils.config import get_config
 from utils.encryption import encryptor
 from utils.services import get_long_service_name, get_short_service_name
@@ -273,7 +271,6 @@ class LoginMixin:
         self._check_enterprise_organizations_membership(user_dict, formatted_orgs)
         upserted_orgs = [self.get_or_create_org(org) for org in formatted_orgs]
 
-        self._check_user_count_limitations(user_dict["user"])
         owner, is_new_user = self._get_or_create_owner(user_dict, request)
         fields_to_update = []
         if (
@@ -325,48 +322,6 @@ class LoginMixin:
                     raise PermissionDenied(
                         "You must be a member of an allowed team in your organization."
                     )
-
-    def _check_user_count_limitations(self, login_data: dict) -> None:
-        if not settings.IS_ENTERPRISE:
-            return
-        license = get_current_license()
-        if not license.is_valid:
-            return
-
-        try:
-            user_logging_in_if_exists = Owner.objects.get(
-                service=f"{self.service}", service_id=login_data["id"]
-            )
-        except Owner.DoesNotExist:
-            user_logging_in_if_exists = None
-
-        if license.number_allowed_users:
-            if license.is_pr_billing:
-                # User is consuming seat if found in _any_ owner's plan_activated_users
-                is_consuming_seat = user_logging_in_if_exists and Owner.objects.filter(
-                    plan_activated_users__contains=[user_logging_in_if_exists.ownerid]
-                )
-                if not is_consuming_seat:
-                    owners_with_activated_users = Owner.objects.exclude(
-                        plan_activated_users__len=0
-                    ).exclude(plan_activated_users__isnull=True)
-                    all_distinct_actiaved_users: set[str] = reduce(
-                        lambda acc, curr: set(curr.plan_activated_users) | acc,
-                        owners_with_activated_users,
-                        set(),
-                    )
-                    if len(all_distinct_actiaved_users) > license.number_allowed_users:
-                        raise PermissionDenied(
-                            LICENSE_ERRORS_MESSAGES["users-exceeded"]
-                        )
-            elif not user_logging_in_if_exists or (
-                user_logging_in_if_exists and not user_logging_in_if_exists.oauth_token
-            ):
-                users_on_service_count = Owner.objects.filter(
-                    oauth_token__isnull=False, service=f"{self.service}"
-                ).count()
-                if users_on_service_count > license.number_allowed_users:
-                    raise PermissionDenied(LICENSE_ERRORS_MESSAGES["users-exceeded"])
 
     def _get_or_create_owner(
         self, user_dict: dict, request: HttpRequest

@@ -2,6 +2,7 @@ import uuid
 from unittest.mock import patch
 
 import pytest
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
@@ -21,6 +22,7 @@ from webhook_handlers.constants import (
 )
 
 
+@override_settings(IS_ENTERPRISE=True)
 class TestGitlabEnterpriseWebhookHandler(APITestCase):
     @pytest.fixture(scope="function", autouse=True)
     def inject_mocker(request, mocker):
@@ -31,7 +33,6 @@ class TestGitlabEnterpriseWebhookHandler(APITestCase):
         mock_config_helper(
             mocker,
             configs={
-                "setup.enterprise_license": True,
                 "gitlab_enterprise.webhook_validation": False,
             },
         )
@@ -253,8 +254,8 @@ class TestGitlabEnterpriseWebhookHandler(APITestCase):
 
         pulls_sync_mock.assert_called_once_with(repoid=self.repo.repoid, pullid=pullid)
 
+    @override_settings(IS_ENTERPRISE=False)
     def test_handle_system_hook_not_enterprise(self):
-        mock_config_helper(self.mocker, configs={"setup.enterprise_license": None})
         owner = OwnerFactory(service="gitlab_enterprise", username="jsmith")
 
         response = self._post_event_data(

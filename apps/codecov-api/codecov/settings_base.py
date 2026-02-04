@@ -10,7 +10,6 @@ from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 
 from shared.django_apps.db_settings import *
 from shared.helpers.redis import get_redis_url
-from shared.license import startup_license_logging
 from utils.config import get_config
 
 SECRET_KEY = get_config("django", "secret_key", default="*")
@@ -501,6 +500,3 @@ MIGRATION_MODULES = {
     "timeseries": "shared.django_apps.timeseries.migrations",
     "upload_breadcrumbs": "shared.django_apps.upload_breadcrumbs.migrations",
 }
-
-# to aid in debugging, print out this info on startup. If no license, prints nothing
-startup_license_logging()

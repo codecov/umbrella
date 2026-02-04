@@ -7,9 +7,9 @@ import sentry_sdk
 from asgiref.sync import async_to_sync
 
 from database.enums import Notification
+from helpers.environment import is_enterprise
 from services.comparison import ComparisonProxy
 from services.comparison.types import Comparison
-from services.license import requires_license
 from services.notification.notifiers.base import (
     AbstractBaseNotifier,
     NotificationResult,
@@ -426,7 +426,7 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
         author_username = comparison.enriched_pull.provider_pull["author"].get(
             "username"
         )
-        if not requires_license():
+        if not is_enterprise():
             return [
                 f"The author of this PR, {author_username}, is not an activated member of this organization on Codecov.",
                 f"Please [activate this user on Codecov]({links['members_url_cloud']}) to display this PR comment.",

@@ -26,9 +26,6 @@ class StatusSetErrorTask(BaseCodecovTask, name=status_set_error_task_name):
             extra={"repoid": repoid, "commitid": commitid, "description": message},
         )
 
-        # TODO: need to check for enterprise license once licences are implemented
-        # assert license.LICENSE['valid'], ('Notifications disabled. '+(license.LICENSE['warning'] or ''))
-
         commits = db_session.query(Commit).filter(
             Commit.repoid == repoid, Commit.commitid == commitid
         )

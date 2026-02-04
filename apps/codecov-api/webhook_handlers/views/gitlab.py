@@ -1,5 +1,6 @@
 import logging
 
+from django.conf import settings
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils.crypto import constant_time_compare
@@ -70,7 +71,7 @@ class GitLabWebhookHandler(APIView):
             "event_name", self.request.data.get("object_kind")
         )
 
-        is_enterprise = True if get_config("setup", "enterprise_license") else False
+        is_enterprise = settings.IS_ENTERPRISE
 
         # special case - only event that doesn't have a repo yet
         if event_name == "project_create":

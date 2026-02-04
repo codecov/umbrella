@@ -5,6 +5,7 @@ from graphql.type.definition import GraphQLResolveInfo
 
 import services.self_hosted as self_hosted
 from graphql_api.types.enums.enums import LoginProvider, SyncProvider
+from shared.license import get_current_license
 from utils import strtobool
 
 config_bindable = ObjectType("Config")
@@ -85,10 +86,8 @@ def resolve_seats_used(_, info):
 @config_bindable.field("seatsLimit")
 @sync_to_async
 def resolve_seats_limit(_, info):
-    if not settings.IS_ENTERPRISE:
-        return None
-
-    return self_hosted.license_seats()
+    # Enterprise deployments have no seat limits
+    return None
 
 
 @config_bindable.field("isTimescaleEnabled")
@@ -104,7 +103,7 @@ def resolve_is_timescale_enabled(_, info):
 def resolve_self_hosted_license(_, info):
     if not settings.IS_ENTERPRISE:
         return None
-    license = self_hosted.get_current_license()
+    license = get_current_license()
 
     if not license.is_valid:
         return None

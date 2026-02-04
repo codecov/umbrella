@@ -6,15 +6,7 @@ from django.db import transaction
 from django.db.models import F, Func, Q, QuerySet
 
 from codecov_auth.models import Owner
-from services import ServiceException
-from shared.license import get_current_license
 from utils.config import get_config
-
-
-class LicenseException(ServiceException):
-    def __init__(self, message: str):
-        self.message = message
-        super().__init__(message)
 
 
 def admin_owners() -> QuerySet:
@@ -73,37 +65,18 @@ def is_activated_owner(owner: Owner) -> bool:
     return activated_owners().filter(pk=owner.pk).exists()
 
 
-def license_seats() -> int:
-    """
-    Max number of seats allowed by the current license.
-    """
-    enterprise_license = get_current_license()
-    if not enterprise_license.is_valid:
-        return 0
-    return enterprise_license.number_allowed_users or 0
-
-
 def enterprise_has_seats_left() -> bool:
     """
-    The activated_owner_query is heavy, so check the license first, only proceed if they have a valid license.
+    Returns True - enterprise deployments have unlimited seats.
     """
-    license_seat_count = license_seats()
-    if license_seat_count == 0:
-        return False
-    owners = activated_owners()
-    count = owners.count()
-    return count < license_seat_count
+    return True
 
 
 def can_activate_owner(owner: Owner) -> bool:
     """
-    Returns true if there are available seats left for activation.
+    Returns True - enterprise deployments can always activate users.
     """
-    if is_activated_owner(owner):
-        # user is already activated in at least 1 org
-        return True
-    else:
-        return activated_owners().count() < license_seats()
+    return True
 
 
 @transaction.atomic
@@ -113,11 +86,6 @@ def activate_owner(owner: Owner):
     """
     if not settings.IS_ENTERPRISE:
         raise Exception("activate_owner is only available in self-hosted environments")
-
-    if not can_activate_owner(owner):
-        raise LicenseException(
-            "No seats remaining. Please contact Codecov support or deactivate users."
-        )
 
     Owner.objects.filter(pk__in=owner.organizations).update(
         plan_activated_users=Func(

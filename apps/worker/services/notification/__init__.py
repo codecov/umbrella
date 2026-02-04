@@ -15,7 +15,6 @@ from database.enums import notification_type_status_or_checks
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME, Owner, Repository
 from services.comparison import ComparisonProxy
 from services.decoration import Decoration
-from services.license import is_properly_licensed
 from services.notification.commit_notifications import (
     create_or_update_commit_notification_from_notification_result,
 )
@@ -253,11 +252,6 @@ class NotificationService:
         yield from self._get_component_statuses(current_flags)
 
     def notify(self, comparison: ComparisonProxy) -> list[IndividualResult]:
-        if not is_properly_licensed(comparison.head.commit.get_db_session()):
-            log.warning(
-                "Not sending notifications because the system is not properly licensed"
-            )
-            return []
         log.debug(
             f"Notifying with decoration type {self.decoration_type}",
             extra={

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from database.enums import Decoration
 from database.models import Owner
-from services.license import requires_license
+from helpers.environment import is_enterprise
 from services.repository import EnrichedPull
 from shared.config import get_config
 from shared.plan.service import PlanService
@@ -147,10 +147,7 @@ def determine_decoration_details(
         if monthly_limit is not None:
             uploads_used = determine_uploads_used(plan_service=org_plan)
 
-            if (
-                uploads_used >= org_plan.monthly_uploads_limit
-                and not requires_license()
-            ):
+            if uploads_used >= org_plan.monthly_uploads_limit and not is_enterprise():
                 return DecorationDetails(
                     decoration_type=Decoration.upload_limit,
                     reason="Org has exceeded the upload limit",
