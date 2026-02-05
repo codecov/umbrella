@@ -25,16 +25,16 @@ _test_env.up:
 # Outside the Docker env: Install some runtime dependencies inside the running Docker env.
 # TODO: Remove this step entirely after shared is no longer a package.
 _test_env.prepare:
-	docker-compose -f ci-tests.docker-compose.yml exec repo pip install -e ../../libs/shared
+	docker compose -f ci-tests.docker-compose.yml exec repo pip install -e ../../libs/shared
 
 # Outside the Docker env: Block until Postgres and Timescale are healthy.
 _test_env.check_db:
-	docker-compose -f ci-tests.docker-compose.yml exec repo /bin/sh -c 'while ! nc -vz postgres 5432; do sleep 1; echo "waiting for postgres"; done'
-	docker-compose -f ci-tests.docker-compose.yml exec repo /bin/sh -c 'while ! nc -vz timescale 5432; do sleep 1; echo "waiting for timescale"; done'
+	docker compose -f ci-tests.docker-compose.yml exec repo /bin/sh -c 'while ! nc -vz postgres 5432; do sleep 1; echo "waiting for postgres"; done'
+	docker compose -f ci-tests.docker-compose.yml exec repo /bin/sh -c 'while ! nc -vz timescale 5432; do sleep 1; echo "waiting for timescale"; done'
 
 # Outside the Docker env: Run unit tests.
 _test_env.run_unit:
-	docker-compose exec repo /bin/sh -c \
+	docker compose exec repo /bin/sh -c \
 		"RUN_ENV=TESTING \
 		DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_PARENT}.settings_test \
 		pytest --cov=${COV_SOURCE} \
@@ -47,7 +47,7 @@ _test_env.run_unit:
 
 # Outside the Docker env: Run integration tests.
 _test_env.run_integration:
-	docker-compose exec repo /bin/sh -c \
+	docker compose exec repo /bin/sh -c \
 		"RUN_ENV=TESTING \
 		DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_PARENT}.settings_test \
 		pytest --cov=${COV_SOURCE} \
