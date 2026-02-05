@@ -21,13 +21,9 @@ def before_send_transaction(transaction, hint):
 
     Returns None to drop the transaction, or the transaction object to send it.
     """
-    # Filter out UploadBreadcrumb tasks (can appear with or without task prefix)
-    if transaction.name in ("UploadBreadcrumb", "app.tasks.upload.UploadBreadcrumb"):
-        return None  # Drop the transaction
-
-    # Can add more filters here as needed
-    # if "health_check" in transaction.name.lower():
-    #     return None
+    transaction_name = transaction.get("transaction", "")
+    if transaction_name in ("UploadBreadcrumb", "app.tasks.upload.UploadBreadcrumb"):
+        return None
 
     return transaction
 

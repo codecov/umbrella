@@ -30,28 +30,58 @@ class TestSentry:
 
     def test_before_send_transaction_filters_upload_breadcrumb(self, mocker):
         """Test that UploadBreadcrumb transactions are filtered out"""
-        # Create mock transaction with UploadBreadcrumb name
-        mock_transaction = mocker.Mock()
-        mock_transaction.name = "UploadBreadcrumb"
+        # Create transaction dict with UploadBreadcrumb name
+        transaction = {"transaction": "UploadBreadcrumb"}
 
-        result = before_send_transaction(mock_transaction, None)
+        result = before_send_transaction(transaction, None)
 
         assert result is None  # Transaction should be dropped
 
     def test_before_send_transaction_filters_upload_breadcrumb_full_path(self, mocker):
         """Test that fully qualified UploadBreadcrumb task names are filtered"""
-        mock_transaction = mocker.Mock()
-        mock_transaction.name = "app.tasks.upload.UploadBreadcrumb"
+        transaction = {"transaction": "app.tasks.upload.UploadBreadcrumb"}
 
-        result = before_send_transaction(mock_transaction, None)
+        result = before_send_transaction(transaction, None)
 
         assert result is None  # Transaction should be dropped
 
     def test_before_send_transaction_allows_other_tasks(self, mocker):
         """Test that non-filtered transactions are allowed through"""
-        mock_transaction = mocker.Mock()
-        mock_transaction.name = "app.tasks.upload.Upload"
+        transaction = {"transaction": "app.tasks.upload.Upload"}
 
-        result = before_send_transaction(mock_transaction, None)
+        result = before_send_transaction(transaction, None)
 
-        assert result is mock_transaction  # Transaction should pass through
+        assert result is transaction  # Transaction should pass through
+
+    def test_before_send_transaction_handles_missing_transaction_key(self, mocker):
+        """Regression test: ensure missing 'transaction' key doesn't crash
+
+        This tests the fix for the Nov 10, 2025 bug where we used transaction.name
+        instead of transaction.get("transaction"), which would crash on any transaction.
+        """
+        # Transaction dict without 'transaction' key (edge case)
+        transaction = {"type": "transaction", "contexts": {}}
+
+        # Should not crash and should return the transaction unmodified
+        result = before_send_transaction(transaction, None)
+
+        assert result is transaction  # Should pass through without crashing
+
+    def test_before_send_transaction_handles_none_transaction_value(self, mocker):
+        """Regression test: ensure None transaction name doesn't crash"""
+        transaction = {"transaction": None}
+
+        # Should not crash
+        result = before_send_transaction(transaction, None)
+
+        assert result is transaction  # Should pass through
+
+    def test_before_send_transaction_returns_same_object(self, mocker):
+        """Regression test: verify we return the exact same object, not a copy"""
+        transaction = {"transaction": "app.tasks.notify.Notify", "spans": []}
+
+        result = before_send_transaction(transaction, None)
+
+        # Should be the exact same object (identity check, not just equality)
+        assert result is transaction
+        assert id(result) == id(transaction)
