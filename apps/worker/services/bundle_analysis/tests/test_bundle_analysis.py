@@ -1,5 +1,4 @@
 import os
-import tempfile
 from textwrap import dedent
 from unittest.mock import PropertyMock
 
