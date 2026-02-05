@@ -2209,6 +2209,10 @@ def test_bundle_analysis_processor_passes_pre_downloaded_path(
     assert pre_download_logged, "Expected log message about using pre-downloaded file"
 
 
+# Simulated GCS download latency (seconds) for benchmark - real downloads are 100ms-2s
+SIMULATED_DOWNLOAD_SECONDS = 0.05
+
+
 @pytest.mark.django_db(databases={"default", "timeseries"})
 def test_pre_download_reduces_lock_hold_time(
     mocker,
@@ -2217,14 +2221,14 @@ def test_pre_download_reduces_lock_hold_time(
 ):
     """
     Benchmark test: Verify that pre-downloading reduces time spent holding the lock.
-    
-    This test measures the lock hold duration with and without pre-download to validate
-    the claimed 30-50% reduction in lock contention.
+
+    Simulates slow storage read (GCS latency). With pre-download, the delay happens
+    before the lock; without, it happens inside the lock. Validates that lock hold
+    time is reduced by the simulated download time.
     """
     import time
 
     storage_path = "v1/uploads/benchmark_bundle.json"
-    # Create a realistic bundle file (5KB simulates typical bundle stats)
     bundle_data = b'{"bundleName": "benchmark"}' + b'{"asset":"data"}' * 200
     mock_storage.write_file(get_bucket_name(), storage_path, bundle_data)
 
@@ -2248,34 +2252,50 @@ def test_pre_download_reduces_lock_hold_time(
     dbsession.add(upload)
     dbsession.flush()
 
-    ingest_mock = mocker.patch("shared.bundle_analysis.BundleAnalysisReport.ingest")
-    ingest_mock.return_value = (123, "benchmark")
+    mocker.patch("shared.bundle_analysis.BundleAnalysisReport.ingest").return_value = (
+        123,
+        "benchmark",
+    )
 
-    # Measure lock hold time by tracking when lock.__enter__ and __exit__ are called
     lock_times = {"with_predownload": None, "without_predownload": None}
+    original_read = mock_storage.read_file
 
-    def measure_lock_time(scenario):
-        """Helper to measure time between lock acquisition and release"""
+    def slow_read(bucket, path, file_obj=None):
+        time.sleep(SIMULATED_DOWNLOAD_SECONDS)
+        return original_read(bucket, path, file_obj)
+
+    def measure_lock_time(force_predownload_fail=False):
         times = []
-        original_enter = None
-        original_exit = None
 
-        def timed_enter(self):
+        def timed_enter(*args, **kwargs):
             times.append(("enter", time.perf_counter()))
-            return original_enter()
+            return mock_lock
 
-        def timed_exit(self, *args):
+        def timed_exit(*args, **kwargs):
             times.append(("exit", time.perf_counter()))
-            return original_exit(*args)
+            return False
 
         mock_lock = mocker.MagicMock()
-        original_enter = mock_lock.__enter__
-        original_exit = mock_lock.__exit__
         mock_lock.__enter__ = timed_enter
         mock_lock.__exit__ = timed_exit
 
-        mock_redis = mocker.patch("services.lock_manager.get_redis_connection")
-        mock_redis.return_value.lock.return_value = mock_lock
+        mocker.patch("services.lock_manager.get_redis_connection").return_value.lock.return_value = mock_lock
+
+        if force_predownload_fail:
+            call_count = [0]
+
+            def fail_then_slow_read(bucket, path, file_obj=None):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    from shared.storage.exceptions import FileNotInStorageError
+
+                    raise FileNotInStorageError("Simulated: pre-download fails")
+                time.sleep(SIMULATED_DOWNLOAD_SECONDS)
+                return original_read(bucket, path, file_obj)
+
+            mock_storage.read_file = fail_then_slow_read
+        else:
+            mock_storage.read_file = slow_read
 
         BundleAnalysisProcessorTask().run_impl(
             dbsession,
@@ -2286,53 +2306,35 @@ def test_pre_download_reduces_lock_hold_time(
             params={"upload_id": upload.id_, "commit": commit.commitid},
         )
 
-        # Calculate lock hold duration
         if len(times) >= 2:
             enter_time = next(t for event, t in times if event == "enter")
             exit_time = next(t for event, t in times if event == "exit")
             return exit_time - enter_time
         return None
 
-    # Test 1: WITH pre-download (current implementation)
-    lock_times["with_predownload"] = measure_lock_time("with")
+    lock_times["with_predownload"] = measure_lock_time(force_predownload_fail=False)
+    lock_times["without_predownload"] = measure_lock_time(force_predownload_fail=True)
 
-    # Test 2: WITHOUT pre-download (simulate by removing file from storage before task)
-    # Force the pre-download to fail, causing fallback to download-in-lock
-    original_read = mock_storage.read_file
-
-    def fail_first_read(*args, **kwargs):
-        # Fail the first read (pre-download), succeed on second (in-lock)
-        mock_storage.read_file = original_read
-        from shared.storage.exceptions import FileNotInStorageError
-
-        raise FileNotInStorageError("Simulated failure for benchmark")
-
-    mock_storage.read_file = fail_first_read
-    lock_times["without_predownload"] = measure_lock_time("without")
-
-    # Verify we got timing data
     assert lock_times["with_predownload"] is not None
     assert lock_times["without_predownload"] is not None
 
-    # Calculate improvement
     with_time = lock_times["with_predownload"]
     without_time = lock_times["without_predownload"]
     reduction_pct = ((without_time - with_time) / without_time) * 100
 
     print(f"\n{'='*60}")
     print(f"Bundle Analysis Lock Hold Time Benchmark")
+    print(f"(Simulated download latency: {SIMULATED_DOWNLOAD_SECONDS*1000:.0f}ms)")
     print(f"{'='*60}")
-    print(f"WITH pre-download:    {with_time*1000:.2f}ms")
-    print(f"WITHOUT pre-download: {without_time*1000:.2f}ms")
+    print(f"WITH pre-download:    {with_time*1000:.2f}ms  (download happened before lock)")
+    print(f"WITHOUT pre-download: {without_time*1000:.2f}ms  (download inside lock)")
     print(f"Time saved:           {(without_time - with_time)*1000:.2f}ms")
     print(f"Reduction:            {reduction_pct:.1f}%")
     print(f"{'='*60}\n")
 
-    # Assert that pre-download provides measurable benefit
-    # We expect 20-50% reduction, but allow for test variance
-    assert (
-        with_time < without_time
-    ), f"Pre-download should be faster: {with_time:.4f}s vs {without_time:.4f}s"
-    assert (
-        reduction_pct > 10
-    ), f"Expected >10% reduction in lock time, got {reduction_pct:.1f}%"
+    assert with_time < without_time, (
+        f"Pre-download should reduce lock time: {with_time*1000:.2f}ms vs {without_time*1000:.2f}ms"
+    )
+    assert reduction_pct > 10, (
+        f"Expected >10% reduction (simulated download moved outside lock), got {reduction_pct:.1f}%"
+    )
