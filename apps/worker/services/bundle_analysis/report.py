@@ -4,7 +4,6 @@ import tempfile
 from dataclasses import dataclass
 from typing import Any
 
-import ijson
 import sentry_sdk
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
@@ -28,36 +27,6 @@ from shared.storage.exceptions import FileNotInStorageError, PutRequestRateLimit
 from shared.utils.sessions import SessionType
 
 log = logging.getLogger(__name__)
-
-
-def extract_bundle_name_from_file(file_path: str) -> str | None:
-    """
-    Extract the bundle name from a bundle stats JSON file using streaming parser.
-    Returns None if the bundle name cannot be extracted.
-
-    This is used to determine the lock key before processing, allowing different
-    bundles for the same commit to be processed in parallel.
-    """
-    MAX_EVENTS = 100  # Stop after this many events to avoid parsing large files
-    try:
-        with open(file_path, "rb") as f:
-            for event_count, (prefix, event, value) in enumerate(ijson.parse(f)):
-                if prefix == "bundleName":
-                    return value
-                # Stop after reading the first ~100 events to avoid parsing the whole file
-                # bundleName should appear early in the file structure
-                if event_count >= MAX_EVENTS:
-                    log.debug(
-                        "Bundle name not found within first events, stopping early",
-                        extra={"file_path": file_path, "events_parsed": event_count},
-                    )
-                    return None
-    except Exception as e:
-        log.warning(
-            "Failed to extract bundle name from file",
-            extra={"file_path": file_path, "error": str(e)},
-        )
-    return None
 
 
 BUNDLE_ANALYSIS_REPORT_PROCESSOR_COUNTER = Counter(
@@ -283,7 +252,6 @@ class BundleAnalysisReportService(BaseReportService):
                 commit, bundle_loader
             )
 
-        # Use pre-downloaded file if available, otherwise download to tempfile
         if pre_downloaded_path and os.path.exists(pre_downloaded_path):
             local_path = pre_downloaded_path
             should_cleanup_local = False
@@ -302,17 +270,14 @@ class BundleAnalysisReportService(BaseReportService):
         try:
             session_id, prev_bar, bundle_name = None, None, None
             if upload.storage_path != "":
-                # Only download if we don't have a pre-downloaded file
                 if should_cleanup_local:
                     with open(local_path, "wb") as f:
                         storage_service.read_file(
                             get_bucket_name(), upload.storage_path, file_obj=f
                         )
 
-                # load the downloaded data into the bundle report
                 session_id, bundle_name = bundle_report.ingest(local_path, compare_sha)
 
-                # Retrieve previous commit's BAR and associate past Assets
                 prev_bar = self._previous_bundle_analysis_report(
                     bundle_loader, commit, head_bundle_report=bundle_report
                 )
@@ -390,7 +355,6 @@ class BundleAnalysisReportService(BaseReportService):
                 ),
             )
         finally:
-            # Only clean up if we created the tempfile (not if pre-downloaded)
             if should_cleanup_local and os.path.exists(local_path):
                 os.remove(local_path)
 

@@ -80,7 +80,6 @@ class LockManager:
         lock_timeout=DEFAULT_LOCK_TIMEOUT_SECONDS,
         blocking_timeout: int | None = DEFAULT_BLOCKING_TIMEOUT_SECONDS,
         redis_connection: Redis | None = None,
-        lock_key_suffix: str | None = None,
     ):
         self.repoid = repoid
         self.commitid = commitid
@@ -88,20 +87,14 @@ class LockManager:
         self.lock_timeout = lock_timeout
         self.blocking_timeout = blocking_timeout
         self.redis_connection = redis_connection or get_redis_connection()
-        self.lock_key_suffix = lock_key_suffix
 
     def lock_name(self, lock_type: LockType):
         if self.report_type == ReportType.COVERAGE:
-            base_name = (
+            return (
                 f"{lock_type.value}{LOCK_NAME_SEPARATOR}{self.repoid}_{self.commitid}"
             )
         else:
-            base_name = f"{lock_type.value}{LOCK_NAME_SEPARATOR}{self.repoid}_{self.commitid}_{self.report_type.value}"
-
-        # Append optional suffix for more granular locking (e.g., bundle name)
-        if self.lock_key_suffix:
-            return f"{base_name}_{self.lock_key_suffix}"
-        return base_name
+            return f"{lock_type.value}{LOCK_NAME_SEPARATOR}{self.repoid}_{self.commitid}_{self.report_type.value}"
 
     @contextmanager
     def locked(
