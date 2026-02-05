@@ -58,6 +58,7 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
             # File is automatically cleaned up here
     """
     local_path = None
+    temp_file_path = None
     should_cleanup = False
 
     try:
@@ -77,7 +78,7 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
         storage_service = archive_service.storage
 
         # Download the upload file to a temporary location
-        fd, local_path = tempfile.mkstemp()
+        fd, temp_file_path = tempfile.mkstemp()
         should_cleanup = True
 
         # Close the file descriptor immediately since we only need the path
@@ -85,10 +86,13 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
         os.close(fd)
 
         try:
-            with open(local_path, "wb") as f:
+            with open(temp_file_path, "wb") as f:
                 storage_service.read_file(
                     get_bucket_name(), upload.storage_path, file_obj=f
                 )
+
+            # Only set local_path on successful download
+            local_path = temp_file_path
 
             log.info(
                 "Pre-downloaded upload file before lock acquisition",
@@ -105,31 +109,31 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
                 "Upload file not yet available in storage for pre-download",
                 extra={"repoid": repoid, "upload_id": upload_id},
             )
-            local_path = None
+            # local_path remains None to signal failure, but temp_file_path has the path for cleanup
 
         except Exception as e:
             log.warning(
                 "Failed to pre-download upload file",
                 extra={"repoid": repoid, "upload_id": upload_id, "error": str(e)},
             )
-            local_path = None
+            # local_path remains None to signal failure, but temp_file_path has the path for cleanup
 
         # Yield outside the nested try block to properly handle exceptions from caller
         yield local_path
 
     finally:
-        # Ensure temporary file is always cleaned up
-        if should_cleanup and local_path and os.path.exists(local_path):
+        # Ensure temporary file is always cleaned up using temp_file_path
+        if should_cleanup and temp_file_path and os.path.exists(temp_file_path):
             try:
-                os.remove(local_path)
+                os.remove(temp_file_path)
                 log.debug(
                     "Cleaned up temporary upload file",
-                    extra={"local_path": local_path},
+                    extra={"local_path": temp_file_path},
                 )
             except OSError as e:
                 log.warning(
                     "Failed to clean up temporary file",
-                    extra={"local_path": local_path, "error": str(e)},
+                    extra={"local_path": temp_file_path, "error": str(e)},
                 )
 
 
