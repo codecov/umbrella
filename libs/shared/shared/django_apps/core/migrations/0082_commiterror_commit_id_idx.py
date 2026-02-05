@@ -6,6 +6,7 @@ class Migration(migrations.Migration):
     BEGIN;
     CREATE INDEX "commiterror_commit_id_idx" ON "core_commiterror" ("commit_id", "id");
     COMMIT;
+
     """
 
     dependencies = [
