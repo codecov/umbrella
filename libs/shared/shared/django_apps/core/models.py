@@ -523,3 +523,6 @@ class CommitError(ExportModelOperationsMixin("core.commit_error"), BaseCodecovMo
 
     class Meta:
         app_label = CORE_APP_LABEL
+        indexes = [
+            models.Index(fields=["commit_id", "id"], name="commiterror_commit_id_idx"),
+        ]
