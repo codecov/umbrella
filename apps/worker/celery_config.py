@@ -3,7 +3,6 @@ import gc
 import logging
 from datetime import timedelta
 
-import sentry_sdk
 from celery import signals
 from celery.beat import BeatLazyFunc
 from celery.schedules import crontab
@@ -50,47 +49,6 @@ def initialize_cache(**kwargs):
     log.info("Initialized cache")
     redis_cache_backend = RedisBackend(get_redis_connection())
     cache.configure(redis_cache_backend)
-
-
-@signals.worker_shutting_down.connect
-def flush_sentry_on_shutdown(**kwargs):
-    """Flush pending Sentry events before worker shutdown.
-
-    This ensures crash data is sent before the process terminates, which is
-    especially important for graceful shutdowns (SIGTERM before SIGKILL).
-    """
-    client = sentry_sdk.get_client()
-    if client.is_active():
-        client.flush(timeout=10)
-
-
-def _safe_str(obj, max_len=500):
-    """Safely convert object to string, handling broken __str__ methods."""
-    try:
-        return str(obj)[:max_len]
-    except Exception:
-        return "<unserializable>"
-
-
-@signals.task_prerun.connect
-def set_sentry_task_context(task_id, task, args, kwargs, **kw):
-    """Set Sentry context at the start of each task execution.
-
-    This adds task args/kwargs to Sentry events for debugging, and ensures
-    context is set BEFORE any exceptions occur so CeleryIntegration captures
-    it. Note that task_name and task_id tags are already set by
-    LogContext.add_to_sentry().
-    """
-    sentry_sdk.set_context(
-        "celery_task",
-        {
-            "task_name": task.name,
-            "task_id": task_id,
-            "args": _safe_str(args) if args else None,
-            "kwargs": _safe_str(kwargs) if kwargs else None,
-            "retries": getattr(task.request, "retries", 0),
-        },
-    )
 
 
 # Cron task names
