@@ -78,31 +78,6 @@ class TestLockManager:
         name = manager.lock_name(LockType.UPLOAD)
         assert name == "upload_lock_123_abc123_test_results"
 
-    def test_lock_name_with_suffix(self):
-        """Test lock name generation with lock_key_suffix for per-bundle locking"""
-        manager = LockManager(
-            repoid=123,
-            commitid="abc123",
-            report_type=ReportType.BUNDLE_ANALYSIS,
-            lock_key_suffix="my-bundle-name",
-        )
-        name = manager.lock_name(LockType.BUNDLE_ANALYSIS_PROCESSING)
-        assert (
-            name
-            == "bundle_analysis_processing_lock_123_abc123_bundle_analysis_my-bundle-name"
-        )
-
-    def test_lock_name_with_suffix_none(self):
-        """Test that lock_key_suffix=None doesn't add suffix"""
-        manager = LockManager(
-            repoid=123,
-            commitid="abc123",
-            report_type=ReportType.BUNDLE_ANALYSIS,
-            lock_key_suffix=None,
-        )
-        name = manager.lock_name(LockType.BUNDLE_ANALYSIS_PROCESSING)
-        assert name == "bundle_analysis_processing_lock_123_abc123_bundle_analysis"
-
     def test_locked_success(self, mock_redis):
         """Test successful lock acquisition"""
         mock_lock = MagicMock()

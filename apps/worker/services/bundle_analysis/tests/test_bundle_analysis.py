@@ -17,7 +17,6 @@ from services.bundle_analysis.notify.types import NotificationType
 from services.bundle_analysis.report import (
     BundleAnalysisReportService,
     ProcessingResult,
-    extract_bundle_name_from_file,
 )
 from services.repository import EnrichedPull
 from services.urls import get_bundle_analysis_pull_url
@@ -47,80 +46,6 @@ SAMPLE_DIR = os.path.join(
     "tests",
     "samples",
 )
-
-
-class TestExtractBundleName:
-    """Tests for the extract_bundle_name_from_file helper function"""
-
-    def test_extract_bundle_name_success(self):
-        """Test extracting bundle name from a valid bundle stats file"""
-        sample_path = os.path.join(SAMPLE_DIR, "sample_bundle_stats.json")
-        bundle_name = extract_bundle_name_from_file(sample_path)
-        assert bundle_name == "sample"
-
-    def test_extract_bundle_name_v1_format(self):
-        """Test extracting bundle name from v1 format file"""
-        sample_path = os.path.join(SAMPLE_DIR, "sample_bundle_stats_v1.json")
-        bundle_name = extract_bundle_name_from_file(sample_path)
-        assert bundle_name == "sample"
-
-    def test_extract_bundle_name_another_bundle(self):
-        """Test extracting different bundle name"""
-        sample_path = os.path.join(
-            SAMPLE_DIR, "sample_bundle_stats_another_bundle.json"
-        )
-        bundle_name = extract_bundle_name_from_file(sample_path)
-        assert bundle_name == "sample2"
-
-    def test_extract_bundle_name_file_not_found(self):
-        """Test that missing file returns None"""
-        bundle_name = extract_bundle_name_from_file("/nonexistent/path/file.json")
-        assert bundle_name is None
-
-    def test_extract_bundle_name_invalid_json(self):
-        """Test that invalid JSON returns None"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            f.write("not valid json {{{")
-            temp_path = f.name
-        try:
-            bundle_name = extract_bundle_name_from_file(temp_path)
-            assert bundle_name is None
-        finally:
-            os.unlink(temp_path)
-
-    def test_extract_bundle_name_no_bundle_name_field(self):
-        """Test that file without bundleName returns None"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            f.write('{"version": "2", "assets": []}')
-            temp_path = f.name
-        try:
-            bundle_name = extract_bundle_name_from_file(temp_path)
-            assert bundle_name is None
-        finally:
-            os.unlink(temp_path)
-
-    def test_extract_bundle_name_early_termination(self):
-        """Test that extraction stops after MAX_EVENTS to avoid parsing large files"""
-        # Create a large JSON file with bundleName appearing after many events
-        # This tests the early termination logic
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            # Write a JSON with many array elements before bundleName
-            # Each array element generates multiple events in ijson
-            f.write('{"assets": [')
-            for i in range(50):  # 50 objects with multiple fields = many events
-                if i > 0:
-                    f.write(",")
-                f.write(f'{{"id": {i}, "name": "asset{i}", "size": {i * 100}}}')
-            f.write('], "bundleName": "late-bundle"}')
-            temp_path = f.name
-        try:
-            # bundleName appears after many events, so early termination should return None
-            bundle_name = extract_bundle_name_from_file(temp_path)
-            # The function should return None because it stops after ~100 events
-            # and bundleName appears much later in the file
-            assert bundle_name is None
-        finally:
-            os.unlink(temp_path)
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
