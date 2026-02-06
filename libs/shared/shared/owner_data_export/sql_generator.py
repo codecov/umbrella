@@ -15,7 +15,7 @@ from decimal import Decimal
 from typing import Any, TextIO
 from uuid import UUID
 
-from django.db.models import Model, QuerySet
+from django.db.models import Model, Q, QuerySet
 from django.utils import timezone
 
 from .config import BATCH_SIZE, EXPORT_DAYS_DEFAULT
@@ -182,30 +182,42 @@ class ExportContext:
         if model_path == "core.Repository":
             return model.objects.filter(author_id=self.owner_id)
 
-        if model_path in ("core.Branch", "core.Pull", "reports.RepositoryFlag"):
+        if model_path in ("core.Branch", "core.Pull"):
             return model.objects.filter(repository_id__in=self._repository_subquery())
+
+        if model_path == "reports.RepositoryFlag":
+            return model.objects.filter(
+                repository_id__in=self._repository_subquery()
+            ).order_by("repository_id", "id")
 
         if model_path == "core.Commit":
             return model.objects.filter(id__in=self._commit_subquery())
 
-        if model_path in ("core.CommitError", "reports.CommitReport"):
+        if model_path == "core.CommitError":
             return model.objects.filter(commit_id__in=self._commit_subquery())
 
-        if model_path in (
-            "reports.ReportResults",
-            "reports.ReportLevelTotals",
-            "reports.ReportSession",
-        ):
+        if model_path == "reports.CommitReport":
+            return model.objects.filter(commit_id__in=self._commit_subquery()).order_by(
+                "commit_id", "id"
+            )
+
+        if model_path in ("reports.ReportResults", "reports.ReportLevelTotals"):
             return model.objects.filter(report_id__in=self._get_commit_report_ids())
 
-        if model_path in (
-            "reports.UploadError",
-            "reports.UploadLevelTotals",
-            "reports.UploadFlagMembership",
-        ):
+        if model_path == "reports.ReportSession":
+            return model.objects.filter(
+                report_id__in=self._get_commit_report_ids()
+            ).order_by("report_id", "id")
+
+        if model_path == "reports.UploadLevelTotals":
             return model.objects.filter(
                 report_session_id__in=self._get_report_session_ids()
-            )
+            ).order_by("report_session_id", "id")
+
+        if model_path in ("reports.UploadError", "reports.UploadFlagMembership"):
+            return model.objects.filter(
+                report_session_id__in=self._get_report_session_ids()
+            ).order_by("report_session_id", "id")
 
         if model_path == "timeseries.Dataset":
             # Must use explicit list of IDs because Dataset is in
@@ -365,15 +377,29 @@ def get_conflict_columns(model_path: str, model) -> list[str]:
 
 def _paginate_queryset(queryset: QuerySet, batch_size: int) -> Generator[list]:
     """
-    This approach uses explicit pagination with fresh queries per batch
+    Keyset pagination with fresh queries per batch.
+    Respects existing ordering on the queryset if present, otherwise orders by PK.
     """
-    pk_field = queryset.model._meta.pk.attname
-    ordered_qs = queryset.order_by(pk_field)
+    if queryset.query.order_by:
+        order_fields = list(queryset.query.order_by)
+        ordered_qs = queryset
+    else:
+        pk_field = queryset.model._meta.pk.attname
+        order_fields = [pk_field]
+        ordered_qs = queryset.order_by(pk_field)
 
-    last_pk = None
+    last_values: dict[str, Any] | None = None
     while True:
-        if last_pk is not None:
-            page_qs = ordered_qs.filter(**{f"{pk_field}__gt": last_pk})
+        if last_values is not None:
+            if len(order_fields) == 2:
+                f1, f2 = order_fields
+                page_qs = ordered_qs.filter(
+                    Q(**{f"{f1}__gt": last_values[f1]})
+                    | Q(**{f1: last_values[f1], f"{f2}__gt": last_values[f2]})
+                )
+            else:
+                f = order_fields[0]
+                page_qs = ordered_qs.filter(**{f"{f}__gt": last_values[f]})
         else:
             page_qs = ordered_qs
 
@@ -383,7 +409,7 @@ def _paginate_queryset(queryset: QuerySet, batch_size: int) -> Generator[list]:
             break
 
         yield batch
-        last_pk = getattr(batch[-1], pk_field)
+        last_values = {f: getattr(batch[-1], f) for f in order_fields}
 
 
 def generate_upsert_sql(
