@@ -1,7 +1,6 @@
 import logging
 import os
 import tempfile
-from contextlib import contextmanager
 from typing import Any, cast
 
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
@@ -32,8 +31,7 @@ from tasks.bundle_analysis_save_measurements import (
 log = logging.getLogger(__name__)
 
 
-@contextmanager
-def temporary_upload_file(db_session, repoid: int, upload_params: UploadArguments):
+class BundleUploadFile:
     """
     Context manager that pre-downloads a bundle upload file to a temporary location.
 
@@ -41,91 +39,112 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
     lock, reducing lock contention by 30-50% per bundle. The temporary file is
     automatically cleaned up when exiting the context, regardless of success or failure.
 
-    Args:
-        db_session: Database session for querying upload records
-        repoid: Repository ID for logging
-        upload_params: Upload parameters containing the upload_id
-
-    Yields:
-        str | None: Path to the downloaded temporary file, or None if download failed
-                   or upload_id is not available
-
     Example:
-        with temporary_upload_file(db_session, repoid, params) as local_path:
+        with BundleUploadFile(db_session, repoid, params) as local_path:
             if local_path:
-                # Process the pre-downloaded file
                 process_upload(commit, upload, pre_downloaded_path=local_path)
-            # File is automatically cleaned up here
     """
-    local_path = None
-    temp_file_path = None
-    should_cleanup = False
 
-    try:
-        upload_id = upload_params.get("upload_id")
+    def __init__(self, db_session, repoid: int, upload_params: UploadArguments):
+        """
+        Initialize the context manager with upload details.
+
+        Args:
+            db_session: Database session for querying upload records
+            repoid: Repository ID for logging
+            upload_params: Upload parameters containing the upload_id
+        """
+        self.db_session = db_session
+        self.repoid = repoid
+        self.upload_params = upload_params
+        self.temp_file_path: str | None = None
+        self.local_path: str | None = None
+        self.should_cleanup = False
+
+    def __enter__(self) -> str | None:
+        """
+        Download the upload file to a temporary location.
+
+        Returns:
+            str | None: Path to downloaded file, or None if download failed/not available
+        """
+        upload_id = self.upload_params.get("upload_id")
         if upload_id is None:
-            yield None
-            return
+            return None
 
-        upload = db_session.query(Upload).filter_by(id_=upload_id).first()
+        upload = self.db_session.query(Upload).filter_by(id_=upload_id).first()
         if upload is None or not upload.storage_path:
-            yield None
-            return
+            return None
 
+        self._download_upload_file(upload, upload_id)
+        return self.local_path
+
+    def _download_upload_file(self, upload: Upload, upload_id: int) -> None:
+        """Helper method to download the upload file from GCS."""
         commit = upload.report.commit
         archive_service = ArchiveService(commit.repository)
         storage_service = archive_service.storage
 
-        fd, temp_file_path = tempfile.mkstemp()
-        should_cleanup = True
+        fd, self.temp_file_path = tempfile.mkstemp()
+        self.should_cleanup = True
 
         # Prevents file descriptor leaks - mkstemp() returns an open FD we don't use
         os.close(fd)
 
         try:
-            with open(temp_file_path, "wb") as f:
+            with open(self.temp_file_path, "wb") as f:
                 storage_service.read_file(
                     get_bucket_name(), upload.storage_path, file_obj=f
                 )
 
-            local_path = temp_file_path
+            self.local_path = self.temp_file_path
 
             log.info(
                 "Pre-downloaded upload file before lock acquisition",
                 extra={
-                    "repoid": repoid,
+                    "repoid": self.repoid,
                     "upload_id": upload_id,
-                    "local_path": local_path,
+                    "local_path": self.local_path,
                 },
             )
 
         except FileNotInStorageError:
             log.info(
                 "Upload file not yet available in storage for pre-download",
-                extra={"repoid": repoid, "upload_id": upload_id},
+                extra={"repoid": self.repoid, "upload_id": upload_id},
             )
 
         except Exception as e:
             log.warning(
                 "Failed to pre-download upload file",
-                extra={"repoid": repoid, "upload_id": upload_id, "error": str(e)},
+                extra={"repoid": self.repoid, "upload_id": upload_id, "error": str(e)},
             )
 
-        yield local_path
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """
+        Clean up the temporary file.
 
-    finally:
-        if should_cleanup and temp_file_path and os.path.exists(temp_file_path):
+        Args:
+            exc_type: Exception type if an exception was raised
+            exc_val: Exception value if an exception was raised
+            exc_tb: Exception traceback if an exception was raised
+
+        Returns:
+            bool: False to not suppress exceptions
+        """
+        if self.should_cleanup and self.temp_file_path and os.path.exists(self.temp_file_path):
             try:
-                os.remove(temp_file_path)
+                os.remove(self.temp_file_path)
                 log.debug(
                     "Cleaned up temporary upload file",
-                    extra={"local_path": temp_file_path},
+                    extra={"local_path": self.temp_file_path},
                 )
             except OSError as e:
                 log.warning(
                     "Failed to clean up temporary file",
-                    extra={"local_path": temp_file_path, "error": str(e)},
+                    extra={"local_path": self.temp_file_path, "error": str(e)},
                 )
+        return False  # Don't suppress exceptions
 
 
 class BundleAnalysisProcessorTask(
@@ -160,7 +179,7 @@ class BundleAnalysisProcessorTask(
 
         # Optimization: Download outside lock to reduce contention by ~30-50%.
         # Per-commit locking still required - shared SQLite report file needs serialized access.
-        with temporary_upload_file(db_session, repoid, params) as pre_downloaded_path:
+        with BundleUploadFile(db_session, repoid, params) as pre_downloaded_path:
             lock_manager = LockManager(
                 repoid=repoid,
                 commitid=commitid,
@@ -242,6 +261,18 @@ class BundleAnalysisProcessorTask(
         upload_id, carriedforward = params.get("upload_id"), False
         if upload_id is not None:
             upload = db_session.query(Upload).filter_by(id_=upload_id).first()
+            # Ensure upload belongs to this task's commit (prevents cross-tenant use if task args are forged)
+            if upload is not None and upload.report.commit_id != commit.id:
+                log.warning(
+                    "Upload does not belong to task commit, rejecting",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "upload_id": upload_id,
+                        "upload_commit_id": upload.report.commit_id,
+                    },
+                )
+                return processing_results
         else:
             # This processor task handles caching for reports. When the 'upload' parameter is missing,
             # it indicates this task was triggered by a non-BA upload.
