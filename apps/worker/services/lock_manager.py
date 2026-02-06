@@ -15,6 +15,7 @@ from shared.celery_config import (
     DEFAULT_BLOCKING_TIMEOUT_SECONDS,
     DEFAULT_LOCK_TIMEOUT_SECONDS,
 )
+from shared.config import get_config
 from shared.helpers.redis import get_redis_connection  # type: ignore
 
 log = logging.getLogger(__name__)
@@ -28,12 +29,6 @@ LOCK_ATTEMPTS_KEY_PREFIX = "lock_attempts:"
 LOCK_ATTEMPTS_TTL_SECONDS = (
     86400  # TTL for attempt counter key so it expires after one day
 )
-
-# Exponential backoff calculation: BASE * MULTIPLIER^retry_num
-# With BASE=200 and MULTIPLIER=3, this yields:
-# retry_num=0: 200s (~3.3 min), retry_num=1: 600s (~10 min),
-# retry_num=2: 1800s (~30 min), retry_num=3: 5400s (~90 min),
-# retry_num=4: 16200s (~4.5 hours), retry_num>=4: capped at 5 hours
 
 
 class LockType(Enum):
@@ -86,6 +81,7 @@ class LockManager:
         lock_timeout=DEFAULT_LOCK_TIMEOUT_SECONDS,
         blocking_timeout: int | None = DEFAULT_BLOCKING_TIMEOUT_SECONDS,
         redis_connection: Redis | None = None,
+        base_retry_countdown: int = BASE_RETRY_COUNTDOWN_SECONDS,
     ):
         self.repoid = repoid
         self.commitid = commitid
@@ -93,6 +89,7 @@ class LockManager:
         self.lock_timeout = lock_timeout
         self.blocking_timeout = blocking_timeout
         self.redis_connection = redis_connection or get_redis_connection()
+        self.base_retry_countdown = base_retry_countdown
 
     def lock_name(self, lock_type: LockType):
         if self.report_type == ReportType.COVERAGE:
@@ -182,7 +179,7 @@ class LockManager:
             if attempts == 1:
                 self.redis_connection.expire(attempt_key, LOCK_ATTEMPTS_TTL_SECONDS)
 
-            max_retry_unbounded = BASE_RETRY_COUNTDOWN_SECONDS * (
+            max_retry_unbounded = self.base_retry_countdown * (
                 RETRY_BACKOFF_MULTIPLIER**retry_num
             )
             if max_retry_unbounded >= MAX_RETRY_COUNTDOWN_SECONDS:
@@ -253,3 +250,38 @@ class LockManager:
                 },
             )
             raise LockRetry(countdown)
+
+
+def get_bundle_analysis_lock_manager(
+    repoid: int,
+    commitid: str,
+    redis_connection: Redis | None = None,
+) -> LockManager:
+    """
+    Create a LockManager configured for Bundle Analysis tasks with optimized
+    settings for high-concurrency scenarios.
+
+    Returns a LockManager with:
+    - blocking_timeout: 30s (default) - wait longer before giving up
+    - base_retry_countdown: 10s (default) - faster retries than default 200s
+    """
+    return LockManager(
+        repoid=repoid,
+        commitid=commitid,
+        report_type=ReportType.BUNDLE_ANALYSIS,
+        blocking_timeout=int(
+            get_config(
+                "setup", "tasks", "bundle_analysis", "blocking_timeout", default=30
+            )
+        ),
+        base_retry_countdown=int(
+            get_config(
+                "setup",
+                "tasks",
+                "bundle_analysis",
+                "base_retry_countdown",
+                default=10,
+            )
+        ),
+        redis_connection=redis_connection,
+    )
