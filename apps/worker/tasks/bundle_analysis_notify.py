@@ -4,12 +4,15 @@ from typing import Any
 import sentry_sdk
 
 from app import celery_app
-from database.enums import ReportType
 from database.models import Commit
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from services.bundle_analysis.notify import BundleAnalysisNotifyService
 from services.bundle_analysis.notify.types import NotificationSuccess
-from services.lock_manager import LockManager, LockRetry, LockType
+from services.lock_manager import (
+    LockRetry,
+    LockType,
+    get_bundle_analysis_lock_manager,
+)
 from shared.celery_config import (
     BUNDLE_ANALYSIS_NOTIFY_MAX_RETRIES,
     bundle_analysis_notify_task_name,
@@ -47,10 +50,9 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
             },
         )
 
-        lock_manager = LockManager(
+        lock_manager = get_bundle_analysis_lock_manager(
             repoid=repoid,
             commitid=commitid,
-            report_type=ReportType.BUNDLE_ANALYSIS,
         )
 
         try:
