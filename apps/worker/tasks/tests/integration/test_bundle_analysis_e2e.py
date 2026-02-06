@@ -236,6 +236,7 @@ def test_bundle_analysis_chain_max_retries_exceeded(
     # Mock Redis lock to fail (simulating lock contention)
     # This will cause LockRetry to be raised
     mock_redis.lock.return_value.__enter__.side_effect = LockError("Lock failed")
+    mock_redis.incr.return_value = 1  # LockManager: avoid MagicMock >= int
 
     # Create the chain
     task_signatures = [

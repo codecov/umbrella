@@ -305,12 +305,11 @@ class BaseCodecovTask(celery_app.Task):
         self.__dict__[cache_key] = attempts_value
         return attempts_value
 
-    def _has_exceeded_max_attempts(self, max_retries: int | None) -> bool:
-        """Check if task has exceeded max attempts."""
-        if max_retries is None:
+    def _has_exceeded_max_attempts(self, max_attempts: int | None) -> bool:
+        """Check if task has exceeded max attempts. max_attempts is the maximum total runs (e.g. 10 = 10 attempts)."""
+        if max_attempts is None:
             return False
 
-        max_attempts = max_retries + 1
         return self.attempts >= max_attempts
 
     def safe_retry(self, countdown=None, exc=None, **kwargs):
@@ -320,31 +319,27 @@ class BaseCodecovTask(celery_app.Task):
         attribute, so it's known at instantiation and doesn't change.
         """
         if self._has_exceeded_max_attempts(self.max_retries):
-            # If we're here, self.max_retries is not None (otherwise _has_exceeded_max_attempts returns False)
-            max_attempts = self.max_retries + 1
             log.error(
-                f"Task {self.name} exceeded max retries",
+                f"Task {self.name} exceeded max attempts",
                 extra={
                     "attempts": self.attempts,
-                    "max_attempts": max_attempts,
-                    "max_retries": self.max_retries,
+                    "max_attempts": self.max_retries,
                     "task_name": self.name,
                 },
             )
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
             sentry_sdk.capture_exception(
                 MaxRetriesExceededError(
-                    f"Task {self.name} exceeded max retries: {self.attempts} >= {max_attempts}"
+                    f"Task {self.name} exceeded max attempts: {self.attempts} >= {self.max_retries}"
                 ),
                 contexts={
                     "task": {
                         "attempts": self.attempts,
-                        "max_attempts": max_attempts,
-                        "max_retries": self.max_retries,
+                        "max_attempts": self.max_retries,
                         "task_name": self.name,
                     }
                 },
-                tags={"error_type": "max_retries_exceeded", "task": self.name},
+                tags={"error_type": "max_attempts_exceeded", "task": self.name},
             )
             return False
 

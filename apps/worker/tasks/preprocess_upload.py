@@ -78,7 +78,9 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
                 milestone=Milestones.READY_FOR_REPORT,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            if self._has_exceeded_max_attempts(PREPROCESS_UPLOAD_MAX_RETRIES):
+            if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
+                PREPROCESS_UPLOAD_MAX_RETRIES
+            ):
                 return {
                     "preprocessed_upload": False,
                     "reason": "unable_to_acquire_lock",

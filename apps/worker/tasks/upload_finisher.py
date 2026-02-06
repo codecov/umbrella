@@ -466,11 +466,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            if self._has_exceeded_max_attempts(UPLOAD_PROCESSOR_MAX_RETRIES):
+            if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
+                UPLOAD_PROCESSOR_MAX_RETRIES
+            ):
                 log.error(
                     "Upload finisher exceeded max retries",
                     extra={
-                        "attempts": self.attempts,
+                        "attempts": retry.retry_num
+                        if retry.max_retries_exceeded
+                        else self.attempts,
                         "commitid": commitid,
                         "max_attempts": UPLOAD_PROCESSOR_MAX_RETRIES + 1,
                         "max_retries": UPLOAD_PROCESSOR_MAX_RETRIES,
@@ -584,11 +588,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
-            if self._has_exceeded_max_attempts(UPLOAD_PROCESSOR_MAX_RETRIES):
+            if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
+                UPLOAD_PROCESSOR_MAX_RETRIES
+            ):
                 log.error(
                     "Upload finisher exceeded max retries (finisher lock)",
                     extra={
-                        "attempts": self.attempts,
+                        "attempts": retry.retry_num
+                        if retry.max_retries_exceeded
+                        else self.attempts,
                         "commitid": commitid,
                         "max_attempts": UPLOAD_PROCESSOR_MAX_RETRIES + 1,
                         "max_retries": UPLOAD_PROCESSOR_MAX_RETRIES,

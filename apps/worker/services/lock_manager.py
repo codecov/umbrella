@@ -6,7 +6,9 @@ from enum import Enum
 
 import sentry_sdk
 from redis import Redis  # type: ignore
+from redis.exceptions import ConnectionError as RedisConnectionError  # type: ignore
 from redis.exceptions import LockError  # type: ignore
+from redis.exceptions import TimeoutError as RedisTimeoutError  # type: ignore
 
 from database.enums import ReportType
 from shared.celery_config import (
@@ -22,6 +24,8 @@ BASE_RETRY_COUNTDOWN_SECONDS = 200
 RETRY_BACKOFF_MULTIPLIER = 3
 RETRY_COUNTDOWN_RANGE_DIVISOR = 2
 LOCK_NAME_SEPARATOR = "_lock_"
+LOCK_ATTEMPTS_KEY_PREFIX = "lock_attempts:"
+LOCK_ATTEMPTS_TTL_SECONDS = 86400  # 24h
 
 # Exponential backoff calculation: BASE * MULTIPLIER^retry_num
 # With BASE=200 and MULTIPLIER=3, this yields:
@@ -112,6 +116,7 @@ class LockManager:
             max_retries: Maximum number of retries allowed
         """
         lock_name = self.lock_name(lock_type)
+        attempt_key = f"{LOCK_ATTEMPTS_KEY_PREFIX}{lock_name}"
         try:
             log.info(
                 "Acquiring lock",
@@ -137,7 +142,22 @@ class LockManager:
                         "repoid": self.repoid,
                     },
                 )
-                yield
+                try:
+                    yield
+                finally:
+                    try:
+                        self.redis_connection.delete(attempt_key)
+                    except (RedisConnectionError, RedisTimeoutError, OSError) as e:
+                        log.warning(
+                            "Failed to clear lock attempt counter (Redis unavailable or error)",
+                            extra={
+                                "attempt_key": attempt_key,
+                                "commitid": self.commitid,
+                                "lock_name": lock_name,
+                                "repoid": self.repoid,
+                            },
+                            exc_info=True,
+                        )
                 lock_duration = time.time() - lock_acquired_time
                 log.info(
                     "Releasing lock",
@@ -150,6 +170,12 @@ class LockManager:
                     },
                 )
         except LockError:
+            # incr/expire can raise RedisConnectionError/RedisTimeoutError when Redis
+            # is unavailable; we let those propagate so the task fails once (no infinite loop).
+            attempts = self.redis_connection.incr(attempt_key)
+            if attempts == 1:
+                self.redis_connection.expire(attempt_key, LOCK_ATTEMPTS_TTL_SECONDS)
+
             max_retry_unbounded = BASE_RETRY_COUNTDOWN_SECONDS * (
                 RETRY_BACKOFF_MULTIPLIER**retry_num
             )
@@ -162,28 +188,27 @@ class LockManager:
                 )
                 countdown = countdown_unbounded
 
-            if max_retries is not None and retry_num > max_retries:
-                max_attempts = max_retries + 1
+            if max_retries is not None and attempts >= max_retries:
                 error = LockRetry(
                     countdown=0,
                     max_retries_exceeded=True,
-                    retry_num=retry_num,
-                    max_attempts=max_attempts,
+                    retry_num=attempts,
+                    max_attempts=max_retries,
                     lock_name=lock_name,
                     repoid=self.repoid,
                     commitid=self.commitid,
                 )
                 log.error(
-                    "Not retrying since we already had too many retries",
+                    "Not retrying since we already had too many attempts",
                     extra={
+                        "attempts": attempts,
                         "commitid": self.commitid,
                         "lock_name": lock_name,
                         "lock_type": lock_type.value,
-                        "max_attempts": max_attempts,
+                        "max_attempts": max_retries,
                         "max_retries": max_retries,
                         "repoid": self.repoid,
                         "report_type": self.report_type.value,
-                        "retry_num": retry_num,
                     },
                     exc_info=True,
                 )
@@ -191,15 +216,15 @@ class LockManager:
                     error,
                     contexts={
                         "lock_acquisition": {
+                            "attempts": attempts,
                             "blocking_timeout": self.blocking_timeout,
                             "commitid": self.commitid,
                             "lock_name": lock_name,
                             "lock_timeout": self.lock_timeout,
                             "lock_type": lock_type.value,
-                            "max_attempts": max_attempts,
+                            "max_attempts": max_retries,
                             "repoid": self.repoid,
                             "report_type": self.report_type.value,
-                            "retry_num": retry_num,
                         }
                     },
                     tags={
