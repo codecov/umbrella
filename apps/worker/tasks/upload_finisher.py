@@ -476,7 +476,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         if retry.max_retries_exceeded
                         else self.attempts,
                         "commitid": commitid,
-                        "max_attempts": UPLOAD_PROCESSOR_MAX_RETRIES + 1,
+                        "max_attempts": UPLOAD_PROCESSOR_MAX_RETRIES,
                         "max_retries": UPLOAD_PROCESSOR_MAX_RETRIES,
                         "repoid": repoid,
                     },
@@ -598,7 +598,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         if retry.max_retries_exceeded
                         else self.attempts,
                         "commitid": commitid,
-                        "max_attempts": UPLOAD_PROCESSOR_MAX_RETRIES + 1,
+                        "max_attempts": UPLOAD_PROCESSOR_MAX_RETRIES,
                         "max_retries": UPLOAD_PROCESSOR_MAX_RETRIES,
                         "repoid": repoid,
                     },

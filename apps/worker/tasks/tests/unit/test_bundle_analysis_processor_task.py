@@ -395,7 +395,7 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_raises_error(
     )
     # Mock Redis to simulate lock failure - this will cause LockManager to raise LockRetry
     mock_redis.lock.return_value.__enter__.side_effect = LockError()
-    # So LockManager sees attempts >= max_retries (10) and raises LockRetry(max_retries_exceeded=True)
+    # So LockManager sees attempts >= max_retries and raises LockRetry(max_retries_exceeded=True)
     mock_redis.incr.return_value = BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 
     commit = CommitFactory.create()
@@ -1790,7 +1790,7 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_visibility_timeout(
     # Mock Redis to simulate lock failure - this will cause LockManager to raise LockRetry
     mock_redis.lock.return_value.__enter__.side_effect = LockError()
     # LockManager gets attempt count from Redis; use 1 so it raises LockRetry(max_retries_exceeded=False).
-    # Task then uses self.attempts (from headers) and returns because 11 >= 10.
+    # Task then uses self.attempts (from headers) and returns because attempts >= max_attempts.
     mock_redis.incr.return_value = 1
 
     commit = CommitFactory.create()

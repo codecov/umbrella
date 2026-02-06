@@ -25,7 +25,9 @@ RETRY_BACKOFF_MULTIPLIER = 3
 RETRY_COUNTDOWN_RANGE_DIVISOR = 2
 LOCK_NAME_SEPARATOR = "_lock_"
 LOCK_ATTEMPTS_KEY_PREFIX = "lock_attempts:"
-LOCK_ATTEMPTS_TTL_SECONDS = 86400  # 24h
+LOCK_ATTEMPTS_TTL_SECONDS = (
+    86400  # TTL for attempt counter key so it expires after one day
+)
 
 # Exponential backoff calculation: BASE * MULTIPLIER^retry_num
 # With BASE=200 and MULTIPLIER=3, this yields:
@@ -100,6 +102,22 @@ class LockManager:
         else:
             return f"{lock_type.value}{LOCK_NAME_SEPARATOR}{self.repoid}_{self.commitid}_{self.report_type.value}"
 
+    def _clear_lock_attempt_counter(self, attempt_key: str, lock_name: str) -> None:
+        """Clear the lock attempt counter. Log and swallow Redis errors so teardown does not mask other failures."""
+        try:
+            self.redis_connection.delete(attempt_key)
+        except (RedisConnectionError, RedisTimeoutError, OSError) as e:
+            log.warning(
+                "Failed to clear lock attempt counter (Redis unavailable or error)",
+                extra={
+                    "attempt_key": attempt_key,
+                    "commitid": self.commitid,
+                    "lock_name": lock_name,
+                    "repoid": self.repoid,
+                },
+                exc_info=True,
+            )
+
     @contextmanager
     def locked(
         self,
@@ -145,19 +163,7 @@ class LockManager:
                 try:
                     yield
                 finally:
-                    try:
-                        self.redis_connection.delete(attempt_key)
-                    except (RedisConnectionError, RedisTimeoutError, OSError) as e:
-                        log.warning(
-                            "Failed to clear lock attempt counter (Redis unavailable or error)",
-                            extra={
-                                "attempt_key": attempt_key,
-                                "commitid": self.commitid,
-                                "lock_name": lock_name,
-                                "repoid": self.repoid,
-                            },
-                            exc_info=True,
-                        )
+                    self._clear_lock_attempt_counter(attempt_key, lock_name)
                 lock_duration = time.time() - lock_acquired_time
                 log.info(
                     "Releasing lock",
