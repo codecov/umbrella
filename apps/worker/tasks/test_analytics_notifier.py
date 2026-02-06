@@ -236,11 +236,11 @@ class TestAnalyticsNotifierTask(
                     "Not retrying lock acquisition - max retries exceeded",
                     extra={
                         "retry_num": e.retry_num,
-                        "max_attempts": e.max_attempts,
+                        "max_retries": e.max_retries,
                     },
                 )
                 raise MaxRetriesExceededError(
-                    f"Lock acquisition exceeded max retries: {e.retry_num} >= {e.max_attempts}",
+                    f"Lock acquisition exceeded max retries: {e.retry_num} >= {e.max_retries}",
                 )
             # Re-raise LockRetry to be handled by the caller's retry logic
             # The caller will catch this and call self.retry()

@@ -1717,7 +1717,7 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_processing(
 
     task = BundleAnalysisProcessorTask()
     task.request.retries = task.max_retries
-    task.request.headers = {"attempts": task.max_retries}  # >= max_attempts → exceeded
+    task.request.headers = {"attempts": task.max_retries}  # >= max_retries → exceeded
     mocker.patch.object(task, "_has_exceeded_max_attempts", return_value=True)
 
     # Create a ProcessingResult with a retryable error
@@ -1772,7 +1772,7 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_visibility_timeout(
 
     Scenario:
     - self.request.retries = 5 (below max_retries of 10)
-    - self.attempts = 11 (exceeds max_attempts 10 due to visibility timeout re-deliveries)
+    - self.attempts = 11 (exceeds max_retries 10 due to visibility timeout re-deliveries)
     - Task should stop retrying and return previous_result
     """
     storage_path = (
@@ -1790,7 +1790,7 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_visibility_timeout(
     # Mock Redis to simulate lock failure - this will cause LockManager to raise LockRetry
     mock_redis.lock.return_value.__enter__.side_effect = LockError()
     # LockManager gets attempt count from Redis; use 1 so it raises LockRetry(max_retries_exceeded=False).
-    # Task then uses self.attempts (from headers) and returns because attempts >= max_attempts.
+    # Task then uses self.attempts (from headers) and returns because attempts >= max_retries.
     mock_redis.incr.return_value = 1
 
     commit = CommitFactory.create()
@@ -1815,7 +1815,7 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_visibility_timeout(
     # - attempts header is high (11) due to visibility timeout re-deliveries
     # This simulates the bug where tasks kept retrying after max attempts
     task.request.retries = 5  # Below max_retries (10)
-    task.request.headers = {"attempts": 11}  # Exceeds max_attempts 10 (11 >= 10)
+    task.request.headers = {"attempts": 11}  # Exceeds max_retries 10 (11 >= 10)
 
     previous_result = [{"previous": "result"}]
     # Task should return previous_result when max attempts exceeded (via attempts header)
@@ -1868,7 +1868,7 @@ def test_bundle_analysis_processor_task_max_retries_exceeded_commit_failure(
 
     task = BundleAnalysisProcessorTask()
     task.request.retries = task.max_retries
-    # max_retries is max attempts; exceed when attempts >= 10
+    # Exceed when attempts >= max_retries
     task.request.headers = {"attempts": task.max_retries}
     mocker.patch.object(task, "_has_exceeded_max_attempts", return_value=True)
 

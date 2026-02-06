@@ -654,12 +654,12 @@ class TestBaseCodecovTaskSafeRetry:
         assert actual_increment == expected_increment
 
     def test_safe_retry_fails_when_attempts_exceeds_max(self, mocker):
-        """Test that safe_retry fails when attempts exceeds max_attempts even if retries don't."""
+        """Test that safe_retry fails when attempts exceeds max_retries even if retries don't."""
         task = SampleTask()
         task.request.retries = 3  # Below max_retries
         task.max_retries = 10
         # Simulate re-delivery: attempts is ahead of retry_count
-        task.request.headers = {"attempts": 12}  # Exceeds max_attempts (10 + 1 = 11)
+        task.request.headers = {"attempts": 12}  # Exceeds max_retries (10)
 
         mock_retry = mocker.patch("celery.app.task.Task.retry")
 
@@ -774,34 +774,34 @@ class TestBaseCodecovTaskGetTotalAttempts:
 @pytest.mark.django_db(databases={"default", "timeseries"})
 class TestBaseCodecovTaskHasExceededMaxAttempts:
     def test_has_exceeded_max_attempts_none_max_retries(self, mocker):
-        """Test _has_exceeded_max_attempts when max_attempts is None."""
+        """Test _has_exceeded_max_attempts when max_retries is None."""
         mock_request = MagicMock()
         mock_request.retries = 100
         mock_request.headers = {"attempts": 100}
         mock_property = PropertyMock(return_value=mock_request)
         mocker.patch.object(SampleTask, "request", mock_property, create=True)
         task = SampleTask()
-        assert task._has_exceeded_max_attempts(max_attempts=None) is False
+        assert task._has_exceeded_max_attempts(max_retries=None) is False
 
     def test_has_exceeded_max_attempts_by_attempts(self, mocker):
-        """Test _has_exceeded_max_attempts when attempts >= max_attempts."""
+        """Test _has_exceeded_max_attempts when attempts >= max_retries."""
         mock_request = MagicMock()
         mock_request.retries = 5
         mock_request.headers = {"attempts": 11}
         mock_property = PropertyMock(return_value=mock_request)
         mocker.patch.object(SampleTask, "request", mock_property, create=True)
         task = SampleTask()
-        assert task._has_exceeded_max_attempts(max_attempts=10) is True
+        assert task._has_exceeded_max_attempts(max_retries=10) is True
 
     def test_has_exceeded_max_attempts_not_exceeded(self, mocker):
-        """Test _has_exceeded_max_attempts when attempts < max_attempts."""
+        """Test _has_exceeded_max_attempts when attempts < max_retries."""
         mock_request = MagicMock()
         mock_request.retries = 3
         mock_request.headers = {"attempts": 4}
         mock_property = PropertyMock(return_value=mock_request)
         mocker.patch.object(SampleTask, "request", mock_property, create=True)
         task = SampleTask()
-        assert task._has_exceeded_max_attempts(max_attempts=10) is False
+        assert task._has_exceeded_max_attempts(max_retries=10) is False
 
     def test_has_exceeded_max_attempts_without_request(self, mocker):
         """Test _has_exceeded_max_attempts when request doesn't exist."""
@@ -814,7 +814,7 @@ class TestBaseCodecovTaskHasExceededMaxAttempts:
             return original_hasattr(obj, name)
 
         mocker.patch("builtins.hasattr", side_effect=mock_hasattr)
-        assert task._has_exceeded_max_attempts(max_attempts=10) is False
+        assert task._has_exceeded_max_attempts(max_retries=10) is False
 
 
 class TestBaseCodecovRequest:

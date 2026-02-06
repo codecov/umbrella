@@ -26,22 +26,22 @@ from tasks.bundle_analysis_save_measurements import (
 log = logging.getLogger(__name__)
 
 
-def _log_max_attempts_exceeded(
+def _log_max_retries_exceeded(
     commitid: str,
     repoid: int,
     attempts: int,
-    max_attempts: int,
+    max_retries: int,
     retry_num: int | None = None,
 ) -> None:
     extra = {
         "attempts": attempts,
         "commitid": commitid,
-        "max_attempts": max_attempts,
+        "max_retries": max_retries,
         "repoid": repoid,
     }
     if retry_num is not None:
         extra["retry_num"] = retry_num
-    log.error("Bundle analysis processor exceeded max attempts", extra=extra)
+    log.error("Bundle analysis processor exceeded max retries", extra=extra)
 
 
 def _set_upload_error_and_commit(
@@ -117,13 +117,13 @@ class BundleAnalysisProcessorTask(
             if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
                 self.max_retries
             ):
-                _log_max_attempts_exceeded(
+                _log_max_retries_exceeded(
                     commitid=commitid,
                     repoid=repoid,
                     attempts=(
                         retry.retry_num if retry.max_retries_exceeded else self.attempts
                     ),
-                    max_attempts=self.max_retries,
+                    max_retries=self.max_retries,
                     retry_num=self.request.retries,
                 )
                 return previous_result
@@ -231,11 +231,11 @@ class BundleAnalysisProcessorTask(
             result = report_service.process_upload(commit, upload, compare_sha)
             if result.error and result.error.is_retryable:
                 if self._has_exceeded_max_attempts(self.max_retries):
-                    _log_max_attempts_exceeded(
+                    _log_max_retries_exceeded(
                         commitid=commitid,
                         repoid=repoid,
                         attempts=self.attempts,
-                        max_attempts=self.max_retries,
+                        max_retries=self.max_retries,
                     )
                     try:
                         result.update_upload(carriedforward=carriedforward)

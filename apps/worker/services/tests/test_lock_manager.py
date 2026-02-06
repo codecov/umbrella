@@ -256,7 +256,7 @@ class TestLockManager:
         assert isinstance(exc_info.value, LockRetry)
         assert exc_info.value.max_retries_exceeded is True
         assert exc_info.value.retry_num == 3  # from Redis incr
-        assert exc_info.value.max_attempts == 3  # max_retries = max attempts
+        assert exc_info.value.max_retries == 3
         assert exc_info.value.lock_name == "upload_lock_123_abc123"
         assert exc_info.value.repoid == 123
         assert exc_info.value.commitid == "abc123"
@@ -285,7 +285,7 @@ class TestLockManager:
         assert isinstance(exc_info.value, LockRetry)
         assert exc_info.value.max_retries_exceeded is True
         assert exc_info.value.retry_num == 3
-        assert exc_info.value.max_attempts == 3
+        assert exc_info.value.max_retries == 3
         assert exc_info.value.countdown == 0
 
         error_logs = [

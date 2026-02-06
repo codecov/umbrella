@@ -78,7 +78,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                         "commitid": commitid,
                         "repoid": repoid,
                         "retry_num": retry.retry_num,
-                        "max_attempts": retry.max_attempts,
+                        "max_retries": retry.max_retries,
                     },
                 )
                 return {"queue_notify": False}

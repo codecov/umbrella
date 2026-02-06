@@ -138,7 +138,7 @@ class TestTestAnalyticsNotifierTask:
             countdown=0,
             max_retries_exceeded=True,
             retry_num=5,
-            max_attempts=5,
+            max_retries=5,
             lock_name="notification_lock",
             repoid=commit.repoid,
             commitid=commit.commitid,

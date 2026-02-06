@@ -55,7 +55,7 @@ class LockRetry(Exception):
         countdown: int,
         max_retries_exceeded: bool = False,
         retry_num: int | None = None,
-        max_attempts: int | None = None,
+        max_retries: int | None = None,
         lock_name: str | None = None,
         repoid: int | None = None,
         commitid: str | None = None,
@@ -63,13 +63,13 @@ class LockRetry(Exception):
         self.countdown = countdown
         self.max_retries_exceeded = max_retries_exceeded
         self.retry_num = retry_num
-        self.max_attempts = max_attempts
+        self.max_retries = max_retries
         self.lock_name = lock_name
         self.repoid = repoid
         self.commitid = commitid
         if max_retries_exceeded:
             error_msg = (
-                f"Lock acquisition failed after {retry_num} retries (max: {max_attempts}). "
+                f"Lock acquisition failed after {retry_num} retries (max: {max_retries}). "
                 f"Repo: {repoid}, Commit: {commitid}"
             )
             super().__init__(error_msg)
@@ -131,7 +131,7 @@ class LockManager:
             lock_type: Type of lock to acquire
             retry_num: Attempt count (should be self.attempts from BaseCodecovTask).
                 Used for both exponential backoff and max retry checking.
-            max_retries: Maximum number of retries allowed
+            max_retries: Maximum total attempts (stop when attempts >= this).
         """
         lock_name = self.lock_name(lock_type)
         attempt_key = f"{LOCK_ATTEMPTS_KEY_PREFIX}{lock_name}"
@@ -199,7 +199,7 @@ class LockManager:
                     countdown=0,
                     max_retries_exceeded=True,
                     retry_num=attempts,
-                    max_attempts=max_retries,
+                    max_retries=max_retries,
                     lock_name=lock_name,
                     repoid=self.repoid,
                     commitid=self.commitid,
@@ -211,7 +211,6 @@ class LockManager:
                         "commitid": self.commitid,
                         "lock_name": lock_name,
                         "lock_type": lock_type.value,
-                        "max_attempts": max_retries,
                         "max_retries": max_retries,
                         "repoid": self.repoid,
                         "report_type": self.report_type.value,
@@ -228,7 +227,7 @@ class LockManager:
                             "lock_name": lock_name,
                             "lock_timeout": self.lock_timeout,
                             "lock_type": lock_type.value,
-                            "max_attempts": max_retries,
+                            "max_retries": max_retries,
                             "repoid": self.repoid,
                             "report_type": self.report_type.value,
                         }

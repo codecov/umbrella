@@ -248,8 +248,7 @@ TASK_VISIBILITY_TIMEOUT_SECONDS = int(
     )
 )
 
-# Maximum total attempts for tasks hitting transient conditions (e.g., processing locks).
-# Value is total attempts, not retries: 10 means 10 attempts total.
+# max_retries = maximum total attempts (stop when attempts >= this). Config key name matches Celery.
 # Celery docs: https://docs.celeryq.dev/en/stable/userguide/tasks.html#max-retries
 TASK_MAX_RETRIES_DEFAULT = int(
     get_config("setup", "tasks", "celery", "max_retries", default=10)
@@ -306,7 +305,7 @@ UPLOAD_PROCESSOR_MAX_RETRIES = int(
     get_config("setup", "tasks", "upload", "processor_max_retries", default=5)
 )
 
-# Bundle analysis processor max attempts (total runs; 10 = 10 attempts)
+# Bundle analysis processor max_retries (max total attempts)
 # Default: matches TASK_MAX_RETRIES_DEFAULT
 BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES = int(
     get_config(
