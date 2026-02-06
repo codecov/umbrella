@@ -568,6 +568,7 @@ def test_bundle_analysis_processor_task_uses_ba_retry_countdown(
 
     mocker.patch.object(LockManager, "__init__", capture_init)
     mock_redis.lock.return_value.__enter__.side_effect = LockError()
+    mock_redis.incr.return_value = 1
 
     task = BundleAnalysisProcessorTask()
     task.request.retries = 0
