@@ -10,7 +10,11 @@ from services.bundle_analysis.report import (
     BundleAnalysisReportService,
     ProcessingResult,
 )
-from services.lock_manager import LockManager, LockRetry, LockType
+from services.lock_manager import (
+    LockRetry,
+    LockType,
+    get_bundle_analysis_lock_manager,
+)
 from services.processing.types import UploadArguments
 from shared.celery_config import (
     BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES,
@@ -56,10 +60,9 @@ class BundleAnalysisProcessorTask(
             },
         )
 
-        lock_manager = LockManager(
+        lock_manager = get_bundle_analysis_lock_manager(
             repoid=repoid,
             commitid=commitid,
-            report_type=ReportType.BUNDLE_ANALYSIS,
         )
 
         try:

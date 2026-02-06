@@ -24,4 +24,4 @@ test:
 	pytest --cov=./ --junitxml=junit.xml -o junit_family=legacy -c pytest.ini --rootdir=${PYTEST_ROOTDIR}
 
 shell:
-	docker-compose exec worker bash
+	docker compose exec worker bash
