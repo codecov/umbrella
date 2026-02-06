@@ -1,3 +1,7 @@
+import logging
+import os
+import time
+
 import pytest
 from celery.exceptions import Retry
 from redis.exceptions import LockError
@@ -10,8 +14,11 @@ from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.storage import get_bucket_name
 from shared.celery_config import BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 from shared.django_apps.bundle_analysis.models import CacheConfig
-from shared.storage.exceptions import PutRequestRateLimitError
-from tasks.bundle_analysis_processor import BundleAnalysisProcessorTask
+from shared.storage.exceptions import FileNotInStorageError, PutRequestRateLimitError
+from tasks.bundle_analysis_processor import (
+    BundleAnalysisProcessorTask,
+    temporary_upload_file,
+)
 from tasks.bundle_analysis_save_measurements import (
     bundle_analysis_save_measurements_task_name,
 )
@@ -2021,3 +2028,319 @@ def test_bundle_analysis_processor_task_cleanup_with_none_result(
 
     # Should not crash even though result is None
     # The finally block should handle None result gracefully
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_file_not_in_storage(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that temporary_upload_file returns None when file is not in storage"""
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    # Create upload with a storage path that doesn't exist in mock_storage
+    upload = UploadFactory.create(
+        storage_path="v1/uploads/nonexistent.json", report=commit_report
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    params = {"upload_id": upload.id_, "commit": commit.commitid}
+
+    # The file doesn't exist in mock_storage, so it should return None
+    with temporary_upload_file(dbsession, commit.repoid, params) as result:
+        assert result is None
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_general_error(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that temporary_upload_file returns None on general error"""
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    storage_path = "v1/uploads/test.json"
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    # Mock storage to raise a general exception
+    mocker.patch.object(
+        mock_storage, "read_file", side_effect=Exception("Connection error")
+    )
+
+    params = {"upload_id": upload.id_, "commit": commit.commitid}
+
+    with temporary_upload_file(dbsession, commit.repoid, params) as result:
+        assert result is None
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_no_upload_id(
+    mocker,
+    dbsession,
+):
+    """Test that temporary_upload_file returns None when no upload_id in params"""
+    params = {"commit": "abc123"}  # No upload_id
+
+    with temporary_upload_file(dbsession, 123, params) as result:
+        assert result is None
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_upload_not_found(
+    mocker,
+    dbsession,
+):
+    """Test that temporary_upload_file returns None when upload doesn't exist"""
+    params = {"upload_id": 99999, "commit": "abc123"}  # Non-existent upload_id
+
+    with temporary_upload_file(dbsession, 123, params) as result:
+        assert result is None
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_success(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that temporary_upload_file returns local path when successful"""
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    storage_path = "v1/uploads/test.json"
+    mock_storage.write_file(get_bucket_name(), storage_path, b'{"bundleName": "test"}')
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    params = {"upload_id": upload.id_, "commit": commit.commitid}
+
+    with temporary_upload_file(dbsession, commit.repoid, params) as result:
+        assert result is not None
+        assert os.path.exists(result)
+        with open(result) as f:
+            content = f.read()
+        assert "bundleName" in content
+
+    # After context manager exits, file should be cleaned up
+    assert not os.path.exists(result)
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_bundle_analysis_processor_passes_pre_downloaded_path(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that process_upload is called with pre_downloaded_path when pre-download succeeds"""
+    storage_path = "v1/uploads/test_bundle.json"
+    mock_storage.write_file(
+        get_bucket_name(), storage_path, b'{"bundleName": "test-bundle"}'
+    )
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    # Mock ingest to track what path was passed (following pattern from success tests)
+    ingest_mock = mocker.patch("shared.bundle_analysis.BundleAnalysisReport.ingest")
+    ingest_mock.return_value = (123, "test-bundle")
+
+    # Track if using pre-downloaded path by spying on logging
+    log_spy = mocker.patch("services.bundle_analysis.report.log")
+
+    result = BundleAnalysisProcessorTask().run_impl(
+        dbsession,
+        [{"previous": "result"}],
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={
+            "upload_id": upload.id_,
+            "commit": commit.commitid,
+        },
+    )
+
+    # Verify the task completed successfully
+    assert result[-1]["error"] is None
+    assert result[-1]["session_id"] == 123
+    assert result[-1]["bundle_name"] == "test-bundle"
+
+    # Verify that pre-download logging occurred (indicates pre_downloaded_path was used)
+    log_calls = [str(call) for call in log_spy.info.call_args_list]
+    pre_download_logged = any("pre-downloaded" in call.lower() for call in log_calls)
+    assert pre_download_logged, "Expected log message about using pre-downloaded file"
+
+
+# Simulated GCS download latency (seconds) for benchmark - real downloads are 100ms-2s
+SIMULATED_DOWNLOAD_SECONDS = 0.05
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_reduces_lock_hold_time(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """
+    Benchmark test: Verify that pre-downloading reduces time spent holding the lock.
+
+    Simulates slow storage read (GCS latency). With pre-download, the delay happens
+    before the lock; without, it happens inside the lock. Validates that lock hold
+    time is reduced by the simulated download time.
+    """
+    storage_path = "v1/uploads/benchmark_bundle.json"
+    bundle_data = b'{"bundleName": "benchmark"}' + b'{"asset":"data"}' * 200
+    mock_storage.write_file(get_bucket_name(), storage_path, bundle_data)
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    mocker.patch("shared.bundle_analysis.BundleAnalysisReport.ingest").return_value = (
+        123,
+        "benchmark",
+    )
+
+    lock_times = {"with_predownload": None, "without_predownload": None}
+    original_read = mock_storage.read_file
+
+    def slow_read(bucket, path, file_obj=None):
+        time.sleep(SIMULATED_DOWNLOAD_SECONDS)
+        return original_read(bucket, path, file_obj)
+
+    def measure_lock_time(force_predownload_fail=False):
+        times = []
+
+        def timed_enter(*args, **kwargs):
+            times.append(("enter", time.perf_counter()))
+            return mock_lock
+
+        def timed_exit(*args, **kwargs):
+            times.append(("exit", time.perf_counter()))
+            return False
+
+        mock_lock = mocker.MagicMock()
+        mock_lock.__enter__ = timed_enter
+        mock_lock.__exit__ = timed_exit
+
+        mocker.patch(
+            "services.lock_manager.get_redis_connection"
+        ).return_value.lock.return_value = mock_lock
+
+        if force_predownload_fail:
+            call_count = [0]
+
+            def fail_then_slow_read(bucket, path, file_obj=None):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    raise FileNotInStorageError("Simulated: pre-download fails")
+                time.sleep(SIMULATED_DOWNLOAD_SECONDS)
+                return original_read(bucket, path, file_obj)
+
+            mock_storage.read_file = fail_then_slow_read
+        else:
+            mock_storage.read_file = slow_read
+
+        BundleAnalysisProcessorTask().run_impl(
+            dbsession,
+            [{"previous": "result"}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={"upload_id": upload.id_, "commit": commit.commitid},
+        )
+
+        if len(times) >= 2:
+            enter_time = next(t for event, t in times if event == "enter")
+            exit_time = next(t for event, t in times if event == "exit")
+            return exit_time - enter_time
+        return None
+
+    lock_times["with_predownload"] = measure_lock_time(force_predownload_fail=False)
+    lock_times["without_predownload"] = measure_lock_time(force_predownload_fail=True)
+
+    assert lock_times["with_predownload"] is not None
+    assert lock_times["without_predownload"] is not None
+
+    with_time = lock_times["with_predownload"]
+    without_time = lock_times["without_predownload"]
+    reduction_pct = ((without_time - with_time) / without_time) * 100
+
+    log = logging.getLogger(__name__)
+    log.info(
+        "\n%s\nBundle Analysis Lock Hold Time Benchmark\n(Simulated download latency: %.0fms)\n%s\n"
+        "WITH pre-download:    %.2fms  (download happened before lock)\n"
+        "WITHOUT pre-download: %.2fms  (download inside lock)\n"
+        "Time saved:           %.2fms\nReduction:            %.1f%%\n%s",
+        "=" * 60,
+        SIMULATED_DOWNLOAD_SECONDS * 1000,
+        "=" * 60,
+        with_time * 1000,
+        without_time * 1000,
+        (without_time - with_time) * 1000,
+        reduction_pct,
+        "=" * 60,
+    )
+
+    assert with_time < without_time, (
+        f"Pre-download should reduce lock time: {with_time * 1000:.2f}ms vs {without_time * 1000:.2f}ms"
+    )
+    assert reduction_pct > 10, (
+        f"Expected >10% reduction (simulated download moved outside lock), got {reduction_pct:.1f}%"
+    )

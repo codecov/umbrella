@@ -132,3 +132,6 @@ dmypy.json
 junit.xml
 
 .DS_Store
+
+# Cursor (user/IDE rules - do not commit)
+.cursor/

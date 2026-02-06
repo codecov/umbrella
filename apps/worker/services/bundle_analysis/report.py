@@ -224,11 +224,22 @@ class BundleAnalysisReportService(BaseReportService):
 
     @sentry_sdk.trace
     def process_upload(
-        self, commit: Commit, upload: Upload, compare_sha: str | None = None
+        self,
+        commit: Commit,
+        upload: Upload,
+        compare_sha: str | None = None,
+        pre_downloaded_path: str | None = None,
     ) -> ProcessingResult:
         """
         Download and parse the data associated with the given upload and
         merge the results into a bundle report.
+
+        Args:
+            commit: The commit being processed
+            upload: The upload record
+            compare_sha: Optional SHA for comparison
+            pre_downloaded_path: Optional path to pre-downloaded upload file.
+                If provided, skips the GCS download (optimization for reducing lock time).
         """
         commit_report: CommitReport = upload.report
         bundle_loader = BundleAnalysisReportLoader(commit_report.commit.repository)
@@ -241,20 +252,32 @@ class BundleAnalysisReportService(BaseReportService):
                 commit, bundle_loader
             )
 
-        # download raw upload data to local tempfile
-        _, local_path = tempfile.mkstemp()
+        if pre_downloaded_path and os.path.exists(pre_downloaded_path):
+            local_path = pre_downloaded_path
+            should_cleanup_local = False
+            log.info(
+                "Using pre-downloaded upload file",
+                extra={
+                    "repoid": commit.repoid,
+                    "commit": commit.commitid,
+                    "local_path": local_path,
+                },
+            )
+        else:
+            _, local_path = tempfile.mkstemp()
+            should_cleanup_local = True
+
         try:
             session_id, prev_bar, bundle_name = None, None, None
             if upload.storage_path != "":
-                with open(local_path, "wb") as f:
-                    storage_service.read_file(
-                        get_bucket_name(), upload.storage_path, file_obj=f
-                    )
+                if should_cleanup_local:
+                    with open(local_path, "wb") as f:
+                        storage_service.read_file(
+                            get_bucket_name(), upload.storage_path, file_obj=f
+                        )
 
-                # load the downloaded data into the bundle report
                 session_id, bundle_name = bundle_report.ingest(local_path, compare_sha)
 
-                # Retrieve previous commit's BAR and associate past Assets
                 prev_bar = self._previous_bundle_analysis_report(
                     bundle_loader, commit, head_bundle_report=bundle_report
                 )
@@ -332,7 +355,8 @@ class BundleAnalysisReportService(BaseReportService):
                 ),
             )
         finally:
-            os.remove(local_path)
+            if should_cleanup_local and os.path.exists(local_path):
+                os.remove(local_path)
 
         return ProcessingResult(
             upload=upload,

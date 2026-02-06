@@ -1,3 +1,4 @@
+import os
 from textwrap import dedent
 from unittest.mock import PropertyMock
 
@@ -30,6 +31,78 @@ from shared.bundle_analysis.storage import get_bucket_name
 from shared.config import PATCH_CENTRIC_DEFAULT_CONFIG
 from shared.yaml import UserYaml
 from tests.helpers import mock_all_plans_and_tiers
+
+# Path to sample bundle stats files
+SAMPLE_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "..",
+    "..",
+    "..",
+    "..",
+    "libs",
+    "shared",
+    "tests",
+    "samples",
+)
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_process_upload_with_pre_downloaded_path(dbsession, mocker, mock_storage):
+    """Test that process_upload uses pre_downloaded_path and skips GCS download"""
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    commit = CommitFactory()
+    dbsession.add(commit)
+    dbsession.commit()
+
+    commit_report = CommitReport(
+        commit=commit, report_type=ReportType.BUNDLE_ANALYSIS.value
+    )
+    dbsession.add(commit_report)
+    dbsession.commit()
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.commit()
+
+    # Create a pre-downloaded file with test content
+    sample_path = os.path.join(SAMPLE_DIR, "sample_bundle_stats.json")
+
+    # Mock ingest to track calls
+    mock_ingest = mocker.patch(
+        "shared.bundle_analysis.BundleAnalysisReport.ingest",
+        return_value=(123, "sample"),
+    )
+
+    # Mock storage read to track that it's NOT called when pre_downloaded_path is provided
+    storage_read_spy = mocker.spy(mock_storage, "read_file")
+
+    report_service = BundleAnalysisReportService(UserYaml.from_dict({}))
+    result = report_service.process_upload(
+        commit, upload, pre_downloaded_path=sample_path
+    )
+
+    assert result.session_id == 123
+    assert result.bundle_name == "sample"
+    assert result.error is None
+
+    # Verify ingest was called with the pre-downloaded path
+    mock_ingest.assert_called_once()
+    call_args = mock_ingest.call_args
+    assert call_args[0][0] == sample_path  # First positional arg should be the path
+
+    # Verify storage read was NOT called to download the upload file
+    # (it may be called once to load the existing bundle report)
+    for call in storage_read_spy.call_args_list:
+        # The upload's storage_path should not have been read
+        if len(call[0]) >= 2:
+            assert call[0][1] != upload.storage_path, (
+                "Storage should not download upload file when pre_downloaded_path is provided"
+            )
 
 
 class MockBundleReport:
