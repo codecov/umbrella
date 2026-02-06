@@ -164,7 +164,7 @@ class TestUploadCompletionTask:
     def test_lock_retry_max_retries_exceeded(
         self, mocker, mock_configuration, dbsession, mock_storage, mock_redis
     ):
-        """Test that LockRetry returns failure dict when max retries exceeded"""
+        """Test that LockRetry returns failure dict when max retries exceeded (task attempts)."""
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
@@ -176,6 +176,37 @@ class TestUploadCompletionTask:
 
         task = ManualTriggerTask()
         task.request.retries = TASK_MAX_RETRIES_DEFAULT  # Max retries exceeded
+        ensure_hard_time_limit_task_is_numeric(mocker, task)
+
+        result = task.run_impl(
+            dbsession, repoid=commit.repoid, commitid=commit.commitid, current_yaml={}
+        )
+
+        assert result == {
+            "notifications_called": False,
+            "message": "Unable to acquire lock",
+        }
+
+    def test_lock_retry_max_retries_exceeded_from_lock_manager(
+        self, mocker, mock_configuration, dbsession, mock_storage, mock_redis
+    ):
+        """Test that LockRetry with max_retries_exceeded=True returns failure dict (Redis counter path)."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        m = mocker.MagicMock()
+        m.return_value.locked.return_value.__enter__.side_effect = LockRetry(
+            countdown=0,
+            max_retries_exceeded=True,
+            retry_num=TASK_MAX_RETRIES_DEFAULT,
+            max_retries=TASK_MAX_RETRIES_DEFAULT,
+        )
+        mocker.patch("tasks.manual_trigger.LockManager", m)
+
+        task = ManualTriggerTask()
+        task.request.retries = 0
+        task.request.headers = {"attempts": 1}
         ensure_hard_time_limit_task_is_numeric(mocker, task)
 
         result = task.run_impl(
