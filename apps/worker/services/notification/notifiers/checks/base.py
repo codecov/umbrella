@@ -152,7 +152,7 @@ class ChecksNotifier(StatusNotifier):
 
         Returns a NotificationResult if validation fails, or None to continue.
         """
-        if comparison.pull is None or ():
+        if comparison.pull is None:
             log.debug(
                 "Falling back to commit_status: Not a pull request",
                 extra={
@@ -280,7 +280,7 @@ class ChecksNotifier(StatusNotifier):
 
     def get_line_diff(self, file_diff):
         """
-        This method traverses a git file diff and returns the lines (as line numbers) that where chnaged
+        This method traverses a git file diff and returns the lines (as line numbers) that were changed
         Note: For now it only looks for line additions on diff, we can quickly add functionality to handle
               line deletions if needed
 
