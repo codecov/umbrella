@@ -61,13 +61,6 @@ class CommitErrorTypes(Enum):
     REPO_BOT_INVALID = "repo_bot_invalid"
 
 
-class TrialStatus(Enum):
-    NOT_STARTED = "not_started"
-    ONGOING = "ongoing"
-    EXPIRED = "expired"
-    CANNOT_TRIAL = "cannot_trial"
-
-
 class ReportType(Enum):
     COVERAGE = "coverage"
     TEST_RESULTS = "test_results"

@@ -3,8 +3,7 @@ from unittest.mock import patch
 
 from celery_config import trial_expiration_task_name
 from database.tests.factories.core import OwnerFactory
-from shared.django_apps.enums import TrialStatus
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TrialStatus
 from tasks.trial_expiration_cron import TrialExpirationCronTask
 
 
