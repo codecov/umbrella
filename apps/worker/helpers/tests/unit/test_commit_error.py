@@ -1,6 +1,6 @@
-from database.enums import CommitErrorTypes
 from database.tests.factories import CommitFactory
 from helpers.save_commit_error import save_commit_error
+from shared.django_apps.enums import CommitErrorTypes
 
 
 class TestSaveCommitError:

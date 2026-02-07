@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, call
 import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
 
-from database.enums import ReportType
 from database.models import Upload
 from database.models.reports import CommitReport
 from database.tests.factories import CommitFactory, OwnerFactory, RepositoryFactory
@@ -20,6 +19,7 @@ from helpers.log_context import LogContext, set_log_context
 from services.lock_manager import LockRetry
 from services.report import NotReadyToBuildReportYetError, ReportService
 from shared.celery_config import upload_breadcrumb_task_name
+from shared.django_apps.enums import ReportType
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
     Errors,

@@ -1,7 +1,6 @@
 import logging
 
 from app import celery_app
-from database.enums import CommitErrorTypes
 from database.models import Commit
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
@@ -18,6 +17,7 @@ from shared.celery_config import (
     PREPROCESS_UPLOAD_MAX_RETRIES,
     pre_process_upload_task_name,
 )
+from shared.django_apps.enums import CommitErrorTypes
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter

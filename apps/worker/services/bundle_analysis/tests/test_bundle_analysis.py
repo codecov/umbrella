@@ -3,7 +3,6 @@ from unittest.mock import PropertyMock
 
 import pytest
 
-from database.enums import ReportType
 from database.models import CommitReport, MeasurementName
 from database.tests.factories import CommitFactory, PullFactory, UploadFactory
 from database.tests.factories.timeseries import DatasetFactory, Measurement
@@ -28,6 +27,7 @@ from shared.bundle_analysis.comparison import (
 from shared.bundle_analysis.models import AssetType
 from shared.bundle_analysis.storage import get_bucket_name
 from shared.config import PATCH_CENTRIC_DEFAULT_CONFIG
+from shared.django_apps.enums import ReportType
 from shared.yaml import UserYaml
 from tests.helpers import mock_all_plans_and_tiers
 

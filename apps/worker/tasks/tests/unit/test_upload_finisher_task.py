@@ -6,7 +6,6 @@ import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
 
 from celery_config import notify_error_task_name
-from database.enums import ReportType
 from database.models.reports import CommitReport, Upload
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
 from database.tests.factories.core import UploadFactory
@@ -27,6 +26,7 @@ from shared.celery_config import (
     timeseries_save_commit_measurements_task_name,
     upload_breadcrumb_task_name,
 )
+from shared.django_apps.enums import ReportType
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
     Errors,

@@ -8,7 +8,6 @@ import sentry_sdk
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
-from database.enums import ReportType
 from database.models.core import Commit
 from database.models.reports import CommitReport, Upload, UploadError
 from database.models.timeseries import Measurement, MeasurementName
@@ -21,6 +20,7 @@ from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.bundle_analysis.service.bundle_analysis import (
     BundleAnalysisCacheConfigService,
 )
+from shared.django_apps.enums import ReportType
 from shared.metrics import Counter
 from shared.reports.enums import UploadState, UploadType
 from shared.storage.exceptions import FileNotInStorageError, PutRequestRateLimitError

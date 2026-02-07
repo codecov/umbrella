@@ -1,11 +1,11 @@
 import logging
 from dataclasses import dataclass
 
-from database.enums import Decoration
 from database.models import Owner
 from services.license import requires_license
 from services.repository import EnrichedPull
 from shared.config import get_config
+from shared.django_apps.enums import Decoration
 from shared.plan.service import PlanService
 from shared.upload.utils import query_monthly_coverage_measurements
 
