@@ -30,8 +30,7 @@ from shared.django_apps.reports.tests.factories import CommitReportFactory
 from shared.django_apps.reports.tests.factories import (
     UploadFactory as DjangoUploadFactory,
 )
-from shared.django_apps.enums import TrialStatus
-from shared.plan.constants import DEFAULT_FREE_PLAN
+from shared.plan.constants import DEFAULT_FREE_PLAN, TrialStatus
 from shared.plan.service import PlanService
 from shared.upload.types import UploaderType
 from shared.upload.utils import insert_coverage_measurement

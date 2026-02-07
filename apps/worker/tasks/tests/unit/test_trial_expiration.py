@@ -1,12 +1,11 @@
 import pytest
 
-from shared.django_apps.enums import TrialStatus
 from shared.django_apps.codecov_auth.tests.factories import (
     OwnerFactory,
     PlanFactory,
     TierFactory,
 )
-from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TierName
+from shared.plan.constants import DEFAULT_FREE_PLAN, PlanName, TierName, TrialStatus
 from tasks.trial_expiration import TrialExpirationTask
 
 
