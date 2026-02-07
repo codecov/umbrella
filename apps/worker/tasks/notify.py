@@ -220,22 +220,17 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         milestone = Milestones.NOTIFICATIONS_SENT
 
         log.info("Starting notifications", extra={"commit": commitid, "repoid": repoid})
-        commits_query = db_session.query(Commit).filter(
-            Commit.repoid == repoid, Commit.commitid == commitid
-        )
-        commit: Commit = commits_query.first()
-        assert commit, "Commit not found in database."
-
+        commit = self._fetch_commit(db_session, repoid, commitid)
         any_failures, all_tests_passed = get_test_status(commit.repoid, commit.commitid)
 
-        # This functionality is disabled for now because it's too noisy for customers
+        # TA error messaging is disabled for now (too noisy for customers)
         ta_error_msg = None
 
         if any_failures and not all_tests_passed:
             self._call_upload_breadcrumb_task(
                 commit_sha=commit.commitid,
                 repo_id=commit.repoid,
-                milestone=Milestones.NOTIFICATIONS_SENT,
+                milestone=milestone,
                 error=Errors.SKIPPED_NOTIFICATIONS,
             )
             return {
@@ -244,6 +239,74 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 "reason": "test_failures",
             }
 
+        result = self._get_repository_service_for_notify(
+            commit, repoid, commitid, milestone, current_yaml=current_yaml, **kwargs
+        )
+        if isinstance(result, dict):
+            return result
+        repository_service, installation_name_to_use = result
+
+        if current_yaml is None:
+            current_yaml = async_to_sync(get_current_yaml)(commit, repository_service)
+        else:
+            current_yaml = UserYaml.from_dict(current_yaml)
+
+        ci_result = self._fetch_ci_results_or_error(
+            repository_service, commit, current_yaml, milestone
+        )
+        if isinstance(ci_result, dict):
+            return ci_result
+        ci_results = ci_result
+
+        if self.should_wait_longer(current_yaml, commit, ci_results):
+            return self._handle_ci_wait_retry(
+                commit, current_yaml, installation_name_to_use, **kwargs
+            )
+
+        report_service = ReportService(
+            current_yaml, gh_app_installation_name=installation_name_to_use
+        )
+        head_report = report_service.get_existing_report_for_commit(
+            commit, report_class=ReadOnlyReport
+        )
+
+        if not self.should_send_notifications(
+            current_yaml, commit, ci_results, head_report
+        ):
+            return self._skip_notifications(commit, milestone)
+
+        return self._prepare_and_send_notifications(
+            db_session=db_session,
+            commit=commit,
+            current_yaml=current_yaml,
+            head_report=head_report,
+            repository_service=repository_service,
+            report_service=report_service,
+            installation_name_to_use=installation_name_to_use,
+            empty_upload=empty_upload,
+            all_tests_passed=all_tests_passed,
+            ta_error_msg=ta_error_msg,
+            milestone=milestone,
+        )
+
+    def _fetch_commit(
+        self, db_session: Session, repoid: int, commitid: str
+    ) -> Commit:
+        """Fetch and validate the commit from the database."""
+        commit = db_session.query(Commit).filter(
+            Commit.repoid == repoid, Commit.commitid == commitid
+        ).first()
+        assert commit, "Commit not found in database."
+        return commit
+
+    def _get_repository_service_for_notify(
+        self, commit, repoid, commitid, milestone, current_yaml=None, **kwargs
+    ):
+        """Get the repository service for notification, handling bot/app errors.
+
+        Returns (repository_service, installation_name) on success, or a dict
+        result for early return on error.
+        """
         try:
             installation_name_to_use = get_installation_name_for_owner_for_task(
                 self.name, commit.repository.author
@@ -251,11 +314,11 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             repository_service = get_repo_provider_service_for_specific_commit(
                 commit, installation_name_to_use
             )
+            return (repository_service, installation_name_to_use)
         except RepositoryWithoutValidBotError:
             save_commit_error(
                 commit, error_code=CommitErrorTypes.REPO_BOT_INVALID.value
             )
-
             log.warning(
                 "Unable to start notifications because repo doesn't have a valid bot",
                 extra={"repoid": repoid, "commit": commitid},
@@ -269,59 +332,72 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             )
             return {"notified": False, "notifications": None, "reason": "no_valid_bot"}
         except NoConfiguredAppsAvailable as exp:
-            if exp.rate_limited_count > 0:
-                # There's at least 1 app that we can use to communicate with GitHub,
-                # but this app happens to be rate limited now. We try again later.
-                # Min wait time of 1 minute
-                retry_delay_seconds = max(60, get_seconds_to_next_hour())
-                log.warning(
-                    "Unable to start notifications. Retrying again later.",
-                    extra={
-                        "repoid": repoid,
-                        "commit": commitid,
-                        "apps_available": exp.apps_count,
-                        "apps_rate_limited": exp.rate_limited_count,
-                        "apps_suspended": exp.suspended_count,
-                        "countdown_seconds": retry_delay_seconds,
-                    },
-                )
-                self._call_upload_breadcrumb_task(
-                    commit_sha=commitid,
-                    repo_id=repoid,
-                    milestone=milestone,
-                    error=Errors.INTERNAL_APP_RATE_LIMITED,
-                )
-                return self._attempt_retry(
-                    max_retries=10,
-                    countdown=retry_delay_seconds,
-                    current_yaml=current_yaml,
-                    commit=commit,
-                    **kwargs,
-                )
-            # Maybe we have apps that are suspended. We can't communicate with github.
+            return self._handle_no_configured_apps(
+                commit, exp, repoid, commitid, milestone, current_yaml, **kwargs
+            )
+
+    def _handle_no_configured_apps(
+        self, commit, exp, repoid, commitid, milestone, current_yaml, **kwargs
+    ):
+        """Handle the case where no configured GitHub apps are available.
+
+        Either retries (if apps are rate-limited) or returns an error result.
+        """
+        if exp.rate_limited_count > 0:
+            # There's at least 1 app that we can use to communicate with GitHub,
+            # but this app happens to be rate limited now. We try again later.
+            # Min wait time of 1 minute
+            retry_delay_seconds = max(60, get_seconds_to_next_hour())
             log.warning(
-                "We can't find an app to communicate with GitHub. Not notifying.",
+                "Unable to start notifications. Retrying again later.",
                 extra={
                     "repoid": repoid,
                     "commit": commitid,
                     "apps_available": exp.apps_count,
+                    "apps_rate_limited": exp.rate_limited_count,
                     "apps_suspended": exp.suspended_count,
+                    "countdown_seconds": retry_delay_seconds,
                 },
             )
-            self.log_checkpoint(UploadFlow.NOTIF_NO_APP_INSTALLATION)
-            return {
-                "notified": False,
-                "notifications": None,
-                "reason": "no_valid_github_app_found",
-            }
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=milestone,
+                error=Errors.INTERNAL_APP_RATE_LIMITED,
+            )
+            return self._attempt_retry(
+                max_retries=10,
+                countdown=retry_delay_seconds,
+                current_yaml=current_yaml,
+                commit=commit,
+                **kwargs,
+            )
+        # Maybe we have apps that are suspended. We can't communicate with github.
+        log.warning(
+            "We can't find an app to communicate with GitHub. Not notifying.",
+            extra={
+                "repoid": repoid,
+                "commit": commitid,
+                "apps_available": exp.apps_count,
+                "apps_suspended": exp.suspended_count,
+            },
+        )
+        self.log_checkpoint(UploadFlow.NOTIF_NO_APP_INSTALLATION)
+        return {
+            "notified": False,
+            "notifications": None,
+            "reason": "no_valid_github_app_found",
+        }
 
-        if current_yaml is None:
-            current_yaml = async_to_sync(get_current_yaml)(commit, repository_service)
-        else:
-            current_yaml = UserYaml.from_dict(current_yaml)
+    def _fetch_ci_results_or_error(
+        self, repository_service, commit, current_yaml, milestone
+    ):
+        """Fetch CI results, handling provider errors.
 
+        Returns ci_results on success, or a dict result for early return on error.
+        """
         try:
-            ci_results = self.fetch_and_update_whether_ci_passed(
+            return self.fetch_and_update_whether_ci_passed(
                 repository_service, commit, current_yaml
             )
         except TorngitClientError as ex:
@@ -362,174 +438,191 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 "notifications": None,
                 "reason": "server_issues_ci_result",
             }
-        if self.should_wait_longer(current_yaml, commit, ci_results):
-            log.info(
-                "Not sending notifications yet because we are waiting for CI to finish",
-                extra={"repoid": commit.repoid, "commit": commit.commitid},
-            )
-            ghapp_default_installations = list(
-                filter(
-                    lambda obj: obj.name == installation_name_to_use
-                    and obj.is_configured(),
-                    commit.repository.author.github_app_installations or [],
-                )
-            )
-            rely_on_webhook_ghapp = ghapp_default_installations != [] and any(
-                obj.is_repo_covered_by_integration(commit.repository)
-                for obj in ghapp_default_installations
-            )
-            rely_on_webhook_legacy = commit.repository.using_integration
-            if (
-                rely_on_webhook_ghapp
-                or rely_on_webhook_legacy
-                or commit.repository.hookid
-            ):
-                # rely on the webhook, but still retry in case we miss the webhook
-                max_retries = 5
-                countdown = (60 * 3) * 2**self.request.retries
-            else:
-                max_retries = 10
-                countdown = 15 * 2**self.request.retries
-            return self._attempt_retry(
-                max_retries=max_retries,
-                countdown=countdown,
-                current_yaml=current_yaml,
-                commit=commit,
-                **kwargs,
-            )
 
-        report_service = ReportService(
-            current_yaml, gh_app_installation_name=installation_name_to_use
+    def _handle_ci_wait_retry(
+        self, commit, current_yaml, installation_name_to_use, **kwargs
+    ):
+        """Handle retrying when CI hasn't finished yet."""
+        log.info(
+            "Not sending notifications yet because we are waiting for CI to finish",
+            extra={"repoid": commit.repoid, "commit": commit.commitid},
         )
-        head_report = report_service.get_existing_report_for_commit(
-            commit, report_class=ReadOnlyReport
+        ghapp_default_installations = list(
+            filter(
+                lambda obj: obj.name == installation_name_to_use
+                and obj.is_configured(),
+                commit.repository.author.github_app_installations or [],
+            )
         )
-        if self.should_send_notifications(
-            current_yaml, commit, ci_results, head_report
+        rely_on_webhook_ghapp = ghapp_default_installations != [] and any(
+            obj.is_repo_covered_by_integration(commit.repository)
+            for obj in ghapp_default_installations
+        )
+        rely_on_webhook_legacy = commit.repository.using_integration
+        if (
+            rely_on_webhook_ghapp
+            or rely_on_webhook_legacy
+            or commit.repository.hookid
         ):
-            enriched_pull = async_to_sync(
-                fetch_and_update_pull_request_information_from_commit
-            )(repository_service, commit, current_yaml)
-            if enriched_pull and enriched_pull.database_pull:
-                pull = enriched_pull.database_pull
-                base_commit = self.fetch_pull_request_base(pull)
-            else:
-                pull = None
-                base_commit = self.fetch_parent(commit)
+            # rely on the webhook, but still retry in case we miss the webhook
+            max_retries = 5
+            countdown = (60 * 3) * 2**self.request.retries
+        else:
+            max_retries = 10
+            countdown = 15 * 2**self.request.retries
+        return self._attempt_retry(
+            max_retries=max_retries,
+            countdown=countdown,
+            current_yaml=current_yaml,
+            commit=commit,
+            **kwargs,
+        )
 
-            if (
-                enriched_pull
-                and not self.send_notifications_if_commit_differs_from_pulls_head(
-                    commit, enriched_pull, current_yaml
-                )
-                and empty_upload is None
-            ):
-                log.info(
-                    "Not sending notifications for commit when it differs from pull's most recent head",
-                    extra={
-                        "commit": commit.commitid,
-                        "repoid": commit.repoid,
-                        "current_yaml": current_yaml.to_dict(),
-                        "pull_head": enriched_pull.provider_pull["head"]["commitid"],
-                    },
-                )
-                self.log_checkpoint(UploadFlow.NOTIF_STALE_HEAD)
-                self._call_upload_breadcrumb_task(
-                    commit_sha=commit.commitid,
-                    repo_id=commit.repoid,
-                    milestone=milestone,
-                    error=Errors.SKIPPED_NOTIFICATIONS,
-                )
-                return {
-                    "notified": False,
-                    "notifications": None,
-                    "reason": "User doesnt want notifications warning them that current head differs from pull request most recent head.",
-                }
+    def _skip_notifications(self, commit, milestone):
+        """Log and return when we decide not to send any notifications."""
+        log.info(
+            "Not sending notifications at all",
+            extra={"commit": commit.commitid, "repoid": commit.repoid},
+        )
+        self.log_checkpoint(UploadFlow.SKIPPING_NOTIFICATION)
+        self._call_upload_breadcrumb_task(
+            commit_sha=commit.commitid,
+            repo_id=commit.repoid,
+            milestone=milestone,
+            error=Errors.SKIPPED_NOTIFICATIONS,
+        )
+        return {"notified": False, "notifications": None}
 
-            if base_commit is not None:
-                base_report = report_service.get_existing_report_for_commit(
-                    base_commit, report_class=ReadOnlyReport
-                )
-            else:
-                base_report = None
-            if head_report is None and empty_upload is None:
-                self.log_checkpoint(UploadFlow.NOTIF_ERROR_NO_REPORT)
-                self._call_upload_breadcrumb_task(
-                    commit_sha=commit.commitid,
-                    repo_id=commit.repoid,
-                    milestone=milestone,
-                    error=Errors.REPORT_NOT_FOUND,
-                )
-                return {
-                    "notified": False,
-                    "notifications": None,
-                    "reason": "no_head_report",
-                }
+    def _resolve_pull_and_base(self, commit, enriched_pull):
+        """Determine the pull request and base commit for comparison."""
+        if enriched_pull and enriched_pull.database_pull:
+            pull = enriched_pull.database_pull
+            base_commit = self.fetch_pull_request_base(pull)
+        else:
+            pull = None
+            base_commit = self.fetch_parent(commit)
+        return pull, base_commit
 
-            if commit.repository.service == "gitlab":
-                gitlab_extra_shas_to_notify = self.get_gitlab_extra_shas_to_notify(
-                    commit, repository_service
-                )
-            else:
-                gitlab_extra_shas_to_notify = None
+    def _prepare_and_send_notifications(
+        self,
+        db_session,
+        commit,
+        current_yaml,
+        head_report,
+        repository_service,
+        report_service,
+        installation_name_to_use,
+        empty_upload,
+        all_tests_passed,
+        ta_error_msg,
+        milestone,
+    ):
+        """Prepare comparison context and dispatch all notifications."""
+        enriched_pull = async_to_sync(
+            fetch_and_update_pull_request_information_from_commit
+        )(repository_service, commit, current_yaml)
+        pull, base_commit = self._resolve_pull_and_base(commit, enriched_pull)
 
+        if (
+            enriched_pull
+            and not self.send_notifications_if_commit_differs_from_pulls_head(
+                commit, enriched_pull, current_yaml
+            )
+            and empty_upload is None
+        ):
             log.info(
-                "We are going to be sending notifications",
+                "Not sending notifications for commit when it differs from pull's most recent head",
                 extra={
                     "commit": commit.commitid,
                     "repoid": commit.repoid,
                     "current_yaml": current_yaml.to_dict(),
+                    "pull_head": enriched_pull.provider_pull["head"]["commitid"],
                 },
             )
-
-            notifications = self.submit_third_party_notifications(
-                current_yaml,
-                base_commit,
-                commit,
-                base_report,
-                head_report,
-                enriched_pull,
-                repository_service,
-                empty_upload,
-                all_tests_passed=all_tests_passed,
-                test_results_error=ta_error_msg,
-                installation_name_to_use=installation_name_to_use,
-                gh_is_using_codecov_commenter=self.is_using_codecov_commenter(
-                    repository_service
-                ),
-                gitlab_extra_shas_to_notify=gitlab_extra_shas_to_notify,
-            )
-            self.log_checkpoint(UploadFlow.NOTIFIED)
-            self._call_upload_breadcrumb_task(
-                commit_sha=commit.commitid,
-                repo_id=commit.repoid,
-                milestone=milestone,
-            )
-            log.info(
-                "Notifications done",
-                extra={
-                    "notifications": notifications,
-                    "notification_count": len(notifications),
-                    "commit": commit.commitid,
-                    "repoid": commit.repoid,
-                    "pullid": pull.pullid if pull is not None else None,
-                },
-            )
-            db_session.commit()
-            return {"notified": True, "notifications": notifications}
-        else:
-            log.info(
-                "Not sending notifications at all",
-                extra={"commit": commit.commitid, "repoid": commit.repoid},
-            )
-            self.log_checkpoint(UploadFlow.SKIPPING_NOTIFICATION)
+            self.log_checkpoint(UploadFlow.NOTIF_STALE_HEAD)
             self._call_upload_breadcrumb_task(
                 commit_sha=commit.commitid,
                 repo_id=commit.repoid,
                 milestone=milestone,
                 error=Errors.SKIPPED_NOTIFICATIONS,
             )
-            return {"notified": False, "notifications": None}
+            return {
+                "notified": False,
+                "notifications": None,
+                "reason": "User doesnt want notifications warning them that current head differs from pull request most recent head.",
+            }
+
+        base_report = (
+            report_service.get_existing_report_for_commit(
+                base_commit, report_class=ReadOnlyReport
+            )
+            if base_commit is not None
+            else None
+        )
+        if head_report is None and empty_upload is None:
+            self.log_checkpoint(UploadFlow.NOTIF_ERROR_NO_REPORT)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=milestone,
+                error=Errors.REPORT_NOT_FOUND,
+            )
+            return {
+                "notified": False,
+                "notifications": None,
+                "reason": "no_head_report",
+            }
+
+        gitlab_extra_shas_to_notify = (
+            self.get_gitlab_extra_shas_to_notify(commit, repository_service)
+            if commit.repository.service == "gitlab"
+            else None
+        )
+
+        log.info(
+            "We are going to be sending notifications",
+            extra={
+                "commit": commit.commitid,
+                "repoid": commit.repoid,
+                "current_yaml": current_yaml.to_dict(),
+            },
+        )
+
+        notifications = self.submit_third_party_notifications(
+            current_yaml,
+            base_commit,
+            commit,
+            base_report,
+            head_report,
+            enriched_pull,
+            repository_service,
+            empty_upload,
+            all_tests_passed=all_tests_passed,
+            test_results_error=ta_error_msg,
+            installation_name_to_use=installation_name_to_use,
+            gh_is_using_codecov_commenter=self.is_using_codecov_commenter(
+                repository_service
+            ),
+            gitlab_extra_shas_to_notify=gitlab_extra_shas_to_notify,
+        )
+        self.log_checkpoint(UploadFlow.NOTIFIED)
+        self._call_upload_breadcrumb_task(
+            commit_sha=commit.commitid,
+            repo_id=commit.repoid,
+            milestone=milestone,
+        )
+        log.info(
+            "Notifications done",
+            extra={
+                "notifications": notifications,
+                "notification_count": len(notifications),
+                "commit": commit.commitid,
+                "repoid": commit.repoid,
+                "pullid": pull.pullid if pull is not None else None,
+            },
+        )
+        db_session.commit()
+        return {"notified": True, "notifications": notifications}
 
     def is_using_codecov_commenter(
         self, repository_service: TorngitBaseAdapter

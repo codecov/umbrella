@@ -148,66 +148,16 @@ class StatusNotifier(AbstractBaseNotifier):
         comparison: ComparisonProxy,
         status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> NotificationResult:
+        precondition_result = self._check_notify_preconditions(comparison)
+        if precondition_result is not None:
+            return precondition_result
         payload = None
-        if not self.can_we_set_this_status(comparison):
-            return NotificationResult(
-                notification_attempted=False,
-                notification_successful=None,
-                explanation="not_fit_criteria",
-                data_sent=None,
-            )
-        if not self.required_builds(comparison):
-            return NotificationResult(
-                notification_attempted=False,
-                notification_successful=None,
-                explanation="need_more_builds",
-                data_sent=None,
-            )
-        # Filter the coverage report based on fields in this notification's YAML settings
-        # e.g. if "paths" is specified, exclude the coverage not on those paths
         try:
-            # If flag coverage wasn't uploaded, apply the appropriate behavior
-            flag_coverage_not_uploaded_behavior = (
-                self.determine_status_check_behavior_to_apply(
-                    comparison, "flag_coverage_not_uploaded_behavior"
-                )
-            )
-            if not comparison.has_head_report():
-                payload = self.build_payload(comparison)
-            elif (
-                flag_coverage_not_uploaded_behavior == "exclude"
-                and not self.flag_coverage_was_uploaded(comparison)
-            ):
-                return NotificationResult(
-                    notification_attempted=False,
-                    notification_successful=None,
-                    explanation="exclude_flag_coverage_not_uploaded_checks",
-                    data_sent=None,
-                    data_received=None,
-                )
-            elif (
-                flag_coverage_not_uploaded_behavior == "pass"
-                and not self.flag_coverage_was_uploaded(comparison)
-            ):
-                filtered_comparison = comparison.get_filtered_comparison(
-                    **self.get_notifier_filters()
-                )
-                payload = self.build_payload(filtered_comparison)
-                payload["state"] = "success"
-                payload["message"] = (
-                    payload["message"]
-                    + " [Auto passed due to carriedforward or missing coverage]"
-                )
-            else:
-                filtered_comparison = comparison.get_filtered_comparison(
-                    **self.get_notifier_filters()
-                )
-                payload = self.build_payload(filtered_comparison)
-            if comparison.pull:
-                payload["url"] = get_pull_url(comparison.pull)
-            else:
-                payload["url"] = get_commit_url(comparison.head.commit)
-
+            result_or_payload = self._build_payload_with_behavior(comparison)
+            if isinstance(result_or_payload, NotificationResult):
+                return result_or_payload
+            payload = result_or_payload
+            self._set_payload_url(comparison, payload)
             return self.maybe_send_notification(comparison, payload)
         except TorngitClientError:
             log.warning(
@@ -241,6 +191,85 @@ class StatusNotifier(AbstractBaseNotifier):
                 explanation="server_side_error_provider",
                 data_sent=payload,
             )
+
+    def _check_notify_preconditions(
+        self, comparison: ComparisonProxy
+    ) -> NotificationResult | None:
+        """Check if we should proceed with the notification.
+
+        Returns a NotificationResult to return early, or None to continue.
+        """
+        if not self.can_we_set_this_status(comparison):
+            return NotificationResult(
+                notification_attempted=False,
+                notification_successful=None,
+                explanation="not_fit_criteria",
+                data_sent=None,
+            )
+        if not self.required_builds(comparison):
+            return NotificationResult(
+                notification_attempted=False,
+                notification_successful=None,
+                explanation="need_more_builds",
+                data_sent=None,
+            )
+        return None
+
+    def _build_payload_with_behavior(
+        self, comparison: ComparisonProxy
+    ) -> NotificationResult | dict:
+        """Build the notification payload, applying flag coverage behavior rules.
+
+        Filters the coverage report based on fields in this notification's YAML
+        settings (e.g. if "paths" is specified, exclude coverage not on those paths).
+
+        Returns a NotificationResult for early exit, or a payload dict to send.
+        """
+        flag_coverage_not_uploaded_behavior = (
+            self.determine_status_check_behavior_to_apply(
+                comparison, "flag_coverage_not_uploaded_behavior"
+            )
+        )
+        if not comparison.has_head_report():
+            return self.build_payload(comparison)
+        if (
+            flag_coverage_not_uploaded_behavior == "exclude"
+            and not self.flag_coverage_was_uploaded(comparison)
+        ):
+            return NotificationResult(
+                notification_attempted=False,
+                notification_successful=None,
+                explanation="exclude_flag_coverage_not_uploaded_checks",
+                data_sent=None,
+                data_received=None,
+            )
+        if (
+            flag_coverage_not_uploaded_behavior == "pass"
+            and not self.flag_coverage_was_uploaded(comparison)
+        ):
+            filtered_comparison = comparison.get_filtered_comparison(
+                **self.get_notifier_filters()
+            )
+            payload = self.build_payload(filtered_comparison)
+            payload["state"] = "success"
+            payload["message"] = (
+                payload["message"]
+                + " [Auto passed due to carriedforward or missing coverage]"
+            )
+            return payload
+        filtered_comparison = comparison.get_filtered_comparison(
+            **self.get_notifier_filters()
+        )
+        return self.build_payload(filtered_comparison)
+
+    def _set_payload_url(
+        self, comparison: ComparisonProxy, payload: dict
+    ) -> None:
+        """Set the URL on the notification payload based on PR or commit context."""
+        if comparison.pull:
+            payload["url"] = get_pull_url(comparison.pull)
+        else:
+            payload["url"] = get_commit_url(comparison.head.commit)
 
     def status_already_exists(
         self, comparison: ComparisonProxy, title, state, description
