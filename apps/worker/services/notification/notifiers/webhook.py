@@ -1,6 +1,6 @@
 import logging
 
-from database.enums import Notification
+from shared.django_apps.enums import Notification
 from services.comparison.types import Comparison, FullCommit
 from services.notification.notifiers.generics import RequestsYamlBasedNotifier
 from services.urls import get_commit_url, get_repository_url

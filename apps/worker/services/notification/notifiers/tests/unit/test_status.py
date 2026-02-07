@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from database.enums import Notification
+from shared.django_apps.enums import Notification
 from database.tests.factories.core import CommitFactory
 from services.comparison import ComparisonProxy
 from services.comparison.types import FullCommit

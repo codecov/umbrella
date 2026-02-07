@@ -3,7 +3,7 @@ from unittest.mock import PropertyMock
 
 import pytest
 
-from database.enums import ReportType
+from shared.django_apps.enums import ReportType
 from database.models import CommitReport, MeasurementName
 from database.tests.factories import CommitFactory, PullFactory, UploadFactory
 from database.tests.factories.timeseries import DatasetFactory, Measurement

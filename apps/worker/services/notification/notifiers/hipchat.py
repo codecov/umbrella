@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from database.enums import Notification
+from shared.django_apps.enums import Notification
 from services.notification.notifiers.generics import (
     Comparison,
     RequestsYamlBasedNotifier,

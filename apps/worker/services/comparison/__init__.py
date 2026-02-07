@@ -5,7 +5,7 @@ from typing import Any
 import sentry_sdk
 from asgiref.sync import async_to_sync
 
-from database.enums import CompareCommitState
+from shared.django_apps.enums import CompareCommitState
 from database.models import CompareCommit
 from services.comparison.changes import get_changes
 from services.comparison.types import Comparison, FullCommit, ReportUploadedCount

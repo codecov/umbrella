@@ -18,7 +18,7 @@ from sqlalchemy.exc import (
 from app import celery_app
 from celery_task_router import _get_ownerid_from_task, _get_user_plan_from_task
 from database.engine import get_db_session
-from database.enums import CommitErrorTypes
+from shared.django_apps.enums import CommitErrorTypes
 from database.models.core import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
     Commit,

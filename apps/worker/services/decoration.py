@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 
-from database.enums import Decoration
+from shared.django_apps.enums import Decoration
 from database.models import Owner
 from services.license import requires_license
 from services.repository import EnrichedPull

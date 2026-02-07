@@ -8,7 +8,7 @@ import respx
 from celery.exceptions import MaxRetriesExceededError, Retry
 from freezegun import freeze_time
 
-from database.enums import Decoration, Notification, NotificationState
+from shared.django_apps.enums import Decoration, Notification, NotificationState
 from database.models.core import CommitNotification
 from database.tests.factories import (
     CommitFactory,

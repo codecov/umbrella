@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, call
 import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
 
-from database.enums import ReportType
+from shared.django_apps.enums import ReportType
 from database.models import Upload
 from database.models.reports import CommitReport
 from database.tests.factories import CommitFactory, OwnerFactory, RepositoryFactory

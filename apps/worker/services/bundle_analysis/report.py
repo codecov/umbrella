@@ -8,7 +8,7 @@ import sentry_sdk
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
-from database.enums import ReportType
+from shared.django_apps.enums import ReportType
 from database.models.core import Commit
 from database.models.reports import CommitReport, Upload, UploadError
 from database.models.timeseries import Measurement, MeasurementName

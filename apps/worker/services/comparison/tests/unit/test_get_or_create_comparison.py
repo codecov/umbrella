@@ -1,4 +1,4 @@
-from database.enums import CompareCommitState
+from shared.django_apps.enums import CompareCommitState
 from database.tests.factories.core import CommitFactory, CompareCommitFactory
 from services.comparison import get_or_create_comparison
 

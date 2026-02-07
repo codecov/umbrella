@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from database.enums import Decoration
+from shared.django_apps.enums import Decoration
 from database.models.core import Repository
 from services.comparison import ComparisonProxy
 from services.notification.notifiers.base import AbstractBaseNotifier

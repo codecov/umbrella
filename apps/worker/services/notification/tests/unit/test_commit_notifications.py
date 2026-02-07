@@ -1,6 +1,6 @@
 import pytest
 
-from database.enums import Decoration, Notification, NotificationState
+from shared.django_apps.enums import Decoration, Notification, NotificationState
 from database.tests.factories import (
     CommitFactory,
     CommitNotificationFactory,

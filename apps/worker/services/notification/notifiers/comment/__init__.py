@@ -6,7 +6,7 @@ from typing import Any
 import sentry_sdk
 from asgiref.sync import async_to_sync
 
-from database.enums import Notification
+from shared.django_apps.enums import Notification
 from services.comparison import ComparisonProxy
 from services.comparison.types import Comparison
 from services.license import requires_license

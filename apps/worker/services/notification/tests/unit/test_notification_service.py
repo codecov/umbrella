@@ -6,7 +6,7 @@ from unittest import mock
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 
-from database.enums import Decoration, Notification, NotificationState
+from shared.django_apps.enums import Decoration, Notification, NotificationState
 from database.models.core import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
 )

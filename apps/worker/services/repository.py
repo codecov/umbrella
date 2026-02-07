@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, Session, lazyload
 
 import shared.torngit as torngit
-from database.enums import CommitErrorTypes
+from shared.django_apps.enums import CommitErrorTypes
 from database.models import Commit, Owner, Pull
 from database.models import Repository as SQLAlchemyRepository
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME

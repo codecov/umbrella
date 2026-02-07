@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import requests
 
-from database.enums import Notification
+from shared.django_apps.enums import Notification
 from database.models import Commit
 from services.comparison import ComparisonProxy
 from services.notification.notifiers.base import (

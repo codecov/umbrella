@@ -8,7 +8,7 @@ from urllib.parse import quote_plus
 
 import sentry_sdk
 
-from database.enums import ReportType
+from shared.django_apps.enums import ReportType
 from database.models import (
     Commit,
     CommitReport,

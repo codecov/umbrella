@@ -1,6 +1,6 @@
 import pytest
 
-from database.enums import TrialStatus
+from shared.django_apps.enums import TrialStatus
 from shared.django_apps.codecov_auth.tests.factories import (
     OwnerFactory,
     PlanFactory,

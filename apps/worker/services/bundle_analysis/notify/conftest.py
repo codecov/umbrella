@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from database.enums import ReportType
+from shared.django_apps.enums import ReportType
 from database.models.core import Commit, Repository
 from database.models.reports import CommitReport
 from database.tests.factories.core import CommitFactory, PullFactory

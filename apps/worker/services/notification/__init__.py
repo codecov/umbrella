@@ -11,7 +11,7 @@ from typing import TypedDict
 
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
 
-from database.enums import notification_type_status_or_checks
+from shared.django_apps.enums import notification_type_status_or_checks
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME, Owner, Repository
 from services.comparison import ComparisonProxy
 from services.decoration import Decoration

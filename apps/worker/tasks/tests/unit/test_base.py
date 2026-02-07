@@ -17,7 +17,7 @@ from sqlalchemy.exc import (
     StatementError,
 )
 
-from database.enums import CommitErrorTypes
+from shared.django_apps.enums import CommitErrorTypes
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import OwnerFactory, RepositoryFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError

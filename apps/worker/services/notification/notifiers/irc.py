@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from io import BytesIO
 from typing import Any
 
-from database.enums import Notification
+from shared.django_apps.enums import Notification
 from services.notification.notifiers.generics import Comparison, StandardNotifier
 
 log = logging.getLogger(__name__)

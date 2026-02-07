@@ -2,7 +2,7 @@ import logging
 
 from sqlalchemy.orm.session import Session
 
-from database.enums import NotificationState
+from shared.django_apps.enums import NotificationState
 from database.models import CommitNotification, Pull
 from services.comparison import ComparisonProxy
 from services.notification.notifiers.base import (

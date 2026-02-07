@@ -7,7 +7,7 @@ from asgiref.sync import async_to_sync
 from celery import group
 
 from app import celery_app
-from database.enums import CompareCommitError, CompareCommitState
+from shared.django_apps.enums import CompareCommitError, CompareCommitState
 from database.models import CompareCommit, CompareComponent, CompareFlag
 from database.models.reports import RepositoryFlag
 from helpers.comparison import minimal_totals

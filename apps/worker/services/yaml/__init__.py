@@ -2,7 +2,7 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-from database.enums import CommitErrorTypes
+from shared.django_apps.enums import CommitErrorTypes
 from database.models import Commit
 from database.models.core import Repository
 from helpers.save_commit_error import save_commit_error
