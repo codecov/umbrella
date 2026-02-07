@@ -9,6 +9,6 @@ from shared.django_apps.enums import (  # noqa: F401
     Notification,
     notification_type_status_or_checks,
     NotificationState,
-    ReportType,
 )
+from shared.django_apps.reports.models import ReportType  # noqa: F401
 from shared.plan.constants import TrialStatus  # noqa: F401

@@ -9,7 +9,8 @@ from celery.exceptions import Retry, SoftTimeLimitExceeded
 
 from app import celery_app
 from celery_config import notify_error_task_name
-from shared.django_apps.enums import CommitErrorTypes, ReportType
+from shared.django_apps.enums import CommitErrorTypes
+from shared.django_apps.reports.models import ReportType
 from database.models import Commit, Pull
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.models.reports import Upload

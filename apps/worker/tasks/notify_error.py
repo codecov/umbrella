@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from celery_config import notify_error_task_name
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from database.models import Commit, CommitReport, Upload
 from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.notifier import BaseNotifier, NotifierResult

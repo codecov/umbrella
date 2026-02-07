@@ -13,7 +13,8 @@ from sqlalchemy.schema import FetchedValue
 
 import database.models
 from database.base import CodecovBaseModel, MixinBaseClass, MixinBaseClassNoExternalID
-from shared.django_apps.enums import Decoration, Notification, NotificationState, ReportType
+from shared.django_apps.enums import Decoration, Notification, NotificationState
+from shared.django_apps.reports.models import ReportType
 from database.utils import ArchiveField
 from shared.django_apps.utils.config import should_write_data_to_storage_config_check
 from shared.helpers.github_apps import is_configured

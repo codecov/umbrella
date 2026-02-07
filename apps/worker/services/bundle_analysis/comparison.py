@@ -1,6 +1,6 @@
 from functools import cached_property
 
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from database.models.core import Commit, Repository
 from database.models.reports import CommitReport
 from services.bundle_analysis.exceptions import (

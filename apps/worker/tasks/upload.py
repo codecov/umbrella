@@ -16,7 +16,7 @@ from redis import Redis
 from sqlalchemy.orm import Session
 
 from app import celery_app
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from database.models import Commit, CommitReport, Repository, RepositoryFlag, Upload
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow

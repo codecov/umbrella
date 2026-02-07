@@ -8,7 +8,7 @@ import sentry_sdk
 from redis import Redis  # type: ignore
 from redis.exceptions import LockError  # type: ignore
 
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from shared.celery_config import (
     DEFAULT_BLOCKING_TIMEOUT_SECONDS,
     DEFAULT_LOCK_TIMEOUT_SECONDS,

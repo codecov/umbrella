@@ -3,7 +3,7 @@ import logging
 from celery.exceptions import MaxRetriesExceededError
 
 from app import celery_app
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from database.models import Commit, Pull
 from database.models.reports import CommitReport, Upload
 from services.comparison import get_or_create_comparison

@@ -5,7 +5,7 @@ from unittest.mock import call
 import pytest
 from django.db import transaction as django_transaction
 
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from database.tests.factories import (
     PullFactory,
     UploadFactory,

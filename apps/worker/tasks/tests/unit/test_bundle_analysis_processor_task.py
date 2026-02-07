@@ -2,7 +2,7 @@ import pytest
 from celery.exceptions import Retry
 from redis.exceptions import LockError
 
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from database.models import CommitReport, Upload
 from database.tests.factories import CommitFactory, RepositoryFactory, UploadFactory
 from services.bundle_analysis.report import ProcessingError, ProcessingResult

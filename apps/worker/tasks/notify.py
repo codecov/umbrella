@@ -7,7 +7,8 @@ from sqlalchemy import and_
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
-from shared.django_apps.enums import CommitErrorTypes, Decoration, NotificationState, ReportType
+from shared.django_apps.enums import CommitErrorTypes, Decoration, NotificationState
+from shared.django_apps.reports.models import ReportType
 from database.models import (
     Commit,
     Pull,

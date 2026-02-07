@@ -4,7 +4,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app import celery_app
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from database.models import Commit
 from helpers.checkpoint_logger.flows import TestResultsFlow
 from services.lock_manager import LockManager, LockRetry, LockType

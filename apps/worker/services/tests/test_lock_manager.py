@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from redis.exceptions import LockError
 
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from services.lock_manager import LockManager, LockRetry, LockType
 from tasks.base import BaseCodecovTask
 

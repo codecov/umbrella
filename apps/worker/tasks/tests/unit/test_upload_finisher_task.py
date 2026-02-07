@@ -6,7 +6,7 @@ import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
 
 from celery_config import notify_error_task_name
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from database.models.reports import CommitReport, Upload
 from database.tests.factories import CommitFactory, PullFactory, RepositoryFactory
 from database.tests.factories.core import UploadFactory

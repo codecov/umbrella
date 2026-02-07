@@ -9,7 +9,7 @@ from redis import Redis
 from sqlalchemy.orm import Session
 
 from app import celery_app
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from helpers.notifier import NotifierResult
 from helpers.string import shorten_file_paths
 from services.lock_manager import LockManager, LockRetry, LockType
