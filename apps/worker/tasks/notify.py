@@ -64,8 +64,6 @@ from tasks.upload_processor import UPLOAD_PROCESSING_LOCK_NAME
 
 log = logging.getLogger(__name__)
 
-GENERIC_TA_ERROR_MSG = "Test Analytics upload error: We are unable to process any of the uploaded JUnit XML files. Please ensure your files are in the right format."
-
 
 class NotifyTask(BaseCodecovTask, name=notify_task_name):
     def run_impl(
@@ -123,16 +121,14 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     **kwargs,
                 )
         except LockRetry as err:
-            (
-                log.info(
-                    "Not notifying because there is another notification already happening",
-                    extra={
-                        "repoid": repoid,
-                        "commitid": commitid,
-                        "error_type": type(err),
-                        "lock_acquired": lock_acquired,
-                    },
-                ),
+            log.info(
+                "Not notifying because there is another notification already happening",
+                extra={
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "error_type": type(err),
+                    "lock_acquired": lock_acquired,
+                },
             )
             self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
             self._call_upload_breadcrumb_task(
@@ -223,9 +219,6 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         commit = self._fetch_commit(db_session, repoid, commitid)
         any_failures, all_tests_passed = get_test_status(commit.repoid, commit.commitid)
 
-        # TA error messaging is disabled for now (too noisy for customers)
-        ta_error_msg = None
-
         if any_failures and not all_tests_passed:
             self._call_upload_breadcrumb_task(
                 commit_sha=commit.commitid,
@@ -285,7 +278,6 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             installation_name_to_use=installation_name_to_use,
             empty_upload=empty_upload,
             all_tests_passed=all_tests_passed,
-            ta_error_msg=ta_error_msg,
             milestone=milestone,
         )
 
@@ -510,7 +502,6 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         installation_name_to_use,
         empty_upload,
         all_tests_passed,
-        ta_error_msg,
         milestone,
     ):
         """Prepare comparison context and dispatch all notifications."""
@@ -545,7 +536,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             return {
                 "notified": False,
                 "notifications": None,
-                "reason": "User doesnt want notifications warning them that current head differs from pull request most recent head.",
+                "reason": "commit_not_pull_head",
             }
 
         base_report = (
@@ -594,7 +585,6 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             repository_service,
             empty_upload,
             all_tests_passed=all_tests_passed,
-            test_results_error=ta_error_msg,
             installation_name_to_use=installation_name_to_use,
             gh_is_using_codecov_commenter=self.is_using_codecov_commenter(
                 repository_service

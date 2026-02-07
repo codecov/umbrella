@@ -590,7 +590,7 @@ class TestNotifyTask:
         assert result == {
             "notified": False,
             "notifications": None,
-            "reason": "User doesnt want notifications warning them that current head differs from pull request most recent head.",
+            "reason": "commit_not_pull_head",
         }
         mocked_should_send_notifications.assert_called_with(
             UserYaml({"codecov": {"notify": {"manual_trigger": True}}}),
