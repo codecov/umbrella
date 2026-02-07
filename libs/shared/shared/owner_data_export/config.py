@@ -10,7 +10,7 @@ from shared.config import get_config
 
 # Export Parameters
 EXPORT_DAYS_DEFAULT = 60
-BATCH_SIZE = 1000
+BATCH_SIZE = 5000
 
 # Default 7 days
 DOWNLOAD_URL_EXPIRY_SECONDS = int(
