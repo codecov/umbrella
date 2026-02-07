@@ -36,7 +36,7 @@ from services.test_results import (
 )
 from shared.celery_config import test_analytics_notifier_task_name
 from shared.django_apps.core.models import Repository
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from shared.helpers.redis import get_redis_connection
 from shared.reports.types import UploadType
 from shared.typings.torngit import AdditionalData

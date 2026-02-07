@@ -38,7 +38,7 @@ from services.repository import (
 from services.test_results import TestResultsReportService
 from shared.celery_config import DEFAULT_LOCK_TIMEOUT_SECONDS, upload_task_name
 from shared.config import get_config
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.django_apps.user_measurements.models import UserMeasurement
 from shared.helpers.redis import get_redis_connection

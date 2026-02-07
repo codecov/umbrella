@@ -10,7 +10,7 @@ from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.storage import get_bucket_name
 from shared.celery_config import BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 from shared.django_apps.bundle_analysis.models import CacheConfig
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from shared.storage.exceptions import PutRequestRateLimitError
 from tasks.bundle_analysis_processor import BundleAnalysisProcessorTask
 from tasks.bundle_analysis_save_measurements import (

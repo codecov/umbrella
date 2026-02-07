@@ -6,7 +6,7 @@ from database.tests.factories.core import CommitFactory, PullFactory
 from services.repository import EnrichedPull
 from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.storage import get_bucket_name
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 
 SAMPLE_FOLDER_PATH = Path(__file__).resolve().parent / "tests" / "samples"
 

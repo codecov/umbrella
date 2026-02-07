@@ -61,12 +61,6 @@ class CommitErrorTypes(Enum):
     REPO_BOT_INVALID = "repo_bot_invalid"
 
 
-class ReportType(Enum):
-    COVERAGE = "coverage"
-    TEST_RESULTS = "test_results"
-    BUNDLE_ANALYSIS = "bundle_analysis"
-
-
 class FlakeSymptomType(Enum):
     FAILED_IN_DEFAULT_BRANCH = "failed_in_default_branch"
     CONSECUTIVE_DIFF_OUTCOMES = "consecutive_diff_outcomes"

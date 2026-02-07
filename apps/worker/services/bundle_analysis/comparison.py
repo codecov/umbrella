@@ -13,7 +13,7 @@ from shared.bundle_analysis import (
     BundleAnalysisComparison,
     BundleAnalysisReportLoader,
 )
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 
 
 class ComparisonLoader:
