@@ -269,132 +269,25 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         head_report = report_service.get_existing_report_for_commit(
             commit, report_class=ReadOnlyReport
         )
-        if self.should_send_notifications(
+
+        if not self.should_send_notifications(
             current_yaml, commit, ci_results, head_report
         ):
-            enriched_pull = async_to_sync(
-                fetch_and_update_pull_request_information_from_commit
-            )(repository_service, commit, current_yaml)
-            if enriched_pull and enriched_pull.database_pull:
-                pull = enriched_pull.database_pull
-                base_commit = self.fetch_pull_request_base(pull)
-            else:
-                pull = None
-                base_commit = self.fetch_parent(commit)
+            return self._skip_notifications(commit, milestone)
 
-            if (
-                enriched_pull
-                and not self.send_notifications_if_commit_differs_from_pulls_head(
-                    commit, enriched_pull, current_yaml
-                )
-                and empty_upload is None
-            ):
-                log.info(
-                    "Not sending notifications for commit when it differs from pull's most recent head",
-                    extra={
-                        "commit": commit.commitid,
-                        "repoid": commit.repoid,
-                        "current_yaml": current_yaml.to_dict(),
-                        "pull_head": enriched_pull.provider_pull["head"]["commitid"],
-                    },
-                )
-                self.log_checkpoint(UploadFlow.NOTIF_STALE_HEAD)
-                self._call_upload_breadcrumb_task(
-                    commit_sha=commit.commitid,
-                    repo_id=commit.repoid,
-                    milestone=milestone,
-                    error=Errors.SKIPPED_NOTIFICATIONS,
-                )
-                return {
-                    "notified": False,
-                    "notifications": None,
-                    "reason": "User doesnt want notifications warning them that current head differs from pull request most recent head.",
-                }
-
-            if base_commit is not None:
-                base_report = report_service.get_existing_report_for_commit(
-                    base_commit, report_class=ReadOnlyReport
-                )
-            else:
-                base_report = None
-            if head_report is None and empty_upload is None:
-                self.log_checkpoint(UploadFlow.NOTIF_ERROR_NO_REPORT)
-                self._call_upload_breadcrumb_task(
-                    commit_sha=commit.commitid,
-                    repo_id=commit.repoid,
-                    milestone=milestone,
-                    error=Errors.REPORT_NOT_FOUND,
-                )
-                return {
-                    "notified": False,
-                    "notifications": None,
-                    "reason": "no_head_report",
-                }
-
-            if commit.repository.service == "gitlab":
-                gitlab_extra_shas_to_notify = self.get_gitlab_extra_shas_to_notify(
-                    commit, repository_service
-                )
-            else:
-                gitlab_extra_shas_to_notify = None
-
-            log.info(
-                "We are going to be sending notifications",
-                extra={
-                    "commit": commit.commitid,
-                    "repoid": commit.repoid,
-                    "current_yaml": current_yaml.to_dict(),
-                },
-            )
-
-            notifications = self.submit_third_party_notifications(
-                current_yaml,
-                base_commit,
-                commit,
-                base_report,
-                head_report,
-                enriched_pull,
-                repository_service,
-                empty_upload,
-                all_tests_passed=all_tests_passed,
-                test_results_error=ta_error_msg,
-                installation_name_to_use=installation_name_to_use,
-                gh_is_using_codecov_commenter=self.is_using_codecov_commenter(
-                    repository_service
-                ),
-                gitlab_extra_shas_to_notify=gitlab_extra_shas_to_notify,
-            )
-            self.log_checkpoint(UploadFlow.NOTIFIED)
-            self._call_upload_breadcrumb_task(
-                commit_sha=commit.commitid,
-                repo_id=commit.repoid,
-                milestone=milestone,
-            )
-            log.info(
-                "Notifications done",
-                extra={
-                    "notifications": notifications,
-                    "notification_count": len(notifications),
-                    "commit": commit.commitid,
-                    "repoid": commit.repoid,
-                    "pullid": pull.pullid if pull is not None else None,
-                },
-            )
-            db_session.commit()
-            return {"notified": True, "notifications": notifications}
-        else:
-            log.info(
-                "Not sending notifications at all",
-                extra={"commit": commit.commitid, "repoid": commit.repoid},
-            )
-            self.log_checkpoint(UploadFlow.SKIPPING_NOTIFICATION)
-            self._call_upload_breadcrumb_task(
-                commit_sha=commit.commitid,
-                repo_id=commit.repoid,
-                milestone=milestone,
-                error=Errors.SKIPPED_NOTIFICATIONS,
-            )
-            return {"notified": False, "notifications": None}
+        return self._prepare_and_send_notifications(
+            db_session=db_session,
+            commit=commit,
+            current_yaml=current_yaml,
+            head_report=head_report,
+            repository_service=repository_service,
+            report_service=report_service,
+            installation_name_to_use=installation_name_to_use,
+            empty_upload=empty_upload,
+            all_tests_passed=all_tests_passed,
+            ta_error_msg=ta_error_msg,
+            milestone=milestone,
+        )
 
     def _fetch_commit(self, db_session: Session, repoid: int, commitid: str) -> Commit:
         """Fetch and validate the commit from the database."""
@@ -580,6 +473,152 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             commit=commit,
             **kwargs,
         )
+
+    def _skip_notifications(self, commit, milestone):
+        """Log and return when we decide not to send any notifications."""
+        log.info(
+            "Not sending notifications at all",
+            extra={"commit": commit.commitid, "repoid": commit.repoid},
+        )
+        self.log_checkpoint(UploadFlow.SKIPPING_NOTIFICATION)
+        self._call_upload_breadcrumb_task(
+            commit_sha=commit.commitid,
+            repo_id=commit.repoid,
+            milestone=milestone,
+            error=Errors.SKIPPED_NOTIFICATIONS,
+        )
+        return {"notified": False, "notifications": None}
+
+    def _resolve_pull_and_base(self, commit, enriched_pull):
+        """Determine the pull request and base commit for comparison."""
+        if enriched_pull and enriched_pull.database_pull:
+            pull = enriched_pull.database_pull
+            base_commit = self.fetch_pull_request_base(pull)
+        else:
+            pull = None
+            base_commit = self.fetch_parent(commit)
+        return pull, base_commit
+
+    def _prepare_and_send_notifications(
+        self,
+        db_session,
+        commit,
+        current_yaml,
+        head_report,
+        repository_service,
+        report_service,
+        installation_name_to_use,
+        empty_upload,
+        all_tests_passed,
+        ta_error_msg,
+        milestone,
+    ):
+        """Prepare comparison context and dispatch all notifications."""
+        enriched_pull = async_to_sync(
+            fetch_and_update_pull_request_information_from_commit
+        )(repository_service, commit, current_yaml)
+        pull, base_commit = self._resolve_pull_and_base(commit, enriched_pull)
+
+        if (
+            enriched_pull
+            and not self.send_notifications_if_commit_differs_from_pulls_head(
+                commit, enriched_pull, current_yaml
+            )
+            and empty_upload is None
+        ):
+            log.info(
+                "Not sending notifications for commit when it differs from pull's most recent head",
+                extra={
+                    "commit": commit.commitid,
+                    "repoid": commit.repoid,
+                    "current_yaml": current_yaml.to_dict(),
+                    "pull_head": enriched_pull.provider_pull["head"]["commitid"],
+                },
+            )
+            self.log_checkpoint(UploadFlow.NOTIF_STALE_HEAD)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=milestone,
+                error=Errors.SKIPPED_NOTIFICATIONS,
+            )
+            return {
+                "notified": False,
+                "notifications": None,
+                "reason": "User doesnt want notifications warning them that current head differs from pull request most recent head.",
+            }
+
+        base_report = (
+            report_service.get_existing_report_for_commit(
+                base_commit, report_class=ReadOnlyReport
+            )
+            if base_commit is not None
+            else None
+        )
+        if head_report is None and empty_upload is None:
+            self.log_checkpoint(UploadFlow.NOTIF_ERROR_NO_REPORT)
+            self._call_upload_breadcrumb_task(
+                commit_sha=commit.commitid,
+                repo_id=commit.repoid,
+                milestone=milestone,
+                error=Errors.REPORT_NOT_FOUND,
+            )
+            return {
+                "notified": False,
+                "notifications": None,
+                "reason": "no_head_report",
+            }
+
+        gitlab_extra_shas_to_notify = (
+            self.get_gitlab_extra_shas_to_notify(commit, repository_service)
+            if commit.repository.service == "gitlab"
+            else None
+        )
+
+        log.info(
+            "We are going to be sending notifications",
+            extra={
+                "commit": commit.commitid,
+                "repoid": commit.repoid,
+                "current_yaml": current_yaml.to_dict(),
+            },
+        )
+
+        notifications = self.submit_third_party_notifications(
+            current_yaml,
+            base_commit,
+            commit,
+            base_report,
+            head_report,
+            enriched_pull,
+            repository_service,
+            empty_upload,
+            all_tests_passed=all_tests_passed,
+            test_results_error=ta_error_msg,
+            installation_name_to_use=installation_name_to_use,
+            gh_is_using_codecov_commenter=self.is_using_codecov_commenter(
+                repository_service
+            ),
+            gitlab_extra_shas_to_notify=gitlab_extra_shas_to_notify,
+        )
+        self.log_checkpoint(UploadFlow.NOTIFIED)
+        self._call_upload_breadcrumb_task(
+            commit_sha=commit.commitid,
+            repo_id=commit.repoid,
+            milestone=milestone,
+        )
+        log.info(
+            "Notifications done",
+            extra={
+                "notifications": notifications,
+                "notification_count": len(notifications),
+                "commit": commit.commitid,
+                "repoid": commit.repoid,
+                "pullid": pull.pullid if pull is not None else None,
+            },
+        )
+        db_session.commit()
+        return {"notified": True, "notifications": notifications}
 
     def is_using_codecov_commenter(
         self, repository_service: TorngitBaseAdapter
