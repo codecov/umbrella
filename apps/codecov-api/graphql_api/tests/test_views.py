@@ -264,21 +264,28 @@ class AriadneViewTestCase(GraphQLTestHelper, TestCase):
         result = view._check_ratelimit(request)
         assert result == False
 
-    def test_client_ip_from_x_forwarded_for(self):
+    def test_client_ip_from_x_forwarded_for_default_config(self):
+        """
+        With default TRUSTED_PROXY_COUNT=0, XFF should be ignored for security.
+        """
         view = AsyncGraphqlView()
         request = Mock()
-        request.META = {"HTTP_X_FORWARDED_FOR": "127.0.0.1,blah", "REMOTE_ADDR": "lol"}
+        request.META = {
+            "HTTP_X_FORWARDED_FOR": "127.0.0.1,blah",
+            "REMOTE_ADDR": "10.0.0.1",
+        }
 
         result = view.get_client_ip(request)
-        assert result == "127.0.0.1"
+        # Default config ignores XFF to prevent spoofing
+        assert result == "10.0.0.1"
 
     def test_client_ip_from_remote_addr(self):
         view = AsyncGraphqlView()
         request = Mock()
-        request.META = {"HTTP_X_FORWARDED_FOR": None, "REMOTE_ADDR": "lol"}
+        request.META = {"HTTP_X_FORWARDED_FOR": None, "REMOTE_ADDR": "10.0.0.1"}
 
         result = view.get_client_ip(request)
-        assert result == "lol"
+        assert result == "10.0.0.1"
 
     async def test_required_variable_present(self):
         schema = generate_schema_with_required_variables()

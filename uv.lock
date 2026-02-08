@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.13"
 resolution-markers = [
     "platform_python_implementation != 'PyPy'",
@@ -536,6 +536,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b5/40/c702a6fe8cccac9bf426b55724ebdf57d10a132bae80a17691d0cf0b9bac/django_filter-25.1.tar.gz", hash = "sha256:1ec9eef48fa8da1c0ac9b411744b16c3f4c31176c867886e4c48da369c407153", size = 143021, upload-time = "2025-02-14T16:30:53.238Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/07/a6/70dcd68537c434ba7cb9277d403c5c829caf04f35baf5eb9458be251e382/django_filter-25.1-py3-none-any.whl", hash = "sha256:4fa48677cf5857b9b1347fed23e355ea792464e0fe07244d1fdfb8a806215b80", size = 94114, upload-time = "2025-02-14T16:30:50.435Z" },
+]
+
+[[package]]
+name = "django-ipware"
+version = "7.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-ipware" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/23/64/c7e4791edf01ba483cce444770b3e6a930ba12195ba1eeb37b5bf6dce8a8/django-ipware-7.0.1.tar.gz", hash = "sha256:d9ec43d2bf7cdf216fed8d494a084deb5761a54860a53b2e74346a4f384cff47", size = 6827, upload-time = "2024-04-19T20:02:49.257Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/11/33/bf539925b102d68200da5b1d3eacb8aa5d5d9a065972e8b8724d0d53bb0d/django_ipware-7.0.1-py2.py3-none-any.whl", hash = "sha256:db16bbee920f661ae7f678e4270460c85850f03c6761a4eaeb489bdc91f64709", size = 6425, upload-time = "2024-04-19T20:02:47.469Z" },
 ]
 
 [[package]]
@@ -1900,6 +1912,15 @@ wheels = [
 ]
 
 [[package]]
+name = "python-ipware"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9e/60/da4426c3e9aee56f08b24091a9e85a0414260f928f97afd0013dfbd0332f/python_ipware-3.0.0.tar.gz", hash = "sha256:9117b1c4dddcb5d5ca49e6a9617de2fc66aec2ef35394563ac4eecabdf58c062", size = 16609, upload-time = "2024-04-19T20:00:58.938Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/08/bd/ccd7416fdb30f104ddf6cfd8ee9f699441c7d9880a26f9b3089438adee05/python_ipware-3.0.0-py3-none-any.whl", hash = "sha256:fc936e6e7ec9fcc107f9315df40658f468ac72f739482a707181742882e36b60", size = 10761, upload-time = "2024-04-19T20:00:57.171Z" },
+]
+
+[[package]]
 name = "python-json-logger"
 version = "3.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2490,6 +2511,7 @@ codecov-api = [
     { name = "django-csp" },
     { name = "django-cursor-pagination" },
     { name = "django-filter" },
+    { name = "django-ipware" },
     { name = "django-model-utils" },
     { name = "django-postgres-extra" },
     { name = "django-prometheus" },
@@ -2578,6 +2600,7 @@ prod = [
     { name = "django-csp" },
     { name = "django-cursor-pagination" },
     { name = "django-filter" },
+    { name = "django-ipware" },
     { name = "django-model-utils" },
     { name = "django-postgres-extra" },
     { name = "django-prometheus" },
@@ -2742,6 +2765,7 @@ codecov-api = [
     { name = "django-csp", specifier = "==3.8.0" },
     { name = "django-cursor-pagination", specifier = ">=0.3.0" },
     { name = "django-filter", specifier = ">=2.4.0" },
+    { name = "django-ipware", specifier = ">=6.0.5" },
     { name = "django-model-utils", specifier = ">=4.5.1" },
     { name = "django-postgres-extra", specifier = ">=2.0.8" },
     { name = "django-prometheus", specifier = ">=2.3.1" },
@@ -2831,6 +2855,7 @@ prod = [
     { name = "django-csp", specifier = "==3.8.0" },
     { name = "django-cursor-pagination", specifier = ">=0.3.0" },
     { name = "django-filter", specifier = ">=2.4.0" },
+    { name = "django-ipware", specifier = ">=6.0.5" },
     { name = "django-model-utils", specifier = ">=4.5.1" },
     { name = "django-postgres-extra", specifier = ">=2.0.8" },
     { name = "django-prometheus", specifier = ">=2.3.1" },
