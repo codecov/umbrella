@@ -25,13 +25,12 @@ from shared.django_apps.core.tests.factories import CommitFactory as DjangoCommi
 from shared.django_apps.core.tests.factories import (
     RepositoryFactory as DjangoRepositoryFactory,
 )
-from shared.django_apps.enums import TrialStatus
 from shared.django_apps.reports.models import ReportSession, ReportType
 from shared.django_apps.reports.tests.factories import CommitReportFactory
 from shared.django_apps.reports.tests.factories import (
     UploadFactory as DjangoUploadFactory,
 )
-from shared.plan.constants import DEFAULT_FREE_PLAN
+from shared.plan.constants import DEFAULT_FREE_PLAN, TrialStatus
 from shared.plan.service import PlanService
 from shared.upload.types import UploaderType
 from shared.upload.utils import insert_coverage_measurement

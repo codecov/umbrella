@@ -1,0 +1,17 @@
+---
+description: Run pre-commit checks (ruff lint + format) before creating PRs or commits
+alwaysApply: true
+---
+
+# Pre-commit Checks
+
+Before creating a PR or making a commit, always run the project's pre-commit hooks to catch lint and formatting issues:
+
+```bash
+ruff check --fix .
+ruff format .
+```
+
+If either command produces changes, stage the fixes and include them in the commit.
+
+This project uses `ruff` for both linting (`ruff check`) and formatting (`ruff format`), configured in `pyproject.toml` and enforced via `.pre-commit-config.yaml`.
