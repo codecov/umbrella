@@ -19,7 +19,7 @@ from shared.celery_config import (
     BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES,
     bundle_analysis_processor_task_name,
 )
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from shared.reports.enums import UploadState
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask

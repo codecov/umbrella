@@ -13,7 +13,7 @@ from shared.celery_config import (
     DEFAULT_LOCK_TIMEOUT_SECONDS,
 )
 from shared.config import get_config
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from shared.helpers.redis import get_redis_connection  # type: ignore
 
 log = logging.getLogger(__name__)

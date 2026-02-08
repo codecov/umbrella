@@ -8,7 +8,7 @@ from database.models import Commit, CommitReport, Upload
 from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.notifier import BaseNotifier, NotifierResult
 from services.yaml import UserYaml
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from tasks.base import BaseCodecovTask, celery_app
 
 log = logging.getLogger(__name__)

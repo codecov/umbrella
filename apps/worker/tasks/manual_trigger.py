@@ -15,7 +15,7 @@ from shared.celery_config import (
     notify_task_name,
     pulls_task_name,
 )
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from shared.reports.enums import UploadState
 from tasks.base import BaseCodecovTask
 

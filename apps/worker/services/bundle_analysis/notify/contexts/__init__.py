@@ -13,7 +13,7 @@ from services.bundle_analysis.notify.types import (
 )
 from services.repository import get_repo_provider_service
 from shared.bundle_analysis import BundleAnalysisReport, BundleAnalysisReportLoader
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from shared.torngit.base import TorngitBaseAdapter
 from shared.typings.torngit import AdditionalData, UploadType
 from shared.validation.types import BundleThreshold

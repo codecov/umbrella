@@ -51,12 +51,8 @@ from shared.celery_config import (
 )
 from shared.config import get_config
 from shared.django_apps.codecov_auth.models import Service
-from shared.django_apps.enums import (
-    CommitErrorTypes,
-    Decoration,
-    NotificationState,
-    ReportType,
-)
+from shared.django_apps.enums import CommitErrorTypes, Decoration, NotificationState
+from shared.django_apps.reports.models import ReportType
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import Redis, get_redis_connection
 from shared.reports.readonly import ReadOnlyReport

@@ -39,7 +39,8 @@ from shared.celery_config import (
     timeseries_save_commit_measurements_task_name,
     upload_finisher_task_name,
 )
-from shared.django_apps.enums import CommitErrorTypes, ReportType
+from shared.django_apps.enums import CommitErrorTypes
+from shared.django_apps.reports.models import ReportType
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.cache import cache
 from shared.helpers.redis import get_redis_connection

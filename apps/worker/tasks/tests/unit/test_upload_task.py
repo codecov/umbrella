@@ -19,7 +19,7 @@ from helpers.log_context import LogContext, set_log_context
 from services.lock_manager import LockRetry
 from services.report import NotReadyToBuildReportYetError, ReportService
 from shared.celery_config import upload_breadcrumb_task_name
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
     Errors,

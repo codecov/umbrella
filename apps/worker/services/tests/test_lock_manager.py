@@ -7,7 +7,7 @@ import pytest
 from redis.exceptions import LockError
 
 from services.lock_manager import LockManager, LockRetry, LockType
-from shared.django_apps.enums import ReportType
+from shared.django_apps.reports.models import ReportType
 from tasks.base import BaseCodecovTask
 
 
