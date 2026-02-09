@@ -132,3 +132,6 @@ dmypy.json
 junit.xml
 
 .DS_Store
+
+# Local Cursor rules (personal/machine-specific)
+.cursor/rules/local/
