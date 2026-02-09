@@ -4,7 +4,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     """
-    CREATE INDEX CONCURRENTLY "uploadleveltotals_session_id_idx" ON "reports_uploadleveltotals" ("upload_id", "id");
+    CREATE INDEX CONCURRENTLY "ult_session_id_idx" ON "reports_uploadleveltotals" ("upload_id", "id");
     """
 
     atomic = False
@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
             model_name="uploadleveltotals",
             index=models.Index(
                 fields=["report_session_id", "id"],
-                name="uploadleveltotals_session_id_idx",
+                name="ult_session_id_idx",
             ),
         ),
     ]

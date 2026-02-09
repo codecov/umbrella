@@ -219,6 +219,6 @@ class UploadLevelTotals(AbstractTotals):
         indexes = [
             models.Index(
                 fields=["report_session_id", "id"],
-                name="uploadleveltotals_session_id_idx",
+                name="ult_session_id_idx",
             ),
         ]
