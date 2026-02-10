@@ -9,7 +9,7 @@ directory to prevent concurrent exports from overwriting each other's files.
 from shared.config import get_config
 
 # Export Parameters
-EXPORT_DAYS_DEFAULT = 60
+EXPORT_DAYS_DEFAULT = 90
 BATCH_SIZE = 5000
 
 # Default 7 days
