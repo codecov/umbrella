@@ -7,7 +7,11 @@ import stripe
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 
-from billing.constants import REMOVED_INVOICE_STATUSES
+from billing.constants import (
+    CANCELLATION_TASK_SIGNATURE,
+    REMOVED_INVOICE_STATUSES,
+    WEBHOOK_CANCELLATION_TASK_SIGNATURE,
+)
 from codecov_auth.models import Owner, Plan
 from shared.plan.constants import PlanBillingRate, TierName
 from shared.plan.service import PlanService
@@ -346,13 +350,35 @@ class StripeService(AbstractPaymentService):
 
         # Divide logic bw immediate updates and scheduled updates
         # Immediate updates: when user upgrades seats or plan
-        #   If the user is not in a schedule, update immediately
-        #   If the user is in a schedule, update the existing schedule
+        #   Update immediately
+        #   If the user is in a schedule, release the existing schedule but recreate a new schedule
+        #   for scheduled end date if a phase existed for it in existing schedule
         # Scheduled updates: when the user decreases seats or plan
         #   If the user is not in a schedule, create a schedule
         #   If the user is in a schedule, update the existing schedule
         if is_upgrading:
+            previous_scheduled_end_date = None
             if subscription_schedule_id:
+                existing_schedule = stripe.SubscriptionSchedule.retrieve(
+                    subscription_schedule_id
+                )
+                if existing_schedule.metadata.get("task_signature") in [
+                    CANCELLATION_TASK_SIGNATURE,
+                    WEBHOOK_CANCELLATION_TASK_SIGNATURE,
+                ]:
+                    if existing_schedule.phases:
+                        last_phase = existing_schedule.phases[-1]
+                        end_ts = getattr(last_phase, "end_date", None)
+                        if end_ts is not None:
+                            previous_scheduled_end_date = datetime.fromtimestamp(
+                                end_ts, tz=UTC
+                            )
+                    elif metadata_end_date := existing_schedule.metadata.get(
+                        "end_date"
+                    ):
+                        previous_scheduled_end_date = datetime.fromisoformat(
+                            metadata_end_date
+                        ).replace(tzinfo=UTC)
                 log.info(
                     f"Releasing Stripe schedule for owner {owner.ownerid} to {desired_plan['value']} with {desired_plan['quantity']} seats by user #{self.requesting_user.ownerid}"
                 )
@@ -380,6 +406,49 @@ class StripeService(AbstractPaymentService):
             log.info(
                 f"Stripe subscription upgrade attempted for owner {owner.ownerid} by user #{self.requesting_user.ownerid}"
             )
+
+            # If the user had a previous scheduled end date, we need to create a new schedule to replace the end date schedule
+            # that the upgrade is releasing
+            if previous_scheduled_end_date is not None:
+                new_end_date_schedule = stripe.SubscriptionSchedule.create(
+                    from_subscription=owner.stripe_subscription_id,
+                )
+                stripe.SubscriptionSchedule.modify(
+                    new_end_date_schedule.id,
+                    end_behavior="cancel",
+                    phases=[
+                        {
+                            "start_date": subscription["current_period_start"],
+                            "end_date": subscription["current_period_end"],
+                            "items": [
+                                {
+                                    "plan": desired_plan_info.stripe_id,
+                                    "price": desired_plan_info.stripe_id,
+                                    "quantity": desired_plan["quantity"],
+                                }
+                            ],
+                            "proration_behavior": "none",
+                        },
+                        {
+                            "start_date": subscription["current_period_end"],
+                            "end_date": int(previous_scheduled_end_date.timestamp()),
+                            "items": [
+                                {
+                                    "plan": desired_plan_info.stripe_id,
+                                    "price": desired_plan_info.stripe_id,
+                                    "quantity": desired_plan["quantity"],
+                                }
+                            ],
+                            "proration_behavior": "none",
+                        },
+                    ],
+                    metadata={
+                        "task_signature": CANCELLATION_TASK_SIGNATURE,
+                        "end_date": previous_scheduled_end_date.isoformat(),
+                        "script_version": "1.0",
+                    },
+                )
+
             indication_of_payment_failure = getattr(
                 subscription, "pending_update", None
             )

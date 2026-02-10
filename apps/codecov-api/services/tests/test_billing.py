@@ -9,6 +9,7 @@ from freezegun import freeze_time
 from stripe import InvalidRequestError
 from stripe.api_resources import PaymentIntent, SetupIntent
 
+from billing.constants import CANCELLATION_TASK_SIGNATURE
 from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov_auth.models import Plan, Service
 from services.billing import AbstractPaymentService, BillingService, StripeService
@@ -1314,6 +1315,87 @@ class StripeServiceTests(TestCase):
         self._assert_subscription_modify(
             subscription_modify_mock, owner, subscription_params, desired_plan
         )
+
+        owner.refresh_from_db()
+        assert owner.plan == desired_plan_name
+        assert owner.plan_user_count == desired_user_count
+
+    @patch("services.billing.stripe.SubscriptionSchedule.modify")
+    @patch("services.billing.stripe.SubscriptionSchedule.create")
+    @patch("services.billing.stripe.SubscriptionSchedule.retrieve")
+    @patch("services.billing.stripe.Subscription.modify")
+    @patch("services.billing.stripe.Subscription.retrieve")
+    @patch("services.billing.stripe.SubscriptionSchedule.release")
+    def test_modify_subscription_with_schedule_recreates_schedule_with_end_date_and_cancel_when_plan_upgrades(
+        self,
+        schedule_release_mock,
+        retrieve_subscription_mock,
+        subscription_modify_mock,
+        schedule_retrieve_mock,
+        schedule_create_mock,
+        schedule_modify_mock,
+    ):
+        """Upgrading with an existing cancellation schedule releases it, upgrades, then creates a new schedule with same end_date and end_behavior cancel."""
+        original_user_count = 15
+        original_plan = PlanName.CODECOV_PRO_MONTHLY.value
+        stripe_subscription_id = "33043sdf"
+        owner = OwnerFactory(
+            plan=original_plan,
+            plan_user_count=original_user_count,
+            stripe_subscription_id=stripe_subscription_id,
+        )
+
+        schedule_id = "sub_sched_1K77Y5GlVGuVgOrkJrLjRn2e"
+        current_subscription_start_date = 1639628096
+        current_subscription_end_date = 1644107871
+        subscription_params = {
+            "schedule_id": schedule_id,
+            "start_date": current_subscription_start_date,
+            "end_date": current_subscription_end_date,
+            "quantity": original_user_count,
+            "name": original_plan,
+            "id": 111,
+        }
+
+        retrieve_subscription_mock.return_value = MockSubscription(subscription_params)
+        subscription_modify_mock.return_value = MockSubscription(subscription_params)
+
+        # Existing schedule had our cancellation task and an end_date (recreate after upgrade)
+        existing_schedule = MagicMock()
+        existing_schedule.metadata = {
+            "task_signature": CANCELLATION_TASK_SIGNATURE,
+            "end_date": "2025-12-31T00:00:00+00:00",
+        }
+        existing_schedule.phases = []
+        schedule_retrieve_mock.return_value = existing_schedule
+
+        schedule_create_mock.return_value = MagicMock(id="sub_sched_new")
+
+        desired_plan_name = PlanName.CODECOV_PRO_YEARLY.value
+        desired_user_count = 15
+        desired_plan = {"value": desired_plan_name, "quantity": desired_user_count}
+
+        self.stripe.modify_subscription(owner, desired_plan)
+
+        schedule_release_mock.assert_called_once_with(schedule_id)
+        self._assert_subscription_modify(
+            subscription_modify_mock, owner, subscription_params, desired_plan
+        )
+        schedule_create_mock.assert_called_once_with(
+            from_subscription=stripe_subscription_id
+        )
+        schedule_modify_mock.assert_called_once()
+        modify_kw = schedule_modify_mock.call_args.kwargs
+        assert modify_kw["end_behavior"] == "cancel"
+        assert len(modify_kw["phases"]) == 2
+        assert modify_kw["phases"][0]["start_date"] == current_subscription_start_date
+        assert modify_kw["phases"][0]["end_date"] == current_subscription_end_date
+        assert (
+            modify_kw["phases"][1]["items"][0]["plan"]
+            == Plan.objects.get(name=desired_plan_name).stripe_id
+        )
+        assert modify_kw["metadata"]["task_signature"] == CANCELLATION_TASK_SIGNATURE
+        assert "2025-12-31" in modify_kw["metadata"]["end_date"]
 
         owner.refresh_from_db()
         assert owner.plan == desired_plan_name
