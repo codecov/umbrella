@@ -9,7 +9,6 @@ from redis import Redis
 from sqlalchemy.orm import Session
 
 from app import celery_app
-from database.enums import ReportType
 from helpers.notifier import NotifierResult
 from helpers.string import shorten_file_paths
 from services.lock_manager import LockManager, LockRetry, LockType
@@ -37,6 +36,7 @@ from services.test_results import (
 )
 from shared.celery_config import test_analytics_notifier_task_name
 from shared.django_apps.core.models import Repository
+from shared.django_apps.enums import ReportType
 from shared.helpers.redis import get_redis_connection
 from shared.reports.types import UploadType
 from shared.typings.torngit import AdditionalData

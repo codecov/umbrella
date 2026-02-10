@@ -1,12 +1,12 @@
 from decimal import Decimal
 
-from database.enums import Notification
 from services.notification.notifiers.generics import (
     Comparison,
     RequestsYamlBasedNotifier,
 )
 from services.urls import get_commit_url, get_graph_url
 from services.yaml.reader import round_number
+from shared.django_apps.enums import Notification
 
 
 class HipchatNotifier(RequestsYamlBasedNotifier):

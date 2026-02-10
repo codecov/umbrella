@@ -1,6 +1,5 @@
 import pytest
 
-from database.enums import Decoration, Notification, NotificationState
 from database.tests.factories import (
     CommitFactory,
     CommitNotificationFactory,
@@ -15,6 +14,7 @@ from services.notification.commit_notifications import (
 from services.notification.notifiers.base import NotificationResult
 from services.notification.notifiers.comment import CommentNotifier
 from services.repository import EnrichedPull
+from shared.django_apps.enums import Decoration, Notification, NotificationState
 
 
 @pytest.fixture

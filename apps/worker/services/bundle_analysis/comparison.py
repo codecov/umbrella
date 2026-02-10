@@ -1,6 +1,5 @@
 from functools import cached_property
 
-from database.enums import ReportType
 from database.models.core import Commit, Repository
 from database.models.reports import CommitReport
 from services.bundle_analysis.exceptions import (
@@ -14,6 +13,7 @@ from shared.bundle_analysis import (
     BundleAnalysisComparison,
     BundleAnalysisReportLoader,
 )
+from shared.django_apps.enums import ReportType
 
 
 class ComparisonLoader:

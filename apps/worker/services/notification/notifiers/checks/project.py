@@ -1,4 +1,3 @@
-from database.enums import Notification
 from services.comparison import ComparisonProxy, FilteredComparison
 from services.notification.notifiers.checks.base import (
     CheckOutput,
@@ -8,6 +7,7 @@ from services.notification.notifiers.checks.base import (
 from services.notification.notifiers.mixins.message import MessageMixin
 from services.notification.notifiers.mixins.status import StatusProjectMixin
 from services.yaml.reader import read_yaml_field
+from shared.django_apps.enums import Notification
 
 
 class ProjectChecksNotifier(MessageMixin, StatusProjectMixin, ChecksNotifier):
