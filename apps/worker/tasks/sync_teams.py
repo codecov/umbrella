@@ -81,13 +81,21 @@ class SyncTeamsTask(BaseCodecovTask, name=sync_teams_task_name):
         )
 
         if team:
-            team.username = data["username"]
-            team.name = data["name"]
-            team.email = data.get("email")
-            team.avatar_url = data.get("avatar_url")
-            team.parent_service_id = data.get("parent_service_id")
-            team.updatestamp = datetime.now()
-            db_session.flush()
+            fields = {
+                "username": data["username"],
+                "name": data["name"],
+                "email": data.get("email"),
+                "avatar_url": data.get("avatar_url"),
+                "parent_service_id": data.get("parent_service_id"),
+            }
+            changed = False
+            for attr, new_val in fields.items():
+                if getattr(team, attr) != new_val:
+                    setattr(team, attr, new_val)
+                    changed = True
+            if changed:
+                team.updatestamp = datetime.now()
+                db_session.flush()
         else:
             team = Owner(
                 service=service,
