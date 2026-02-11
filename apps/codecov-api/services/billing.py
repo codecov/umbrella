@@ -12,6 +12,9 @@ from billing.constants import (
     REMOVED_INVOICE_STATUSES,
     WEBHOOK_CANCELLATION_TASK_SIGNATURE,
 )
+from billing.management.commands.apply_subscription_schedules import (
+    _create_end_date_schedule,
+)
 from codecov_auth.models import Owner, Plan
 from shared.plan.constants import PlanBillingRate, TierName
 from shared.plan.service import PlanService
@@ -387,22 +390,46 @@ class StripeService(AbstractPaymentService):
                 f"Updating Stripe subscription for owner {owner.ownerid} to {desired_plan['value']} by user #{self.requesting_user.ownerid}"
             )
 
-            subscription = stripe.Subscription.modify(
-                owner.stripe_subscription_id,
-                cancel_at_period_end=False,
-                items=[
-                    {
-                        "id": subscription["items"]["data"][0]["id"],
-                        "plan": desired_plan_info.stripe_id,
-                        "quantity": desired_plan["quantity"],
-                    }
-                ],
-                metadata=self._get_checkout_session_and_subscription_metadata(owner),
-                proration_behavior=proration_behavior,
-                # TODO: we need to include this arg, but it means we need to remove some of the existing args
-                # on the .modify() call https://docs.stripe.com/billing/subscriptions/pending-updates-reference
-                # payment_behavior="pending_if_incomplete",
-            )
+            try:
+                subscription = stripe.Subscription.modify(
+                    owner.stripe_subscription_id,
+                    cancel_at_period_end=False,
+                    items=[
+                        {
+                            "id": subscription["items"]["data"][0]["id"],
+                            "plan": desired_plan_info.stripe_id,
+                            "quantity": desired_plan["quantity"],
+                        }
+                    ],
+                    metadata=self._get_checkout_session_and_subscription_metadata(
+                        owner
+                    ),
+                    proration_behavior=proration_behavior,
+                    # TODO: we need to include this arg, but it means we need to remove some of the existing args
+                    # on the .modify() call https://docs.stripe.com/billing/subscriptions/pending-updates-reference
+                    # payment_behavior="pending_if_incomplete",
+                )
+            except stripe.StripeError:
+                # Upgrade payment failed but we already released the schedule so add back an end-date schedule so the user doesn't lose it
+                if previous_scheduled_end_date is not None:
+                    subscription = stripe.Subscription.retrieve(
+                        owner.stripe_subscription_id
+                    )
+                    current_plan_id = subscription["items"]["data"][0]["plan"]["id"]
+                    current_quantity = subscription["items"]["data"][0]["quantity"]
+                    _create_end_date_schedule(
+                        owner=owner,
+                        end_date=previous_scheduled_end_date,
+                        phase1_plan_id=current_plan_id,
+                        phase1_quantity=current_quantity,
+                        subscription=subscription,
+                        task_signature=WEBHOOK_CANCELLATION_TASK_SIGNATURE,
+                    )
+                    log.info(
+                        f"Restored end-date schedule for owner {owner.ownerid} after upgrade failure"
+                    )
+                raise
+
             log.info(
                 f"Stripe subscription upgrade attempted for owner {owner.ownerid} by user #{self.requesting_user.ownerid}"
             )
@@ -410,44 +437,13 @@ class StripeService(AbstractPaymentService):
             # If the user had a previous scheduled end date, we need to create a new schedule to replace the end date schedule
             # that the upgrade is releasing
             if previous_scheduled_end_date is not None:
-                new_end_date_schedule = stripe.SubscriptionSchedule.create(
-                    from_subscription=owner.stripe_subscription_id,
-                )
-                end_date = previous_scheduled_end_date.replace(tzinfo=UTC)
-                stripe.SubscriptionSchedule.modify(
-                    new_end_date_schedule.id,
-                    end_behavior="cancel",
-                    phases=[
-                        {
-                            "start_date": subscription["current_period_start"],
-                            "end_date": subscription["current_period_end"],
-                            "items": [
-                                {
-                                    "plan": desired_plan_info.stripe_id,
-                                    "price": desired_plan_info.stripe_id,
-                                    "quantity": desired_plan["quantity"],
-                                }
-                            ],
-                            "proration_behavior": "none",
-                        },
-                        {
-                            "start_date": subscription["current_period_end"],
-                            "end_date": int(previous_scheduled_end_date.timestamp()),
-                            "items": [
-                                {
-                                    "plan": desired_plan_info.stripe_id,
-                                    "price": desired_plan_info.stripe_id,
-                                    "quantity": desired_plan["quantity"],
-                                }
-                            ],
-                            "proration_behavior": "none",
-                        },
-                    ],
-                    metadata={
-                        "task_signature": CANCELLATION_TASK_SIGNATURE,
-                        "end_date": previous_scheduled_end_date.strftime("%Y-%m-%d"),
-                        "script_version": "1.0",
-                    },
+                _create_end_date_schedule(
+                    owner=owner,
+                    end_date=previous_scheduled_end_date,
+                    phase1_plan_id=desired_plan_info.stripe_id,
+                    phase1_quantity=desired_plan["quantity"],
+                    subscription=subscription,
+                    task_signature=WEBHOOK_CANCELLATION_TASK_SIGNATURE,
                 )
 
             indication_of_payment_failure = getattr(
