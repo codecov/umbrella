@@ -87,6 +87,7 @@ class SyncTeamsTask(BaseCodecovTask, name=sync_teams_task_name):
             team.avatar_url = data.get("avatar_url")
             team.parent_service_id = data.get("parent_service_id")
             team.updatestamp = datetime.now()
+            db_session.flush()
         else:
             team = Owner(
                 service=service,
