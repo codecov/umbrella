@@ -413,6 +413,7 @@ class StripeService(AbstractPaymentService):
                 new_end_date_schedule = stripe.SubscriptionSchedule.create(
                     from_subscription=owner.stripe_subscription_id,
                 )
+                end_date = previous_scheduled_end_date.replace(tzinfo=UTC)
                 stripe.SubscriptionSchedule.modify(
                     new_end_date_schedule.id,
                     end_behavior="cancel",
@@ -444,7 +445,7 @@ class StripeService(AbstractPaymentService):
                     ],
                     metadata={
                         "task_signature": CANCELLATION_TASK_SIGNATURE,
-                        "end_date": previous_scheduled_end_date.isoformat(),
+                        "end_date": previous_scheduled_end_date.strftime("%Y-%m-%d"),
                         "script_version": "1.0",
                     },
                 )

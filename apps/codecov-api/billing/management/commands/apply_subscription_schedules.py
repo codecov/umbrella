@@ -1,6 +1,6 @@
 import argparse
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 import stripe
 from django.conf import settings
@@ -22,7 +22,7 @@ if settings.STRIPE_API_KEY:
 def valid_date(date_string: str) -> datetime:
     """Validate and parse ISO format date string."""
     try:
-        return datetime.fromisoformat(date_string)
+        return datetime.fromisoformat(date_string).replace(tzinfo=UTC)
     except ValueError:
         raise argparse.ArgumentTypeError(
             f"Invalid date format: '{date_string}'. Use YYYY-MM-DD"
@@ -271,7 +271,11 @@ class Command(BaseCommand):
 
         current_plan_id = subscription["items"]["data"][0]["plan"]["id"]
         current_quantity = subscription["items"]["data"][0]["quantity"]
-        current_end_date = subscription["current_period_end"]
+        current_period_end = subscription["current_period_end"]
+        # Stripe returns Unix timestamp; normalize to date string for comparison with end_date
+        current_end_date_str = datetime.fromtimestamp(
+            current_period_end, tz=UTC
+        ).strftime("%Y-%m-%d")
 
         self.stdout.write(
             f"  Current plan: {current_plan_id}, quantity: {current_quantity}"
@@ -288,10 +292,10 @@ class Command(BaseCommand):
                 )
                 return "skipped_no_plan"
 
-        # Check if already has target end date with same quantity
+        # Skip if already has target end date and is on the same plan
         if (
             current_plan_id == target_plan.stripe_id
-            and current_end_date == end_date.strftime("%Y-%m-%d")
+            and current_end_date_str == end_date.strftime("%Y-%m-%d")
         ):
             self.stdout.write(
                 self.style.WARNING(
@@ -300,6 +304,9 @@ class Command(BaseCommand):
             )
             return "skipped_same_plan"
 
+        # Stripe phase start_date/end_date expect Unix timestamps
+        end_date_ts = int(end_date.timestamp())
+
         # Subscription already has a schedule, either for End or downgrade
         if subscription.schedule:
             existing_schedule = stripe.SubscriptionSchedule.retrieve(
@@ -307,7 +314,7 @@ class Command(BaseCommand):
             )
             new_phase = {
                 "start_date": existing_schedule.phases[-1]["start_date"],
-                "end_date": end_date,
+                "end_date": end_date_ts,
                 "items": [
                     {
                         "plan": target_plan.stripe_id,
@@ -333,6 +340,17 @@ class Command(BaseCommand):
                     return "skipped_has_schedule_with_target_date"
                 else:
                     updated_phases = existing_schedule.phases.copy()
+                    new_phase = {
+                        "start_date": existing_schedule.phases[-1]["start_date"],
+                        "end_date": end_date_ts,
+                        "items": [
+                            {
+                                "plan": target_plan.stripe_id,
+                                "price": target_plan.stripe_id,
+                                "quantity": current_quantity,
+                            }
+                        ],
+                    }
                     updated_phases = updated_phases[:-1] + [new_phase]
 
                     if dry_run:
@@ -365,7 +383,19 @@ class Command(BaseCommand):
                         )
                     )
                 else:
+                    new_phase = {
+                        "start_date": existing_schedule.phases[-1]["end_date"],
+                        "end_date": end_date_ts,
+                        "items": [
+                            {
+                                "plan": target_plan.stripe_id,
+                                "price": target_plan.stripe_id,
+                                "quantity": current_quantity,
+                            }
+                        ],
+                    }
                     existing_schedule.modify(
+                        end_behavior="cancel",
                         phases=existing_schedule.phases + [new_phase],
                         metadata={
                             "task_signature": CANCELLATION_TASK_SIGNATURE,
@@ -379,6 +409,14 @@ class Command(BaseCommand):
                         )
                     )
                 return "scheduled"
+
+        if dry_run:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"  [DRY RUN] Would create schedule for id: {owner.stripe_subscription_id} to end on {end_date.strftime('%Y-%m-%d')} with {target_plan.name} and {current_quantity} seats"
+                )
+            )
+            return "scheduled"
 
         # Create the subscription schedule
         schedule = stripe.SubscriptionSchedule.create(
@@ -415,7 +453,7 @@ class Command(BaseCommand):
                 },
                 {
                     "start_date": current_period_end,
-                    "end_date": end_date,
+                    "end_date": end_date_ts,
                     "items": [
                         {
                             "plan": target_plan.stripe_id,

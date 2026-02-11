@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
@@ -259,9 +259,11 @@ def test_apply_subscription_schedules_updates_existing_cancellation_schedule(
     existing.modify.assert_called_once()
     phases = existing.modify.call_args.kwargs["phases"]
     assert len(phases) == 2
-    # Command passes end_date (datetime) into the new last phase
-    expected_end = datetime.fromisoformat("2025-12-31")
-    assert phases[1]["end_date"] == expected_end
+    # Command passes end_date as Unix timestamp to Stripe
+    expected_end_ts = int(
+        datetime.fromisoformat("2025-12-31").replace(tzinfo=UTC).timestamp()
+    )
+    assert phases[1]["end_date"] == expected_end_ts
     assert "Updated schedule" in out.getvalue()
 
 
@@ -315,7 +317,11 @@ def test_apply_subscription_schedules_adds_end_phase_to_existing_schedule(
     assert len(phases) == 2
     assert phases[0]["start_date"] == 1000000
     assert phases[0]["end_date"] == 2000000
-    assert phases[1]["end_date"] == datetime.fromisoformat("2025-12-31")
+    # Command passes end_date as Unix timestamp to Stripe
+    expected_end_ts = int(
+        datetime.fromisoformat("2025-12-31").replace(tzinfo=UTC).timestamp()
+    )
+    assert phases[1]["end_date"] == expected_end_ts
     assert phases[1]["items"][0]["plan"] == target_plan.stripe_id
     assert phases[1]["items"][0]["quantity"] == 3
     assert (
