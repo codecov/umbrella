@@ -255,9 +255,10 @@ def test_apply_subscription_schedules_updates_existing_cancellation_schedule(
         stderr=StringIO(),
     )
 
-    # Command calls existing_schedule.modify(), not stripe.SubscriptionSchedule.modify
-    existing.modify.assert_called_once()
-    phases = existing.modify.call_args.kwargs["phases"]
+    # Command calls stripe.SubscriptionSchedule.modify(schedule_id, ...)
+    _mock_schedule_modify.assert_called_once()
+    assert _mock_schedule_modify.call_args.args[0] == existing.id
+    phases = _mock_schedule_modify.call_args.kwargs["phases"]
     assert len(phases) == 2
     # Command passes end_date as Unix timestamp to Stripe
     expected_end_ts = int(
@@ -310,9 +311,10 @@ def test_apply_subscription_schedules_adds_end_phase_to_existing_schedule(
         stderr=StringIO(),
     )
 
-    # we check existing_schedule.modify() instead of stripe.SubscriptionSchedule.modify
-    existing.modify.assert_called_once()
-    phases = existing.modify.call_args.kwargs["phases"]
+    # Command calls stripe.SubscriptionSchedule.modify(schedule_id, ...)
+    _mock_schedule_modify.assert_called_once()
+    assert _mock_schedule_modify.call_args.args[0] == existing.id
+    phases = _mock_schedule_modify.call_args.kwargs["phases"]
     # Original phase(s) + new end phase
     assert len(phases) == 2
     assert phases[0]["start_date"] == 1000000
@@ -325,7 +327,8 @@ def test_apply_subscription_schedules_adds_end_phase_to_existing_schedule(
     assert phases[1]["items"][0]["plan"] == target_plan.stripe_id
     assert phases[1]["items"][0]["quantity"] == 3
     assert (
-        existing.modify.call_args.kwargs["metadata"]["task_signature"] == "cancel_task"
+        _mock_schedule_modify.call_args.kwargs["metadata"]["task_signature"]
+        == "cancel_task"
     )
     assert "Added schedule phase" in out.getvalue()
 

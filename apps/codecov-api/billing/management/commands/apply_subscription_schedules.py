@@ -312,17 +312,6 @@ class Command(BaseCommand):
             existing_schedule = stripe.SubscriptionSchedule.retrieve(
                 subscription.schedule
             )
-            new_phase = {
-                "start_date": existing_schedule.phases[-1]["start_date"],
-                "end_date": end_date_ts,
-                "items": [
-                    {
-                        "plan": target_plan.stripe_id,
-                        "price": target_plan.stripe_id,
-                        "quantity": current_quantity,
-                    }
-                ],
-            }
 
             # End schedule has already been added by this script or webhook handler
             if existing_schedule.metadata.get("task_signature") in [
@@ -360,7 +349,8 @@ class Command(BaseCommand):
                             )
                         )
                     else:
-                        existing_schedule.modify(
+                        stripe.SubscriptionSchedule.modify(
+                            existing_schedule.id,
                             phases=updated_phases,
                             metadata={
                                 "task_signature": CANCELLATION_TASK_SIGNATURE,
@@ -394,7 +384,8 @@ class Command(BaseCommand):
                             }
                         ],
                     }
-                    existing_schedule.modify(
+                    stripe.SubscriptionSchedule.modify(
+                        existing_schedule.id,
                         end_behavior="cancel",
                         phases=existing_schedule.phases + [new_phase],
                         metadata={
