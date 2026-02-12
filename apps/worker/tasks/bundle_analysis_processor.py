@@ -3,6 +3,8 @@ from typing import Any, cast
 
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
 
+import sentry_sdk
+
 from app import celery_app
 from database.enums import ReportType
 from database.models import Commit, CommitReport, Upload
@@ -35,6 +37,7 @@ class BundleAnalysisProcessorTask(
 ):
     max_retries = BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 
+    @sentry_sdk.trace
     def run_impl(
         self,
         db_session,
