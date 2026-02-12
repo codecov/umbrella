@@ -1,9 +1,8 @@
 import logging
 from typing import Any, cast
 
-from celery.exceptions import CeleryError, SoftTimeLimitExceeded
-
 import sentry_sdk
+from celery.exceptions import CeleryError, SoftTimeLimitExceeded
 
 from app import celery_app
 from database.enums import ReportType
