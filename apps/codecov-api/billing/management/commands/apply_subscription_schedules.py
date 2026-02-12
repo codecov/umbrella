@@ -415,6 +415,7 @@ class Command(BaseCommand):
                                 "quantity": current_quantity,
                             }
                         ],
+                        "proration_behavior": "none",
                     }
                     updated_phases = updated_phases[:-1] + [new_phase]
 
@@ -459,6 +460,7 @@ class Command(BaseCommand):
                                 "quantity": current_quantity,
                             }
                         ],
+                        "proration_behavior": "none",
                     }
                     stripe.SubscriptionSchedule.modify(
                         existing_schedule.id,

@@ -9,7 +9,10 @@ from freezegun import freeze_time
 from stripe import InvalidRequestError
 from stripe.api_resources import PaymentIntent, SetupIntent
 
-from billing.constants import CANCELLATION_TASK_SIGNATURE
+from billing.constants import (
+    CANCELLATION_TASK_SIGNATURE,
+    WEBHOOK_CANCELLATION_TASK_SIGNATURE,
+)
 from billing.tests.mocks import mock_all_plans_and_tiers
 from codecov_auth.models import Plan, Service
 from services.billing import AbstractPaymentService, BillingService, StripeService
@@ -1181,6 +1184,7 @@ class StripeServiceTests(TestCase):
         assert owner.plan == original_plan
         assert owner.plan_user_count == original_user_count
 
+    @patch("services.billing.stripe.SubscriptionSchedule.retrieve")
     @patch("services.billing.stripe.Subscription.modify")
     @patch("services.billing.stripe.Subscription.retrieve")
     @patch("services.billing.stripe.SubscriptionSchedule.release")
@@ -1189,6 +1193,7 @@ class StripeServiceTests(TestCase):
         schedule_release_mock,
         retrieve_subscription_mock,
         subscription_modify_mock,
+        schedule_retrieve_mock,
     ):
         original_user_count = 17
         original_plan = PlanName.CODECOV_PRO_MONTHLY.value
@@ -1217,6 +1222,12 @@ class StripeServiceTests(TestCase):
 
         retrieve_subscription_mock.return_value = MockSubscription(subscription_params)
         subscription_modify_mock.return_value = MockSubscription(subscription_params)
+
+        # Existing schedule without cancellation task signature
+        existing_schedule = MagicMock()
+        existing_schedule.metadata = {}
+        existing_schedule.phases = []
+        schedule_retrieve_mock.return_value = existing_schedule
 
         desired_plan_name = PlanName.CODECOV_PRO_MONTHLY.value
         desired_user_count = 26
@@ -1273,6 +1284,7 @@ class StripeServiceTests(TestCase):
         assert owner.plan == original_plan
         assert owner.plan_user_count == original_user_count
 
+    @patch("services.billing.stripe.SubscriptionSchedule.retrieve")
     @patch("services.billing.stripe.Subscription.modify")
     @patch("services.billing.stripe.Subscription.retrieve")
     @patch("services.billing.stripe.SubscriptionSchedule.release")
@@ -1281,6 +1293,7 @@ class StripeServiceTests(TestCase):
         schedule_release_mock,
         retrieve_subscription_mock,
         subscription_modify_mock,
+        schedule_retrieve_mock,
     ):
         original_user_count = 15
         original_plan = PlanName.CODECOV_PRO_MONTHLY.value
@@ -1306,6 +1319,12 @@ class StripeServiceTests(TestCase):
         retrieve_subscription_mock.return_value = MockSubscription(subscription_params)
         subscription_modify_mock.return_value = MockSubscription(subscription_params)
 
+        # Existing schedule without cancellation task signature (no end date recreation needed)
+        existing_schedule = MagicMock()
+        existing_schedule.metadata = {}
+        existing_schedule.phases = []
+        schedule_retrieve_mock.return_value = existing_schedule
+
         desired_plan_name = PlanName.CODECOV_PRO_YEARLY.value
         desired_user_count = 15
         desired_plan = {"value": desired_plan_name, "quantity": desired_user_count}
@@ -1320,8 +1339,7 @@ class StripeServiceTests(TestCase):
         assert owner.plan == desired_plan_name
         assert owner.plan_user_count == desired_user_count
 
-    @patch("services.billing.stripe.SubscriptionSchedule.modify")
-    @patch("services.billing.stripe.SubscriptionSchedule.create")
+    @patch("services.billing._create_end_date_schedule")
     @patch("services.billing.stripe.SubscriptionSchedule.retrieve")
     @patch("services.billing.stripe.Subscription.modify")
     @patch("services.billing.stripe.Subscription.retrieve")
@@ -1332,8 +1350,7 @@ class StripeServiceTests(TestCase):
         retrieve_subscription_mock,
         subscription_modify_mock,
         schedule_retrieve_mock,
-        schedule_create_mock,
-        schedule_modify_mock,
+        create_end_date_schedule_mock,
     ):
         """Upgrading with an existing cancellation schedule releases it, upgrades, then creates a new schedule with same end_date and end_behavior cancel."""
         original_user_count = 15
@@ -1369,8 +1386,6 @@ class StripeServiceTests(TestCase):
         existing_schedule.phases = []
         schedule_retrieve_mock.return_value = existing_schedule
 
-        schedule_create_mock.return_value = MagicMock(id="sub_sched_new")
-
         desired_plan_name = PlanName.CODECOV_PRO_YEARLY.value
         desired_user_count = 15
         desired_plan = {"value": desired_plan_name, "quantity": desired_user_count}
@@ -1381,26 +1396,157 @@ class StripeServiceTests(TestCase):
         self._assert_subscription_modify(
             subscription_modify_mock, owner, subscription_params, desired_plan
         )
-        schedule_create_mock.assert_called_once_with(
-            from_subscription=stripe_subscription_id
-        )
-        schedule_modify_mock.assert_called_once()
-        modify_kw = schedule_modify_mock.call_args.kwargs
-        assert modify_kw["end_behavior"] == "cancel"
-        assert len(modify_kw["phases"]) == 2
-        assert modify_kw["phases"][0]["start_date"] == current_subscription_start_date
-        assert modify_kw["phases"][0]["end_date"] == current_subscription_end_date
+
+        # Verify _create_end_date_schedule was called with correct params
+        create_end_date_schedule_mock.assert_called_once()
+        call_kwargs = create_end_date_schedule_mock.call_args.kwargs
+        assert call_kwargs["owner"] == owner
         assert (
-            modify_kw["phases"][1]["items"][0]["plan"]
+            call_kwargs["phase1_plan_id"]
             == Plan.objects.get(name=desired_plan_name).stripe_id
         )
-        assert modify_kw["metadata"]["task_signature"] == CANCELLATION_TASK_SIGNATURE
-        assert "2025-12-31" in modify_kw["metadata"]["end_date"]
+        assert call_kwargs["phase1_quantity"] == desired_user_count
+        assert call_kwargs["task_signature"] == WEBHOOK_CANCELLATION_TASK_SIGNATURE
 
         owner.refresh_from_db()
         assert owner.plan == desired_plan_name
         assert owner.plan_user_count == desired_user_count
 
+    @patch("services.billing._create_end_date_schedule")
+    @patch("services.billing.stripe.SubscriptionSchedule.retrieve")
+    @patch("services.billing.stripe.Subscription.modify")
+    @patch("services.billing.stripe.Subscription.retrieve")
+    @patch("services.billing.stripe.SubscriptionSchedule.release")
+    def test_modify_subscription_with_schedule_restores_end_date_schedule_on_upgrade_failure(
+        self,
+        schedule_release_mock,
+        retrieve_subscription_mock,
+        subscription_modify_mock,
+        schedule_retrieve_mock,
+        create_end_date_schedule_mock,
+    ):
+        """When upgrade fails after releasing a cancellation schedule, the end_date schedule should be restored."""
+        original_user_count = 15
+        original_plan = PlanName.CODECOV_PRO_MONTHLY.value
+        stripe_subscription_id = "33043sdf"
+        owner = OwnerFactory(
+            plan=original_plan,
+            plan_user_count=original_user_count,
+            stripe_subscription_id=stripe_subscription_id,
+        )
+
+        schedule_id = "sub_sched_1K77Y5GlVGuVgOrkJrLjRn2e"
+        current_subscription_start_date = 1639628096
+        current_subscription_end_date = 1644107871
+        subscription_params = {
+            "schedule_id": schedule_id,
+            "start_date": current_subscription_start_date,
+            "end_date": current_subscription_end_date,
+            "quantity": original_user_count,
+            "name": original_plan,
+            "id": 111,
+        }
+
+        retrieve_subscription_mock.return_value = MockSubscription(subscription_params)
+
+        # Simulate upgrade failure with StripeError
+        subscription_modify_mock.side_effect = stripe.StripeError("Payment failed")
+
+        # Existing schedule had our cancellation task and an end_date
+        existing_schedule = MagicMock()
+        existing_schedule.metadata = {
+            "task_signature": CANCELLATION_TASK_SIGNATURE,
+            "end_date": "2025-12-31T00:00:00+00:00",
+        }
+        existing_schedule.phases = []
+        schedule_retrieve_mock.return_value = existing_schedule
+
+        desired_plan_name = PlanName.CODECOV_PRO_YEARLY.value
+        desired_user_count = 15
+        desired_plan = {"value": desired_plan_name, "quantity": desired_user_count}
+
+        with self.assertRaises(stripe.StripeError):
+            self.stripe.modify_subscription(owner, desired_plan)
+
+        # Schedule was released before the failure
+        schedule_release_mock.assert_called_once_with(schedule_id)
+
+        # End date schedule should be restored after failure
+        create_end_date_schedule_mock.assert_called_once()
+        call_kwargs = create_end_date_schedule_mock.call_args.kwargs
+        assert call_kwargs["owner"] == owner
+        assert (
+            call_kwargs["phase1_plan_id"] == original_plan
+        )  # Original plan, not desired
+        assert call_kwargs["phase1_quantity"] == original_user_count
+        assert call_kwargs["task_signature"] == WEBHOOK_CANCELLATION_TASK_SIGNATURE
+
+        # Owner should not be updated since upgrade failed
+        owner.refresh_from_db()
+        assert owner.plan == original_plan
+        assert owner.plan_user_count == original_user_count
+
+    @patch("services.billing._create_end_date_schedule")
+    @patch("services.billing.stripe.SubscriptionSchedule.retrieve")
+    @patch("services.billing.stripe.Subscription.modify")
+    @patch("services.billing.stripe.Subscription.retrieve")
+    @patch("services.billing.stripe.SubscriptionSchedule.release")
+    def test_modify_subscription_with_webhook_cancellation_task_signature(
+        self,
+        schedule_release_mock,
+        retrieve_subscription_mock,
+        subscription_modify_mock,
+        schedule_retrieve_mock,
+        create_end_date_schedule_mock,
+    ):
+        """Test that WEBHOOK_CANCELLATION_TASK_SIGNATURE is also recognized for schedule recreation."""
+        original_user_count = 15
+        original_plan = PlanName.CODECOV_PRO_MONTHLY.value
+        stripe_subscription_id = "33043sdf"
+        owner = OwnerFactory(
+            plan=original_plan,
+            plan_user_count=original_user_count,
+            stripe_subscription_id=stripe_subscription_id,
+        )
+
+        schedule_id = "sub_sched_1K77Y5GlVGuVgOrkJrLjRn2e"
+        current_subscription_start_date = 1639628096
+        current_subscription_end_date = 1644107871
+        subscription_params = {
+            "schedule_id": schedule_id,
+            "start_date": current_subscription_start_date,
+            "end_date": current_subscription_end_date,
+            "quantity": original_user_count,
+            "name": original_plan,
+            "id": 111,
+        }
+
+        retrieve_subscription_mock.return_value = MockSubscription(subscription_params)
+        subscription_modify_mock.return_value = MockSubscription(subscription_params)
+
+        # Existing schedule had WEBHOOK_CANCELLATION_TASK_SIGNATURE
+        existing_schedule = MagicMock()
+        existing_schedule.metadata = {
+            "task_signature": WEBHOOK_CANCELLATION_TASK_SIGNATURE,
+            "end_date": "2025-12-31T00:00:00+00:00",
+        }
+        existing_schedule.phases = []
+        schedule_retrieve_mock.return_value = existing_schedule
+
+        desired_plan_name = PlanName.CODECOV_PRO_YEARLY.value
+        desired_user_count = 15
+        desired_plan = {"value": desired_plan_name, "quantity": desired_user_count}
+
+        self.stripe.modify_subscription(owner, desired_plan)
+
+        schedule_release_mock.assert_called_once_with(schedule_id)
+        create_end_date_schedule_mock.assert_called_once()
+
+        owner.refresh_from_db()
+        assert owner.plan == desired_plan_name
+        assert owner.plan_user_count == desired_user_count
+
+    @patch("services.billing.stripe.SubscriptionSchedule.retrieve")
     @patch("services.billing.stripe.Subscription.modify")
     @patch("services.billing.stripe.Subscription.retrieve")
     @patch("services.billing.stripe.SubscriptionSchedule.release")
@@ -1409,6 +1555,7 @@ class StripeServiceTests(TestCase):
         schedule_release_mock,
         retrieve_subscription_mock,
         subscription_modify_mock,
+        schedule_retrieve_mock,
     ):
         original_user_count = 15
         original_plan = PlanName.CODECOV_PRO_MONTHLY.value
@@ -1434,6 +1581,12 @@ class StripeServiceTests(TestCase):
         retrieve_subscription_mock.return_value = MockSubscription(subscription_params)
         subscription_modify_mock.return_value = MockSubscription(subscription_params)
 
+        # Existing schedule without cancellation task signature
+        existing_schedule = MagicMock()
+        existing_schedule.metadata = {}
+        existing_schedule.phases = []
+        schedule_retrieve_mock.return_value = existing_schedule
+
         desired_plan_name = PlanName.CODECOV_PRO_YEARLY.value
         desired_user_count = 10
         desired_plan = {"value": desired_plan_name, "quantity": desired_user_count}
@@ -1447,6 +1600,7 @@ class StripeServiceTests(TestCase):
         assert owner.plan == desired_plan_name
         assert owner.plan_user_count == desired_user_count
 
+    @patch("services.billing.stripe.SubscriptionSchedule.retrieve")
     @patch("services.billing.stripe.Subscription.modify")
     @patch("services.billing.stripe.Subscription.retrieve")
     @patch("services.billing.stripe.SubscriptionSchedule.release")
@@ -1455,6 +1609,7 @@ class StripeServiceTests(TestCase):
         schedule_release_mock,
         retrieve_subscription_mock,
         subscription_modify_mock,
+        schedule_retrieve_mock,
     ):
         original_user_count = 15
         original_plan = PlanName.CODECOV_PRO_YEARLY.value
@@ -1479,6 +1634,12 @@ class StripeServiceTests(TestCase):
 
         retrieve_subscription_mock.return_value = MockSubscription(subscription_params)
         subscription_modify_mock.return_value = MockSubscription(subscription_params)
+
+        # Existing schedule without cancellation task signature
+        existing_schedule = MagicMock()
+        existing_schedule.metadata = {}
+        existing_schedule.phases = []
+        schedule_retrieve_mock.return_value = existing_schedule
 
         desired_plan_name = PlanName.CODECOV_PRO_MONTHLY.value
         desired_user_count = 20
