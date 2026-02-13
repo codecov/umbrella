@@ -955,19 +955,17 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             commit_report.report_type != ReportType.BUNDLE_ANALYSIS.value
             and commit.repository.bundle_analysis_enabled
         ):
-            # Override upload_id from other upload types and create the BA uploads in the
-            # BA processor task
-            ba_argument_list = []
-            for arg in argument_list:
-                ba_arg = deepcopy(arg)
-                del ba_arg["upload_id"]
-                ba_arg["upload_pk"] = None
-                ba_argument_list.append(ba_arg)
+            # Carryforward only needs to run once per commit — it copies the parent's
+            # BA report regardless of how many non-BA uploads are in the batch.
+            # Use the first upload argument as a template for the single task.
+            ba_arg = deepcopy(argument_list[0])
+            ba_arg.pop("upload_id", None)
+            ba_arg["upload_pk"] = None
 
             self._schedule_bundle_analysis_processing_task(
                 commit,
                 commit_yaml,
-                ba_argument_list,
+                [ba_arg],
                 do_notify=False,
             )
 
