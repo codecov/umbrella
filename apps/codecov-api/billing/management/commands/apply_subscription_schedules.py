@@ -11,6 +11,7 @@ from billing.constants import (
     WEBHOOK_CANCELLATION_TASK_SIGNATURE,
 )
 from codecov_auth.models import Owner, Plan
+from services.billing import _create_end_date_schedule
 
 log = logging.getLogger(__name__)
 
@@ -27,81 +28,6 @@ def valid_date(date_string: str) -> datetime:
         raise argparse.ArgumentTypeError(
             f"Invalid date format: '{date_string}'. Use YYYY-MM-DD"
         )
-
-
-def _create_end_date_schedule(
-    owner,
-    end_date,
-    phase1_plan_id,
-    phase1_quantity,
-    phase2_plan_id=None,
-    phase2_quantity=None,
-    subscription=None,
-    task_signature=CANCELLATION_TASK_SIGNATURE,
-):
-    """
-    Create a subscription schedule that ends at end_date with end_behavior="cancel".
-
-    Phase 1 runs from current period start to current period end and phase 2 runs
-    from current period end to end_date. If phase2_plan_id/phase2_quantity are
-    omitted, phase 2 uses the same plan/quantity as phase 1. If provided, phase 2
-    can use a different plan (e.g. command scheduling a transition to target plan
-    then cancel at end_date).
-
-    If subscription is not provided, it is retrieved from Stripe.
-    """
-    if subscription is None:
-        subscription = stripe.Subscription.retrieve(owner.stripe_subscription_id)
-    current_period_start = subscription["current_period_start"]
-    current_period_end = subscription["current_period_end"]
-
-    if phase2_plan_id is None:
-        phase2_plan_id = phase1_plan_id
-    if phase2_quantity is None:
-        phase2_quantity = phase1_quantity
-
-    end_date_ts = int(end_date.timestamp())
-    metadata = {
-        "task_signature": task_signature,
-        "end_date": end_date.strftime("%Y-%m-%d"),
-        "script_version": "1.0",
-    }
-
-    new_schedule = stripe.SubscriptionSchedule.create(
-        from_subscription=owner.stripe_subscription_id,
-        metadata=metadata,
-    )
-    stripe.SubscriptionSchedule.modify(
-        new_schedule.id,
-        end_behavior="cancel",
-        phases=[
-            {
-                "start_date": current_period_start,
-                "end_date": current_period_end,
-                "items": [
-                    {
-                        "plan": phase1_plan_id,
-                        "price": phase1_plan_id,
-                        "quantity": phase1_quantity,
-                    }
-                ],
-                "proration_behavior": "none",
-            },
-            {
-                "start_date": current_period_end,
-                "end_date": end_date_ts,
-                "items": [
-                    {
-                        "plan": phase2_plan_id,
-                        "price": phase2_plan_id,
-                        "quantity": phase2_quantity,
-                    }
-                ],
-                "proration_behavior": "none",
-            },
-        ],
-    )
-    return new_schedule
 
 
 class Command(BaseCommand):

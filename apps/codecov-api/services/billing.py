@@ -12,9 +12,6 @@ from billing.constants import (
     REMOVED_INVOICE_STATUSES,
     WEBHOOK_CANCELLATION_TASK_SIGNATURE,
 )
-from billing.management.commands.apply_subscription_schedules import (
-    _create_end_date_schedule,
-)
 from codecov_auth.models import Owner, Plan
 from shared.plan.constants import PlanBillingRate, TierName
 from shared.plan.service import PlanService
@@ -37,6 +34,81 @@ def _log_stripe_error(method):
             raise
 
     return catch_and_raise
+
+
+def _create_end_date_schedule(
+    owner,
+    end_date,
+    phase1_plan_id,
+    phase1_quantity,
+    phase2_plan_id=None,
+    phase2_quantity=None,
+    subscription=None,
+    task_signature=CANCELLATION_TASK_SIGNATURE,
+):
+    """
+    Create a subscription schedule that ends at end_date with end_behavior="cancel".
+
+    Phase 1 runs from current period start to current period end and phase 2 runs
+    from current period end to end_date. If phase2_plan_id/phase2_quantity are
+    omitted, phase 2 uses the same plan/quantity as phase 1. If provided, phase 2
+    can use a different plan (e.g. command scheduling a transition to target plan
+    then cancel at end_date).
+
+    If subscription is not provided, it is retrieved from Stripe.
+    """
+    if subscription is None:
+        subscription = stripe.Subscription.retrieve(owner.stripe_subscription_id)
+    current_period_start = subscription["current_period_start"]
+    current_period_end = subscription["current_period_end"]
+
+    if phase2_plan_id is None:
+        phase2_plan_id = phase1_plan_id
+    if phase2_quantity is None:
+        phase2_quantity = phase1_quantity
+
+    end_date_ts = int(end_date.timestamp())
+    metadata = {
+        "task_signature": task_signature,
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "script_version": "1.0",
+    }
+
+    new_schedule = stripe.SubscriptionSchedule.create(
+        from_subscription=owner.stripe_subscription_id,
+        metadata=metadata,
+    )
+    stripe.SubscriptionSchedule.modify(
+        new_schedule.id,
+        end_behavior="cancel",
+        phases=[
+            {
+                "start_date": current_period_start,
+                "end_date": current_period_end,
+                "items": [
+                    {
+                        "plan": phase1_plan_id,
+                        "price": phase1_plan_id,
+                        "quantity": phase1_quantity,
+                    }
+                ],
+                "proration_behavior": "none",
+            },
+            {
+                "start_date": current_period_end,
+                "end_date": end_date_ts,
+                "items": [
+                    {
+                        "plan": phase2_plan_id,
+                        "price": phase2_plan_id,
+                        "quantity": phase2_quantity,
+                    }
+                ],
+                "proration_behavior": "none",
+            },
+        ],
+    )
+    return new_schedule
 
 
 class AbstractPaymentService(ABC):
@@ -435,16 +507,30 @@ class StripeService(AbstractPaymentService):
             )
 
             # If the user had a previous scheduled end date, we need to create a new schedule to replace the end date schedule
-            # that the upgrade is releasing
+            # that the upgrade is releasing. We wrap this in try/except because the upgrade already succeeded in Stripe -
+            # we don't want a schedule recreation failure to prevent the database update and leave things inconsistent.
             if previous_scheduled_end_date is not None:
-                _create_end_date_schedule(
-                    owner=owner,
-                    end_date=previous_scheduled_end_date,
-                    phase1_plan_id=desired_plan_info.stripe_id,
-                    phase1_quantity=desired_plan["quantity"],
-                    subscription=subscription,
-                    task_signature=WEBHOOK_CANCELLATION_TASK_SIGNATURE,
-                )
+                try:
+                    _create_end_date_schedule(
+                        owner=owner,
+                        end_date=previous_scheduled_end_date,
+                        phase1_plan_id=desired_plan_info.stripe_id,
+                        phase1_quantity=desired_plan["quantity"],
+                        subscription=subscription,
+                        task_signature=WEBHOOK_CANCELLATION_TASK_SIGNATURE,
+                    )
+                except stripe.StripeError as e:
+                    # Log the error but don't fail the upgrade - the subscription was already modified in Stripe
+                    log.error(
+                        f"Failed to recreate end-date schedule after upgrade for owner {owner.ownerid}. "
+                        f"Original end_date was {previous_scheduled_end_date}. Manual intervention may be required.",
+                        extra={
+                            "ownerid": owner.ownerid,
+                            "stripe_subscription_id": owner.stripe_subscription_id,
+                            "end_date": previous_scheduled_end_date.isoformat(),
+                            "error": str(e),
+                        },
+                    )
 
             indication_of_payment_failure = getattr(
                 subscription, "pending_update", None

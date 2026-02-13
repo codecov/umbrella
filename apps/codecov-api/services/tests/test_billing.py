@@ -1546,6 +1546,74 @@ class StripeServiceTests(TestCase):
         assert owner.plan == desired_plan_name
         assert owner.plan_user_count == desired_user_count
 
+    @patch("services.billing._create_end_date_schedule")
+    @patch("services.billing.stripe.SubscriptionSchedule.retrieve")
+    @patch("services.billing.stripe.Subscription.modify")
+    @patch("services.billing.stripe.Subscription.retrieve")
+    @patch("services.billing.stripe.SubscriptionSchedule.release")
+    def test_modify_subscription_updates_db_even_when_schedule_recreation_fails(
+        self,
+        schedule_release_mock,
+        retrieve_subscription_mock,
+        subscription_modify_mock,
+        schedule_retrieve_mock,
+        create_end_date_schedule_mock,
+    ):
+        """When schedule recreation fails after successful upgrade, the database should still be updated."""
+        original_user_count = 15
+        original_plan = PlanName.CODECOV_PRO_MONTHLY.value
+        stripe_subscription_id = "33043sdf"
+        owner = OwnerFactory(
+            plan=original_plan,
+            plan_user_count=original_user_count,
+            stripe_subscription_id=stripe_subscription_id,
+        )
+
+        schedule_id = "sub_sched_1K77Y5GlVGuVgOrkJrLjRn2e"
+        current_subscription_start_date = 1639628096
+        current_subscription_end_date = 1644107871
+        subscription_params = {
+            "schedule_id": schedule_id,
+            "start_date": current_subscription_start_date,
+            "end_date": current_subscription_end_date,
+            "quantity": original_user_count,
+            "name": original_plan,
+            "id": 111,
+        }
+
+        retrieve_subscription_mock.return_value = MockSubscription(subscription_params)
+        subscription_modify_mock.return_value = MockSubscription(subscription_params)
+
+        # Existing schedule had cancellation task signature
+        existing_schedule = MagicMock()
+        existing_schedule.metadata = {
+            "task_signature": CANCELLATION_TASK_SIGNATURE,
+            "end_date": "2025-12-31T00:00:00+00:00",
+        }
+        existing_schedule.phases = []
+        schedule_retrieve_mock.return_value = existing_schedule
+
+        # Schedule recreation fails
+        create_end_date_schedule_mock.side_effect = stripe.StripeError(
+            "Failed to create schedule"
+        )
+
+        desired_plan_name = PlanName.CODECOV_PRO_YEARLY.value
+        desired_user_count = 15
+        desired_plan = {"value": desired_plan_name, "quantity": desired_user_count}
+
+        # Should NOT raise - error is caught and logged
+        self.stripe.modify_subscription(owner, desired_plan)
+
+        # Schedule was released and recreation was attempted
+        schedule_release_mock.assert_called_once_with(schedule_id)
+        create_end_date_schedule_mock.assert_called_once()
+
+        # Database should still be updated despite schedule recreation failure
+        owner.refresh_from_db()
+        assert owner.plan == desired_plan_name
+        assert owner.plan_user_count == desired_user_count
+
     @patch("services.billing.stripe.SubscriptionSchedule.retrieve")
     @patch("services.billing.stripe.Subscription.modify")
     @patch("services.billing.stripe.Subscription.retrieve")
