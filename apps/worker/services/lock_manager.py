@@ -174,7 +174,7 @@ class LockManager:
                     },
                 )
         except LockError:
-            # incr/expire can raise RedisConnectionError/RedisTimeoutError when Redis
+            #  incr/expire can raise RedisConnectionError/RedisTimeoutError when Redis
             # is unavailable; we let those propagate so the task fails once (no infinite loop).
             attempts = self.redis_connection.incr(attempt_key)
             if attempts == 1:
