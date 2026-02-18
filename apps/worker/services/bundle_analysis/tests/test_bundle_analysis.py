@@ -83,7 +83,7 @@ def test_process_upload_with_pre_downloaded_path(dbsession, mocker, mock_storage
 
     report_service = BundleAnalysisReportService(UserYaml.from_dict({}))
     result = report_service.process_upload(
-        commit, upload, pre_downloaded_path=sample_path
+        commit, upload, sample_path
     )
 
     assert result.session_id == 123
