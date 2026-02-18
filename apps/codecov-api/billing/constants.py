@@ -26,3 +26,7 @@ class StripeWebhookEvents:
 
 
 REMOVED_INVOICE_STATUSES = ["draft", "void"]
+
+# Task signatures for subscription schedules (shared by services.billing and management commands)
+CANCELLATION_TASK_SIGNATURE = "cancel_task"
+WEBHOOK_CANCELLATION_TASK_SIGNATURE = "webhook_handler_task"
