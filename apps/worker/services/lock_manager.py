@@ -7,8 +7,8 @@ from enum import Enum
 import sentry_sdk
 from redis import Redis  # type: ignore
 from redis.exceptions import ConnectionError as RedisConnectionError  # type: ignore
-from redis.exceptions import LockError  # type: ignore
-from redis.exceptions import TimeoutError as RedisTimeoutError  # type: ignore
+from redis.exceptions import LockError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from database.enums import ReportType
 from shared.celery_config import (
@@ -131,6 +131,7 @@ class LockManager:
             max_retries: Maximum total attempts (stop when attempts >= this).
         """
         lock_name = self.lock_name(lock_type)
+
         attempt_key = f"{LOCK_ATTEMPTS_KEY_PREFIX}{lock_name}"
         try:
             log.info(

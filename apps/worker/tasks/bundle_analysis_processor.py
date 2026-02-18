@@ -255,7 +255,7 @@ class BundleAnalysisProcessorTask(
                         _set_upload_error_and_commit(
                             db_session, upload, commitid, repoid, log_suffix=" fallback"
                         )
-                    return previous_result
+                    return processing_results
                 log.warn(
                     "Attempting to retry bundle analysis upload",
                     extra={
