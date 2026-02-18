@@ -42,7 +42,7 @@ class BundleUploadFile:
     Example:
         with BundleUploadFile(db_session, repoid, params) as local_path:
             if local_path:
-                process_upload(commit, upload, pre_downloaded_path=local_path)
+                process_upload(commit, upload, local_path)
     """
 
     def __init__(self, db_session, repoid: int, upload_params: UploadArguments):
@@ -337,7 +337,7 @@ class BundleAnalysisProcessorTask(
             assert params.get("commit") == commit.commitid
 
             result = report_service.process_upload(
-                commit, upload, compare_sha, pre_downloaded_path
+                commit, upload, pre_downloaded_path, compare_sha
             )
             if result.error and result.error.is_retryable:
                 if self._has_exceeded_max_attempts(self.max_retries):

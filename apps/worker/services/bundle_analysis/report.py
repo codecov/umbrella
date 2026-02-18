@@ -1,6 +1,4 @@
 import logging
-import os
-import tempfile
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,7 +14,6 @@ from services.report import BaseReportService
 from services.timeseries import repository_datasets_query
 from shared.bundle_analysis import BundleAnalysisReport, BundleAnalysisReportLoader
 from shared.bundle_analysis.models import AssetType, MetadataKey
-from shared.bundle_analysis.storage import get_bucket_name
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.bundle_analysis.service.bundle_analysis import (
     BundleAnalysisCacheConfigService,
@@ -227,8 +224,8 @@ class BundleAnalysisReportService(BaseReportService):
         self,
         commit: Commit,
         upload: Upload,
+        pre_downloaded_path: str,
         compare_sha: str | None = None,
-        pre_downloaded_path: str | None = None,
     ) -> ProcessingResult:
         """
         Download and parse the data associated with the given upload and
@@ -237,13 +234,12 @@ class BundleAnalysisReportService(BaseReportService):
         Args:
             commit: The commit being processed
             upload: The upload record
+            pre_downloaded_path: Path to pre-downloaded upload file.
+                Skips the GCS download (optimization for reducing lock time).
             compare_sha: Optional SHA for comparison
-            pre_downloaded_path: Optional path to pre-downloaded upload file.
-                If provided, skips the GCS download (optimization for reducing lock time).
         """
         commit_report: CommitReport = upload.report
         bundle_loader = BundleAnalysisReportLoader(commit_report.commit.repository)
-        storage_service = bundle_loader.storage_service
 
         # fetch existing bundle report from storage
         bundle_report = bundle_loader.load(commit_report.external_id)
@@ -252,31 +248,12 @@ class BundleAnalysisReportService(BaseReportService):
                 commit, bundle_loader
             )
 
-        if pre_downloaded_path and os.path.exists(pre_downloaded_path):
-            local_path = pre_downloaded_path
-            should_cleanup_local = False
-            log.info(
-                "Using pre-downloaded upload file",
-                extra={
-                    "repoid": commit.repoid,
-                    "commit": commit.commitid,
-                    "local_path": local_path,
-                },
-            )
-        else:
-            _, local_path = tempfile.mkstemp()
-            should_cleanup_local = True
-
         try:
             session_id, prev_bar, bundle_name = None, None, None
             if upload.storage_path != "":
-                if should_cleanup_local:
-                    with open(local_path, "wb") as f:
-                        storage_service.read_file(
-                            get_bucket_name(), upload.storage_path, file_obj=f
-                        )
-
-                session_id, bundle_name = bundle_report.ingest(local_path, compare_sha)
+                session_id, bundle_name = bundle_report.ingest(
+                    pre_downloaded_path, compare_sha
+                )
 
                 prev_bar = self._previous_bundle_analysis_report(
                     bundle_loader, commit, head_bundle_report=bundle_report
@@ -354,10 +331,6 @@ class BundleAnalysisReportService(BaseReportService):
                     is_retryable=False,
                 ),
             )
-        finally:
-            if should_cleanup_local and os.path.exists(local_path):
-                os.remove(local_path)
-
         return ProcessingResult(
             upload=upload,
             commit=commit,
