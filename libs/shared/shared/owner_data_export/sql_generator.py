@@ -15,14 +15,14 @@ from decimal import Decimal
 from typing import Any, TextIO
 from uuid import UUID
 
-from django.db.models import Model, QuerySet
+from django.db.models import Model, Q, QuerySet
 from django.utils import timezone
 
 from .config import BATCH_SIZE, EXPORT_DAYS_DEFAULT
 from .models_registry import (
+    DEFAULT_FIELDS,
     EXPORTABLE_MODELS,
     TIMESCALE_MODELS,
-    get_default_fields,
     get_model_class,
     get_nullified_fields,
 )
@@ -50,6 +50,12 @@ DATE_FILTERED_VIA_HIERARCHY = {
     "reports.UploadLevelTotals",
     "reports.UploadFlagMembership",
     "timeseries.Measurement",
+}
+
+UPLOAD_LEVEL_MODELS = {
+    "reports.UploadError",
+    "reports.UploadLevelTotals",
+    "reports.UploadFlagMembership",
 }
 
 COMPOSITE_CONFLICT_COLUMNS: dict[str, list[str]] = {
@@ -93,7 +99,27 @@ class ExportContext:
     export_id: int | None = None
 
     _commit_report_ids: list[int] | None = field(default=None, init=False, repr=False)
-    _report_session_ids: list[int] | None = field(default=None, init=False, repr=False)
+
+    _COMMIT_REPORT_IDS_CONSUMERS: frozenset[str] = frozenset(
+        {
+            "reports.ReportSession",
+            "reports.UploadError",
+            "reports.UploadLevelTotals",
+            "reports.UploadFlagMembership",
+        }
+    )
+
+    def model_completed(self, model_path: str, remaining_models: set[str]) -> None:
+        """Release caches that are no longer needed by remaining models."""
+        if self._commit_report_ids is not None and not (
+            remaining_models & self._COMMIT_REPORT_IDS_CONSUMERS
+        ):
+            count = len(self._commit_report_ids)
+            self._commit_report_ids = None
+            log.info(
+                "Released commit_report IDs cache",
+                extra={"export_id": self.export_id, "freed_ids": count},
+            )
 
     def _repository_subquery(self) -> QuerySet:
         Repository = get_model_class("core.Repository")
@@ -106,13 +132,16 @@ class ExportContext:
             timestamp__gte=self.since_date,
         ).values("id")
 
+    def _commit_report_subquery(self) -> QuerySet:
+        CommitReport = get_model_class("reports.CommitReport")
+        return CommitReport.objects.filter(
+            commit_id__in=self._commit_subquery()
+        ).values("id")
+
     def _get_commit_report_ids(self) -> list[int]:
         if self._commit_report_ids is None:
-            CommitReport = get_model_class("reports.CommitReport")
             self._commit_report_ids = list(
-                CommitReport.objects.filter(
-                    commit_id__in=self._commit_subquery()
-                ).values_list("id", flat=True)
+                self._commit_report_subquery().values_list("id", flat=True)
             )
             log.info(
                 "Materialized commit_report IDs",
@@ -123,22 +152,25 @@ class ExportContext:
             )
         return self._commit_report_ids
 
-    def _get_report_session_ids(self) -> list[int]:
-        if self._report_session_ids is None:
-            ReportSession = get_model_class("reports.ReportSession")
-            self._report_session_ids = list(
-                ReportSession.objects.filter(
-                    report_id__in=self._get_commit_report_ids()
-                ).values_list("id", flat=True)
-            )
-            log.info(
-                "Materialized report_session IDs",
-                extra={
-                    "export_id": self.export_id,
-                    "count": len(self._report_session_ids),
-                },
-            )
-        return self._report_session_ids
+    def iter_upload_model_rows(
+        self,
+        model_path: str,
+        field_attnames: list[str],
+        chunk_size: int = 5000,
+    ) -> Generator[tuple]:
+        """
+        Yield values_list tuples for upload-level models.
+        """
+        model = get_model_class(model_path)
+        commit_report_ids = self._get_commit_report_ids()
+
+        for i in range(0, len(commit_report_ids), chunk_size):
+            cr_chunk = commit_report_ids[i : i + chunk_size]
+
+            rows = model.objects.filter(
+                report_session__report_id__in=cr_chunk
+            ).values_list(*field_attnames)
+            yield from rows
 
     def get_queryset(self, model_path: str) -> QuerySet:
         """Get a queryset for the model, filtered appropriately."""
@@ -182,34 +214,41 @@ class ExportContext:
         if model_path == "core.Repository":
             return model.objects.filter(author_id=self.owner_id)
 
-        if model_path in ("core.Branch", "core.Pull", "reports.RepositoryFlag"):
+        if model_path in ("core.Branch", "core.Pull"):
             return model.objects.filter(repository_id__in=self._repository_subquery())
+
+        if model_path == "reports.RepositoryFlag":
+            return model.objects.filter(
+                repository_id__in=self._repository_subquery()
+            ).order_by("repository_id", "id")
 
         if model_path == "core.Commit":
             return model.objects.filter(id__in=self._commit_subquery())
 
-        if model_path in ("core.CommitError", "reports.CommitReport"):
+        if model_path == "core.CommitError":
             return model.objects.filter(commit_id__in=self._commit_subquery())
 
-        if model_path in (
-            "reports.ReportResults",
-            "reports.ReportLevelTotals",
-            "reports.ReportSession",
-        ):
-            return model.objects.filter(report_id__in=self._get_commit_report_ids())
-
-        if model_path in (
-            "reports.UploadError",
-            "reports.UploadLevelTotals",
-            "reports.UploadFlagMembership",
-        ):
-            return model.objects.filter(
-                report_session_id__in=self._get_report_session_ids()
+        if model_path == "reports.CommitReport":
+            return model.objects.filter(commit_id__in=self._commit_subquery()).order_by(
+                "commit_id", "id"
             )
 
+        if model_path == "reports.ReportLevelTotals":
+            return model.objects.filter(report_id__in=self._commit_report_subquery())
+
+        if model_path == "reports.ReportResults":
+            return model.objects.filter(report_id__in=self._commit_report_subquery())
+
+        if model_path == "reports.ReportSession":
+            return model.objects.filter(
+                report_id__in=self._get_commit_report_ids()
+            ).order_by("report_id", "id")
+
+        if model_path in UPLOAD_LEVEL_MODELS:
+            # Handled via iter_upload_model_rows()
+            raise ValueError(f"{model_path} uses chunked iteration, not get_queryset()")
+
         if model_path == "timeseries.Dataset":
-            # Must use explicit list of IDs because Dataset is in
-            # TimescaleDB which doesn't have the repos table
             Repository = get_model_class("core.Repository")
             repo_ids = list(
                 Repository.objects.filter(author_id=self.owner_id).values_list(
@@ -336,25 +375,100 @@ def _serialize_pg_array(value: list, field: Any) -> str:
     return f"'{array_literal}'::{pg_type}[]"
 
 
-def get_row_values(instance: Model, model_path: str, fields: list) -> list[str]:
-    """Extract field values from a model instance, applying nullification and defaults."""
-    nullified = get_nullified_fields(model_path)
-    defaults = get_default_fields(model_path)
+# Sentinel for _FieldHandler.kind
+_KIND_NULL = 0
+_KIND_DEFAULT_STATIC = 1
+_KIND_DEFAULT_CALLABLE = 2
+_KIND_VALUE = 3
 
-    values = []
-    for f in fields:
+
+@dataclass(slots=True)
+class _FieldHandler:
+    """
+    Pre-computed instruction for serializing one field of a row.
+    """
+
+    kind: int
+    row_index: int
+    field: Any
+    default_value: Any = None
+
+
+def _build_field_handlers(
+    fields: list,
+    nullified: set[str],
+    defaults: dict[str, Any],
+) -> list[_FieldHandler]:
+    """
+    Create a dispatch table for all fields in a model.
+    """
+    handlers: list[_FieldHandler] = []
+    for i, f in enumerate(fields):
         if f.name in nullified or f.attname in nullified:
-            value = None
+            handlers.append(_FieldHandler(kind=_KIND_NULL, row_index=i, field=f))
         elif f.name in defaults:
-            default_value = defaults[f.name]
-            value = default_value() if callable(default_value) else default_value
+            raw = defaults[f.name]
+            if callable(raw):
+                handlers.append(
+                    _FieldHandler(
+                        kind=_KIND_DEFAULT_CALLABLE,
+                        row_index=i,
+                        field=f,
+                        default_value=raw,
+                    )
+                )
+            else:
+                handlers.append(
+                    _FieldHandler(
+                        kind=_KIND_DEFAULT_STATIC,
+                        row_index=i,
+                        field=f,
+                        default_value=raw,
+                    )
+                )
         elif f.attname in defaults:
-            default_value = defaults[f.attname]
-            value = default_value() if callable(default_value) else default_value
+            raw = defaults[f.attname]
+            if callable(raw):
+                handlers.append(
+                    _FieldHandler(
+                        kind=_KIND_DEFAULT_CALLABLE,
+                        row_index=i,
+                        field=f,
+                        default_value=raw,
+                    )
+                )
+            else:
+                handlers.append(
+                    _FieldHandler(
+                        kind=_KIND_DEFAULT_STATIC,
+                        row_index=i,
+                        field=f,
+                        default_value=raw,
+                    )
+                )
         else:
-            value = getattr(instance, f.attname)
-        values.append(serialize_value(value, f))
+            handlers.append(_FieldHandler(kind=_KIND_VALUE, row_index=i, field=f))
+    return handlers
 
+
+def _serialize_row_fast(
+    row: tuple,
+    handlers: list[_FieldHandler],
+) -> list[str]:
+    """
+    Serialize a values_list tuple using a pre-computed dispatch table.
+    """
+    values: list[str] = []
+    for h in handlers:
+        kind = h.kind
+        if kind == _KIND_NULL:
+            values.append("NULL")
+        elif kind == _KIND_DEFAULT_STATIC:
+            values.append(serialize_value(h.default_value, h.field))
+        elif kind == _KIND_DEFAULT_CALLABLE:
+            values.append(serialize_value(h.default_value(), h.field))
+        else:
+            values.append(serialize_value(row[h.row_index], h.field))
     return values
 
 
@@ -363,27 +477,56 @@ def get_conflict_columns(model_path: str, model) -> list[str]:
     return COMPOSITE_CONFLICT_COLUMNS.get(model_path, [model._meta.pk.column])
 
 
-def _paginate_queryset(queryset: QuerySet, batch_size: int) -> Generator[list]:
+def _keyset_paginate_values(
+    queryset: QuerySet,
+    field_attnames: list[str],
+    batch_size: int,
+) -> Generator[list[tuple]]:
     """
-    This approach uses explicit pagination with fresh queries per batch
+    Keyset pagination returning raw ``values_list`` tuples.
     """
-    pk_field = queryset.model._meta.pk.attname
-    ordered_qs = queryset.order_by(pk_field)
+    order_fields = list(queryset.query.order_by)
+    vl_qs = queryset.values_list(*field_attnames)
+    attname_to_idx = {name: i for i, name in enumerate(field_attnames)}
+    order_idxs = [attname_to_idx[f] for f in order_fields]
 
-    last_pk = None
+    last_values: tuple | None = None
     while True:
-        if last_pk is not None:
-            page_qs = ordered_qs.filter(**{f"{pk_field}__gt": last_pk})
-        else:
-            page_qs = ordered_qs
+        page_qs = vl_qs
+        if last_values is not None:
+            if len(order_fields) == 1:
+                page_qs = page_qs.filter(**{f"{order_fields[0]}__gt": last_values[0]})
+            else:
+                f1, f2 = order_fields
+                v1, v2 = last_values
+                page_qs = page_qs.filter(
+                    Q(**{f"{f1}__gt": v1}) | Q(**{f1: v1, f"{f2}__gt": v2})
+                )
 
         batch = list(page_qs[:batch_size])
-
         if not batch:
             break
 
         yield batch
-        last_pk = getattr(batch[-1], pk_field)
+
+        last_row = batch[-1]
+        last_values = tuple(last_row[i] for i in order_idxs)
+
+
+def _row_iter_for_model(
+    model_path: str,
+    context: ExportContext,
+    queryset: QuerySet,
+    field_attnames: list[str],
+) -> Generator[tuple]:
+    """
+    Return the appropriate row iterator for a model.
+    """
+    if model_path in UPLOAD_LEVEL_MODELS:
+        yield from context.iter_upload_model_rows(model_path, field_attnames)
+    else:
+        for batch in _keyset_paginate_values(queryset, field_attnames, BATCH_SIZE):
+            yield from batch
 
 
 def generate_upsert_sql(
@@ -395,10 +538,10 @@ def generate_upsert_sql(
     Yields SQL statements in batches. Returns stats dict when complete.
     """
     model = get_model_class(model_path)
-    queryset = context.get_queryset(model_path)
 
     fields = list(model._meta.fields)
     field_names = [f.column for f in fields]
+    field_attnames = [f.attname for f in fields]
     table_name = model._meta.db_table
     conflict_columns = get_conflict_columns(model_path, model)
 
@@ -406,34 +549,44 @@ def generate_upsert_sql(
     update_fields = [f.column for f in fields if f.column not in conflict_columns]
     set_clause = ", ".join(f"{col} = EXCLUDED.{col}" for col in update_fields)
 
+    nullified = set(get_nullified_fields(model_path))
+    defaults = DEFAULT_FIELDS.get(model_path, {})
+    field_handlers = _build_field_handlers(fields, nullified, defaults)
+
+    queryset = None
+    if model_path not in UPLOAD_LEVEL_MODELS:
+        queryset = context.get_queryset(model_path)
+        if not queryset.query.order_by:
+            pk_field = model._meta.pk.attname
+            queryset = queryset.order_by(pk_field)
+
     row_count = 0
-    batch = []
+    batch: list[str] = []
     batch_count = 0
     log_interval = 10
 
-    for instances in _paginate_queryset(queryset, BATCH_SIZE):
-        for instance in instances:
-            values = get_row_values(instance, model_path, fields)
-            batch.append(f"  ({', '.join(values)})")
-            row_count += 1
+    for row in _row_iter_for_model(model_path, context, queryset, field_attnames):
+        values = _serialize_row_fast(row, field_handlers)
+        batch.append(f"  ({', '.join(values)})")
+        row_count += 1
 
-            if len(batch) >= BATCH_SIZE:
-                yield _build_upsert_statement(
-                    table_name, columns_str, batch, conflict_columns, set_clause
+        if len(batch) >= BATCH_SIZE:
+            yield _build_upsert_statement(
+                table_name, columns_str, batch, conflict_columns, set_clause
+            )
+            batch = []
+            batch_count += 1
+
+            if batch_count % log_interval == 0:
+                log.info(
+                    "Model export progress",
+                    extra={
+                        "export_id": context.export_id,
+                        "model": model_path,
+                        "rows_processed": row_count,
+                        "batches_completed": batch_count,
+                    },
                 )
-                batch = []
-                batch_count += 1
-
-                if batch_count % log_interval == 0:
-                    log.info(
-                        "Model export progress",
-                        extra={
-                            "export_id": context.export_id,
-                            "model": model_path,
-                            "rows_processed": row_count,
-                            "batches_completed": batch_count,
-                        },
-                    )
 
     if batch:
         yield _build_upsert_statement(
@@ -561,6 +714,9 @@ def generate_full_export(
                 "elapsed_seconds": round(elapsed_seconds, 2),
             },
         )
+
+        remaining = set(models[model_index + 1 :])
+        context.model_completed(model_path, remaining)
 
         if model_rows == 0:
             output_file.write("-- (no rows)\n\n")

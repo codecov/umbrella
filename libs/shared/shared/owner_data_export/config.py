@@ -9,8 +9,8 @@ directory to prevent concurrent exports from overwriting each other's files.
 from shared.config import get_config
 
 # Export Parameters
-EXPORT_DAYS_DEFAULT = 60
-BATCH_SIZE = 1000
+EXPORT_DAYS_DEFAULT = 90
+BATCH_SIZE = 5000
 
 # Default 7 days
 DOWNLOAD_URL_EXPIRY_SECONDS = int(

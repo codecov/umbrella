@@ -1,6 +1,7 @@
 import logging
 from typing import Any, cast
 
+import sentry_sdk
 from celery.exceptions import CeleryError, SoftTimeLimitExceeded
 
 from app import celery_app
@@ -71,6 +72,7 @@ class BundleAnalysisProcessorTask(
 ):
     max_retries = BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 
+    @sentry_sdk.trace
     def run_impl(
         self,
         db_session,
@@ -95,6 +97,27 @@ class BundleAnalysisProcessorTask(
                 "params": params,
             },
         )
+
+        # For carryforward tasks (no upload_id), check whether a BA report
+        # already exists *before* acquiring the lock.  This avoids
+        # unnecessary lock contention when the report was already created by
+        # a prior task or a real BA upload.  The authoritative check still
+        # happens inside the lock in process_impl_within_lock.
+        is_carryforward = params.get("upload_id") is None
+        if is_carryforward:
+            processing_results = (
+                previous_result if isinstance(previous_result, list) else []
+            )
+            if self._ba_report_already_exists(db_session, repoid, commitid):
+                log.info(
+                    "Bundle analysis report already exists for commit, "
+                    "skipping carryforward (pre-lock check)",
+                    extra={
+                        "repoid": repoid,
+                        "commit": commitid,
+                    },
+                )
+                return processing_results
 
         lock_manager = get_bundle_analysis_lock_manager(
             repoid=repoid,
@@ -131,6 +154,28 @@ class BundleAnalysisProcessorTask(
                 )
                 return previous_result
             self.retry(max_retries=self.max_retries, countdown=retry.countdown)
+
+    @staticmethod
+    def _ba_report_already_exists(db_session, repoid: int, commitid: str) -> bool:
+        """Return True if a non-error BA report already exists for this commit."""
+        commit = (
+            db_session.query(Commit).filter_by(repoid=repoid, commitid=commitid).first()
+        )
+        if commit is None:
+            return False
+
+        commit_report = (
+            db_session.query(CommitReport)
+            .filter_by(
+                commit_id=commit.id,
+                report_type=ReportType.BUNDLE_ANALYSIS.value,
+            )
+            .first()
+        )
+        if commit_report is None:
+            return False
+
+        return any(upload.state != "error" for upload in commit_report.uploads)
 
     def process_impl_within_lock(
         self,

@@ -216,3 +216,9 @@ class UploadLevelTotals(AbstractTotals):
     class Meta:
         app_label = REPORTS_APP_LABEL
         db_table = "reports_uploadleveltotals"
+        indexes = [
+            models.Index(
+                fields=["report_session_id", "id"],
+                name="ult_session_id_idx",
+            ),
+        ]
