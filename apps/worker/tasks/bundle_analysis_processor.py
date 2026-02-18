@@ -31,6 +31,42 @@ from tasks.bundle_analysis_save_measurements import (
 log = logging.getLogger(__name__)
 
 
+def _log_max_retries_exceeded(
+    commitid: str,
+    repoid: int,
+    attempts: int,
+    max_retries: int,
+    retry_num: int | None = None,
+) -> None:
+    extra = {
+        "attempts": attempts,
+        "commitid": commitid,
+        "max_retries": max_retries,
+        "repoid": repoid,
+    }
+    if retry_num is not None:
+        extra["retry_num"] = retry_num
+    log.error("Bundle analysis processor exceeded max retries", extra=extra)
+
+
+def _set_upload_error_and_commit(
+    db_session,
+    upload,
+    commitid: str,
+    repoid: int,
+    log_suffix: str = "",
+) -> None:
+    upload.state_id = UploadState.ERROR.db_id
+    upload.state = "error"
+    try:
+        db_session.commit()
+    except Exception:
+        log.exception(
+            f"Failed to commit upload error state{log_suffix}",
+            extra={"commit": commitid, "repoid": repoid, "upload_id": upload.id_},
+        )
+
+
 class BundleAnalysisProcessorTask(
     BaseCodecovTask, name=bundle_analysis_processor_task_name
 ):
@@ -103,25 +139,19 @@ class BundleAnalysisProcessorTask(
                     previous_result,
                 )
         except LockRetry as retry:
-            # Check max retries using self.attempts (includes visibility timeout re-deliveries)
-            # This prevents infinite retry loops when max retries are exceeded
-            if self._has_exceeded_max_attempts(self.max_retries):
-                max_attempts = (
-                    self.max_retries + 1 if self.max_retries is not None else None
+            # Honor LockManager cap (Redis attempt count) so re-delivered messages stop.
+            if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
+                self.max_retries
+            ):
+                _log_max_retries_exceeded(
+                    commitid=commitid,
+                    repoid=repoid,
+                    attempts=(
+                        retry.retry_num if retry.max_retries_exceeded else self.attempts
+                    ),
+                    max_retries=self.max_retries,
+                    retry_num=self.request.retries,
                 )
-                log.error(
-                    "Bundle analysis processor exceeded max retries",
-                    extra={
-                        "attempts": self.attempts,
-                        "commitid": commitid,
-                        "max_attempts": max_attempts,
-                        "max_retries": self.max_retries,
-                        "repoid": repoid,
-                        "retry_num": self.request.retries,
-                    },
-                )
-                # Return previous_result to preserve chain behavior when max retries exceeded
-                # This allows the chain to continue with partial results rather than failing entirely
                 return previous_result
             self.retry(max_retries=self.max_retries, countdown=retry.countdown)
 
@@ -249,24 +279,16 @@ class BundleAnalysisProcessorTask(
             result = report_service.process_upload(commit, upload, compare_sha)
             if result.error and result.error.is_retryable:
                 if self._has_exceeded_max_attempts(self.max_retries):
-                    attempts = self.attempts
-                    max_attempts = self.max_retries + 1
-                    log.error(
-                        "Bundle analysis processor exceeded max retries",
-                        extra={
-                            "attempts": attempts,
-                            "commitid": commitid,
-                            "max_attempts": max_attempts,
-                            "max_retries": self.max_retries,
-                            "repoid": repoid,
-                        },
+                    _log_max_retries_exceeded(
+                        commitid=commitid,
+                        repoid=repoid,
+                        attempts=self.attempts,
+                        max_retries=self.max_retries,
                     )
-                    # Update upload state to "error" before returning
                     try:
                         result.update_upload(carriedforward=carriedforward)
                         db_session.commit()
                     except Exception:
-                        # Log commit failure but don't raise - we've already set the error state
                         log.exception(
                             "Failed to update and commit upload error state after max retries exceeded",
                             extra={
@@ -275,20 +297,9 @@ class BundleAnalysisProcessorTask(
                                 "upload_id": upload.id_,
                             },
                         )
-                        # Manually set upload state to error as fallback
-                        upload.state_id = UploadState.ERROR.db_id
-                        upload.state = "error"
-                        try:
-                            db_session.commit()
-                        except Exception:
-                            log.exception(
-                                "Failed to commit upload error state fallback",
-                                extra={
-                                    "commit": commitid,
-                                    "repoid": repoid,
-                                    "upload_id": upload.id_,
-                                },
-                            )
+                        _set_upload_error_and_commit(
+                            db_session, upload, commitid, repoid, log_suffix=" fallback"
+                        )
                     return processing_results
                 log.warn(
                     "Attempting to retry bundle analysis upload",
@@ -325,21 +336,8 @@ class BundleAnalysisProcessorTask(
                     "parent_task": self.request.parent_id,
                 },
             )
-            upload.state_id = UploadState.ERROR.db_id
-            upload.state = "error"
-            try:
-                db_session.commit()
-            except Exception:
-                # Log commit failure but preserve original exception
-                log.exception(
-                    "Failed to commit upload error state",
-                    extra={
-                        "commit": commitid,
-                        "repoid": repoid,
-                        "upload_id": upload.id_,
-                    },
-                )
-            raise
+            _set_upload_error_and_commit(db_session, upload, commitid, repoid)
+            return processing_results
         finally:
             if result is not None and result.bundle_report:
                 result.bundle_report.cleanup()

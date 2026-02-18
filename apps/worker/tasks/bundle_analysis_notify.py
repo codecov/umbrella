@@ -77,7 +77,7 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
                         "commitid": commitid,
                         "repoid": repoid,
                         "retry_num": retry.retry_num,
-                        "max_attempts": retry.max_attempts,
+                        "max_retries": retry.max_retries,
                     },
                 )
                 return {

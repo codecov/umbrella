@@ -144,6 +144,7 @@ class TestLockManager:
     def test_locked_lock_error_raises_lock_retry(self, mock_redis):
         """Test that LockError raises LockRetry exception"""
         mock_redis.lock.side_effect = LockError()
+        mock_redis.incr.return_value = 1
 
         manager = LockManager(repoid=123, commitid="abc123")
         with pytest.raises(LockRetry) as exc_info:
@@ -157,6 +158,7 @@ class TestLockManager:
     def test_locked_exponential_backoff_retry_0(self, mock_redis):
         """Test exponential backoff calculation for retry_num=0"""
         mock_redis.lock.side_effect = LockError()
+        mock_redis.incr.return_value = 1
 
         manager = LockManager(repoid=123, commitid="abc123")
         with pytest.raises(LockRetry) as exc_info:
@@ -169,6 +171,7 @@ class TestLockManager:
     def test_locked_exponential_backoff_retry_1(self, mock_redis):
         """Test exponential backoff calculation for retry_num=1"""
         mock_redis.lock.side_effect = LockError()
+        mock_redis.incr.return_value = 1
 
         manager = LockManager(repoid=123, commitid="abc123")
         with pytest.raises(LockRetry) as exc_info:
@@ -181,6 +184,7 @@ class TestLockManager:
     def test_locked_exponential_backoff_retry_2(self, mock_redis):
         """Test exponential backoff calculation for retry_num=2"""
         mock_redis.lock.side_effect = LockError()
+        mock_redis.incr.return_value = 1
 
         manager = LockManager(repoid=123, commitid="abc123")
         with pytest.raises(LockRetry) as exc_info:
@@ -193,6 +197,7 @@ class TestLockManager:
     def test_locked_exponential_backoff_cap(self, mock_redis):
         """Test that exponential backoff is capped at 5 hours"""
         mock_redis.lock.side_effect = LockError()
+        mock_redis.incr.return_value = 1
 
         manager = LockManager(repoid=123, commitid="abc123")
         # Use a high retry_num that would exceed the cap
@@ -206,6 +211,7 @@ class TestLockManager:
     def test_locked_max_retries_not_provided(self, mock_redis, caplog):
         """Test that max_retries=None doesn't log error"""
         mock_redis.lock.side_effect = LockError()
+        mock_redis.incr.return_value = 1
 
         manager = LockManager(repoid=123, commitid="abc123")
         with caplog.at_level(logging.ERROR):
@@ -219,6 +225,7 @@ class TestLockManager:
     def test_locked_max_retries_not_exceeded(self, mock_redis, caplog):
         """Test that max_retries check doesn't log error when not exceeded"""
         mock_redis.lock.side_effect = LockError()
+        mock_redis.incr.return_value = 1
 
         manager = LockManager(repoid=123, commitid="abc123")
         with caplog.at_level(logging.ERROR):
@@ -234,8 +241,11 @@ class TestLockManager:
         assert len(error_logs) == 0
 
     def test_locked_max_retries_exceeded(self, mock_redis, caplog):
-        """Test that max_retries exceeded raises LockRetry with max_retries_exceeded=True"""
+        """Test that max attempts exceeded raises LockRetry with max_retries_exceeded=True"""
         mock_redis.lock.side_effect = LockError()
+        mock_redis.incr.return_value = (
+            3  # Redis attempt count >= max_retries (3 = 3 attempts)
+        )
 
         manager = LockManager(repoid=123, commitid="abc123")
         with caplog.at_level(logging.ERROR):
@@ -243,11 +253,10 @@ class TestLockManager:
                 with manager.locked(LockType.UPLOAD, retry_num=5, max_retries=3):
                     pass
 
-        # Should raise LockRetry with max_retries_exceeded=True
         assert isinstance(exc_info.value, LockRetry)
         assert exc_info.value.max_retries_exceeded is True
-        assert exc_info.value.retry_num == 5
-        assert exc_info.value.max_attempts == 4  # max_retries + 1
+        assert exc_info.value.retry_num == 3  # from Redis incr
+        assert exc_info.value.max_retries == 3
         assert exc_info.value.lock_name == "upload_lock_123_abc123"
         assert exc_info.value.repoid == 123
         assert exc_info.value.commitid == "abc123"
@@ -256,41 +265,40 @@ class TestLockManager:
         error_logs = [
             r
             for r in caplog.records
-            if r.levelname == "ERROR" and "too many retries" in r.message
+            if r.levelname == "ERROR" and "too many attempts" in r.message
         ]
         assert len(error_logs) == 1
         assert error_logs[0].__dict__["max_retries"] == 3
-        assert error_logs[0].__dict__["retry_num"] == 5
+        assert error_logs[0].__dict__["attempts"] == 3
 
     def test_locked_max_retries_exceeded_at_boundary(self, mock_redis, caplog):
-        """Test that max_retries boundary condition raises LockRetry with max_retries_exceeded=True"""
+        """Test that max attempts boundary (attempts >= max_retries) raises LockRetry"""
         mock_redis.lock.side_effect = LockError()
+        mock_redis.incr.return_value = 3  # attempts >= max_retries (3)
 
         manager = LockManager(repoid=123, commitid="abc123")
         with caplog.at_level(logging.ERROR):
             with pytest.raises(LockRetry) as exc_info:
-                # retry_num now represents self.attempts (starts at 1)
-                # max_retries=3 means max_attempts=4, so retry_num=4 should exceed
                 with manager.locked(LockType.UPLOAD, retry_num=4, max_retries=3):
                     pass
 
-        # Should raise LockRetry with max_retries_exceeded=True
         assert isinstance(exc_info.value, LockRetry)
         assert exc_info.value.max_retries_exceeded is True
-        assert exc_info.value.retry_num == 4
-        assert exc_info.value.max_attempts == 4
+        assert exc_info.value.retry_num == 3
+        assert exc_info.value.max_retries == 3
         assert exc_info.value.countdown == 0
 
         error_logs = [
             r
             for r in caplog.records
-            if r.levelname == "ERROR" and "too many retries" in r.message
+            if r.levelname == "ERROR" and "too many attempts" in r.message
         ]
         assert len(error_logs) == 1
 
     def test_locked_warning_logged_on_lock_error(self, mock_redis, caplog):
         """Test that warning is logged when lock cannot be acquired"""
         mock_redis.lock.side_effect = LockError()
+        mock_redis.incr.return_value = 1
 
         manager = LockManager(repoid=123, commitid="abc123")
         with caplog.at_level(logging.WARNING):
@@ -358,6 +366,7 @@ class TestLockManager:
         """
         # When blocking_timeout is set, Redis raises LockError after timeout
         mock_redis.lock.side_effect = LockError()
+        mock_redis.incr.return_value = 1
 
         manager = LockManager(repoid=123, commitid="abc123", blocking_timeout=5)
 

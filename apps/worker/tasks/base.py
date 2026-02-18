@@ -182,6 +182,12 @@ def _get_request_headers(request) -> dict:
 
 
 class BaseCodecovTask(celery_app.Task):
+    """Base task for Codecov workers.
+
+    In this codebase, max_retries is the maximum total attempts (cap on runs).
+    We stop when attempts >= max_retries. The name matches Celery/config.
+    """
+
     Request = BaseCodecovRequest
 
     def __init_subclass__(cls, name=None):
@@ -306,27 +312,19 @@ class BaseCodecovTask(celery_app.Task):
         return attempts_value
 
     def _has_exceeded_max_attempts(self, max_retries: int | None) -> bool:
-        """Check if task has exceeded max attempts."""
+        """Return True if attempts >= max_retries (max_retries is max total attempts)."""
         if max_retries is None:
             return False
 
-        max_attempts = max_retries + 1
-        return self.attempts >= max_attempts
+        return self.attempts >= max_retries
 
     def safe_retry(self, countdown=None, exc=None, **kwargs):
-        """Safely retry with max retry limit. Returns False if max exceeded, otherwise raises Retry.
-
-        Uses self.max_retries to determine the retry limit. Tasks define max_retries as a class
-        attribute, so it's known at instantiation and doesn't change.
-        """
+        """Safely retry with max retry limit. Returns False if max exceeded, otherwise raises Retry."""
         if self._has_exceeded_max_attempts(self.max_retries):
-            # If we're here, self.max_retries is not None (otherwise _has_exceeded_max_attempts returns False)
-            max_attempts = self.max_retries + 1
             log.error(
                 f"Task {self.name} exceeded max retries",
                 extra={
                     "attempts": self.attempts,
-                    "max_attempts": max_attempts,
                     "max_retries": self.max_retries,
                     "task_name": self.name,
                 },
@@ -334,12 +332,11 @@ class BaseCodecovTask(celery_app.Task):
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
             sentry_sdk.capture_exception(
                 MaxRetriesExceededError(
-                    f"Task {self.name} exceeded max retries: {self.attempts} >= {max_attempts}"
+                    f"Task {self.name} exceeded max retries: {self.attempts} >= {self.max_retries}"
                 ),
                 contexts={
                     "task": {
                         "attempts": self.attempts,
-                        "max_attempts": max_attempts,
                         "max_retries": self.max_retries,
                         "task_name": self.name,
                     }
