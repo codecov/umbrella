@@ -741,6 +741,8 @@ class BaseCodecovTask(celery_app.Task):
         upload_ids: list[int] = [],
         error: Errors | None = None,
         error_text: str | None = None,
+        task_name: str | None = None,
+        parent_task_id: str | None = None,
     ):
         """
         Queue a task to create an upload breadcrumb.
@@ -751,7 +753,11 @@ class BaseCodecovTask(celery_app.Task):
                     "commit_sha": commit_sha,
                     "repo_id": repo_id,
                     "breadcrumb_data": BreadcrumbData(
-                        milestone=milestone, error=error, error_text=error_text
+                        milestone=milestone,
+                        error=error,
+                        error_text=error_text,
+                        task_name=task_name,
+                        parent_task_id=parent_task_id,
                     ),
                     "upload_ids": upload_ids,
                     "sentry_trace_id": current_sentry_trace_id(),
