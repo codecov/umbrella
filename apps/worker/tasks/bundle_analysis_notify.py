@@ -17,6 +17,7 @@ from shared.celery_config import (
     BUNDLE_ANALYSIS_NOTIFY_MAX_RETRIES,
     bundle_analysis_notify_task_name,
 )
+from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 
@@ -55,13 +56,27 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
             commitid=commitid,
         )
 
+        bc_kwargs = {
+            "commit_sha": commitid,
+            "repo_id": repoid,
+            "task_name": self.name,
+            "parent_task_id": self.request.parent_id,
+        }
+
+        self._call_upload_breadcrumb_task(
+            milestone=Milestones.LOCK_ACQUIRING, **bc_kwargs
+        )
+
         try:
             with lock_manager.locked(
                 LockType.BUNDLE_ANALYSIS_NOTIFY,
                 max_retries=self.max_retries,
                 retry_num=self.attempts,
             ):
-                return self.process_impl_within_lock(
+                self._call_upload_breadcrumb_task(
+                    milestone=Milestones.LOCK_ACQUIRED, **bc_kwargs
+                )
+                result = self.process_impl_within_lock(
                     db_session=db_session,
                     repoid=repoid,
                     commitid=commitid,
@@ -69,7 +84,14 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
                     previous_result=previous_result,
                     **kwargs,
                 )
+            self._call_upload_breadcrumb_task(
+                milestone=Milestones.LOCK_RELEASED, **bc_kwargs
+            )
+            return result
         except LockRetry as retry:
+            self._call_upload_breadcrumb_task(
+                error=Errors.INTERNAL_LOCK_ERROR, **bc_kwargs
+            )
             if retry.max_retries_exceeded:
                 log.error(
                     "Not retrying lock acquisition - max retries exceeded",
@@ -112,6 +134,17 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
         )
         assert commit, "commit not found"
 
+        bc_kwargs = {
+            "commit_sha": commitid,
+            "repo_id": repoid,
+            "task_name": self.name,
+            "parent_task_id": self.request.parent_id,
+        }
+
+        self._call_upload_breadcrumb_task(
+            milestone=Milestones.NOTIFICATIONS_TRIGGERED, **bc_kwargs
+        )
+
         # previous_result is the list of processing results from prior processor tasks
         # (they get accumulated as we execute each task in succession)
         processing_results = (
@@ -119,7 +152,12 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
         )
 
         if all(result["error"] is not None for result in processing_results):
-            # every processor errored, nothing to notify on
+            self._call_upload_breadcrumb_task(
+                milestone=Milestones.NOTIFICATIONS_SENT,
+                error=Errors.UNKNOWN,
+                error_text="All bundle analysis processors errored",
+                **bc_kwargs,
+            )
             return {
                 "notify_attempted": False,
                 "notify_succeeded": NotificationSuccess.ALL_ERRORED,
@@ -132,6 +170,10 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
             commit, commit_yaml, gh_app_installation_name=installation_name_to_use
         )
         result = notifier.notify()
+
+        self._call_upload_breadcrumb_task(
+            milestone=Milestones.NOTIFICATIONS_SENT, **bc_kwargs
+        )
 
         log.info(
             "Finished bundle analysis notify",
