@@ -254,10 +254,6 @@ class BaseCodecovTask(celery_app.Task):
             "attempts": opt_headers.get("attempts", 1),
         }
 
-        # Stamp the caller's identity into headers so child tasks always know
-        # their immediate parent.  Celery's native `parent_id` can point to a
-        # chord-unlock or chain-root task rather than the actual caller, so we
-        # track it ourselves via headers which are fully under our control.
         caller = get_current_task()
         if caller and caller.request:
             headers.setdefault("parent_task_id", getattr(caller.request, "id", None))
