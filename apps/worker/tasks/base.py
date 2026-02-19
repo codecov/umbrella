@@ -240,14 +240,6 @@ class BaseCodecovTask(celery_app.Task):
         }
         options = {**options, **celery_compatible_config}
 
-        # Explicitly propagate parent_id from the current task context.
-        # Celery only does this automatically for chains/chords; manual
-        # apply_async calls from within a task would lose the lineage.
-        if "parent_id" not in options:
-            caller = get_current_task()
-            if caller and caller.request:
-                options["parent_id"] = getattr(caller.request, "id", None)
-
         opt_headers = options.pop("headers", {})
         opt_headers = opt_headers if opt_headers is not None else {}
 
@@ -261,6 +253,15 @@ class BaseCodecovTask(celery_app.Task):
             # Only set to 1 if this is a new task creation
             "attempts": opt_headers.get("attempts", 1),
         }
+
+        # Stamp the caller's identity into headers so child tasks always know
+        # their immediate parent.  Celery's native `parent_id` can point to a
+        # chord-unlock or chain-root task rather than the actual caller, so we
+        # track it ourselves via headers which are fully under our control.
+        caller = get_current_task()
+        if caller and caller.request:
+            headers.setdefault("parent_task_id", getattr(caller.request, "id", None))
+            headers.setdefault("parent_task_name", caller.name)
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
     def retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
@@ -433,7 +434,12 @@ class BaseCodecovTask(celery_app.Task):
                 task_id = getattr(task.request, "id", None)
                 if task_id:
                     log_context.task_id = task_id
-                log_context.parent_task_id = getattr(task.request, "parent_id", None)
+
+                headers = _get_request_headers(task.request)
+                log_context.parent_task_id = headers.get("parent_task_id") or getattr(
+                    task.request, "parent_id", None
+                )
+                log_context.parent_task_name = headers.get("parent_task_name")
 
             log_context.populate_from_sqlalchemy(db_session)
             set_log_context(log_context)
