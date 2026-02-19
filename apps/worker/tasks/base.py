@@ -240,6 +240,14 @@ class BaseCodecovTask(celery_app.Task):
         }
         options = {**options, **celery_compatible_config}
 
+        # Explicitly propagate parent_id from the current task context.
+        # Celery only does this automatically for chains/chords; manual
+        # apply_async calls from within a task would lose the lineage.
+        if "parent_id" not in options:
+            caller = get_current_task()
+            if caller and caller.request:
+                options["parent_id"] = getattr(caller.request, "id", None)
+
         opt_headers = options.pop("headers", {})
         opt_headers = opt_headers if opt_headers is not None else {}
 
@@ -425,9 +433,7 @@ class BaseCodecovTask(celery_app.Task):
                 task_id = getattr(task.request, "id", None)
                 if task_id:
                     log_context.task_id = task_id
-                parent_task_id = getattr(task.request, "parent_id", None)
-                if parent_task_id:
-                    log_context.parent_task_id = parent_task_id
+                log_context.parent_task_id = getattr(task.request, "parent_id", None)
 
             log_context.populate_from_sqlalchemy(db_session)
             set_log_context(log_context)
