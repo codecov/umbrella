@@ -281,6 +281,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         upload_ids = [upload["upload_id"] for upload in processing_results]
 
+        bc_kwargs = {
+            "commit_sha": commitid,
+            "repo_id": repoid,
+            "upload_ids": upload_ids,
+            "task_name": self.name,
+            "parent_task_id": self.request.parent_id,
+        }
+
         # Idempotency check: Skip if all uploads are already processed
         # This prevents wasted work if multiple finishers are triggered (e.g., from
         # visibility timeout re-queuing) or if finisher is manually retried
@@ -341,12 +349,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 )
                 UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
                 UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
-                self._call_upload_breadcrumb_task(
-                    commit_sha=commitid,
-                    repo_id=repoid,
-                    milestone=milestone,
-                    upload_ids=upload_ids,
-                )
+                self._call_upload_breadcrumb_task(milestone=milestone, **bc_kwargs)
                 return
 
             log.info("run_impl: Handling finisher lock")
@@ -366,11 +369,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         except SoftTimeLimitExceeded:
             log.warning("run_impl: soft time limit exceeded")
             self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                upload_ids=upload_ids,
-                error=Errors.TASK_TIMED_OUT,
+                milestone=milestone, error=Errors.TASK_TIMED_OUT, **bc_kwargs
             )
             return {
                 "error": "Soft time limit exceeded",
@@ -385,12 +384,10 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 extra={"upload_ids": upload_ids},
             )
             self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
                 milestone=milestone,
-                upload_ids=upload_ids,
                 error=Errors.UNKNOWN,
                 error_text=repr(e),
+                **bc_kwargs,
             )
             return {
                 "error": str(e),
@@ -412,6 +409,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         repoid = commit.repoid
         commitid = commit.commitid
 
+        bc_kwargs = {
+            "commit_sha": commitid,
+            "repo_id": repoid,
+            "upload_ids": upload_ids,
+            "task_name": self.name,
+            "parent_task_id": self.request.parent_id,
+        }
+
         log.info("run_impl: Loaded commit diff")
 
         lock_manager = LockManager(
@@ -421,12 +426,20 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             blocking_timeout=None,
         )
 
+        self._call_upload_breadcrumb_task(
+            milestone=Milestones.LOCK_ACQUIRING, **bc_kwargs
+        )
+
         try:
             with lock_manager.locked(
                 LockType.UPLOAD_PROCESSING,
                 max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
                 retry_num=self.attempts,
             ):
+                self._call_upload_breadcrumb_task(
+                    milestone=Milestones.LOCK_ACQUIRED, **bc_kwargs
+                )
+
                 db_session.refresh(commit)
                 report_service = ReportService(commit_yaml)
 
@@ -458,13 +471,13 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
                 log.info("run_impl: Finished upload_finisher task")
 
+            self._call_upload_breadcrumb_task(
+                milestone=Milestones.LOCK_RELEASED, **bc_kwargs
+            )
+
         except LockRetry as retry:
             self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                upload_ids=upload_ids,
-                error=Errors.INTERNAL_LOCK_ERROR,
+                error=Errors.INTERNAL_LOCK_ERROR, **bc_kwargs
             )
             if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
                 UPLOAD_PROCESSOR_MAX_RETRIES
@@ -481,19 +494,11 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     },
                 )
                 self._call_upload_breadcrumb_task(
-                    commit_sha=commitid,
-                    repo_id=repoid,
-                    milestone=milestone,
-                    upload_ids=upload_ids,
-                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES, **bc_kwargs
                 )
                 return
             self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                upload_ids=upload_ids,
-                error=Errors.INTERNAL_RETRYING,
+                error=Errors.INTERNAL_RETRYING, **bc_kwargs
             )
             self.retry(
                 max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
@@ -513,11 +518,23 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commitid = commit.commitid
         repository = commit.repository
 
+        bc_kwargs = {
+            "commit_sha": commitid,
+            "repo_id": repoid,
+            "upload_ids": upload_ids,
+            "task_name": self.name,
+            "parent_task_id": self.request.parent_id,
+        }
+
         lock_manager = LockManager(
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
             blocking_timeout=None,
+        )
+
+        self._call_upload_breadcrumb_task(
+            milestone=Milestones.LOCK_ACQUIRING, **bc_kwargs
         )
 
         try:
@@ -526,6 +543,10 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
                 retry_num=self.attempts,
             ):
+                self._call_upload_breadcrumb_task(
+                    milestone=Milestones.LOCK_ACQUIRED, **bc_kwargs
+                )
+
                 result = self.finish_reports_processing(
                     db_session, commit, commit_yaml, processing_results
                 )
@@ -569,22 +590,18 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
                 log.info("handle_finisher_lock: Invalidating caches")
                 self.invalidate_caches(lock_manager.redis_connection, commit)
-                self._call_upload_breadcrumb_task(
-                    commit_sha=commitid,
-                    repo_id=repoid,
-                    milestone=milestone,
-                    upload_ids=upload_ids,
-                )
+                self._call_upload_breadcrumb_task(milestone=milestone, **bc_kwargs)
                 log.info("handle_finisher_lock: Finished upload_finisher task")
-                return result
+
+            self._call_upload_breadcrumb_task(
+                milestone=Milestones.LOCK_RELEASED, **bc_kwargs
+            )
+
+            return result
 
         except LockRetry as retry:
             self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                upload_ids=upload_ids,
-                error=Errors.INTERNAL_LOCK_ERROR,
+                error=Errors.INTERNAL_LOCK_ERROR, **bc_kwargs
             )
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
             if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
@@ -602,19 +619,11 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     },
                 )
                 self._call_upload_breadcrumb_task(
-                    commit_sha=commitid,
-                    repo_id=repoid,
-                    milestone=milestone,
-                    upload_ids=upload_ids,
-                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES, **bc_kwargs
                 )
                 return
             self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                upload_ids=upload_ids,
-                error=Errors.INTERNAL_RETRYING,
+                error=Errors.INTERNAL_RETRYING, **bc_kwargs
             )
             self.retry(
                 max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
@@ -660,6 +669,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         upload_ids=[
                             upload["upload_id"] for upload in processing_results
                         ],
+                        task_name=self.name,
+                        parent_task_id=self.request.parent_id,
                     )
                     log.info(
                         "Scheduling notify task",
