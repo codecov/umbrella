@@ -19,6 +19,7 @@ class LogContext:
 
     task_name: str = "???"
     task_id: str = "???"
+    parent_task_id: str | None = None
 
     _populated_from_db = False
     owner_username: str | None = None

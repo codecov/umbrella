@@ -425,6 +425,9 @@ class BaseCodecovTask(celery_app.Task):
                 task_id = getattr(task.request, "id", None)
                 if task_id:
                     log_context.task_id = task_id
+                parent_task_id = getattr(task.request, "parent_id", None)
+                if parent_task_id:
+                    log_context.parent_task_id = parent_task_id
 
             log_context.populate_from_sqlalchemy(db_session)
             set_log_context(log_context)

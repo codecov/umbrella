@@ -142,6 +142,7 @@ def test_as_dict(dbsession, mocker):
     assert log_context.as_dict() == {
         "task_name": "foo",
         "task_id": "bar",
+        "parent_task_id": None,
         "commit_id": None,
         "commit_sha": commit.commitid,
         "repo_id": repo.repoid,
@@ -195,6 +196,7 @@ def test_log_context_populate_from_sqlalchemy_is_disabled(
     assert log_context.as_dict() == {
         "task_name": "foo",
         "task_id": "bar",
+        "parent_task_id": None,
         "commit_id": None,
         "commit_sha": None,
         "repo_id": None,
