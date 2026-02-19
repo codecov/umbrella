@@ -21,6 +21,7 @@ from shared.celery_config import (
     BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES,
     bundle_analysis_processor_task_name,
 )
+from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.reports.enums import UploadState
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
@@ -124,13 +125,27 @@ class BundleAnalysisProcessorTask(
             commitid=commitid,
         )
 
+        bc_kwargs = {
+            "commit_sha": commitid,
+            "repo_id": repoid,
+            "task_name": self.name,
+            "parent_task_id": self.request.parent_id,
+        }
+
+        self._call_upload_breadcrumb_task(
+            milestone=Milestones.LOCK_ACQUIRING, **bc_kwargs
+        )
+
         try:
             with lock_manager.locked(
                 LockType.BUNDLE_ANALYSIS_PROCESSING,
                 retry_num=self.attempts,
                 max_retries=self.max_retries,
             ):
-                return self.process_impl_within_lock(
+                self._call_upload_breadcrumb_task(
+                    milestone=Milestones.LOCK_ACQUIRED, **bc_kwargs
+                )
+                result = self.process_impl_within_lock(
                     db_session,
                     repoid,
                     commitid,
@@ -138,7 +153,14 @@ class BundleAnalysisProcessorTask(
                     params,
                     previous_result,
                 )
+            self._call_upload_breadcrumb_task(
+                milestone=Milestones.LOCK_RELEASED, **bc_kwargs
+            )
+            return result
         except LockRetry as retry:
+            self._call_upload_breadcrumb_task(
+                error=Errors.INTERNAL_LOCK_ERROR, **bc_kwargs
+            )
             # Honor LockManager cap (Redis attempt count) so re-delivered messages stop.
             if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
                 self.max_retries
@@ -255,6 +277,18 @@ class BundleAnalysisProcessorTask(
 
         assert upload is not None
 
+        bc_kwargs = {
+            "commit_sha": commitid,
+            "repo_id": repoid,
+            "upload_ids": [upload.id_],
+            "task_name": self.name,
+            "parent_task_id": self.request.parent_id,
+        }
+
+        self._call_upload_breadcrumb_task(
+            milestone=Milestones.PROCESSING_UPLOAD, **bc_kwargs
+        )
+
         # Override base commit of comparisons with a custom commit SHA if applicable
         compare_sha: str | None = cast(
             str | None, params.get("bundle_analysis_compare_sha")
@@ -285,6 +319,9 @@ class BundleAnalysisProcessorTask(
                         attempts=self.attempts,
                         max_retries=self.max_retries,
                     )
+                    self._call_upload_breadcrumb_task(
+                        error=Errors.INTERNAL_OUT_OF_RETRIES, **bc_kwargs
+                    )
                     try:
                         result.update_upload(carriedforward=carriedforward)
                         db_session.commit()
@@ -301,6 +338,9 @@ class BundleAnalysisProcessorTask(
                             db_session, upload, commitid, repoid, log_suffix=" fallback"
                         )
                     return processing_results
+                self._call_upload_breadcrumb_task(
+                    error=Errors.INTERNAL_RETRYING, **bc_kwargs
+                )
                 log.warn(
                     "Attempting to retry bundle analysis upload",
                     extra={
@@ -319,10 +359,12 @@ class BundleAnalysisProcessorTask(
             db_session.commit()
 
             processing_results.append(result.as_dict())
+
+            self._call_upload_breadcrumb_task(
+                milestone=Milestones.UPLOAD_COMPLETE, **bc_kwargs
+            )
         except (CeleryError, SoftTimeLimitExceeded):
-            # This generally happens when the task needs to be retried because we attempt to access
-            # the upload before it is saved to GCS. Anecdotally, it takes around 30s for it to be
-            # saved, but if the BA processor runs before that we will error and need to retry.
+            self._call_upload_breadcrumb_task(error=Errors.TASK_TIMED_OUT, **bc_kwargs)
             raise
         except Exception:
             log.exception(
@@ -335,6 +377,11 @@ class BundleAnalysisProcessorTask(
                     "upload_id": upload.id_,
                     "parent_task": self.request.parent_id,
                 },
+            )
+            self._call_upload_breadcrumb_task(
+                error=Errors.UNKNOWN,
+                error_text="Unhandled exception during bundle analysis processing",
+                **bc_kwargs,
             )
             _set_upload_error_and_commit(db_session, upload, commitid, repoid)
             return processing_results
