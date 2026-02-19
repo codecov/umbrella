@@ -253,6 +253,11 @@ class BaseCodecovTask(celery_app.Task):
             # Only set to 1 if this is a new task creation
             "attempts": opt_headers.get("attempts", 1),
         }
+
+        caller = get_current_task()
+        if caller and caller.request:
+            headers.setdefault("parent_task_id", getattr(caller.request, "id", None))
+            headers.setdefault("parent_task_name", caller.name)
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
     def retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
@@ -425,6 +430,12 @@ class BaseCodecovTask(celery_app.Task):
                 task_id = getattr(task.request, "id", None)
                 if task_id:
                     log_context.task_id = task_id
+
+                headers = _get_request_headers(task.request)
+                log_context.parent_task_id = headers.get("parent_task_id") or getattr(
+                    task.request, "parent_id", None
+                )
+                log_context.parent_task_name = headers.get("parent_task_name")
 
             log_context.populate_from_sqlalchemy(db_session)
             set_log_context(log_context)
