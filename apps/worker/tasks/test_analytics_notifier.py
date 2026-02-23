@@ -162,7 +162,7 @@ class TestAnalyticsNotifierTask(
             )
         except LockRetry as e:
             try:
-                self.retry(max_retries=5, countdown=e.countdown)
+                self.retry(max_retries=5, countdown=clamp_retry_countdown(e.countdown))
             except CeleryMaxRetriesExceededError:
                 return NotifierTaskResult(
                     attempted=False,
@@ -209,7 +209,7 @@ class TestAnalyticsNotifierTask(
             )
         except LockRetry as e:
             try:
-                self.retry(max_retries=5, countdown=e.countdown)
+                self.retry(max_retries=5, countdown=clamp_retry_countdown(e.countdown))
             except CeleryMaxRetriesExceededError:
                 return NotifierTaskResult(
                     attempted=False,
