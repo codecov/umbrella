@@ -31,6 +31,13 @@ from tasks.bundle_analysis_save_measurements import (
 
 log = logging.getLogger(__name__)
 
+_RETRY_COUNTDOWN_FLOOR = 30
+_RETRY_COUNTDOWN_CEILING = TASK_VISIBILITY_TIMEOUT_SECONDS - 30
+
+
+def _clamp_retry_countdown(countdown: int) -> int:
+    return max(min(countdown, _RETRY_COUNTDOWN_CEILING), _RETRY_COUNTDOWN_FLOOR)
+
 
 def _log_max_retries_exceeded(
     commitid: str,
@@ -156,7 +163,7 @@ class BundleAnalysisProcessorTask(
                 return previous_result
             self.retry(
                 max_retries=self.max_retries,
-                countdown=min(retry.countdown, TASK_VISIBILITY_TIMEOUT_SECONDS - 1),
+                countdown=_clamp_retry_countdown(retry.countdown),
             )
 
     @staticmethod
@@ -317,10 +324,7 @@ class BundleAnalysisProcessorTask(
                 )
                 self.retry(
                     max_retries=self.max_retries,
-                    countdown=min(
-                        30 * (2**self.request.retries),
-                        TASK_VISIBILITY_TIMEOUT_SECONDS - 1,
-                    ),
+                    countdown=_clamp_retry_countdown(30 * (2**self.request.retries)),
                 )
             result.update_upload(carriedforward=carriedforward)
             db_session.commit()

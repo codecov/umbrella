@@ -12,10 +12,55 @@ from shared.bundle_analysis.storage import get_bucket_name
 from shared.celery_config import BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.storage.exceptions import PutRequestRateLimitError
-from tasks.bundle_analysis_processor import BundleAnalysisProcessorTask
+from tasks.bundle_analysis_processor import (
+    _RETRY_COUNTDOWN_FLOOR,
+    BundleAnalysisProcessorTask,
+    _clamp_retry_countdown,
+)
 from tasks.bundle_analysis_save_measurements import (
     bundle_analysis_save_measurements_task_name,
 )
+
+
+class TestClampRetryCountdown:
+    # Use concrete values — _RETRY_COUNTDOWN_CEILING depends on visibility_timeout
+    # which differs between environments (900s prod, 20s test).
+    FLOOR = _RETRY_COUNTDOWN_FLOOR  # always 30, not config-dependent
+    CEILING = 870  # production value: 900 - 30
+
+    def test_below_floor_returns_floor(self, mocker):
+        mocker.patch(
+            "tasks.bundle_analysis_processor._RETRY_COUNTDOWN_CEILING", self.CEILING
+        )
+        assert _clamp_retry_countdown(0) == self.FLOOR
+        assert _clamp_retry_countdown(-1) == self.FLOOR
+        assert _clamp_retry_countdown(self.FLOOR - 1) == self.FLOOR
+
+    def test_above_ceiling_returns_ceiling(self, mocker):
+        mocker.patch(
+            "tasks.bundle_analysis_processor._RETRY_COUNTDOWN_CEILING", self.CEILING
+        )
+        assert _clamp_retry_countdown(self.CEILING + 1) == self.CEILING
+        assert _clamp_retry_countdown(99999) == self.CEILING
+
+    def test_within_range_returns_value(self, mocker):
+        mocker.patch(
+            "tasks.bundle_analysis_processor._RETRY_COUNTDOWN_CEILING", self.CEILING
+        )
+        mid = (self.FLOOR + self.CEILING) // 2
+        assert _clamp_retry_countdown(mid) == mid
+
+    def test_at_floor_returns_floor(self, mocker):
+        mocker.patch(
+            "tasks.bundle_analysis_processor._RETRY_COUNTDOWN_CEILING", self.CEILING
+        )
+        assert _clamp_retry_countdown(self.FLOOR) == self.FLOOR
+
+    def test_at_ceiling_returns_ceiling(self, mocker):
+        mocker.patch(
+            "tasks.bundle_analysis_processor._RETRY_COUNTDOWN_CEILING", self.CEILING
+        )
+        assert _clamp_retry_countdown(self.CEILING) == self.CEILING
 
 
 class MockBundleReport:
