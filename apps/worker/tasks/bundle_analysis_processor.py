@@ -31,7 +31,7 @@ from tasks.bundle_analysis_save_measurements import (
 
 log = logging.getLogger(__name__)
 
-_RETRY_COUNTDOWN_FLOOR = 30
+_RETRY_COUNTDOWN_FLOOR = min(30, TASK_VISIBILITY_TIMEOUT_SECONDS // 2)
 _RETRY_COUNTDOWN_CEILING = max(
     TASK_VISIBILITY_TIMEOUT_SECONDS - 30, _RETRY_COUNTDOWN_FLOOR
 )
