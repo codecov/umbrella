@@ -49,7 +49,7 @@ from shared.upload.types import UploaderType
 from shared.upload.utils import bulk_insert_coverage_measurements
 from shared.yaml import UserYaml
 from shared.yaml.user_yaml import OwnerContext
-from tasks.base import BaseCodecovTask, clamp_retry_countdown
+from tasks.base import BaseCodecovTask
 from tasks.bundle_analysis_notify import bundle_analysis_notify_task
 from tasks.bundle_analysis_processor import bundle_analysis_processor_task
 from tasks.test_results_finisher import test_results_finisher_task
@@ -406,9 +406,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     "tasks_were_scheduled": False,
                     "reason": "too_many_retries",
                 }
-            retry_countdown = clamp_retry_countdown(
-                max(retry.countdown, 20 * 2**self.request.retries)
-            )
+            retry_countdown = max(retry.countdown, 20 * 2**self.request.retries)
             log.warning(
                 "Retrying upload",
                 extra=upload_context.log_extra(countdown=retry_countdown),
@@ -431,7 +429,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 milestone=milestone,
                 error=Errors.TASK_TIMED_OUT,
             )
-            retry_countdown = clamp_retry_countdown(20 * 2**self.request.retries)
+            retry_countdown = 20 * 2**self.request.retries
             self.retry(
                 max_retries=3,
                 countdown=retry_countdown,

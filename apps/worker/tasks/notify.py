@@ -59,7 +59,7 @@ from shared.torngit.base import TokenType, TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitClientError, TorngitServerFailureError
 from shared.typings.torngit import OwnerInfo, RepoInfo, TorngitInstanceData
 from shared.yaml import UserYaml
-from tasks.base import BaseCodecovTask, clamp_retry_countdown
+from tasks.base import BaseCodecovTask
 from tasks.upload_processor import UPLOAD_PROCESSING_LOCK_NAME
 
 log = logging.getLogger(__name__)
@@ -386,10 +386,10 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             ):
                 # rely on the webhook, but still retry in case we miss the webhook
                 max_retries = 5
-                countdown = clamp_retry_countdown((60 * 3) * 2**self.request.retries)
+                countdown = (60 * 3) * 2**self.request.retries
             else:
                 max_retries = 10
-                countdown = clamp_retry_countdown(15 * 2**self.request.retries)
+                countdown = 15 * 2**self.request.retries
             return self._attempt_retry(
                 max_retries=max_retries,
                 countdown=countdown,

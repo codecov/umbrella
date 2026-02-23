@@ -21,7 +21,7 @@ from shared.celery_config import (
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter
-from tasks.base import BaseCodecovTask, clamp_retry_countdown
+from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
             )
             self.retry(
                 max_retries=PREPROCESS_UPLOAD_MAX_RETRIES,
-                countdown=clamp_retry_countdown(retry.countdown),
+                countdown=retry.countdown,
             )
 
     def process_impl_within_lock(self, db_session, repoid, commitid):

@@ -49,7 +49,7 @@ from shared.reports.resources import Report
 from shared.timeseries.helpers import is_timeseries_enabled
 from shared.torngit.exceptions import TorngitError
 from shared.yaml import UserYaml
-from tasks.base import BaseCodecovTask, clamp_retry_countdown
+from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
@@ -497,7 +497,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             )
             self.retry(
                 max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
-                countdown=clamp_retry_countdown(retry.countdown),
+                countdown=retry.countdown,
             )
 
     def _handle_finisher_lock(
@@ -619,7 +619,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             )
             self.retry(
                 max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
-                countdown=clamp_retry_countdown(retry.countdown),
+                countdown=retry.countdown,
             )
 
     def finish_reports_processing(

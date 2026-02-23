@@ -42,7 +42,7 @@ from shared.reports.types import UploadType
 from shared.typings.torngit import AdditionalData
 from shared.upload.types import TAUploadContext, UploadPipeline
 from shared.yaml.user_yaml import UserYaml
-from tasks.base import BaseCodecovTask, clamp_retry_countdown
+from tasks.base import BaseCodecovTask
 
 
 class MaxRetriesExceededError(Exception):
@@ -134,7 +134,7 @@ class TestAnalyticsNotifierTask(
             except LockRetry as e:
                 try:
                     self.retry(
-                        max_retries=5, countdown=clamp_retry_countdown(e.countdown)
+                        max_retries=5, countdown=e.countdown
                     )
                 except CeleryMaxRetriesExceededError:
                     return NotifierTaskResult(
@@ -162,7 +162,7 @@ class TestAnalyticsNotifierTask(
             )
         except LockRetry as e:
             try:
-                self.retry(max_retries=5, countdown=clamp_retry_countdown(e.countdown))
+                self.retry(max_retries=5, countdown=e.countdown)
             except CeleryMaxRetriesExceededError:
                 return NotifierTaskResult(
                     attempted=False,
@@ -209,7 +209,7 @@ class TestAnalyticsNotifierTask(
             )
         except LockRetry as e:
             try:
-                self.retry(max_retries=5, countdown=clamp_retry_countdown(e.countdown))
+                self.retry(max_retries=5, countdown=e.countdown)
             except CeleryMaxRetriesExceededError:
                 return NotifierTaskResult(
                     attempted=False,

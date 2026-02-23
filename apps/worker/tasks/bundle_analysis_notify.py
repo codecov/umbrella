@@ -18,7 +18,7 @@ from shared.celery_config import (
     bundle_analysis_notify_task_name,
 )
 from shared.yaml import UserYaml
-from tasks.base import BaseCodecovTask, clamp_retry_countdown
+from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
                 }
             self.retry(
                 max_retries=self.max_retries,
-                countdown=clamp_retry_countdown(retry.countdown),
+                countdown=retry.countdown,
             )
 
     @sentry_sdk.trace

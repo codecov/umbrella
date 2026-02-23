@@ -23,7 +23,7 @@ from shared.celery_config import (
 )
 from shared.reports.enums import UploadState
 from shared.yaml import UserYaml
-from tasks.base import BaseCodecovTask, clamp_retry_countdown
+from tasks.base import BaseCodecovTask
 from tasks.bundle_analysis_save_measurements import (
     bundle_analysis_save_measurements_task_name,
 )
@@ -155,7 +155,7 @@ class BundleAnalysisProcessorTask(
                 return previous_result
             self.retry(
                 max_retries=self.max_retries,
-                countdown=clamp_retry_countdown(retry.countdown),
+                countdown=retry.countdown,
             )
 
     @staticmethod
@@ -316,7 +316,7 @@ class BundleAnalysisProcessorTask(
                 )
                 self.retry(
                     max_retries=self.max_retries,
-                    countdown=clamp_retry_countdown(30 * (2**self.request.retries)),
+                    countdown=30 * (2**self.request.retries),
                 )
             result.update_upload(carriedforward=carriedforward)
             db_session.commit()

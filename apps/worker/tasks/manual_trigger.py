@@ -17,7 +17,7 @@ from shared.celery_config import (
     pulls_task_name,
 )
 from shared.reports.enums import UploadState
-from tasks.base import BaseCodecovTask, clamp_retry_countdown
+from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class ManualTriggerTask(
                 }
             self.retry(
                 max_retries=TASK_MAX_RETRIES_DEFAULT,
-                countdown=clamp_retry_countdown(retry.countdown),
+                countdown=retry.countdown,
             )
 
     def process_impl_within_lock(
@@ -126,7 +126,7 @@ class ManualTriggerTask(
                         "uploads_still_processing": still_processing,
                     },
                 )
-                retry_in = clamp_retry_countdown(60 * 3**self.request.retries)
+                retry_in = 60 * 3**self.request.retries
                 self.retry(max_retries=5, countdown=retry_in)
             except MaxRetriesExceededError:
                 log.warning(

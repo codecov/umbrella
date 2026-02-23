@@ -5,7 +5,7 @@ import httpx
 from app import celery_app
 from shared.celery_config import http_request_task_name
 from shared.config import get_config
-from tasks.base import BaseCodecovTask, clamp_retry_countdown
+from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class HTTPRequestTask(BaseCodecovTask, name=http_request_task_name):
         # retry w/ exponential backoff
         self.retry(
             max_retries=5,
-            countdown=clamp_retry_countdown(20 * (2**self.request.retries)),
+            countdown=20 * (2**self.request.retries),
         )
 
 

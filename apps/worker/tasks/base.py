@@ -275,7 +275,7 @@ class BaseCodecovTask(celery_app.Task):
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
     def retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
-        """Override Celery's retry to always update attempts header."""
+        """Override Celery's retry to always update attempts header and clamp countdown."""
         request = getattr(self, "request", None)
         current_attempts = self.attempts
         kwargs["headers"] = {
@@ -284,6 +284,7 @@ class BaseCodecovTask(celery_app.Task):
             "attempts": current_attempts + 1,
         }
 
+        countdown = clamp_retry_countdown(countdown or 0)
         return super().retry(
             max_retries=max_retries, countdown=countdown, exc=exc, **kwargs
         )
