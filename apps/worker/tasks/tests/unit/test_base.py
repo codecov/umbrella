@@ -29,11 +29,45 @@ from shared.celery_config import (
 from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Errors
 from shared.plan.constants import PlanName
 from shared.torngit.exceptions import TorngitClientError
-from tasks.base import BaseCodecovRequest, BaseCodecovTask
+from tasks.base import (
+    _RETRY_COUNTDOWN_CEILING,
+    _RETRY_COUNTDOWN_FLOOR,
+    BaseCodecovRequest,
+    BaseCodecovTask,
+    clamp_retry_countdown,
+)
 from tasks.base import celery_app as base_celery_app
 from tests.helpers import mock_all_plans_and_tiers
 
 here = Path(__file__)
+
+
+class TestClampRetryCountdown:
+    def test_below_floor_returns_floor(self):
+        assert clamp_retry_countdown(0) == _RETRY_COUNTDOWN_FLOOR
+        assert clamp_retry_countdown(-1) == _RETRY_COUNTDOWN_FLOOR
+        assert (
+            clamp_retry_countdown(_RETRY_COUNTDOWN_FLOOR - 1) == _RETRY_COUNTDOWN_FLOOR
+        )
+
+    def test_above_ceiling_returns_ceiling(self):
+        assert (
+            clamp_retry_countdown(_RETRY_COUNTDOWN_CEILING + 1)
+            == _RETRY_COUNTDOWN_CEILING
+        )
+        assert clamp_retry_countdown(99999) == _RETRY_COUNTDOWN_CEILING
+
+    def test_within_range_returns_value(self):
+        mid = (_RETRY_COUNTDOWN_FLOOR + _RETRY_COUNTDOWN_CEILING) // 2
+        assert clamp_retry_countdown(mid) == mid
+
+    def test_at_floor_returns_floor(self):
+        assert clamp_retry_countdown(_RETRY_COUNTDOWN_FLOOR) == _RETRY_COUNTDOWN_FLOOR
+
+    def test_at_ceiling_returns_ceiling(self):
+        assert (
+            clamp_retry_countdown(_RETRY_COUNTDOWN_CEILING) == _RETRY_COUNTDOWN_CEILING
+        )
 
 
 @pytest.fixture

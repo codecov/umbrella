@@ -12,43 +12,10 @@ from shared.bundle_analysis.storage import get_bucket_name
 from shared.celery_config import BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.storage.exceptions import PutRequestRateLimitError
-from tasks.base import (
-    _RETRY_COUNTDOWN_CEILING,
-    _RETRY_COUNTDOWN_FLOOR,
-    clamp_retry_countdown,
-)
 from tasks.bundle_analysis_processor import BundleAnalysisProcessorTask
 from tasks.bundle_analysis_save_measurements import (
     bundle_analysis_save_measurements_task_name,
 )
-
-
-class TestClampRetryCountdown:
-    def test_below_floor_returns_floor(self):
-        assert clamp_retry_countdown(0) == _RETRY_COUNTDOWN_FLOOR
-        assert clamp_retry_countdown(-1) == _RETRY_COUNTDOWN_FLOOR
-        assert (
-            clamp_retry_countdown(_RETRY_COUNTDOWN_FLOOR - 1) == _RETRY_COUNTDOWN_FLOOR
-        )
-
-    def test_above_ceiling_returns_ceiling(self):
-        assert (
-            clamp_retry_countdown(_RETRY_COUNTDOWN_CEILING + 1)
-            == _RETRY_COUNTDOWN_CEILING
-        )
-        assert clamp_retry_countdown(99999) == _RETRY_COUNTDOWN_CEILING
-
-    def test_within_range_returns_value(self):
-        mid = (_RETRY_COUNTDOWN_FLOOR + _RETRY_COUNTDOWN_CEILING) // 2
-        assert clamp_retry_countdown(mid) == mid
-
-    def test_at_floor_returns_floor(self):
-        assert clamp_retry_countdown(_RETRY_COUNTDOWN_FLOOR) == _RETRY_COUNTDOWN_FLOOR
-
-    def test_at_ceiling_returns_ceiling(self):
-        assert (
-            clamp_retry_countdown(_RETRY_COUNTDOWN_CEILING) == _RETRY_COUNTDOWN_CEILING
-        )
 
 
 class MockBundleReport:
