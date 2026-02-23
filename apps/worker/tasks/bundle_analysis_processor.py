@@ -19,26 +19,16 @@ from services.lock_manager import (
 from services.processing.types import UploadArguments
 from shared.celery_config import (
     BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES,
-    TASK_VISIBILITY_TIMEOUT_SECONDS,
     bundle_analysis_processor_task_name,
 )
 from shared.reports.enums import UploadState
 from shared.yaml import UserYaml
-from tasks.base import BaseCodecovTask
+from tasks.base import BaseCodecovTask, clamp_retry_countdown
 from tasks.bundle_analysis_save_measurements import (
     bundle_analysis_save_measurements_task_name,
 )
 
 log = logging.getLogger(__name__)
-
-_RETRY_COUNTDOWN_FLOOR = min(30, TASK_VISIBILITY_TIMEOUT_SECONDS // 2)
-_RETRY_COUNTDOWN_CEILING = max(
-    TASK_VISIBILITY_TIMEOUT_SECONDS - 30, _RETRY_COUNTDOWN_FLOOR
-)
-
-
-def _clamp_retry_countdown(countdown: int) -> int:
-    return max(min(countdown, _RETRY_COUNTDOWN_CEILING), _RETRY_COUNTDOWN_FLOOR)
 
 
 def _log_max_retries_exceeded(
@@ -165,7 +155,7 @@ class BundleAnalysisProcessorTask(
                 return previous_result
             self.retry(
                 max_retries=self.max_retries,
-                countdown=_clamp_retry_countdown(retry.countdown),
+                countdown=clamp_retry_countdown(retry.countdown),
             )
 
     @staticmethod
@@ -326,7 +316,7 @@ class BundleAnalysisProcessorTask(
                 )
                 self.retry(
                     max_retries=self.max_retries,
-                    countdown=_clamp_retry_countdown(30 * (2**self.request.retries)),
+                    countdown=clamp_retry_countdown(30 * (2**self.request.retries)),
                 )
             result.update_upload(carriedforward=carriedforward)
             db_session.commit()

@@ -11,7 +11,7 @@ from services.lock_manager import LockManager, LockRetry, LockType
 from services.test_analytics.ta_finish_upload import ta_finish_upload
 from shared.celery_config import test_results_finisher_task_name
 from shared.yaml import UserYaml
-from tasks.base import BaseCodecovTask
+from tasks.base import BaseCodecovTask, clamp_retry_countdown
 from tasks.notify import notify_task_name
 
 log = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ class TestResultsFinisherTask(BaseCodecovTask, name=test_results_finisher_task_n
                     },
                 )
                 return {"queue_notify": False}
-            self.retry(max_retries=5, countdown=retry.countdown)
+            self.retry(max_retries=5, countdown=clamp_retry_countdown(retry.countdown))
 
     def process_impl_within_lock(
         self,

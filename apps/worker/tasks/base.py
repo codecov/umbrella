@@ -33,6 +33,7 @@ from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
 from shared.celery_config import (
     TASK_RETRY_BACKOFF_BASE_SECONDS,
+    TASK_VISIBILITY_TIMEOUT_SECONDS,
     upload_breadcrumb_task_name,
 )
 from shared.celery_router import route_tasks_based_on_user_plan
@@ -48,6 +49,19 @@ from shared.typings.torngit import AdditionalData
 from shared.utils.sentry import current_sentry_trace_id
 
 log = logging.getLogger("worker")
+
+# Retry countdown bounds — keep countdowns inside the Celery visibility window so
+# tasks are never redelivered from `unacked` before their ETA fires.
+_RETRY_COUNTDOWN_FLOOR = min(30, TASK_VISIBILITY_TIMEOUT_SECONDS // 2)
+_RETRY_COUNTDOWN_CEILING = max(
+    TASK_VISIBILITY_TIMEOUT_SECONDS - 30, _RETRY_COUNTDOWN_FLOOR
+)
+
+
+def clamp_retry_countdown(countdown: int) -> int:
+    """Clamp a retry countdown to [floor, ceiling] relative to the visibility timeout."""
+    return max(min(countdown, _RETRY_COUNTDOWN_CEILING), _RETRY_COUNTDOWN_FLOOR)
+
 
 REQUEST_TIMEOUT_COUNTER = Counter(
     "worker_task_counts_timeouts",

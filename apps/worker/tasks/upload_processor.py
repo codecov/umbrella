@@ -12,7 +12,7 @@ from shared.config import get_config
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.upload.constants import UploadErrorCode
 from shared.yaml import UserYaml
-from tasks.base import BaseCodecovTask
+from tasks.base import BaseCodecovTask, clamp_retry_countdown
 
 log = logging.getLogger(__name__)
 
@@ -117,7 +117,10 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                     upload_ids=[arguments["upload_id"]],
                     error=Errors.INTERNAL_RETRYING,
                 )
-                self.retry(max_retries=error.max_retries, countdown=countdown)
+                self.retry(
+                    max_retries=error.max_retries,
+                    countdown=clamp_retry_countdown(countdown),
+                )
             elif error.is_retryable and self.request.retries >= error.max_retries:
                 sentry_sdk.capture_exception(
                     error.error_class(error.error_text),
