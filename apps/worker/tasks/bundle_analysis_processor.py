@@ -32,7 +32,9 @@ from tasks.bundle_analysis_save_measurements import (
 log = logging.getLogger(__name__)
 
 _RETRY_COUNTDOWN_FLOOR = 30
-_RETRY_COUNTDOWN_CEILING = TASK_VISIBILITY_TIMEOUT_SECONDS - 30
+_RETRY_COUNTDOWN_CEILING = max(
+    TASK_VISIBILITY_TIMEOUT_SECONDS - 30, _RETRY_COUNTDOWN_FLOOR
+)
 
 
 def _clamp_retry_countdown(countdown: int) -> int:
