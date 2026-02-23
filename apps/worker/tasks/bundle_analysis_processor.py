@@ -19,6 +19,7 @@ from services.lock_manager import (
 from services.processing.types import UploadArguments
 from shared.celery_config import (
     BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES,
+    TASK_VISIBILITY_TIMEOUT_SECONDS,
     bundle_analysis_processor_task_name,
 )
 from shared.reports.enums import UploadState
@@ -153,7 +154,10 @@ class BundleAnalysisProcessorTask(
                     retry_num=self.request.retries,
                 )
                 return previous_result
-            self.retry(max_retries=self.max_retries, countdown=retry.countdown)
+            self.retry(
+                max_retries=self.max_retries,
+                countdown=min(retry.countdown, TASK_VISIBILITY_TIMEOUT_SECONDS - 1),
+            )
 
     @staticmethod
     def _ba_report_already_exists(db_session, repoid: int, commitid: str) -> bool:
@@ -313,7 +317,10 @@ class BundleAnalysisProcessorTask(
                 )
                 self.retry(
                     max_retries=self.max_retries,
-                    countdown=30 * (2**self.request.retries),
+                    countdown=min(
+                        30 * (2**self.request.retries),
+                        TASK_VISIBILITY_TIMEOUT_SECONDS - 1,
+                    ),
                 )
             result.update_upload(carriedforward=carriedforward)
             db_session.commit()
