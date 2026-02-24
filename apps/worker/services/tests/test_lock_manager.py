@@ -7,7 +7,12 @@ import pytest
 from redis.exceptions import LockError
 
 from database.enums import ReportType
-from services.lock_manager import LockManager, LockRetry, LockType
+from services.lock_manager import (
+    MAX_RETRY_COUNTDOWN_SECONDS,
+    LockManager,
+    LockRetry,
+    LockType,
+)
 from tasks.base import BaseCodecovTask
 
 
@@ -191,8 +196,8 @@ class TestLockManager:
             with manager.locked(LockType.UPLOAD, retry_num=2):
                 pass
 
-        # retry_num=2: 200 * 3^2 = 1800, so countdown should be between 900-1800
-        assert 900 <= exc_info.value.countdown <= 1800
+        # retry_num=2: 200 * 3^2 = 1800, which exceeds MAX_RETRY_COUNTDOWN_SECONDS
+        assert exc_info.value.countdown == MAX_RETRY_COUNTDOWN_SECONDS
 
     def test_locked_exponential_backoff_cap(self, mock_redis):
         """Test that exponential backoff is capped at 5 hours"""

@@ -284,7 +284,8 @@ class BaseCodecovTask(celery_app.Task):
             "attempts": current_attempts + 1,
         }
 
-        countdown = clamp_retry_countdown(countdown or 0)
+        if countdown is not None:
+            countdown = clamp_retry_countdown(countdown)
         return super().retry(
             max_retries=max_retries, countdown=countdown, exc=exc, **kwargs
         )
