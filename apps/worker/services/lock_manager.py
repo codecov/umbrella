@@ -14,6 +14,7 @@ from database.enums import ReportType
 from shared.celery_config import (
     DEFAULT_BLOCKING_TIMEOUT_SECONDS,
     DEFAULT_LOCK_TIMEOUT_SECONDS,
+    TASK_RETRY_COUNTDOWN_BUFFER_SECONDS,
     TASK_VISIBILITY_TIMEOUT_SECONDS,
 )
 from shared.config import get_config
@@ -21,7 +22,9 @@ from shared.helpers.redis import get_redis_connection  # type: ignore
 
 log = logging.getLogger(__name__)
 
-MAX_RETRY_COUNTDOWN_SECONDS = max(TASK_VISIBILITY_TIMEOUT_SECONDS - 30, 1)
+MAX_RETRY_COUNTDOWN_SECONDS = max(
+    TASK_VISIBILITY_TIMEOUT_SECONDS - TASK_RETRY_COUNTDOWN_BUFFER_SECONDS, 1
+)
 BASE_RETRY_COUNTDOWN_SECONDS = 200
 RETRY_BACKOFF_MULTIPLIER = 3
 RETRY_COUNTDOWN_RANGE_DIVISOR = 2

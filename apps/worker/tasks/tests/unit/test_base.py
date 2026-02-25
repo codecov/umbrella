@@ -31,7 +31,7 @@ from shared.plan.constants import PlanName
 from shared.torngit.exceptions import TorngitClientError
 from tasks.base import (
     _RETRY_COUNTDOWN_CEILING,
-    _RETRY_COUNTDOWN_FLOOR,
+    _RETRY_COUNTDOWN_FLOOR_SECONDS,
     BaseCodecovRequest,
     BaseCodecovTask,
     clamp_retry_countdown,
@@ -44,10 +44,11 @@ here = Path(__file__)
 
 class TestClampRetryCountdown:
     def test_below_floor_returns_floor(self):
-        assert clamp_retry_countdown(0) == _RETRY_COUNTDOWN_FLOOR
-        assert clamp_retry_countdown(-1) == _RETRY_COUNTDOWN_FLOOR
+        assert clamp_retry_countdown(0) == _RETRY_COUNTDOWN_FLOOR_SECONDS
+        assert clamp_retry_countdown(-1) == _RETRY_COUNTDOWN_FLOOR_SECONDS
         assert (
-            clamp_retry_countdown(_RETRY_COUNTDOWN_FLOOR - 1) == _RETRY_COUNTDOWN_FLOOR
+            clamp_retry_countdown(_RETRY_COUNTDOWN_FLOOR_SECONDS - 1)
+            == _RETRY_COUNTDOWN_FLOOR_SECONDS
         )
 
     def test_above_ceiling_returns_ceiling(self):
@@ -58,11 +59,14 @@ class TestClampRetryCountdown:
         assert clamp_retry_countdown(99999) == _RETRY_COUNTDOWN_CEILING
 
     def test_within_range_returns_value(self):
-        mid = (_RETRY_COUNTDOWN_FLOOR + _RETRY_COUNTDOWN_CEILING) // 2
+        mid = (_RETRY_COUNTDOWN_FLOOR_SECONDS + _RETRY_COUNTDOWN_CEILING) // 2
         assert clamp_retry_countdown(mid) == mid
 
     def test_at_floor_returns_floor(self):
-        assert clamp_retry_countdown(_RETRY_COUNTDOWN_FLOOR) == _RETRY_COUNTDOWN_FLOOR
+        assert (
+            clamp_retry_countdown(_RETRY_COUNTDOWN_FLOOR_SECONDS)
+            == _RETRY_COUNTDOWN_FLOOR_SECONDS
+        )
 
     def test_at_ceiling_returns_ceiling(self):
         assert (
