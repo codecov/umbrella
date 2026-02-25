@@ -210,8 +210,7 @@ class TestLockManager:
             with manager.locked(LockType.UPLOAD, retry_num=10):
                 pass
 
-        # Cap is 60 * 60 * 5 = 18000 seconds (5 hours)
-        assert exc_info.value.countdown <= 18000
+        assert exc_info.value.countdown == MAX_RETRY_COUNTDOWN_SECONDS
 
     def test_locked_max_retries_not_provided(self, mock_redis, caplog):
         """Test that max_retries=None doesn't log error"""
