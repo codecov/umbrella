@@ -263,28 +263,22 @@ TASK_RETRY_BACKOFF_BASE_SECONDS = int(
     get_config("setup", "tasks", "celery", "retry_backoff_base", default=20)
 )
 
-# Retry countdown bounds — keep task ETAs inside the broker's visibility window
-# so a task waiting to be retried is never re-delivered before its ETA fires.
+# Clamp retry countdowns inside the broker's visibility window so a task
+# waiting to be retried is never re-delivered before its ETA fires.
 #
-# TASK_RETRY_COUNTDOWN_BUFFER_SECONDS: safety margin subtracted from the
-# visibility timeout to derive the ceiling. There is no hard requirement for
-# this value; it just needs to be large enough that the broker won't expire the
-# task before the retry fires.
-# For comparison, Celery's built-in default_retry_delay is 180 s; our
-# exponential backoff starts at TASK_RETRY_BACKOFF_BASE_SECONDS (20 s), making
-# us ~6× more aggressive than Celery's default even before this buffer applies.
+# BUFFER: safety margin subtracted from the visibility timeout. No hard
+# requirement — just large enough the broker won't re-deliver the task before
+# the ETA fires. For context, Celery's built-in default_retry_delay is 180 s;
+# our exponential backoff starts at TASK_RETRY_BACKOFF_BASE_SECONDS, making us
+# significantly more aggressive by default.
 #
-# TASK_RETRY_COUNTDOWN_FLOOR_SECONDS: minimum sensible retry delay. There is no
-# hard requirement for this value; it just prevents tasks from hammering too
-# quickly on transient errors. The `// 2` guard keeps it sane if the visibility
-# timeout is very small.
-#
-# TASK_RETRY_COUNTDOWN_CEILING_SECONDS: derived maximum retry delay.
+# MIN: prevents hammering on transient errors. The `// 2` guard keeps it sane
+# if the visibility timeout is very small.
 TASK_RETRY_COUNTDOWN_BUFFER_SECONDS = 30
-TASK_RETRY_COUNTDOWN_FLOOR_SECONDS = min(30, TASK_VISIBILITY_TIMEOUT_SECONDS // 2)
-TASK_RETRY_COUNTDOWN_CEILING_SECONDS = max(
+TASK_RETRY_COUNTDOWN_MIN_SECONDS = min(30, TASK_VISIBILITY_TIMEOUT_SECONDS // 2)
+TASK_RETRY_COUNTDOWN_MAX_SECONDS = max(
     TASK_VISIBILITY_TIMEOUT_SECONDS - TASK_RETRY_COUNTDOWN_BUFFER_SECONDS,
-    TASK_RETRY_COUNTDOWN_FLOOR_SECONDS,
+    TASK_RETRY_COUNTDOWN_MIN_SECONDS,
 )
 
 # Fixed retry delay for specific conditions (seconds)

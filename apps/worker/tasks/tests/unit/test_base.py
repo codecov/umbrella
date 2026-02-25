@@ -22,8 +22,8 @@ from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import OwnerFactory, RepositoryFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from shared.celery_config import (
-    TASK_RETRY_COUNTDOWN_CEILING_SECONDS,
-    TASK_RETRY_COUNTDOWN_FLOOR_SECONDS,
+    TASK_RETRY_COUNTDOWN_MAX_SECONDS,
+    TASK_RETRY_COUNTDOWN_MIN_SECONDS,
     sync_repos_task_name,
     upload_breadcrumb_task_name,
     upload_task_name,
@@ -44,36 +44,34 @@ here = Path(__file__)
 
 class TestClampRetryCountdown:
     def test_below_floor_returns_floor(self):
-        assert clamp_retry_countdown(0) == TASK_RETRY_COUNTDOWN_FLOOR_SECONDS
-        assert clamp_retry_countdown(-1) == TASK_RETRY_COUNTDOWN_FLOOR_SECONDS
+        assert clamp_retry_countdown(0) == TASK_RETRY_COUNTDOWN_MIN_SECONDS
+        assert clamp_retry_countdown(-1) == TASK_RETRY_COUNTDOWN_MIN_SECONDS
         assert (
-            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_FLOOR_SECONDS - 1)
-            == TASK_RETRY_COUNTDOWN_FLOOR_SECONDS
+            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_MIN_SECONDS - 1)
+            == TASK_RETRY_COUNTDOWN_MIN_SECONDS
         )
 
     def test_above_ceiling_returns_ceiling(self):
         assert (
-            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_CEILING_SECONDS + 1)
-            == TASK_RETRY_COUNTDOWN_CEILING_SECONDS
+            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_MAX_SECONDS + 1)
+            == TASK_RETRY_COUNTDOWN_MAX_SECONDS
         )
-        assert clamp_retry_countdown(99999) == TASK_RETRY_COUNTDOWN_CEILING_SECONDS
+        assert clamp_retry_countdown(99999) == TASK_RETRY_COUNTDOWN_MAX_SECONDS
 
     def test_within_range_returns_value(self):
-        mid = (
-            TASK_RETRY_COUNTDOWN_FLOOR_SECONDS + TASK_RETRY_COUNTDOWN_CEILING_SECONDS
-        ) // 2
+        mid = (TASK_RETRY_COUNTDOWN_MIN_SECONDS + TASK_RETRY_COUNTDOWN_MAX_SECONDS) // 2
         assert clamp_retry_countdown(mid) == mid
 
     def test_at_floor_returns_floor(self):
         assert (
-            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_FLOOR_SECONDS)
-            == TASK_RETRY_COUNTDOWN_FLOOR_SECONDS
+            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_MIN_SECONDS)
+            == TASK_RETRY_COUNTDOWN_MIN_SECONDS
         )
 
     def test_at_ceiling_returns_ceiling(self):
         assert (
-            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_CEILING_SECONDS)
-            == TASK_RETRY_COUNTDOWN_CEILING_SECONDS
+            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_MAX_SECONDS)
+            == TASK_RETRY_COUNTDOWN_MAX_SECONDS
         )
 
 

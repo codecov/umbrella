@@ -33,8 +33,8 @@ from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
 from shared.celery_config import (
     TASK_RETRY_BACKOFF_BASE_SECONDS,
-    TASK_RETRY_COUNTDOWN_CEILING_SECONDS,
-    TASK_RETRY_COUNTDOWN_FLOOR_SECONDS,
+    TASK_RETRY_COUNTDOWN_MAX_SECONDS,
+    TASK_RETRY_COUNTDOWN_MIN_SECONDS,
     upload_breadcrumb_task_name,
 )
 from shared.celery_router import route_tasks_based_on_user_plan
@@ -53,10 +53,10 @@ log = logging.getLogger("worker")
 
 
 def clamp_retry_countdown(countdown: int) -> int:
-    """Clamp a retry countdown to [floor, ceiling] relative to the visibility timeout."""
+    """Clamp a retry countdown to [min, max] relative to the visibility timeout."""
     return max(
-        min(countdown, TASK_RETRY_COUNTDOWN_CEILING_SECONDS),
-        TASK_RETRY_COUNTDOWN_FLOOR_SECONDS,
+        min(countdown, TASK_RETRY_COUNTDOWN_MAX_SECONDS),
+        TASK_RETRY_COUNTDOWN_MIN_SECONDS,
     )
 
 
