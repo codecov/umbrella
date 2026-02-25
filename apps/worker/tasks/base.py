@@ -222,7 +222,7 @@ class BaseCodecovTask(celery_app.Task):
         Falls back to TASK_RETRY_COUNTDOWN_MAX_SECONDS for tasks with no hard limit.
         """
         hard_limit = self.hard_time_limit_task
-        if hard_limit > 0:
+        if isinstance(hard_limit, int) and hard_limit > 0:
             return min(countdown, TASK_VISIBILITY_TIMEOUT_SECONDS - hard_limit)
         return min(countdown, TASK_RETRY_COUNTDOWN_MAX_SECONDS)
 
