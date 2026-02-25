@@ -200,7 +200,7 @@ class TestLockManager:
         assert exc_info.value.countdown == MAX_RETRY_COUNTDOWN_SECONDS
 
     def test_locked_exponential_backoff_cap(self, mock_redis):
-        """Test that exponential backoff is capped at 5 hours"""
+        """Test that exponential backoff is capped at TASK_RETRY_COUNTDOWN_MAX_SECONDS"""
         mock_redis.lock.side_effect = LockError()
         mock_redis.incr.return_value = 1
 
