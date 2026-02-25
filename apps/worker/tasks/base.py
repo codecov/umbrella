@@ -33,8 +33,8 @@ from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
 from shared.celery_config import (
     TASK_RETRY_BACKOFF_BASE_SECONDS,
-    TASK_RETRY_COUNTDOWN_BUFFER_SECONDS,
-    TASK_VISIBILITY_TIMEOUT_SECONDS,
+    TASK_RETRY_COUNTDOWN_CEILING_SECONDS,
+    TASK_RETRY_COUNTDOWN_FLOOR_SECONDS,
     upload_breadcrumb_task_name,
 )
 from shared.celery_router import route_tasks_based_on_user_plan
@@ -51,23 +51,13 @@ from shared.utils.sentry import current_sentry_trace_id
 
 log = logging.getLogger("worker")
 
-# Retry countdown bounds — keep countdowns inside the Celery visibility window so
-# tasks are never redelivered from `unacked` before their ETA fires.
-#
-# _RETRY_COUNTDOWN_FLOOR_SECONDS: minimum sensible retry delay. There is no hard
-# requirement for this value; it just prevents tasks from hammering too quickly on
-# transient errors. The `// 2` guard keeps it sane if the visibility timeout is
-# very small. For context, Celery's built-in default_retry_delay is 180 s.
-_RETRY_COUNTDOWN_FLOOR_SECONDS = min(30, TASK_VISIBILITY_TIMEOUT_SECONDS // 2)
-_RETRY_COUNTDOWN_CEILING = max(
-    TASK_VISIBILITY_TIMEOUT_SECONDS - TASK_RETRY_COUNTDOWN_BUFFER_SECONDS,
-    _RETRY_COUNTDOWN_FLOOR_SECONDS,
-)
-
 
 def clamp_retry_countdown(countdown: int) -> int:
     """Clamp a retry countdown to [floor, ceiling] relative to the visibility timeout."""
-    return max(min(countdown, _RETRY_COUNTDOWN_CEILING), _RETRY_COUNTDOWN_FLOOR_SECONDS)
+    return max(
+        min(countdown, TASK_RETRY_COUNTDOWN_CEILING_SECONDS),
+        TASK_RETRY_COUNTDOWN_FLOOR_SECONDS,
+    )
 
 
 REQUEST_TIMEOUT_COUNTER = Counter(

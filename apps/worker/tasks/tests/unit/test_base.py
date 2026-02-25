@@ -22,6 +22,8 @@ from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import OwnerFactory, RepositoryFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from shared.celery_config import (
+    TASK_RETRY_COUNTDOWN_CEILING_SECONDS,
+    TASK_RETRY_COUNTDOWN_FLOOR_SECONDS,
     sync_repos_task_name,
     upload_breadcrumb_task_name,
     upload_task_name,
@@ -30,8 +32,6 @@ from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Errors
 from shared.plan.constants import PlanName
 from shared.torngit.exceptions import TorngitClientError
 from tasks.base import (
-    _RETRY_COUNTDOWN_CEILING,
-    _RETRY_COUNTDOWN_FLOOR_SECONDS,
     BaseCodecovRequest,
     BaseCodecovTask,
     clamp_retry_countdown,
@@ -44,33 +44,36 @@ here = Path(__file__)
 
 class TestClampRetryCountdown:
     def test_below_floor_returns_floor(self):
-        assert clamp_retry_countdown(0) == _RETRY_COUNTDOWN_FLOOR_SECONDS
-        assert clamp_retry_countdown(-1) == _RETRY_COUNTDOWN_FLOOR_SECONDS
+        assert clamp_retry_countdown(0) == TASK_RETRY_COUNTDOWN_FLOOR_SECONDS
+        assert clamp_retry_countdown(-1) == TASK_RETRY_COUNTDOWN_FLOOR_SECONDS
         assert (
-            clamp_retry_countdown(_RETRY_COUNTDOWN_FLOOR_SECONDS - 1)
-            == _RETRY_COUNTDOWN_FLOOR_SECONDS
+            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_FLOOR_SECONDS - 1)
+            == TASK_RETRY_COUNTDOWN_FLOOR_SECONDS
         )
 
     def test_above_ceiling_returns_ceiling(self):
         assert (
-            clamp_retry_countdown(_RETRY_COUNTDOWN_CEILING + 1)
-            == _RETRY_COUNTDOWN_CEILING
+            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_CEILING_SECONDS + 1)
+            == TASK_RETRY_COUNTDOWN_CEILING_SECONDS
         )
-        assert clamp_retry_countdown(99999) == _RETRY_COUNTDOWN_CEILING
+        assert clamp_retry_countdown(99999) == TASK_RETRY_COUNTDOWN_CEILING_SECONDS
 
     def test_within_range_returns_value(self):
-        mid = (_RETRY_COUNTDOWN_FLOOR_SECONDS + _RETRY_COUNTDOWN_CEILING) // 2
+        mid = (
+            TASK_RETRY_COUNTDOWN_FLOOR_SECONDS + TASK_RETRY_COUNTDOWN_CEILING_SECONDS
+        ) // 2
         assert clamp_retry_countdown(mid) == mid
 
     def test_at_floor_returns_floor(self):
         assert (
-            clamp_retry_countdown(_RETRY_COUNTDOWN_FLOOR_SECONDS)
-            == _RETRY_COUNTDOWN_FLOOR_SECONDS
+            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_FLOOR_SECONDS)
+            == TASK_RETRY_COUNTDOWN_FLOOR_SECONDS
         )
 
     def test_at_ceiling_returns_ceiling(self):
         assert (
-            clamp_retry_countdown(_RETRY_COUNTDOWN_CEILING) == _RETRY_COUNTDOWN_CEILING
+            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_CEILING_SECONDS)
+            == TASK_RETRY_COUNTDOWN_CEILING_SECONDS
         )
 
 
