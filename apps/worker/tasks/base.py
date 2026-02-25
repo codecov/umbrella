@@ -52,8 +52,6 @@ from shared.utils.sentry import current_sentry_trace_id
 log = logging.getLogger("worker")
 
 
-
-
 REQUEST_TIMEOUT_COUNTER = Counter(
     "worker_task_counts_timeouts",
     "Number of times a task experienced any kind of timeout",
