@@ -23,7 +23,7 @@ from database.tests.factories.core import OwnerFactory, RepositoryFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from shared.celery_config import (
     TASK_RETRY_COUNTDOWN_MAX_SECONDS,
-    TASK_RETRY_COUNTDOWN_MIN_SECONDS,
+    TASK_VISIBILITY_TIMEOUT_SECONDS,
     sync_repos_task_name,
     upload_breadcrumb_task_name,
     upload_task_name,
@@ -34,7 +34,6 @@ from shared.torngit.exceptions import TorngitClientError
 from tasks.base import (
     BaseCodecovRequest,
     BaseCodecovTask,
-    clamp_retry_countdown,
 )
 from tasks.base import celery_app as base_celery_app
 from tests.helpers import mock_all_plans_and_tiers
@@ -43,36 +42,35 @@ here = Path(__file__)
 
 
 class TestClampRetryCountdown:
-    def test_below_floor_returns_floor(self):
-        assert clamp_retry_countdown(0) == TASK_RETRY_COUNTDOWN_MIN_SECONDS
-        assert clamp_retry_countdown(-1) == TASK_RETRY_COUNTDOWN_MIN_SECONDS
-        assert (
-            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_MIN_SECONDS - 1)
-            == TASK_RETRY_COUNTDOWN_MIN_SECONDS
+    @pytest.mark.parametrize(
+        "hard_limit,countdown,expected",
+        [
+            # With a hard time limit: cap is TASK_VISIBILITY_TIMEOUT_SECONDS - hard_limit
+            (300, 0, 0),
+            (
+                300,
+                TASK_VISIBILITY_TIMEOUT_SECONDS - 300,
+                TASK_VISIBILITY_TIMEOUT_SECONDS - 300,
+            ),
+            (
+                300,
+                TASK_VISIBILITY_TIMEOUT_SECONDS - 299,
+                TASK_VISIBILITY_TIMEOUT_SECONDS - 300,
+            ),
+            (300, 99999, TASK_VISIBILITY_TIMEOUT_SECONDS - 300),
+            # With no hard time limit (0): falls back to TASK_RETRY_COUNTDOWN_MAX_SECONDS
+            (0, 99999, TASK_RETRY_COUNTDOWN_MAX_SECONDS),
+        ],
+    )
+    def test_clamp(self, mocker, hard_limit, countdown, expected):
+        mocker.patch.object(
+            BaseCodecovTask,
+            "hard_time_limit_task",
+            new_callable=PropertyMock,
+            return_value=hard_limit,
         )
-
-    def test_above_ceiling_returns_ceiling(self):
-        assert (
-            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_MAX_SECONDS + 1)
-            == TASK_RETRY_COUNTDOWN_MAX_SECONDS
-        )
-        assert clamp_retry_countdown(99999) == TASK_RETRY_COUNTDOWN_MAX_SECONDS
-
-    def test_within_range_returns_value(self):
-        mid = (TASK_RETRY_COUNTDOWN_MIN_SECONDS + TASK_RETRY_COUNTDOWN_MAX_SECONDS) // 2
-        assert clamp_retry_countdown(mid) == mid
-
-    def test_at_floor_returns_floor(self):
-        assert (
-            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_MIN_SECONDS)
-            == TASK_RETRY_COUNTDOWN_MIN_SECONDS
-        )
-
-    def test_at_ceiling_returns_ceiling(self):
-        assert (
-            clamp_retry_countdown(TASK_RETRY_COUNTDOWN_MAX_SECONDS)
-            == TASK_RETRY_COUNTDOWN_MAX_SECONDS
-        )
+        task = BaseCodecovTask()
+        assert task.clamp_retry_countdown(countdown) == expected
 
 
 @pytest.fixture

@@ -34,7 +34,7 @@ from services.repository import get_repo_provider_service
 from shared.celery_config import (
     TASK_RETRY_BACKOFF_BASE_SECONDS,
     TASK_RETRY_COUNTDOWN_MAX_SECONDS,
-    TASK_RETRY_COUNTDOWN_MIN_SECONDS,
+    TASK_VISIBILITY_TIMEOUT_SECONDS,
     upload_breadcrumb_task_name,
 )
 from shared.celery_router import route_tasks_based_on_user_plan
@@ -52,12 +52,6 @@ from shared.utils.sentry import current_sentry_trace_id
 log = logging.getLogger("worker")
 
 
-def clamp_retry_countdown(countdown: int) -> int:
-    """Clamp a retry countdown to [min, max] relative to the visibility timeout."""
-    return max(
-        min(countdown, TASK_RETRY_COUNTDOWN_MAX_SECONDS),
-        TASK_RETRY_COUNTDOWN_MIN_SECONDS,
-    )
 
 
 REQUEST_TIMEOUT_COUNTER = Counter(
@@ -220,6 +214,20 @@ class BaseCodecovTask(celery_app.Task):
             return self.time_limit
         return self.app.conf.task_time_limit or 0
 
+    def clamp_retry_countdown(self, countdown: int) -> int:
+        """Cap a retry countdown so the task won't be redelivered before its retry fires.
+
+        A task calling retry() may have been running for up to hard_time_limit_task
+        seconds, so the countdown must fit within the remaining visibility window:
+            countdown <= TASK_VISIBILITY_TIMEOUT_SECONDS - hard_time_limit_task
+
+        Falls back to TASK_RETRY_COUNTDOWN_MAX_SECONDS for tasks with no hard limit.
+        """
+        hard_limit = self.hard_time_limit_task
+        if hard_limit > 0:
+            return min(countdown, TASK_VISIBILITY_TIMEOUT_SECONDS - hard_limit)
+        return min(countdown, TASK_RETRY_COUNTDOWN_MAX_SECONDS)
+
     def get_lock_timeout(self, default_timeout: int) -> int:
         """
         Calculate the lock timeout based on hard_time_limit_task.
@@ -282,7 +290,7 @@ class BaseCodecovTask(celery_app.Task):
         }
 
         if countdown is not None:
-            countdown = clamp_retry_countdown(countdown)
+            countdown = self.clamp_retry_countdown(countdown)
         return super().retry(
             max_retries=max_retries, countdown=countdown, exc=exc, **kwargs
         )

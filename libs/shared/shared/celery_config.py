@@ -263,23 +263,10 @@ TASK_RETRY_BACKOFF_BASE_SECONDS = int(
     get_config("setup", "tasks", "celery", "retry_backoff_base", default=20)
 )
 
-# Clamp retry countdowns inside the broker's visibility window so a task
-# waiting to be retried is never re-delivered before its ETA fires.
-#
-# BUFFER: safety margin subtracted from the visibility timeout. No hard
-# requirement — just large enough the broker won't re-deliver the task before
-# the ETA fires. For context, Celery's built-in default_retry_delay is 180 s;
-# our exponential backoff starts at TASK_RETRY_BACKOFF_BASE_SECONDS, making us
-# significantly more aggressive by default.
-#
-# MIN: prevents hammering on transient errors. The `// 2` guard keeps it sane
-# if the visibility timeout is very small.
-TASK_RETRY_COUNTDOWN_BUFFER_SECONDS = 30
-TASK_RETRY_COUNTDOWN_MIN_SECONDS = min(30, TASK_VISIBILITY_TIMEOUT_SECONDS // 2)
-TASK_RETRY_COUNTDOWN_MAX_SECONDS = max(
-    TASK_VISIBILITY_TIMEOUT_SECONDS - TASK_RETRY_COUNTDOWN_BUFFER_SECONDS,
-    TASK_RETRY_COUNTDOWN_MIN_SECONDS,
-)
+# Fallback cap for clamp_retry_countdown on tasks with no hard time limit
+# configured. As of 2026-02-25, TASK_VISIBILITY_TIMEOUT_SECONDS defaults to
+# 900 s in production. The 30 s margin is arbitrary but sufficient.
+TASK_RETRY_COUNTDOWN_MAX_SECONDS = TASK_VISIBILITY_TIMEOUT_SECONDS - 30
 
 # Fixed retry delay for specific conditions (seconds)
 # Used for predictable retry intervals (e.g., waiting for processing lock)
