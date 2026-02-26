@@ -87,6 +87,41 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
     max_retries = UPLOAD_PROCESSOR_MAX_RETRIES
 
+    def _mark_uploads_as_error(self, db_session, upload_ids: list) -> None:
+        """Best-effort: transition uploads to error state so they are not re-processed.
+
+        When the finisher fails permanently (unrecoverable exception, soft time
+        limit, or max retries exceeded), uploads stay in "started" state. The
+        next upload to the same commit will re-discover them and spawn another
+        finisher that fails again, creating a retry loop. Marking them as error
+        breaks that cycle.
+
+        The whole operation is wrapped in try/except because the DB session may
+        already be in a broken state (e.g. after an OperationalError).
+        """
+        if not upload_ids:
+            return
+        try:
+            db_session.rollback()
+            db_session.query(Upload).filter(Upload.id_.in_(upload_ids)).update(
+                {
+                    Upload.state: "error",
+                    Upload.state_id: UploadState.ERROR.db_id,
+                },
+                synchronize_session="fetch",
+            )
+            db_session.commit()
+            log.info(
+                "Marked uploads as error after permanent failure",
+                extra={"upload_ids": upload_ids},
+            )
+        except Exception:
+            log.warning(
+                "Failed to mark uploads as error (DB may be unreachable)",
+                extra={"upload_ids": upload_ids},
+                exc_info=True,
+            )
+
     def _find_started_uploads_with_reports(
         self, db_session, commit: Commit
     ) -> set[int]:
@@ -369,6 +404,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         except SoftTimeLimitExceeded:
             log.warning("run_impl: soft time limit exceeded")
+            self._mark_uploads_as_error(db_session, upload_ids)
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -388,6 +424,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 "Unexpected error in upload finisher",
                 extra={"upload_ids": upload_ids},
             )
+            self._mark_uploads_as_error(db_session, upload_ids)
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -484,6 +521,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         "repoid": repoid,
                     },
                 )
+                self._mark_uploads_as_error(db_session, upload_ids)
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,
@@ -605,6 +643,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         "repoid": repoid,
                     },
                 )
+                self._mark_uploads_as_error(db_session, upload_ids)
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,

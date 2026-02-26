@@ -1075,6 +1075,102 @@ class TestUploadFinisherTask:
         )
 
     @pytest.mark.django_db
+    def test_generic_exception_marks_uploads_as_error(
+        self, dbsession, mocker, mock_self_app
+    ):
+        """Uploads stuck in 'started' state must transition to 'error' when the
+        finisher hits an unrecoverable exception, otherwise new finisher tasks
+        for the same commit keep re-discovering them and failing in a loop."""
+        mocker.patch("tasks.upload_finisher.sentry_sdk.capture_exception")
+        mocker.patch(
+            "tasks.upload_finisher.UploadFinisherTask._process_reports_with_lock",
+            side_effect=ValueError("boom"),
+        )
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        upload = UploadFactory.create(
+            report=report,
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+            storage_path="url",
+        )
+        dbsession.add(upload)
+        dbsession.flush()
+
+        previous_results = [
+            {"upload_id": upload.id, "successful": True, "arguments": {}}
+        ]
+
+        result = UploadFinisherTask().run_impl(
+            dbsession,
+            previous_results,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert result["error"] == "boom"
+
+        dbsession.expire_all()
+        dbsession.refresh(upload)
+        assert upload.state == "error"
+        assert upload.state_id == UploadState.ERROR.db_id
+
+    @pytest.mark.django_db
+    def test_soft_time_limit_marks_uploads_as_error(
+        self, dbsession, mocker, mock_self_app
+    ):
+        """Uploads must be marked as error when finisher hits a soft time limit,
+        preventing the same uploads from being re-discovered by the next finisher."""
+        mocker.patch(
+            "tasks.upload_finisher.UploadFinisherTask._process_reports_with_lock",
+            side_effect=SoftTimeLimitExceeded,
+        )
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        upload = UploadFactory.create(
+            report=report,
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+            storage_path="url",
+        )
+        dbsession.add(upload)
+        dbsession.flush()
+
+        previous_results = [
+            {"upload_id": upload.id, "successful": True, "arguments": {}}
+        ]
+
+        result = UploadFinisherTask().run_impl(
+            dbsession,
+            previous_results,
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert result["error"] == "Soft time limit exceeded"
+
+        dbsession.expire_all()
+        dbsession.refresh(upload)
+        assert upload.state == "error"
+        assert upload.state_id == UploadState.ERROR.db_id
+
+    @pytest.mark.django_db
     def test_idempotency_check_skips_already_processed_uploads(
         self, dbsession, mocker, mock_self_app
     ):
