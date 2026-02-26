@@ -872,10 +872,17 @@ def perform_report_merging(
     log.info(
         "perform_report_merging: Updating uploads", extra={"upload_ids": upload_ids}
     )
-    # Update the `Upload` in the database with the final session_id
-    # (aka `order_number`) and other statuses
+    # Release the potentially stale DB connection before writing.
+    # The non-DB work above (storage reads, Redis, CPU merge) can take long enough
+    # for infrastructure (LB idle timeout, PgBouncer) to drop the connection.
+    # Rollback releases the (possibly dead) connection back to the pool while
+    # keeping ORM objects associated with the session in expired state.
+    # The next query gets a fresh connection validated by pool_pre_ping.
+    db_session = commit.get_db_session()
+    db_session.rollback()
+
     update_uploads(
-        commit.get_db_session(),
+        db_session,
         commit_yaml,
         processing_results,
         intermediate_reports,

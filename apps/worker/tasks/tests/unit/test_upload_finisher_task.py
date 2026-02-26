@@ -33,6 +33,7 @@ from shared.django_apps.upload_breadcrumbs.models import (
     Milestones,
 )
 from shared.reports.enums import UploadState
+from shared.reports.resources import Report
 from shared.torngit.exceptions import TorngitObjectNotFoundError
 from shared.yaml import UserYaml
 from tasks.upload_finisher import (
@@ -172,8 +173,10 @@ class TestUploadFinisherTask:
         mock_self_app,
     ):
         mock_redis.scard.return_value = 0
-        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
-        mocker.patch("tasks.upload_finisher.update_uploads")
+        mocker.patch(
+            "tasks.upload_finisher.perform_report_merging",
+            return_value=Report(),
+        )
         url = "v4/raw/2019-05-22/C3C4715CA57C910D11D5EB899FC86A7E/4c4e4654ac25037ae869caeb3619d485970b6304/a84d445c-9c1e-434f-8275-f18f1f320f81.txt"
 
         commit = CommitFactory.create(
@@ -277,8 +280,10 @@ class TestUploadFinisherTask:
         mock_repo_provider,
         mock_self_app,
     ):
-        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
-        mocker.patch("tasks.upload_finisher.update_uploads")
+        mocker.patch(
+            "tasks.upload_finisher.perform_report_merging",
+            return_value=Report(),
+        )
         url = "v4/raw/2019-05-22/C3C4715CA57C910D11D5EB899FC86A7E/4c4e4654ac25037ae869caeb3619d485970b6304/a84d445c-9c1e-434f-8275-f18f1f320f81.txt"
 
         commit = CommitFactory.create(
@@ -345,8 +350,10 @@ class TestUploadFinisherTask:
         mock_repo_provider,
         mock_self_app,
     ):
-        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
-        mocker.patch("tasks.upload_finisher.update_uploads")
+        mocker.patch(
+            "tasks.upload_finisher.perform_report_merging",
+            return_value=Report(),
+        )
         url = "v4/raw/2019-05-22/C3C4715CA57C910D11D5EB899FC86A7E/4c4e4654ac25037ae869caeb3619d485970b6304/a84d445c-9c1e-434f-8275-f18f1f320f81.txt"
 
         commit = CommitFactory.create(
@@ -742,8 +749,10 @@ class TestUploadFinisherTask:
     def test_upload_finisher_task_calls_save_commit_measurements_task(
         self, mocker, dbsession, mock_storage, mock_repo_provider, mock_self_app
     ):
-        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
-        mocker.patch("tasks.upload_finisher.update_uploads")
+        mocker.patch(
+            "tasks.upload_finisher.perform_report_merging",
+            return_value=Report(),
+        )
 
         mocker.patch("tasks.upload_finisher.is_timeseries_enabled", return_value=True)
 
@@ -882,8 +891,10 @@ class TestUploadFinisherTask:
         mock_self_app,
     ):
         mock_redis.scard.return_value = 0
-        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
-        mocker.patch("tasks.upload_finisher.update_uploads")
+        mocker.patch(
+            "tasks.upload_finisher.perform_report_merging",
+            return_value=Report(),
+        )
         url = "v4/raw/2019-05-22/C3C4715CA57C910D11D5EB899FC86A7E/4c4e4654ac25037ae869caeb3619d485970b6304/a84d445c-9c1e-434f-8275-f18f1f320f81.txt"
 
         commit = CommitFactory.create()
