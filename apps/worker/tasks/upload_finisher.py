@@ -14,7 +14,11 @@ from database.models import Commit, Pull
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.models.reports import Upload
 from helpers.checkpoint_logger.flows import UploadFlow
-from helpers.exceptions import RepositoryWithoutValidBotError
+from helpers.exceptions import (
+    NoConfiguredAppsAvailable,
+    OwnerWithoutValidBotError,
+    RepositoryWithoutValidBotError,
+)
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.save_commit_error import save_commit_error
 from services.comparison import get_or_create_comparison
@@ -929,6 +933,16 @@ def load_commit_diff(commit: Commit, task_name: str | None = None) -> dict | Non
 
         log.warning(
             "Could not apply diff to report because there is no valid bot found for that repo",
+            exc_info=True,
+        )
+    except (NoConfiguredAppsAvailable, OwnerWithoutValidBotError):
+        save_commit_error(
+            commit,
+            error_code=CommitErrorTypes.REPO_BOT_INVALID.value,
+        )
+
+        log.warning(
+            "Could not apply diff to report because no valid GitHub app is configured for that owner",
             exc_info=True,
         )
 
