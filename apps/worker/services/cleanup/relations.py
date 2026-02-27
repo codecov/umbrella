@@ -210,7 +210,7 @@ def simplified_lookup(queryset: QuerySet) -> QuerySet | list[int]:
     threshold = _get_eager_eval_threshold()
     ids = list(queryset.values_list("pk", flat=True)[: threshold + 1])
     if len(ids) <= threshold:
-        log.debug(
+        log.info(
             "simplified_lookup: materialized %d IDs for %s",
             len(ids),
             queryset.model.__name__,
@@ -218,7 +218,7 @@ def simplified_lookup(queryset: QuerySet) -> QuerySet | list[int]:
         )
         return ids
 
-    log.debug(
+    log.info(
         "simplified_lookup: %s exceeds threshold (%d), falling back to subquery",
         queryset.model.__name__,
         threshold,
