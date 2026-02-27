@@ -9,7 +9,6 @@ from django.db.models.lookups import Exact, In
 from django.db.models.query import QuerySet
 
 from shared.config import get_config
-
 from database.models import Upload
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.codecov_auth.models import Owner, OwnerProfile
