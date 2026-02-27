@@ -134,5 +134,13 @@ class ProcessingState:
             )
         }
 
+    def get_all_processed_uploads(self) -> set[int]:
+        """Return ALL upload IDs in the 'processed' set (no batch limit).
+
+        Used by the cooperative finisher to merge every pending upload in one
+        lock acquisition instead of processing them in MERGE_BATCH_SIZE chunks.
+        """
+        return {int(id) for id in self._redis.smembers(self._redis_key("processed"))}
+
     def _redis_key(self, state: str) -> str:
         return f"upload-processing-state/{self.repoid}/{self.commitsha}/{state}"
