@@ -135,18 +135,20 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
     def _reconstruct_processing_results(
         self, db_session, state: ProcessingState, commit: Commit
     ) -> list[ProcessingResult]:
-        """Reconstruct processing_results from ProcessingState when finisher is triggered
-        outside of a chord (e.g., from orphaned upload recovery).
+        """Reconstruct processing_results from the full Redis "processed" set.
 
-        This ensures ALL uploads that were marked as processed in Redis are included
-        in the final merged report, even if they completed via retry/recovery.
+        This is used both when the finisher is triggered without chord arguments
+        (orphaned upload recovery) AND inside the lock for cooperative merging,
+        so every pending upload is included regardless of which chord spawned
+        this finisher.
 
         If Redis state has expired (TTL: PROCESSING_STATE_TTL), falls back to database
         to find uploads in "started" state that have intermediate reports, preventing data loss.
         """
 
-        # Get all upload IDs that are ready to be merged (in "processed" set)
-        upload_ids = state.get_uploads_for_merging()
+        # Get ALL upload IDs in the "processed" set (no batch limit) so one
+        # finisher can merge uploads from every pending chord.
+        upload_ids = state.get_all_processed_uploads()
 
         if not upload_ids:
             log.warning(
@@ -282,31 +284,19 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         upload_ids = [upload["upload_id"] for upload in processing_results]
 
-        # Idempotency check: Skip if all uploads are already processed
-        # This prevents wasted work if multiple finishers are triggered (e.g., from
-        # visibility timeout re-queuing) or if finisher is manually retried
-        if upload_ids:
-            uploads_in_db = (
-                db_session.query(Upload).filter(Upload.id_.in_(upload_ids)).all()
+        # Early exit: if the Redis "processed" set is already empty, a previous
+        # cooperative finisher merged our uploads.  Skip without acquiring the lock.
+        upload_numbers = state.get_upload_numbers()
+        if upload_numbers.processed == 0 and upload_numbers.processing == 0:
+            log.info(
+                "No pending uploads in Redis, another finisher already merged them",
+                extra={"upload_ids": upload_ids},
             )
-            # Only skip if ALL uploads exist in DB and ALL are in final states
-            if len(uploads_in_db) == len(upload_ids):
-                all_already_processed = all(
-                    upload.state in ("processed", "error") for upload in uploads_in_db
-                )
-                if all_already_processed:
-                    log.info(
-                        "All uploads already in final state, skipping finisher work",
-                        extra={
-                            "upload_ids": upload_ids,
-                            "states": [u.state for u in uploads_in_db],
-                        },
-                    )
-                    inc_counter(UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER)
-                    return {
-                        "already_completed": True,
-                        "upload_ids": upload_ids,
-                    }
+            inc_counter(UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER)
+            return {
+                "already_completed": True,
+                "upload_ids": upload_ids,
+            }
 
         try:
             log.info("run_impl: Processing reports with lock")
@@ -408,7 +398,13 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         upload_ids: list,
         state: ProcessingState,
     ):
-        """Process reports with a lock to prevent concurrent modifications."""
+        """Process reports with a lock to prevent concurrent modifications.
+
+        Cooperative merging: once the lock is acquired, this method queries
+        Redis for ALL pending uploads (not just the chord's batch) so that one
+        finisher task can merge uploads from every queued finisher, eliminating
+        redundant lock acquisitions.
+        """
         diff = load_commit_diff(commit, self.name)
         repoid = commit.repoid
         commitid = commit.commitid
@@ -420,6 +416,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
             blocking_timeout=DEFAULT_BLOCKING_TIMEOUT_SECONDS,
+            base_retry_countdown=30,
         )
 
         try:
@@ -429,17 +426,38 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 retry_num=self.attempts,
             ):
                 db_session.refresh(commit)
+
+                all_results = self._reconstruct_processing_results(
+                    db_session, state, commit
+                )
+                if not all_results:
+                    log.info(
+                        "run_impl: No pending uploads in Redis after acquiring lock, "
+                        "another finisher already merged them",
+                    )
+                    return
+
+                all_upload_ids = [r["upload_id"] for r in all_results]
+
+                log.info(
+                    "run_impl: Cooperative merge — processing all pending uploads",
+                    extra={
+                        "chord_upload_ids": upload_ids,
+                        "all_upload_ids": all_upload_ids,
+                    },
+                )
+
                 report_service = ReportService(commit_yaml)
 
                 log.info("run_impl: Performing report merging")
 
                 report = perform_report_merging(
-                    report_service, commit_yaml, commit, processing_results
+                    report_service, commit_yaml, commit, all_results
                 )
 
                 log.info(
                     "run_impl: Saving combined report",
-                    extra={"processing_results": processing_results},
+                    extra={"upload_count": len(all_results)},
                 )
 
                 if diff:
@@ -452,10 +470,10 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 db_session.commit()
 
                 log.info("run_impl: Marking uploads as merged")
-                state.mark_uploads_as_merged(upload_ids)
+                state.mark_uploads_as_merged(all_upload_ids)
 
                 log.info("run_impl: Cleaning up intermediate reports")
-                cleanup_intermediate_reports(upload_ids)
+                cleanup_intermediate_reports(all_upload_ids)
 
                 log.info("run_impl: Finished upload_finisher task")
 
@@ -519,6 +537,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
             blocking_timeout=DEFAULT_BLOCKING_TIMEOUT_SECONDS,
+            base_retry_countdown=30,
         )
 
         try:

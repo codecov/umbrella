@@ -1414,6 +1414,145 @@ class TestUploadFinisherTask:
         # This is the key assertion - notifications should NOT be blocked by test_results uploads
         mock_handle_finisher_lock.assert_called_once()
 
+    @pytest.mark.django_db
+    def test_early_exit_when_redis_processed_set_empty(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
+        """When the Redis 'processed' set is empty (another finisher already merged),
+        run_impl should return early without acquiring the lock."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        # Redis reports nothing pending
+        mock_redis.scard.return_value = 0
+
+        mock_process = mocker.patch.object(
+            UploadFinisherTask, "_process_reports_with_lock"
+        )
+
+        task = UploadFinisherTask()
+        task.request.retries = 0
+        task.request.headers = {}
+
+        result = task.run_impl(
+            dbsession,
+            [{"upload_id": 0, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert result == {"already_completed": True, "upload_ids": [0]}
+        mock_process.assert_not_called()
+
+    @pytest.mark.django_db
+    def test_cooperative_merge_uses_all_redis_uploads(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
+        """Inside the lock, the finisher should merge ALL uploads from Redis,
+        not just the ones from its own chord."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        upload_1 = UploadFactory.create(report=report, state="started")
+        upload_2 = UploadFactory.create(report=report, state="started")
+        upload_3 = UploadFactory.create(report=report, state="started")
+        dbsession.add_all([upload_1, upload_2, upload_3])
+        dbsession.flush()
+
+        # Redis: scard says there are pending uploads (so early exit is skipped)
+        mock_redis.scard.side_effect = lambda key: (3 if "processed" in key else 0)
+        # smembers returns ALL three uploads (cooperative: from multiple chords)
+        mock_redis.smembers.return_value = {
+            str(upload_1.id).encode(),
+            str(upload_2.id).encode(),
+            str(upload_3.id).encode(),
+        }
+        # Each upload has an intermediate report
+        mock_redis.exists.return_value = True
+
+        mocker.patch("tasks.upload_finisher.load_commit_diff", return_value=None)
+        mock_perform = mocker.patch(
+            "tasks.upload_finisher.perform_report_merging",
+            return_value=Report(),
+        )
+        mocker.patch("tasks.upload_finisher.cleanup_intermediate_reports")
+        mocker.patch.object(
+            UploadFinisherTask, "_handle_finisher_lock", return_value={}
+        )
+
+        task = UploadFinisherTask()
+        task.request.retries = 0
+        task.request.headers = {}
+
+        # Chord only knows about upload_1, but cooperative merge should include all 3
+        task.run_impl(
+            dbsession,
+            [{"upload_id": upload_1.id, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        # perform_report_merging should have received all 3 uploads
+        mock_perform.assert_called_once()
+        merged_results = mock_perform.call_args[0][3]
+        merged_ids = {r["upload_id"] for r in merged_results}
+        assert merged_ids == {upload_1.id, upload_2.id, upload_3.id}
+
+    @pytest.mark.django_db
+    def test_cooperative_merge_exits_when_lock_holder_already_merged(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
+        """If a finisher acquires the lock but Redis 'processed' set is now empty
+        (another finisher raced and merged), it should exit gracefully."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        # Before lock: scard says uploads pending (so early exit is skipped)
+        # Inside lock: smembers returns empty (another finisher merged them)
+        call_count = {"n": 0}
+
+        def scard_side_effect(key):
+            if "processed" in key:
+                call_count["n"] += 1
+                # First call (early exit check): pretend there are uploads
+                # Second call (inside reconstruct): also return > 0 to be safe
+                return 1 if call_count["n"] <= 2 else 0
+            return 0
+
+        mock_redis.scard.side_effect = scard_side_effect
+        mock_redis.smembers.return_value = set()
+        mock_redis.exists.return_value = False
+
+        mocker.patch("tasks.upload_finisher.load_commit_diff", return_value=None)
+        mock_perform = mocker.patch(
+            "tasks.upload_finisher.perform_report_merging",
+        )
+        mocker.patch("tasks.upload_finisher.cleanup_intermediate_reports")
+
+        task = UploadFinisherTask()
+        task.request.retries = 0
+        task.request.headers = {}
+
+        task.run_impl(
+            dbsession,
+            [{"upload_id": 0, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        # perform_report_merging should NOT have been called
+        mock_perform.assert_not_called()
+
 
 class TestCommitRefreshAfterLock:
     """Tests for CCMRG-2028: commit must be refreshed after acquiring lock."""
