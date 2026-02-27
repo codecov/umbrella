@@ -1,4 +1,5 @@
 import dataclasses
+import logging
 from collections import defaultdict
 from graphlib import TopologicalSorter
 
@@ -16,6 +17,8 @@ from shared.django_apps.core.models import Commit, Pull, Repository
 from shared.django_apps.test_analytics.models import TAPullComment, TAUpload
 from shared.django_apps.upload_breadcrumbs.models import UploadBreadcrumb
 from shared.django_apps.user_measurements.models import UserMeasurement
+
+log = logging.getLogger(__name__)
 
 # Relations referencing 0 through field 1 of model 2:
 IGNORE_RELATIONS: set[tuple[type[Model], str, type[Model]]] = {
@@ -208,6 +211,18 @@ def simplified_lookup(queryset: QuerySet) -> QuerySet | list[int]:
     threshold = _get_eager_eval_threshold()
     ids = list(queryset.values_list("pk", flat=True)[: threshold + 1])
     if len(ids) <= threshold:
+        log.debug(
+            "simplified_lookup: materialized %d IDs for %s",
+            len(ids),
+            queryset.model.__name__,
+            extra={"count": len(ids), "model": queryset.model.__name__},
+        )
         return ids
 
+    log.warning(
+        "simplified_lookup: %s exceeds threshold (%d), falling back to subquery",
+        queryset.model.__name__,
+        threshold,
+        extra={"model": queryset.model.__name__, "threshold": threshold},
+    )
     return queryset
