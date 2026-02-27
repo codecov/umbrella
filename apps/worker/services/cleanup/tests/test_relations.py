@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 import sqlparse
 from django.core.exceptions import EmptyResultSet
@@ -67,6 +69,12 @@ def test_can_simplify_queries():
     owner_repos = Repository.objects.filter(author=123)
     repo = Repository.objects.filter(repoid__in=owner_repos)
     assert simplified_lookup(repo) == []
+
+    # Over-threshold: falls back to the original queryset.
+    # Threshold of -1 ensures any result (even empty) exceeds it.
+    repo = Repository.objects.filter(fork=123)
+    with patch("services.cleanup.relations._get_eager_eval_threshold", return_value=-1):
+        assert simplified_lookup(repo) == repo
 
 
 @pytest.mark.django_db

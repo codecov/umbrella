@@ -8,8 +8,8 @@ from django.db.models.expressions import Col, Expression
 from django.db.models.lookups import Exact, In
 from django.db.models.query import QuerySet
 
-from shared.config import get_config
 from database.models import Upload
+from shared.config import get_config
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.codecov_auth.models import Owner, OwnerProfile
 from shared.django_apps.core.models import Commit, Pull, Repository
