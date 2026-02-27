@@ -219,7 +219,7 @@ def simplified_lookup(queryset: QuerySet) -> QuerySet | list[int]:
         )
         return ids
 
-    log.warning(
+    log.debug(
         "simplified_lookup: %s exceeds threshold (%d), falling back to subquery",
         queryset.model.__name__,
         threshold,
