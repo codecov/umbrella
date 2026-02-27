@@ -6,13 +6,7 @@ WHERE "user_measurements"."owner_id" IN (%s);
 
 
 -- CommitNotification
-DELETE
-FROM "commit_notifications"
-WHERE "commit_notifications"."gh_app_id" IN
-    (SELECT U0."id"
-     FROM "codecov_auth_githubappinstallation" U0
-     WHERE U0."owner_id" IN (%s));
--- [123]
+-- (empty)
 
 
 -- OwnerInstallationNameToUseForTask
@@ -58,253 +52,73 @@ WHERE "codecov_auth_ownerexport"."owner_id" IN (%s);
 
 
 -- CacheConfig
-DELETE
-FROM "bundle_analysis_cacheconfig"
-WHERE "bundle_analysis_cacheconfig"."repo_id" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
+-- (empty)
 
 
 -- UploadBreadcrumb
-DELETE
-FROM "upload_breadcrumbs_uploadbreadcrumb"
-WHERE "upload_breadcrumbs_uploadbreadcrumb"."repo_id" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
+-- (empty)
 
 
 -- TAPullComment
-DELETE
-FROM "test_analytics_tapullcomment"
-WHERE "test_analytics_tapullcomment"."repo_id" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
+-- (empty)
 
 
 -- TAUpload
-DELETE
-FROM "test_analytics_upload"
-WHERE "test_analytics_upload"."repo_id" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
+-- (empty)
 
 
 -- RepositoryToken
-DELETE
-FROM "codecov_auth_repositorytoken"
-WHERE "codecov_auth_repositorytoken"."repoid" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
+-- (empty)
 
 
 -- Branch
-DELETE
-FROM "branches"
-WHERE "branches"."repoid" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
+-- (empty)
 
 
 -- FlagComparison
-DELETE
-FROM "compare_flagcomparison"
-WHERE "compare_flagcomparison"."repositoryflag_id" IN
-    (SELECT V0."id"
-     FROM "reports_repositoryflag" V0
-     WHERE V0."repository_id" IN
-         (SELECT U0."repoid"
-          FROM "repos" U0
-          WHERE U0."ownerid" IN (%s)));
--- [123]
+-- (empty)
 
 
 -- ComponentComparison
-DELETE
-FROM "compare_componentcomparison"
-WHERE "compare_componentcomparison"."commit_comparison_id" IN
-    (SELECT W0."id"
-     FROM "compare_commitcomparison" W0
-     WHERE W0."base_commit_id" IN
-         (SELECT V0."id"
-          FROM "commits" V0
-          WHERE V0."repoid" IN
-              (SELECT U0."repoid"
-               FROM "repos" U0
-               WHERE U0."ownerid" IN (%s))));
--- [123]
-DELETE
-FROM "compare_componentcomparison"
-WHERE "compare_componentcomparison"."commit_comparison_id" IN
-    (SELECT W0."id"
-     FROM "compare_commitcomparison" W0
-     WHERE W0."compare_commit_id" IN
-         (SELECT V0."id"
-          FROM "commits" V0
-          WHERE V0."repoid" IN
-              (SELECT U0."repoid"
-               FROM "repos" U0
-               WHERE U0."ownerid" IN (%s))));
--- [123]
+-- (empty)
+-- (empty)
 
 
 -- CommitError
-DELETE
-FROM "core_commiterror"
-WHERE "core_commiterror"."commit_id" IN
-    (SELECT V0."id"
-     FROM "commits" V0
-     WHERE V0."repoid" IN
-         (SELECT U0."repoid"
-          FROM "repos" U0
-          WHERE U0."ownerid" IN (%s)));
--- [123]
+-- (empty)
 
 
 -- LabelAnalysisProcessingError
-DELETE
-FROM "labelanalysis_labelanalysisprocessingerror"
-WHERE "labelanalysis_labelanalysisprocessingerror"."label_analysis_request_id" IN
-    (SELECT W0."id"
-     FROM "labelanalysis_labelanalysisrequest" W0
-     WHERE W0."base_commit_id" IN
-         (SELECT V0."id"
-          FROM "commits" V0
-          WHERE V0."repoid" IN
-              (SELECT U0."repoid"
-               FROM "repos" U0
-               WHERE U0."ownerid" IN (%s))));
--- [123]
-DELETE
-FROM "labelanalysis_labelanalysisprocessingerror"
-WHERE "labelanalysis_labelanalysisprocessingerror"."label_analysis_request_id" IN
-    (SELECT W0."id"
-     FROM "labelanalysis_labelanalysisrequest" W0
-     WHERE W0."head_commit_id" IN
-         (SELECT V0."id"
-          FROM "commits" V0
-          WHERE V0."repoid" IN
-              (SELECT U0."repoid"
-               FROM "repos" U0
-               WHERE U0."ownerid" IN (%s))));
--- [123]
+-- (empty)
+-- (empty)
 
 
 -- ReportResults
-DELETE
-FROM "reports_reportresults"
-WHERE "reports_reportresults"."report_id" IN
-    (SELECT W0."id"
-     FROM "reports_commitreport" W0
-     WHERE W0."commit_id" IN
-         (SELECT V0."id"
-          FROM "commits" V0
-          WHERE V0."repoid" IN
-              (SELECT U0."repoid"
-               FROM "repos" U0
-               WHERE U0."ownerid" IN (%s))));
--- [123]
+-- (empty)
 
 
 -- ReportLevelTotals
-DELETE
-FROM "reports_reportleveltotals"
-WHERE "reports_reportleveltotals"."report_id" IN
-    (SELECT W0."id"
-     FROM "reports_commitreport" W0
-     WHERE W0."commit_id" IN
-         (SELECT V0."id"
-          FROM "commits" V0
-          WHERE V0."repoid" IN
-              (SELECT U0."repoid"
-               FROM "repos" U0
-               WHERE U0."ownerid" IN (%s))));
--- [123]
+-- (empty)
 
 
 -- UploadError
-DELETE
-FROM "reports_uploaderror"
-WHERE "reports_uploaderror"."upload_id" IN
-    (SELECT X0."id"
-     FROM "reports_upload" X0
-     WHERE X0."report_id" IN
-         (SELECT W0."id"
-          FROM "reports_commitreport" W0
-          WHERE W0."commit_id" IN
-              (SELECT V0."id"
-               FROM "commits" V0
-               WHERE V0."repoid" IN
-                   (SELECT U0."repoid"
-                    FROM "repos" U0
-                    WHERE U0."ownerid" IN (%s)))));
--- [123]
+-- (empty)
 
 
 -- UploadFlagMembership
-DELETE
-FROM "reports_uploadflagmembership"
-WHERE "reports_uploadflagmembership"."flag_id" IN
-    (SELECT V0."id"
-     FROM "reports_repositoryflag" V0
-     WHERE V0."repository_id" IN
-         (SELECT U0."repoid"
-          FROM "repos" U0
-          WHERE U0."ownerid" IN (%s)));
--- [123]
+-- (empty)
 
 
 -- UploadLevelTotals
-DELETE
-FROM "reports_uploadleveltotals"
-WHERE "reports_uploadleveltotals"."upload_id" IN
-    (SELECT X0."id"
-     FROM "reports_upload" X0
-     WHERE X0."report_id" IN
-         (SELECT W0."id"
-          FROM "reports_commitreport" W0
-          WHERE W0."commit_id" IN
-              (SELECT V0."id"
-               FROM "commits" V0
-               WHERE V0."repoid" IN
-                   (SELECT U0."repoid"
-                    FROM "repos" U0
-                    WHERE U0."ownerid" IN (%s)))));
--- [123]
+-- (empty)
 
 
 -- StaticAnalysisSuiteFilepath
-DELETE
-FROM "staticanalysis_staticanalysissuitefilepath"
-WHERE "staticanalysis_staticanalysissuitefilepath"."file_snapshot_id" IN
-    (SELECT V0."id"
-     FROM "staticanalysis_staticanalysissinglefilesnapshot" V0
-     WHERE V0."repository_id" IN
-         (SELECT U0."repoid"
-          FROM "repos" U0
-          WHERE U0."ownerid" IN (%s)));
--- [123]
+-- (empty)
 
 
 -- Pull
-DELETE
-FROM "pulls"
-WHERE "pulls"."repoid" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
+-- (empty)
 
 
 -- GithubAppInstallation
@@ -315,121 +129,37 @@ WHERE "codecov_auth_githubappinstallation"."owner_id" IN (%s);
 
 
 -- CommitComparison
-DELETE
-FROM "compare_commitcomparison"
-WHERE "compare_commitcomparison"."base_commit_id" IN
-    (SELECT V0."id"
-     FROM "commits" V0
-     WHERE V0."repoid" IN
-         (SELECT U0."repoid"
-          FROM "repos" U0
-          WHERE U0."ownerid" IN (%s)));
--- [123]
-DELETE
-FROM "compare_commitcomparison"
-WHERE "compare_commitcomparison"."compare_commit_id" IN
-    (SELECT V0."id"
-     FROM "commits" V0
-     WHERE V0."repoid" IN
-         (SELECT U0."repoid"
-          FROM "repos" U0
-          WHERE U0."ownerid" IN (%s)));
--- [123]
+-- (empty)
+-- (empty)
 
 
 -- LabelAnalysisRequest
-DELETE
-FROM "labelanalysis_labelanalysisrequest"
-WHERE "labelanalysis_labelanalysisrequest"."base_commit_id" IN
-    (SELECT V0."id"
-     FROM "commits" V0
-     WHERE V0."repoid" IN
-         (SELECT U0."repoid"
-          FROM "repos" U0
-          WHERE U0."ownerid" IN (%s)));
--- [123]
-DELETE
-FROM "labelanalysis_labelanalysisrequest"
-WHERE "labelanalysis_labelanalysisrequest"."head_commit_id" IN
-    (SELECT V0."id"
-     FROM "commits" V0
-     WHERE V0."repoid" IN
-         (SELECT U0."repoid"
-          FROM "repos" U0
-          WHERE U0."ownerid" IN (%s)));
--- [123]
+-- (empty)
+-- (empty)
 
 
 -- RepositoryFlag
-DELETE
-FROM "reports_repositoryflag"
-WHERE "reports_repositoryflag"."repository_id" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
+-- (empty)
 
 
 -- ReportSession
-DELETE
-FROM "reports_upload"
-WHERE "reports_upload"."report_id" IN
-    (SELECT W0."id"
-     FROM "reports_commitreport" W0
-     WHERE W0."commit_id" IN
-         (SELECT V0."id"
-          FROM "commits" V0
-          WHERE V0."repoid" IN
-              (SELECT U0."repoid"
-               FROM "repos" U0
-               WHERE U0."ownerid" IN (%s))));
--- [123]
+-- (empty)
 
 
 -- StaticAnalysisSuite
-DELETE
-FROM "staticanalysis_staticanalysissuite"
-WHERE "staticanalysis_staticanalysissuite"."commit_id" IN
-    (SELECT V0."id"
-     FROM "commits" V0
-     WHERE V0."repoid" IN
-         (SELECT U0."repoid"
-          FROM "repos" U0
-          WHERE U0."ownerid" IN (%s)));
--- [123]
+-- (empty)
 
 
 -- StaticAnalysisSingleFileSnapshot
-DELETE
-FROM "staticanalysis_staticanalysissinglefilesnapshot"
-WHERE "staticanalysis_staticanalysissinglefilesnapshot"."repository_id" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
+-- (empty)
 
 
 -- CommitReport
-DELETE
-FROM "reports_commitreport"
-WHERE "reports_commitreport"."commit_id" IN
-    (SELECT V0."id"
-     FROM "commits" V0
-     WHERE V0."repoid" IN
-         (SELECT U0."repoid"
-          FROM "repos" U0
-          WHERE U0."ownerid" IN (%s)));
--- [123]
+-- (empty)
 
 
 -- Commit
-DELETE
-FROM "commits"
-WHERE "commits"."repoid" IN
-    (SELECT U0."repoid"
-     FROM "repos" U0
-     WHERE U0."ownerid" IN (%s));
--- [123]
+-- (empty)
 
 
 -- Repository

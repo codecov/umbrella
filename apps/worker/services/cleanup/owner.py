@@ -14,7 +14,7 @@ CLEAR_ARRAY_FIELDS = ["plan_activated_users", "organizations", "admins"]
 
 
 def cleanup_owner(owner_id: int) -> CleanupSummary:
-    log.info("Started/Continuing Owner cleanup")
+    log.info("Started/Continuing Owner cleanup", extra={"ownerid": owner_id})
 
     clear_owner_references(owner_id)
     owner_query = Owner.objects.filter(ownerid=owner_id)
@@ -24,7 +24,7 @@ def cleanup_owner(owner_id: int) -> CleanupSummary:
 
     OwnerToBeDeleted.objects.filter(owner_id=owner_id).delete()
 
-    log.info("Owner cleanup finished", extra={"summary": summary})
+    log.info("Owner cleanup finished", extra={"ownerid": owner_id, "summary": summary})
     return summary
 
 

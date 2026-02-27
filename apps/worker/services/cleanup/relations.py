@@ -1,4 +1,5 @@
 import dataclasses
+import logging
 from collections import defaultdict
 from graphlib import TopologicalSorter
 
@@ -8,12 +9,15 @@ from django.db.models.lookups import Exact, In
 from django.db.models.query import QuerySet
 
 from database.models import Upload
+from shared.config import get_config
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.codecov_auth.models import Owner, OwnerProfile
 from shared.django_apps.core.models import Commit, Pull, Repository
 from shared.django_apps.test_analytics.models import TAPullComment, TAUpload
 from shared.django_apps.upload_breadcrumbs.models import UploadBreadcrumb
 from shared.django_apps.user_measurements.models import UserMeasurement
+
+log = logging.getLogger(__name__)
 
 # Relations referencing 0 through field 1 of model 2:
 IGNORE_RELATIONS: set[tuple[type[Model], str, type[Model]]] = {
@@ -158,6 +162,10 @@ def build_relation_graph(query: QuerySet) -> list[ModelQueries]:
     return [ModelQueries(model, nodes[model].querysets) for model in sorted_models]
 
 
+def _get_eager_eval_threshold() -> int:
+    return get_config("cleanup", "eager_eval_threshold", default=100_000)
+
+
 def simplified_lookup(queryset: QuerySet) -> QuerySet | list[int]:
     """
     This potentially simplifies simple primary key lookups.
@@ -172,6 +180,11 @@ def simplified_lookup(queryset: QuerySet) -> QuerySet | list[int]:
     This is hopefully slightly faster, as the DB will still do an index scan for
     a subquery like `foreign_pk IN (SELECT pk FROM table WHERE pk=123)`.
     In that case, the expression will be simplified to `foreign_pk IN (123)`.
+
+    For querysets that cannot be statically simplified, we attempt to eagerly
+    evaluate them to a flat list of PKs (up to EAGER_EVAL_THRESHOLD). This
+    prevents nested subquery chains where the planner loses cardinality estimates
+    and resorts to full table scans on large tables.
     """
     if queryset.query.is_sliced:
         return queryset
@@ -194,4 +207,21 @@ def simplified_lookup(queryset: QuerySet) -> QuerySet | list[int]:
         if isinstance(condition, In) and condition.rhs_is_direct_value():
             return condition.rhs
 
+    threshold = _get_eager_eval_threshold()
+    ids = list(queryset.values_list("pk", flat=True)[: threshold + 1])
+    if len(ids) <= threshold:
+        log.debug(
+            "simplified_lookup: materialized %d IDs for %s",
+            len(ids),
+            queryset.model.__name__,
+            extra={"count": len(ids), "model": queryset.model.__name__},
+        )
+        return ids
+
+    log.debug(
+        "simplified_lookup: %s exceeds threshold (%d), falling back to subquery",
+        queryset.model.__name__,
+        threshold,
+        extra={"model": queryset.model.__name__, "threshold": threshold},
+    )
     return queryset

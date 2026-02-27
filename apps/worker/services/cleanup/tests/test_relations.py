@@ -1,5 +1,8 @@
+from unittest.mock import patch
+
 import pytest
 import sqlparse
+from django.core.exceptions import EmptyResultSet
 from django.db.models.query import QuerySet
 from django.db.models.sql.subqueries import DeleteQuery
 
@@ -23,7 +26,11 @@ def dump_delete_queries(queryset: QuerySet) -> str:
 
         for query in relation.querysets:
             compiler = query.query.chain(DeleteQuery).get_compiler(query.db)
-            sql, params = compiler.as_sql()
+            try:
+                sql, params = compiler.as_sql()
+            except EmptyResultSet:
+                queries += "-- (empty)\n"
+                continue
             sql = sqlparse.format(sql, reindent=True, keyword_case="upper")
             queries += sql + ";\n"
             if params:
@@ -57,13 +64,17 @@ def test_can_simplify_queries():
     assert simplified_lookup(repo) == [123, 456]
 
     repo = Repository.objects.filter(fork=123)
-    assert simplified_lookup(repo) == repo
+    assert simplified_lookup(repo) == []
 
     owner_repos = Repository.objects.filter(author=123)
     repo = Repository.objects.filter(repoid__in=owner_repos)
-    # In theory, we could simplify this to forward directly to the  `owner_repo`
-    # subquery, but that would open too many opportunities to properly test.
-    assert simplified_lookup(repo) == repo
+    assert simplified_lookup(repo) == []
+
+    # Over-threshold: falls back to the original queryset.
+    # Threshold of -1 ensures any result (even empty) exceeds it.
+    repo = Repository.objects.filter(fork=123)
+    with patch("services.cleanup.relations._get_eager_eval_threshold", return_value=-1):
+        assert simplified_lookup(repo) == repo
 
 
 @pytest.mark.django_db
