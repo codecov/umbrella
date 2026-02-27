@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import math
 from collections import defaultdict
 from collections.abc import Iterable
 from graphlib import TopologicalSorter
@@ -188,6 +189,15 @@ def _chunked_in_filter(
         yield in_filter
         return
     chunk_size = _get_delete_chunk_size()
+    if len(in_filter) > chunk_size:
+        n_chunks = math.ceil(len(in_filter) / chunk_size)
+        log.debug(
+            "_chunked_in_filter: splitting %d IDs into %d chunks of %d",
+            len(in_filter),
+            n_chunks,
+            chunk_size,
+            extra={"count": len(in_filter), "chunks": n_chunks, "chunk_size": chunk_size},
+        )
     for i in range(0, max(len(in_filter), 1), chunk_size):
         yield in_filter[i : i + chunk_size]
 
