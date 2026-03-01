@@ -25,7 +25,11 @@ from database.models.core import (
     Repository,
 )
 from helpers.checkpoint_logger import from_kwargs as load_checkpoints_from_kwargs
-from helpers.checkpoint_logger.flows import TestResultsFlow, UploadFlow
+from helpers.checkpoint_logger.flows import (
+    BundleAnalysisFlow,
+    TestResultsFlow,
+    UploadFlow,
+)
 from helpers.clock import get_seconds_to_next_hour
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from helpers.log_context import LogContext, set_log_context
@@ -90,6 +94,8 @@ class BaseCodecovRequest(Request):
 
         if UploadFlow.has_begun():
             UploadFlow.log(UploadFlow.CELERY_TIMEOUT)
+        if BundleAnalysisFlow.has_begun():
+            BundleAnalysisFlow.log(BundleAnalysisFlow.CELERY_TIMEOUT)
         if TestResultsFlow.has_begun():
             TestResultsFlow.log(TestResultsFlow.CELERY_TIMEOUT)
 
@@ -364,6 +370,8 @@ class BaseCodecovTask(celery_app.Task):
             TASK_MAX_RETRIES_EXCEEDED_COUNTER.labels(task=self.name).inc()
             if UploadFlow.has_begun():
                 UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+            if BundleAnalysisFlow.has_begun():
+                BundleAnalysisFlow.log(BundleAnalysisFlow.UNCAUGHT_RETRY_EXCEPTION)
             if TestResultsFlow.has_begun():
                 TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
             sentry_sdk.capture_exception(
@@ -439,7 +447,9 @@ class BaseCodecovTask(celery_app.Task):
 
             log_context.populate_from_sqlalchemy(db_session)
             set_log_context(log_context)
-            load_checkpoints_from_kwargs([UploadFlow, TestResultsFlow], kwargs)
+            load_checkpoints_from_kwargs(
+                [UploadFlow, BundleAnalysisFlow, TestResultsFlow], kwargs
+            )
 
             self.task_run_counter.inc()
             if (
@@ -487,6 +497,10 @@ class BaseCodecovTask(celery_app.Task):
                 except MaxRetriesExceededError:
                     if UploadFlow.has_begun():
                         UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    if BundleAnalysisFlow.has_begun():
+                        BundleAnalysisFlow.log(
+                            BundleAnalysisFlow.UNCAUGHT_RETRY_EXCEPTION
+                        )
                     if TestResultsFlow.has_begun():
                         TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
                     return None
@@ -501,12 +515,18 @@ class BaseCodecovTask(celery_app.Task):
                 except MaxRetriesExceededError:
                     if UploadFlow.has_begun():
                         UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                    if BundleAnalysisFlow.has_begun():
+                        BundleAnalysisFlow.log(
+                            BundleAnalysisFlow.UNCAUGHT_RETRY_EXCEPTION
+                        )
                     if TestResultsFlow.has_begun():
                         TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
                     return None
-            except MaxRetriesExceededError as ex:
+            except MaxRetriesExceededError:
                 if UploadFlow.has_begun():
                     UploadFlow.log(UploadFlow.UNCAUGHT_RETRY_EXCEPTION)
+                if BundleAnalysisFlow.has_begun():
+                    BundleAnalysisFlow.log(BundleAnalysisFlow.UNCAUGHT_RETRY_EXCEPTION)
                 if TestResultsFlow.has_begun():
                     TestResultsFlow.log(TestResultsFlow.UNCAUGHT_RETRY_EXCEPTION)
             finally:
@@ -567,6 +587,8 @@ class BaseCodecovTask(celery_app.Task):
 
         if UploadFlow.has_begun():
             UploadFlow.log(UploadFlow.CELERY_FAILURE)
+        if BundleAnalysisFlow.has_begun():
+            BundleAnalysisFlow.log(BundleAnalysisFlow.CELERY_FAILURE)
         if TestResultsFlow.has_begun():
             TestResultsFlow.log(TestResultsFlow.CELERY_FAILURE)
 
@@ -730,6 +752,8 @@ class BaseCodecovTask(celery_app.Task):
         upload_ids: list[int] = [],
         error: Errors | None = None,
         error_text: str | None = None,
+        task_name: str | None = None,
+        parent_task_id: str | None = None,
     ):
         """
         Queue a task to create an upload breadcrumb.
@@ -740,7 +764,11 @@ class BaseCodecovTask(celery_app.Task):
                     "commit_sha": commit_sha,
                     "repo_id": repo_id,
                     "breadcrumb_data": BreadcrumbData(
-                        milestone=milestone, error=error, error_text=error_text
+                        milestone=milestone,
+                        error=error,
+                        error_text=error_text,
+                        task_name=task_name,
+                        parent_task_id=parent_task_id,
                     ),
                     "upload_ids": upload_ids,
                     "sentry_trace_id": current_sentry_trace_id(),
