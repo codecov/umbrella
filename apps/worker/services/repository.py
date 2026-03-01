@@ -150,6 +150,31 @@ async def fetch_appropriate_parent_for_commit(
                 closest_parent_without_message = parent.commitid
         elements = parents
 
+    is_default_branch_commit = bool(
+        commit.branch
+        and getattr(commit.repository, "branch", None)
+        and commit.branch == commit.repository.branch
+    )
+
+    if is_default_branch_commit:
+        default_branch_fallback_query = db_session.query(Commit.commitid).filter(
+            Commit.repoid == commit.repoid,
+            Commit.commitid != commit.commitid,
+            Commit.branch == commit.branch,
+            ~Commit.message.is_(None),
+            ~Commit.deleted.is_(True),
+        )
+        if commit.timestamp is not None:
+            default_branch_fallback_query = default_branch_fallback_query.filter(
+                Commit.timestamp < commit.timestamp
+            )
+
+        default_branch_fallback = default_branch_fallback_query.order_by(
+            Commit.timestamp.desc()
+        ).first()
+        if default_branch_fallback:
+            return default_branch_fallback.commitid
+
     log.warning(
         "Unable to find a parent commit that was properly found on Github",
         extra={"commit": commit.commitid, "repoid": commit.repoid},

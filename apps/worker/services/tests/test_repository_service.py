@@ -726,6 +726,81 @@ async def test_fetch_appropriate_parent_for_commit_multiple_parents(
     assert expected_result == result
 
 
+@pytest.mark.asyncio
+async def test_fetch_appropriate_parent_for_default_branch_commit_falls_back_to_latest_previous_known_commit_when_ancestors_unknown(
+    dbsession, mock_repo_provider
+):
+    repository = RepositoryFactory.create(branch="main")
+    latest_known_commit_id = "c" * 40
+    older_known_commit_id = "d" * 40
+
+    older_known_commit = CommitFactory.create(
+        commitid=older_known_commit_id,
+        repository=repository,
+        branch="main",
+        timestamp=datetime(2021, 3, 8),
+    )
+    latest_known_commit = CommitFactory.create(
+        commitid=latest_known_commit_id,
+        repository=repository,
+        branch="main",
+        timestamp=datetime(2021, 3, 9),
+    )
+    commit = CommitFactory.create(
+        parent_commit_id=None,
+        repository=repository,
+        branch="main",
+        timestamp=datetime(2021, 3, 10),
+    )
+    dbsession.add_all([older_known_commit, latest_known_commit, commit])
+    dbsession.flush()
+
+    git_commit = {"parents": ["a" * 40]}
+    mock_repo_provider.get_ancestors_tree.return_value = {
+        "commitid": commit.commitid,
+        "parents": [{"commitid": "a" * 40, "parents": []}],
+    }
+
+    result = await fetch_appropriate_parent_for_commit(
+        mock_repo_provider, commit, git_commit
+    )
+    assert result == latest_known_commit_id
+
+
+@pytest.mark.asyncio
+async def test_fetch_appropriate_parent_for_non_default_branch_commit_does_not_fallback_to_latest_previous_known_commit_when_ancestors_unknown(
+    dbsession, mock_repo_provider
+):
+    repository = RepositoryFactory.create(branch="main")
+    latest_known_commit_id = "c" * 40
+
+    latest_known_commit = CommitFactory.create(
+        commitid=latest_known_commit_id,
+        repository=repository,
+        branch="release",
+        timestamp=datetime(2021, 3, 9),
+    )
+    commit = CommitFactory.create(
+        parent_commit_id=None,
+        repository=repository,
+        branch="release",
+        timestamp=datetime(2021, 3, 10),
+    )
+    dbsession.add_all([latest_known_commit, commit])
+    dbsession.flush()
+
+    git_commit = {"parents": ["a" * 40]}
+    mock_repo_provider.get_ancestors_tree.return_value = {
+        "commitid": commit.commitid,
+        "parents": [{"commitid": "a" * 40, "parents": []}],
+    }
+
+    result = await fetch_appropriate_parent_for_commit(
+        mock_repo_provider, commit, git_commit
+    )
+    assert result is None
+
+
 @freeze_time("2024-03-28T00:00:00")
 def test_upsert_author_doesnt_exist(dbsession):
     service = "github"
