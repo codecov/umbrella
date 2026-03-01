@@ -7,6 +7,7 @@ from django.db.models.query import QuerySet
 from django.db.models.sql.subqueries import DeleteQuery
 
 from services.cleanup.relations import (
+    _chunked_in_filter,
     build_relation_graph,
     simplified_lookup,
 )
@@ -81,3 +82,47 @@ def test_can_simplify_queries():
 def test_leaf_table(snapshot):
     query = UploadLevelTotals.objects.all()
     assert dump_delete_queries(query) == snapshot("leaf.txt")
+
+
+def test_chunked_in_filter_passthrough():
+    # QuerySets are yielded unchanged
+    qs = Repository.objects.filter(repoid=1)
+    assert list(_chunked_in_filter(qs)) == [qs]
+
+
+def test_chunked_in_filter_empty_list():
+    # An empty list produces exactly one empty chunk so downstream
+    # filters generate an empty queryset rather than being skipped.
+    assert list(_chunked_in_filter([])) == [[]]
+
+
+def test_chunked_in_filter_splits():
+    # 3 IDs with chunk_size=2 → [[1, 2], [3]]
+    with patch("services.cleanup.relations._get_delete_chunk_size", return_value=2):
+        assert list(_chunked_in_filter([1, 2, 3])) == [[1, 2], [3]]
+
+
+@pytest.mark.django_db
+def test_chunks_large_in_filter():
+    """build_relation_graph produces multiple querysets when the materialized
+    ID list exceeds the chunk size."""
+    # Use a chunk size of 2 so that 3 upload IDs → 2 querysets on child tables.
+    with patch(
+        "services.cleanup.relations._get_delete_chunk_size", return_value=2
+    ), patch(
+        "services.cleanup.relations._get_eager_eval_threshold", return_value=10
+    ):
+        # simplified_lookup will materialise the repoid __in list [1, 2, 3]
+        repo_qs = Repository.objects.filter(repoid__in=[1, 2, 3])
+        relations = build_relation_graph(repo_qs)
+
+    repo_relation = next(r for r in relations if r.model is Repository)
+    # The root queryset is never split (it is the original QuerySet, not a list)
+    assert len(repo_relation.querysets) == 1
+
+    # At least one child model should have more than one queryset due to chunking
+    child_counts = [len(r.querysets) for r in relations if r.model is not Repository]
+    assert any(count > 1 for count in child_counts), (
+        "Expected at least one child model to have multiple querysets from chunking, "
+        f"but got counts: {child_counts}"
+    )
