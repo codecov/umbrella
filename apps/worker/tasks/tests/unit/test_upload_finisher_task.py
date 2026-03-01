@@ -21,6 +21,7 @@ from services.processing.merging import get_joined_flag, update_uploads
 from services.processing.types import MergeResult, ProcessingResult
 from services.timeseries import MeasurementName
 from shared.celery_config import (
+    DEFAULT_BLOCKING_TIMEOUT_SECONDS,
     compute_comparison_task_name,
     notify_task_name,
     pulls_task_name,
@@ -825,6 +826,44 @@ class TestUploadFinisherTask:
                     }
                 ),
             ]
+        )
+
+    @pytest.mark.django_db
+    def test_lock_manager_uses_finite_blocking_timeout(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
+        """LockManager must use a finite blocking_timeout so workers are not
+        blocked indefinitely when the lock is held by another task."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        lock_manager_cls = mocker.patch("tasks.upload_finisher.LockManager")
+        lock_manager_cls.return_value.locked.return_value.__enter__.side_effect = (
+            LockRetry(60)
+        )
+
+        task = UploadFinisherTask()
+        task.request.retries = 0
+        task.request.headers = {}
+
+        with pytest.raises(Retry):
+            task.run_impl(
+                dbsession,
+                [{"upload_id": 0, "successful": True, "arguments": {}}],
+                repoid=commit.repoid,
+                commitid=commit.commitid,
+                commit_yaml={},
+            )
+
+        assert lock_manager_cls.call_count >= 1
+        first_call_kwargs = lock_manager_cls.call_args_list[0].kwargs
+        assert (
+            first_call_kwargs["blocking_timeout"] == DEFAULT_BLOCKING_TIMEOUT_SECONDS
+        ), (
+            f"Expected blocking_timeout={DEFAULT_BLOCKING_TIMEOUT_SECONDS}, "
+            f"got {first_call_kwargs['blocking_timeout']}. "
+            "blocking_timeout=None causes worker pool exhaustion."
         )
 
     @pytest.mark.django_db
