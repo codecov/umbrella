@@ -276,15 +276,19 @@ class BaseCodecovTask(celery_app.Task):
 
     @property
     def attempts(self) -> int:
-        """Get attempts count including re-deliveries from visibility timeout expiration.
+        """Total number of times this task has executed, 1-indexed.
 
-        Reads the ``attempts`` header set by :meth:`retry` / :meth:`apply_async`.
-        Falls back to ``request.retries + 1`` when the header is absent (e.g.
-        tasks published by older code).
+        Returns 1 on the first execution, 2 on the first retry, etc.
+        The value is read from the ``attempts`` header that :meth:`retry`
+        and :meth:`apply_async` set on every dispatch.  When the header
+        is absent (e.g. tasks enqueued by older code), falls back to
+        ``request.retries + 1``.
 
-        **Not cached** – Celery retries reuse the same task ID, so a per-ID
-        cache returns stale values when a retry lands on a worker that
-        previously executed the same task.
+        The +1 accounts for Celery's ``request.retries`` being 0-indexed
+        (0 on the first run), converting it into an execution count.
+
+        Not cached: Celery retries reuse the same task ID, so a per-ID
+        cache would return stale values across retries.
         """
         request = getattr(self, "request", None)
         if request is None:
