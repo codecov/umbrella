@@ -4,12 +4,12 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app import celery_app
-from database.enums import ReportType
 from database.models import Commit
 from helpers.checkpoint_logger.flows import TestResultsFlow
 from services.lock_manager import LockManager, LockRetry, LockType
 from services.test_analytics.ta_finish_upload import ta_finish_upload
 from shared.celery_config import test_results_finisher_task_name
+from shared.django_apps.enums import ReportType
 from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 from tasks.notify import notify_task_name

@@ -2,7 +2,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from database.enums import Notification
 from database.tests.factories.core import CommitFactory
 from services.comparison import ComparisonProxy
 from services.comparison.types import FullCommit
@@ -20,6 +19,7 @@ from services.notification.notifiers.status import (
 )
 from services.notification.notifiers.status.base import StatusNotifier
 from services.urls import get_pull_url
+from shared.django_apps.enums import Notification
 from shared.reports.readonly import ReadOnlyReport
 from shared.reports.reportfile import ReportFile
 from shared.reports.resources import Report

@@ -8,7 +8,6 @@ from urllib.parse import quote_plus
 
 import sentry_sdk
 
-from database.enums import ReportType
 from database.models import (
     Commit,
     CommitReport,
@@ -24,6 +23,7 @@ from services.repository import EnrichedPull
 from services.urls import get_members_url, get_test_analytics_url
 from services.yaml import read_yaml_field
 from shared.django_apps.codecov_auth.models import Plan
+from shared.django_apps.enums import ReportType
 from shared.plan.constants import TierName
 from shared.yaml import UserYaml
 

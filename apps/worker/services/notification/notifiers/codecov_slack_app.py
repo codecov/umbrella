@@ -4,7 +4,6 @@ from decimal import Decimal
 
 import requests
 
-from database.enums import Notification
 from database.models import Commit
 from services.comparison import ComparisonProxy
 from services.notification.notifiers.base import (
@@ -14,6 +13,7 @@ from services.notification.notifiers.base import (
 from services.notification.notifiers.generics import EnhancedJSONEncoder
 from services.urls import get_commit_url, get_pull_url
 from services.yaml.reader import round_number
+from shared.django_apps.enums import Notification
 
 CODECOV_INTERNAL_TOKEN = os.environ.get("CODECOV_INTERNAL_TOKEN")
 CODECOV_SLACK_APP_URL = os.environ.get("CODECOV_SLACK_APP_URL")

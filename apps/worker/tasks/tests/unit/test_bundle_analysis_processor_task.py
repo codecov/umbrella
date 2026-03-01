@@ -2,7 +2,6 @@ import pytest
 from celery.exceptions import Retry
 from redis.exceptions import LockError
 
-from database.enums import ReportType
 from database.models import CommitReport, Upload
 from database.tests.factories import CommitFactory, RepositoryFactory, UploadFactory
 from services.bundle_analysis.report import ProcessingError, ProcessingResult
@@ -11,6 +10,7 @@ from shared.api_archive.archive import ArchiveService
 from shared.bundle_analysis.storage import get_bucket_name
 from shared.celery_config import BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 from shared.django_apps.bundle_analysis.models import CacheConfig
+from shared.django_apps.enums import ReportType
 from shared.storage.exceptions import PutRequestRateLimitError
 from tasks.bundle_analysis_processor import BundleAnalysisProcessorTask
 from tasks.bundle_analysis_save_measurements import (

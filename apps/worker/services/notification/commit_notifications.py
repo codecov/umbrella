@@ -2,13 +2,13 @@ import logging
 
 from sqlalchemy.orm.session import Session
 
-from database.enums import NotificationState
 from database.models import CommitNotification, Pull
 from services.comparison import ComparisonProxy
 from services.notification.notifiers.base import (
     AbstractBaseNotifier,
     NotificationResult,
 )
+from shared.django_apps.enums import NotificationState
 
 log = logging.getLogger(__name__)
 

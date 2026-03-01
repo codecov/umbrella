@@ -3,10 +3,10 @@ from collections.abc import Iterator
 from datetime import datetime, timedelta
 
 from app import celery_app
-from database.enums import Decoration
 from database.models import Owner, Pull, Repository
 from helpers.metrics import metrics
 from shared.celery_config import new_user_activated_task_name, notify_task_name
+from shared.django_apps.enums import Decoration
 from shared.plan.service import PlanService
 from tasks.base import BaseCodecovTask
 

@@ -2,9 +2,9 @@ import logging
 
 from app import celery_app
 from celery_config import trial_expiration_cron_task_name, trial_expiration_task_name
-from database.enums import TrialStatus
 from database.models.core import Owner
 from helpers.clock import get_utc_now
+from shared.django_apps.enums import TrialStatus
 from shared.plan.constants import PlanName
 from tasks.crontasks import CodecovCronTask
 

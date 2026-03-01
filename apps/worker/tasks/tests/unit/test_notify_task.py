@@ -8,7 +8,6 @@ import respx
 from celery.exceptions import MaxRetriesExceededError, Retry
 from freezegun import freeze_time
 
-from database.enums import Decoration, Notification, NotificationState
 from database.models.core import CommitNotification
 from database.tests.factories import (
     CommitFactory,
@@ -38,6 +37,7 @@ from shared.celery_config import (
     new_user_activated_task_name,
     upload_breadcrumb_task_name,
 )
+from shared.django_apps.enums import Decoration, Notification, NotificationState
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
     Errors,

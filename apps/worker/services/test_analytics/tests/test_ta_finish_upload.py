@@ -5,7 +5,6 @@ from unittest.mock import call
 import pytest
 from django.db import transaction as django_transaction
 
-from database.enums import ReportType
 from database.tests.factories import (
     PullFactory,
     UploadFactory,
@@ -15,6 +14,7 @@ from services.test_analytics.ta_finish_upload import FinisherResult, ta_finish_u
 from services.yaml import UserYaml
 from shared.django_apps.core.models import Commit as DjangoCommit
 from shared.django_apps.core.models import Repository as DjangoRepo
+from shared.django_apps.enums import ReportType
 from shared.django_apps.reports.tests.factories import (
     UploadErrorFactory as DjangoUploadErrorFactory,
 )

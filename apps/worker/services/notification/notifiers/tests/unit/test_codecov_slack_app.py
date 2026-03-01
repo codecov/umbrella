@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
-from database.enums import Notification
 from services.notification.notifiers.codecov_slack_app import CodecovSlackAppNotifier
+from shared.django_apps.enums import Notification
 
 
 class TestCodecovSlackAppNotifier:
