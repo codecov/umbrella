@@ -153,7 +153,10 @@ class BundleAnalysisProcessorTask(
                     retry_num=self.request.retries,
                 )
                 return previous_result
-            self.retry(max_retries=self.max_retries, countdown=retry.countdown)
+            self.retry(
+                max_retries=self.max_retries,
+                countdown=retry.countdown,
+            )
 
     @staticmethod
     def _ba_report_already_exists(db_session, repoid: int, commitid: str) -> bool:

@@ -22,6 +22,8 @@ from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import OwnerFactory, RepositoryFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from shared.celery_config import (
+    TASK_RETRY_COUNTDOWN_MAX_SECONDS,
+    TASK_VISIBILITY_TIMEOUT_SECONDS,
     sync_repos_task_name,
     upload_breadcrumb_task_name,
     upload_task_name,
@@ -29,11 +31,46 @@ from shared.celery_config import (
 from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Errors
 from shared.plan.constants import PlanName
 from shared.torngit.exceptions import TorngitClientError
-from tasks.base import BaseCodecovRequest, BaseCodecovTask
+from tasks.base import (
+    BaseCodecovRequest,
+    BaseCodecovTask,
+)
 from tasks.base import celery_app as base_celery_app
 from tests.helpers import mock_all_plans_and_tiers
 
 here = Path(__file__)
+
+
+class TestClampRetryCountdown:
+    @pytest.mark.parametrize(
+        "hard_limit,countdown,expected",
+        [
+            # With a hard time limit: cap is TASK_VISIBILITY_TIMEOUT_SECONDS - hard_limit
+            (300, 0, 0),
+            (
+                300,
+                TASK_VISIBILITY_TIMEOUT_SECONDS - 300,
+                TASK_VISIBILITY_TIMEOUT_SECONDS - 300,
+            ),
+            (
+                300,
+                TASK_VISIBILITY_TIMEOUT_SECONDS - 299,
+                TASK_VISIBILITY_TIMEOUT_SECONDS - 300,
+            ),
+            (300, 99999, TASK_VISIBILITY_TIMEOUT_SECONDS - 300),
+            # With no hard time limit (0): falls back to TASK_RETRY_COUNTDOWN_MAX_SECONDS
+            (0, 99999, TASK_RETRY_COUNTDOWN_MAX_SECONDS),
+        ],
+    )
+    def test_clamp(self, mocker, hard_limit, countdown, expected):
+        mocker.patch.object(
+            BaseCodecovTask,
+            "hard_time_limit_task",
+            new_callable=PropertyMock,
+            return_value=hard_limit,
+        )
+        task = BaseCodecovTask()
+        assert task.clamp_retry_countdown(countdown) == expected
 
 
 @pytest.fixture
