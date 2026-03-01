@@ -42,6 +42,16 @@ def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
     ).order_by("timestamp")
 
 
+def get_testruns_for_uploads(uploads: QuerySet[ReportSession]) -> QuerySet[Testrun]:
+    upload_ids = [upload.id for upload in uploads]
+
+    # we won't process flakes for testruns older than 1 day
+    return Testrun.objects.filter(
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & Q(upload_id__in=upload_ids)
+    ).order_by("timestamp")
+
+
 def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
     # possible that we expire it and stop caring about it
     if test_id not in curr_flakes:
@@ -81,9 +91,12 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
-):
-    testruns = get_testruns(upload)
+    upload: ReportSession,
+    curr_flakes: dict[bytes, Flake],
+    repo_id: int,
+    testruns: list[Testrun],
+) -> list[Testrun]:
+    modified_testruns = []
 
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
@@ -94,11 +107,14 @@ def process_single_upload(
 
                 handle_pass(curr_flakes, test_id)
             case "failure" | "flaky_fail" | "error":
+                original_outcome = testrun.outcome
                 handle_failure(curr_flakes, test_id, testrun, repo_id)
+                if testrun.outcome != original_outcome:
+                    modified_testruns.append(testrun)
             case _:
                 continue
 
-    Testrun.objects.bulk_update(testruns, ["outcome"])
+    return modified_testruns
 
 
 @sentry_sdk.trace
@@ -120,12 +136,28 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
+    all_testruns = get_testruns_for_uploads(uploads)
+
+    testruns_by_upload = {}
+    for testrun in all_testruns:
+        if testrun.upload_id not in testruns_by_upload:
+            testruns_by_upload[testrun.upload_id] = []
+        testruns_by_upload[testrun.upload_id].append(testrun)
+
+    all_modified_testruns = []
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        upload_testruns = testruns_by_upload.get(upload.id, [])
+        modified_testruns = process_single_upload(
+            upload, curr_flakes, repo_id, upload_testruns
+        )
+        all_modified_testruns.extend(modified_testruns)
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
         )
+
+    if all_modified_testruns:
+        Testrun.objects.bulk_update(all_modified_testruns, ["outcome"])
 
     log.info(
         "process_flakes_for_commit: bulk creating flakes",
