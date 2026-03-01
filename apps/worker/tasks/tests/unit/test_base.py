@@ -770,6 +770,79 @@ class TestBaseCodecovTaskGetTotalAttempts:
         task.request.headers = {"attempts": 5}  # Higher due to re-delivery
         assert task.attempts == 5  # Should use header value
 
+    def test_attempts_not_stale_across_retries_same_request_id(self):
+        """Regression: attempts must reflect updated headers across retries.
+
+        Celery retries reuse the same task/request ID but the ``retry()``
+        override bumps the ``attempts`` header each time.  A previous
+        implementation cached the value keyed by request ID, so subsequent
+        reads on the same worker returned the stale first-seen value.  This
+        caused exponential backoff to never escalate and max_retries to never
+        be reached, producing infinite retry loops.
+        """
+        task = SampleTask()
+        task.request.id = "fixed-task-id-abc123"
+        max_retries = 5
+
+        for expected_attempt in range(1, max_retries + 2):
+            task.request.retries = max(expected_attempt - 1, 0)
+            task.request.headers = {"attempts": expected_attempt}
+
+            assert task.attempts == expected_attempt, (
+                f"Expected attempts={expected_attempt} on retry cycle "
+                f"{expected_attempt}, got {task.attempts} "
+                "(stale cache returning old value?)"
+            )
+
+            assert task._has_exceeded_max_attempts(max_retries) == (
+                expected_attempt >= max_retries
+            ), (
+                f"_has_exceeded_max_attempts wrong at attempt {expected_attempt} "
+                f"with max_retries={max_retries}"
+            )
+
+    def test_retry_propagates_incremented_attempts_header(self, mocker):
+        """End-to-end: retry() bumps the attempts header, and the next
+        read of ``attempts`` sees the new value -- not a cached one.
+
+        Simulates the full lifecycle: task reads attempts, calls retry(),
+        the retry re-executes the task with updated headers, and the new
+        execution reads the correct incremented value.
+        """
+        task = SampleTask()
+        task.request.id = "same-id-across-retries"
+        task.max_retries = 10
+
+        captured_headers: list[dict] = []
+
+        def capture_retry(max_retries=None, countdown=None, exc=None, **kwargs):
+            captured_headers.append(kwargs.get("headers", {}).copy())
+            raise Retry()
+
+        mocker.patch("celery.app.task.Task.retry", side_effect=capture_retry)
+
+        task.request.retries = 0
+        task.request.headers = {"attempts": 1}
+        assert task.attempts == 1
+
+        for cycle in range(1, 8):
+            with pytest.raises(Retry):
+                task.retry(max_retries=task.max_retries, countdown=10)
+
+            new_headers = captured_headers[-1]
+            assert new_headers["attempts"] == cycle + 1, (
+                f"retry() should set attempts={cycle + 1}, "
+                f"got {new_headers['attempts']}"
+            )
+
+            task.request.retries = cycle
+            task.request.headers = new_headers
+
+            assert task.attempts == cycle + 1, (
+                f"After retry cycle {cycle}, attempts should be {cycle + 1}, "
+                f"got {task.attempts} (stale cache?)"
+            )
+
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
 class TestBaseCodecovTaskHasExceededMaxAttempts:

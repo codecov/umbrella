@@ -276,33 +276,29 @@ class BaseCodecovTask(celery_app.Task):
 
     @property
     def attempts(self) -> int:
-        """Get attempts count including re-deliveries from visibility timeout expiration.
+        """Total number of times this task has executed, 1-indexed.
 
-        This is a property (not an instance variable) because:
-        1. The request object is set by Celery after task instantiation (not available in __init__)
-        2. We need to handle task reuse across different executions (different request IDs)
-        3. We need to handle cases where request doesn't exist yet
+        Returns 1 on the first execution, 2 on the first retry, etc.
+        The value is read from the ``attempts`` header that :meth:`retry`
+        and :meth:`apply_async` set on every dispatch.  When the header
+        is absent (e.g. tasks enqueued by older code), falls back to
+        ``request.retries + 1``.
 
-        The value is cached in __dict__ keyed by request ID to avoid recomputation.
+        The +1 accounts for Celery's ``request.retries`` being 0-indexed
+        (0 on the first run), converting it into an execution count.
+
+        Not cached: Celery retries reuse the same task ID, so a per-ID
+        cache would return stale values across retries.
         """
         request = getattr(self, "request", None)
         if request is None:
             return 0
 
-        # Cache the computed value keyed by request ID to handle task reuse across executions
-        request_id = getattr(request, "id", None)
-        cache_key = f"_attempts_{request_id}" if request_id else "_attempts"
-
-        if cache_key in self.__dict__:
-            return self.__dict__[cache_key]
-
         headers = _get_request_headers(request)
         attempts_header = headers.get("attempts")
         if attempts_header is not None:
             try:
-                attempts_value = int(attempts_header)
-                self.__dict__[cache_key] = attempts_value
-                return attempts_value
+                return int(attempts_header)
             except (ValueError, TypeError):
                 log.warning(
                     "Invalid attempts header value",
@@ -311,10 +307,7 @@ class BaseCodecovTask(celery_app.Task):
                         "retry_count": getattr(request, "retries", 0),
                     },
                 )
-        retry_count = getattr(request, "retries", 0)
-        attempts_value = retry_count + 1
-        self.__dict__[cache_key] = attempts_value
-        return attempts_value
+        return getattr(request, "retries", 0) + 1
 
     def _has_exceeded_max_attempts(self, max_retries: int | None) -> bool:
         """Return True if attempts >= max_retries (max_retries is max total attempts)."""
