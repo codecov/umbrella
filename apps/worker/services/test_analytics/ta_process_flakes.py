@@ -19,7 +19,7 @@ KEY_NAME = "ta_flake_key:{}"
 
 
 def get_relevant_uploads(repo_id: int, commit_id: str) -> QuerySet[ReportSession]:
-    return ReportSession.objects.filter(
+    return ReportSession.objects.select_related("report").filter(
         report__report_type=CommitReport.ReportType.TEST_RESULTS.value,
         report__commit__repository__repoid=repo_id,
         report__commit__commitid=commit_id,
