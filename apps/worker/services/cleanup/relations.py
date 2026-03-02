@@ -1,6 +1,8 @@
 import dataclasses
 import logging
+import math
 from collections import defaultdict
+from collections.abc import Iterable
 from graphlib import TopologicalSorter
 
 from django.db.models import Model
@@ -155,8 +157,9 @@ def build_relation_graph(query: QuerySet) -> list[ModelQueries]:
                     for in_filter in in_filters
                 )
                 related_node.querysets = [
-                    related_model.objects.filter(**{f"{field}__in": in_filter})
+                    related_model.objects.filter(**{f"{field}__in": chunk})
                     for field, in_filter in queries_to_build
+                    for chunk in _chunked_in_filter(in_filter)
                 ]
 
     return [ModelQueries(model, nodes[model].querysets) for model in sorted_models]
@@ -164,6 +167,39 @@ def build_relation_graph(query: QuerySet) -> list[ModelQueries]:
 
 def _get_eager_eval_threshold() -> int:
     return get_config("cleanup", "eager_eval_threshold", default=100_000)
+
+
+def _get_delete_chunk_size() -> int:
+    return get_config("cleanup", "delete_chunk_size", default=10_000)
+
+
+def _chunked_in_filter(
+    in_filter: QuerySet | list[int],
+) -> Iterable[QuerySet | list[int]]:
+    """
+    Splits a materialized list of IDs into chunks for use in __in filters.
+
+    When in_filter is a QuerySet it is yielded as-is (the DB will handle it).
+    When it is a list (materialized by simplified_lookup), it is split into
+    chunks of at most _get_delete_chunk_size() entries so that the resulting
+    DELETE ... WHERE id IN (...) statements stay below ~50 KB each, preventing
+    connection drops on owners with tens of thousands of child rows.
+    """
+    if not isinstance(in_filter, list):
+        yield in_filter
+        return
+    chunk_size = _get_delete_chunk_size()
+    if len(in_filter) > chunk_size:
+        n_chunks = math.ceil(len(in_filter) / chunk_size)
+        log.debug(
+            "_chunked_in_filter: splitting %d IDs into %d chunks of %d",
+            len(in_filter),
+            n_chunks,
+            chunk_size,
+            extra={"count": len(in_filter), "chunks": n_chunks, "chunk_size": chunk_size},
+        )
+    for i in range(0, max(len(in_filter), 1), chunk_size):
+        yield in_filter[i : i + chunk_size]
 
 
 def simplified_lookup(queryset: QuerySet) -> QuerySet | list[int]:
