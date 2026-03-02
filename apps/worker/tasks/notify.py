@@ -220,10 +220,55 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         milestone = Milestones.NOTIFICATIONS_SENT
 
         log.info("Starting notifications", extra={"commit": commitid, "repoid": repoid})
+
+        db_session.expire_all()
+
         commits_query = db_session.query(Commit).filter(
             Commit.repoid == repoid, Commit.commitid == commitid
         )
         commit: Commit = commits_query.first()
+
+        if commit is None:
+            retry_count = getattr(self.request, "retries", 0)
+            max_retries = 3
+
+            if retry_count < max_retries:
+                countdown = 5 * (2**retry_count)
+                log.warning(
+                    "Commit not found in database, retrying",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "retry_count": retry_count,
+                        "max_retries": max_retries,
+                        "countdown": countdown,
+                    },
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    error=Errors.INTERNAL_RETRYING,
+                )
+                self.retry(max_retries=max_retries, countdown=countdown)
+            else:
+                log.error(
+                    "Commit not found in database after max retries",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "retry_count": retry_count,
+                        "max_retries": max_retries,
+                    },
+                )
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    error=Errors.INTERNAL_OUT_OF_RETRIES,
+                )
+                raise AssertionError("Commit not found in database.")
+
         assert commit, "Commit not found in database."
 
         any_failures, all_tests_passed = get_test_status(commit.repoid, commit.commitid)
@@ -369,8 +414,9 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             )
             ghapp_default_installations = list(
                 filter(
-                    lambda obj: obj.name == installation_name_to_use
-                    and obj.is_configured(),
+                    lambda obj: (
+                        obj.name == installation_name_to_use and obj.is_configured()
+                    ),
                     commit.repository.author.github_app_installations or [],
                 )
             )
