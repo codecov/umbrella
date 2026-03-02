@@ -2358,7 +2358,6 @@ class Github(TorngitBaseAdapter):
                 "get",
                 url,
                 token=token,
-                headers={"Accept": "application/vnd.github.groot-preview+json"},
             )
             return [r["name"] for r in res]
 

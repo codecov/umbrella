@@ -227,9 +227,13 @@ def _filter_rate_limited_apps(
     redis_connection = get_redis_connection()
     return list(
         filter(
-            lambda obj: not determine_if_entity_is_rate_limited(
-                redis_connection,
-                gh_app_key_name(app_id=obj.app_id, installation_id=obj.installation_id),
+            lambda obj: (
+                not determine_if_entity_is_rate_limited(
+                    redis_connection,
+                    gh_app_key_name(
+                        app_id=obj.app_id, installation_id=obj.installation_id
+                    ),
+                )
             ),
             apps_to_consider,
         )
