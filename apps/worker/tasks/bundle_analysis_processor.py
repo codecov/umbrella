@@ -198,7 +198,36 @@ class BundleAnalysisProcessorTask(
         commit = (
             db_session.query(Commit).filter_by(repoid=repoid, commitid=commitid).first()
         )
-        assert commit, "commit not found"
+
+        if commit is None:
+            if self._has_exceeded_max_attempts(self.max_retries):
+                log.error(
+                    "Commit not found after max retries",
+                    extra={
+                        "repoid": repoid,
+                        "commitid": commitid,
+                        "attempts": self.attempts,
+                        "max_retries": self.max_retries,
+                    },
+                )
+                processing_results = (
+                    previous_result if isinstance(previous_result, list) else []
+                )
+                return processing_results
+
+            log.warning(
+                "Commit not found, retrying",
+                extra={
+                    "repoid": repoid,
+                    "commitid": commitid,
+                    "attempts": self.attempts,
+                    "max_retries": self.max_retries,
+                },
+            )
+            self.retry(
+                max_retries=self.max_retries,
+                countdown=10 * (2**self.request.retries),
+            )
 
         report_service = BundleAnalysisReportService(commit_yaml)
 

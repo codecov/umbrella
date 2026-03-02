@@ -597,6 +597,73 @@ def test_bundle_analysis_processor_task_uses_ba_retry_countdown(
     )
 
 
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_bundle_analysis_processor_commit_not_found_retries(
+    mocker,
+    dbsession,
+    mock_redis,
+):
+    """
+    Test that when commit is not found, the task retries with exponential backoff.
+    This handles the race condition where the commit hasn't been committed yet.
+    """
+    task = BundleAnalysisProcessorTask()
+    task.request.retries = 0
+    task.request.headers = {}
+
+    mock_redis.lock.return_value.__enter__.return_value = True
+    mock_redis.lock.return_value.__exit__.return_value = True
+    mock_redis.incr.return_value = 0
+
+    with pytest.raises(Retry) as exc_info:
+        task.run_impl(
+            dbsession,
+            [{"previous": "result"}],
+            repoid=999999,
+            commitid="nonexistent_commit_sha",
+            commit_yaml={},
+            params={
+                "upload_id": 12345,
+                "commit": "nonexistent_commit_sha",
+            },
+        )
+
+    assert exc_info.value.when == 10
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_bundle_analysis_processor_commit_not_found_max_retries_exceeded(
+    mocker,
+    dbsession,
+    mock_redis,
+):
+    """
+    Test that when commit is not found and max retries are exceeded,
+    the task returns gracefully instead of crashing.
+    """
+    task = BundleAnalysisProcessorTask()
+    task.request.retries = BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
+    task.request.headers = {}
+
+    mock_redis.lock.return_value.__enter__.return_value = True
+    mock_redis.lock.return_value.__exit__.return_value = True
+    mock_redis.incr.return_value = 0
+
+    result = task.run_impl(
+        dbsession,
+        [{"previous": "result"}],
+        repoid=999999,
+        commitid="nonexistent_commit_sha",
+        commit_yaml={},
+        params={
+            "upload_id": 12345,
+            "commit": "nonexistent_commit_sha",
+        },
+    )
+
+    assert result == [{"previous": "result"}]
+
+
 def test_bundle_analysis_process_upload_rate_limit_error(
     mocker,
     dbsession,
