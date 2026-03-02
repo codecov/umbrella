@@ -15,6 +15,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitObjectNotFoundError,
     TorngitRepoNotFoundError,
+    TorngitServer5xxCodeError,
 )
 from tasks.commit_update import CommitUpdateTask
 
@@ -252,6 +253,59 @@ class TestCommitUpdate:
                 "repo_id": commit.repository.repoid,
                 "breadcrumb_data": BreadcrumbData(
                     milestone=Milestones.COMMIT_PROCESSED, error=Errors.GIT_CLIENT_ERROR
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
+
+    def test_update_commit_server_5xx_error(
+        self,
+        mocker,
+        mock_configuration,
+        dbsession,
+        mock_redis,
+        mock_repo_provider,
+        mock_storage,
+        mock_self_app,
+    ):
+        mock_repo_provider.get_commit.return_value = {
+            "author": {
+                "id": "author_id",
+                "username": "author_username",
+                "email": "email@email.com",
+                "name": "Test Author",
+            },
+            "message": "Test commit message",
+            "parents": [],
+            "timestamp": "2024-01-01T00:00:00Z",
+        }
+        mock_repo_provider.find_pull_request.return_value = None
+        mock_repo_provider.get_best_effort_branches.side_effect = (
+            TorngitServer5xxCodeError("Github is having 5xx issues")
+        )
+        commit = CommitFactory.create(
+            message="",
+            parent_commit_id=None,
+            repository__author__unencrypted_oauth_token="ghp_test3c8iyfspq6h4s9ugpmq19qp7826rv20o",
+            repository__author__username="test-acc9",
+            repository__yaml={"codecov": {"max_report_age": "764y ago"}},
+            repository__name="test_example",
+        )
+        dbsession.add(commit)
+        dbsession.flush()
+
+        result = CommitUpdateTask().run_impl(dbsession, commit.repoid, commit.commitid)
+        expected_result = {"was_updated": False}
+        assert expected_result == result
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": commit.commitid,
+                "repo_id": commit.repository.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    milestone=Milestones.COMMIT_PROCESSED
                 ),
                 "upload_ids": [],
                 "sentry_trace_id": None,
