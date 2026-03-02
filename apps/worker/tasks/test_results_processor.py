@@ -5,6 +5,7 @@ import logging
 from app import celery_app
 from services.processing.types import UploadArguments
 from services.test_analytics.ta_processor import ta_processor
+from services.test_analytics.ta_timeseries import get_flaky_tests_set
 from shared.celery_config import test_results_processor_task_name
 from tasks.base import BaseCodecovTask
 
@@ -25,6 +26,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
         arguments_list: list[UploadArguments],
         **kwargs,
     ) -> bool:
+        flaky_test_set = get_flaky_tests_set(repoid)
         for argument in arguments_list:
             ta_processor(
                 repoid=repoid,
@@ -32,6 +34,7 @@ class TestResultsProcessorTask(BaseCodecovTask, name=test_results_processor_task
                 commit_yaml=commit_yaml,
                 argument=argument,
                 update_state=True,
+                flaky_test_set=flaky_test_set,
             )
         return True
 

@@ -31,6 +31,7 @@ def ta_processor(
     commit_yaml: dict[str, Any],
     argument: UploadArguments,
     update_state: bool = False,
+    flaky_test_set: set[bytes] | None = None,
 ) -> bool:
     log.info("Processing single TA argument")
 
@@ -98,7 +99,7 @@ def ta_processor(
 
     with write_tests_summary.labels("new").time():
         insert_testruns_timeseries(
-            repoid, commitid, ta_proc_info.branch, upload, parsing_infos
+            repoid, commitid, ta_proc_info.branch, upload, parsing_infos, flaky_test_set
         )
 
     if update_state:
@@ -226,8 +227,10 @@ def insert_testruns_timeseries(
     branch: str | None,
     upload: ReportSession,
     parsing_infos: list[test_results_parser.ParsingInfo],
+    flaky_test_set: set[bytes] | None = None,
 ):
-    flaky_test_set = get_flaky_tests_set(repoid)
+    if flaky_test_set is None:
+        flaky_test_set = get_flaky_tests_set(repoid)
 
     for parsing_info in parsing_infos:
         insert_testrun(
