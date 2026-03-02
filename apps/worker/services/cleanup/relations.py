@@ -154,10 +154,13 @@ def build_relation_graph(query: QuerySet) -> list[ModelQueries]:
                     for field in related_fields
                     for in_filter in in_filters
                 )
-                related_node.querysets = [
+                new_querysets = [
                     related_model.objects.filter(**{f"{field}__in": in_filter})
                     for field, in_filter in queries_to_build
                 ]
+                for qs in new_querysets:
+                    qs._for_write = True
+                related_node.querysets = new_querysets
 
     return [ModelQueries(model, nodes[model].querysets) for model in sorted_models]
 

@@ -22,6 +22,7 @@ def cleanup_old_uploads(context: CleanupContext):
                 break
 
             uploads_query = Upload.objects.filter(pk__in=upload_ids)
+            uploads_query._for_write = True
             cleanup_queryset(uploads_query, context)
 
 
@@ -55,6 +56,7 @@ def create_upload_cleanup_queries() -> list[QuerySet]:
         if begin_timestamp:
             query = query.filter(created_at__gte=begin_timestamp)
         query = query.filter(created_at__lt=timestamp)
+        query._for_write = True
         queries.append(query)
 
         begin_timestamp = timestamp

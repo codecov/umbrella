@@ -17,14 +17,20 @@ CleanupJob = Callable[[CleanupContext], None]
 def run_regular_cleanup() -> CleanupSummary:
     log.info("Starting regular cleanup job")
 
+    static_analysis_query = StaticAnalysisSingleFileSnapshot.objects.all()
+    static_analysis_query._for_write = True
+
+    commit_report_query = CommitReport.objects.filter(code__isnull=False)
+    commit_report_query._for_write = True
+
     cleanup_jobs: list[tuple[str, CleanupJob]] = [
         (
             "Static Analysis Files",
-            partial(cleanup_queryset, StaticAnalysisSingleFileSnapshot.objects.all()),
+            partial(cleanup_queryset, static_analysis_query),
         ),
         (
             '`CommitReport`s for "local uploads"',
-            partial(cleanup_queryset, CommitReport.objects.filter(code__isnull=False)),
+            partial(cleanup_queryset, commit_report_query),
         ),
         ("old `Upload`s", cleanup_old_uploads),
         # TODO: re-institute this job with https://linear.app/getsentry/issue/CCMRG-1355

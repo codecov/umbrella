@@ -31,6 +31,7 @@ def cleanup_repo(repo_id: int) -> CleanupSummary:
         log.info("Continuing Repository cleanup")
 
     repo_query = Repository.objects.filter(repoid=repo_id)
+    repo_query._for_write = True
     with cleanup_context() as context:
         cleanup_queryset(repo_query, context)
         summary = context.summary

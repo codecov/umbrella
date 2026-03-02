@@ -18,6 +18,7 @@ def cleanup_owner(owner_id: int) -> CleanupSummary:
 
     clear_owner_references(owner_id)
     owner_query = Owner.objects.filter(ownerid=owner_id)
+    owner_query._for_write = True
     with cleanup_context() as context:
         cleanup_queryset(owner_query, context)
         summary = context.summary
