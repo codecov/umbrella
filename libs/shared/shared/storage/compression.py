@@ -31,10 +31,9 @@ def zstd_decoded_by_default() -> bool:
     if version < "2.0.0":
         return False
 
-    distribution = importlib.metadata.metadata("urllib3")
-    if requires_dist := distribution.get_all("Requires-Dist"):
-        for req in requires_dist:
-            if "[zstd]" in req:
-                return True
+    try:
+        import zstandard  # noqa: F401, PLC0415
 
-    return False
+        return True
+    except ImportError:
+        return False

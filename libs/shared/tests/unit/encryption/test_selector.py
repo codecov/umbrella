@@ -101,7 +101,7 @@ def test_decrypt_token_key_normal_generated_with_secret_pair():
     different_enc = EncryptorDivider(enc_dict, "abd")
     encoded = different_enc.encode(value)
     res = different_enc.decrypt_token(encoded)
-    assert res == {"key": value.split(":")[0], "secret": value.split(":")[1]}
+    assert res == {"key": value.split(":", maxsplit=1)[0], "secret": value.split(":")[1]}
 
 
 def test_decrypt_token_key_normal_generated_with_secret_pair_refresh():

@@ -13,7 +13,21 @@ BUCKET_NAME = "archivetest"
 
 
 def test_zstd_by_default():
-    assert not zstd_decoded_by_default()
+    import importlib.metadata  # noqa: PLC0415
+
+    try:
+        version = importlib.metadata.version("urllib3")
+        if version >= "2.0.0":
+            try:
+                import zstandard  # noqa: F401, PLC0415
+
+                assert zstd_decoded_by_default()
+            except ImportError:
+                assert not zstd_decoded_by_default()
+        else:
+            assert not zstd_decoded_by_default()
+    except importlib.metadata.PackageNotFoundError:
+        assert not zstd_decoded_by_default()
 
 
 def test_gzip_stream_compression():
