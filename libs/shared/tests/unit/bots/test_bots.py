@@ -4,6 +4,7 @@ import pytest
 from django.utils import timezone
 
 from shared.bots import get_adapter_auth_information
+from shared.bots.repo_bots import get_repo_appropriate_bot_token
 from shared.bots.types import AdapterAuthInformation
 from shared.django_apps.codecov_auth.models import (
     GITHUB_APP_INSTALLATION_DEFAULT_NAME,
@@ -11,6 +12,7 @@ from shared.django_apps.codecov_auth.models import (
 )
 from shared.django_apps.codecov_auth.tests.factories import OwnerFactory
 from shared.django_apps.core.tests.factories import RepositoryFactory
+from shared.github import InvalidInstallationError
 from shared.torngit.base import TokenType
 from shared.typings.oauth_token_types import Token
 from shared.typings.torngit import GithubInstallationInfo
@@ -667,3 +669,73 @@ class TestGettingAdapterAuthInformation:
             },
         )
         assert get_adapter_auth_information(repo.author, repo) == expected
+
+    @patch("shared.bots.repo_bots.get_github_app_token")
+    @pytest.mark.django_db
+    def test_fallback_when_installation_invalid_with_repo_bot(
+        self, mock_get_github_app_token
+    ):
+        """Test that when a GitHub installation is invalid, we fall back to repo bot token."""
+        mock_get_github_app_token.side_effect = InvalidInstallationError(
+            "installation_not_found"
+        )
+
+        repo = RepositoryFactory(
+            author__service="github",
+            private=True,
+            bot=OwnerFactory(
+                service="github",
+                unencrypted_oauth_token="repo_bot_token: :repo_bot_refresh_token",
+            ),
+        )
+        repo.save()
+
+        installation_info = GithubInstallationInfo(
+            id=123,
+            installation_id=1200,
+            app_id=200,
+            pem_path="pem_path",
+        )
+
+        token, token_owner = get_repo_appropriate_bot_token(repo, installation_info)
+
+        assert token["key"] == "repo_bot_token"
+        assert token["refresh_token"] == "repo_bot_refresh_token"
+        assert token_owner == repo.bot
+
+    @patch("shared.bots.repo_bots.get_github_app_token")
+    @pytest.mark.django_db
+    def test_fallback_when_installation_invalid_public_repo_uses_public_bot(
+        self, mock_get_github_app_token, mocker
+    ):
+        """Test that when a GitHub installation is invalid for a public repo with no bot, we fall back to public bot."""
+        mock_get_github_app_token.side_effect = InvalidInstallationError(
+            "installation_not_found"
+        )
+
+        repo = RepositoryFactory(
+            author__service="github",
+            private=False,
+            bot=None,
+            author__oauth_token=None,
+        )
+        repo.save()
+
+        mock_config_helper(
+            mocker,
+            configs={
+                "github.bots.tokenless": {"key": "tokenless_bot_token"},
+            },
+        )
+
+        installation_info = GithubInstallationInfo(
+            id=123,
+            installation_id=1200,
+            app_id=200,
+            pem_path="pem_path",
+        )
+
+        token, token_owner = get_repo_appropriate_bot_token(repo, installation_info)
+
+        assert token["key"] == "tokenless_bot_token"
+        assert token_owner is None

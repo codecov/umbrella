@@ -13,6 +13,7 @@ from shared.django_apps.codecov_auth.models import Owner, Service
 from shared.django_apps.core.models import Repository
 from shared.encryption.oauth import get_encryptor_from_configuration
 from shared.environment.environment import is_enterprise
+from shared.github import InvalidInstallationError
 from shared.orms.repository_helper import DjangoSQLAlchemyRepositoryWrapper
 from shared.rate_limits import owner_key_name
 from shared.typings.torngit import GithubInstallationInfo
@@ -69,7 +70,14 @@ def get_repo_appropriate_bot_token(
 
     if installation_info:
         log.info("Using github installation", extra=extra_info_to_log)
-        return get_github_app_token(service, installation_info)
+        try:
+            return get_github_app_token(service, installation_info)
+        except InvalidInstallationError:
+            log.warning(
+                "GitHub installation invalid, falling back to other bot tokens",
+                extra=extra_info_to_log,
+            )
+            # Fall through to try other authentication methods
     try:
         token_dict, appropriate_bot = get_repo_particular_bot_token(repo)
         log.info("Using repo particular bot", extra=extra_info_to_log)
