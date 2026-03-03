@@ -33,7 +33,9 @@ from shared.storage.exceptions import BucketAlreadyExistsError, FileNotInStorage
 log = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 10
-READ_TIMEOUT = 60
+READ_TIMEOUT = (
+    300  # 5 minutes; GCS multipart upload completion can take several minutes
+)
 
 
 def init_minio_client(
