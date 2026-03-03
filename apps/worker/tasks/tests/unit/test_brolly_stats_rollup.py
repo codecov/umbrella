@@ -173,3 +173,29 @@ class TestBrollyStatsRollupTask:
                 "admin_email": "hello",
             },
         }
+
+    @respx.mock
+    def test_run_cron_task_timeout(self, dbsession, install_id, version):
+        mock_request = respx.post(DEFAULT_BROLLY_ENDPOINT).mock(
+            side_effect=httpx.TimeoutException("The read operation timed out")
+        )
+
+        task = BrollyStatsRollupTask()
+        result = task.run_cron_task(dbsession)
+        assert mock_request.called
+        assert result["uploaded"] is False
+        assert result["reason"] == "timeout"
+        assert "payload" in result
+
+    @respx.mock
+    def test_run_cron_task_http_error(self, dbsession, install_id, version):
+        mock_request = respx.post(DEFAULT_BROLLY_ENDPOINT).mock(
+            side_effect=httpx.ConnectError("Connection failed")
+        )
+
+        task = BrollyStatsRollupTask()
+        result = task.run_cron_task(dbsession)
+        assert mock_request.called
+        assert result["uploaded"] is False
+        assert result["reason"] == "http_error"
+        assert "payload" in result

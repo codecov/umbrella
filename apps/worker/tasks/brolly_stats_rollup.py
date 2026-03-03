@@ -103,22 +103,40 @@ class BrollyStatsRollupTask(CodecovCronTask, name=brolly_stats_rollup_task_name)
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
-        res = httpx.Client().post(
-            url=brolly_endpoint,
-            content=json.dumps(payload),
-            headers=headers,
-        )
 
-        match res.status_code:
-            case httpx.codes.OK:
-                log.info(
-                    "Successfully uploaded stats to brolly", extra={"response": res}
+        timeout = get_config("setup", "telemetry", "timeout", default=30)
+
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                res = client.post(
+                    url=brolly_endpoint,
+                    content=json.dumps(payload),
+                    headers=headers,
                 )
-            case _:
-                log.error("Failed to upload stats to brolly", extra={"response": res})
-                return {"uploaded": False, "payload": payload}
 
-        return {"uploaded": True, "payload": payload}
+            match res.status_code:
+                case httpx.codes.OK:
+                    log.info(
+                        "Successfully uploaded stats to brolly", extra={"response": res}
+                    )
+                case _:
+                    log.error(
+                        "Failed to upload stats to brolly", extra={"response": res}
+                    )
+                    return {"uploaded": False, "payload": payload}
+
+            return {"uploaded": True, "payload": payload}
+        except httpx.TimeoutException as e:
+            log.warning(
+                "Timeout while uploading stats to brolly",
+                extra={"error": str(e), "timeout": timeout},
+            )
+            return {"uploaded": False, "reason": "timeout", "payload": payload}
+        except httpx.HTTPError as e:
+            log.warning(
+                "HTTP error while uploading stats to brolly", extra={"error": str(e)}
+            )
+            return {"uploaded": False, "reason": "http_error", "payload": payload}
 
 
 RegisteredBrollyStatsRollupTask = celery_app.register_task(BrollyStatsRollupTask())
