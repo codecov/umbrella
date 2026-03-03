@@ -412,7 +412,7 @@ class SyncReposTask(BaseCodecovTask, name=sync_repos_task_name):
                         private_project_ids.append(int(_repoid))
                 if repo["repo"]["private"]:
                     private_project_ids.append(int(repoid))
-                db_session.commit()
+                db_session.flush()
 
         try:
             async for page in git.list_repos_generator():
