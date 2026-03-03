@@ -28,6 +28,23 @@ def get_testruns(upload_id: int) -> QuerySet[Testrun]:
     ).order_by("timestamp")
 
 
+def get_testruns_bulk(upload_ids: list[int]) -> dict[int, list[Testrun]]:
+    """Fetch testruns for multiple uploads at once to avoid N+1 queries."""
+    # we won't process flakes for testruns older than 1 day
+    testruns = Testrun.objects.filter(
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & Q(upload_id__in=upload_ids)
+    ).order_by("upload_id", "timestamp")
+
+    testruns_by_upload: dict[int, list[Testrun]] = {}
+    for testrun in testruns:
+        if testrun.upload_id not in testruns_by_upload:
+            testruns_by_upload[testrun.upload_id] = []
+        testruns_by_upload[testrun.upload_id].append(testrun)
+
+    return testruns_by_upload
+
+
 def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
     # possible that we expire it and stop caring about it
     if test_id not in curr_flakes:
@@ -67,10 +84,11 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload_id: int, curr_flakes: dict[bytes, Flake], repo_id: int
+    upload_id: int,
+    curr_flakes: dict[bytes, Flake],
+    repo_id: int,
+    testruns: list[Testrun],
 ):
-    testruns = get_testruns(upload_id)
-
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
         match testrun.outcome:
@@ -90,12 +108,13 @@ def process_single_upload(
 @sentry_sdk.trace
 def process_flakes_for_repo(repo_id: int, upload_ids: list[int]):
     curr_flakes = fetch_current_flakes(repo_id)
+    testruns_by_upload = get_testruns_bulk(upload_ids)
 
     for upload_id in upload_ids:
         with transaction.atomic():
             with process_flakes_summary.labels("new").time():
-                # updates testruns and flake objects
-                process_single_upload(upload_id, curr_flakes, repo_id)
+                testruns = testruns_by_upload.get(upload_id, [])
+                process_single_upload(upload_id, curr_flakes, repo_id, testruns)
                 new_test_ids = [
                     test_id
                     for test_id, flake in curr_flakes.items()
