@@ -61,8 +61,10 @@ class TokenlessAppveyorHandler(BaseTokenlessUploadHandler):
         # validate build
         if not any(
             filter(
-                lambda j: j["jobId"] == self.upload_params.get("build", "")  # type: ignore
-                and j.get("finished") is None,
+                lambda j: (
+                    j["jobId"] == self.upload_params.get("build", "")  # type: ignore
+                    and j.get("finished") is None
+                ),
                 build["build"]["jobs"],
             )
         ):

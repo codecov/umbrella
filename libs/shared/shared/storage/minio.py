@@ -33,7 +33,10 @@ from shared.storage.exceptions import BucketAlreadyExistsError, FileNotInStorage
 log = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 10
-READ_TIMEOUT = 60
+# Increased to 300 seconds (5 minutes) to handle GCS multipart upload completion.
+# When completing large multipart uploads, GCS needs time to combine parts server-side,
+# which can exceed the previous 60-second timeout and cause ReadTimeoutErrors.
+READ_TIMEOUT = 300
 
 
 def init_minio_client(
