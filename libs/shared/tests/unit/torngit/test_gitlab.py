@@ -13,6 +13,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitObjectNotFoundError,
     TorngitRefreshTokenFailedError,
+    TorngitServerUnreachableError,
 )
 from shared.torngit.gitlab import Gitlab
 
@@ -618,3 +619,60 @@ class TestUnitGitlab:
     async def test_count_and_get_url_template_unrecognized(self, valid_handler):
         with pytest.raises(KeyError):
             valid_handler.count_and_get_url_template(url_name="whoops")
+
+    @pytest.mark.asyncio
+    async def test_fetch_and_handle_errors_retries_on_remote_protocol_error(
+        self, mocker, valid_handler
+    ):
+        """Test that RemoteProtocolError triggers retry logic"""
+        mock_client = mocker.MagicMock()
+
+        # First call raises RemoteProtocolError, second succeeds
+        mock_response = mocker.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"id": "test"}
+
+        mock_client.request.side_effect = [
+            httpx.RemoteProtocolError(
+                "peer closed connection without sending complete message body"
+            ),
+            mock_response,
+        ]
+
+        result = await valid_handler.fetch_and_handle_errors(
+            mock_client,
+            "get",
+            "/test",
+        )
+
+        # Should have retried once and succeeded
+        assert mock_client.request.call_count == 2
+        assert result.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_fetch_and_handle_errors_fails_after_max_retries_remote_protocol_error(
+        self, mocker, valid_handler
+    ):
+        """Test that RemoteProtocolError raises TorngitServerUnreachableError after max retries"""
+        mock_client = mocker.MagicMock()
+
+        # All calls raise RemoteProtocolError
+        mock_client.request.side_effect = [
+            httpx.RemoteProtocolError(
+                "peer closed connection without sending complete message body"
+            ),
+            httpx.RemoteProtocolError(
+                "peer closed connection without sending complete message body"
+            ),
+        ]
+
+        with pytest.raises(TorngitServerUnreachableError) as exc_info:
+            await valid_handler.fetch_and_handle_errors(
+                mock_client,
+                "get",
+                "/test",
+            )
+
+        # Should have tried twice (max_retries = 2)
+        assert mock_client.request.call_count == 2
+        assert "after 2 retries" in str(exc_info.value)
