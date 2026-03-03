@@ -369,8 +369,9 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             )
             ghapp_default_installations = list(
                 filter(
-                    lambda obj: obj.name == installation_name_to_use
-                    and obj.is_configured(),
+                    lambda obj: (
+                        obj.name == installation_name_to_use and obj.is_configured()
+                    ),
                     commit.repository.author.github_app_installations or [],
                 )
             )
