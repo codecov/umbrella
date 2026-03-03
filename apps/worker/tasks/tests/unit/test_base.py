@@ -130,8 +130,8 @@ class TestBaseCodecovTask:
             "created_timestamp": "2023-06-13 10:00:00.000000",
             "delivery_info": {"routing_key": "my-queue"},
         }
-        mock_task_request.get.side_effect = (
-            lambda key, default: fake_request_values.get(key, default)
+        mock_task_request.get.side_effect = lambda key, default: (
+            fake_request_values.get(key, default)
         )
         mocked_get_db_session.return_value = dbsession
         task_instance = SampleTask()
