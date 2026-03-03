@@ -72,14 +72,24 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
         return path_fixer(path)
 
     for package in xml.iter("package"):
-        base_name = package.attrib["name"]
+        base_name = package.attrib.get("name")
+        if not base_name:
+            log.warning(
+                "Jacoco report has a package element missing 'name' attribute. Skipping package."
+            )
+            continue
 
         file_method_complixity: dict[str, dict[int, tuple[int, int]]] = defaultdict(
             dict
         )
         # Classes complexity
         for _class in package.iter("class"):
-            class_name = _class.attrib["name"]
+            class_name = _class.attrib.get("name")
+            if not class_name:
+                log.warning(
+                    "Jacoco report has a class element missing 'name' attribute. Skipping class."
+                )
+                continue
             if "$" not in class_name:
                 method_complixity = file_method_complixity[class_name]
                 # Method Complexity
@@ -95,12 +105,20 @@ def from_xml(xml: Element, report_builder_session: ReportBuilderSession) -> None
 
         # Statements
         for source in package.iter("sourcefile"):
-            source_name = "{}/{}".format(base_name, source.attrib["name"])
+            source_file_name = source.attrib.get("name")
+            if not source_file_name:
+                log.warning(
+                    "Jacoco report has a sourcefile element missing 'name' attribute. Skipping sourcefile."
+                )
+                continue
+            source_name = f"{base_name}/{source_file_name}"
             filename = try_to_fix_path(source_name)
             if filename is None:
                 continue
 
-            method_complixity = file_method_complixity[source_name.split(".")[0]]
+            method_complixity = file_method_complixity[
+                source_name.split(".", maxsplit=1)[0]
+            ]
 
             _file = report_builder_session.create_coverage_file(
                 filename, do_fix_path=False
