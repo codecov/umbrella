@@ -3,6 +3,7 @@ from unittest import mock
 
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
+from requests.exceptions import ConnectionError
 
 from database.models import CommitReport, RepositoryFlag, Upload
 from database.tests.factories import CommitFactory
@@ -2623,3 +2624,36 @@ class TestReportService:
             ReportService({})._possibly_shift_carryforward_report(
                 mock_report, parent_commit, commit
             )
+
+    def test_possibly_shift_carryforward_report_connection_error(
+        self, dbsession, sample_report, mocker
+    ):
+        parent_commit = CommitFactory()
+        commit = CommitFactory(parent_commit_id=parent_commit.commitid)
+        dbsession.add(parent_commit)
+        dbsession.add(commit)
+        dbsession.flush()
+        mock_log_warning = mocker.patch.object(report_log, "warning")
+
+        def raise_error(*args, **kwargs):
+            raise ConnectionError(
+                "HTTPSConnectionPool(host='api.github.com', port=443): Max retries exceeded"
+            )
+
+        mock_provider_service = mocker.patch(
+            "services.report.get_repo_provider_service", side_effect=raise_error
+        )
+        result = ReportService({})._possibly_shift_carryforward_report(
+            sample_report, parent_commit, commit
+        )
+        assert result == sample_report
+        mock_provider_service.assert_called()
+        mock_log_warning.assert_called_with(
+            "Failed to shift carryforward report lines due to network connectivity issue",
+            extra={
+                "reason": "Network connection error",
+                "commit": commit.commitid,
+                "error": "HTTPSConnectionPool(host='api.github.com', port=443): Max retries exceeded",
+                "error_type": "ConnectionError",
+            },
+        )
