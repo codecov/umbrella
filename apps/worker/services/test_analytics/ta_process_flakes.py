@@ -33,7 +33,10 @@ def fetch_current_flakes(repo_id: int) -> dict[bytes, Flake]:
     }
 
 
-def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
+def get_testruns(upload: ReportSession) -> QuerySet[Testrun] | list[Testrun]:
+    if hasattr(upload, "prefetched_testruns"):
+        return upload.prefetched_testruns
+
     upload_filter = Q(upload_id=upload.id)
 
     # we won't process flakes for testruns older than 1 day
@@ -106,12 +109,27 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     log.info(
         "process_flakes_for_commit: starting processing",
     )
-    uploads = get_relevant_uploads(repo_id, commit_id)
+    uploads = list(get_relevant_uploads(repo_id, commit_id))
 
     log.info(
         "process_flakes_for_commit: fetched uploads",
         extra={"uploads": [upload.id for upload in uploads]},
     )
+
+    upload_ids = [upload.id for upload in uploads]
+    testruns_by_upload = {}
+    if upload_ids:
+        testruns = Testrun.objects.filter(
+            upload_id__in=upload_ids, timestamp__gte=timezone.now() - timedelta(days=1)
+        ).order_by("timestamp")
+
+        for testrun in testruns:
+            if testrun.upload_id not in testruns_by_upload:
+                testruns_by_upload[testrun.upload_id] = []
+            testruns_by_upload[testrun.upload_id].append(testrun)
+
+        for upload in uploads:
+            upload.prefetched_testruns = testruns_by_upload.get(upload.id, [])
 
     curr_flakes = fetch_current_flakes(repo_id)
 
