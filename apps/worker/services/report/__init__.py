@@ -9,6 +9,7 @@ import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import SoftTimeLimitExceeded
+from requests.exceptions import ConnectionError, RequestException
 from sqlalchemy.orm import Session as DbSession
 
 from database.models import Commit, Repository, Upload, UploadError
@@ -429,6 +430,16 @@ class ReportService(BaseReportService):
                     "reason": "Can't get provider_service",
                     "commit": head_commit.commitid,
                     "error": str(exp),
+                },
+            )
+        except (ConnectionError, RequestException) as exp:
+            log.warning(
+                "Failed to shift carryforward report lines due to network connectivity issue",
+                extra={
+                    "reason": "Network connection error",
+                    "commit": head_commit.commitid,
+                    "error": str(exp),
+                    "error_type": type(exp).__name__,
                 },
             )
         except TorngitError as exp:
