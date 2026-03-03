@@ -820,7 +820,11 @@ class Github(TorngitBaseAdapter):
                         **log_dict,
                     ),
                 )
-            except (httpx.TimeoutException, httpx.NetworkError):
+            except (
+                httpx.TimeoutException,
+                httpx.NetworkError,
+                httpx.RemoteProtocolError,
+            ):
                 if current_retry < max_number_retries:
                     log.warning(
                         "GitHub was not able to be reached, retrying",
@@ -2216,7 +2220,7 @@ class Github(TorngitBaseAdapter):
         hasNextPage = True
         all_repositories = {}
 
-        async with self.get_client() as client:
+        async with self.get_client(timeouts=[30, 120]) as client:
             while hasNextPage:
                 query = self.graphql.prepare(
                     "REPO_LANGUAGES_FROM_OWNER",
