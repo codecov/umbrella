@@ -185,3 +185,59 @@ class TestJacoco:
         jacoco.from_xml(
             etree.fromstring(xml % recent_ms_timestamp), report_builder_session
         )
+
+    def test_missing_name_attributes(self):
+        """Test that malformed XML with missing 'name' attributes is handled gracefully."""
+        malformed_xml = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+        <!DOCTYPE report PUBLIC "-//JACOCO//DTD Report 1.0//EN" "report.dtd">
+        <report name="Test Report">
+            <sessioninfo id="test-session" start="{int(time())}" dump="1411925088117" />
+            <package>
+                <class name="valid/class">
+                    <method name="validMethod" line="1">
+                        <counter type="COMPLEXITY" missed="0" covered="1" />
+                    </method>
+                </class>
+                <sourcefile name="valid.java">
+                    <line nr="1" mi="0" ci="1" mb="0" cb="0" />
+                </sourcefile>
+            </package>
+            <package name="valid/package">
+                <class>
+                    <method name="methodWithoutClassName" line="2">
+                        <counter type="COMPLEXITY" missed="1" covered="0" />
+                    </method>
+                </class>
+                <sourcefile>
+                    <line nr="1" mi="0" ci="1" mb="0" cb="0" />
+                </sourcefile>
+                <sourcefile name="valid2.java">
+                    <line nr="1" mi="0" ci="2" mb="0" cb="0" />
+                </sourcefile>
+            </package>
+        </report>
+        """
+
+        def fixes(path):
+            return path
+
+        report_builder_session = create_report_builder_session(path_fixer=fixes)
+
+        with self.caplog.at_level(logging.WARNING, logger=jacoco.__name__):
+            # Should not raise KeyError despite missing name attributes
+            jacoco.from_xml(etree.fromstring(malformed_xml), report_builder_session)
+
+            # Verify warning messages were logged
+            warning_messages = [record.message for record in self.caplog.records]
+            assert any("missing 'name' attribute" in msg for msg in warning_messages), (
+                "Expected warning about missing name attribute"
+            )
+
+        report = report_builder_session.output_report()
+        processed_report = convert_report_to_better_readable(report)
+
+        # Should still process the valid elements
+        assert "valid/package/valid2.java" in processed_report["archive"]
+        assert processed_report["archive"]["valid/package/valid2.java"] == [
+            (1, 2, None, [[0, 2]], None, None)
+        ]
