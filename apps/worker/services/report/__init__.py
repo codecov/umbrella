@@ -20,10 +20,12 @@ from database.models.reports import (
     uploadflagmembership,
 )
 from helpers.exceptions import (
+    CommitNotVisibleError,
     OwnerWithoutValidBotError,
     ReportEmptyError,
     ReportExpiredException,
     RepositoryWithoutValidBotError,
+    UploadNotVisibleError,
 )
 from rollouts import CARRYFORWARD_BASE_SEARCH_RANGE_BY_OWNER
 from services.processing.metrics import (
@@ -82,6 +84,18 @@ class ProcessingError:
                     "error_class": FileNotInStorageError,
                     "error_text": "File not found in storage.",
                     "max_retries": 1,
+                }
+            case UploadErrorCode.COMMIT_NOT_VISIBLE:
+                return {
+                    "error_class": CommitNotVisibleError,
+                    "error_text": "Commit not visible in database yet (replication lag).",
+                    "max_retries": 3,
+                }
+            case UploadErrorCode.UPLOAD_NOT_VISIBLE:
+                return {
+                    "error_class": UploadNotVisibleError,
+                    "error_text": "Upload not visible in database yet (replication lag).",
+                    "max_retries": 3,
                 }
             case UploadErrorCode.REPORT_EXPIRED:
                 return {

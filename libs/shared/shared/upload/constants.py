@@ -230,6 +230,8 @@ class UploadErrorCode(StrEnum):
     REPORT_EMPTY = "report_empty"
     PROCESSING_TIMEOUT = "processing_timeout"
     UNSUPPORTED_FILE_FORMAT = "unsupported_file_format"
+    COMMIT_NOT_VISIBLE = "commit_not_visible"
+    UPLOAD_NOT_VISIBLE = "upload_not_visible"
 
     # We don't want these - try to add error cases when they arise
     UNKNOWN_PROCESSING = "unknown_processing"

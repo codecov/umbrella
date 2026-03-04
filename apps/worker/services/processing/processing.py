@@ -13,6 +13,7 @@ from services.report import ProcessingError, RawReportInfo, ReportService
 from services.report.parser.types import VersionOneParsedRawReport
 from shared.api_archive.archive import ArchiveService
 from shared.celery_config import upload_finisher_task_name
+from shared.upload.constants import UploadErrorCode
 from shared.yaml import UserYaml
 
 from .intermediate import save_intermediate_report
@@ -20,6 +21,21 @@ from .state import ProcessingState, should_trigger_postprocessing
 from .types import ProcessingResult, UploadArguments
 
 log = logging.getLogger(__name__)
+
+
+class CommitNotVisibleError(Exception):
+    def __init__(self, repo_id: int, commit_sha: str) -> None:
+        message = f"Commit {commit_sha} in repo {repo_id} not visible in database (likely replication lag)"
+        super().__init__(message)
+        self.repo_id = repo_id
+        self.commit_sha = commit_sha
+
+
+class UploadNotVisibleError(Exception):
+    def __init__(self, upload_id: int) -> None:
+        message = f"Upload {upload_id} not visible in database (likely replication lag)"
+        super().__init__(message)
+        self.upload_id = upload_id
 
 
 @sentry_sdk.trace
@@ -38,10 +54,40 @@ def process_upload(
         .filter(Commit.repoid == repo_id, Commit.commitid == commit_sha)
         .first()
     )
-    assert commit
+    if not commit:
+        error = ProcessingError(
+            code=UploadErrorCode.COMMIT_NOT_VISIBLE,
+            params={"repo_id": repo_id, "commit_sha": commit_sha},
+            is_retryable=True,
+        )
+        log.warning(
+            "Commit not found in database",
+            extra={
+                "repo_id": repo_id,
+                "commit_sha": commit_sha,
+                "upload_id": upload_id,
+            },
+        )
+        on_processing_error(error)
+        raise AssertionError(f"Commit {commit_sha} not found")
 
     upload = db_session.query(Upload).filter_by(id_=upload_id).first()
-    assert upload
+    if not upload:
+        error = ProcessingError(
+            code=UploadErrorCode.UPLOAD_NOT_VISIBLE,
+            params={"upload_id": upload_id},
+            is_retryable=True,
+        )
+        log.warning(
+            "Upload not found in database",
+            extra={
+                "upload_id": upload_id,
+                "repo_id": repo_id,
+                "commit_sha": commit_sha,
+            },
+        )
+        on_processing_error(error)
+        raise AssertionError(f"Upload {upload_id} not found")
 
     state = ProcessingState(repo_id, commit_sha)
     # this in a noop in normal cases, but relevant for task retries:

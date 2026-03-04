@@ -75,6 +75,10 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
             match error.code:
                 case UploadErrorCode.FILE_NOT_IN_STORAGE:
                     ub_error = Errors.FILE_NOT_IN_STORAGE
+                case UploadErrorCode.COMMIT_NOT_VISIBLE:
+                    ub_error = Errors.COMMIT_NOT_FOUND
+                case UploadErrorCode.UPLOAD_NOT_VISIBLE:
+                    ub_error = Errors.UPLOAD_NOT_FOUND
                 case UploadErrorCode.REPORT_EXPIRED:
                     ub_error = Errors.REPORT_EXPIRED
                 case UploadErrorCode.REPORT_EMPTY:

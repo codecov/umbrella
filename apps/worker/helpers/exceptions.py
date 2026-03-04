@@ -12,6 +12,21 @@ class ReportExpiredException(Exception):
         self.filename = filename
 
 
+class CommitNotVisibleError(Exception):
+    def __init__(self, repo_id: int, commit_sha: str) -> None:
+        message = f"Commit {commit_sha} in repo {repo_id} not visible in database (likely replication lag)"
+        super().__init__(message)
+        self.repo_id = repo_id
+        self.commit_sha = commit_sha
+
+
+class UploadNotVisibleError(Exception):
+    def __init__(self, upload_id: int) -> None:
+        message = f"Upload {upload_id} not visible in database (likely replication lag)"
+        super().__init__(message)
+        self.upload_id = upload_id
+
+
 class ReportEmptyError(Exception):
     def __init__(
         self,
