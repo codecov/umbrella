@@ -18,6 +18,7 @@ from shared.celery_config import manual_upload_completion_trigger_task_name
 from shared.django_apps.reports.models import ReportType
 from shared.django_apps.ta_timeseries.models import Testrun
 from shared.django_apps.timeseries.models import Measurement, MeasurementName
+from shared.django_apps.upload_breadcrumbs.models import UploadBreadcrumb
 from shared.django_apps.utils.paginator import EstimatedCountPaginator
 from shared.helpers.redis import get_redis_connection
 from shared.reports.enums import UploadState
@@ -270,6 +271,7 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
         "deleted",
         "notified",
         "reprocess_actions",
+        "upload_pipeline_timeline",
     )
     fields = readonly_fields
     paginator = EstimatedCountPaginator
@@ -358,6 +360,84 @@ class CommitAdmin(AdminMixin, admin.ModelAdmin):
             return "No reprocessing actions available"
 
         return format_html("<div>{}</div>", format_html("".join(buttons)))
+
+    @admin.display(description="Upload Pipeline Timeline")
+    def upload_pipeline_timeline(self, obj):
+        if obj.pk is None:
+            return ""
+
+        breadcrumbs = UploadBreadcrumb.objects.filter(
+            commit_sha=obj.commitid,
+            repo_id=obj.repository.repoid,
+        ).order_by("created_at")[:200]
+
+        if not breadcrumbs:
+            return format_html("<em>No breadcrumbs recorded for this commit.</em>")
+
+        rows = []
+        for bc in breadcrumbs:
+            data = bc.breadcrumb_data or {}
+            milestone = data.get("milestone", "")
+            error = data.get("error", "")
+            error_text = data.get("error_text", "")
+            task_name = data.get("task_name", "")
+            parent_task_id = data.get("parent_task_id", "")
+            endpoint = data.get("endpoint", "")
+
+            if error:
+                color = "#d32f2f"
+            elif milestone in ("lac", "lr", "uc", "ns"):
+                color = "#388e3c"
+            elif milestone in ("la", "pu", "nt"):
+                color = "#1565c0"
+            else:
+                color = "#555"
+
+            upload_ids_str = (
+                ", ".join(str(uid) for uid in bc.upload_ids) if bc.upload_ids else ""
+            )
+
+            detail_parts = []
+            if milestone:
+                detail_parts.append(f"<strong>{milestone}</strong>")
+            if endpoint:
+                detail_parts.append(f"endpoint={endpoint}")
+            if error:
+                detail_parts.append(f'<span style="color:#d32f2f">err={error}</span>')
+            if error_text:
+                detail_parts.append(
+                    f'<span style="color:#d32f2f">{error_text[:120]}</span>'
+                )
+            detail = " &middot; ".join(detail_parts) if detail_parts else "—"
+
+            rows.append(
+                f"<tr>"
+                f'<td style="white-space:nowrap;color:{color};padding:4px 8px">'
+                f"{bc.created_at:%Y-%m-%d %H:%M:%S}</td>"
+                f'<td style="padding:4px 8px;font-family:monospace;font-size:12px">'
+                f"{task_name}</td>"
+                f'<td style="padding:4px 8px;font-family:monospace;font-size:12px">'
+                f"{parent_task_id}</td>"
+                f'<td style="padding:4px 8px">{detail}</td>'
+                f'<td style="padding:4px 8px;font-family:monospace;font-size:12px">'
+                f"{upload_ids_str}</td>"
+                f"</tr>"
+            )
+
+        table = (
+            '<table style="border-collapse:collapse;width:100%">'
+            "<thead><tr>"
+            '<th style="text-align:left;padding:4px 8px;border-bottom:2px solid #ccc">Time</th>'
+            '<th style="text-align:left;padding:4px 8px;border-bottom:2px solid #ccc">Task</th>'
+            '<th style="text-align:left;padding:4px 8px;border-bottom:2px solid #ccc">Parent Task ID</th>'
+            '<th style="text-align:left;padding:4px 8px;border-bottom:2px solid #ccc">Detail</th>'
+            '<th style="text-align:left;padding:4px 8px;border-bottom:2px solid #ccc">Upload IDs</th>'
+            "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+        )
+
+        return format_html(
+            '<div style="max-height:600px;overflow:auto">{}</div>', format_html(table)
+        )
 
     def _reprocess_uploads(
         self, request, commit: Commit, config: ReprocessConfig
