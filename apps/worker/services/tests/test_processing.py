@@ -7,8 +7,11 @@ from database.tests.factories.core import (
     RepositoryFactory,
     UploadFactory,
 )
-from services.processing.processing import process_upload
+from services.processing.processing import process_upload, rewrite_or_delete_upload
 from services.processing.types import UploadArguments
+from services.report import ProcessingError, RawReportInfo
+from shared.storage.exceptions import FileNotInStorageError
+from shared.upload.constants import UploadErrorCode
 from shared.yaml import UserYaml
 
 
@@ -194,3 +197,78 @@ class TestProcessUploadOrphanedTaskRecovery:
 
         # Verify finisher was NOT triggered
         mock_finisher_task.apply_async.assert_not_called()
+
+
+@pytest.mark.django_db(databases={"default"})
+class TestRewriteOrDeleteUpload:
+    """Tests for the rewrite_or_delete_upload function."""
+
+    def test_handles_file_not_found_during_deletion(self, mocker, mock_storage):
+        """
+        Test that FileNotInStorageError is handled gracefully during deletion.
+
+        When the archive file doesn't exist (e.g., already deleted or never uploaded),
+        the deletion should succeed without raising an error since the desired end
+        state (file being gone) is already achieved.
+        """
+        # Setup
+        repository = RepositoryFactory.create()
+        commit = CommitFactory.create(repository=repository)
+        upload = UploadFactory.create(
+            report__commit=commit, storage_path="test/path.txt"
+        )
+
+        # Create a mock archive service that raises FileNotInStorageError
+        mock_archive_service = MagicMock()
+        mock_archive_service.delete_file.side_effect = FileNotInStorageError(
+            "File not found"
+        )
+
+        # Create commit_yaml that enables deletion
+        commit_yaml = UserYaml({"codecov": {"archive": {"uploads": False}}})
+
+        # Create report_info without error (successful processing)
+        report_info = RawReportInfo(
+            raw_report=MagicMock(), archive_url="test/path.txt", upload=str(upload.id_)
+        )
+
+        # Execute - should not raise an exception
+        rewrite_or_delete_upload(mock_archive_service, commit_yaml, report_info)
+
+        # Verify delete_file was called
+        mock_archive_service.delete_file.assert_called_once_with("test/path.txt")
+
+    def test_skips_deletion_when_processing_error_occurred(self, mocker, mock_storage):
+        """
+        Test that deletion is skipped when there was a processing error.
+
+        If the upload processing failed, we should not attempt to delete the file.
+        """
+        # Setup
+        repository = RepositoryFactory.create()
+        commit = CommitFactory.create(repository=repository)
+        upload = UploadFactory.create(
+            report__commit=commit, storage_path="test/path.txt"
+        )
+
+        # Create a mock archive service
+        mock_archive_service = MagicMock()
+
+        # Create commit_yaml that enables deletion
+        commit_yaml = UserYaml({"codecov": {"archive": {"uploads": False}}})
+
+        # Create report_info WITH error (failed processing)
+        report_info = RawReportInfo(
+            archive_url="test/path.txt",
+            upload=str(upload.id_),
+            error=ProcessingError(
+                code=UploadErrorCode.FILE_NOT_IN_STORAGE,
+                params={"location": "test/path.txt"},
+            ),
+        )
+
+        # Execute
+        rewrite_or_delete_upload(mock_archive_service, commit_yaml, report_info)
+
+        # Verify delete_file was NOT called
+        mock_archive_service.delete_file.assert_not_called()
