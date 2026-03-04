@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from app import celery_app
 from database.enums import Decoration
-from database.models import Owner, Pull, Repository
+from database.models import Commit, CommitNotification, Owner, Pull, Repository
 from helpers.metrics import metrics
 from shared.celery_config import new_user_activated_task_name, notify_task_name
 from shared.plan.service import PlanService
@@ -46,9 +46,27 @@ class NewUserActivatedTask(BaseCodecovTask, name=new_user_activated_task_name):
 
         pulls = self.get_pulls_authored_by_user(db_session, org_ownerid, user_ownerid)
 
+        # Eagerly fetch all commits and notifications to avoid N+1 queries
+        head_commits_map, notifications_map = self.prefetch_commits_and_notifications(
+            db_session, pulls
+        )
+
         # NOTE: we could also notify through pulls_sync task but we will notify directly here
         for pull in pulls:
-            pull_commit_notifications = pull.get_head_commit_notifications()
+            head_commit = head_commits_map.get((pull.repoid, pull.head))
+            if not head_commit:
+                log.info(
+                    "Skipping pull - no head commit found",
+                    extra={
+                        "org_ownerid": org_ownerid,
+                        "user_ownerid": user_ownerid,
+                        "repoid": pull.repoid,
+                        "pullid": pull.pullid,
+                    },
+                )
+                continue
+
+            pull_commit_notifications = notifications_map.get(head_commit.id_, [])
 
             if not pull_commit_notifications:
                 # don't know decoration type used so skip
@@ -112,6 +130,56 @@ class NewUserActivatedTask(BaseCodecovTask, name=new_user_activated_task_name):
         )
 
         return pulls
+
+    def prefetch_commits_and_notifications(
+        self, db_session, pulls: list[Pull]
+    ) -> tuple[dict, dict]:
+        """
+        Prefetch commits and their notifications to avoid N+1 queries.
+
+        Returns:
+            - head_commits_map: dict mapping (repoid, commitid) to Commit objects
+            - notifications_map: dict mapping commit.id_ to list of CommitNotification objects
+        """
+        if not pulls:
+            return {}, {}
+
+        pull_heads = [(pull.repoid, pull.head) for pull in pulls if pull.head]
+
+        if not pull_heads:
+            return {}, {}
+
+        repoids = {repoid for repoid, _ in pull_heads}
+        commitids = {commitid for _, commitid in pull_heads}
+
+        commits = (
+            db_session.query(Commit)
+            .filter(Commit.repoid.in_(repoids), Commit.commitid.in_(commitids))
+            .all()
+        )
+
+        head_commits_map = {
+            (commit.repoid, commit.commitid): commit for commit in commits
+        }
+
+        if not commits:
+            return head_commits_map, {}
+
+        commit_ids = [commit.id_ for commit in commits]
+
+        notifications = (
+            db_session.query(CommitNotification)
+            .filter(CommitNotification.commit_id.in_(commit_ids))
+            .all()
+        )
+
+        notifications_map = {}
+        for notification in notifications:
+            if notification.commit_id not in notifications_map:
+                notifications_map[notification.commit_id] = []
+            notifications_map[notification.commit_id].append(notification)
+
+        return head_commits_map, notifications_map
 
     def possibly_resend_notifications(
         self, pull_commit_notifications, pull: Pull
