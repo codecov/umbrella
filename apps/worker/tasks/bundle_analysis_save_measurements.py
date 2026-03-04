@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.session import Session
 
 from app import celery_app
@@ -40,7 +41,10 @@ class BundleAnalysisSaveMeasurementsTask(
         )
 
         commit = (
-            db_session.query(Commit).filter_by(repoid=repoid, commitid=commitid).first()
+            db_session.query(Commit)
+            .options(joinedload(Commit.repository))
+            .filter_by(repoid=repoid, commitid=commitid)
+            .first()
         )
         assert commit, "commit not found"
 
