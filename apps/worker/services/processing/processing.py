@@ -13,6 +13,7 @@ from services.report import ProcessingError, RawReportInfo, ReportService
 from services.report.parser.types import VersionOneParsedRawReport
 from shared.api_archive.archive import ArchiveService
 from shared.celery_config import upload_finisher_task_name
+from shared.storage.exceptions import FileNotInStorageError
 from shared.yaml import UserYaml
 
 from .intermediate import save_intermediate_report
@@ -118,7 +119,13 @@ def rewrite_or_delete_upload(
 
     if should_delete_archive_setting and not report_info.error:
         if not archive_url.startswith("http"):
-            archive_service.delete_file(archive_url)
+            try:
+                archive_service.delete_file(archive_url)
+            except FileNotInStorageError:
+                log.warning(
+                    "Archive file already deleted or not found",
+                    extra={"archive_url": archive_url},
+                )
 
     elif isinstance(report_info.raw_report, VersionOneParsedRawReport):
         # only a version 1 report needs to be "rewritten readable"

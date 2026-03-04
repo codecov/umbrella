@@ -7,8 +7,10 @@ from database.tests.factories.core import (
     RepositoryFactory,
     UploadFactory,
 )
-from services.processing.processing import process_upload
+from services.processing.processing import process_upload, rewrite_or_delete_upload
 from services.processing.types import UploadArguments
+from services.report import RawReportInfo
+from shared.storage.exceptions import FileNotInStorageError
 from shared.yaml import UserYaml
 
 
@@ -194,3 +196,94 @@ class TestProcessUploadOrphanedTaskRecovery:
 
         # Verify finisher was NOT triggered
         mock_finisher_task.apply_async.assert_not_called()
+
+
+@pytest.mark.django_db(databases={"default"})
+class TestRewriteOrDeleteUpload:
+    """
+    Tests for the rewrite_or_delete_upload function.
+
+    Specifically tests handling of FileNotInStorageError during archive deletion.
+    """
+
+    def test_delete_file_handles_file_not_in_storage_error(
+        self, dbsession, mocker, mock_storage
+    ):
+        """
+        Test that FileNotInStorageError is caught and logged when deleting a file.
+
+        This scenario occurs when:
+        1. Archive deletion is enabled in the YAML config
+        2. The file to delete doesn't exist in storage (404 from S3)
+        3. The operation should log a warning but not fail
+        """
+        # Setup
+        repository = RepositoryFactory.create()
+        dbsession.add(repository)
+        dbsession.flush()
+
+        # Mock archive service that raises FileNotInStorageError
+        mock_archive_service = MagicMock()
+        mock_archive_service.delete_file.side_effect = FileNotInStorageError(
+            "File not found"
+        )
+
+        # Create report info with archive URL
+        report_info = RawReportInfo(
+            raw_report=None,
+            archive_url="shelter/github/org/repo/commit/file.txt",
+            upload=None,
+            error=None,
+        )
+
+        # Create YAML config with delete_archive enabled
+        commit_yaml = UserYaml.from_dict({"codecov": {"archive": {"uploads": False}}})
+
+        # Mock logger to verify warning is logged
+        mock_log = mocker.patch("services.processing.processing.log")
+
+        # Execute - should not raise an exception
+        rewrite_or_delete_upload(mock_archive_service, commit_yaml, report_info)
+
+        # Verify delete was attempted
+        mock_archive_service.delete_file.assert_called_once_with(
+            "shelter/github/org/repo/commit/file.txt"
+        )
+
+        # Verify warning was logged
+        mock_log.warning.assert_called_once_with(
+            "Archive file already deleted or not found",
+            extra={"archive_url": "shelter/github/org/repo/commit/file.txt"},
+        )
+
+    def test_delete_file_succeeds_normally(self, dbsession, mocker, mock_storage):
+        """
+        Test that normal file deletion works without error.
+        """
+        # Setup
+        repository = RepositoryFactory.create()
+        dbsession.add(repository)
+        dbsession.flush()
+
+        # Mock archive service that deletes successfully
+        mock_archive_service = MagicMock()
+        mock_archive_service.delete_file.return_value = True
+
+        # Create report info with archive URL
+        report_info = RawReportInfo(
+            raw_report=None,
+            archive_url="shelter/github/org/repo/commit/file.txt",
+            upload=None,
+            error=None,
+        )
+
+        # Create YAML config with delete_archive enabled
+        commit_yaml = UserYaml.from_dict({"codecov": {"archive": {"uploads": False}}})
+
+        # Execute - should not raise an exception
+        rewrite_or_delete_upload(mock_archive_service, commit_yaml, report_info)
+
+        # Verify delete was attempted
+        mock_archive_service.delete_file.assert_called_once_with(
+            "shelter/github/org/repo/commit/file.txt"
+        )
