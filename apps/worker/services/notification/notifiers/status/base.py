@@ -14,7 +14,11 @@ from services.yaml import read_yaml_field
 from services.yaml.reader import get_paths_from_flags
 from shared.config import get_config
 from shared.helpers.cache import NO_VALUE, cache, make_hash_sha256
-from shared.torngit.exceptions import TorngitClientError, TorngitError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitError,
+    TorngitRefreshTokenFailedError,
+)
 
 log = logging.getLogger(__name__)
 
@@ -222,8 +226,24 @@ class StatusNotifier(AbstractBaseNotifier):
             return NotificationResult(
                 notification_attempted=True,
                 notification_successful=False,
-                explanation="client_side_error_provider",
-                data_sent=payload,
+                explanation="torngit_client_error",
+                github_app_used=None,
+            )
+        except TorngitRefreshTokenFailedError:
+            log.warning(
+                "Unable to send status notification to user due to token refresh failure",
+                exc_info=True,
+                extra={
+                    "repoid": comparison.head.commit.repoid,
+                    "commit": comparison.head.commit.commitid,
+                    "notifier_name": self.name,
+                },
+            )
+            return NotificationResult(
+                notification_attempted=True,
+                notification_successful=False,
+                explanation="token_refresh_failed",
+                github_app_used=None,
             )
         except TorngitError:
             log.warning(
@@ -371,6 +391,23 @@ class StatusNotifier(AbstractBaseNotifier):
                     "commit": head_commit_sha,
                     "repoid": comparison.head.commit.repoid,
                 },
+            )
+            return NotificationResult(
+                notification_attempted=True,
+                notification_successful=False,
+                explanation="client_side_error_provider",
+                data_sent=notification_result_data_sent,
+                data_received=None,
+            )
+        except TorngitRefreshTokenFailedError:
+            log.warning(
+                "Status not posted due to token refresh failure",
+                extra={
+                    "data_sent": notification_result_data_sent,
+                    "commit": head_commit_sha,
+                    "repoid": comparison.head.commit.repoid,
+                },
+                exc_info=True,
             )
             return NotificationResult(
                 notification_attempted=True,

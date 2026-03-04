@@ -28,6 +28,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitError,
     TorngitObjectNotFoundError,
+    TorngitRefreshTokenFailedError,
 )
 from shared.torngit.response_types import ProviderPull
 from shared.typings.torngit import (
@@ -183,6 +184,12 @@ def possibly_update_commit_from_provider_info(
     except TorngitObjectNotFoundError:
         log.warning(
             "Could not update commit with info because it was not found at the provider"
+        )
+        return False
+    except TorngitRefreshTokenFailedError:
+        log.warning(
+            "Could not update commit with info due to token refresh failure",
+            exc_info=True,
         )
         return False
     log.debug("Not updating commit because it already seems to be populated")
@@ -470,6 +477,12 @@ async def fetch_and_update_pull_request_information_from_commit(
                 exc_info=True,
                 extra={"repoid": commit.repoid, "commit": commit.commitid},
             )
+        except TorngitRefreshTokenFailedError:
+            log.warning(
+                "Unable to fetch what pull request the commit belongs to due to token refresh failure",
+                exc_info=True,
+                extra={"repoid": commit.repoid, "commit": commit.commitid},
+            )
     if not pullid:
         return None
     enriched_pull = await fetch_and_update_pull_request_information(
@@ -608,6 +621,12 @@ async def fetch_pull_request_information(
                 exc_info=True,
                 extra={"repo_id": repo_id, "commit_sha": commit_sha},
             )
+        except TorngitRefreshTokenFailedError:
+            log.warning(
+                "Unable to fetch what pull request the commit belongs to due to token refresh failure",
+                exc_info=True,
+                extra={"repo_id": repo_id, "commit_sha": commit_sha},
+            )
     if not pull_id:
         return None
     try:
@@ -663,6 +682,13 @@ def fetch_commit_yaml_and_possibly_store(
     except TorngitClientError:
         log.warning(
             "Unable to use yaml from commit because it cannot be fetched",
+            extra={"repoid": repository.repoid, "commit": commit.commitid},
+            exc_info=True,
+        )
+        commit_yaml = None
+    except TorngitRefreshTokenFailedError:
+        log.warning(
+            "Unable to use yaml from commit due to token refresh failure",
             extra={"repoid": repository.repoid, "commit": commit.commitid},
             exc_info=True,
         )

@@ -23,7 +23,10 @@ from shared.bundle_analysis import (
     MissingBundleError,
 )
 from shared.bundle_analysis.comparison import AssetChange, RouteChange
-from shared.torngit.exceptions import TorngitClientError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRefreshTokenFailedError,
+)
 from shared.validation.types import BundleThreshold
 
 log = logging.getLogger(__name__)
@@ -197,6 +200,21 @@ class BundleAnalysisCommentMarkdownStrategy(MessageStrategyInterface):
                 notification_attempted=True,
                 notification_successful=False,
                 explanation="TorngitClientError",
+            )
+        except TorngitRefreshTokenFailedError:
+            log.error(
+                "Error creating/updating PR comment due to token refresh failure",
+                extra={
+                    "commit": context.commit.commitid,
+                    "report_key": context.commit_report.external_id,
+                    "pullid": pull.pullid,
+                },
+                exc_info=True,
+            )
+            return NotificationResult(
+                notification_attempted=True,
+                notification_successful=False,
+                explanation="TorngitRefreshTokenFailedError",
             )
 
     def _create_bundle_rows(

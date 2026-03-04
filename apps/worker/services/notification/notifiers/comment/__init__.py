@@ -30,6 +30,7 @@ from shared.plan.constants import PlanName
 from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitObjectNotFoundError,
+    TorngitRefreshTokenFailedError,
     TorngitServerFailureError,
 )
 
@@ -121,7 +122,24 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
             )
             return NotificationResult(
                 notification_attempted=False,
-                explanation="unable_build_message",
+                notification_successful=False,
+                explanation="unable_to_fetch_info",
+                data_received=None,
+                data_sent=None,
+            )
+        except TorngitRefreshTokenFailedError:
+            log.warning(
+                "Unable to fetch enough information to build message for comment due to token refresh failure",
+                extra={
+                    "commit": comparison.head.commit.commitid,
+                    "pullid": comparison.pull.pullid,
+                },
+                exc_info=True,
+            )
+            return NotificationResult(
+                notification_attempted=False,
+                notification_successful=False,
+                explanation="token_refresh_failed",
                 data_sent=None,
                 data_received=None,
             )
@@ -198,6 +216,12 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
                     exc_info=True,
                     extra={"pullid": pullid, "commentid": commentid},
                 )
+            except TorngitRefreshTokenFailedError:
+                log.warning(
+                    "Comment could not be edited due to token refresh failure",
+                    exc_info=True,
+                    extra={"pullid": pullid, "commentid": commentid},
+                )
         try:
             res = async_to_sync(self.repository_service.post_comment)(pullid, message)
             return {
@@ -216,6 +240,18 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
                 "notification_attempted": True,
                 "notification_successful": False,
                 "explanation": "comment_posting_permissions",
+                "data_received": None,
+            }
+        except TorngitRefreshTokenFailedError:
+            log.warning(
+                "Comment could not be posted due to token refresh failure",
+                exc_info=True,
+                extra={"pullid": pullid, "commentid": commentid},
+            )
+            return {
+                "notification_attempted": True,
+                "notification_successful": False,
+                "explanation": "token_refresh_failed",
                 "data_received": None,
             }
 
@@ -250,6 +286,17 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
                     "explanation": "no_permissions",
                     "data_received": None,
                 }
+            except TorngitRefreshTokenFailedError:
+                log.warning(
+                    "Comment could not be edited due to token refresh failure",
+                    exc_info=True,
+                )
+                return {
+                    "notification_attempted": True,
+                    "notification_successful": False,
+                    "explanation": "token_refresh_failed",
+                    "data_received": None,
+                }
         res = async_to_sync(self.repository_service.post_comment)(pullid, message)
         return {
             "notification_attempted": True,
@@ -280,6 +327,38 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
                     "explanation": "no_permissions",
                     "data_received": None,
                 }
+            except TorngitRefreshTokenFailedError:
+                log.warning(
+                    "Comment could not be deleted due to token refresh failure",
+                    exc_info=True,
+                    extra={
+                        "repoid": self.repository.repoid,
+                        "pullid": pullid,
+                        "commentid": commentid,
+                    },
+                )
+                return {
+                    "notification_attempted": True,
+                    "notification_successful": False,
+                    "explanation": "no_permissions",
+                    "data_received": None,
+                }
+            except TorngitRefreshTokenFailedError:
+                log.warning(
+                    "Comment could not be deleted due to token refresh failure",
+                    exc_info=True,
+                    extra={
+                        "repoid": self.repository.repoid,
+                        "pullid": pullid,
+                        "commentid": commentid,
+                    },
+                )
+                return {
+                    "notification_attempted": True,
+                    "notification_successful": False,
+                    "explanation": "token_refresh_failed",
+                    "data_received": None,
+                }
         try:
             res = async_to_sync(self.repository_service.post_comment)(pullid, message)
             return {
@@ -302,6 +381,22 @@ class CommentNotifier(MessageMixin, AbstractBaseNotifier):
                 "notification_attempted": True,
                 "notification_successful": False,
                 "explanation": "comment_posting_permissions",
+                "data_received": None,
+            }
+        except TorngitRefreshTokenFailedError:
+            log.warning(
+                "Comment could not be posted due to token refresh failure",
+                exc_info=True,
+                extra={
+                    "repoid": self.repository.repoid,
+                    "pullid": pullid,
+                    "commentid": commentid,
+                },
+            )
+            return {
+                "notification_attempted": True,
+                "notification_successful": False,
+                "explanation": "token_refresh_failed",
                 "data_received": None,
             }
 

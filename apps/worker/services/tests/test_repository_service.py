@@ -35,6 +35,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitError,
     TorngitObjectNotFoundError,
+    TorngitRefreshTokenFailedError,
     TorngitServerUnreachableError,
 )
 from shared.typings.torngit import (
@@ -1605,6 +1606,31 @@ class TestGetRepoProviderServiceForSpecificCommit:
                 Owner.username == get_pull_request_result["author"]["username"],
             )
             .first()
+        )
+
+    @pytest.mark.asyncio
+    async def test_fetch_and_update_pull_request_information_from_commit_token_refresh_error(
+        self, dbsession, mocker
+    ):
+        commit = CommitFactory.create(message="", pullid=None, totals=None)
+        dbsession.add(commit)
+        dbsession.flush()
+        current_yaml = {}
+
+        repository_service = mocker.MagicMock(
+            service="gitlab",
+            find_pull_request=mock.AsyncMock(
+                side_effect=TorngitRefreshTokenFailedError("Token refresh failed")
+            ),
+        )
+
+        result = await fetch_and_update_pull_request_information_from_commit(
+            repository_service, commit, current_yaml
+        )
+
+        assert result is None
+        repository_service.find_pull_request.assert_called_once_with(
+            commit=commit.commitid, branch=commit.branch
         )
 
     @pytest.mark.asyncio

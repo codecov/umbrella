@@ -13,7 +13,10 @@ from services.bundle_analysis.notify.helpers import bytes_readable, get_github_a
 from services.bundle_analysis.notify.messages import MessageStrategyInterface
 from services.notification.notifiers.base import NotificationResult
 from shared.helpers.cache import cache, make_hash_sha256
-from shared.torngit.exceptions import TorngitClientError
+from shared.torngit.exceptions import (
+    TorngitClientError,
+    TorngitRefreshTokenFailedError,
+)
 
 log = logging.getLogger(__name__)
 
@@ -126,4 +129,18 @@ class CommitStatusMessageStrategy(MessageStrategyInterface):
                 notification_attempted=True,
                 notification_successful=False,
                 explanation="TorngitClientError",
+            )
+        except TorngitRefreshTokenFailedError:
+            log.error(
+                "Failed to set commit status due to token refresh failure",
+                extra={
+                    "commit": context.commit.commitid,
+                    "report_key": context.commit_report.external_id,
+                },
+                exc_info=True,
+            )
+            return NotificationResult(
+                notification_attempted=True,
+                notification_successful=False,
+                explanation="TorngitRefreshTokenFailedError",
             )
