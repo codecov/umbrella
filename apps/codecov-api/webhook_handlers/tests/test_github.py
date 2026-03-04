@@ -662,13 +662,9 @@ class GithubWebhookHandlerTests(APITestCase):
 
     @patch(
         "services.task.TaskService.refresh",
-        lambda self,
-        ownerid,
-        username,
-        sync_teams,
-        sync_repos,
-        using_integration,
-        repos_affected: None,
+        lambda self, ownerid, username, sync_teams, sync_repos, using_integration, repos_affected: (
+            None
+        ),
     )
     def test_installation_creates_new_owner_if_dne_all_repos_non_default_app(self):
         username, service_id = "newuser", 123456
@@ -710,13 +706,9 @@ class GithubWebhookHandlerTests(APITestCase):
 
     @patch(
         "services.task.TaskService.refresh",
-        lambda self,
-        ownerid,
-        username,
-        sync_teams,
-        sync_repos,
-        using_integration,
-        repos_affected: None,
+        lambda self, ownerid, username, sync_teams, sync_repos, using_integration, repos_affected: (
+            None
+        ),
     )
     def test_installation_repositories_creates_new_owner_if_dne(self):
         username, service_id = "newuser", 123456
@@ -752,13 +744,9 @@ class GithubWebhookHandlerTests(APITestCase):
 
     @patch(
         "services.task.TaskService.refresh",
-        lambda self,
-        ownerid,
-        username,
-        sync_teams,
-        sync_repos,
-        using_integration,
-        repos_affected: None,
+        lambda self, ownerid, username, sync_teams, sync_repos, using_integration, repos_affected: (
+            None
+        ),
     )
     def test_installation_update_repos_existing_ghapp_installation(self):
         owner = OwnerFactory(service=Service.GITHUB.value)
@@ -852,13 +840,9 @@ class GithubWebhookHandlerTests(APITestCase):
 
     @patch(
         "services.task.TaskService.refresh",
-        lambda self,
-        ownerid,
-        username,
-        sync_teams,
-        sync_repos,
-        using_integration,
-        repos_affected: None,
+        lambda self, ownerid, username, sync_teams, sync_repos, using_integration, repos_affected: (
+            None
+        ),
     )
     def test_installation_repositories_update_existing_ghapp(self):
         owner = OwnerFactory(service=Service.GITHUB.value)
@@ -911,13 +895,9 @@ class GithubWebhookHandlerTests(APITestCase):
 
     @patch(
         "services.task.TaskService.refresh",
-        lambda self,
-        ownerid,
-        username,
-        sync_teams,
-        sync_repos,
-        repos_affected,
-        using_integration: None,
+        lambda self, ownerid, username, sync_teams, sync_repos, repos_affected, using_integration: (
+            None
+        ),
     )
     def test_installation_repositories_update_existing_ghapp_all_repos(self):
         owner = OwnerFactory(service=Service.GITHUB.value)
@@ -957,13 +937,9 @@ class GithubWebhookHandlerTests(APITestCase):
 
     @patch(
         "services.task.TaskService.refresh",
-        lambda self,
-        ownerid,
-        username,
-        sync_teams,
-        sync_repos,
-        using_integration,
-        repos_affected: None,
+        lambda self, ownerid, username, sync_teams, sync_repos, using_integration, repos_affected: (
+            None
+        ),
     )
     def test_installation_with_other_actions_does_not_set_owner_integration_id_if_none(
         self,
@@ -1093,13 +1069,9 @@ class GithubWebhookHandlerTests(APITestCase):
     )
     @patch(
         "services.task.TaskService.refresh",
-        lambda self,
-        ownerid,
-        username,
-        sync_teams,
-        sync_repos,
-        using_integration,
-        repos_affected: None,
+        lambda self, ownerid, username, sync_teams, sync_repos, using_integration, repos_affected: (
+            None
+        ),
     )
     def test_installation_sets_pem_path_for_sentry_app(self):
         username, service_id = "sentryuser", 998877
