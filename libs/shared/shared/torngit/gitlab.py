@@ -890,18 +890,38 @@ class Gitlab(TorngitBaseAdapter):
                         ]
                     },
                 )
-                first_commit = all_commits[-1]
-                if len(first_commit["parent_ids"]) > 0:
-                    parent = first_commit["parent_ids"][0]
-                else:
-                    # try querying the parent commit for this parent
-                    url = self.count_and_get_url_template(
-                        "get_pull_request_get_parent"
-                    ).substitute(
-                        service_id=self.data["repo"]["service_id"],
-                        first_commit=first_commit["id"],
+                if not all_commits:
+                    log.warning(
+                        "Empty commit list returned for pull request",
+                        extra={
+                            "pullid": pullid,
+                            "repoid": self.data["repo"]["service_id"],
+                        },
                     )
-                    parent = (await self.api("get", url, token=token))["parent_ids"][0]
+                    parent = pull.get("diff_refs", {}).get("start_sha")
+                    if not parent:
+                        log.warning(
+                            "Could not determine base commit for pull request",
+                            extra={
+                                "pullid": pullid,
+                                "repoid": self.data["repo"]["service_id"],
+                            },
+                        )
+                        parent = None
+                else:
+                    first_commit = all_commits[-1]
+                    if len(first_commit["parent_ids"]) > 0:
+                        parent = first_commit["parent_ids"][0]
+                    else:
+                        url = self.count_and_get_url_template(
+                            "get_pull_request_get_parent"
+                        ).substitute(
+                            service_id=self.data["repo"]["service_id"],
+                            first_commit=first_commit["id"],
+                        )
+                        parent = (await self.api("get", url, token=token))[
+                            "parent_ids"
+                        ][0]
 
             if pull["state"] == "locked":
                 pull["state"] = "closed"
