@@ -13,7 +13,11 @@ from database.tests.factories.core import UploadFactory
 from database.tests.factories.timeseries import DatasetFactory
 from helpers.checkpoint_logger import _kwargs_key
 from helpers.checkpoint_logger.flows import UploadFlow
-from helpers.exceptions import RepositoryWithoutValidBotError
+from helpers.exceptions import (
+    NoConfiguredAppsAvailable,
+    OwnerWithoutValidBotError,
+    RepositoryWithoutValidBotError,
+)
 from helpers.log_context import LogContext, set_log_context
 from services.lock_manager import LockRetry
 from services.processing.intermediate import intermediate_report_key
@@ -95,6 +99,32 @@ def test_load_commit_diff_no_bot(mocker, mock_configuration, dbsession):
         "tasks.upload_finisher.get_repo_provider_service"
     )
     mock_get_repo_service.side_effect = RepositoryWithoutValidBotError()
+    diff = load_commit_diff(commit)
+    assert diff is None
+
+
+def test_load_commit_diff_no_configured_apps(mocker, mock_configuration, dbsession):
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+    mock_get_repo_service = mocker.patch(
+        "tasks.upload_finisher.get_repo_provider_service"
+    )
+    mock_get_repo_service.side_effect = NoConfiguredAppsAvailable(
+        apps_count=1, rate_limited_count=1, suspended_count=0
+    )
+    diff = load_commit_diff(commit)
+    assert diff is None
+
+
+def test_load_commit_diff_owner_without_bot(mocker, mock_configuration, dbsession):
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+    mock_get_repo_service = mocker.patch(
+        "tasks.upload_finisher.get_repo_provider_service"
+    )
+    mock_get_repo_service.side_effect = OwnerWithoutValidBotError()
     diff = load_commit_diff(commit)
     assert diff is None
 
