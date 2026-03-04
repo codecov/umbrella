@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from datetime import timedelta
 
 import sentry_sdk
@@ -42,6 +43,29 @@ def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
     ).order_by("timestamp")
 
 
+def get_all_testruns_for_uploads(
+    uploads: QuerySet[ReportSession],
+) -> dict[int, list[Testrun]]:
+    """
+    Fetch all testruns for the given uploads in a single query.
+    Returns a dictionary mapping upload_id to list of testruns.
+    """
+    upload_ids = [upload.id for upload in uploads]
+
+    # Fetch all testruns for all uploads in one query
+    testruns = Testrun.objects.filter(
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & Q(upload_id__in=upload_ids)
+    ).order_by("timestamp")
+
+    # Group testruns by upload_id
+    testruns_by_upload: dict[int, list[Testrun]] = defaultdict(list)
+    for testrun in testruns:
+        testruns_by_upload[testrun.upload_id].append(testrun)
+
+    return testruns_by_upload
+
+
 def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
     # possible that we expire it and stop caring about it
     if test_id not in curr_flakes:
@@ -81,10 +105,11 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
+    upload: ReportSession,
+    curr_flakes: dict[bytes, Flake],
+    repo_id: int,
+    testruns: list[Testrun],
 ):
-    testruns = get_testruns(upload)
-
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
         match testrun.outcome:
@@ -120,8 +145,12 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
+    # Fetch all testruns for all uploads in a single query to avoid N+1
+    testruns_by_upload = get_all_testruns_for_uploads(uploads)
+
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        testruns = testruns_by_upload.get(upload.id, [])
+        process_single_upload(upload, curr_flakes, repo_id, testruns)
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
