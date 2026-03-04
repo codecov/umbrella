@@ -13,6 +13,79 @@ from shared.yaml import UserYaml
 
 
 @pytest.mark.django_db(databases={"default"})
+class TestProcessUploadDatabaseSync:
+    """Tests for database synchronization error handling."""
+
+    def test_raises_value_error_when_commit_not_found(self, dbsession, mocker):
+        """
+        Test that a ValueError is raised with proper message when commit is not found.
+
+        This can happen due to database replication lag between API and worker.
+        """
+        repository = RepositoryFactory.create()
+        dbsession.add(repository)
+        dbsession.flush()
+
+        arguments: UploadArguments = {
+            "commit": "nonexistent_commit_sha",
+            "upload_id": 123456,
+            "version": "v4",
+            "reportid": "test-report-id",
+        }
+
+        commit_yaml = UserYaml({})
+
+        with pytest.raises(ValueError) as exc_info:
+            process_upload(
+                on_processing_error=lambda error: None,
+                db_session=dbsession,
+                repo_id=repository.repoid,
+                commit_sha="nonexistent_commit_sha",
+                commit_yaml=commit_yaml,
+                arguments=arguments,
+            )
+
+        error_msg = str(exc_info.value)
+        assert "Commit not found in database" in error_msg
+        assert "nonexistent_commit_sha" in error_msg
+        assert str(repository.repoid) in error_msg
+
+    def test_raises_value_error_when_upload_not_found(
+        self, dbsession, mocker, mock_storage
+    ):
+        """
+        Test that a ValueError is raised with proper message when upload is not found.
+        """
+        repository = RepositoryFactory.create()
+        commit = CommitFactory.create(repository=repository)
+        dbsession.add_all([repository, commit])
+        dbsession.flush()
+
+        arguments: UploadArguments = {
+            "commit": commit.commitid,
+            "upload_id": 999999,
+            "version": "v4",
+            "reportid": "test-report-id",
+        }
+
+        commit_yaml = UserYaml({})
+
+        with pytest.raises(ValueError) as exc_info:
+            process_upload(
+                on_processing_error=lambda error: None,
+                db_session=dbsession,
+                repo_id=repository.repoid,
+                commit_sha=commit.commitid,
+                commit_yaml=commit_yaml,
+                arguments=arguments,
+            )
+
+        error_msg = str(exc_info.value)
+        assert "Upload not found in database" in error_msg
+        assert "999999" in error_msg
+
+
+@pytest.mark.django_db(databases={"default"})
 class TestProcessUploadOrphanedTaskRecovery:
     """
     Tests for the orphaned upload recovery mechanism.

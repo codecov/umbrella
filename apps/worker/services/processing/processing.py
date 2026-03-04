@@ -33,15 +33,31 @@ def process_upload(
 ) -> ProcessingResult:
     upload_id = arguments["upload_id"]
 
+    # Refresh session to handle potential replication lag between API and worker databases
+    db_session.expire_all()
+
     commit = (
         db_session.query(Commit)
         .filter(Commit.repoid == repo_id, Commit.commitid == commit_sha)
         .first()
     )
-    assert commit
+    if not commit:
+        error_msg = (
+            f"Commit not found in database. This may indicate a race condition "
+            f"or database synchronization issue. repo_id={repo_id}, "
+            f"commit_sha={commit_sha}, upload_id={upload_id}"
+        )
+        log.error(error_msg)
+        raise ValueError(error_msg)
 
     upload = db_session.query(Upload).filter_by(id_=upload_id).first()
-    assert upload
+    if not upload:
+        error_msg = (
+            f"Upload not found in database. upload_id={upload_id}, "
+            f"repo_id={repo_id}, commit_sha={commit_sha}"
+        )
+        log.error(error_msg)
+        raise ValueError(error_msg)
 
     state = ProcessingState(repo_id, commit_sha)
     # this in a noop in normal cases, but relevant for task retries:

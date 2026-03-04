@@ -142,6 +142,77 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                 UserYaml(commit_yaml),
                 arguments,
             )
+        except ValueError as e:
+            # Handle database synchronization issues (commit/upload not found)
+            error_msg = str(e)
+            if "not found in database" in error_msg.lower():
+                max_sync_retries = 3
+                if self.request.retries < max_sync_retries:
+                    countdown = FIRST_RETRY_DELAY * (2**self.request.retries)
+                    log.warning(
+                        "Database synchronization issue detected, retrying",
+                        extra={
+                            "countdown": countdown,
+                            "retry_count": self.request.retries,
+                            "max_retries": max_sync_retries,
+                            "error": error_msg,
+                            "commitid": commitid,
+                            "repoid": repoid,
+                            "upload_id": arguments.get("upload_id"),
+                        },
+                    )
+                    self._call_upload_breadcrumb_task(
+                        commit_sha=commitid,
+                        repo_id=repoid,
+                        milestone=Milestones.PROCESSING_UPLOAD,
+                        upload_ids=[arguments["upload_id"]],
+                        error=Errors.INTERNAL_RETRYING,
+                        error_text=f"Database sync retry {self.request.retries + 1}/{max_sync_retries}",
+                    )
+                    self.retry(max_retries=max_sync_retries, countdown=countdown)
+                else:
+                    log.error(
+                        "Database synchronization failed after max retries",
+                        extra={
+                            "retry_count": self.request.retries,
+                            "max_retries": max_sync_retries,
+                            "error": error_msg,
+                            "commitid": commitid,
+                            "repoid": repoid,
+                            "upload_id": arguments.get("upload_id"),
+                        },
+                    )
+                    self._call_upload_breadcrumb_task(
+                        commit_sha=commitid,
+                        repo_id=repoid,
+                        milestone=Milestones.PROCESSING_UPLOAD,
+                        upload_ids=[arguments["upload_id"]],
+                        error=Errors.UNKNOWN,
+                        error_text=f"Database sync failed: {error_msg}",
+                    )
+                    sentry_sdk.capture_exception(
+                        e,
+                        contexts={
+                            "upload_details": {
+                                "commitid": commitid,
+                                "repoid": repoid,
+                                "retry_count": self.request.retries,
+                                "upload_id": arguments.get("upload_id"),
+                                "error": "Database synchronization failure",
+                            }
+                        },
+                    )
+                    raise
+            # Re-raise if it's not a database sync issue
+            self._call_upload_breadcrumb_task(
+                commit_sha=commitid,
+                repo_id=repoid,
+                milestone=Milestones.PROCESSING_UPLOAD,
+                upload_ids=[arguments["upload_id"]],
+                error=Errors.UNKNOWN,
+                error_text=repr(e),
+            )
+            raise
         except SoftTimeLimitExceeded as e:
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
