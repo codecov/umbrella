@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from datetime import timedelta
 
 import sentry_sdk
@@ -33,13 +34,14 @@ def fetch_current_flakes(repo_id: int) -> dict[bytes, Flake]:
     }
 
 
-def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
-    upload_filter = Q(upload_id=upload.id)
+def get_testruns_for_uploads(upload_ids: list[int]) -> QuerySet[Testrun]:
+    """Fetch all testruns for multiple uploads in a single query."""
+    upload_filter = Q(upload_id__in=upload_ids)
 
     # we won't process flakes for testruns older than 1 day
     return Testrun.objects.filter(
         Q(timestamp__gte=timezone.now() - timedelta(days=1)) & upload_filter
-    ).order_by("timestamp")
+    ).order_by("upload_id", "timestamp")
 
 
 def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
@@ -81,11 +83,20 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
+    upload_testruns: list[Testrun],
+    curr_flakes: dict[bytes, Flake],
+    repo_id: int,
+    modified_testruns: list[Testrun],
 ):
-    testruns = get_testruns(upload)
+    """Process testruns for a single upload.
 
-    for testrun in testruns:
+    Args:
+        upload_testruns: List of testruns for this upload
+        curr_flakes: Dictionary of current flakes
+        repo_id: Repository ID
+        modified_testruns: List to collect modified testruns
+    """
+    for testrun in upload_testruns:
         test_id = bytes(testrun.test_id)
         match testrun.outcome:
             case "pass":
@@ -94,11 +105,12 @@ def process_single_upload(
 
                 handle_pass(curr_flakes, test_id)
             case "failure" | "flaky_fail" | "error":
+                original_outcome = testrun.outcome
                 handle_failure(curr_flakes, test_id, testrun, repo_id)
+                if testrun.outcome != original_outcome:
+                    modified_testruns.append(testrun)
             case _:
                 continue
-
-    Testrun.objects.bulk_update(testruns, ["outcome"])
 
 
 @sentry_sdk.trace
@@ -106,12 +118,16 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     log.info(
         "process_flakes_for_commit: starting processing",
     )
-    uploads = get_relevant_uploads(repo_id, commit_id)
+    uploads = list(get_relevant_uploads(repo_id, commit_id))
 
     log.info(
         "process_flakes_for_commit: fetched uploads",
         extra={"uploads": [upload.id for upload in uploads]},
     )
+
+    if not uploads:
+        log.info("process_flakes_for_commit: no uploads to process")
+        return
 
     curr_flakes = fetch_current_flakes(repo_id)
 
@@ -120,11 +136,36 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
+    # Fetch all testruns for all uploads in a single query
+    upload_ids = [upload.id for upload in uploads]
+    all_testruns = list(get_testruns_for_uploads(upload_ids))
+
+    log.info(
+        "process_flakes_for_commit: fetched testruns",
+        extra={"testrun_count": len(all_testruns)},
+    )
+
+    # Group testruns by upload_id
+    testruns_by_upload = defaultdict(list)
+    for testrun in all_testruns:
+        testruns_by_upload[testrun.upload_id].append(testrun)
+
+    # Process each upload and collect modified testruns
+    modified_testruns = []
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        upload_testruns = testruns_by_upload.get(upload.id, [])
+        process_single_upload(upload_testruns, curr_flakes, repo_id, modified_testruns)
         log.info(
             "process_flakes_for_commit: processed upload",
-            extra={"upload": upload.id},
+            extra={"upload": upload.id, "testrun_count": len(upload_testruns)},
+        )
+
+    # Single bulk update for all modified testruns
+    if modified_testruns:
+        Testrun.objects.bulk_update(modified_testruns, ["outcome"])
+        log.info(
+            "process_flakes_for_commit: bulk updated testruns",
+            extra={"modified_count": len(modified_testruns)},
         )
 
     log.info(
