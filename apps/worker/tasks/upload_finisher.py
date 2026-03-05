@@ -267,7 +267,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         # If processing_results not provided (e.g., from orphaned upload recovery),
         # reconstruct it from ProcessingState to ensure ALL uploads are included
-        if processing_results is None:
+        reconstructed = processing_results is None
+        if reconstructed:
             log.info(
                 "run_impl: processing_results not provided, reconstructing from ProcessingState"
             )
@@ -286,17 +287,20 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         # Early exit: if the Redis "processed" set is already empty, a previous
         # cooperative finisher merged our uploads.  Skip without acquiring the lock.
-        upload_numbers = state.get_upload_numbers()
-        if upload_numbers.processed == 0 and upload_numbers.processing == 0:
-            log.info(
-                "No pending uploads in Redis, another finisher already merged them",
-                extra={"upload_ids": upload_ids},
-            )
-            inc_counter(UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER)
-            return {
-                "already_completed": True,
-                "upload_ids": upload_ids,
-            }
+        # Skip this check when processing_results were reconstructed from DB
+        # (Redis may have expired but uploads still need merging).
+        if not reconstructed:
+            upload_numbers = state.get_upload_numbers()
+            if upload_numbers.processed == 0 and upload_numbers.processing == 0:
+                log.info(
+                    "No pending uploads in Redis, another finisher already merged them",
+                    extra={"upload_ids": upload_ids},
+                )
+                inc_counter(UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER)
+                return {
+                    "already_completed": True,
+                    "upload_ids": upload_ids,
+                }
 
         try:
             log.info("run_impl: Processing reports with lock")

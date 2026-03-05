@@ -66,6 +66,27 @@ def mock_self_app(mocker, celery_app):
     )
 
 
+def _setup_mock_redis_for_processing(mock_redis, upload_ids=None):
+    """Configure mock_redis so the cooperative early exit check is skipped.
+
+    The early exit checks ``state.get_upload_numbers()`` via ``scard`` and
+    ``state.get_all_processed_uploads()`` via ``smembers``.  This helper makes
+    those calls indicate that there are pending uploads so tests exercising the
+    full merge flow aren't short-circuited.
+    """
+    if upload_ids is None:
+        upload_ids = [0]
+
+    def scard_side_effect(key):
+        if "processed" in key:
+            return len(upload_ids)
+        return 0
+
+    mock_redis.scard.side_effect = scard_side_effect
+    mock_redis.smembers.return_value = {str(uid).encode() for uid in upload_ids}
+    mock_redis.exists.return_value = True
+
+
 def _start_upload_flow(mocker):
     mocker.patch(
         "helpers.checkpoint_logger._get_milli_timestamp",
@@ -173,7 +194,7 @@ class TestUploadFinisherTask:
         mock_redis,
         mock_self_app,
     ):
-        mock_redis.scard.return_value = 0
+        _setup_mock_redis_for_processing(mock_redis)
         mocker.patch(
             "tasks.upload_finisher.perform_report_merging",
             return_value=Report(),
@@ -279,8 +300,10 @@ class TestUploadFinisherTask:
         dbsession,
         mock_storage,
         mock_repo_provider,
+        mock_redis,
         mock_self_app,
     ):
+        _setup_mock_redis_for_processing(mock_redis)
         mocker.patch(
             "tasks.upload_finisher.perform_report_merging",
             return_value=Report(),
@@ -349,8 +372,10 @@ class TestUploadFinisherTask:
         dbsession,
         mock_storage,
         mock_repo_provider,
+        mock_redis,
         mock_self_app,
     ):
+        _setup_mock_redis_for_processing(mock_redis)
         mocker.patch(
             "tasks.upload_finisher.perform_report_merging",
             return_value=Report(),
@@ -748,8 +773,15 @@ class TestUploadFinisherTask:
 
     @pytest.mark.django_db
     def test_upload_finisher_task_calls_save_commit_measurements_task(
-        self, mocker, dbsession, mock_storage, mock_repo_provider, mock_self_app
+        self,
+        mocker,
+        dbsession,
+        mock_storage,
+        mock_repo_provider,
+        mock_redis,
+        mock_self_app,
     ):
+        _setup_mock_redis_for_processing(mock_redis)
         mocker.patch(
             "tasks.upload_finisher.perform_report_merging",
             return_value=Report(),
@@ -834,6 +866,7 @@ class TestUploadFinisherTask:
     ):
         """LockManager must use a finite blocking_timeout so workers are not
         blocked indefinitely when the lock is held by another task."""
+        _setup_mock_redis_for_processing(mock_redis)
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
@@ -868,11 +901,11 @@ class TestUploadFinisherTask:
 
     @pytest.mark.django_db
     def test_retry_on_report_lock(self, dbsession, mocker, mock_redis, mock_self_app):
+        _setup_mock_redis_for_processing(mock_redis)
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
 
-        # Mock LockManager to raise LockRetry for UPLOAD_PROCESSING lock
         m = mocker.MagicMock()
         m.return_value.locked.return_value.__enter__.side_effect = LockRetry(60)
         mocker.patch("tasks.upload_finisher.LockManager", m)
@@ -929,7 +962,7 @@ class TestUploadFinisherTask:
         mock_redis,
         mock_self_app,
     ):
-        mock_redis.scard.return_value = 0
+        _setup_mock_redis_for_processing(mock_redis)
         mocker.patch(
             "tasks.upload_finisher.perform_report_merging",
             return_value=Report(),
@@ -995,7 +1028,10 @@ class TestUploadFinisherTask:
         )
 
     @pytest.mark.django_db
-    def test_soft_time_limit_handling(self, dbsession, mocker, mock_self_app):
+    def test_soft_time_limit_handling(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
+        _setup_mock_redis_for_processing(mock_redis)
         mocker.patch(
             "tasks.upload_finisher.load_commit_diff", side_effect=SoftTimeLimitExceeded
         )
@@ -1030,11 +1066,13 @@ class TestUploadFinisherTask:
         )
 
     @pytest.mark.django_db
-    def test_generic_exception_handling(self, dbsession, mocker, mock_self_app):
+    def test_generic_exception_handling(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
         """Test that the generic exception handler captures and logs unexpected errors."""
+        _setup_mock_redis_for_processing(mock_redis)
         mock_sentry = mocker.patch("tasks.upload_finisher.sentry_sdk.capture_exception")
 
-        # Mock an unexpected error during the _process_reports_with_lock call
         mocker.patch(
             "tasks.upload_finisher.UploadFinisherTask._process_reports_with_lock",
             side_effect=ValueError("Unexpected error occurred"),
@@ -1085,16 +1123,15 @@ class TestUploadFinisherTask:
 
     @pytest.mark.django_db
     def test_idempotency_check_skips_already_processed_uploads(
-        self, dbsession, mocker, mock_self_app
+        self, dbsession, mocker, mock_redis, mock_self_app
     ):
-        """Test that finisher skips work if all uploads are already in final state.
+        """Test that finisher skips work when Redis shows no pending uploads.
 
-        This test validates the idempotency check that prevents wasted work when:
-        - Multiple finishers are triggered (e.g., visibility timeout re-queuing)
-        - Finisher is manually retried
-
-        The check only skips when ALL uploads exist in DB and are in final states.
+        The cooperative early exit checks Redis: if both 'processed' and
+        'processing' sets are empty, a previous finisher already merged
+        everything, so this finisher returns early.
         """
+        mock_redis.scard.return_value = 0
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
@@ -1139,9 +1176,15 @@ class TestUploadFinisherTask:
 
     @pytest.mark.django_db
     def test_idempotency_check_proceeds_when_uploads_not_finished(
-        self, dbsession, mocker, mock_storage, mock_repo_provider, mock_self_app
+        self,
+        dbsession,
+        mocker,
+        mock_storage,
+        mock_repo_provider,
+        mock_redis,
+        mock_self_app,
     ):
-        """Test that finisher proceeds normally if uploads are still in 'started' state."""
+        """Test that finisher proceeds normally when Redis shows pending uploads."""
         mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
         mocker.patch("tasks.upload_finisher.update_uploads")
 
@@ -1153,12 +1196,12 @@ class TestUploadFinisherTask:
         dbsession.add(report)
         dbsession.flush()
 
-        # Create uploads that are still in "started" state
         upload_1 = UploadFactory.create(report=report, state="started")
         dbsession.add(upload_1)
         dbsession.flush()
 
-        # Mock the _process_reports_with_lock to verify it IS called
+        _setup_mock_redis_for_processing(mock_redis, upload_ids=[upload_1.id])
+
         mock_process = mocker.patch.object(
             UploadFinisherTask, "_process_reports_with_lock"
         )
@@ -1175,7 +1218,6 @@ class TestUploadFinisherTask:
             commit_yaml={},
         )
 
-        # Verify that _process_reports_with_lock WAS called
         mock_process.assert_called_once()
 
     @pytest.mark.django_db
@@ -1222,12 +1264,12 @@ class TestUploadFinisherTask:
         # Mock ProcessingState to return empty (simulating Redis expiration)
         mock_state = mocker.MagicMock()
         mock_state.get_uploads_for_merging.return_value = set()  # Redis expired
+        mock_state.get_all_processed_uploads.return_value = set()  # Redis expired
         mock_state.get_upload_numbers.return_value = mocker.MagicMock(
             processing=0, processed=0
         )
         mocker.patch("tasks.upload_finisher.ProcessingState", return_value=mock_state)
 
-        # Mock the processing methods
         mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
         mocker.patch("tasks.upload_finisher.update_uploads")
         mock_process = mocker.patch.object(
@@ -1235,6 +1277,7 @@ class TestUploadFinisherTask:
         )
 
         # Call run_impl without processing_results to trigger reconstruction
+        # (early exit is skipped for reconstructed results)
         task = UploadFinisherTask()
         task.run_impl(
             dbsession,
@@ -1274,16 +1317,13 @@ class TestUploadFinisherTask:
         dbsession.add(commit)
         dbsession.flush()
 
-        # Mock ProcessingState to return empty (simulating Redis expiration)
         mock_state = mocker.MagicMock()
-        mock_state.get_uploads_for_merging.return_value = set()  # Redis expired
+        mock_state.get_all_processed_uploads.return_value = set()  # Redis expired
         mocker.patch("tasks.upload_finisher.ProcessingState", return_value=mock_state)
 
-        # Call run_impl without processing_results to trigger reconstruction
         task = UploadFinisherTask()
         result = task._reconstruct_processing_results(dbsession, mock_state, commit)
 
-        # Verify empty list returned when no uploads found
         assert result == []
 
     @pytest.mark.django_db
@@ -1293,6 +1333,7 @@ class TestUploadFinisherTask:
         mocker,
         mock_storage,
         mock_repo_provider,
+        mock_redis,
         mock_self_app,
     ):
         """
@@ -1347,6 +1388,8 @@ class TestUploadFinisherTask:
         )
         dbsession.add(test_results_upload)
         dbsession.flush()
+
+        _setup_mock_redis_for_processing(mock_redis, upload_ids=[coverage_upload.id_])
 
         processing_results = [
             {"upload_id": coverage_upload.id_, "successful": True, "arguments": {}},
@@ -1577,7 +1620,7 @@ class TestCommitRefreshAfterLock:
             return original_refresh(obj)
 
         mocker.patch.object(dbsession, "refresh", side_effect=tracking_refresh)
-        mock_redis.scard.return_value = 0
+        _setup_mock_redis_for_processing(mock_redis)
         mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
         mocker.patch("tasks.upload_finisher.update_uploads")
         mocker.patch("tasks.upload_finisher.cleanup_intermediate_reports")
@@ -1620,7 +1663,7 @@ class TestCommitRefreshAfterLock:
         # Simulate stale commit by expiring the cached attributes
         dbsession.expire(commit, ["_report_json", "_report_json_storage_path"])
 
-        mock_redis.scard.return_value = 0
+        _setup_mock_redis_for_processing(mock_redis)
         mocker.patch("tasks.upload_finisher.load_commit_diff", return_value=None)
         mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
         mocker.patch("tasks.upload_finisher.update_uploads")
