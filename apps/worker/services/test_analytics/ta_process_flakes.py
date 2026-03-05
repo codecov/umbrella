@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from datetime import timedelta
 
 import sentry_sdk
@@ -81,10 +82,11 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
+    upload: ReportSession,
+    curr_flakes: dict[bytes, Flake],
+    repo_id: int,
+    testruns: list[Testrun],
 ):
-    testruns = get_testruns(upload)
-
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
         match testrun.outcome:
@@ -106,7 +108,7 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     log.info(
         "process_flakes_for_commit: starting processing",
     )
-    uploads = get_relevant_uploads(repo_id, commit_id)
+    uploads = list(get_relevant_uploads(repo_id, commit_id))
 
     log.info(
         "process_flakes_for_commit: fetched uploads",
@@ -120,8 +122,19 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
+    upload_ids = [upload.id for upload in uploads]
+    all_testruns = Testrun.objects.filter(
+        Q(upload_id__in=upload_ids)
+        & Q(timestamp__gte=timezone.now() - timedelta(days=1))
+    ).order_by("timestamp")
+
+    testruns_by_upload_id = defaultdict(list)
+    for testrun in all_testruns:
+        testruns_by_upload_id[testrun.upload_id].append(testrun)
+
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        testruns = testruns_by_upload_id.get(upload.id, [])
+        process_single_upload(upload, curr_flakes, repo_id, testruns)
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
