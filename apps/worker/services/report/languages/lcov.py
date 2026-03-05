@@ -163,6 +163,13 @@ def _process_file(
                 continue
 
             elif line_str not in ("0", ""):
+                # Validate that line_str is a positive integer
+                try:
+                    if int(line_str) < 1:
+                        continue
+                except ValueError:
+                    continue
+
                 branches[line_str][f"{block}:{branch}"] = (
                     0 if taken in ("-", "0") else 1
                 )

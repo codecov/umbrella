@@ -329,3 +329,44 @@ end_of_record
             ]
         }
         assert processed_report["archive"] == expected
+
+    def test_negative_line_numbers_in_brda(self):
+        """Test that BRDA lines with negative line numbers are ignored"""
+        # Regression test for WORKER-XN4: negative line numbers should be skipped
+        lcov_data = b"""
+TN:
+SF:test_file.kt
+DA:47,1
+DA:49,0
+DA:54,1
+BRDA:-1,0,0,0
+BRDA:-1,0,1,0
+BRDA:-1,0,2,0
+BRDA:47,0,0,0
+BRDA:47,0,1,1
+BRDA:49,0,0,0
+BRDA:49,0,1,0
+BRDA:54,0,0,1
+BRDA:54,0,1,1
+end_of_record
+"""
+
+        def path_fixer(path):
+            return path if path == "test_file.kt" else None
+
+        report_builder_session = create_report_builder_session(path_fixer=path_fixer)
+
+        # Should not raise ValueError for negative line numbers
+        lcov.from_txt(lcov_data, report_builder_session)
+        report = report_builder_session.output_report()
+        processed_report = convert_report_to_better_readable(report)
+
+        # Negative line number branches should be ignored, valid branches should be processed
+        expected = {
+            "test_file.kt": [
+                (47, "1/2", "b", [[0, "1/2", ["0:0"], None, None]], None, None),
+                (49, "0/2", "b", [[0, "0/2", ["0:0", "0:1"], None, None]], None, None),
+                (54, "2/2", "b", [[0, "2/2"]], None, None),
+            ]
+        }
+        assert processed_report["archive"] == expected
