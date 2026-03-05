@@ -74,6 +74,21 @@ def test_batch_merging_many_uploads():
     assert should_trigger_postprocessing(state.get_upload_numbers())
 
 
+def test_get_all_processed_uploads_returns_full_set():
+    """get_all_processed_uploads returns every upload without the MERGE_BATCH_SIZE cap."""
+    state = ProcessingState(1234, uuid4().hex)
+    ids = list(range(1, 25))
+    state.mark_uploads_as_processing(ids)
+    for i in ids:
+        state.mark_upload_as_processed(i)
+
+    # get_uploads_for_merging is capped at MERGE_BATCH_SIZE (10)
+    assert len(state.get_uploads_for_merging()) <= 10
+
+    # get_all_processed_uploads returns everything
+    assert state.get_all_processed_uploads() == set(ids)
+
+
 class TestProcessingStateEmptyListGuards:
     """Tests for empty list guards in ProcessingState methods."""
 
