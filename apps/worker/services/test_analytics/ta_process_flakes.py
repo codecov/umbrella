@@ -24,7 +24,7 @@ def get_relevant_uploads(repo_id: int, commit_id: str) -> QuerySet[ReportSession
         report__commit__repository__repoid=repo_id,
         report__commit__commitid=commit_id,
         state__in=["processed"],
-    )
+    ).select_related("report__commit__repository")
 
 
 def fetch_current_flakes(repo_id: int) -> dict[bytes, Flake]:
@@ -42,7 +42,9 @@ def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
     ).order_by("timestamp")
 
 
-def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
+def handle_pass(
+    curr_flakes: dict[bytes, Flake], expired_flakes: list[Flake], test_id: bytes
+):
     # possible that we expire it and stop caring about it
     if test_id not in curr_flakes:
         return
@@ -51,7 +53,7 @@ def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
     curr_flakes[test_id].count += 1
     if curr_flakes[test_id].recent_passes_count == 30:
         curr_flakes[test_id].end_date = timezone.now()
-        curr_flakes[test_id].save()
+        expired_flakes.append(curr_flakes[test_id])
         del curr_flakes[test_id]
 
 
@@ -81,7 +83,10 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
+    upload: ReportSession,
+    curr_flakes: dict[bytes, Flake],
+    expired_flakes: list[Flake],
+    repo_id: int,
 ):
     testruns = get_testruns(upload)
 
@@ -92,7 +97,7 @@ def process_single_upload(
                 if test_id not in curr_flakes:
                     continue
 
-                handle_pass(curr_flakes, test_id)
+                handle_pass(curr_flakes, expired_flakes, test_id)
             case "failure" | "flaky_fail" | "error":
                 handle_failure(curr_flakes, test_id, testrun, repo_id)
             case _:
@@ -106,7 +111,7 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     log.info(
         "process_flakes_for_commit: starting processing",
     )
-    uploads = get_relevant_uploads(repo_id, commit_id)
+    uploads = list(get_relevant_uploads(repo_id, commit_id))
 
     log.info(
         "process_flakes_for_commit: fetched uploads",
@@ -114,6 +119,7 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     )
 
     curr_flakes = fetch_current_flakes(repo_id)
+    expired_flakes = []
 
     log.info(
         "process_flakes_for_commit: fetched current flakes",
@@ -121,7 +127,7 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     )
 
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        process_single_upload(upload, curr_flakes, expired_flakes, repo_id)
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
@@ -132,8 +138,9 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
+    all_flakes = list(curr_flakes.values()) + expired_flakes
     Flake.objects.bulk_create(
-        curr_flakes.values(),
+        all_flakes,
         update_conflicts=True,
         unique_fields=["id"],
         update_fields=["end_date", "count", "recent_passes_count", "fail_count"],
