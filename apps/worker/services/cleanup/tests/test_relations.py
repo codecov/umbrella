@@ -13,6 +13,7 @@ from services.cleanup.relations import (
 from shared.django_apps.codecov_auth.models import Owner
 from shared.django_apps.core.models import Repository
 from shared.django_apps.reports.models import UploadLevelTotals
+from shared.django_apps.upload_breadcrumbs.models import UploadBreadcrumb
 
 
 def dump_delete_queries(queryset: QuerySet) -> str:
@@ -75,6 +76,15 @@ def test_can_simplify_queries():
     repo = Repository.objects.filter(fork=123)
     with patch("services.cleanup.relations._get_eager_eval_threshold", return_value=-1):
         assert simplified_lookup(repo) == repo
+
+
+@pytest.mark.django_db
+def test_simplified_lookup_clears_ordering():
+    breadcrumbs = UploadBreadcrumb.objects.filter(repo_id__in=[1, 2, 3])
+
+    result = simplified_lookup(breadcrumbs)
+
+    assert isinstance(result, list)
 
 
 @pytest.mark.django_db
