@@ -7,7 +7,7 @@ import sentry_sdk
 from celery._state import get_current_task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from celery.worker.request import Request
-from django.db import InterfaceError, close_old_connections
+from django.db import InterfaceError
 from sqlalchemy.exc import (
     DataError,
     IntegrityError,
@@ -456,8 +456,6 @@ class BaseCodecovTask(celery_app.Task):
                         task=self.name, queue=queue_name
                     )
                     time_in_queue_timer.observe(delta.total_seconds())
-
-            close_old_connections()
 
             try:
                 with self.task_core_runtime.time():
