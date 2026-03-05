@@ -24,7 +24,7 @@ def get_relevant_uploads(repo_id: int, commit_id: str) -> QuerySet[ReportSession
         report__commit__repository__repoid=repo_id,
         report__commit__commitid=commit_id,
         state__in=["processed"],
-    )
+    ).select_related("report__commit__repository")
 
 
 def fetch_current_flakes(repo_id: int) -> dict[bytes, Flake]:
@@ -42,7 +42,9 @@ def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
     ).order_by("timestamp")
 
 
-def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
+def handle_pass(
+    curr_flakes: dict[bytes, Flake], test_id: bytes, expired_flakes: list[Flake]
+):
     # possible that we expire it and stop caring about it
     if test_id not in curr_flakes:
         return
@@ -51,7 +53,7 @@ def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
     curr_flakes[test_id].count += 1
     if curr_flakes[test_id].recent_passes_count == 30:
         curr_flakes[test_id].end_date = timezone.now()
-        curr_flakes[test_id].save()
+        expired_flakes.append(curr_flakes[test_id])
         del curr_flakes[test_id]
 
 
@@ -81,24 +83,33 @@ def handle_failure(
 
 @sentry_sdk.trace
 def process_single_upload(
-    upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
+    upload: ReportSession,
+    curr_flakes: dict[bytes, Flake],
+    repo_id: int,
+    testruns: list[Testrun],
+    expired_flakes: list[Flake],
 ):
-    testruns = get_testruns(upload)
+    testruns_to_update = []
 
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
+        original_outcome = testrun.outcome
         match testrun.outcome:
             case "pass":
                 if test_id not in curr_flakes:
                     continue
 
-                handle_pass(curr_flakes, test_id)
+                handle_pass(curr_flakes, test_id, expired_flakes)
             case "failure" | "flaky_fail" | "error":
                 handle_failure(curr_flakes, test_id, testrun, repo_id)
             case _:
                 continue
 
-    Testrun.objects.bulk_update(testruns, ["outcome"])
+        # Track testruns that have been modified
+        if testrun.outcome != original_outcome:
+            testruns_to_update.append(testrun)
+
+    return testruns_to_update
 
 
 @sentry_sdk.trace
@@ -107,11 +118,15 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         "process_flakes_for_commit: starting processing",
     )
     uploads = get_relevant_uploads(repo_id, commit_id)
+    upload_ids = [upload.id for upload in uploads]
 
     log.info(
         "process_flakes_for_commit: fetched uploads",
-        extra={"uploads": [upload.id for upload in uploads]},
+        extra={"uploads": upload_ids},
     )
+
+    if not upload_ids:
+        return
 
     curr_flakes = fetch_current_flakes(repo_id)
 
@@ -120,11 +135,41 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
+    # Fetch all testruns for all uploads at once
+    all_testruns = Testrun.objects.filter(
+        Q(timestamp__gte=timezone.now() - timedelta(days=1))
+        & Q(upload_id__in=upload_ids)
+    ).order_by("timestamp")
+
+    # Group testruns by upload_id
+    testruns_by_upload = {}
+    for testrun in all_testruns:
+        if testrun.upload_id not in testruns_by_upload:
+            testruns_by_upload[testrun.upload_id] = []
+        testruns_by_upload[testrun.upload_id].append(testrun)
+
+    all_testruns_to_update = []
+    expired_flakes = []
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        upload_testruns = testruns_by_upload.get(upload.id, [])
+        testruns_to_update = process_single_upload(
+            upload, curr_flakes, repo_id, upload_testruns, expired_flakes
+        )
+        all_testruns_to_update.extend(testruns_to_update)
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
+        )
+
+    # Bulk update testruns
+    if all_testruns_to_update:
+        Testrun.objects.bulk_update(all_testruns_to_update, ["outcome"])
+
+    # Save expired flakes (recent_passes_count == 30) separately
+    if expired_flakes:
+        Flake.objects.bulk_update(
+            expired_flakes,
+            ["end_date", "count", "recent_passes_count"],
         )
 
     log.info(
