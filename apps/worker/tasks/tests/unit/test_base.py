@@ -130,8 +130,8 @@ class TestBaseCodecovTask:
             "created_timestamp": "2023-06-13 10:00:00.000000",
             "delivery_info": {"routing_key": "my-queue"},
         }
-        mock_task_request.get.side_effect = (
-            lambda key, default: fake_request_values.get(key, default)
+        mock_task_request.get.side_effect = lambda key, default: (
+            fake_request_values.get(key, default)
         )
         mocked_get_db_session.return_value = dbsession
         task_instance = SampleTask()
@@ -287,6 +287,32 @@ class TestBaseCodecovTask:
         assert mock_dbsession_rollback.call_args_list == [call()]
 
         assert mock_wrap_up.call_args_list == [call(dbsession)]
+
+    def test_run_closes_old_connections_before_getting_session(self, mocker, dbsession):
+        """Verify that close_old_connections is called before get_db_session.
+
+        This prevents SQLAlchemy sessions from entering a 'prepared' state
+        when Django closes old database connections. Regression test for WORKER-XMZ.
+        """
+        call_order = []
+
+        def track_close():
+            call_order.append("close_old_connections")
+
+        def track_get_session():
+            call_order.append("get_db_session")
+            return dbsession
+
+        mocker.patch("tasks.base.close_old_connections", side_effect=track_close)
+        mocker.patch("tasks.base.get_db_session", side_effect=track_get_session)
+        mocker.patch("tasks.base.BaseCodecovTask.request", None)
+
+        task = SampleTask()
+        task.run()
+
+        # Verify both were called in the correct order
+        assert call_order[0] == "close_old_connections"
+        assert call_order[1] == "get_db_session"
 
     def test_get_repo_provider_service_working(self, mocker, mock_self_app):
         mock_repo_provider = mocker.MagicMock()

@@ -409,6 +409,7 @@ class BaseCodecovTask(celery_app.Task):
     @sentry_sdk.trace
     def run(self, *args, **kwargs):
         with self.task_full_runtime.time():
+            close_old_connections()
             db_session = get_db_session()
 
             log_context = LogContext(
@@ -456,8 +457,6 @@ class BaseCodecovTask(celery_app.Task):
                         task=self.name, queue=queue_name
                     )
                     time_in_queue_timer.observe(delta.total_seconds())
-
-            close_old_connections()
 
             try:
                 with self.task_core_runtime.time():
