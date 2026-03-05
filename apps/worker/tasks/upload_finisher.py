@@ -32,6 +32,7 @@ from services.repository import get_repo_provider_service
 from services.timeseries import repository_datasets_query
 from services.yaml import read_yaml_field
 from shared.celery_config import (
+    DEFAULT_BLOCKING_TIMEOUT_SECONDS,
     DEFAULT_LOCK_TIMEOUT_SECONDS,
     UPLOAD_PROCESSOR_MAX_RETRIES,
     compute_comparison_task_name,
@@ -418,7 +419,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=None,
+            blocking_timeout=DEFAULT_BLOCKING_TIMEOUT_SECONDS,
         )
 
         try:
@@ -517,7 +518,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=None,
+            blocking_timeout=DEFAULT_BLOCKING_TIMEOUT_SECONDS,
         )
 
         try:
