@@ -348,6 +348,12 @@ class BaseCeleryConfig:
     result_backend = get_config("services", "celery_broker") or get_config(
         "services", "redis_url"
     )
+    worker_send_task_events = bool(
+        get_config("setup", "tasks", "celery", "worker_send_task_events", default=False)
+    )
+    task_send_sent_event = bool(
+        get_config("setup", "tasks", "celery", "task_send_sent_event", default=False)
+    )
 
     # Task visibility timeout for broker transport
     # Uses TASK_VISIBILITY_TIMEOUT_SECONDS constant
