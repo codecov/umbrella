@@ -34,7 +34,7 @@ from services.repository import get_repo_provider_service
 from shared.celery_config import (
     TASK_RETRY_BACKOFF_BASE_SECONDS,
     TASK_RETRY_COUNTDOWN_MAX_SECONDS,
-    TASK_RETRY_COUNTDOWN_MIN_SECONDS,
+    TASK_RETRY_MIN_SAFE_WINDOW_SECONDS,
     TASK_VISIBILITY_TIMEOUT_SECONDS,
     upload_breadcrumb_task_name,
 )
@@ -207,45 +207,51 @@ class BaseCodecovTask(celery_app.Task):
 
     @property
     def hard_time_limit_task(self) -> int:
+        """Return the hard time limit for this task execution, in seconds.
+
+        Checked in priority order:
+        1. request.timelimit[0] — set per-execution when a task is dispatched
+           with a custom time limit (e.g. apply_async(time_limit=N)).
+        2. self.time_limit — the class-level hard limit defined on the task.
+        3. app.conf.task_time_limit — the Celery application default.
+
+        Returns 0 if no limit is configured at any level.
+        """
         if self.request.timelimit is not None and self.request.timelimit[0] is not None:
             return int(self.request.timelimit[0])
         if self.time_limit is not None:
             return int(self.time_limit)
         return int(self.app.conf.task_time_limit or 0)
 
-    def clamp_retry_countdown(self, countdown: int) -> int:
-        """Cap a retry countdown so the task won't be redelivered before its retry fires.
+    def clamp_retry_countdown(self, countdown: int) -> int | None:
+        """Cap a retry countdown to prevent Redis redelivery before the retry fires.
 
         A task calling retry() may have been running for up to hard_time_limit_task
-        seconds, so the countdown must fit within the remaining visibility window:
-            countdown <= TASK_VISIBILITY_TIMEOUT_SECONDS - hard_time_limit_task
+        seconds, so the safe ceiling is:
+            TASK_VISIBILITY_TIMEOUT_SECONDS - hard_time_limit_task
 
-        Falls back to TASK_RETRY_COUNTDOWN_MAX_SECONDS for tasks with no hard limit.
+        Tasks with no hard limit fall back to TASK_RETRY_COUNTDOWN_MAX_SECONDS.
 
-        If hard_time_limit_task >= TASK_VISIBILITY_TIMEOUT_SECONDS the task is
-        misconfigured — it cannot complete within the visibility window, so any retry
-        would fail again immediately. We log an error and return None to let the caller
-        skip the retry entirely.
+        Returns None when the safe window is smaller than TASK_RETRY_MIN_SAFE_WINDOW_SECONDS,
+        meaning the task is misconfigured and any retry would fail again immediately.
+        The caller is responsible for raising in that case.
         """
         hard_limit = self.hard_time_limit_task
         if hard_limit:
             safe_window = TASK_VISIBILITY_TIMEOUT_SECONDS - hard_limit
-            if safe_window < TASK_RETRY_COUNTDOWN_MIN_SECONDS:
+            if safe_window < TASK_RETRY_MIN_SAFE_WINDOW_SECONDS:
                 log.error(
                     "Task hard time limit leaves insufficient visibility window for "
                     "a safe retry — retry skipped to avoid guaranteed re-failure",
                     extra={
                         "hard_time_limit_task": hard_limit,
                         "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
-                        "minimum_retry_countdown": TASK_RETRY_COUNTDOWN_MIN_SECONDS,
+                        "min_safe_window": TASK_RETRY_MIN_SAFE_WINDOW_SECONDS,
                     },
                 )
                 return None
-            return max(TASK_RETRY_COUNTDOWN_MIN_SECONDS, min(countdown, safe_window))
-        return max(
-            TASK_RETRY_COUNTDOWN_MIN_SECONDS,
-            min(countdown, TASK_RETRY_COUNTDOWN_MAX_SECONDS),
-        )
+            return min(countdown, safe_window)
+        return min(countdown, TASK_RETRY_COUNTDOWN_MAX_SECONDS)
 
     def get_lock_timeout(self, default_timeout: int) -> int:
         """

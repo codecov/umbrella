@@ -268,11 +268,10 @@ TASK_RETRY_BACKOFF_BASE_SECONDS = int(
 # 900 s in production. The 30 s margin is arbitrary but sufficient.
 TASK_RETRY_COUNTDOWN_MAX_SECONDS = TASK_VISIBILITY_TIMEOUT_SECONDS - 30
 
-# Floor for clamp_retry_countdown. No retry condition in this codebase has a
-# known minimum resolution time, so this value is deliberately arbitrary —
-# conservative enough to avoid hammering a broken condition on rapid retries,
-# small enough not to delay legitimate retries unnecessarily.
-TASK_RETRY_COUNTDOWN_MIN_SECONDS = 30
+# Minimum safe window for clamp_retry_countdown. If the remaining visibility
+# window (TASK_VISIBILITY_TIMEOUT_SECONDS - hard_time_limit_task) is smaller
+# than this, the task is considered misconfigured and the retry is skipped.
+TASK_RETRY_MIN_SAFE_WINDOW_SECONDS = 30
 
 # Fixed retry delay for specific conditions (seconds)
 # Used for predictable retry intervals (e.g., waiting for processing lock)

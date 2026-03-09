@@ -23,7 +23,7 @@ from database.tests.factories.core import OwnerFactory, RepositoryFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from shared.celery_config import (
     TASK_RETRY_COUNTDOWN_MAX_SECONDS,
-    TASK_RETRY_COUNTDOWN_MIN_SECONDS,
+    TASK_RETRY_MIN_SAFE_WINDOW_SECONDS,
     TASK_VISIBILITY_TIMEOUT_SECONDS,
     sync_repos_task_name,
     upload_breadcrumb_task_name,
@@ -58,15 +58,8 @@ class TestClampRetryCountdown:
     @pytest.mark.parametrize(
         "hard_limit,countdown,expected",
         [
-            # below floor → raised to floor
-            (_HARD_LIMIT, 0, TASK_RETRY_COUNTDOWN_MIN_SECONDS),
-            # at floor → returned as-is
-            (
-                _HARD_LIMIT,
-                TASK_RETRY_COUNTDOWN_MIN_SECONDS,
-                TASK_RETRY_COUNTDOWN_MIN_SECONDS,
-            ),
-            # between floor and cap → returned as-is
+            # below cap → returned as-is
+            (_HARD_LIMIT, 0, 0),
             (_HARD_LIMIT, _SAFE_CAP, _SAFE_CAP),
             # 1 above cap → clamped to cap
             (_HARD_LIMIT, _SAFE_CAP + 1, _SAFE_CAP),
@@ -74,8 +67,8 @@ class TestClampRetryCountdown:
             (_HARD_LIMIT, _COUNTDOWN_EXCEEDING_ANY_CAP, _SAFE_CAP),
             # no hard limit, way above max → clamped to max
             (0, _COUNTDOWN_EXCEEDING_ANY_CAP, TASK_RETRY_COUNTDOWN_MAX_SECONDS),
-            # no hard limit, below floor → raised to floor
-            (0, 0, TASK_RETRY_COUNTDOWN_MIN_SECONDS),
+            # no hard limit, below max → returned as-is
+            (0, 0, 0),
         ],
     )
     def test_clamp(self, mocker, hard_limit, countdown, expected):
@@ -91,8 +84,8 @@ class TestClampRetryCountdown:
     @pytest.mark.parametrize(
         "hard_limit",
         [
-            # safe window is 1 second below the floor — smallest misconfigured case
-            TASK_VISIBILITY_TIMEOUT_SECONDS - TASK_RETRY_COUNTDOWN_MIN_SECONDS + 1,
+            # safe window is 1 second below the minimum — smallest misconfigured case
+            TASK_VISIBILITY_TIMEOUT_SECONDS - TASK_RETRY_MIN_SAFE_WINDOW_SECONDS + 1,
             # safe window is 0
             TASK_VISIBILITY_TIMEOUT_SECONDS,
             # hard_limit exceeds visibility timeout (misconfigured task)
