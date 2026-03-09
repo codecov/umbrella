@@ -191,7 +191,7 @@ def _chunked_in_filter(
     chunk_size = _get_delete_chunk_size()
     if len(in_filter) > chunk_size:
         n_chunks = math.ceil(len(in_filter) / chunk_size)
-        log.debug(
+        log.info(
             "_chunked_in_filter: splitting %d IDs into %d chunks of %d",
             len(in_filter),
             n_chunks,
