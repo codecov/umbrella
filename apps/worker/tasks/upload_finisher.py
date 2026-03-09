@@ -496,8 +496,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 error=Errors.INTERNAL_RETRYING,
             )
             self.retry(
-                max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
-                countdown=retry.countdown,
+                max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
             )
 
     def _handle_finisher_lock(
@@ -618,8 +617,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 error=Errors.INTERNAL_RETRYING,
             )
             self.retry(
-                max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
-                countdown=retry.countdown,
+                max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
             )
 
     def finish_reports_processing(
