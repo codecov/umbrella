@@ -8,11 +8,11 @@ from redis.exceptions import LockError
 
 from database.enums import ReportType
 from services.lock_manager import (
-    MAX_RETRY_COUNTDOWN_SECONDS,
     LockManager,
     LockRetry,
     LockType,
 )
+from shared.celery_config import TASK_RETRY_COUNTDOWN_MAX_SECONDS
 from tasks.base import BaseCodecovTask
 
 
@@ -196,8 +196,8 @@ class TestLockManager:
             with manager.locked(LockType.UPLOAD, retry_num=2):
                 pass
 
-        # retry_num=2: 200 * 3^2 = 1800, which exceeds MAX_RETRY_COUNTDOWN_SECONDS
-        assert exc_info.value.countdown == MAX_RETRY_COUNTDOWN_SECONDS
+        # retry_num=2: 200 * 3^2 = 1800, which exceeds TASK_RETRY_COUNTDOWN_MAX_SECONDS
+        assert exc_info.value.countdown == TASK_RETRY_COUNTDOWN_MAX_SECONDS
 
     def test_locked_exponential_backoff_cap(self, mock_redis):
         """Test that exponential backoff is capped at TASK_RETRY_COUNTDOWN_MAX_SECONDS"""
@@ -210,7 +210,7 @@ class TestLockManager:
             with manager.locked(LockType.UPLOAD, retry_num=10):
                 pass
 
-        assert exc_info.value.countdown == MAX_RETRY_COUNTDOWN_SECONDS
+        assert exc_info.value.countdown == TASK_RETRY_COUNTDOWN_MAX_SECONDS
 
     def test_locked_max_retries_not_provided(self, mock_redis, caplog):
         """Test that max_retries=None doesn't log error"""

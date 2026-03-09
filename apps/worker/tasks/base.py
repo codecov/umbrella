@@ -205,12 +205,12 @@ class BaseCodecovTask(celery_app.Task):
         cls.task_core_runtime = TASK_CORE_RUNTIME.labels(task=name)
 
     @property
-    def hard_time_limit_task(self):
+    def hard_time_limit_task(self) -> int:
         if self.request.timelimit is not None and self.request.timelimit[0] is not None:
-            return self.request.timelimit[0]
+            return int(self.request.timelimit[0])
         if self.time_limit is not None:
-            return self.time_limit
-        return self.app.conf.task_time_limit or 0
+            return int(self.time_limit)
+        return int(self.app.conf.task_time_limit or 0)
 
     def clamp_retry_countdown(self, countdown: int) -> int:
         """Cap a retry countdown so the task won't be redelivered before its retry fires.
@@ -220,10 +220,12 @@ class BaseCodecovTask(celery_app.Task):
             countdown <= TASK_VISIBILITY_TIMEOUT_SECONDS - hard_time_limit_task
 
         Falls back to TASK_RETRY_COUNTDOWN_MAX_SECONDS for tasks with no hard limit.
+        If hard_time_limit_task >= TASK_VISIBILITY_TIMEOUT_SECONDS (misconfigured task),
+        clamps to 0 to avoid a negative countdown.
         """
         hard_limit = self.hard_time_limit_task
-        if isinstance(hard_limit, int) and hard_limit > 0:
-            return min(countdown, TASK_VISIBILITY_TIMEOUT_SECONDS - hard_limit)
+        if hard_limit:
+            return max(0, min(countdown, TASK_VISIBILITY_TIMEOUT_SECONDS - hard_limit))
         return min(countdown, TASK_RETRY_COUNTDOWN_MAX_SECONDS)
 
     def get_lock_timeout(self, default_timeout: int) -> int:
