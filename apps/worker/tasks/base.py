@@ -34,6 +34,7 @@ from services.repository import get_repo_provider_service
 from shared.celery_config import (
     TASK_RETRY_BACKOFF_BASE_SECONDS,
     TASK_RETRY_COUNTDOWN_MAX_SECONDS,
+    TASK_RETRY_COUNTDOWN_MIN_SECONDS,
     TASK_VISIBILITY_TIMEOUT_SECONDS,
     upload_breadcrumb_task_name,
 )
@@ -220,13 +221,31 @@ class BaseCodecovTask(celery_app.Task):
             countdown <= TASK_VISIBILITY_TIMEOUT_SECONDS - hard_time_limit_task
 
         Falls back to TASK_RETRY_COUNTDOWN_MAX_SECONDS for tasks with no hard limit.
-        If hard_time_limit_task >= TASK_VISIBILITY_TIMEOUT_SECONDS (misconfigured task),
-        clamps to 0 to avoid a negative countdown.
+
+        If hard_time_limit_task >= TASK_VISIBILITY_TIMEOUT_SECONDS the task is
+        misconfigured — it cannot complete within the visibility window, so any retry
+        would fail again immediately. We log an error and return None to let the caller
+        skip the retry entirely.
         """
         hard_limit = self.hard_time_limit_task
         if hard_limit:
-            return max(0, min(countdown, TASK_VISIBILITY_TIMEOUT_SECONDS - hard_limit))
-        return min(countdown, TASK_RETRY_COUNTDOWN_MAX_SECONDS)
+            safe_window = TASK_VISIBILITY_TIMEOUT_SECONDS - hard_limit
+            if safe_window < TASK_RETRY_COUNTDOWN_MIN_SECONDS:
+                log.error(
+                    "Task hard time limit leaves insufficient visibility window for "
+                    "a safe retry — retry skipped to avoid guaranteed re-failure",
+                    extra={
+                        "hard_time_limit_task": hard_limit,
+                        "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
+                        "minimum_retry_countdown": TASK_RETRY_COUNTDOWN_MIN_SECONDS,
+                    },
+                )
+                return None
+            return max(TASK_RETRY_COUNTDOWN_MIN_SECONDS, min(countdown, safe_window))
+        return max(
+            TASK_RETRY_COUNTDOWN_MIN_SECONDS,
+            min(countdown, TASK_RETRY_COUNTDOWN_MAX_SECONDS),
+        )
 
     def get_lock_timeout(self, default_timeout: int) -> int:
         """
@@ -291,6 +310,11 @@ class BaseCodecovTask(celery_app.Task):
 
         if countdown is not None:
             countdown = self.clamp_retry_countdown(countdown)
+            if countdown is None:
+                # Misconfigured task — hard limit leaves no safe retry window.
+                # Raise the original exception if provided, otherwise raise explicitly
+                # so the task fails visibly rather than completing as a false success.
+                raise exc if exc is not None else MaxRetriesExceededError()
         return super().retry(
             max_retries=max_retries, countdown=countdown, exc=exc, **kwargs
         )
