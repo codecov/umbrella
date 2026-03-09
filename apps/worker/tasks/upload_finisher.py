@@ -1,11 +1,13 @@
 import logging
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from sqlalchemy import func
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -43,7 +45,7 @@ from shared.celery_config import (
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.cache import cache
 from shared.helpers.redis import get_redis_connection
-from shared.metrics import Counter, inc_counter
+from shared.metrics import Counter, Histogram, inc_counter
 from shared.reports.enums import UploadState
 from shared.reports.resources import Report
 from shared.timeseries.helpers import is_timeseries_enabled
@@ -56,6 +58,33 @@ log = logging.getLogger(__name__)
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
     "Number of times finisher skipped work because uploads were already in final state",
+)
+
+UPLOAD_E2E_DURATION = Histogram(
+    "upload_pipeline_e2e_duration_seconds",
+    "Duration from oldest upload created_at to notify triggered.",
+    ["path"],
+    buckets=[5, 15, 30, 60, 120, 300, 600, 1200, 3600],
+)
+
+UPLOAD_MERGE_DURATION = Histogram(
+    "upload_merge_duration_seconds",
+    "Wall clock time of the merge phase.",
+    ["path"],
+    buckets=[1, 5, 10, 30, 60, 120, 300, 600],
+)
+
+UPLOAD_MERGE_COUNT = Histogram(
+    "upload_merge_uploads_total",
+    "Number of uploads merged in one finisher/merger run.",
+    ["path"],
+    buckets=[1, 5, 10, 25, 50, 100, 200, 500],
+)
+
+UPLOAD_MERGE_RESULT = Counter(
+    "upload_merge_result_total",
+    "Outcome of merge task.",
+    ["path", "outcome"],
 )
 
 regexp_ci_skip = re.compile(r"\[(ci|skip| |-){3,}\]")
@@ -302,6 +331,9 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         },
                     )
                     inc_counter(UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER)
+                    UPLOAD_MERGE_RESULT.labels(
+                        path="finisher", outcome="nothing_to_do"
+                    ).inc()
                     return {
                         "already_completed": True,
                         "upload_ids": upload_ids,
@@ -339,6 +371,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     "run_impl: Postprocessing should not be triggered - uploads still pending",
                     extra={"remaining_uploads": remaining_uploads},
                 )
+                UPLOAD_MERGE_RESULT.labels(path="finisher", outcome="completed").inc()
                 UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
                 UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
                 self._call_upload_breadcrumb_task(
@@ -351,7 +384,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
             log.info("run_impl: Handling finisher lock")
 
-            return self._handle_finisher_lock(
+            result = self._handle_finisher_lock(
                 db_session,
                 commit,
                 commit_yaml,
@@ -359,12 +392,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone,
                 upload_ids,
             )
+            UPLOAD_MERGE_RESULT.labels(path="finisher", outcome="completed").inc()
+            return result
 
         except Retry:
             raise
 
         except SoftTimeLimitExceeded:
             log.warning("run_impl: soft time limit exceeded")
+            UPLOAD_MERGE_RESULT.labels(path="finisher", outcome="error").inc()
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -384,6 +420,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 "Unexpected error in upload finisher",
                 extra={"upload_ids": upload_ids},
             )
+            UPLOAD_MERGE_RESULT.labels(path="finisher", outcome="error").inc()
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -459,6 +496,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 log.info("run_impl: Finished upload_finisher task")
 
         except LockRetry as retry:
+            UPLOAD_MERGE_RESULT.labels(path="finisher", outcome="lock_retry").inc()
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -580,6 +618,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 return result
 
         except LockRetry as retry:
+            UPLOAD_MERGE_RESULT.labels(path="finisher", outcome="lock_retry").inc()
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -645,6 +684,23 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             )
             match should_call_notifications:
                 case ShouldCallNotifyResult.NOTIFY:
+                    try:
+                        oldest_created_at = (
+                            db_session.query(func.min(Upload.created_at))
+                            .join(Upload.report)
+                            .filter(Upload.report.has(commit=commit))
+                            .scalar()
+                        )
+                        if oldest_created_at:
+                            e2e_seconds = (
+                                datetime.now(tz=UTC) - oldest_created_at
+                            ).total_seconds()
+                            UPLOAD_E2E_DURATION.labels(path="finisher").observe(
+                                e2e_seconds
+                            )
+                    except Exception:
+                        log.warning("Failed to compute E2E duration", exc_info=True)
+
                     notifications_called = True
                     notify_kwargs = {
                         "repoid": repoid,
@@ -847,6 +903,8 @@ def perform_report_merging(
     commit: Commit,
     processing_results: list[ProcessingResult],
 ) -> Report:
+    merge_start = time.monotonic()
+
     log.info("perform_report_merging: Getting existing report")
     master_report = report_service.get_existing_report_for_commit(commit)
     if master_report is None:
@@ -889,6 +947,20 @@ def perform_report_merging(
         processing_results,
         intermediate_reports,
         merge_result,
+    )
+
+    merge_elapsed = time.monotonic() - merge_start
+    UPLOAD_MERGE_DURATION.labels(path="finisher").observe(merge_elapsed)
+    UPLOAD_MERGE_COUNT.labels(path="finisher").observe(len(upload_ids))
+
+    report_totals = master_report.totals.asdict() if master_report.totals else None
+    log.info(
+        "perform_report_merging: Merge complete",
+        extra={
+            "upload_count": len(upload_ids),
+            "merge_duration_seconds": merge_elapsed,
+            "report_totals": report_totals,
+        },
     )
 
     return master_report

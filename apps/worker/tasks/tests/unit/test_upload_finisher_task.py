@@ -4,6 +4,7 @@ from unittest.mock import ANY, call
 
 import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from prometheus_client import REGISTRY
 
 from celery_config import notify_error_task_name
 from database.enums import ReportType
@@ -41,6 +42,7 @@ from tasks.upload_finisher import (
     ShouldCallNotifyResult,
     UploadFinisherTask,
     load_commit_diff,
+    perform_report_merging,
 )
 
 here = Path(__file__)
@@ -1476,3 +1478,352 @@ class TestCommitRefreshAfterLock:
         )
 
         assert get_existing_calls and get_existing_calls[0] is True
+
+
+class TestUploadFinisherMetrics:
+    """Tests for PR M1 baseline pipeline metrics instrumentation."""
+
+    def _get_counter(self, name, labels):
+        val = REGISTRY.get_sample_value(f"{name}_total", labels=labels)
+        return val or 0.0
+
+    def _get_histogram_count(self, name, labels):
+        val = REGISTRY.get_sample_value(f"{name}_count", labels=labels)
+        return val or 0.0
+
+    @pytest.mark.django_db
+    def test_merge_result_nothing_to_do_on_idempotent_skip(
+        self, dbsession, mocker, mock_self_app
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        upload = UploadFactory.create(report=report, state="processed")
+        dbsession.add(upload)
+        dbsession.flush()
+
+        before = self._get_counter(
+            "upload_merge_result",
+            {"path": "finisher", "outcome": "nothing_to_do"},
+        )
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            [{"upload_id": upload.id, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        after = self._get_counter(
+            "upload_merge_result",
+            {"path": "finisher", "outcome": "nothing_to_do"},
+        )
+        assert after - before == 1.0
+
+    @pytest.mark.django_db
+    def test_merge_result_error_on_soft_time_limit(
+        self, dbsession, mocker, mock_self_app
+    ):
+        mocker.patch(
+            "tasks.upload_finisher.load_commit_diff",
+            side_effect=SoftTimeLimitExceeded,
+        )
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        before = self._get_counter(
+            "upload_merge_result",
+            {"path": "finisher", "outcome": "error"},
+        )
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            [{"upload_id": 0, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        after = self._get_counter(
+            "upload_merge_result",
+            {"path": "finisher", "outcome": "error"},
+        )
+        assert after - before == 1.0
+
+    @pytest.mark.django_db
+    def test_merge_result_error_on_unexpected_exception(
+        self, dbsession, mocker, mock_self_app
+    ):
+        mocker.patch("tasks.upload_finisher.sentry_sdk.capture_exception")
+        mocker.patch(
+            "tasks.upload_finisher.UploadFinisherTask._process_reports_with_lock",
+            side_effect=ValueError("boom"),
+        )
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        before = self._get_counter(
+            "upload_merge_result",
+            {"path": "finisher", "outcome": "error"},
+        )
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            [{"upload_id": 0, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        after = self._get_counter(
+            "upload_merge_result",
+            {"path": "finisher", "outcome": "error"},
+        )
+        assert after - before == 1.0
+
+    @pytest.mark.django_db
+    def test_merge_result_completed_on_success(
+        self,
+        mocker,
+        mock_configuration,
+        dbsession,
+        mock_storage,
+        mock_repo_provider,
+        mock_redis,
+        mock_self_app,
+    ):
+        mock_redis.scard.return_value = 0
+        mocker.patch(
+            "tasks.upload_finisher.perform_report_merging",
+            return_value=Report(),
+        )
+
+        commit = CommitFactory.create(
+            message="test",
+            commitid="abf6d4df662c47e32460020ab14abf9303581429",
+            branch="main",
+            ci_passed=True,
+            repository__branch="main",
+            repository__updatestamp=None,
+            repository__author__unencrypted_oauth_token="testtoken",
+            repository__author__username="testuser",
+            repository__author__service="github",
+            author__service="github",
+            notified=True,
+            repository__yaml={"codecov": {"max_report_age": "1y ago"}},
+        )
+        dbsession.add(commit)
+        dbsession.flush()
+
+        _start_upload_flow(mocker)
+
+        before = self._get_counter(
+            "upload_merge_result",
+            {"path": "finisher", "outcome": "completed"},
+        )
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            [{"upload_id": 0, "arguments": {}, "successful": True}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        after = self._get_counter(
+            "upload_merge_result",
+            {"path": "finisher", "outcome": "completed"},
+        )
+        assert after - before == 1.0
+
+    @pytest.mark.django_db
+    def test_merge_result_completed_when_remaining_uploads(
+        self, dbsession, mocker, mock_storage, mock_repo_provider, mock_self_app
+    ):
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        mocker.patch("tasks.upload_finisher.update_uploads")
+        mocker.patch("tasks.upload_finisher.cleanup_intermediate_reports")
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        upload_done = UploadFactory.create(report=report, state="started")
+        upload_pending = UploadFactory.create(
+            report=report,
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+        )
+        dbsession.add(upload_done)
+        dbsession.add(upload_pending)
+        dbsession.flush()
+
+        before = self._get_counter(
+            "upload_merge_result",
+            {"path": "finisher", "outcome": "completed"},
+        )
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            [{"upload_id": upload_done.id, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        after = self._get_counter(
+            "upload_merge_result",
+            {"path": "finisher", "outcome": "completed"},
+        )
+        assert after - before == 1.0
+
+    @pytest.mark.django_db
+    def test_merge_duration_and_count_observed(self, dbsession, mocker):
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        mocker.patch("tasks.upload_finisher.update_uploads")
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        before_duration = self._get_histogram_count(
+            "upload_merge_duration_seconds", {"path": "finisher"}
+        )
+        before_count = self._get_histogram_count(
+            "upload_merge_uploads_total", {"path": "finisher"}
+        )
+
+        report_service = mocker.MagicMock()
+        report_service.get_existing_report_for_commit.return_value = None
+
+        perform_report_merging(
+            report_service,
+            UserYaml({}),
+            commit,
+            [
+                {"upload_id": 1, "successful": True, "arguments": {}},
+                {"upload_id": 2, "successful": True, "arguments": {}},
+                {"upload_id": 3, "successful": False, "arguments": {}},
+            ],
+        )
+
+        after_duration = self._get_histogram_count(
+            "upload_merge_duration_seconds", {"path": "finisher"}
+        )
+        after_count = self._get_histogram_count(
+            "upload_merge_uploads_total", {"path": "finisher"}
+        )
+
+        assert after_duration - before_duration == 1.0
+        assert after_count - before_count == 1.0
+
+    @pytest.mark.django_db
+    def test_e2e_duration_observed_on_notify(
+        self,
+        mocker,
+        mock_configuration,
+        dbsession,
+        mock_storage,
+        mock_repo_provider,
+        mock_redis,
+        mock_self_app,
+    ):
+        mock_redis.scard.return_value = 0
+        mocker.patch(
+            "tasks.upload_finisher.perform_report_merging",
+            return_value=Report(),
+        )
+
+        commit = CommitFactory.create(
+            message="test",
+            commitid="abf6d4df662c47e32460020ab14abf9303581429",
+            branch="main",
+            ci_passed=True,
+            repository__branch="main",
+            repository__updatestamp=None,
+            repository__author__unencrypted_oauth_token="testtoken",
+            repository__author__username="testuser",
+            repository__author__service="github",
+            author__service="github",
+            notified=True,
+            repository__yaml={"codecov": {"max_report_age": "1y ago"}},
+        )
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        upload = UploadFactory.create(report=report, state="started")
+        dbsession.add(upload)
+        dbsession.flush()
+
+        _start_upload_flow(mocker)
+
+        before = self._get_histogram_count(
+            "upload_pipeline_e2e_duration_seconds", {"path": "finisher"}
+        )
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            [{"upload_id": upload.id, "arguments": {}, "successful": True}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        after = self._get_histogram_count(
+            "upload_pipeline_e2e_duration_seconds", {"path": "finisher"}
+        )
+        assert after - before == 1.0
+
+    @pytest.mark.django_db
+    def test_merge_result_lock_retry_on_processing_lock(
+        self, dbsession, mocker, mock_self_app
+    ):
+        mocker.patch(
+            "tasks.upload_finisher.load_commit_diff",
+            return_value=None,
+        )
+        mocker.patch(
+            "services.lock_manager.LockManager.locked",
+            side_effect=LockRetry(countdown=10, max_retries_exceeded=True),
+        )
+
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        before = self._get_counter(
+            "upload_merge_result",
+            {"path": "finisher", "outcome": "lock_retry"},
+        )
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            [{"upload_id": 0, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        after = self._get_counter(
+            "upload_merge_result",
+            {"path": "finisher", "outcome": "lock_retry"},
+        )
+        assert after - before == 1.0
