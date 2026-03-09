@@ -196,7 +196,11 @@ def _chunked_in_filter(
             len(in_filter),
             n_chunks,
             chunk_size,
-            extra={"count": len(in_filter), "chunks": n_chunks, "chunk_size": chunk_size},
+            extra={
+                "count": len(in_filter),
+                "chunks": n_chunks,
+                "chunk_size": chunk_size,
+            },
         )
     for i in range(0, max(len(in_filter), 1), chunk_size):
         yield in_filter[i : i + chunk_size]
