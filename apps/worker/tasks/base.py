@@ -232,14 +232,20 @@ class BaseCodecovTask(celery_app.Task):
 
         Tasks with no hard limit fall back to TASK_RETRY_COUNTDOWN_MAX_SECONDS.
 
-        Returns None when the safe window is smaller than TASK_RETRY_MIN_SAFE_WINDOW_SECONDS,
-        meaning the task is misconfigured and any retry would fail again immediately.
-        The caller is responsible for raising in that case.
+        Returns None only when the safe window is zero or negative (hard_time_limit_task
+        >= TASK_VISIBILITY_TIMEOUT_SECONDS), meaning the task is fundamentally
+        misconfigured and any retry would be redelivered before it could run.
+
+        When 0 < safe_window < TASK_RETRY_MIN_SAFE_WINDOW_SECONDS, the countdown is
+        clamped to safe_window and a warning is logged — the retry may have little time
+        to complete, but it can still proceed.
+
+        The caller is responsible for raising when None is returned.
         """
         hard_limit = self.hard_time_limit_task
         if hard_limit:
             safe_window = TASK_VISIBILITY_TIMEOUT_SECONDS - hard_limit
-            if safe_window < TASK_RETRY_MIN_SAFE_WINDOW_SECONDS:
+            if safe_window <= 0:
                 log.error(
                     "Task hard time limit leaves insufficient visibility window for "
                     "a safe retry — retry skipped to avoid guaranteed re-failure",
@@ -250,6 +256,17 @@ class BaseCodecovTask(celery_app.Task):
                     },
                 )
                 return None
+            if safe_window < TASK_RETRY_MIN_SAFE_WINDOW_SECONDS:
+                log.warning(
+                    "Task hard time limit leaves a narrow visibility window for retries — "
+                    "clamping countdown to safe window",
+                    extra={
+                        "hard_time_limit_task": hard_limit,
+                        "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
+                        "safe_window": safe_window,
+                        "min_safe_window": TASK_RETRY_MIN_SAFE_WINDOW_SECONDS,
+                    },
+                )
             return min(countdown, safe_window)
         return min(countdown, TASK_RETRY_COUNTDOWN_MAX_SECONDS)
 
