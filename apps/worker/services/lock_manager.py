@@ -14,13 +14,13 @@ from database.enums import ReportType
 from shared.celery_config import (
     DEFAULT_BLOCKING_TIMEOUT_SECONDS,
     DEFAULT_LOCK_TIMEOUT_SECONDS,
+    TASK_RETRY_COUNTDOWN_MAX_SECONDS,
 )
 from shared.config import get_config
 from shared.helpers.redis import get_redis_connection  # type: ignore
 
 log = logging.getLogger(__name__)
 
-MAX_RETRY_COUNTDOWN_SECONDS = 60 * 60 * 5
 BASE_RETRY_COUNTDOWN_SECONDS = 200
 RETRY_BACKOFF_MULTIPLIER = 3
 RETRY_COUNTDOWN_RANGE_DIVISOR = 2
@@ -183,8 +183,8 @@ class LockManager:
             max_retry_unbounded = self.base_retry_countdown * (
                 RETRY_BACKOFF_MULTIPLIER**retry_num
             )
-            if max_retry_unbounded >= MAX_RETRY_COUNTDOWN_SECONDS:
-                countdown = MAX_RETRY_COUNTDOWN_SECONDS
+            if max_retry_unbounded >= TASK_RETRY_COUNTDOWN_MAX_SECONDS:
+                countdown = TASK_RETRY_COUNTDOWN_MAX_SECONDS
             else:
                 countdown_unbounded = random.randint(
                     max_retry_unbounded // RETRY_COUNTDOWN_RANGE_DIVISOR,
