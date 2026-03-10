@@ -171,7 +171,35 @@ class GithubWebhookHandler(APIView):
         return Response(data="pong")
 
     def repository(self, request, *args, **kwargs):
-        action, repo = request.data.get("action"), self._get_repo(request)
+        action = request.data.get("action")
+        repo_data = request.data.get("repository", {})
+
+        if action == "transferred":
+            # The transfer payload contains the NEW owner, but the repo is still stored
+            # under the OLD owner — look up by service_id directly.
+            repo_service_id = repo_data.get("id")
+            try:
+                repo = Repository.objects.get(
+                    author__service=self.service_name,
+                    service_id=repo_service_id,
+                )
+            except Repository.DoesNotExist:
+                log.info(
+                    "Received transfer event for non-existent repository",
+                    extra={
+                        "repo_service_id": repo_service_id,
+                        "github_webhook_event": self.event,
+                    },
+                )
+                return Response()
+        else:
+            repo = self._get_repo(request)
+
+        node_id = repo_data.get("node_id")
+        repos_affected = (
+            [(repo_data["id"], node_id)] if repo_data.get("id") and node_id else None
+        )
+
         if action == "publicized":
             repo.private, repo.activated = False, False
             repo.save()
@@ -197,6 +225,61 @@ class GithubWebhookHandler(APIView):
                 "Repository soft-deleted",
                 extra={"repoid": repo.repoid, "github_webhook_event": self.event},
             )
+        elif action == "renamed":
+            TaskService().refresh(
+                ownerid=repo.author.ownerid,
+                username=repo.author.username,
+                sync_teams=False,
+                sync_repos=True,
+                using_integration=True,
+                repos_affected=repos_affected,
+            )
+            log.info(
+                "Repository renamed, triggering sync",
+                extra={"repoid": repo.repoid, "github_webhook_event": self.event},
+            )
+        elif action == "transferred":
+            TaskService().refresh(
+                ownerid=repo.author.ownerid,
+                username=repo.author.username,
+                sync_teams=False,
+                sync_repos=True,
+                using_integration=True,
+            )
+            log.info(
+                "Repository transferred, triggering sync for old owner",
+                extra={"repoid": repo.repoid, "github_webhook_event": self.event},
+            )
+            new_owner_service_id = repo_data.get("owner", {}).get("id")
+            try:
+                new_owner = Owner.objects.get(
+                    service=self.service_name,
+                    service_id=new_owner_service_id,
+                )
+                TaskService().refresh(
+                    ownerid=new_owner.ownerid,
+                    username=new_owner.username,
+                    sync_teams=False,
+                    sync_repos=True,
+                    using_integration=True,
+                    repos_affected=repos_affected,
+                )
+                log.info(
+                    "Repository transferred, triggering sync for new owner",
+                    extra={
+                        "repoid": repo.repoid,
+                        "new_ownerid": new_owner.ownerid,
+                        "github_webhook_event": self.event,
+                    },
+                )
+            except Owner.DoesNotExist:
+                log.info(
+                    "New owner not in Codecov, skipping new owner sync",
+                    extra={
+                        "new_owner_service_id": new_owner_service_id,
+                        "github_webhook_event": self.event,
+                    },
+                )
         else:
             log.warning(
                 f"Unknown repository action: {action}", extra={"repoid": repo.repoid}
