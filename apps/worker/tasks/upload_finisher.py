@@ -56,9 +56,19 @@ log = logging.getLogger(__name__)
 FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
 FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
 
+# Only this many finisher tasks are allowed to actively work on a single commit
+# at the same time.  Excess tasks exit immediately, freeing their worker slot.
+# A small number (>1) allows for failover if the active finisher crashes.
+MAX_CONCURRENT_FINISHERS_PER_COMMIT = 3
+
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
     "Number of times finisher skipped work because uploads were already in final state",
+)
+
+UPLOAD_FINISHER_CONCURRENCY_LIMITED_COUNTER = Counter(
+    "upload_finisher_concurrency_limited",
+    "Number of finisher tasks that exited early due to per-commit concurrency limit",
 )
 
 regexp_ci_skip = re.compile(r"\[(ci|skip| |-){3,}\]")
@@ -252,6 +262,54 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         repoid = int(repoid)
         commit_yaml = UserYaml(commit_yaml)
 
+        # ── Per-commit concurrency gate ──────────────────────────────────
+        # Large CI matrices fire one finisher per upload (e.g. 167 tasks).
+        # Only MAX_CONCURRENT_FINISHERS_PER_COMMIT should actively work;
+        # the rest exit immediately so they don't starve the worker pool.
+        redis = get_redis_connection()
+        active_key = f"upload_finisher_active:{repoid}:{commitid}"
+        active_count = redis.incr(active_key)
+        redis.expire(active_key, 660)
+
+        if active_count > MAX_CONCURRENT_FINISHERS_PER_COMMIT:
+            redis.decr(active_key)
+            log.info(
+                "Per-commit finisher concurrency limit reached, exiting early",
+                extra={
+                    "active": active_count,
+                    "limit": MAX_CONCURRENT_FINISHERS_PER_COMMIT,
+                    "repoid": repoid,
+                    "commitid": commitid,
+                },
+            )
+            inc_counter(UPLOAD_FINISHER_CONCURRENCY_LIMITED_COUNTER)
+            return {
+                "concurrency_limited": True,
+                "upload_ids": [],
+            }
+
+        try:
+            return self._run_impl_inner(
+                db_session,
+                processing_results,
+                repoid=repoid,
+                commitid=commitid,
+                commit_yaml=commit_yaml,
+                milestone=milestone,
+            )
+        finally:
+            redis.decr(active_key)
+
+    def _run_impl_inner(
+        self,
+        db_session,
+        processing_results: list[ProcessingResult] | None,
+        *,
+        repoid: int,
+        commitid: str,
+        commit_yaml: UserYaml,
+        milestone: Milestones,
+    ):
         log.info("run_impl: Getting commit")
 
         commit = (
