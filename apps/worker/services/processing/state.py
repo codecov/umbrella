@@ -157,6 +157,8 @@ class ProcessingState:
             )
             if updated > 0:
                 CLEARED_UPLOADS.inc(updated)
+            self._redis.srem(self._redis_key("processing"), *upload_ids)
+            return
         removed_uploads = self._redis.srem(self._redis_key("processing"), *upload_ids)
         if removed_uploads > 0:
             CLEARED_UPLOADS.inc(removed_uploads)
