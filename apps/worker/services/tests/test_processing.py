@@ -62,4 +62,6 @@ class TestProcessUpload:
 
         dbsession.refresh(upload)
         assert upload.state_id == UploadState.PROCESSED.db_id
-        assert upload.state == "processed"
+        # state string is not updated by the processor -- the finisher sets it
+        # after merging (to avoid triggering the finisher's idempotency check early)
+        assert upload.state == "started"
