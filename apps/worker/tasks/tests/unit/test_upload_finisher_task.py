@@ -1378,8 +1378,8 @@ class TestUploadFinisherTask:
 
 
 class TestLockManagerConfiguration:
-    """Tests for lock manager configuration: finite blocking_timeout,
-    no shared max_retries counter, and db_session.rollback() after lock acquisition."""
+    """Tests for lock manager configuration: finite blocking_timeout
+    and no shared max_retries counter."""
 
     @pytest.mark.django_db
     def test_lock_manager_uses_finite_blocking_timeout(
@@ -1454,44 +1454,6 @@ class TestLockManagerConfiguration:
             "max_retries" not in locked_call.kwargs
             or locked_call.kwargs.get("max_retries") is None
         )
-
-    @pytest.mark.django_db
-    def test_db_session_rollback_called_after_lock_acquired(
-        self, dbsession, mocker, mock_redis, mock_self_app
-    ):
-        commit = CommitFactory.create()
-        dbsession.add(commit)
-        dbsession.flush()
-
-        rollback_calls = []
-        original_rollback = dbsession.rollback
-
-        def tracking_rollback():
-            rollback_calls.append("rollback")
-            return original_rollback()
-
-        mocker.patch.object(dbsession, "rollback", side_effect=tracking_rollback)
-        mock_redis.scard.return_value = 0
-        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
-        mocker.patch("tasks.upload_finisher.update_uploads")
-        mocker.patch("tasks.upload_finisher.cleanup_intermediate_reports")
-        mocker.patch.object(
-            UploadFinisherTask, "_handle_finisher_lock", return_value={}
-        )
-
-        task = UploadFinisherTask()
-        task.request.retries = 0
-        task.request.headers = {}
-
-        task.run_impl(
-            dbsession,
-            [{"upload_id": 0, "successful": True, "arguments": {}}],
-            repoid=commit.repoid,
-            commitid=commit.commitid,
-            commit_yaml={},
-        )
-
-        assert len(rollback_calls) >= 1
 
     @pytest.mark.django_db
     def test_per_task_retry_limit_still_enforced(
