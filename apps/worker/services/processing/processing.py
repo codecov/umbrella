@@ -74,9 +74,7 @@ def process_upload(
         # Safety net: trigger finisher if all uploads are done.
         # Handles retries outside a chord (visibility timeout, task_reject_on_worker_lost).
         # Will be replaced by gate key mechanism in a future PR.
-        # Use Redis-only state for counting (dual-write keeps Redis in sync).
-        redis_state = ProcessingState(repo_id, commit_sha)
-        upload_numbers = redis_state.get_upload_numbers()
+        upload_numbers = state.get_upload_numbers()
         if should_trigger_postprocessing(upload_numbers):
             log.info(
                 "All uploads processed, triggering finisher",
