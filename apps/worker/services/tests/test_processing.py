@@ -9,6 +9,7 @@ from database.tests.factories.core import (
 )
 from services.processing.processing import process_upload
 from services.processing.types import UploadArguments
+from shared.reports.enums import UploadState
 from shared.yaml import UserYaml
 
 
@@ -23,6 +24,7 @@ class TestProcessUploadFinisherGate:
         upload = UploadFactory.create(
             report__commit=commit,
             state="started",
+            state_id=UploadState.UPLOADED.db_id,
         )
         dbsession.add_all([repository, commit, upload])
         dbsession.flush()
@@ -34,7 +36,6 @@ class TestProcessUploadFinisherGate:
             "reportid": str(upload.report.external_id),
         }
 
-        # Mock dependencies
         mock_report_service = mocker.patch(
             "services.processing.processing.ReportService"
         )
@@ -63,23 +64,18 @@ class TestProcessUploadFinisherGate:
         mock_redis = mocker.patch("services.processing.processing.get_redis_connection")
         mock_redis.return_value.set.return_value = True
 
-        # Mock other dependencies
         mocker.patch("services.processing.processing.save_intermediate_report")
         mocker.patch("services.processing.processing.rewrite_or_delete_upload")
 
-        commit_yaml = UserYaml({})
-
-        # Execute
         result = process_upload(
             on_processing_error=lambda error: None,
             db_session=dbsession,
             repo_id=repository.repoid,
             commit_sha=commit.commitid,
-            commit_yaml=commit_yaml,
+            commit_yaml=UserYaml({}),
             arguments=arguments,
         )
 
-        # Verify
         assert result["successful"] is True
         assert result["upload_id"] == upload.id_
 

@@ -5,7 +5,6 @@ import sentry_sdk
 from celery.exceptions import CeleryError
 from sqlalchemy.orm import Session as DbSession
 
-from app import celery_app
 from database.models.core import Commit
 from database.models.reports import Upload
 from helpers.checkpoint_logger import _kwargs_key
@@ -53,8 +52,8 @@ def process_upload(
     upload = db_session.query(Upload).filter_by(id_=upload_id).first()
     assert upload
 
-    state = ProcessingState(repo_id, commit_sha)
-    # this in a noop in normal cases, but relevant for task retries:
+    state = ProcessingState(repo_id, commit_sha, db_session=db_session)
+    # this is a noop in normal cases, but relevant for task retries:
     state.mark_uploads_as_processing([upload_id])
 
     report_service = ReportService(commit_yaml)
@@ -108,7 +107,6 @@ def process_upload(
                 celery_app.tasks[upload_finisher_task_name].apply_async(
                     kwargs=finisher_kwargs
                 )
-
         rewrite_or_delete_upload(archive_service, commit_yaml, report_info)
 
     except CeleryError:
