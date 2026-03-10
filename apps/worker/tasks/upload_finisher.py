@@ -53,6 +53,9 @@ from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
+FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
+FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
+
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
     "Number of times finisher skipped work because uploads were already in final state",
@@ -418,13 +421,13 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=None,
+            blocking_timeout=FINISHER_BLOCKING_TIMEOUT_SECONDS,
+            base_retry_countdown=FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
         )
 
         try:
             with lock_manager.locked(
                 LockType.UPLOAD_PROCESSING,
-                max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
                 retry_num=self.attempts,
             ):
                 db_session.refresh(commit)
@@ -517,13 +520,13 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=None,
+            blocking_timeout=FINISHER_BLOCKING_TIMEOUT_SECONDS,
+            base_retry_countdown=FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
         )
 
         try:
             with lock_manager.locked(
                 LockType.UPLOAD_FINISHER,
-                max_retries=UPLOAD_PROCESSOR_MAX_RETRIES,
                 retry_num=self.attempts,
             ):
                 result = self.finish_reports_processing(
