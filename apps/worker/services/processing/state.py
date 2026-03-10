@@ -185,15 +185,18 @@ class ProcessingState:
         if not upload_ids:
             return
         if self._db_session:
-            self._db_session.query(Upload).filter(Upload.id_.in_(upload_ids)).update(
+            self._db_session.query(Upload).filter(
+                Upload.id_.in_(upload_ids),
+                Upload.state_id == UploadState.PROCESSED.db_id,
+            ).update(
                 {
                     Upload.state_id: UploadState.MERGED.db_id,
                     Upload.state: "merged",
                 },
                 synchronize_session="fetch",
             )
+            self._redis.srem(self._redis_key("processed"), *upload_ids)
             return
-
         self._redis.srem(self._redis_key("processed"), *upload_ids)
 
     def get_uploads_for_merging(self) -> set[int]:
