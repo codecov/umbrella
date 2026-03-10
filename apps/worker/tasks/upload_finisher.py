@@ -6,6 +6,8 @@ from enum import Enum
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from app import celery_app
 from celery_config import notify_error_task_name
@@ -85,6 +87,20 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
     """
 
     max_retries = UPLOAD_PROCESSOR_MAX_RETRIES
+
+    @staticmethod
+    def _ping_db(db_session):
+        """Recover from stale DB connections after waiting for a Redis lock.
+
+        PgBouncer or the DB server may close idle connections while the task
+        blocks on lock acquisition (up to FINISHER_BLOCKING_TIMEOUT_SECONDS).
+        A lightweight SELECT 1 will surface a dead connection; rollback then
+        discards it so the next query gets a fresh one from the pool.
+        """
+        try:
+            db_session.execute(text("SELECT 1"))
+        except OperationalError:
+            db_session.rollback()
 
     def _find_started_uploads_with_reports(
         self, db_session, commit: Commit
@@ -430,6 +446,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 LockType.UPLOAD_PROCESSING,
                 retry_num=self.attempts,
             ):
+                self._ping_db(db_session)
                 db_session.refresh(commit)
                 report_service = ReportService(commit_yaml)
 
@@ -529,6 +546,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 LockType.UPLOAD_FINISHER,
                 retry_num=self.attempts,
             ):
+                self._ping_db(db_session)
                 result = self.finish_reports_processing(
                     db_session, commit, commit_yaml, processing_results
                 )

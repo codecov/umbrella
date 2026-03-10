@@ -4,6 +4,7 @@ from unittest.mock import ANY, call
 
 import pytest
 from celery.exceptions import Retry, SoftTimeLimitExceeded
+from sqlalchemy.exc import OperationalError
 
 from celery_config import notify_error_task_name
 from database.enums import ReportType
@@ -1461,6 +1462,37 @@ class TestLockManagerConfiguration:
             "max_retries" not in locked_call.kwargs
             or locked_call.kwargs.get("max_retries") is None
         )
+
+    @pytest.mark.django_db
+    def test_ping_db_recovers_stale_connection(self, dbsession, mocker):
+        """_ping_db rolls back on OperationalError so the next query gets a fresh connection."""
+        execute_call_count = 0
+        original_execute = dbsession.execute
+
+        def failing_execute(*args, **kwargs):
+            nonlocal execute_call_count
+            execute_call_count += 1
+            if execute_call_count == 1:
+                raise OperationalError("SELECT 1", {}, Exception("connection closed"))
+            return original_execute(*args, **kwargs)
+
+        mocker.patch.object(dbsession, "execute", side_effect=failing_execute)
+        mock_rollback = mocker.patch.object(dbsession, "rollback")
+
+        task = UploadFinisherTask()
+        task._ping_db(dbsession)
+
+        mock_rollback.assert_called_once()
+
+    @pytest.mark.django_db
+    def test_ping_db_noop_on_healthy_connection(self, dbsession, mocker):
+        """_ping_db does nothing when the connection is alive."""
+        mock_rollback = mocker.patch.object(dbsession, "rollback")
+
+        task = UploadFinisherTask()
+        task._ping_db(dbsession)
+
+        mock_rollback.assert_not_called()
 
     @pytest.mark.django_db
     def test_per_task_retry_limit_still_enforced(
