@@ -21,6 +21,7 @@ meaning that:
   "intermediate report".
 """
 
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy import case, func
@@ -31,6 +32,8 @@ from database.models.core import Commit
 from database.models.reports import CommitReport, Upload
 from shared.metrics import Counter
 from shared.reports.enums import UploadState
+
+log = logging.getLogger(__name__)
 
 MERGE_BATCH_SIZE = 10
 
@@ -124,22 +127,33 @@ class ProcessingState:
         # Mark still-UPLOADED uploads as ERROR so they stop being counted
         # as "processing" in get_upload_numbers(). Only matches UPLOADED --
         # already-PROCESSED uploads (success path) are unaffected.
-        updated = (
-            self._db_session.query(Upload)
-            .filter(
-                Upload.id_.in_(upload_ids),
-                Upload.state_id == UploadState.UPLOADED.db_id,
+        #
+        # This runs in a finally block, so the transaction may already be
+        # in a failed state. Best-effort: log and move on if the DB is
+        # unreachable — the upload stays UPLOADED, which is safe.
+        try:
+            updated = (
+                self._db_session.query(Upload)
+                .filter(
+                    Upload.id_.in_(upload_ids),
+                    Upload.state_id == UploadState.UPLOADED.db_id,
+                )
+                .update(
+                    {
+                        Upload.state_id: UploadState.ERROR.db_id,
+                        Upload.state: "error",
+                    },
+                    synchronize_session="fetch",
+                )
             )
-            .update(
-                {
-                    Upload.state_id: UploadState.ERROR.db_id,
-                    Upload.state: "error",
-                },
-                synchronize_session="fetch",
+            if updated > 0:
+                CLEARED_UPLOADS.inc(updated)
+        except Exception:
+            log.warning(
+                "Failed to clear in-progress uploads (transaction may be aborted)",
+                extra={"upload_ids": upload_ids},
+                exc_info=True,
             )
-        )
-        if updated > 0:
-            CLEARED_UPLOADS.inc(updated)
 
     def mark_upload_as_processed(self, upload_id: int):
         upload = self._db_session.query(Upload).get(upload_id)
