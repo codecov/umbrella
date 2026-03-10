@@ -176,6 +176,7 @@ class ProcessingState:
             },
             synchronize_session="fetch",
         )
+        self._db_session.commit()
 
     def get_uploads_for_merging(self) -> set[int]:
         rows = (
