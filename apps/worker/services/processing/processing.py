@@ -43,8 +43,8 @@ def process_upload(
     upload = db_session.query(Upload).filter_by(id_=upload_id).first()
     assert upload
 
-    state = ProcessingState(repo_id, commit_sha)
-    # this in a noop in normal cases, but relevant for task retries:
+    state = ProcessingState(repo_id, commit_sha, db_session=db_session)
+    # this is a noop in normal cases, but relevant for task retries:
     state.mark_uploads_as_processing([upload_id])
 
     report_service = ReportService(commit_yaml)
@@ -71,10 +71,12 @@ def process_upload(
             save_intermediate_report(upload_id, processing_result.report)
         state.mark_upload_as_processed(upload_id)
 
-        # Check if all uploads are now processed and trigger finisher if needed
-        # This handles the case where a processor task retries outside of a chord
-        # (e.g., from visibility timeout or task_reject_on_worker_lost)
-        upload_numbers = state.get_upload_numbers()
+        # Safety net: trigger finisher if all uploads are done.
+        # Handles retries outside a chord (visibility timeout, task_reject_on_worker_lost).
+        # Will be replaced by gate key mechanism in a future PR.
+        # Use Redis-only state for counting (dual-write keeps Redis in sync).
+        redis_state = ProcessingState(repo_id, commit_sha)
+        upload_numbers = redis_state.get_upload_numbers()
         if should_trigger_postprocessing(upload_numbers):
             log.info(
                 "All uploads processed, triggering finisher",
