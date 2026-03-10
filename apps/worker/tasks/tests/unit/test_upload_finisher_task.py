@@ -21,7 +21,6 @@ from services.processing.merging import get_joined_flag, update_uploads
 from services.processing.types import MergeResult, ProcessingResult
 from services.timeseries import MeasurementName
 from shared.celery_config import (
-    DEFAULT_BLOCKING_TIMEOUT_SECONDS,
     compute_comparison_task_name,
     notify_task_name,
     pulls_task_name,
@@ -38,6 +37,8 @@ from shared.reports.resources import Report
 from shared.torngit.exceptions import TorngitObjectNotFoundError
 from shared.yaml import UserYaml
 from tasks.upload_finisher import (
+    FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
+    FINISHER_BLOCKING_TIMEOUT_SECONDS,
     ReportService,
     ShouldCallNotifyResult,
     UploadFinisherTask,
@@ -1415,7 +1416,13 @@ class TestLockManagerConfiguration:
         )
 
         first_call = lock_manager_cls.call_args_list[0]
-        assert first_call.kwargs["blocking_timeout"] == DEFAULT_BLOCKING_TIMEOUT_SECONDS
+        assert (
+            first_call.kwargs["blocking_timeout"] == FINISHER_BLOCKING_TIMEOUT_SECONDS
+        )
+        assert (
+            first_call.kwargs["base_retry_countdown"]
+            == FINISHER_BASE_RETRY_COUNTDOWN_SECONDS
+        )
 
     @pytest.mark.django_db
     def test_locked_called_without_max_retries(

@@ -32,7 +32,6 @@ from services.repository import get_repo_provider_service
 from services.timeseries import repository_datasets_query
 from services.yaml import read_yaml_field
 from shared.celery_config import (
-    DEFAULT_BLOCKING_TIMEOUT_SECONDS,
     DEFAULT_LOCK_TIMEOUT_SECONDS,
     UPLOAD_PROCESSOR_MAX_RETRIES,
     compute_comparison_task_name,
@@ -53,6 +52,9 @@ from shared.yaml import UserYaml
 from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
+
+FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
+FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
 
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
@@ -419,7 +421,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=DEFAULT_BLOCKING_TIMEOUT_SECONDS,
+            blocking_timeout=FINISHER_BLOCKING_TIMEOUT_SECONDS,
+            base_retry_countdown=FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
         )
 
         try:
@@ -517,7 +520,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=DEFAULT_BLOCKING_TIMEOUT_SECONDS,
+            blocking_timeout=FINISHER_BLOCKING_TIMEOUT_SECONDS,
+            base_retry_countdown=FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
         )
 
         try:
