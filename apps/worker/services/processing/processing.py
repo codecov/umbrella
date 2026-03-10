@@ -5,6 +5,7 @@ import sentry_sdk
 from celery.exceptions import CeleryError
 from sqlalchemy.orm import Session as DbSession
 
+from app import celery_app
 from database.models.core import Commit
 from database.models.reports import Upload
 from helpers.checkpoint_logger import _kwargs_key

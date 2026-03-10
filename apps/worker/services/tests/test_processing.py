@@ -66,19 +66,19 @@ class TestProcessUploadFinisherGate:
 
         mocker.patch("services.processing.processing.save_intermediate_report")
         mocker.patch("services.processing.processing.rewrite_or_delete_upload")
+        commit_yaml = UserYaml({})
 
         result = process_upload(
             on_processing_error=lambda error: None,
             db_session=dbsession,
             repo_id=repository.repoid,
             commit_sha=commit.commitid,
-            commit_yaml=UserYaml({}),
+            commit_yaml=commit_yaml,
             arguments=arguments,
         )
 
         assert result["successful"] is True
         assert result["upload_id"] == upload.id_
-
         # Verify finisher was triggered
         mock_finisher_task.apply_async.assert_called_once_with(
             kwargs={
@@ -88,6 +88,11 @@ class TestProcessUploadFinisherGate:
             }
         )
         mock_redis.return_value.set.assert_called_once()
+        dbsession.refresh(upload)
+        assert upload.state_id == UploadState.PROCESSED.db_id
+        # state string is not updated by the processor -- the finisher sets it
+        # after merging (to avoid triggering the finisher's idempotency check early)
+        assert upload.state == "started"
 
     def test_does_not_trigger_finisher_when_gate_exists(
         self, dbsession, mocker, mock_storage
