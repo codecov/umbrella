@@ -585,6 +585,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 scheduled_tasks_list = []
                 for chunk in chunks:
                     chunk_scheduled_tasks = self.schedule_task(
+                        db_session,
                         commit,
                         commit_yaml.to_dict(),
                         chunk,
@@ -596,6 +597,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 scheduled_tasks = scheduled_tasks_list
             else:
                 scheduled_tasks = self.schedule_task(
+                    db_session,
                     commit,
                     commit_yaml.to_dict(),
                     upload_argument_list,
@@ -781,6 +783,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
     def schedule_task(
         self,
+        db_session: Session,
         commit: Commit,
         commit_yaml: dict,
         argument_list: list[UploadArguments],
@@ -808,6 +811,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 or commit_report.report_type == ReportType.COVERAGE.value
             )
             return self._schedule_coverage_processing_task(
+                db_session,
                 commit,
                 commit_yaml,
                 argument_list,
@@ -828,6 +832,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
 
     def _schedule_coverage_processing_task(
         self,
+        db_session: Session,
         commit: Commit,
         commit_yaml: dict,
         argument_list: list[UploadArguments],
@@ -835,7 +840,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
     ):
         self.maybe_log_upload_checkpoint(UploadFlow.INITIAL_PROCESSING_COMPLETE)
 
-        state = ProcessingState(commit.repoid, commit.commitid)
+        state = ProcessingState(commit.repoid, commit.commitid, db_session)
         state.mark_uploads_as_processing(
             [int(upload["upload_id"]) for upload in argument_list]
         )
