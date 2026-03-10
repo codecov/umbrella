@@ -129,8 +129,8 @@ def update_uploads(
 
         if result["successful"]:
             update = {
-                "state_id": UploadState.PROCESSED.db_id,
-                "state": "processed",
+                "state_id": UploadState.MERGED.db_id,
+                "state": "merged",
             }
             report = reports.get(upload_id)
             if report is not None:
