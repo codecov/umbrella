@@ -33,6 +33,9 @@ from helpers.save_commit_error import save_commit_error
 from services.repository import get_repo_provider_service
 from shared.celery_config import (
     TASK_RETRY_BACKOFF_BASE_SECONDS,
+    TASK_RETRY_COUNTDOWN_MAX_SECONDS,
+    TASK_RETRY_MIN_SAFE_WINDOW_SECONDS,
+    TASK_VISIBILITY_TIMEOUT_SECONDS,
     upload_breadcrumb_task_name,
 )
 from shared.celery_router import route_tasks_based_on_user_plan
@@ -202,12 +205,52 @@ class BaseCodecovTask(celery_app.Task):
         cls.task_core_runtime = TASK_CORE_RUNTIME.labels(task=name)
 
     @property
-    def hard_time_limit_task(self):
+    def hard_time_limit_task(self) -> int:
+        """Return the hard time limit for this task execution, in seconds.
+
+        Checked in priority order:
+        1. request.timelimit[0] — set per-execution when a task is dispatched
+           with a custom time limit (e.g. apply_async(time_limit=N)).
+        2. self.time_limit — the class-level hard limit defined on the task.
+        3. app.conf.task_time_limit — the Celery application default.
+
+        Returns 0 if no limit is configured at any level.
+        """
         if self.request.timelimit is not None and self.request.timelimit[0] is not None:
-            return self.request.timelimit[0]
+            return int(self.request.timelimit[0])
         if self.time_limit is not None:
-            return self.time_limit
-        return self.app.conf.task_time_limit or 0
+            return int(self.time_limit)
+        return int(self.app.conf.task_time_limit or 0)
+
+    def clamp_retry_countdown(self, countdown: int) -> int:
+        """Cap a retry countdown to prevent Redis redelivery before the retry fires.
+
+        A task calling retry() may have been running for up to hard_time_limit_task
+        seconds, so the safe ceiling is:
+            TASK_VISIBILITY_TIMEOUT_SECONDS - hard_time_limit_task
+
+        Tasks with no hard limit fall back to TASK_RETRY_COUNTDOWN_MAX_SECONDS.
+
+        When the safe window is smaller than TASK_RETRY_MIN_SAFE_WINDOW_SECONDS
+        (e.g. enterprise tasks with hard_timelimit=2450s >> visibility_timeout=900s),
+        also falls back to TASK_RETRY_COUNTDOWN_MAX_SECONDS.
+        """
+        hard_limit = self.hard_time_limit_task
+        if hard_limit:
+            safe_window = TASK_VISIBILITY_TIMEOUT_SECONDS - hard_limit
+            if safe_window < TASK_RETRY_MIN_SAFE_WINDOW_SECONDS:
+                log.warning(
+                    "Task hard time limit leaves insufficient visibility window for "
+                    "retry clamping — falling back to global max",
+                    extra={
+                        "hard_time_limit_task": hard_limit,
+                        "min_safe_window": TASK_RETRY_MIN_SAFE_WINDOW_SECONDS,
+                        "visibility_timeout": TASK_VISIBILITY_TIMEOUT_SECONDS,
+                    },
+                )
+                return min(countdown, TASK_RETRY_COUNTDOWN_MAX_SECONDS)
+            return min(countdown, safe_window)
+        return min(countdown, TASK_RETRY_COUNTDOWN_MAX_SECONDS)
 
     def get_lock_timeout(self, default_timeout: int) -> int:
         """
@@ -261,7 +304,7 @@ class BaseCodecovTask(celery_app.Task):
         return super().apply_async(args=args, kwargs=kwargs, headers=headers, **options)
 
     def retry(self, max_retries=None, countdown=None, exc=None, **kwargs):
-        """Override Celery's retry to always update attempts header."""
+        """Override Celery's retry to always update attempts header and clamp countdown."""
         request = getattr(self, "request", None)
         current_attempts = self.attempts
         kwargs["headers"] = {
@@ -269,6 +312,9 @@ class BaseCodecovTask(celery_app.Task):
             **(kwargs.get("headers") or {}),
             "attempts": current_attempts + 1,
         }
+
+        if countdown is not None:
+            countdown = self.clamp_retry_countdown(countdown)
 
         return super().retry(
             max_retries=max_retries, countdown=countdown, exc=exc, **kwargs

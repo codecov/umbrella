@@ -65,7 +65,10 @@ class ManualTriggerTask(
                     "notifications_called": False,
                     "message": "Unable to acquire lock",
                 }
-            self.retry(max_retries=TASK_MAX_RETRIES_DEFAULT, countdown=retry.countdown)
+            self.retry(
+                max_retries=TASK_MAX_RETRIES_DEFAULT,
+                countdown=retry.countdown,
+            )
 
     def process_impl_within_lock(
         self,
