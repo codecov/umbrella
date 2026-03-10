@@ -5,18 +5,16 @@ import sentry_sdk
 from celery.exceptions import CeleryError
 from sqlalchemy.orm import Session as DbSession
 
-from app import celery_app
 from database.models.core import Commit
 from database.models.reports import Upload
 from helpers.reports import delete_archive_setting
 from services.report import ProcessingError, RawReportInfo, ReportService
 from services.report.parser.types import VersionOneParsedRawReport
 from shared.api_archive.archive import ArchiveService
-from shared.celery_config import upload_finisher_task_name
 from shared.yaml import UserYaml
 
 from .intermediate import save_intermediate_report
-from .state import ProcessingState, should_trigger_postprocessing
+from .state import ProcessingState
 from .types import ProcessingResult, UploadArguments
 
 log = logging.getLogger(__name__)
@@ -43,8 +41,8 @@ def process_upload(
     upload = db_session.query(Upload).filter_by(id_=upload_id).first()
     assert upload
 
-    state = ProcessingState(repo_id, commit_sha)
-    # this in a noop in normal cases, but relevant for task retries:
+    state = ProcessingState(repo_id, commit_sha, db_session=db_session)
+    # this is a noop in normal cases, but relevant for task retries:
     state.mark_uploads_as_processing([upload_id])
 
     report_service = ReportService(commit_yaml)
@@ -70,27 +68,6 @@ def process_upload(
         if processing_result.report:
             save_intermediate_report(upload_id, processing_result.report)
         state.mark_upload_as_processed(upload_id)
-
-        # Check if all uploads are now processed and trigger finisher if needed
-        # This handles the case where a processor task retries outside of a chord
-        # (e.g., from visibility timeout or task_reject_on_worker_lost)
-        upload_numbers = state.get_upload_numbers()
-        if should_trigger_postprocessing(upload_numbers):
-            log.info(
-                "All uploads processed, triggering finisher",
-                extra={
-                    "repo_id": repo_id,
-                    "commit_sha": commit_sha,
-                    "upload_id": upload_id,
-                },
-            )
-            celery_app.tasks[upload_finisher_task_name].apply_async(
-                kwargs={
-                    "repoid": repo_id,
-                    "commitid": commit_sha,
-                    "commit_yaml": commit_yaml.to_dict(),
-                }
-            )
 
         rewrite_or_delete_upload(archive_service, commit_yaml, report_info)
 
