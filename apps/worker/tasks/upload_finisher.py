@@ -59,7 +59,7 @@ FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
 # Only this many finisher tasks are allowed to actively work on a single commit
 # at the same time.  Excess tasks exit immediately, freeing their worker slot.
 # A small number (>1) allows for failover if the active finisher crashes.
-MAX_CONCURRENT_FINISHERS_PER_COMMIT = 3
+MAX_CONCURRENT_FINISHERS_PER_COMMIT = 10
 
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
