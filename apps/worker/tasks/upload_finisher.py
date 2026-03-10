@@ -83,108 +83,35 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
     max_retries = UPLOAD_PROCESSOR_MAX_RETRIES
 
-    def _find_started_uploads_with_reports(
-        self, db_session, commit: Commit
-    ) -> set[int]:
-        """Find uploads in "started" state that have intermediate reports in Redis.
-
-        This is the fallback when Redis ProcessingState has expired (TTL: PROCESSING_STATE_TTL).
-        We check the database for uploads that were processed but never finalized,
-        and verify they have intermediate reports before including them.
-        """
-        # Query for uploads in "started" state for this commit
-        started_uploads = (
-            db_session.query(Upload)
-            .join(Upload.report)
-            .filter(
-                Upload.report.has(commit=commit),
-                Upload.state == "started",
-                Upload.state_id == UploadState.UPLOADED.db_id,
-            )
-            .all()
-        )
-
-        if not started_uploads:
-            return set()
-
-        log.info(
-            "Found uploads in started state, checking for intermediate reports",
-            extra={
-                "upload_ids": [u.id_ for u in started_uploads],
-                "count": len(started_uploads),
-            },
-        )
-
-        # Check which uploads have intermediate reports (confirms they were processed)
-        redis_connection = get_redis_connection()
-        upload_ids_with_reports = set()
-
-        for upload in started_uploads:
-            report_key = intermediate_report_key(upload.id_)
-            if redis_connection.exists(report_key):
-                upload_ids_with_reports.add(upload.id_)
-            else:
-                log.warning(
-                    "Upload in started state but no intermediate report found (may have expired)",
-                    extra={"upload_id": upload.id_},
-                )
-
-        return upload_ids_with_reports
-
     def _reconstruct_processing_results(
         self, db_session, state: ProcessingState, commit: Commit
     ) -> list[ProcessingResult]:
         """Reconstruct processing_results from ProcessingState when finisher is triggered
         outside of a chord (e.g., from orphaned upload recovery).
 
-        This ensures ALL uploads that were marked as processed in Redis are included
-        in the final merged report, even if they completed via retry/recovery.
-
-        If Redis state has expired (TTL: PROCESSING_STATE_TTL), falls back to database
-        to find uploads in "started" state that have intermediate reports, preventing data loss.
+        Uses DB state (Upload.state_id = PROCESSED) as the authoritative source of
+        which uploads are ready to merge.
         """
-
-        # Get all upload IDs that are ready to be merged (in "processed" set)
         upload_ids = state.get_uploads_for_merging()
 
         if not upload_ids:
-            log.warning(
-                "No uploads found in Redis processed set, checking database for started uploads",
+            log.info(
+                "No uploads in PROCESSED state found for merging",
                 extra={"repoid": commit.repoid, "commitid": commit.commitid},
             )
-            # Fallback: Redis state expired (TTL: PROCESSING_STATE_TTL), check DB for uploads
-            # in "started" state that might have been processed but never finalized
-            upload_ids = self._find_started_uploads_with_reports(db_session, commit)
-
-            if not upload_ids:
-                log.warning(
-                    "No started uploads with intermediate reports found in database",
-                    extra={"repoid": commit.repoid, "commitid": commit.commitid},
-                )
-                return []
-
-            log.info(
-                "Found started uploads with intermediate reports (Redis state expired)",
-                extra={
-                    "upload_ids": list(upload_ids),
-                    "count": len(upload_ids),
-                },
-            )
+            return []
 
         log.info(
-            "Reconstructing processing results from ProcessingState",
+            "Reconstructing processing results from DB state",
             extra={"upload_ids": list(upload_ids), "count": len(upload_ids)},
         )
 
-        # Load Upload records from database to get arguments
         uploads = db_session.query(Upload).filter(Upload.id_.in_(upload_ids)).all()
 
-        # Check which uploads have intermediate reports in Redis
         redis_connection = get_redis_connection()
 
         processing_results = []
         for upload in uploads:
-            # Check if intermediate report exists (indicates successful processing)
             report_key = intermediate_report_key(upload.id_)
             has_report = redis_connection.exists(report_key)
 
@@ -193,7 +120,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 "arguments": {
                     "commit": commit.commitid,
                     "upload_id": upload.id_,
-                    "version": "v4",  # Assume v4 for recovered uploads
+                    "version": "v4",
                     "reportid": str(upload.report.external_id),
                 },
                 "successful": bool(has_report),
@@ -201,7 +128,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
             if not has_report:
                 log.warning(
-                    "Upload in processed set but no intermediate report found",
+                    "Upload in PROCESSED state but no intermediate report found",
                     extra={"upload_id": upload.id_},
                 )
                 processing_result["error"] = {
@@ -210,15 +137,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 }
 
             processing_results.append(processing_result)
-
-        log.info(
-            "Reconstructed processing results",
-            extra={
-                "total_uploads": len(processing_results),
-                "successful": sum(1 for r in processing_results if r["successful"]),
-                "failed": sum(1 for r in processing_results if not r["successful"]),
-            },
-        )
 
         return processing_results
 
@@ -260,7 +178,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         log.info("run_impl: Got commit")
 
-        state = ProcessingState(repoid, commitid)
+        state = ProcessingState(repoid, commitid, db_session=db_session)
 
         # If processing_results not provided (e.g., from orphaned upload recovery),
         # reconstruct it from ProcessingState to ensure ALL uploads are included
@@ -291,7 +209,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             # Only skip if ALL uploads exist in DB and ALL are in final states
             if len(uploads_in_db) == len(upload_ids):
                 all_already_processed = all(
-                    upload.state in ("processed", "error") for upload in uploads_in_db
+                    upload.state in ("processed", "merged", "error")
+                    for upload in uploads_in_db
                 )
                 if all_already_processed:
                     log.info(
