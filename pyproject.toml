@@ -69,6 +69,7 @@ codecov-api = [
     "django-csp==3.8.0",
     "django-cursor-pagination>=0.3.0",
     "django-filter>=2.4.0",
+    "django-ipware>=6.0.5",
     "djangorestframework>=3.15.2",
     "drf-spectacular-sidecar>=2023.3.1",
     "drf-spectacular>=0.26.2",
