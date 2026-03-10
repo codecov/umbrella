@@ -74,22 +74,29 @@ def process_upload(
         # Safety net: trigger finisher if all uploads are done.
         # Handles retries outside a chord (visibility timeout, task_reject_on_worker_lost).
         # Will be replaced by gate key mechanism in a future PR.
-        upload_numbers = state.get_upload_numbers()
-        if should_trigger_postprocessing(upload_numbers):
-            log.info(
-                "All uploads processed, triggering finisher",
-                extra={
-                    "repo_id": repo_id,
-                    "commit_sha": commit_sha,
-                    "upload_id": upload_id,
-                },
-            )
-            celery_app.tasks[upload_finisher_task_name].apply_async(
-                kwargs={
-                    "repoid": repo_id,
-                    "commitid": commit_sha,
-                    "commit_yaml": commit_yaml.to_dict(),
-                }
+        try:
+            upload_numbers = state.get_upload_numbers()
+            if should_trigger_postprocessing(upload_numbers):
+                log.info(
+                    "All uploads processed, triggering finisher",
+                    extra={
+                        "repo_id": repo_id,
+                        "commit_sha": commit_sha,
+                        "upload_id": upload_id,
+                    },
+                )
+                celery_app.tasks[upload_finisher_task_name].apply_async(
+                    kwargs={
+                        "repoid": repo_id,
+                        "commitid": commit_sha,
+                        "commit_yaml": commit_yaml.to_dict(),
+                    }
+                )
+        except Exception:
+            log.warning(
+                "Safety-net finisher trigger failed (non-fatal)",
+                extra={"repo_id": repo_id, "commit_sha": commit_sha},
+                exc_info=True,
             )
 
         rewrite_or_delete_upload(archive_service, commit_yaml, report_info)
