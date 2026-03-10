@@ -2,6 +2,7 @@ enum UploadState {
   STARTED
   UPLOADED
   PROCESSED
+  MERGED
   ERROR
   COMPLETE
 }

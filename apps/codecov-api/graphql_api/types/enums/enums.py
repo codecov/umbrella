@@ -83,6 +83,7 @@ class UploadState(enum.Enum):
     STARTED = "started"
     UPLOADED = "uploaded"
     PROCESSED = "processed"
+    MERGED = "merged"
     ERROR = "error"
     COMPLETE = "complete"
 
