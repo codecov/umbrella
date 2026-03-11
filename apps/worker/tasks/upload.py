@@ -194,17 +194,11 @@ class CreateUploadResponse(TypedDict):
     upload_flag_map: dict[Upload, list | str | None]
 
 
-class ScheduledTasksResult:
-    def __init__(self, task_ids: list[str]):
-        self._task_ids = task_ids
-
-    def as_tuple(self):
-        return tuple(self._task_ids)
-
-
 def _scheduled_task_ids(scheduled_tasks) -> tuple[str, ...]:
-    if isinstance(scheduled_tasks, ScheduledTasksResult):
-        return scheduled_tasks.as_tuple()
+    if isinstance(scheduled_tasks, tuple):
+        return scheduled_tasks
+    if isinstance(scheduled_tasks, list):
+        return tuple(scheduled_tasks)
 
     task_id = getattr(scheduled_tasks, "id", None)
     if task_id:
@@ -875,7 +869,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             result = upload_processor_task.apply_async(kwargs=processor_task_kwargs)
             if result and result.id:
                 scheduled_task_ids.append(result.id)
-        return ScheduledTasksResult(scheduled_task_ids)
+        return tuple(scheduled_task_ids)
 
     def _schedule_bundle_analysis_processing_task(
         self,
