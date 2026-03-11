@@ -430,7 +430,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone,
                 upload_ids,
             )
-            self._delete_finisher_gate(repoid, commitid)
+            if result is not None:
+                self._delete_finisher_gate(repoid, commitid)
             return result
 
         except Retry:
