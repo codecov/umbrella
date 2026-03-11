@@ -8,14 +8,15 @@ from sqlalchemy.orm import Session as DbSession
 from app import celery_app
 from database.models.core import Commit
 from database.models.reports import Upload
-from helpers.checkpoint_logger import _kwargs_key
-from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.reports import delete_archive_setting
+from services.processing.finisher_gate import (
+    finisher_gate_key,
+    try_acquire_finisher_gate,
+)
 from services.report import ProcessingError, RawReportInfo, ReportService
 from services.report.parser.types import VersionOneParsedRawReport
 from shared.api_archive.archive import ArchiveService
 from shared.celery_config import upload_finisher_task_name
-from shared.helpers.redis import get_redis_connection
 from shared.yaml import UserYaml
 
 from .intermediate import save_intermediate_report
@@ -23,13 +24,6 @@ from .state import ProcessingState, should_perform_merge
 from .types import ProcessingResult, UploadArguments
 
 log = logging.getLogger(__name__)
-
-FINISHER_GATE_KEY_PREFIX = "upload_merger_lock"
-FINISHER_GATE_TTL_SECONDS = 900
-
-
-def finisher_gate_key(repo_id: int, commit_sha: str) -> str:
-    return f"{FINISHER_GATE_KEY_PREFIX}_{repo_id}_{commit_sha}"
 
 
 @sentry_sdk.trace
@@ -84,8 +78,7 @@ def process_upload(
         upload_numbers = state.get_upload_numbers()
         if should_perform_merge(upload_numbers):
             gate_key = finisher_gate_key(repo_id, commit_sha)
-            redis = get_redis_connection()
-            if redis.set(gate_key, "1", nx=True, ex=FINISHER_GATE_TTL_SECONDS):
+            if try_acquire_finisher_gate(repo_id, commit_sha):
                 log.info(
                     "Enqueuing upload finisher via gate",
                     extra={
@@ -100,11 +93,6 @@ def process_upload(
                     "commitid": commit_sha,
                     "commit_yaml": commit_yaml.to_dict(),
                 }
-                checkpoint_kwargs_key = _kwargs_key(UploadFlow)
-                if checkpoint_kwargs_key in arguments:
-                    finisher_kwargs[checkpoint_kwargs_key] = arguments[
-                        checkpoint_kwargs_key
-                    ]
                 celery_app.tasks[upload_finisher_task_name].apply_async(
                     kwargs=finisher_kwargs
                 )

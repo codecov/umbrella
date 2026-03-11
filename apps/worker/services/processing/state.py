@@ -194,3 +194,18 @@ class ProcessingState:
             .all()
         )
         return {row[0] for row in rows}
+
+    def count_remaining_coverage_uploads(self) -> int:
+        return (
+            self._db_session.query(Upload)
+            .join(CommitReport, Upload.report_id == CommitReport.id_)
+            .join(Commit, CommitReport.commit_id == Commit.id_)
+            .filter(
+                Commit.repoid == self.repoid,
+                Commit.commitid == self.commitsha,
+                (CommitReport.report_type == None)  # noqa: E711
+                | (CommitReport.report_type == ReportType.COVERAGE.value),
+                Upload.state_id == UploadState.UPLOADED.db_id,
+            )
+            .count()
+        )
