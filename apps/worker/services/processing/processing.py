@@ -17,7 +17,7 @@ from shared.helpers.redis import get_redis_connection
 from shared.yaml import UserYaml
 
 from .intermediate import save_intermediate_report
-from .state import ProcessingState, should_perform_merge
+from .state import ProcessingState
 from .types import ProcessingResult, UploadArguments
 
 log = logging.getLogger(__name__)
@@ -78,28 +78,26 @@ def process_upload(
         if processing_result.report:
             save_intermediate_report(upload_id, processing_result.report)
         state.mark_upload_as_processed(upload_id)
-        upload_numbers = state.get_upload_numbers()
-        if should_perform_merge(upload_numbers):
-            gate_key = finisher_gate_key(repo_id, commit_sha)
-            redis = get_redis_connection()
-            if redis.set(gate_key, "1", nx=True, ex=FINISHER_GATE_TTL_SECONDS):
-                log.info(
-                    "Enqueuing upload finisher via gate",
-                    extra={
-                        "repo_id": repo_id,
-                        "commit_sha": commit_sha,
-                        "upload_id": upload_id,
-                        "gate_key": gate_key,
-                        "upload_numbers": upload_numbers,
-                    },
-                )
-                celery_app.tasks[upload_finisher_task_name].apply_async(
-                    kwargs={
-                        "repoid": repo_id,
-                        "commitid": commit_sha,
-                        "commit_yaml": commit_yaml.to_dict(),
-                    }
-                )
+
+        gate_key = finisher_gate_key(repo_id, commit_sha)
+        redis = get_redis_connection()
+        if redis.set(gate_key, "1", nx=True, ex=FINISHER_GATE_TTL_SECONDS):
+            log.info(
+                "Enqueuing upload finisher via gate",
+                extra={
+                    "repo_id": repo_id,
+                    "commit_sha": commit_sha,
+                    "upload_id": upload_id,
+                    "gate_key": gate_key,
+                },
+            )
+            celery_app.tasks[upload_finisher_task_name].apply_async(
+                kwargs={
+                    "repoid": repo_id,
+                    "commitid": commit_sha,
+                    "commit_yaml": commit_yaml.to_dict(),
+                }
+            )
 
         rewrite_or_delete_upload(archive_service, commit_yaml, report_info)
 

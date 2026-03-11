@@ -861,18 +861,18 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         )
 
         parallel_processing_tasks = [
-            upload_processor_task.s(
-                repoid=commit.repoid,
-                commitid=commit.commitid,
-                commit_yaml=commit_yaml,
-                arguments=arguments,
-            )
+            {
+                "repoid": commit.repoid,
+                "commitid": commit.commitid,
+                "commit_yaml": commit_yaml,
+                "arguments": arguments,
+            }
             for arguments in argument_list
         ]
 
         scheduled_task_ids: list[str] = []
-        for processor_task in parallel_processing_tasks:
-            result = processor_task.apply_async()
+        for processor_task_kwargs in parallel_processing_tasks:
+            result = upload_processor_task.apply_async(kwargs=processor_task_kwargs)
             if result and result.id:
                 scheduled_task_ids.append(result.id)
         return ScheduledTasksResult(scheduled_task_ids)
