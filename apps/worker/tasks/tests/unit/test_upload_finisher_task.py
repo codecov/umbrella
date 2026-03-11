@@ -1752,6 +1752,7 @@ class TestUploadFinisherTask:
         )
 
         mock_schedule_watchdog.assert_not_called()
+
     @pytest.mark.django_db
     def test_run_impl_schedules_continuation_when_more_processed_uploads_remain(
         self, dbsession, mocker, mock_self_app
