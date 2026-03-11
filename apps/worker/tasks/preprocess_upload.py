@@ -92,7 +92,8 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
                 error=Errors.INTERNAL_RETRYING,
             )
             self.retry(
-                max_retries=PREPROCESS_UPLOAD_MAX_RETRIES, countdown=retry.countdown
+                max_retries=PREPROCESS_UPLOAD_MAX_RETRIES,
+                countdown=retry.countdown,
             )
 
     def process_impl_within_lock(self, db_session, repoid, commitid):

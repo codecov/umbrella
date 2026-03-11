@@ -117,7 +117,10 @@ class UploadProcessorTask(BaseCodecovTask, name=upload_processor_task_name):
                     upload_ids=[arguments["upload_id"]],
                     error=Errors.INTERNAL_RETRYING,
                 )
-                self.retry(max_retries=error.max_retries, countdown=countdown)
+                self.retry(
+                    max_retries=error.max_retries,
+                    countdown=countdown,
+                )
             elif error.is_retryable and self.request.retries >= error.max_retries:
                 sentry_sdk.capture_exception(
                     error.error_class(error.error_text),

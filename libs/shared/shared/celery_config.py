@@ -263,6 +263,16 @@ TASK_RETRY_BACKOFF_BASE_SECONDS = int(
     get_config("setup", "tasks", "celery", "retry_backoff_base", default=20)
 )
 
+# Fallback cap for clamp_retry_countdown on tasks with no hard time limit
+# configured. As of 2026-02-25, TASK_VISIBILITY_TIMEOUT_SECONDS defaults to
+# 900 s in production. The 30 s margin is arbitrary but sufficient.
+TASK_RETRY_COUNTDOWN_MAX_SECONDS = TASK_VISIBILITY_TIMEOUT_SECONDS - 30
+
+# Minimum safe window for clamp_retry_countdown. If the remaining visibility
+# window (TASK_VISIBILITY_TIMEOUT_SECONDS - hard_time_limit_task) is smaller
+# than this, clamp_retry_countdown falls back to TASK_RETRY_COUNTDOWN_MAX_SECONDS.
+TASK_RETRY_MIN_SAFE_WINDOW_SECONDS = 30
+
 # Fixed retry delay for specific conditions (seconds)
 # Used for predictable retry intervals (e.g., waiting for processing lock)
 # Default: 60 seconds

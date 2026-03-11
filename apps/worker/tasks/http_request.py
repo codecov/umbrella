@@ -66,7 +66,10 @@ class HTTPRequestTask(BaseCodecovTask, name=http_request_task_name):
 
     def _retry_task(self):
         # retry w/ exponential backoff
-        self.retry(max_retries=5, countdown=20 * (2**self.request.retries))
+        self.retry(
+            max_retries=5,
+            countdown=20 * (2**self.request.retries),
+        )
 
 
 RegisteredHTTPRequestTask = celery_app.register_task(HTTPRequestTask())

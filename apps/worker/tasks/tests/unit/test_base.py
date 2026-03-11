@@ -22,6 +22,9 @@ from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.tests.factories.core import OwnerFactory, RepositoryFactory
 from helpers.exceptions import NoConfiguredAppsAvailable, RepositoryWithoutValidBotError
 from shared.celery_config import (
+    TASK_RETRY_COUNTDOWN_MAX_SECONDS,
+    TASK_RETRY_MIN_SAFE_WINDOW_SECONDS,
+    TASK_VISIBILITY_TIMEOUT_SECONDS,
     sync_repos_task_name,
     upload_breadcrumb_task_name,
     upload_task_name,
@@ -29,11 +32,204 @@ from shared.celery_config import (
 from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Errors
 from shared.plan.constants import PlanName
 from shared.torngit.exceptions import TorngitClientError
-from tasks.base import BaseCodecovRequest, BaseCodecovTask
+from tasks.base import (
+    BaseCodecovRequest,
+    BaseCodecovTask,
+)
 from tasks.base import celery_app as base_celery_app
 from tests.helpers import mock_all_plans_and_tiers
 
 here = Path(__file__)
+
+
+class TestClampRetryCountdown:
+    # A representative task hard time limit — arbitrary fraction of the visibility
+    # timeout, chosen so the cap math produces non-trivial values in both
+    # the test environment (TASK_VISIBILITY_TIMEOUT_SECONDS=20) and production (900).
+    _HARD_LIMIT = TASK_VISIBILITY_TIMEOUT_SECONDS // 4
+
+    # The safe ceiling: a task may have been running for up to _HARD_LIMIT seconds,
+    # so the countdown must fit within the remaining visibility window.
+    _SAFE_CAP = TASK_VISIBILITY_TIMEOUT_SECONDS - _HARD_LIMIT
+
+    # A countdown larger than any conceivable real cap, to exercise clamping.
+    _COUNTDOWN_EXCEEDING_ANY_CAP = 999_999
+
+    @pytest.mark.parametrize(
+        "hard_limit,countdown,expected",
+        [
+            # below cap → returned as-is
+            (_HARD_LIMIT, 0, 0),
+            (_HARD_LIMIT, _SAFE_CAP, _SAFE_CAP),
+            # 1 above cap → clamped to cap
+            (_HARD_LIMIT, _SAFE_CAP + 1, _SAFE_CAP),
+            # way above cap → clamped to cap
+            (_HARD_LIMIT, _COUNTDOWN_EXCEEDING_ANY_CAP, _SAFE_CAP),
+            # no hard limit, way above max → clamped to max
+            (0, _COUNTDOWN_EXCEEDING_ANY_CAP, TASK_RETRY_COUNTDOWN_MAX_SECONDS),
+            # no hard limit, below max → returned as-is
+            (0, 0, 0),
+        ],
+    )
+    def test_clamp(self, mocker, hard_limit, countdown, expected):
+        mocker.patch.object(
+            BaseCodecovTask,
+            "hard_time_limit_task",
+            new_callable=PropertyMock,
+            return_value=hard_limit,
+        )
+        task = BaseCodecovTask()
+        assert task.clamp_retry_countdown(countdown) == expected
+
+    @pytest.mark.parametrize(
+        "hard_limit",
+        [
+            # safe window is 1 second below the minimum — smallest misconfigured case
+            TASK_VISIBILITY_TIMEOUT_SECONDS - TASK_RETRY_MIN_SAFE_WINDOW_SECONDS + 1,
+            # safe window is 0
+            TASK_VISIBILITY_TIMEOUT_SECONDS,
+            # hard_limit exceeds visibility timeout (e.g. enterprise tasks with hard_timelimit=2450s)
+            TASK_VISIBILITY_TIMEOUT_SECONDS + 10,
+        ],
+    )
+    def test_clamp_falls_back_when_misconfigured(self, mocker, hard_limit):
+        """Falls back to TASK_RETRY_COUNTDOWN_MAX_SECONDS when the safe window is too small."""
+        mocker.patch.object(
+            BaseCodecovTask,
+            "hard_time_limit_task",
+            new_callable=PropertyMock,
+            return_value=hard_limit,
+        )
+        task = BaseCodecovTask()
+        assert task.clamp_retry_countdown(999) == TASK_RETRY_COUNTDOWN_MAX_SECONDS
+
+    def test_hard_time_limit_task_float_is_cast_to_int(self, mocker):
+        """Floats from self.request.timelimit[0] must be cast so math stays integer."""
+        task = BaseCodecovTask()
+        # Mock request so timelimit[0] is a float — exercises the first branch.
+        mock_request = MagicMock()
+        mock_request.timelimit = [600.9, None]
+        mocker.patch.object(
+            BaseCodecovTask,
+            "request",
+            new_callable=PropertyMock,
+            return_value=mock_request,
+        )
+        result = task.hard_time_limit_task
+        assert result == 600
+        assert isinstance(result, int)
+
+    def test_retry_applies_clamping(self, mocker):
+        """retry() must pass a clamped countdown to Celery so we never exceed visibility timeout."""
+        task = BaseCodecovTask()
+        hard_limit = TASK_VISIBILITY_TIMEOUT_SECONDS // 4
+        mocker.patch.object(
+            BaseCodecovTask,
+            "hard_time_limit_task",
+            new_callable=PropertyMock,
+            return_value=hard_limit,
+        )
+        captured = {}
+
+        def fake_super_retry(max_retries=None, countdown=None, exc=None, **kwargs):
+            captured["countdown"] = countdown
+            raise Retry()
+
+        mocker.patch.object(
+            BaseCodecovTask,
+            "attempts",
+            new_callable=PropertyMock,
+            return_value=0,
+        )
+        mock_request = MagicMock()
+        mock_request.headers = {}
+        mocker.patch.object(
+            BaseCodecovTask,
+            "request",
+            new_callable=PropertyMock,
+            return_value=mock_request,
+        )
+        mocker.patch("celery.app.task.Task.retry", side_effect=fake_super_retry)
+
+        with pytest.raises(Retry):
+            task.retry(max_retries=5, countdown=99999)
+
+        assert captured["countdown"] == TASK_VISIBILITY_TIMEOUT_SECONDS - hard_limit
+
+    def test_retry_does_not_clamp_when_countdown_is_none(self, mocker):
+        """retry() with countdown=None must pass None through untouched (Celery default)."""
+        task = BaseCodecovTask()
+        mocker.patch.object(
+            BaseCodecovTask,
+            "hard_time_limit_task",
+            new_callable=PropertyMock,
+            return_value=TASK_VISIBILITY_TIMEOUT_SECONDS // 4,
+        )
+        captured = {}
+
+        def fake_super_retry(max_retries=None, countdown=None, exc=None, **kwargs):
+            captured["countdown"] = countdown
+            raise Retry()
+
+        mocker.patch.object(
+            BaseCodecovTask,
+            "attempts",
+            new_callable=PropertyMock,
+            return_value=0,
+        )
+        mock_request = MagicMock()
+        mock_request.headers = {}
+        mocker.patch.object(
+            BaseCodecovTask,
+            "request",
+            new_callable=PropertyMock,
+            return_value=mock_request,
+        )
+        mocker.patch("celery.app.task.Task.retry", side_effect=fake_super_retry)
+
+        with pytest.raises(Retry):
+            task.retry(max_retries=5, countdown=None)
+
+        assert captured["countdown"] is None
+
+    def _patch_misconfigured_task(self, mocker):
+        """Patch a task so its hard limit leaves no safe retry window."""
+        mocker.patch.object(
+            BaseCodecovTask,
+            "hard_time_limit_task",
+            new_callable=PropertyMock,
+            return_value=TASK_VISIBILITY_TIMEOUT_SECONDS,
+        )
+        mocker.patch.object(
+            BaseCodecovTask,
+            "attempts",
+            new_callable=PropertyMock,
+            return_value=0,
+        )
+        mock_request = MagicMock()
+        mock_request.headers = {}
+        mocker.patch.object(
+            BaseCodecovTask,
+            "request",
+            new_callable=PropertyMock,
+            return_value=mock_request,
+        )
+
+    def test_retry_clamps_to_max_when_misconfigured(self, mocker):
+        """retry() uses global max fallback when misconfigured — does not raise."""
+        self._patch_misconfigured_task(mocker)
+        captured = {}
+
+        def fake_super_retry(max_retries=None, countdown=None, exc=None, **kwargs):
+            captured["countdown"] = countdown
+            raise Retry()
+
+        mocker.patch("celery.app.task.Task.retry", side_effect=fake_super_retry)
+
+        with pytest.raises(Retry):
+            BaseCodecovTask().retry(max_retries=5, countdown=999)
+
+        assert captured["countdown"] == TASK_RETRY_COUNTDOWN_MAX_SECONDS
 
 
 @pytest.fixture
