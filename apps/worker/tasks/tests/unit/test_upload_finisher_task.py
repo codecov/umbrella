@@ -39,6 +39,7 @@ from shared.yaml import UserYaml
 from tasks.upload_finisher import (
     FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
     FINISHER_BLOCKING_TIMEOUT_SECONDS,
+    MAX_CONCURRENT_FINISHERS_PER_COMMIT,
     ReportService,
     ShouldCallNotifyResult,
     UploadFinisherTask,
@@ -1068,9 +1069,11 @@ class TestUploadFinisherTask:
 
         # Create uploads that are already in "processed" state
         upload_1 = UploadFactory.create(report=report, state="processed")
-        upload_2 = UploadFactory.create(report=report, state="error")
+        upload_2 = UploadFactory.create(report=report, state="merged")
+        upload_3 = UploadFactory.create(report=report, state="error")
         dbsession.add(upload_1)
         dbsession.add(upload_2)
+        dbsession.add(upload_3)
         dbsession.flush()
 
         # Mock the _process_reports_with_lock to verify it's NOT called
@@ -1080,7 +1083,8 @@ class TestUploadFinisherTask:
 
         previous_results = [
             {"upload_id": upload_1.id, "successful": True, "arguments": {}},
-            {"upload_id": upload_2.id, "successful": False, "arguments": {}},
+            {"upload_id": upload_2.id, "successful": True, "arguments": {}},
+            {"upload_id": upload_3.id, "successful": False, "arguments": {}},
         ]
 
         result = UploadFinisherTask().run_impl(
@@ -1094,7 +1098,7 @@ class TestUploadFinisherTask:
         # Verify that the finisher skipped all work
         assert result == {
             "already_completed": True,
-            "upload_ids": [upload_1.id, upload_2.id],
+            "upload_ids": [upload_1.id, upload_2.id, upload_3.id],
         }
 
         # Verify that _process_reports_with_lock was NOT called
@@ -1248,6 +1252,45 @@ class TestUploadFinisherTask:
 
         # Verify empty list returned when no uploads found
         assert result == []
+
+    @pytest.mark.django_db
+    def test_run_impl_uses_reconstructed_results_beyond_callback_payload(
+        self, dbsession, mocker, mock_self_app
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        reconstructed = [
+            {"upload_id": 101, "successful": True, "arguments": {}},
+            {"upload_id": 202, "successful": True, "arguments": {}},
+        ]
+        mocker.patch.object(
+            UploadFinisherTask,
+            "_reconstruct_processing_results",
+            return_value=reconstructed,
+        )
+        mock_process = mocker.patch.object(
+            UploadFinisherTask, "_process_reports_with_lock"
+        )
+        mock_handle_finisher_lock = mocker.patch.object(
+            UploadFinisherTask,
+            "_handle_finisher_lock",
+            return_value={"notifications_called": False},
+        )
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            [{"upload_id": 101, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        mock_process.assert_called_once()
+        processing_results = mock_process.call_args.args[3]
+        assert {result["upload_id"] for result in processing_results} == {101, 202}
+        mock_handle_finisher_lock.assert_called_once()
 
     @pytest.mark.django_db
     def test_coverage_notifications_not_blocked_by_test_results_uploads(
@@ -1487,6 +1530,102 @@ class TestLockManagerConfiguration:
         )
 
         assert result is None
+
+
+class TestPerCommitConcurrencyLimit:
+    """Tests for per-commit concurrency gate that prevents worker starvation."""
+
+    @pytest.mark.django_db
+    def test_retries_when_concurrency_limit_reached(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
+        """When more than MAX_CONCURRENT_FINISHERS_PER_COMMIT tasks are active
+        for the same commit, excess tasks should schedule a retry."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        mock_redis.incr.return_value = MAX_CONCURRENT_FINISHERS_PER_COMMIT + 1
+
+        task = UploadFinisherTask()
+        task.request.retries = 0
+        task.request.headers = {}
+
+        with pytest.raises(Retry):
+            task.run_impl(
+                dbsession,
+                [{"upload_id": 0, "successful": True, "arguments": {}}],
+                repoid=commit.repoid,
+                commitid=commit.commitid,
+                commit_yaml={},
+            )
+
+        mock_redis.decr.assert_called_once()
+
+    @pytest.mark.django_db
+    def test_proceeds_when_under_concurrency_limit(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
+        """Tasks under the limit should proceed normally."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        mock_redis.incr.return_value = 1
+        mock_redis.scard.return_value = 0
+        mocker.patch("tasks.upload_finisher.load_intermediate_reports", return_value=[])
+        mocker.patch("tasks.upload_finisher.update_uploads")
+        mocker.patch("tasks.upload_finisher.cleanup_intermediate_reports")
+        mocker.patch.object(
+            UploadFinisherTask, "_handle_finisher_lock", return_value={}
+        )
+
+        task = UploadFinisherTask()
+        task.request.retries = 0
+        task.request.headers = {}
+
+        result = task.run_impl(
+            dbsession,
+            [{"upload_id": 0, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert result is None or "concurrency_limited" not in (result or {})
+        # Counter should be decremented via finally block
+        mock_redis.decr.assert_called_once()
+
+    @pytest.mark.django_db
+    def test_counter_decremented_on_exception(
+        self, dbsession, mocker, mock_redis, mock_self_app
+    ):
+        """The active counter must be decremented even when the task raises."""
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        mock_redis.incr.return_value = 1
+        mock_redis.scard.return_value = 0
+        mocker.patch(
+            "tasks.upload_finisher.load_intermediate_reports",
+            side_effect=RuntimeError("boom"),
+        )
+
+        task = UploadFinisherTask()
+        task.request.retries = 0
+        task.request.headers = {}
+
+        result = task.run_impl(
+            dbsession,
+            [{"upload_id": 0, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert "error" in result
+        mock_redis.decr.assert_called_once()
 
 
 class TestCommitRefreshAfterLock:
