@@ -9,7 +9,7 @@ from typing import Any, TypedDict
 import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery import chain, chord
+from celery import chain
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from redis import Redis
@@ -54,7 +54,6 @@ from tasks.bundle_analysis_notify import bundle_analysis_notify_task
 from tasks.bundle_analysis_processor import bundle_analysis_processor_task
 from tasks.test_results_finisher import test_results_finisher_task
 from tasks.test_results_processor import test_results_processor_task
-from tasks.upload_finisher import upload_finisher_task
 from tasks.upload_processor import UPLOAD_PROCESSING_LOCK_NAME, upload_processor_task
 
 log = logging.getLogger(__name__)
@@ -193,6 +192,14 @@ class CreateUploadResponse(TypedDict):
     argument_list: list[UploadArguments]
     measurements_list: list[UserMeasurement]
     upload_flag_map: dict[Upload, list | str | None]
+
+
+class ScheduledTasksResult:
+    def __init__(self, task_ids: list[str]):
+        self._task_ids = task_ids
+
+    def as_tuple(self):
+        return tuple(self._task_ids)
 
 
 class UploadTask(BaseCodecovTask, name=upload_task_name):
@@ -850,16 +857,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             for arguments in argument_list
         ]
 
-        finisher_kwargs = {
-            "repoid": commit.repoid,
-            "commitid": commit.commitid,
-            "commit_yaml": commit_yaml,
-        }
-        finisher_kwargs = UploadFlow.save_to_kwargs(finisher_kwargs)
-        finish_parallel_sig = upload_finisher_task.signature(kwargs=finisher_kwargs)
-
-        parallel_tasks = chord(parallel_processing_tasks, finish_parallel_sig)
-        return parallel_tasks.apply_async()
+        scheduled_task_ids: list[str] = []
+        for processor_task in parallel_processing_tasks:
+            result = processor_task.apply_async()
+            if result and result.id:
+                scheduled_task_ids.append(result.id)
+        return ScheduledTasksResult(scheduled_task_ids)
 
     def _schedule_bundle_analysis_processing_task(
         self,

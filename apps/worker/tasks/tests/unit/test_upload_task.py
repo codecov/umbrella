@@ -38,8 +38,6 @@ from tasks.test_results_finisher import test_results_finisher_task
 from tasks.test_results_processor import test_results_processor_task
 from tasks.tests.utils import ensure_hard_time_limit_task_is_numeric
 from tasks.upload import UploadContext, UploadTask
-from tasks.upload_finisher import upload_finisher_task
-from tasks.upload_processor import upload_processor_task
 
 here = Path(__file__)
 
@@ -190,7 +188,9 @@ class TestUploadTaskIntegration:
         mock_self_app,
     ):
         _start_upload_flow(mocker)
-        mocked_chord = mocker.patch("tasks.upload.chord")
+        mocked_apply_async = mocker.patch(
+            "tasks.upload.upload_processor_task.apply_async"
+        )
         url = "v4/raw/2019-05-22/C3C4715CA57C910D11D5EB899FC86A7E/4c4e4654ac25037ae869caeb3619d485970b6304/a84d445c-9c1e-434f-8275-f18f1f320f81.txt"
 
         commit = CommitFactory.create(
@@ -233,26 +233,11 @@ class TestUploadTaskIntegration:
             .filter_by(report_id=commit.report.id, build_code="some_random_build")
             .first()
         )
-        processor = upload_processor_task.s(
-            repoid=commit.repoid,
-            commitid="abf6d4df662c47e32460020ab14abf9303581429",
-            commit_yaml={"codecov": {"max_report_age": "1y ago"}},
-            arguments={
-                "url": url,
-                "flags": [],
-                "build": "some_random_build",
-                "upload_id": first_session.id,
-                "upload_pk": first_session.id,
-            },
-        )
-        kwargs = {
-            "repoid": commit.repoid,
-            "commitid": "abf6d4df662c47e32460020ab14abf9303581429",
-            "commit_yaml": {"codecov": {"max_report_age": "1y ago"}},
-        }
-        kwargs[_kwargs_key(UploadFlow)] = mocker.ANY
-        finisher = upload_finisher_task.signature(kwargs=kwargs)
-        mocked_chord.assert_called_with([processor], finisher)
+        mocked_apply_async.assert_called_once()
+        scheduled_kwargs = mocked_apply_async.call_args.kwargs["kwargs"]
+        assert scheduled_kwargs["repoid"] == commit.repoid
+        assert scheduled_kwargs["commitid"] == commit.commitid
+        assert scheduled_kwargs["arguments"]["upload_id"] == first_session.id
         calls = [
             call(
                 "time_before_processing",
@@ -807,7 +792,9 @@ class TestUploadTaskIntegration:
         )
         mock_configuration.set_params({"setup": {"upload_processing_delay": 1000}})
         mocker.patch.object(UploadTask, "possibly_setup_webhooks", return_value=True)
-        mocked_chord = mocker.patch("tasks.upload.chord")
+        mocked_apply_async = mocker.patch(
+            "tasks.upload.upload_processor_task.apply_async"
+        )
         dbsession.add(commit)
         dbsession.flush()
 
@@ -834,7 +821,7 @@ class TestUploadTaskIntegration:
         commit_report = commit.commit_report(report_type=ReportType.COVERAGE)
         assert commit_report is not None
         assert len(commit_report.uploads) == 2
-        mocked_chord.assert_called_with([mocker.ANY, mocker.ANY], mocker.ANY)
+        assert mocked_apply_async.call_count == 2
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
                 call(
@@ -879,7 +866,9 @@ class TestUploadTaskIntegration:
             "tasks.upload.possibly_update_commit_from_provider_info", return_value=True
         )
         mocker.patch.object(UploadTask, "possibly_setup_webhooks", return_value=True)
-        mocked_chord = mocker.patch("tasks.upload.chord")
+        mocked_apply_async = mocker.patch(
+            "tasks.upload.upload_processor_task.apply_async"
+        )
         commit = CommitFactory.create(
             parent_commit_id=None,
             message="",
@@ -912,7 +901,7 @@ class TestUploadTaskIntegration:
         commit_report = commit.commit_report(report_type=ReportType.COVERAGE)
         assert commit_report is not None
         assert len(commit_report.uploads) == 2
-        mocked_chord.assert_called_with([mocker.ANY, mocker.ANY], mocker.ANY)
+        assert mocked_apply_async.call_count == 2
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
                 call(
@@ -952,7 +941,9 @@ class TestUploadTaskIntegration:
         mock_storage,
         mock_self_app,
     ):
-        mocked_chord = mocker.patch("tasks.upload.chord")
+        mocked_apply_async = mocker.patch(
+            "tasks.upload.upload_processor_task.apply_async"
+        )
 
         commit = CommitFactory.create(
             message="",
@@ -994,29 +985,7 @@ class TestUploadTaskIntegration:
         commit_report = commit.commit_report(report_type=ReportType.COVERAGE)
         assert commit_report is not None
         assert len(commit_report.uploads) == 8
-        processors = [
-            upload_processor_task.s(
-                repoid=commit.repoid,
-                commitid="abf6d4df662c47e32460020ab14abf9303581429",
-                commit_yaml={"codecov": {"max_report_age": "1y ago"}},
-                arguments={
-                    **arguments,
-                    "flags": [],
-                    "upload_id": mocker.ANY,
-                    "upload_pk": mocker.ANY,
-                },
-            )
-            for arguments in redis_queue
-        ]
-        processors.reverse()  # whatever the reason
-        kwargs = {
-            "repoid": commit.repoid,
-            "commitid": "abf6d4df662c47e32460020ab14abf9303581429",
-            "commit_yaml": {"codecov": {"max_report_age": "1y ago"}},
-        }
-        kwargs[_kwargs_key(UploadFlow)] = mocker.ANY
-        t_final = upload_finisher_task.signature(kwargs=kwargs)
-        mocked_chord.assert_called_with(processors, t_final)
+        assert mocked_apply_async.call_count == 8
         mock_self_app.tasks[upload_breadcrumb_task_name].apply_async.assert_has_calls(
             [
                 call(
@@ -1590,7 +1559,9 @@ class TestUploadTaskUnit:
         mocker.patch(
             "tasks.upload.UploadTask.possibly_setup_webhooks", return_value=True
         )
-        mocked_chord = mocker.patch("tasks.upload.chord")
+        mocked_apply_async = mocker.patch(
+            "tasks.upload.upload_processor_task.apply_async"
+        )
         commit = CommitFactory.create()
         commit_yaml = {"codecov": {"max_report_age": "100y ago"}}
         dbsession.add(commit)
@@ -1607,22 +1578,8 @@ class TestUploadTaskUnit:
             ReportFactory.create(),
             upload_args,
         )
-        assert result == mocked_chord.return_value.apply_async.return_value
-        processor = upload_processor_task.s(
-            repoid=commit.repoid,
-            commitid=commit.commitid,
-            commit_yaml=commit_yaml,
-            arguments={"upload_id": 1, "upload_pk": 1},
-        )
-        finisher = upload_finisher_task.signature(
-            kwargs={
-                "repoid": commit.repoid,
-                "commitid": commit.commitid,
-                "commit_yaml": commit_yaml,
-                _kwargs_key(UploadFlow): mocker.ANY,
-            }
-        )
-        mocked_chord.assert_called_with([processor], finisher)
+        assert result is not None
+        mocked_apply_async.assert_called_once()
         mock_self_app.tasks[
             upload_breadcrumb_task_name
         ].apply_async.assert_called_once_with(
@@ -2205,7 +2162,9 @@ class TestUploadTaskUnit:
         self, dbsession, mocker, mock_config, mock_storage, mock_self_app
     ):
         mock_config(10, "setup", "upload_debounce_limit")
-        mocked_chord = mocker.patch("tasks.upload.chord")
+        mocked_apply_async = mocker.patch(
+            "tasks.upload.upload_processor_task.apply_async"
+        )
         mocked_fetch_yaml = mocker.patch(
             "tasks.upload.fetch_commit_yaml_and_possibly_store"
         )
@@ -2256,21 +2215,14 @@ class TestUploadTaskUnit:
             commit.commitid,
         )
 
-        # every chord instance gets called 5 times
-        assert len(mocked_chord.mock_calls) / 5 == 3
-
-        chord_calls = mocked_chord.call_args_list
-        all_processor_tasks = []
-        for chord_call in chord_calls:
-            processor_tasks = chord_call[0][0]
-            all_processor_tasks.extend(processor_tasks)
+        assert mocked_apply_async.call_count == 25
 
         actual_storage_paths = []
-        for task in all_processor_tasks:
-            if hasattr(task, "kwargs") and "arguments" in task.kwargs:
-                arguments = task.kwargs["arguments"]
-                if "url" in arguments:
-                    actual_storage_paths.append(arguments["url"])
+        for call_args in mocked_apply_async.call_args_list:
+            kwargs = call_args.kwargs.get("kwargs", {})
+            arguments = kwargs.get("arguments", {})
+            if "url" in arguments:
+                actual_storage_paths.append(arguments["url"])
 
         expected_storage_paths = [item["url"] for item in redis_queue]
 

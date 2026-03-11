@@ -5,12 +5,15 @@ import sentry_sdk
 from celery.exceptions import CeleryError
 from sqlalchemy.orm import Session as DbSession
 
+from app import celery_app
 from database.models.core import Commit
 from database.models.reports import Upload
 from helpers.reports import delete_archive_setting
 from services.report import ProcessingError, RawReportInfo, ReportService
 from services.report.parser.types import VersionOneParsedRawReport
 from shared.api_archive.archive import ArchiveService
+from shared.celery_config import upload_finisher_task_name
+from shared.helpers.redis import get_redis_connection
 from shared.yaml import UserYaml
 
 from .intermediate import save_intermediate_report
@@ -18,6 +21,13 @@ from .state import ProcessingState
 from .types import ProcessingResult, UploadArguments
 
 log = logging.getLogger(__name__)
+
+FINISHER_GATE_KEY_PREFIX = "upload_merger_lock"
+FINISHER_GATE_TTL_SECONDS = 900
+
+
+def finisher_gate_key(repo_id: int, commit_sha: str) -> str:
+    return f"{FINISHER_GATE_KEY_PREFIX}_{repo_id}_{commit_sha}"
 
 
 @sentry_sdk.trace
@@ -68,6 +78,26 @@ def process_upload(
         if processing_result.report:
             save_intermediate_report(upload_id, processing_result.report)
         state.mark_upload_as_processed(upload_id)
+
+        gate_key = finisher_gate_key(repo_id, commit_sha)
+        redis = get_redis_connection()
+        if redis.set(gate_key, "1", nx=True, ex=FINISHER_GATE_TTL_SECONDS):
+            log.info(
+                "Enqueuing upload finisher via gate",
+                extra={
+                    "repo_id": repo_id,
+                    "commit_sha": commit_sha,
+                    "upload_id": upload_id,
+                    "gate_key": gate_key,
+                },
+            )
+            celery_app.tasks[upload_finisher_task_name].apply_async(
+                kwargs={
+                    "repoid": repo_id,
+                    "commitid": commit_sha,
+                    "commit_yaml": commit_yaml.to_dict(),
+                }
+            )
 
         rewrite_or_delete_upload(archive_service, commit_yaml, report_info)
 
