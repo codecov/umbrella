@@ -57,6 +57,13 @@ def mock_self_app(mocker, celery_app):
     )
 
 
+@pytest.fixture(autouse=True)
+def mock_finisher_task_enqueue(mocker):
+    mock_celery_app = mocker.patch("services.processing.processing.celery_app")
+    mock_celery_app.tasks = {"app.tasks.upload.UploadFinisher": mocker.MagicMock()}
+    return mock_celery_app
+
+
 def test_default_acks_late() -> None:
     task = UploadProcessorTask()
     # task.acks_late is defined at import time, so it's difficult to test

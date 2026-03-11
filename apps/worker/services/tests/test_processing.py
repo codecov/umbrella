@@ -91,7 +91,7 @@ class TestProcessUploadFinisherGate:
                 "commit_yaml": commit_yaml.to_dict(),
             }
         )
-        mock_redis.return_value.set.assert_called_once()
+        mock_redis.return_value.set.assert_not_called()
 
     def test_does_not_trigger_finisher_when_gate_exists(
         self, dbsession, mocker, mock_storage
