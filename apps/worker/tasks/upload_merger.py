@@ -207,13 +207,14 @@ def get_oldest_upload_created_at(db_session, commit: Commit) -> datetime | None:
 
 
 def merge_batch(
+    db_session,
     report_service: ReportService,
     master_report: Report,
     commit: Commit,
     commit_yaml: UserYaml,
     batch: list[Upload],
     diff: dict | None,
-) -> list[ProcessingResult]:
+) -> tuple[Report, list[ProcessingResult]]:
     """Load intermediate reports for a batch, merge into master report,
     and mark uploads as MERGED in the session (not yet committed)."""
     upload_ids = [u.id_ for u in batch]
@@ -242,7 +243,6 @@ def merge_batch(
         commit_yaml, master_report, intermediate_reports
     )
 
-    db_session = commit.get_db_session()
     update_uploads(
         db_session,
         commit_yaml,
@@ -251,7 +251,7 @@ def merge_batch(
         merge_result,
     )
 
-    return processing_results
+    return master_report, processing_results
 
 
 def save_and_commit(
@@ -262,15 +262,10 @@ def save_and_commit(
     merged_upload_ids: list[int],
     diff: dict | None,
 ):
-    """Persist the master report and clean up intermediate data.
-
-    Calls rollback() before writing to release a potentially stale DB
-    connection (same pattern as the existing finisher).
-    """
+    """Persist the master report and commit staged upload updates."""
     if diff:
         master_report.apply_diff(diff)
 
-    db_session.rollback()
     report_service.save_report(commit, master_report)
     db_session.commit()
     cleanup_intermediate_reports(merged_upload_ids)
@@ -576,8 +571,14 @@ class UploadMergerTask(BaseCodecovTask, name=upload_merger_task_name):
             batch = get_processed_uploads(db_session, commit, MERGE_BATCH_SIZE)
             if not batch:
                 break
-            batch_results = merge_batch(
-                report_service, master_report, commit, commit_yaml, batch, diff
+            master_report, batch_results = merge_batch(
+                db_session,
+                report_service,
+                master_report,
+                commit,
+                commit_yaml,
+                batch,
+                diff,
             )
             all_processing_results.extend(batch_results)
             merged_upload_ids.extend(u.id_ for u in batch)
