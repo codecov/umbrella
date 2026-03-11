@@ -127,12 +127,7 @@ class ProcessingState:
         self._redis.srem(self._redis_key("processed"), *upload_ids)
 
     def get_uploads_for_merging(self) -> set[int]:
-        return {
-            int(id)
-            for id in self._redis.srandmember(
-                self._redis_key("processed"), MERGE_BATCH_SIZE
-            )
-        }
+        return {int(id) for id in self._redis.smembers(self._redis_key("processed"))}
 
     def _redis_key(self, state: str) -> str:
         return f"upload-processing-state/{self.repoid}/{self.commitsha}/{state}"
