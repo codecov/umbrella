@@ -157,93 +157,21 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             .count()
         )
 
-    def _find_started_uploads_with_reports(
-        self, db_session, commit: Commit
-    ) -> set[int]:
-        """Find uploads in "started" state that have intermediate reports in Redis.
-
-        This is the fallback when Redis ProcessingState has expired (TTL: PROCESSING_STATE_TTL).
-        We check the database for uploads that were processed but never finalized,
-        and verify they have intermediate reports before including them.
-        """
-        # Query for uploads in "started" state for this commit
-        started_uploads = (
-            db_session.query(Upload)
-            .join(Upload.report)
-            .filter(
-                Upload.report.has(commit=commit),
-                Upload.state == "started",
-                Upload.state_id == UploadState.UPLOADED.db_id,
-            )
-            .all()
-        )
-
-        if not started_uploads:
-            return set()
-
-        log.info(
-            "Found uploads in started state, checking for intermediate reports",
-            extra={
-                "upload_ids": [u.id_ for u in started_uploads],
-                "count": len(started_uploads),
-            },
-        )
-
-        # Check which uploads have intermediate reports (confirms they were processed)
-        redis_connection = get_redis_connection()
-        upload_ids_with_reports = set()
-
-        for upload in started_uploads:
-            report_key = intermediate_report_key(upload.id_)
-            if redis_connection.exists(report_key):
-                upload_ids_with_reports.add(upload.id_)
-            else:
-                log.warning(
-                    "Upload in started state but no intermediate report found (may have expired)",
-                    extra={"upload_id": upload.id_},
-                )
-
-        return upload_ids_with_reports
-
     def _reconstruct_processing_results(
         self, db_session, state: ProcessingState, commit: Commit
     ) -> list[ProcessingResult]:
         """Reconstruct processing_results from ProcessingState when finisher is triggered
         outside of a chord (e.g., from orphaned upload recovery).
 
-        This ensures ALL uploads that were marked as processed in Redis are included
+        This ensures all uploads marked as processed in state tracking are included
         in the final merged report, even if they completed via retry/recovery.
-
-        If Redis state has expired (TTL: PROCESSING_STATE_TTL), falls back to database
-        to find uploads in "started" state that have intermediate reports, preventing data loss.
         """
 
-        # Get all upload IDs that are ready to be merged (in "processed" set)
+        # Get all upload IDs that are ready to be merged.
         upload_ids = state.get_uploads_for_merging()
 
         if not upload_ids:
-            log.warning(
-                "No uploads found in Redis processed set, checking database for started uploads",
-                extra={"repoid": commit.repoid, "commitid": commit.commitid},
-            )
-            # Fallback: Redis state expired (TTL: PROCESSING_STATE_TTL), check DB for uploads
-            # in "started" state that might have been processed but never finalized
-            upload_ids = self._find_started_uploads_with_reports(db_session, commit)
-
-            if not upload_ids:
-                log.warning(
-                    "No started uploads with intermediate reports found in database",
-                    extra={"repoid": commit.repoid, "commitid": commit.commitid},
-                )
-                return []
-
-            log.info(
-                "Found started uploads with intermediate reports (Redis state expired)",
-                extra={
-                    "upload_ids": list(upload_ids),
-                    "count": len(upload_ids),
-                },
-            )
+            return []
 
         log.info(
             "Reconstructing processing results from ProcessingState",
