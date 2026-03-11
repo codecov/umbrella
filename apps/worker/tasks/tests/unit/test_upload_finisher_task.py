@@ -231,6 +231,11 @@ class TestUploadFinisherTask:
         previous_results = [
             {"upload_id": 0, "arguments": {"url": url}, "successful": True}
         ]
+        mocker.patch.object(
+            UploadFinisherTask,
+            "_reconstruct_processing_results",
+            return_value=previous_results,
+        )
 
         _start_upload_flow(mocker)
         result = UploadFinisherTask().run_impl(

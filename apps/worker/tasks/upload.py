@@ -835,7 +835,9 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
     ):
         self.maybe_log_upload_checkpoint(UploadFlow.INITIAL_PROCESSING_COMPLETE)
 
-        state = ProcessingState(commit.repoid, commit.commitid)
+        state = ProcessingState(
+            commit.repoid, commit.commitid, db_session=commit.get_db_session()
+        )
         state.mark_uploads_as_processing(
             [int(upload["upload_id"]) for upload in argument_list]
         )
