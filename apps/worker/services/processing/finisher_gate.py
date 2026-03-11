@@ -27,7 +27,3 @@ def refresh_finisher_gate_ttl(repo_id: int, commit_sha: str) -> None:
 
 def delete_finisher_gate(repo_id: int, commit_sha: str) -> None:
     get_redis_connection().delete(finisher_gate_key(repo_id, commit_sha))
-
-
-def finisher_gate_exists(repo_id: int, commit_sha: str) -> bool:
-    return bool(get_redis_connection().exists(finisher_gate_key(repo_id, commit_sha)))

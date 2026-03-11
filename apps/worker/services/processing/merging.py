@@ -136,29 +136,17 @@ def update_uploads(
             report = reports.get(upload_id)
             if report is not None:
                 all_totals.append(make_totals(upload_id, report.totals))
-        elif result.get("error"):
+        else:
             update = {
                 "state_id": UploadState.ERROR.db_id,
                 "state": "error",
             }
             error = UploadError(
                 upload_id=upload_id,
-                error_code=result["error"]["code"],
-                error_params=result["error"]["params"],
+                error_code=result["error"]["code"] if result.get("error") else UploadErrorCode.UNKNOWN_PROCESSING,
+                error_params=result["error"]["params"] if result.get("error") else {},
             )
             all_errors.append(error)
-        else:
-            update = {
-                "state_id": UploadState.ERROR.db_id,
-                "state": "error",
-            }
-            all_errors.append(
-                UploadError(
-                    upload_id=upload_id,
-                    error_code=UploadErrorCode.UNKNOWN_PROCESSING,
-                    error_params={},
-                )
-            )
 
         update["id_"] = upload_id
         order_number = merge_result.session_mapping.get(upload_id)
