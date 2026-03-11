@@ -310,7 +310,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit_yaml = UserYaml(commit_yaml)
         sweep_attempt = int(kwargs.get("sweep_attempt", 0))
         trigger = kwargs.get("trigger")
-        if not self._gate_exists(repoid, commitid):
+        if trigger != "watchdog" and not self._gate_exists(repoid, commitid):
             return {"nothing_to_do": True}
 
         # Schedule watchdog only on the first initial run, not on retries.

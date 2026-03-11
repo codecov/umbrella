@@ -1624,6 +1624,40 @@ class TestUploadFinisherTask:
         mock_schedule_watchdog.assert_not_called()
 
     @pytest.mark.django_db
+    def test_watchdog_trigger_continues_when_gate_missing(
+        self, dbsession, mocker, mock_self_app
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        task = UploadFinisherTask()
+        mock_gate_exists = mocker.patch.object(task, "_gate_exists", return_value=False)
+        mock_schedule_watchdog = mocker.patch.object(task, "_schedule_watchdog")
+        mocker.patch.object(
+            task,
+            "_reconstruct_processing_results",
+            return_value=[{"upload_id": 1, "successful": True, "arguments": {}}],
+        )
+        mocker.patch.object(task, "_process_reports_with_lock")
+        mocker.patch.object(task, "_count_remaining_coverage_uploads", return_value=0)
+        mocker.patch.object(task, "_handle_finisher_lock", return_value={"done": True})
+        mocker.patch.object(task, "_delete_finisher_gate")
+
+        result = task.run_impl(
+            dbsession,
+            processing_results=[],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            trigger="watchdog",
+        )
+
+        assert result == {"done": True}
+        mock_gate_exists.assert_not_called()
+        mock_schedule_watchdog.assert_not_called()
+
+    @pytest.mark.django_db
     def test_run_impl_schedules_watchdog_when_gate_present(
         self, dbsession, mocker, mock_self_app
     ):
