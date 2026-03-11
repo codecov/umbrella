@@ -143,7 +143,9 @@ def update_uploads(
             }
             error = UploadError(
                 upload_id=upload_id,
-                error_code=result["error"]["code"] if result.get("error") else UploadErrorCode.UNKNOWN_PROCESSING,
+                error_code=result["error"]["code"]
+                if result.get("error")
+                else UploadErrorCode.UNKNOWN_PROCESSING,
                 error_params=result["error"]["params"] if result.get("error") else {},
             )
             all_errors.append(error)

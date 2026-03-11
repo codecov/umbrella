@@ -154,7 +154,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         # Check which uploads have intermediate reports in Redis
         redis_connection = get_redis_connection()
-
         processing_results = []
         for upload in uploads:
             # Check if intermediate report exists (indicates successful processing)
@@ -162,16 +161,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             has_report = redis_connection.exists(report_key)
 
             processing_result: ProcessingResult = {
-                "upload_id": upload.id_,
                 "arguments": {
                     "commit": commit.commitid,
+                    "reportid": str(upload.report.external_id),
                     "upload_id": upload.id_,
                     "version": "v4",  # Assume v4 for recovered uploads
-                    "reportid": str(upload.report.external_id),
                 },
                 "successful": bool(has_report),
+                "upload_id": upload.id_,
             }
-
             if not has_report:
                 log.warning(
                     "Upload in processed set but no intermediate report found",
@@ -181,7 +179,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     "code": "missing_intermediate_report",
                     "params": {},
                 }
-
             processing_results.append(processing_result)
 
         log.info(
@@ -211,12 +208,9 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
 
         milestone = Milestones.UPLOAD_COMPLETE
-
         log.info(
             "Received upload_finisher task",
-            extra={
-                "processing_results": processing_results,
-            },
+            extra={"processing_results": processing_results},
         )
 
         repoid = int(repoid)
