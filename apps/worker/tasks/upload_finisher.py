@@ -111,6 +111,10 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
     def _schedule_watchdog(
         self, repoid: int, commitid: str, commit_yaml: UserYaml, countdown: int
     ):
+        # Keep gate alive through watchdog delay under queue backpressure.
+        get_redis_connection().expire(
+            finisher_gate_key(repoid, commitid), FINISHER_GATE_TTL_SECONDS
+        )
         self.app.tasks[upload_finisher_task_name].apply_async(
             kwargs={
                 "repoid": repoid,

@@ -1600,7 +1600,7 @@ class TestUploadFinisherTask:
 
         assert result is None
         mock_delete_gate.assert_called_once()
-    
+
     @pytest.mark.django_db
     def test_run_impl_exits_when_gate_missing(self, dbsession, mocker, mock_self_app):
         commit = CommitFactory.create()
