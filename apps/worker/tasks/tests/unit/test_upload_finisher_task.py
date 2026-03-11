@@ -26,6 +26,7 @@ from shared.celery_config import (
     pulls_task_name,
     timeseries_save_commit_measurements_task_name,
     upload_breadcrumb_task_name,
+    upload_finisher_task_name,
 )
 from shared.django_apps.upload_breadcrumbs.models import (
     BreadcrumbData,
@@ -59,6 +60,7 @@ def mock_self_app(mocker, celery_app):
     mock_app.tasks[pulls_task_name] = mocker.MagicMock()
     mock_app.tasks[compute_comparison_task_name] = mocker.MagicMock()
     mock_app.tasks[timeseries_save_commit_measurements_task_name] = mocker.MagicMock()
+    mock_app.tasks[upload_finisher_task_name] = mocker.MagicMock()
     mock_app.conf = mocker.MagicMock(task_time_limit=123)
     mock_app.send_task = mocker.MagicMock()
 
@@ -67,6 +69,11 @@ def mock_self_app(mocker, celery_app):
         "app",
         mock_app,
     )
+
+
+@pytest.fixture(autouse=True)
+def gate_exists_by_default(mocker):
+    return mocker.patch.object(UploadFinisherTask, "_gate_exists", return_value=True)
 
 
 def _start_upload_flow(mocker):
