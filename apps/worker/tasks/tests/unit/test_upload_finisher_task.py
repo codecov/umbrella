@@ -1369,7 +1369,7 @@ class TestUploadFinisherTask:
             upload_ids,
             state,
         ):
-            # Call update_uploads to update the upload state to PROCESSED
+            # Call update_uploads to update the upload state to MERGED
             # This uses the same SQLAlchemy session that the query will use
             update_uploads(
                 db_session,
@@ -1389,11 +1389,11 @@ class TestUploadFinisherTask:
                 .first()
             )
             assert updated_upload is not None, "Upload should exist"
-            assert updated_upload.state == "processed", (
-                f"Upload state should be 'processed', got '{updated_upload.state}'"
+            assert updated_upload.state == "merged", (
+                f"Upload state should be 'merged', got '{updated_upload.state}'"
             )
-            assert updated_upload.state_id == UploadState.PROCESSED.db_id, (
-                f"Upload state_id should be {UploadState.PROCESSED.db_id}, got {updated_upload.state_id}"
+            assert updated_upload.state_id == UploadState.MERGED.db_id, (
+                f"Upload state_id should be {UploadState.MERGED.db_id}, got {updated_upload.state_id}"
             )
 
         mock_process = mocker.patch.object(
