@@ -274,7 +274,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         if active_count > MAX_CONCURRENT_FINISHERS_PER_COMMIT:
             redis.decr(active_key)
             log.info(
-                "Per-commit finisher concurrency limit reached, exiting early",
+                "Per-commit finisher concurrency limit reached, scheduling retry",
                 extra={
                     "active": active_count,
                     "limit": MAX_CONCURRENT_FINISHERS_PER_COMMIT,
@@ -283,10 +283,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 },
             )
             inc_counter(UPLOAD_FINISHER_CONCURRENCY_LIMITED_COUNTER)
-            return {
-                "concurrency_limited": True,
-                "upload_ids": [],
-            }
+            self.retry(countdown=FINISHER_BASE_RETRY_COUNTDOWN_SECONDS)
 
         try:
             return self._run_impl_inner(

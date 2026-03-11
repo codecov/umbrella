@@ -1494,31 +1494,30 @@ class TestPerCommitConcurrencyLimit:
     """Tests for per-commit concurrency gate that prevents worker starvation."""
 
     @pytest.mark.django_db
-    def test_exits_early_when_concurrency_limit_reached(
+    def test_retries_when_concurrency_limit_reached(
         self, dbsession, mocker, mock_redis, mock_self_app
     ):
         """When more than MAX_CONCURRENT_FINISHERS_PER_COMMIT tasks are active
-        for the same commit, excess tasks should exit immediately."""
+        for the same commit, excess tasks should schedule a retry."""
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
 
-        # Simulate that the limit is already reached
         mock_redis.incr.return_value = MAX_CONCURRENT_FINISHERS_PER_COMMIT + 1
 
         task = UploadFinisherTask()
         task.request.retries = 0
         task.request.headers = {}
 
-        result = task.run_impl(
-            dbsession,
-            [{"upload_id": 0, "successful": True, "arguments": {}}],
-            repoid=commit.repoid,
-            commitid=commit.commitid,
-            commit_yaml={},
-        )
+        with pytest.raises(Retry):
+            task.run_impl(
+                dbsession,
+                [{"upload_id": 0, "successful": True, "arguments": {}}],
+                repoid=commit.repoid,
+                commitid=commit.commitid,
+                commit_yaml={},
+            )
 
-        assert result == {"concurrency_limited": True, "upload_ids": []}
         mock_redis.decr.assert_called_once()
 
     @pytest.mark.django_db
