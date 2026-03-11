@@ -1,6 +1,5 @@
 import logging
 import re
-import time
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
@@ -60,7 +59,6 @@ FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
 FINISHER_SWEEP_COUNTDOWN_SECONDS = 30
 FINISHER_MAX_SWEEP_ATTEMPTS = 20
 FINISHER_WATCHDOG_DELAY_OFFSET_SECONDS = 30
-FINISHER_MERGE_TIME_BUDGET_SECONDS = 200
 
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
@@ -575,57 +573,32 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             ):
                 db_session.refresh(commit)
                 report_service = ReportService(commit_yaml)
-                merge_start_time = time.monotonic()
-                merged_processing_results: list[ProcessingResult] = []
-                merged_upload_ids: list[int] = []
-                pending_processing_results = processing_results
+                log.info("run_impl: Performing report merging")
+                report = perform_report_merging(
+                    report_service, commit_yaml, commit, processing_results
+                )
+                log.info(
+                    "run_impl: Saving combined report",
+                    extra={"processing_results": processing_results},
+                )
+                if diff:
+                    log.info("run_impl: Applying diff to report")
+                    report.apply_diff(diff)
 
-                while pending_processing_results:
-                    pending_upload_ids = [
-                        upload["upload_id"] for upload in pending_processing_results
-                    ]
-                    if not pending_upload_ids:
-                        break
+                log.info("run_impl: Saving report")
+                report_service.save_report(commit, report)
+                db_session.commit()
 
-                    log.info("run_impl: Performing report merging")
-                    report = perform_report_merging(
-                        report_service, commit_yaml, commit, pending_processing_results
-                    )
-                    log.info(
-                        "run_impl: Saving combined report",
-                        extra={"processing_results": pending_processing_results},
-                    )
-                    if diff:
-                        log.info("run_impl: Applying diff to report")
-                        report.apply_diff(diff)
+                log.info("run_impl: Marking uploads as merged")
+                state.mark_uploads_as_merged(upload_ids)
 
-                    log.info("run_impl: Saving report")
-                    report_service.save_report(commit, report)
-                    db_session.commit()
-
-                    log.info("run_impl: Marking uploads as merged")
-                    state.mark_uploads_as_merged(pending_upload_ids)
-
-                    log.info("run_impl: Cleaning up intermediate reports")
-                    cleanup_intermediate_reports(pending_upload_ids)
-
-                    merged_processing_results.extend(pending_processing_results)
-                    merged_upload_ids.extend(pending_upload_ids)
-
-                    if (
-                        time.monotonic() - merge_start_time
-                        >= FINISHER_MERGE_TIME_BUDGET_SECONDS
-                    ):
-                        break
-
-                    pending_processing_results = self._reconstruct_processing_results(
-                        db_session, state, commit
-                    )
+                log.info("run_impl: Cleaning up intermediate reports")
+                cleanup_intermediate_reports(upload_ids)
 
                 remaining_processed_uploads = state.get_upload_numbers().processed
                 return {
-                    "processing_results": merged_processing_results,
-                    "upload_ids": merged_upload_ids,
+                    "processing_results": processing_results,
+                    "upload_ids": upload_ids,
                     "continuation_needed": remaining_processed_uploads > 0,
                 }
 
