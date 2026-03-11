@@ -25,7 +25,7 @@ from services.processing.intermediate import (
     load_intermediate_reports,
 )
 from services.processing.merging import merge_reports, update_uploads
-from services.processing.processing import finisher_gate_key
+from services.processing.processing import FINISHER_GATE_TTL_SECONDS, finisher_gate_key
 from services.processing.state import ProcessingState
 from services.processing.types import ProcessingResult
 from services.report import ReportService
@@ -92,6 +92,10 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
     def _schedule_sweep(
         self, repoid: int, commitid: str, commit_yaml: UserYaml, sweep_attempt: int
     ):
+        # Keep the commit-level finisher gate alive while sweep retries are ongoing.
+        get_redis_connection().expire(
+            finisher_gate_key(repoid, commitid), FINISHER_GATE_TTL_SECONDS
+        )
         self.app.tasks[upload_finisher_task_name].apply_async(
             kwargs={
                 "repoid": repoid,
