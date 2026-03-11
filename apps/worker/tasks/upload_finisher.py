@@ -25,6 +25,7 @@ from services.processing.intermediate import (
     load_intermediate_reports,
 )
 from services.processing.merging import merge_reports, update_uploads
+from services.processing.processing import finisher_gate_key
 from services.processing.state import ProcessingState
 from services.processing.types import ProcessingResult
 from services.report import ReportService
@@ -56,7 +57,7 @@ log = logging.getLogger(__name__)
 FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
 FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
 FINISHER_SWEEP_COUNTDOWN_SECONDS = 30
-FINISHER_GATE_KEY_PREFIX = "upload_merger_lock"
+FINISHER_MAX_SWEEP_ATTEMPTS = 20
 
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
@@ -88,23 +89,22 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
     max_retries = UPLOAD_PROCESSOR_MAX_RETRIES
 
-    @staticmethod
-    def _finisher_gate_key(repoid: int, commitid: str) -> str:
-        return f"{FINISHER_GATE_KEY_PREFIX}_{repoid}_{commitid}"
-
-    def _schedule_sweep(self, repoid: int, commitid: str, commit_yaml: UserYaml):
+    def _schedule_sweep(
+        self, repoid: int, commitid: str, commit_yaml: UserYaml, sweep_attempt: int
+    ):
         self.app.tasks[upload_finisher_task_name].apply_async(
             kwargs={
                 "repoid": repoid,
                 "commitid": commitid,
                 "commit_yaml": commit_yaml.to_dict(),
                 "trigger": "sweep",
+                "sweep_attempt": sweep_attempt + 1,
             },
             countdown=FINISHER_SWEEP_COUNTDOWN_SECONDS,
         )
 
     def _delete_finisher_gate(self, repoid: int, commitid: str):
-        get_redis_connection().delete(self._finisher_gate_key(repoid, commitid))
+        get_redis_connection().delete(finisher_gate_key(repoid, commitid))
 
     def _count_remaining_coverage_uploads(self, db_session, commit: Commit) -> int:
         return (
@@ -283,6 +283,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         repoid = int(repoid)
         commit_yaml = UserYaml(commit_yaml)
+        sweep_attempt = int(kwargs.get("sweep_attempt", 0))
 
         log.info("run_impl: Getting commit")
 
@@ -341,7 +342,18 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         db_session, commit
                     )
                     if remaining_uploads > 0:
-                        self._schedule_sweep(repoid, commitid, commit_yaml)
+                        if sweep_attempt < FINISHER_MAX_SWEEP_ATTEMPTS:
+                            self._schedule_sweep(
+                                repoid, commitid, commit_yaml, sweep_attempt
+                            )
+                        UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
+                        UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
+                        self._call_upload_breadcrumb_task(
+                            commit_sha=commitid,
+                            repo_id=repoid,
+                            milestone=milestone,
+                            upload_ids=upload_ids,
+                        )
                         return {
                             "sweep_scheduled": True,
                             "remaining_uploads": remaining_uploads,
@@ -385,7 +397,16 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     "run_impl: Scheduling sweep because uploads are still pending",
                     extra={"remaining_uploads": remaining_uploads},
                 )
-                self._schedule_sweep(repoid, commitid, commit_yaml)
+                if sweep_attempt < FINISHER_MAX_SWEEP_ATTEMPTS:
+                    self._schedule_sweep(repoid, commitid, commit_yaml, sweep_attempt)
+                UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
+                UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commitid,
+                    repo_id=repoid,
+                    milestone=milestone,
+                    upload_ids=upload_ids,
+                )
                 return {
                     "sweep_scheduled": True,
                     "remaining_uploads": remaining_uploads,
@@ -409,6 +430,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         except SoftTimeLimitExceeded:
             log.warning("run_impl: soft time limit exceeded")
+            self._delete_finisher_gate(repoid, commitid)
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -423,6 +445,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         except Exception as e:
             log.exception("run_impl: unexpected error in upload finisher")
+            self._delete_finisher_gate(repoid, commitid)
             sentry_sdk.capture_exception(e)
             log.exception(
                 "Unexpected error in upload finisher",
