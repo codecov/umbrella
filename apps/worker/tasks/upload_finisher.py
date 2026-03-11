@@ -300,7 +300,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         log.info("run_impl: Got commit")
 
-        state = ProcessingState(repoid, commitid)
+        state = ProcessingState(repoid, commitid, db_session=db_session)
 
         # Always reconstruct from state so the finisher covers all uploads for the commit,
         # not only uploads present in callback payload.
