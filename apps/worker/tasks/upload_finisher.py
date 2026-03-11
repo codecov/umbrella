@@ -141,6 +141,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 "trigger": "continuation",
             }
         )
+
     def _delete_finisher_gate(self, repoid: int, commitid: str):
         get_redis_connection().delete(finisher_gate_key(repoid, commitid))
 

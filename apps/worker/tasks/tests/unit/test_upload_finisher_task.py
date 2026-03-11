@@ -1745,6 +1745,7 @@ class TestUploadFinisherTask:
         )
 
         mock_schedule_watchdog.assert_not_called()
+
     @pytest.mark.django_db
     def test_run_impl_schedules_continuation_when_more_processed_uploads_remain(
         self, dbsession, mocker, mock_self_app
@@ -1787,6 +1788,7 @@ class TestUploadFinisherTask:
         mock_schedule_continuation.assert_called_once()
         mock_handle_finisher_lock.assert_not_called()
         mock_delete_gate.assert_not_called()
+
 
 class TestLockManagerConfiguration:
     """Tests for lock manager configuration: finite blocking_timeout
