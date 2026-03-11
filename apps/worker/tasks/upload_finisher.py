@@ -131,6 +131,10 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commitid: str,
         commit_yaml: UserYaml,
     ):
+        # Keep gate alive across continuation chains.
+        get_redis_connection().expire(
+            finisher_gate_key(repoid, commitid), FINISHER_GATE_TTL_SECONDS
+        )
         self.app.tasks[upload_finisher_task_name].apply_async(
             kwargs={
                 "repoid": repoid,
