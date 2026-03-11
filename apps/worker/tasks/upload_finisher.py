@@ -1,6 +1,7 @@
 import logging
 import re
 import time
+from collections import namedtuple
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
@@ -57,6 +58,8 @@ from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
+RemainingUploads = namedtuple("RemainingUploads", ["uploaded", "processed"])
+
 FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
 FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
 FINISHER_SWEEP_COUNTDOWN_SECONDS = 30
@@ -66,6 +69,30 @@ FINISHER_CONTINUATION_BUFFER_SECONDS = 10
 FINISHER_UPLOAD_MERGE_BATCH_SIZE = 10
 
 regexp_ci_skip = re.compile(r"\[(ci|skip| |-){3,}\]")
+
+
+def count_unfinished_uploads(db_session, commit: Commit) -> RemainingUploads:
+    state = ProcessingState(commit.repoid, commit.commitid, db_session=db_session)
+    upload_numbers = state.get_upload_numbers()
+    return RemainingUploads(
+        uploaded=state.count_remaining_coverage_uploads(),
+        processed=upload_numbers.processed,
+    )
+
+
+def save_and_commit(
+    db_session,
+    report_service: ReportService,
+    commit: Commit,
+    report: Report,
+    merged_upload_ids: list[int],
+    diff: dict | None,
+):
+    if diff:
+        report.apply_diff(diff)
+    report_service.save_report(commit, report)
+    db_session.commit()
+    cleanup_intermediate_reports(merged_upload_ids)
 
 
 class ShouldCallNotifyResult(Enum):
@@ -256,7 +283,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     "upload_ids": upload_ids,
                 }
 
-            remaining_uploads = state.count_remaining_coverage_uploads()
+            remaining_uploads = count_unfinished_uploads(db_session, commit).uploaded
 
             if remaining_uploads > 0:
                 log.info(
@@ -372,11 +399,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 merged_upload_ids: list[int] = []
 
                 while True:
-                    # Check if we've run out of time to continue merging
-                    if time.monotonic() - merge_start_time <= FINISHER_CONTINUATION_BUFFER_SECONDS:
-                        remaining_processed_uploads = state.get_upload_numbers().processed
+                    elapsed = time.monotonic() - merge_start_time
+                    if (
+                        elapsed
+                        >= FINISHER_MERGE_TIME_BUDGET_SECONDS
+                        - FINISHER_CONTINUATION_BUFFER_SECONDS
+                    ):
+                        remaining = count_unfinished_uploads(db_session, commit)
                         return {
-                            "continuation_needed": remaining_processed_uploads > 0,
+                            "continuation_needed": remaining.processed > 0,
                             "processing_results": merged_processing_results,
                             "upload_ids": merged_upload_ids,
                         }
@@ -401,25 +432,23 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         "run_impl: Saving combined report",
                         extra={"processing_results": current_batch},
                     )
-                    if diff:
-                        log.info("run_impl: Applying diff to report")
-                        report.apply_diff(diff)
-
-                    log.info("run_impl: Saving report")
-                    report_service.save_report(commit, report)
-                    db_session.commit()
-
-                    log.info("run_impl: Cleaning up intermediate reports")
-                    cleanup_intermediate_reports(pending_upload_ids)
+                    save_and_commit(
+                        db_session,
+                        report_service,
+                        commit,
+                        report,
+                        pending_upload_ids,
+                        diff,
+                    )
 
                     merged_processing_results.extend(current_batch)
                     merged_upload_ids.extend(pending_upload_ids)
 
-                remaining_processed_uploads = state.get_upload_numbers().processed
+                remaining = count_unfinished_uploads(db_session, commit)
                 return {
                     "processing_results": merged_processing_results,
                     "upload_ids": merged_upload_ids,
-                    "continuation_needed": remaining_processed_uploads > 0,
+                    "continuation_needed": remaining.processed > 0,
                 }
 
         except LockRetry as retry:

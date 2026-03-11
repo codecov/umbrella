@@ -45,9 +45,9 @@ CLEARED_UPLOADS = Counter(
 
 @dataclass
 class UploadNumbers:
-    uploaded: int
+    processing: int
     """
-    The number of uploads that have finished being uploaded.
+    The number of uploads currently being processed.
     """
 
     processed: int
@@ -64,18 +64,18 @@ def should_perform_merge(uploads: UploadNumbers) -> bool:
     This is the case when no more uploads are expected,
     or we reached the desired batch size for merging.
     """
-    return uploads.processed > 0
+    return uploads.processing == 0 or uploads.processed >= MERGE_BATCH_SIZE
 
 
-def should_trigger_postuploaded(uploads: UploadNumbers) -> bool:
+def should_trigger_postprocessing(uploads: UploadNumbers) -> bool:
     """
-    Determines whether post-uploaded steps, such as notifications, etc,
+    Determines whether post-processing steps, such as notifications, etc,
     should be performed.
 
     This is the case when no more uploads are expected,
     and all the processed uploads have been merged into the "master report".
     """
-    return uploads.uploaded == 0 and uploads.processed == 0
+    return uploads.processing == 0 and uploads.processed == 0
 
 
 class ProcessingState:
@@ -114,13 +114,18 @@ class ProcessingState:
             )
             .one()
         )
-        return UploadNumbers(uploaded=row[0], processed=row[1])
+        return UploadNumbers(processing=row[0], processed=row[1])
+
+    def mark_uploads_as_processing(self, upload_ids: list[int]):
+        # No-op: uploads are created with state_id=UPLOADED, which
+        # get_upload_numbers() already counts as "processing".
+        pass
 
     def clear_in_progress_uploads(self, upload_ids: list[int]):
         if not upload_ids:
             return
         # Mark still-UPLOADED uploads as ERROR so they stop being counted
-        # as "uploaded" in get_upload_numbers(). Only matches UPLOADED --
+        # as "processing" in get_upload_numbers(). Only matches UPLOADED --
         # already-PROCESSED uploads (success path) are unaffected.
         #
         # This runs in a finally block, so the transaction may already be
