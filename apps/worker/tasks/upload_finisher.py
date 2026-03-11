@@ -114,19 +114,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 + 150,
             ),
         }
-        countdown = default_countdowns[followup_type]
-        kwargs = {
-            "repoid": repoid,
-            "commitid": commitid,
-            "commit_yaml": commit_yaml.to_dict(),
-            "trigger": followup_type.value,
-        }
-        if countdown == 0:
-            self.app.tasks[upload_finisher_task_name].apply_async(kwargs=kwargs)
-        else:
-            self.app.tasks[upload_finisher_task_name].apply_async(
-                kwargs=kwargs, countdown=countdown
-            )
+        self.app.tasks[upload_finisher_task_name].apply_async(
+            kwargs={
+                "commit_yaml": commit_yaml.to_dict(),
+                "commitid": commitid,
+                "repoid": repoid,
+                "trigger": followup_type.value,
+            },
+            countdown=default_countdowns[followup_type],
+        )
 
     def _reconstruct_processing_results(
         self, db_session, state: ProcessingState, commit: Commit
@@ -138,12 +134,10 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         in the final merged report, even if they completed via retry/recovery.
         """
 
-        # Get all upload IDs that are ready to be merged.
+        # Get all upload IDs that are ready to be merged up to MERGE_BATCH_SIZE
         upload_ids = state.get_uploads_for_merging()
-
         if not upload_ids:
             return []
-
         log.info(
             "Reconstructing processing results from ProcessingState",
             extra={"upload_ids": list(upload_ids), "count": len(upload_ids)},
