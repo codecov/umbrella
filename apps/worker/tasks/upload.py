@@ -194,23 +194,6 @@ class CreateUploadResponse(TypedDict):
     upload_flag_map: dict[Upload, list | str | None]
 
 
-def _scheduled_task_ids(scheduled_tasks) -> tuple[str, ...]:
-    as_tuple = getattr(scheduled_tasks, "as_tuple", None)
-    if callable(as_tuple):
-        return as_tuple()
-
-    if isinstance(scheduled_tasks, tuple):
-        return scheduled_tasks
-    if isinstance(scheduled_tasks, list):
-        return tuple(scheduled_tasks)
-
-    task_id = getattr(scheduled_tasks, "id", None)
-    if task_id:
-        return (task_id,)
-
-    return ()
-
-
 class UploadTask(BaseCodecovTask, name=upload_task_name):
     """The first of a series of tasks designed to process an `upload` made by the user
 
@@ -607,9 +590,11 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                         commit_report,
                         upload_context,
                     )
-                    scheduled_tasks_list += list(
-                        _scheduled_task_ids(chunk_scheduled_tasks)
-                    )
+                    as_tuple = getattr(chunk_scheduled_tasks, "as_tuple", None)
+                    if callable(as_tuple):
+                        scheduled_tasks_list += list(as_tuple())
+                    elif getattr(chunk_scheduled_tasks, "id", None):
+                        scheduled_tasks_list.append(chunk_scheduled_tasks.id)
 
                 scheduled_tasks = scheduled_tasks_list
             else:
@@ -620,8 +605,13 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     commit_report,
                     upload_context,
                 )
-
-                scheduled_tasks = _scheduled_task_ids(scheduled_tasks)
+                as_tuple = getattr(scheduled_tasks, "as_tuple", None)
+                if callable(as_tuple):
+                    scheduled_tasks = as_tuple()
+                elif getattr(scheduled_tasks, "id", None):
+                    scheduled_tasks = (scheduled_tasks.id,)
+                else:
+                    scheduled_tasks = ()
 
             log.info(
                 f"Scheduling {upload_context.report_type.value} processing tasks",
