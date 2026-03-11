@@ -4,6 +4,7 @@ import time
 import uuid
 from copy import deepcopy
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any, TypedDict
 
 import orjson
@@ -11,7 +12,6 @@ import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery import chain
 from celery.exceptions import SoftTimeLimitExceeded
-from celery.result import ResultSet
 from django.conf import settings
 from redis import Redis
 from sqlalchemy.orm import Session
@@ -854,7 +854,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             upload_processor_task.apply_async(kwargs=processor_task_kwargs)
             for processor_task_kwargs in parallel_processing_tasks
         ]
-        return ResultSet(results=scheduled_tasks)
+        scheduled_task_ids = [
+            task_result.id
+            for task_result in scheduled_tasks
+            if task_result and task_result.id
+        ]
+        return SimpleNamespace(as_tuple=lambda: tuple(scheduled_task_ids))
 
     def _schedule_bundle_analysis_processing_task(
         self,
