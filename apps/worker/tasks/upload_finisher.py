@@ -196,11 +196,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit_yaml,
         **kwargs,
     ):
-        try:
-            UploadFlow.log(UploadFlow.BATCH_PROCESSING_COMPLETE)
-        except ValueError as e:
-            log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
-
         milestone = Milestones.UPLOAD_COMPLETE
         log.info(
             "Received upload_finisher task",
@@ -209,35 +204,29 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         repoid = int(repoid)
         commit_yaml = UserYaml(commit_yaml)
-
-        log.info("run_impl: Getting commit")
-
         commit = (
             db_session.query(Commit)
             .filter(Commit.repoid == repoid, Commit.commitid == commitid)
             .first()
         )
         assert commit, "Commit not found in database."
-
         log.info("run_impl: Got commit")
 
+        # TODO - tom - you should just check to see if any uploads are in existence, have the lock handle pulling uploads
         state = ProcessingState(repoid, commitid, db_session=db_session)
         processing_results = self._reconstruct_processing_results(
             db_session, state, commit
         )
+        upload_ids = [upload["upload_id"] for upload in processing_results]
         log.info(
             "run_impl: Reconstructed processing results",
             extra={
-                "upload_count": len(processing_results),
-                "upload_ids": [r["upload_id"] for r in processing_results],
+                "upload_count": len(upload_ids),
+                "upload_ids": upload_ids,
             },
         )
 
-        upload_ids = [upload["upload_id"] for upload in processing_results]
-
         try:
-            log.info("run_impl: Processing reports with lock")
-
             merge_result = self._process_reports_with_lock(
                 db_session,
                 commit,
@@ -358,10 +347,9 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         state: ProcessingState,
     ):
         """Process reports with a lock to prevent concurrent modifications."""
-        diff = load_commit_diff(commit, self.name)
         repoid = commit.repoid
         commitid = commit.commitid
-
+        diff = load_commit_diff(commit, self.name)
         log.info("run_impl: Loaded commit diff")
 
         lock_manager = LockManager(
@@ -380,23 +368,19 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 db_session.refresh(commit)
                 report_service = ReportService(commit_yaml)
                 merge_start_time = time.monotonic()
-                merge_deadline = merge_start_time + FINISHER_MERGE_TIME_BUDGET_SECONDS
                 merged_processing_results: list[ProcessingResult] = []
                 merged_upload_ids: list[int] = []
 
                 while True:
-                    if (
-                        merge_deadline - time.monotonic()
-                        <= FINISHER_CONTINUATION_BUFFER_SECONDS
-                    ):
-                        remaining_processed_uploads = (
-                            state.get_upload_numbers().processed
-                        )
+                    # Check if we've run out of time to continue merging
+                    if time.monotonic() - merge_start_time <= FINISHER_CONTINUATION_BUFFER_SECONDS:
+                        remaining_processed_uploads = state.get_upload_numbers().processed
                         return {
+                            "continuation_needed": remaining_processed_uploads > 0,
                             "processing_results": merged_processing_results,
                             "upload_ids": merged_upload_ids,
-                            "continuation_needed": remaining_processed_uploads > 0,
                         }
+
                     processing_results = self._reconstruct_processing_results(
                         db_session, state, commit
                     )
