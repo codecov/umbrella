@@ -9,7 +9,7 @@ from typing import Any, TypedDict
 import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery import chain
+from celery import chain, group
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from redis import Redis
@@ -840,21 +840,16 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         )
 
         parallel_processing_tasks = [
-            {
-                "repoid": commit.repoid,
-                "commitid": commit.commitid,
-                "commit_yaml": commit_yaml,
-                "arguments": arguments,
-            }
+            upload_processor_task.s(
+                repoid=commit.repoid,
+                commitid=commit.commitid,
+                commit_yaml=commit_yaml,
+                arguments=arguments,
+            )
             for arguments in argument_list
         ]
 
-        scheduled_task_ids: list[str] = []
-        for processor_task_kwargs in parallel_processing_tasks:
-            result = upload_processor_task.apply_async(kwargs=processor_task_kwargs)
-            if result and result.id:
-                scheduled_task_ids.append(result.id)
-        return tuple(scheduled_task_ids)
+        return group(parallel_processing_tasks).apply_async()
 
     def _schedule_bundle_analysis_processing_task(
         self,
