@@ -1752,6 +1752,48 @@ class TestUploadFinisherTask:
         )
 
         mock_schedule_watchdog.assert_not_called()
+    @pytest.mark.django_db
+    def test_run_impl_schedules_continuation_when_more_processed_uploads_remain(
+        self, dbsession, mocker, mock_self_app
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        task = UploadFinisherTask()
+        mocker.patch.object(task, "_gate_exists", return_value=True)
+        mocker.patch.object(
+            task,
+            "_reconstruct_processing_results",
+            return_value=[{"upload_id": 1, "successful": True, "arguments": {}}],
+        )
+        mocker.patch.object(
+            task,
+            "_process_reports_with_lock",
+            return_value={
+                "processing_results": [
+                    {"upload_id": 1, "successful": True, "arguments": {}}
+                ],
+                "upload_ids": [1],
+                "continuation_needed": True,
+            },
+        )
+        mock_schedule_continuation = mocker.patch.object(task, "_schedule_continuation")
+        mock_handle_finisher_lock = mocker.patch.object(task, "_handle_finisher_lock")
+        mock_delete_gate = mocker.patch.object(task, "_delete_finisher_gate")
+
+        result = task.run_impl(
+            dbsession,
+            processing_results=[],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert result == {"continuation_scheduled": True, "upload_ids": [1]}
+        mock_schedule_continuation.assert_called_once()
+        mock_handle_finisher_lock.assert_not_called()
+        mock_delete_gate.assert_not_called()
 
 
 class TestLockManagerConfiguration:

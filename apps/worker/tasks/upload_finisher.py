@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
@@ -59,6 +60,7 @@ FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
 FINISHER_SWEEP_COUNTDOWN_SECONDS = 30
 FINISHER_MAX_SWEEP_ATTEMPTS = 20
 FINISHER_WATCHDOG_DELAY_OFFSET_SECONDS = 30
+FINISHER_MERGE_TIME_BUDGET_SECONDS = 200
 
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
@@ -123,6 +125,21 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 "trigger": "watchdog",
             },
             countdown=countdown,
+        )
+
+    def _schedule_continuation(
+        self,
+        repoid: int,
+        commitid: str,
+        commit_yaml: UserYaml,
+    ):
+        self.app.tasks[upload_finisher_task_name].apply_async(
+            kwargs={
+                "repoid": repoid,
+                "commitid": commitid,
+                "commit_yaml": commit_yaml.to_dict(),
+                "trigger": "continuation",
+            }
         )
 
     def _delete_finisher_gate(self, repoid: int, commitid: str):
@@ -417,7 +434,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         try:
             log.info("run_impl: Processing reports with lock")
 
-            self._process_reports_with_lock(
+            merge_result = self._process_reports_with_lock(
                 db_session,
                 commit,
                 commit_yaml,
@@ -426,6 +443,20 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids,
                 state,
             )
+            if merge_result:
+                processing_results = merge_result.get(
+                    "processing_results", processing_results
+                )
+                upload_ids = merge_result.get("upload_ids", upload_ids)
+            continuation_needed = bool(
+                merge_result and merge_result.get("continuation_needed")
+            )
+            if continuation_needed:
+                self._schedule_continuation(repoid, commitid, commit_yaml)
+                return {
+                    "continuation_scheduled": True,
+                    "upload_ids": upload_ids,
+                }
 
             # Check if there are still unprocessed coverage uploads in the database
             # Use DB as source of truth - if any coverage uploads are still in UPLOADED state,
@@ -544,34 +575,59 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             ):
                 db_session.refresh(commit)
                 report_service = ReportService(commit_yaml)
+                merge_start_time = time.monotonic()
+                merged_processing_results: list[ProcessingResult] = []
+                merged_upload_ids: list[int] = []
+                pending_processing_results = processing_results
 
-                log.info("run_impl: Performing report merging")
+                while pending_processing_results:
+                    pending_upload_ids = [
+                        upload["upload_id"] for upload in pending_processing_results
+                    ]
+                    if not pending_upload_ids:
+                        break
 
-                report = perform_report_merging(
-                    report_service, commit_yaml, commit, processing_results
-                )
+                    log.info("run_impl: Performing report merging")
+                    report = perform_report_merging(
+                        report_service, commit_yaml, commit, pending_processing_results
+                    )
+                    log.info(
+                        "run_impl: Saving combined report",
+                        extra={"processing_results": pending_processing_results},
+                    )
+                    if diff:
+                        log.info("run_impl: Applying diff to report")
+                        report.apply_diff(diff)
 
-                log.info(
-                    "run_impl: Saving combined report",
-                    extra={"processing_results": processing_results},
-                )
+                    log.info("run_impl: Saving report")
+                    report_service.save_report(commit, report)
+                    db_session.commit()
 
-                if diff:
-                    log.info("run_impl: Applying diff to report")
-                    report.apply_diff(diff)
+                    log.info("run_impl: Marking uploads as merged")
+                    state.mark_uploads_as_merged(pending_upload_ids)
 
-                log.info("run_impl: Saving report")
-                report_service.save_report(commit, report)
+                    log.info("run_impl: Cleaning up intermediate reports")
+                    cleanup_intermediate_reports(pending_upload_ids)
 
-                db_session.commit()
+                    merged_processing_results.extend(pending_processing_results)
+                    merged_upload_ids.extend(pending_upload_ids)
 
-                log.info("run_impl: Marking uploads as merged")
-                state.mark_uploads_as_merged(upload_ids)
+                    if (
+                        time.monotonic() - merge_start_time
+                        >= FINISHER_MERGE_TIME_BUDGET_SECONDS
+                    ):
+                        break
 
-                log.info("run_impl: Cleaning up intermediate reports")
-                cleanup_intermediate_reports(upload_ids)
+                    pending_processing_results = self._reconstruct_processing_results(
+                        db_session, state, commit
+                    )
 
-                log.info("run_impl: Finished upload_finisher task")
+                remaining_processed_uploads = state.get_upload_numbers().processed
+                return {
+                    "processing_results": merged_processing_results,
+                    "upload_ids": merged_upload_ids,
+                    "continuation_needed": remaining_processed_uploads > 0,
+                }
 
         except LockRetry as retry:
             self._call_upload_breadcrumb_task(
@@ -610,7 +666,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(
+            raise self.retry(
                 max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
             )
 
