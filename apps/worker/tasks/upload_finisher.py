@@ -313,7 +313,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         if not self._gate_exists(repoid, commitid):
             return {"nothing_to_do": True}
 
-        if trigger in (None, "processor"):
+        # Schedule watchdog only on the first initial run, not on retries.
+        if trigger in (None, "processor") and getattr(self.request, "retries", 0) == 0:
             self._schedule_watchdog(
                 repoid,
                 commitid,
