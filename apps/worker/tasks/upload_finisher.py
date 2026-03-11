@@ -434,8 +434,9 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone,
                 upload_ids,
             )
-            if result is not None:
-                self._delete_finisher_gate(repoid, commitid)
+            # `_handle_finisher_lock` only returns `None` on terminal lock exhaustion.
+            # Clear gate in either terminal outcome to avoid stalling this commit.
+            self._delete_finisher_gate(repoid, commitid)
             return result
 
         except Retry:
