@@ -162,6 +162,6 @@ class TestProcessUploadFinisherGate:
         assert result["successful"] is True
         assert result["upload_id"] == upload.id_
 
-        # Verify finisher was NOT triggered
+        # Verify finisher was NOT triggered because merge should not run yet.
         mock_finisher_task.apply_async.assert_not_called()
-        mock_redis.return_value.set.assert_called_once()
+        mock_redis.return_value.set.assert_not_called()

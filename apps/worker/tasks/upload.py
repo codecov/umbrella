@@ -202,6 +202,17 @@ class ScheduledTasksResult:
         return tuple(self._task_ids)
 
 
+def _scheduled_task_ids(scheduled_tasks) -> tuple[str, ...]:
+    if isinstance(scheduled_tasks, ScheduledTasksResult):
+        return scheduled_tasks.as_tuple()
+
+    task_id = getattr(scheduled_tasks, "id", None)
+    if task_id:
+        return (task_id,)
+
+    return ()
+
+
 class UploadTask(BaseCodecovTask, name=upload_task_name):
     """The first of a series of tasks designed to process an `upload` made by the user
 
@@ -598,7 +609,9 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                         commit_report,
                         upload_context,
                     )
-                    scheduled_tasks_list += list(chunk_scheduled_tasks.as_tuple())
+                    scheduled_tasks_list += list(
+                        _scheduled_task_ids(chunk_scheduled_tasks)
+                    )
 
                 scheduled_tasks = scheduled_tasks_list
             else:
@@ -610,7 +623,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     upload_context,
                 )
 
-                scheduled_tasks = scheduled_tasks.as_tuple()
+                scheduled_tasks = _scheduled_task_ids(scheduled_tasks)
 
             log.info(
                 f"Scheduling {upload_context.report_type.value} processing tasks",
