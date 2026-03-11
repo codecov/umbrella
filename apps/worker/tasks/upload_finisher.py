@@ -60,6 +60,8 @@ FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
 FINISHER_SWEEP_COUNTDOWN_SECONDS = 30
 FINISHER_WATCHDOG_DELAY_OFFSET_SECONDS = 30
 FINISHER_MERGE_TIME_BUDGET_SECONDS = 200
+FINISHER_CONTINUATION_BUFFER_SECONDS = 10
+FINISHER_UPLOAD_MERGE_BATCH_SIZE = 10
 
 regexp_ci_skip = re.compile(r"\[(ci|skip| |-){3,}\]")
 
@@ -98,49 +100,29 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commitid: str,
         commit_yaml: UserYaml,
         followup_type: FollowupTaskType,
-        countdown: int | None = None,
     ):
         refresh_finisher_gate_ttl(repoid, commitid)
+        default_countdowns = {
+            FollowupTaskType.SWEEP: FINISHER_SWEEP_COUNTDOWN_SECONDS,
+            FollowupTaskType.CONTINUATION: 0,
+            FollowupTaskType.WATCHDOG: self.get_lock_timeout(
+                DEFAULT_LOCK_TIMEOUT_SECONDS
+            )
+            + FINISHER_WATCHDOG_DELAY_OFFSET_SECONDS,
+        }
+        countdown = default_countdowns[followup_type]
         kwargs = {
             "repoid": repoid,
             "commitid": commitid,
             "commit_yaml": commit_yaml.to_dict(),
             "trigger": followup_type.value,
         }
-        if countdown is None:
+        if countdown <= 0:
             self.app.tasks[upload_finisher_task_name].apply_async(kwargs=kwargs)
         else:
             self.app.tasks[upload_finisher_task_name].apply_async(
                 kwargs=kwargs, countdown=countdown
             )
-
-    def _schedule_sweep(self, repoid: int, commitid: str, commit_yaml: UserYaml):
-        self._schedule_followup(
-            repoid,
-            commitid,
-            commit_yaml,
-            FollowupTaskType.SWEEP,
-            countdown=FINISHER_SWEEP_COUNTDOWN_SECONDS,
-        )
-
-    def _schedule_watchdog(
-        self, repoid: int, commitid: str, commit_yaml: UserYaml, countdown: int
-    ):
-        self._schedule_followup(
-            repoid,
-            commitid,
-            commit_yaml,
-            FollowupTaskType.WATCHDOG,
-            countdown=countdown,
-        )
-
-    def _schedule_continuation(self, repoid: int, commitid: str, commit_yaml: UserYaml):
-        self._schedule_followup(
-            repoid,
-            commitid,
-            commit_yaml,
-            FollowupTaskType.CONTINUATION,
-        )
 
     def _reconstruct_processing_results(
         self, db_session, state: ProcessingState, commit: Commit
@@ -300,7 +282,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     commitid,
                     commit_yaml,
                     FollowupTaskType.SWEEP,
-                    countdown=FINISHER_SWEEP_COUNTDOWN_SECONDS,
                 )
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
@@ -400,24 +381,54 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 db_session.refresh(commit)
                 report_service = ReportService(commit_yaml)
                 merge_start_time = time.monotonic()
+                merge_deadline = merge_start_time + FINISHER_MERGE_TIME_BUDGET_SECONDS
                 merged_processing_results: list[ProcessingResult] = []
                 merged_upload_ids: list[int] = []
                 pending_processing_results = processing_results
 
-                while pending_processing_results:
+                while True:
+                    if (
+                        merge_deadline - time.monotonic()
+                        <= FINISHER_CONTINUATION_BUFFER_SECONDS
+                    ):
+                        remaining_processed_uploads = (
+                            state.get_upload_numbers().processed
+                        )
+                        return {
+                            "processing_results": merged_processing_results,
+                            "upload_ids": merged_upload_ids,
+                            "continuation_needed": bool(pending_processing_results)
+                            or remaining_processed_uploads > 0,
+                        }
+
+                    if not pending_processing_results:
+                        pending_processing_results = (
+                            self._reconstruct_processing_results(
+                                db_session, state, commit
+                            )
+                        )
+                        if not pending_processing_results:
+                            break
+
+                    current_batch = pending_processing_results[
+                        :FINISHER_UPLOAD_MERGE_BATCH_SIZE
+                    ]
+                    pending_processing_results = pending_processing_results[
+                        FINISHER_UPLOAD_MERGE_BATCH_SIZE:
+                    ]
                     pending_upload_ids = [
-                        upload["upload_id"] for upload in pending_processing_results
+                        upload["upload_id"] for upload in current_batch
                     ]
                     if not pending_upload_ids:
                         break
 
                     log.info("run_impl: Performing report merging")
                     report = perform_report_merging(
-                        report_service, commit_yaml, commit, pending_processing_results
+                        report_service, commit_yaml, commit, current_batch
                     )
                     log.info(
                         "run_impl: Saving combined report",
-                        extra={"processing_results": pending_processing_results},
+                        extra={"processing_results": current_batch},
                     )
                     if diff:
                         log.info("run_impl: Applying diff to report")
@@ -433,18 +444,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     log.info("run_impl: Cleaning up intermediate reports")
                     cleanup_intermediate_reports(pending_upload_ids)
 
-                    merged_processing_results.extend(pending_processing_results)
+                    merged_processing_results.extend(current_batch)
                     merged_upload_ids.extend(pending_upload_ids)
-
-                    if (
-                        time.monotonic() - merge_start_time
-                        >= FINISHER_MERGE_TIME_BUDGET_SECONDS
-                    ):
-                        break
-
-                    pending_processing_results = self._reconstruct_processing_results(
-                        db_session, state, commit
-                    )
 
                 remaining_processed_uploads = state.get_upload_numbers().processed
                 return {
