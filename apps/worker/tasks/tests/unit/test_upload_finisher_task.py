@@ -1593,6 +1593,92 @@ class TestUploadFinisherTask:
 
         assert result is None
         mock_delete_gate.assert_called_once()
+    
+    @pytest.mark.django_db
+    def test_run_impl_exits_when_gate_missing(self, dbsession, mocker, mock_self_app):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        task = UploadFinisherTask()
+        mock_gate_exists = mocker.patch.object(task, "_gate_exists", return_value=False)
+        mock_schedule_watchdog = mocker.patch.object(task, "_schedule_watchdog")
+
+        result = task.run_impl(
+            dbsession,
+            processing_results=[],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert result == {"nothing_to_do": True}
+        mock_gate_exists.assert_called_once()
+        mock_schedule_watchdog.assert_not_called()
+
+    @pytest.mark.django_db
+    def test_run_impl_schedules_watchdog_when_gate_present(
+        self, dbsession, mocker, mock_self_app
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        task = UploadFinisherTask()
+        mocker.patch.object(task, "_gate_exists", return_value=True)
+        mock_schedule_watchdog = mocker.patch.object(task, "_schedule_watchdog")
+        mocker.patch.object(
+            task,
+            "_reconstruct_processing_results",
+            return_value=[{"upload_id": 1, "successful": True, "arguments": {}}],
+        )
+        mocker.patch.object(task, "_process_reports_with_lock")
+        mocker.patch.object(task, "_count_remaining_coverage_uploads", return_value=0)
+        mocker.patch.object(task, "_handle_finisher_lock", return_value={"done": True})
+        mocker.patch.object(task, "_delete_finisher_gate")
+
+        task.run_impl(
+            dbsession,
+            processing_results=[],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        mock_schedule_watchdog.assert_called_once()
+        assert mock_schedule_watchdog.call_args.kwargs["countdown"] == 330
+
+    @pytest.mark.django_db
+    def test_watchdog_trigger_does_not_schedule_another_watchdog(
+        self, dbsession, mocker, mock_self_app
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        task = UploadFinisherTask()
+        mocker.patch.object(task, "_gate_exists", return_value=True)
+        mock_schedule_watchdog = mocker.patch.object(task, "_schedule_watchdog")
+        mocker.patch.object(
+            task,
+            "_reconstruct_processing_results",
+            return_value=[{"upload_id": 1, "successful": True, "arguments": {}}],
+        )
+        mocker.patch.object(task, "_process_reports_with_lock")
+        mocker.patch.object(task, "_count_remaining_coverage_uploads", return_value=0)
+        mocker.patch.object(task, "_handle_finisher_lock", return_value={"done": True})
+        mocker.patch.object(task, "_delete_finisher_gate")
+
+        task.run_impl(
+            dbsession,
+            processing_results=[],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            trigger="watchdog",
+        )
+
+        mock_schedule_watchdog.assert_not_called()
 
 
 class TestLockManagerConfiguration:

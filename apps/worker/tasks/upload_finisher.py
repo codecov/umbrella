@@ -58,6 +58,7 @@ FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
 FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
 FINISHER_SWEEP_COUNTDOWN_SECONDS = 30
 FINISHER_MAX_SWEEP_ATTEMPTS = 20
+FINISHER_WATCHDOG_DELAY_OFFSET_SECONDS = 30
 
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
@@ -107,8 +108,24 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             countdown=FINISHER_SWEEP_COUNTDOWN_SECONDS,
         )
 
+    def _schedule_watchdog(
+        self, repoid: int, commitid: str, commit_yaml: UserYaml, countdown: int
+    ):
+        self.app.tasks[upload_finisher_task_name].apply_async(
+            kwargs={
+                "repoid": repoid,
+                "commitid": commitid,
+                "commit_yaml": commit_yaml.to_dict(),
+                "trigger": "watchdog",
+            },
+            countdown=countdown,
+        )
+
     def _delete_finisher_gate(self, repoid: int, commitid: str):
         get_redis_connection().delete(finisher_gate_key(repoid, commitid))
+
+    def _gate_exists(self, repoid: int, commitid: str) -> bool:
+        return bool(get_redis_connection().exists(finisher_gate_key(repoid, commitid)))
 
     def _count_remaining_coverage_uploads(self, db_session, commit: Commit) -> int:
         return (
@@ -288,6 +305,18 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         repoid = int(repoid)
         commit_yaml = UserYaml(commit_yaml)
         sweep_attempt = int(kwargs.get("sweep_attempt", 0))
+        trigger = kwargs.get("trigger")
+        if not self._gate_exists(repoid, commitid):
+            return {"nothing_to_do": True}
+
+        if trigger != "watchdog":
+            self._schedule_watchdog(
+                repoid,
+                commitid,
+                commit_yaml,
+                countdown=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS)
+                + FINISHER_WATCHDOG_DELAY_OFFSET_SECONDS,
+            )
 
         log.info("run_impl: Getting commit")
 
