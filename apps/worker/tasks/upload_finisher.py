@@ -271,10 +271,12 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             db_session, state, commit
         )
         processing_results_by_id = {
-            result["upload_id"]: result for result in (processing_results or [])
+            result["upload_id"]: result for result in reconstructed_results
         }
+        # Prefer callback payload when both contain the same upload_id because
+        # callback data is produced directly by the processor and can be newer.
         processing_results_by_id.update(
-            {result["upload_id"]: result for result in reconstructed_results}
+            {result["upload_id"]: result for result in (processing_results or [])}
         )
         processing_results = list(processing_results_by_id.values())
         log.info(
