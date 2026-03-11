@@ -342,10 +342,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         db_session, commit
                     )
                     if remaining_uploads > 0:
+                        sweep_scheduled = False
                         if sweep_attempt < FINISHER_MAX_SWEEP_ATTEMPTS:
                             self._schedule_sweep(
                                 repoid, commitid, commit_yaml, sweep_attempt
                             )
+                            sweep_scheduled = True
+                        else:
+                            self._delete_finisher_gate(repoid, commitid)
                         UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
                         UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
                         self._call_upload_breadcrumb_task(
@@ -355,7 +359,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                             upload_ids=upload_ids,
                         )
                         return {
-                            "sweep_scheduled": True,
+                            "sweep_scheduled": sweep_scheduled,
                             "remaining_uploads": remaining_uploads,
                         }
                     log.info(
@@ -397,8 +401,12 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     "run_impl: Scheduling sweep because uploads are still pending",
                     extra={"remaining_uploads": remaining_uploads},
                 )
+                sweep_scheduled = False
                 if sweep_attempt < FINISHER_MAX_SWEEP_ATTEMPTS:
                     self._schedule_sweep(repoid, commitid, commit_yaml, sweep_attempt)
+                    sweep_scheduled = True
+                else:
+                    self._delete_finisher_gate(repoid, commitid)
                 UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
                 UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
                 self._call_upload_breadcrumb_task(
@@ -408,7 +416,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     upload_ids=upload_ids,
                 )
                 return {
-                    "sweep_scheduled": True,
+                    "sweep_scheduled": sweep_scheduled,
                     "remaining_uploads": remaining_uploads,
                 }
 

@@ -1203,6 +1203,7 @@ class TestUploadFinisherTask:
         task = UploadFinisherTask()
         mocker.patch.object(task, "_count_remaining_coverage_uploads", return_value=2)
         mock_schedule_sweep = mocker.patch.object(task, "_schedule_sweep")
+        mock_delete_gate = mocker.patch.object(task, "_delete_finisher_gate")
 
         result = task.run_impl(
             dbsession,
@@ -1213,8 +1214,9 @@ class TestUploadFinisherTask:
             sweep_attempt=FINISHER_MAX_SWEEP_ATTEMPTS,
         )
 
-        assert result == {"sweep_scheduled": True, "remaining_uploads": 2}
+        assert result == {"sweep_scheduled": False, "remaining_uploads": 2}
         mock_schedule_sweep.assert_not_called()
+        mock_delete_gate.assert_called_once()
 
     @pytest.mark.django_db
     def test_idempotency_check_proceeds_when_uploads_not_finished(
