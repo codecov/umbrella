@@ -1115,7 +1115,12 @@ class TestUploadFinisherTask:
             {"upload_id": upload_3.id, "successful": False, "arguments": {}},
         ]
 
-        result = UploadFinisherTask().run_impl(
+        task = UploadFinisherTask()
+        mock_count_pending = mocker.patch.object(
+            task, "_count_remaining_coverage_uploads", return_value=0
+        )
+        mock_delete_gate = mocker.patch.object(task, "_delete_finisher_gate")
+        result = task.run_impl(
             dbsession,
             previous_results,
             repoid=commit.repoid,
@@ -1131,6 +1136,44 @@ class TestUploadFinisherTask:
 
         # Verify that _process_reports_with_lock was NOT called
         mock_process.assert_not_called()
+        mock_count_pending.assert_called_once()
+        mock_delete_gate.assert_called_once()
+
+    @pytest.mark.django_db
+    def test_idempotency_schedules_sweep_when_pending_uploads_remain(
+        self, dbsession, mocker, mock_self_app
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        upload_1 = UploadFactory.create(report=report, state="merged")
+        dbsession.add(upload_1)
+        dbsession.flush()
+
+        task = UploadFinisherTask()
+        mock_count_pending = mocker.patch.object(
+            task, "_count_remaining_coverage_uploads", return_value=2
+        )
+        mock_schedule_sweep = mocker.patch.object(task, "_schedule_sweep")
+        mock_delete_gate = mocker.patch.object(task, "_delete_finisher_gate")
+
+        result = task.run_impl(
+            dbsession,
+            [{"upload_id": upload_1.id, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert result == {"sweep_scheduled": True, "remaining_uploads": 2}
+        mock_count_pending.assert_called_once()
+        mock_schedule_sweep.assert_called_once()
+        mock_delete_gate.assert_not_called()
 
     @pytest.mark.django_db
     def test_idempotency_check_proceeds_when_uploads_not_finished(
@@ -1447,6 +1490,36 @@ class TestUploadFinisherTask:
         # Verify that _handle_finisher_lock WAS called (notifications should proceed)
         # This is the key assertion - notifications should NOT be blocked by test_results uploads
         mock_handle_finisher_lock.assert_called_once()
+
+    @pytest.mark.django_db
+    def test_run_impl_deletes_gate_after_successful_completion(
+        self, dbsession, mocker, mock_self_app
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        task = UploadFinisherTask()
+        mocker.patch.object(
+            task,
+            "_reconstruct_processing_results",
+            return_value=[{"upload_id": 1, "successful": True, "arguments": {}}],
+        )
+        mocker.patch.object(task, "_process_reports_with_lock")
+        mocker.patch.object(task, "_count_remaining_coverage_uploads", return_value=0)
+        mocker.patch.object(task, "_handle_finisher_lock", return_value={"done": True})
+        mock_delete_gate = mocker.patch.object(task, "_delete_finisher_gate")
+
+        result = task.run_impl(
+            dbsession,
+            processing_results=[],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        assert result == {"done": True}
+        mock_delete_gate.assert_called_once()
 
 
 class TestLockManagerConfiguration:
