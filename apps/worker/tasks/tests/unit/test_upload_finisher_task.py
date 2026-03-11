@@ -40,6 +40,7 @@ from shared.yaml import UserYaml
 from tasks.upload_finisher import (
     FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
     FINISHER_BLOCKING_TIMEOUT_SECONDS,
+    FINISHER_MAX_SWEEP_ATTEMPTS,
     ReportService,
     ShouldCallNotifyResult,
     UploadFinisherTask,
@@ -991,6 +992,9 @@ class TestUploadFinisherTask:
         mocker.patch(
             "tasks.upload_finisher.load_commit_diff", side_effect=SoftTimeLimitExceeded
         )
+        mock_delete_gate = mocker.patch.object(
+            UploadFinisherTask, "_delete_finisher_gate"
+        )
 
         commit = CommitFactory.create()
         dbsession.add(commit)
@@ -1020,6 +1024,7 @@ class TestUploadFinisherTask:
                 "sentry_trace_id": None,
             }
         )
+        mock_delete_gate.assert_called_once_with(commit.repoid, commit.commitid)
 
     @pytest.mark.django_db
     def test_generic_exception_handling(self, dbsession, mocker, mock_self_app):
@@ -1038,6 +1043,9 @@ class TestUploadFinisherTask:
 
         previous_results = [{"upload_id": 0, "successful": True, "arguments": {}}]
 
+        mock_delete_gate = mocker.patch.object(
+            UploadFinisherTask, "_delete_finisher_gate"
+        )
         result = UploadFinisherTask().run_impl(
             dbsession,
             previous_results,
@@ -1074,6 +1082,7 @@ class TestUploadFinisherTask:
                 "sentry_trace_id": None,
             }
         )
+        mock_delete_gate.assert_called_once_with(commit.repoid, commit.commitid)
 
     @pytest.mark.django_db
     def test_idempotency_check_skips_already_processed_uploads(
@@ -1174,6 +1183,38 @@ class TestUploadFinisherTask:
         mock_count_pending.assert_called_once()
         mock_schedule_sweep.assert_called_once()
         mock_delete_gate.assert_not_called()
+
+    @pytest.mark.django_db
+    def test_idempotency_does_not_reschedule_sweep_after_max_attempts(
+        self, dbsession, mocker, mock_self_app
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        report = CommitReport(commit_id=commit.id_)
+        dbsession.add(report)
+        dbsession.flush()
+
+        upload_1 = UploadFactory.create(report=report, state="merged")
+        dbsession.add(upload_1)
+        dbsession.flush()
+
+        task = UploadFinisherTask()
+        mocker.patch.object(task, "_count_remaining_coverage_uploads", return_value=2)
+        mock_schedule_sweep = mocker.patch.object(task, "_schedule_sweep")
+
+        result = task.run_impl(
+            dbsession,
+            [{"upload_id": upload_1.id, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            sweep_attempt=FINISHER_MAX_SWEEP_ATTEMPTS,
+        )
+
+        assert result == {"sweep_scheduled": True, "remaining_uploads": 2}
+        mock_schedule_sweep.assert_not_called()
 
     @pytest.mark.django_db
     def test_idempotency_check_proceeds_when_uploads_not_finished(
