@@ -55,6 +55,8 @@ log = logging.getLogger(__name__)
 
 FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
 FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
+FINISHER_SWEEP_COUNTDOWN_SECONDS = 30
+FINISHER_GATE_KEY_PREFIX = "upload_merger_lock"
 
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
@@ -85,6 +87,36 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
     """
 
     max_retries = UPLOAD_PROCESSOR_MAX_RETRIES
+
+    @staticmethod
+    def _finisher_gate_key(repoid: int, commitid: str) -> str:
+        return f"{FINISHER_GATE_KEY_PREFIX}_{repoid}_{commitid}"
+
+    def _schedule_sweep(self, repoid: int, commitid: str, commit_yaml: UserYaml):
+        self.app.tasks[upload_finisher_task_name].apply_async(
+            kwargs={
+                "repoid": repoid,
+                "commitid": commitid,
+                "commit_yaml": commit_yaml.to_dict(),
+                "trigger": "sweep",
+            },
+            countdown=FINISHER_SWEEP_COUNTDOWN_SECONDS,
+        )
+
+    def _delete_finisher_gate(self, repoid: int, commitid: str):
+        get_redis_connection().delete(self._finisher_gate_key(repoid, commitid))
+
+    def _count_remaining_coverage_uploads(self, db_session, commit: Commit) -> int:
+        return (
+            db_session.query(Upload)
+            .join(Upload.report)
+            .filter(
+                Upload.report.has(commit=commit),
+                Upload.report.has(report_type=ReportType.COVERAGE.value),
+                Upload.state_id == UploadState.UPLOADED.db_id,
+            )
+            .count()
+        )
 
     def _find_started_uploads_with_reports(
         self, db_session, commit: Commit
@@ -305,6 +337,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     for upload in uploads_in_db
                 )
                 if all_already_finalized:
+                    remaining_uploads = self._count_remaining_coverage_uploads(
+                        db_session, commit
+                    )
+                    if remaining_uploads > 0:
+                        self._schedule_sweep(repoid, commitid, commit_yaml)
+                        return {
+                            "sweep_scheduled": True,
+                            "remaining_uploads": remaining_uploads,
+                        }
                     log.info(
                         "All uploads already in final state, skipping finisher work",
                         extra={
@@ -313,6 +354,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         },
                     )
                     inc_counter(UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER)
+                    self._delete_finisher_gate(repoid, commitid)
                     return {
                         "already_completed": True,
                         "upload_ids": upload_ids,
@@ -334,35 +376,24 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             # Check if there are still unprocessed coverage uploads in the database
             # Use DB as source of truth - if any coverage uploads are still in UPLOADED state,
             # another finisher will process them and we shouldn't send notifications yet
-            remaining_uploads = (
-                db_session.query(Upload)
-                .join(Upload.report)
-                .filter(
-                    Upload.report.has(commit=commit),
-                    Upload.report.has(report_type=ReportType.COVERAGE.value),
-                    Upload.state_id == UploadState.UPLOADED.db_id,
-                )
-                .count()
+            remaining_uploads = self._count_remaining_coverage_uploads(
+                db_session, commit
             )
 
             if remaining_uploads > 0:
                 log.info(
-                    "run_impl: Postprocessing should not be triggered - uploads still pending",
+                    "run_impl: Scheduling sweep because uploads are still pending",
                     extra={"remaining_uploads": remaining_uploads},
                 )
-                UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
-                UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
-                self._call_upload_breadcrumb_task(
-                    commit_sha=commitid,
-                    repo_id=repoid,
-                    milestone=milestone,
-                    upload_ids=upload_ids,
-                )
-                return
+                self._schedule_sweep(repoid, commitid, commit_yaml)
+                return {
+                    "sweep_scheduled": True,
+                    "remaining_uploads": remaining_uploads,
+                }
 
             log.info("run_impl: Handling finisher lock")
 
-            return self._handle_finisher_lock(
+            result = self._handle_finisher_lock(
                 db_session,
                 commit,
                 commit_yaml,
@@ -370,6 +401,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone,
                 upload_ids,
             )
+            self._delete_finisher_gate(repoid, commitid)
+            return result
 
         except Retry:
             raise
