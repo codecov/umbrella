@@ -590,9 +590,8 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                         commit_report,
                         upload_context,
                     )
-                    as_tuple = getattr(chunk_scheduled_tasks, "as_tuple", None)
-                    if callable(as_tuple):
-                        scheduled_tasks_list += list(as_tuple())
+                    if callable(getattr(chunk_scheduled_tasks, "as_tuple", None)):
+                        scheduled_tasks_list += list(chunk_scheduled_tasks.as_tuple())
                     elif getattr(chunk_scheduled_tasks, "id", None):
                         scheduled_tasks_list.append(chunk_scheduled_tasks.id)
 
@@ -605,9 +604,8 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                     commit_report,
                     upload_context,
                 )
-                as_tuple = getattr(scheduled_tasks, "as_tuple", None)
-                if callable(as_tuple):
-                    scheduled_tasks = as_tuple()
+                if callable(getattr(scheduled_tasks, "as_tuple", None)):
+                    scheduled_tasks = scheduled_tasks.as_tuple()
                 elif getattr(scheduled_tasks, "id", None):
                     scheduled_tasks = (scheduled_tasks.id,)
                 else:
