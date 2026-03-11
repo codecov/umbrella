@@ -35,6 +35,7 @@ from shared.django_apps.upload_breadcrumbs.models import (
 from shared.reports.enums import UploadState
 from shared.reports.resources import Report
 from shared.torngit.exceptions import TorngitObjectNotFoundError
+from shared.upload.constants import UploadErrorCode
 from shared.yaml import UserYaml
 from tasks.upload_finisher import (
     FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
@@ -141,6 +142,34 @@ def test_mark_uploads_as_failed(dbsession):
     assert upload_2.errors[0].error_code == "report_expired"
     assert upload_2.errors[0].error_params == {}
     assert upload_2.errors[0].report_upload == upload_2
+
+
+def test_mark_uploads_as_failed_without_error_payload(dbsession):
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+    report = CommitReport(commit_id=commit.id_)
+    dbsession.add(report)
+    dbsession.flush()
+    upload = UploadFactory.create(report=report, state="started", storage_path="url")
+    dbsession.add(upload)
+    dbsession.flush()
+
+    results: list[ProcessingResult] = [
+        {
+            "upload_id": upload.id,
+            "successful": False,
+        },
+    ]
+
+    update_uploads(dbsession, UserYaml({}), results, [], MergeResult({}, set()))
+    dbsession.expire_all()
+
+    assert upload.state == "error"
+    assert len(upload.errors) == 1
+    assert upload.errors[0].error_code == UploadErrorCode.UNKNOWN_PROCESSING.value
+    assert upload.errors[0].error_params == {}
+    assert upload.errors[0].report_upload == upload
 
 
 @pytest.mark.parametrize(
