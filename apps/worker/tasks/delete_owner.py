@@ -16,7 +16,7 @@ class DeleteOwnerTask(BaseCodecovTask, name=delete_owner_task_name):
     def run_impl(self, _db_session, ownerid: int) -> CleanupSummary:
         # Purposefully not catching errors since this task runs on a cron
         return cleanup_owner(ownerid)
-
+#removed retry logic because it was causing lock contention
 
 RegisteredDeleteOwnerTask = celery_app.register_task(DeleteOwnerTask())
 delete_owner_task = celery_app.tasks[DeleteOwnerTask.name]
