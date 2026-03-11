@@ -1076,17 +1076,10 @@ class TestUploadFinisherTask:
         )
 
     @pytest.mark.django_db
-    def test_idempotency_check_skips_already_processed_uploads(
+    def test_finisher_reconstructs_even_if_previous_results_were_terminal(
         self, dbsession, mocker, mock_self_app
     ):
-        """Test that finisher skips work if all uploads are already in final state.
-
-        This test validates the idempotency check that prevents wasted work when:
-        - Multiple finishers are triggered (e.g., visibility timeout re-queuing)
-        - Finisher is manually retried
-
-        The check only skips when ALL uploads exist in DB and are in final states.
-        """
+        """Finisher no longer short-circuits from callback payload terminal states."""
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
@@ -1104,9 +1097,35 @@ class TestUploadFinisherTask:
         dbsession.add(upload_3)
         dbsession.flush()
 
-        # Mock the _process_reports_with_lock to verify it's NOT called
+        # Mock the lock path and state reconstruction to verify normal execution path.
         mock_process = mocker.patch.object(
-            UploadFinisherTask, "_process_reports_with_lock"
+            UploadFinisherTask,
+            "_process_reports_with_lock",
+            return_value={
+                "processing_results": [
+                    {"upload_id": upload_1.id, "successful": True, "arguments": {}},
+                    {"upload_id": upload_2.id, "successful": True, "arguments": {}},
+                    {"upload_id": upload_3.id, "successful": False, "arguments": {}},
+                ],
+                "upload_ids": [upload_1.id, upload_2.id, upload_3.id],
+                "continuation_needed": False,
+            },
+        )
+        mocker.patch.object(
+            UploadFinisherTask,
+            "_reconstruct_processing_results",
+            return_value=[
+                {"upload_id": upload_1.id, "successful": True, "arguments": {}},
+                {"upload_id": upload_2.id, "successful": True, "arguments": {}},
+                {"upload_id": upload_3.id, "successful": False, "arguments": {}},
+            ],
+        )
+        mocker.patch(
+            "tasks.upload_finisher.ProcessingState.count_remaining_coverage_uploads",
+            return_value=1,
+        )
+        mock_handle_lock = mocker.patch.object(
+            UploadFinisherTask, "_handle_finisher_lock"
         )
 
         previous_results = [
@@ -1123,14 +1142,13 @@ class TestUploadFinisherTask:
             commit_yaml={},
         )
 
-        # Verify that the finisher skipped all work
+        # Verify that run_impl schedules sweep, instead of a payload-only idempotent skip.
         assert result == {
-            "already_completed": True,
-            "upload_ids": [upload_1.id, upload_2.id, upload_3.id],
+            "sweep_scheduled": True,
+            "remaining_uploads": 1,
         }
-
-        # Verify that _process_reports_with_lock was NOT called
-        mock_process.assert_not_called()
+        mock_process.assert_called_once()
+        mock_handle_lock.assert_not_called()
 
     @pytest.mark.django_db
     def test_idempotency_check_proceeds_when_uploads_not_finished(

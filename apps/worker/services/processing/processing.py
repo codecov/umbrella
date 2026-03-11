@@ -74,6 +74,7 @@ def process_upload(
         if processing_result.report:
             save_intermediate_report(upload_id, processing_result.report)
         state.mark_upload_as_processed(upload_id)
+        db_session.commit()
 
         upload_numbers = state.get_upload_numbers()
         if should_perform_merge(upload_numbers):

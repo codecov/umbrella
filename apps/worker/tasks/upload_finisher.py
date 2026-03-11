@@ -14,12 +14,14 @@ from database.enums import CommitErrorTypes
 from database.models import Commit, Pull
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.models.reports import Upload
+from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.save_commit_error import save_commit_error
 from services.comparison import get_or_create_comparison
 from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.finisher_gate import (
+    FINISHER_GATE_TTL_SECONDS,
     delete_finisher_gate,
     refresh_finisher_gate_ttl,
 )
@@ -72,7 +74,7 @@ class ShouldCallNotifyResult(Enum):
     NOTIFY = "notify"
 
 
-class FollowupTaskType(Enum):
+class UploadFinisherFollowUpTaskType(Enum):
     SWEEP = "sweep"
     WATCHDOG = "watchdog"
     CONTINUATION = "continuation"
@@ -99,16 +101,18 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         repoid: int,
         commitid: str,
         commit_yaml: UserYaml,
-        followup_type: FollowupTaskType,
+        followup_type: UploadFinisherFollowUpTaskType,
     ):
         refresh_finisher_gate_ttl(repoid, commitid)
         default_countdowns = {
-            FollowupTaskType.SWEEP: FINISHER_SWEEP_COUNTDOWN_SECONDS,
-            FollowupTaskType.CONTINUATION: 0,
-            FollowupTaskType.WATCHDOG: self.get_lock_timeout(
-                DEFAULT_LOCK_TIMEOUT_SECONDS
-            )
-            + FINISHER_WATCHDOG_DELAY_OFFSET_SECONDS,
+            UploadFinisherFollowUpTaskType.SWEEP: FINISHER_SWEEP_COUNTDOWN_SECONDS,
+            UploadFinisherFollowUpTaskType.CONTINUATION: 0,
+            UploadFinisherFollowUpTaskType.WATCHDOG: min(
+                FINISHER_GATE_TTL_SECONDS - 60,
+                self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS)
+                + FINISHER_WATCHDOG_DELAY_OFFSET_SECONDS
+                + 150,
+            ),
         }
         countdown = default_countdowns[followup_type]
         kwargs = {
@@ -117,7 +121,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             "commit_yaml": commit_yaml.to_dict(),
             "trigger": followup_type.value,
         }
-        if countdown <= 0:
+        if countdown == 0:
             self.app.tasks[upload_finisher_task_name].apply_async(kwargs=kwargs)
         else:
             self.app.tasks[upload_finisher_task_name].apply_async(
@@ -201,6 +205,11 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit_yaml,
         **kwargs,
     ):
+        try:
+            UploadFlow.log(UploadFlow.BATCH_PROCESSING_COMPLETE)
+        except ValueError as e:
+            log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
+
         milestone = Milestones.UPLOAD_COMPLETE
 
         log.info(
@@ -263,7 +272,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     repoid,
                     commitid,
                     commit_yaml,
-                    FollowupTaskType.CONTINUATION,
+                    UploadFinisherFollowUpTaskType.CONTINUATION,
                 )
                 return {
                     "continuation_scheduled": True,
@@ -281,8 +290,10 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     repoid,
                     commitid,
                     commit_yaml,
-                    FollowupTaskType.SWEEP,
+                    UploadFinisherFollowUpTaskType.SWEEP,
                 )
+                UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
+                UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
                 self._call_upload_breadcrumb_task(
                     commit_sha=commitid,
                     repo_id=repoid,
@@ -384,7 +395,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 merge_deadline = merge_start_time + FINISHER_MERGE_TIME_BUDGET_SECONDS
                 merged_processing_results: list[ProcessingResult] = []
                 merged_upload_ids: list[int] = []
-                pending_processing_results = processing_results
 
                 while True:
                     if (
@@ -397,30 +407,19 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         return {
                             "processing_results": merged_processing_results,
                             "upload_ids": merged_upload_ids,
-                            "continuation_needed": bool(pending_processing_results)
-                            or remaining_processed_uploads > 0,
+                            "continuation_needed": remaining_processed_uploads > 0,
                         }
-
-                    if not pending_processing_results:
-                        pending_processing_results = (
-                            self._reconstruct_processing_results(
-                                db_session, state, commit
-                            )
-                        )
-                        if not pending_processing_results:
-                            break
-
-                    current_batch = pending_processing_results[
+                    processing_results = self._reconstruct_processing_results(
+                        db_session, state, commit
+                    )
+                    if not processing_results:
+                        break
+                    current_batch = processing_results[
                         :FINISHER_UPLOAD_MERGE_BATCH_SIZE
-                    ]
-                    pending_processing_results = pending_processing_results[
-                        FINISHER_UPLOAD_MERGE_BATCH_SIZE:
                     ]
                     pending_upload_ids = [
                         upload["upload_id"] for upload in current_batch
                     ]
-                    if not pending_upload_ids:
-                        break
 
                     log.info("run_impl: Performing report merging")
                     report = perform_report_merging(
@@ -437,9 +436,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     log.info("run_impl: Saving report")
                     report_service.save_report(commit, report)
                     db_session.commit()
-
-                    log.info("run_impl: Marking uploads as merged")
-                    state.mark_uploads_as_merged(pending_upload_ids)
 
                     log.info("run_impl: Cleaning up intermediate reports")
                     cleanup_intermediate_reports(pending_upload_ids)
@@ -462,6 +458,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
+            UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
             if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
                 UPLOAD_PROCESSOR_MAX_RETRIES
             ):
@@ -491,7 +488,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            raise self.retry(
+            return self.retry(
                 max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
             )
 
@@ -611,7 +608,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(
+            return self.retry(
                 max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
             )
 
@@ -644,6 +641,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         "commitid": commitid,
                         "current_yaml": commit_yaml.to_dict(),
                     }
+                    notify_kwargs = UploadFlow.save_to_kwargs(notify_kwargs)
                     task = self.app.tasks[notify_task_name].apply_async(
                         kwargs=notify_kwargs
                     )
@@ -715,6 +713,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         "commitid": commitid,
                         "current_yaml": commit_yaml.to_dict(),
                     }
+                    notify_error_kwargs = UploadFlow.save_to_kwargs(notify_error_kwargs)
                     task = self.app.tasks[notify_error_task_name].apply_async(
                         kwargs=notify_error_kwargs
                     )
@@ -727,6 +726,10 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 },
             )
             commit.state = "skipped"
+
+        UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
+        if not notifications_called:
+            UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
 
         return {"notifications_called": notifications_called}
 
