@@ -298,10 +298,13 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             )
             # Only skip if ALL uploads exist in DB and ALL are in final states
             if len(uploads_in_db) == len(upload_ids):
-                all_already_merged = all(
-                    upload.state in ("merged", "error") for upload in uploads_in_db
+                # During rolling deploys, older workers can still persist "processed".
+                # Treat it as terminal here to avoid duplicate merges.
+                all_already_finalized = all(
+                    upload.state in ("processed", "merged", "error")
+                    for upload in uploads_in_db
                 )
-                if all_already_merged:
+                if all_already_finalized:
                     log.info(
                         "All uploads already in final state, skipping finisher work",
                         extra={

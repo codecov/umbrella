@@ -1066,8 +1066,8 @@ class TestUploadFinisherTask:
         dbsession.add(report)
         dbsession.flush()
 
-        # Create uploads that are already in terminal states
-        upload_1 = UploadFactory.create(report=report, state="merged")
+        # Include "processed" for rolling deploy compatibility with older workers.
+        upload_1 = UploadFactory.create(report=report, state="processed")
         upload_2 = UploadFactory.create(report=report, state="merged")
         upload_3 = UploadFactory.create(report=report, state="error")
         dbsession.add(upload_1)
