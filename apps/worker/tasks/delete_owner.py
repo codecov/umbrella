@@ -13,7 +13,6 @@ class DeleteOwnerTask(BaseCodecovTask, name=delete_owner_task_name):
     acks_late = True  # retry the task when the worker dies for whatever reason
     max_retries = None  # aka, no limit on retries
 
-# removed retry logic because it was causing lock contention in run_impl
 
     def run_impl(self, _db_session, ownerid: int) -> CleanupSummary:
         # Purposefully not catching errors since this task runs on a cron
