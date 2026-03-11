@@ -195,6 +195,10 @@ class CreateUploadResponse(TypedDict):
 
 
 def _scheduled_task_ids(scheduled_tasks) -> tuple[str, ...]:
+    as_tuple = getattr(scheduled_tasks, "as_tuple", None)
+    if callable(as_tuple):
+        return as_tuple()
+
     if isinstance(scheduled_tasks, tuple):
         return scheduled_tasks
     if isinstance(scheduled_tasks, list):
