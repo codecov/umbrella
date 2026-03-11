@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session as DbSession
 from app import celery_app
 from database.models.core import Commit
 from database.models.reports import Upload
+from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.reports import delete_archive_setting
 from services.report import ProcessingError, RawReportInfo, ReportService
 from services.report.parser.types import VersionOneParsedRawReport
@@ -91,12 +92,14 @@ def process_upload(
                     "gate_key": gate_key,
                 },
             )
+            finisher_kwargs = {
+                "repoid": repo_id,
+                "commitid": commit_sha,
+                "commit_yaml": commit_yaml.to_dict(),
+            }
+            finisher_kwargs = UploadFlow.save_to_kwargs(finisher_kwargs)
             celery_app.tasks[upload_finisher_task_name].apply_async(
-                kwargs={
-                    "repoid": repo_id,
-                    "commitid": commit_sha,
-                    "commit_yaml": commit_yaml.to_dict(),
-                }
+                kwargs=finisher_kwargs
             )
 
         rewrite_or_delete_upload(archive_service, commit_yaml, report_info)
