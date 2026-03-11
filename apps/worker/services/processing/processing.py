@@ -9,6 +9,7 @@ from app import celery_app
 from database.models.core import Commit
 from database.models.reports import Upload
 from helpers.checkpoint_logger import _kwargs_key
+from helpers.checkpoint_logger.flows import UploadFlow
 from helpers.reports import delete_archive_setting
 from services.report import ProcessingError, RawReportInfo, ReportService
 from services.report.parser.types import VersionOneParsedRawReport
@@ -99,8 +100,11 @@ def process_upload(
                     "commitid": commit_sha,
                     "commit_yaml": commit_yaml.to_dict(),
                 }
-                if _kwargs_key in arguments:
-                    finisher_kwargs[_kwargs_key] = arguments[_kwargs_key]
+                checkpoint_kwargs_key = _kwargs_key(UploadFlow)
+                if checkpoint_kwargs_key in arguments:
+                    finisher_kwargs[checkpoint_kwargs_key] = arguments[
+                        checkpoint_kwargs_key
+                    ]
                 celery_app.tasks[upload_finisher_task_name].apply_async(
                     kwargs=finisher_kwargs
                 )
