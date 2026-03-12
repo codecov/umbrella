@@ -61,7 +61,7 @@ def test_flush_repo_few_of_each_only_db_objects(mock_storage):
         PullFactory(repository=repo, pullid=i + 100)
 
     for i in range(23):
-        BranchFactory(repository=repo)
+        BranchFactory(repository=repo, name=f"branch-{i}")
 
     task = FlushRepoTask()
     res = task.run_impl({}, repoid=repo.repoid)
@@ -111,7 +111,7 @@ def test_flush_repo_little_bit_of_everything(mocker, mock_storage):
         PullFactory(repository=repo, pullid=i + 100)
 
     for i in range(23):
-        BranchFactory(repository=repo)
+        BranchFactory(repository=repo, name=f"branch-{i}")
 
     archive = mock_storage.storage["archive"]
     ba_archive = mock_storage.storage["bundle-analysis"]
