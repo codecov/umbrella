@@ -248,7 +248,9 @@ def simplified_lookup(queryset: QuerySet) -> QuerySet | list[int]:
             return condition.rhs
 
     threshold = _get_eager_eval_threshold()
-    ids = list(queryset.order_by().values_list("pk", flat=True)[: threshold + 1])
+    if queryset.model == UploadBreadcrumb:
+        queryset = queryset.order_by()
+    ids = list(queryset.values_list("pk", flat=True)[: threshold + 1])
     if len(ids) <= threshold:
         log.info(
             "simplified_lookup: materialized %d IDs for %s",
