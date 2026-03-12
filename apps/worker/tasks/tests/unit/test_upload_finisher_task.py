@@ -35,6 +35,7 @@ from shared.django_apps.upload_breadcrumbs.models import (
 from shared.reports.enums import UploadState
 from shared.reports.resources import Report
 from shared.torngit.exceptions import TorngitObjectNotFoundError
+from shared.upload.constants import UploadErrorCode
 from shared.yaml import UserYaml
 from tasks.upload_finisher import (
     FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
@@ -143,6 +144,34 @@ def test_mark_uploads_as_failed(dbsession):
     assert upload_2.errors[0].report_upload == upload_2
 
 
+def test_mark_uploads_as_failed_without_error_payload(dbsession):
+    commit = CommitFactory.create()
+    dbsession.add(commit)
+    dbsession.flush()
+    report = CommitReport(commit_id=commit.id_)
+    dbsession.add(report)
+    dbsession.flush()
+    upload = UploadFactory.create(report=report, state="started", storage_path="url")
+    dbsession.add(upload)
+    dbsession.flush()
+
+    results: list[ProcessingResult] = [
+        {
+            "upload_id": upload.id,
+            "successful": False,
+        },
+    ]
+
+    update_uploads(dbsession, UserYaml({}), results, [], MergeResult({}, set()))
+    dbsession.expire_all()
+
+    assert upload.state == "error"
+    assert len(upload.errors) == 1
+    assert upload.errors[0].error_code == UploadErrorCode.UNKNOWN_PROCESSING.value
+    assert upload.errors[0].error_params == {}
+    assert upload.errors[0].report_upload == upload
+
+
 @pytest.mark.parametrize(
     "flag, joined",
     [("nightly", False), ("unittests", True), ("ui", True), ("other", True)],
@@ -202,6 +231,11 @@ class TestUploadFinisherTask:
         previous_results = [
             {"upload_id": 0, "arguments": {"url": url}, "successful": True}
         ]
+        mocker.patch.object(
+            UploadFinisherTask,
+            "_reconstruct_processing_results",
+            return_value=previous_results,
+        )
 
         _start_upload_flow(mocker)
         result = UploadFinisherTask().run_impl(
@@ -1047,17 +1081,10 @@ class TestUploadFinisherTask:
         )
 
     @pytest.mark.django_db
-    def test_idempotency_check_skips_already_processed_uploads(
+    def test_finisher_reconstructs_even_if_previous_results_were_terminal(
         self, dbsession, mocker, mock_self_app
     ):
-        """Test that finisher skips work if all uploads are already in final state.
-
-        This test validates the idempotency check that prevents wasted work when:
-        - Multiple finishers are triggered (e.g., visibility timeout re-queuing)
-        - Finisher is manually retried
-
-        The check only skips when ALL uploads exist in DB and are in final states.
-        """
+        """Finisher no longer short-circuits from callback payload terminal states."""
         commit = CommitFactory.create()
         dbsession.add(commit)
         dbsession.flush()
@@ -1066,21 +1093,50 @@ class TestUploadFinisherTask:
         dbsession.add(report)
         dbsession.flush()
 
-        # Create uploads that are already in "processed" state
+        # Include "processed" for rolling deploy compatibility with older workers.
         upload_1 = UploadFactory.create(report=report, state="processed")
-        upload_2 = UploadFactory.create(report=report, state="error")
+        upload_2 = UploadFactory.create(report=report, state="merged")
+        upload_3 = UploadFactory.create(report=report, state="error")
         dbsession.add(upload_1)
         dbsession.add(upload_2)
+        dbsession.add(upload_3)
         dbsession.flush()
 
-        # Mock the _process_reports_with_lock to verify it's NOT called
+        # Mock the lock path and state reconstruction to verify normal execution path.
         mock_process = mocker.patch.object(
-            UploadFinisherTask, "_process_reports_with_lock"
+            UploadFinisherTask,
+            "_process_reports_with_lock",
+            return_value={
+                "processing_results": [
+                    {"upload_id": upload_1.id, "successful": True, "arguments": {}},
+                    {"upload_id": upload_2.id, "successful": True, "arguments": {}},
+                    {"upload_id": upload_3.id, "successful": False, "arguments": {}},
+                ],
+                "upload_ids": [upload_1.id, upload_2.id, upload_3.id],
+                "continuation_needed": False,
+            },
+        )
+        mocker.patch.object(
+            UploadFinisherTask,
+            "_reconstruct_processing_results",
+            return_value=[
+                {"upload_id": upload_1.id, "successful": True, "arguments": {}},
+                {"upload_id": upload_2.id, "successful": True, "arguments": {}},
+                {"upload_id": upload_3.id, "successful": False, "arguments": {}},
+            ],
+        )
+        mocker.patch(
+            "tasks.upload_finisher.ProcessingState.count_remaining_coverage_uploads",
+            return_value=1,
+        )
+        mock_handle_lock = mocker.patch.object(
+            UploadFinisherTask, "_handle_finisher_lock"
         )
 
         previous_results = [
             {"upload_id": upload_1.id, "successful": True, "arguments": {}},
-            {"upload_id": upload_2.id, "successful": False, "arguments": {}},
+            {"upload_id": upload_2.id, "successful": True, "arguments": {}},
+            {"upload_id": upload_3.id, "successful": False, "arguments": {}},
         ]
 
         result = UploadFinisherTask().run_impl(
@@ -1091,14 +1147,13 @@ class TestUploadFinisherTask:
             commit_yaml={},
         )
 
-        # Verify that the finisher skipped all work
+        # Verify that run_impl schedules sweep, instead of a payload-only idempotent skip.
         assert result == {
-            "already_completed": True,
-            "upload_ids": [upload_1.id, upload_2.id],
+            "sweep_scheduled": True,
+            "remaining_uploads": 1,
         }
-
-        # Verify that _process_reports_with_lock was NOT called
-        mock_process.assert_not_called()
+        mock_process.assert_called_once()
+        mock_handle_lock.assert_not_called()
 
     @pytest.mark.django_db
     def test_idempotency_check_proceeds_when_uploads_not_finished(
@@ -1250,6 +1305,45 @@ class TestUploadFinisherTask:
         assert result == []
 
     @pytest.mark.django_db
+    def test_run_impl_uses_reconstructed_results_beyond_callback_payload(
+        self, dbsession, mocker, mock_self_app
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        reconstructed = [
+            {"upload_id": 101, "successful": True, "arguments": {}},
+            {"upload_id": 202, "successful": True, "arguments": {}},
+        ]
+        mocker.patch.object(
+            UploadFinisherTask,
+            "_reconstruct_processing_results",
+            return_value=reconstructed,
+        )
+        mock_process = mocker.patch.object(
+            UploadFinisherTask, "_process_reports_with_lock"
+        )
+        mock_handle_finisher_lock = mocker.patch.object(
+            UploadFinisherTask,
+            "_handle_finisher_lock",
+            return_value={"notifications_called": False},
+        )
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            [{"upload_id": 101, "successful": True, "arguments": {}}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        mock_process.assert_called_once()
+        processing_results = mock_process.call_args.args[3]
+        assert {result["upload_id"] for result in processing_results} == {101, 202}
+        mock_handle_finisher_lock.assert_called_once()
+
+    @pytest.mark.django_db
     def test_coverage_notifications_not_blocked_by_test_results_uploads(
         self,
         dbsession,
@@ -1326,7 +1420,7 @@ class TestUploadFinisherTask:
             upload_ids,
             state,
         ):
-            # Call update_uploads to update the upload state to PROCESSED
+            # Call update_uploads to update the upload state to MERGED
             # This uses the same SQLAlchemy session that the query will use
             update_uploads(
                 db_session,
@@ -1346,11 +1440,11 @@ class TestUploadFinisherTask:
                 .first()
             )
             assert updated_upload is not None, "Upload should exist"
-            assert updated_upload.state == "processed", (
-                f"Upload state should be 'processed', got '{updated_upload.state}'"
+            assert updated_upload.state == "merged", (
+                f"Upload state should be 'merged', got '{updated_upload.state}'"
             )
-            assert updated_upload.state_id == UploadState.PROCESSED.db_id, (
-                f"Upload state_id should be {UploadState.PROCESSED.db_id}, got {updated_upload.state_id}"
+            assert updated_upload.state_id == UploadState.MERGED.db_id, (
+                f"Upload state_id should be {UploadState.MERGED.db_id}, got {updated_upload.state_id}"
             )
 
         mock_process = mocker.patch.object(

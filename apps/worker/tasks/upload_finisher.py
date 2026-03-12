@@ -1,5 +1,7 @@
 import logging
 import re
+import time
+from collections import namedtuple
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
@@ -9,7 +11,7 @@ from celery.exceptions import Retry, SoftTimeLimitExceeded
 
 from app import celery_app
 from celery_config import notify_error_task_name
-from database.enums import CommitErrorTypes, ReportType
+from database.enums import CommitErrorTypes
 from database.models import Commit, Pull
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
 from database.models.reports import Upload
@@ -19,6 +21,11 @@ from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.save_commit_error import save_commit_error
 from services.comparison import get_or_create_comparison
 from services.lock_manager import LockManager, LockRetry, LockType
+from services.processing.finisher_gate import (
+    FINISHER_GATE_TTL_SECONDS,
+    delete_finisher_gate,
+    refresh_finisher_gate_ttl,
+)
 from services.processing.intermediate import (
     cleanup_intermediate_reports,
     intermediate_report_key,
@@ -43,8 +50,6 @@ from shared.celery_config import (
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.cache import cache
 from shared.helpers.redis import get_redis_connection
-from shared.metrics import Counter, inc_counter
-from shared.reports.enums import UploadState
 from shared.reports.resources import Report
 from shared.timeseries.helpers import is_timeseries_enabled
 from shared.torngit.exceptions import TorngitError
@@ -53,21 +58,53 @@ from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
+RemainingUploads = namedtuple("RemainingUploads", ["uploaded", "processed"])
+
 FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
 FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
-
-UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
-    "upload_finisher_already_completed",
-    "Number of times finisher skipped work because uploads were already in final state",
-)
+FINISHER_SWEEP_COUNTDOWN_SECONDS = 30
+FINISHER_WATCHDOG_DELAY_OFFSET_SECONDS = 30
+FINISHER_MERGE_TIME_BUDGET_SECONDS = 200
+FINISHER_CONTINUATION_BUFFER_SECONDS = 10
+FINISHER_UPLOAD_MERGE_BATCH_SIZE = 10
 
 regexp_ci_skip = re.compile(r"\[(ci|skip| |-){3,}\]")
+
+
+def count_unfinished_uploads(db_session, commit: Commit) -> RemainingUploads:
+    state = ProcessingState(commit.repoid, commit.commitid, db_session=db_session)
+    upload_numbers = state.get_upload_numbers()
+    return RemainingUploads(
+        uploaded=state.count_remaining_coverage_uploads(),
+        processed=upload_numbers.processed,
+    )
+
+
+def save_and_commit(
+    db_session,
+    report_service: ReportService,
+    commit: Commit,
+    report: Report,
+    merged_upload_ids: list[int],
+    diff: dict | None,
+):
+    if diff:
+        report.apply_diff(diff)
+    report_service.save_report(commit, report)
+    db_session.commit()
+    cleanup_intermediate_reports(merged_upload_ids)
 
 
 class ShouldCallNotifyResult(Enum):
     DO_NOT_NOTIFY = "do_not_notify"
     NOTIFY_ERROR = "notify_error"
     NOTIFY = "notify"
+
+
+class UploadFinisherFollowUpTaskType(Enum):
+    SWEEP = "sweep"
+    WATCHDOG = "watchdog"
+    CONTINUATION = "continuation"
 
 
 class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
@@ -86,53 +123,33 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
     max_retries = UPLOAD_PROCESSOR_MAX_RETRIES
 
-    def _find_started_uploads_with_reports(
-        self, db_session, commit: Commit
-    ) -> set[int]:
-        """Find uploads in "started" state that have intermediate reports in Redis.
-
-        This is the fallback when Redis ProcessingState has expired (TTL: PROCESSING_STATE_TTL).
-        We check the database for uploads that were processed but never finalized,
-        and verify they have intermediate reports before including them.
-        """
-        # Query for uploads in "started" state for this commit
-        started_uploads = (
-            db_session.query(Upload)
-            .join(Upload.report)
-            .filter(
-                Upload.report.has(commit=commit),
-                Upload.state == "started",
-                Upload.state_id == UploadState.UPLOADED.db_id,
-            )
-            .all()
-        )
-
-        if not started_uploads:
-            return set()
-
-        log.info(
-            "Found uploads in started state, checking for intermediate reports",
-            extra={
-                "upload_ids": [u.id_ for u in started_uploads],
-                "count": len(started_uploads),
+    def _schedule_followup(
+        self,
+        repoid: int,
+        commitid: str,
+        commit_yaml: UserYaml,
+        followup_type: UploadFinisherFollowUpTaskType,
+    ):
+        refresh_finisher_gate_ttl(repoid, commitid)
+        default_countdowns = {
+            UploadFinisherFollowUpTaskType.SWEEP: FINISHER_SWEEP_COUNTDOWN_SECONDS,
+            UploadFinisherFollowUpTaskType.CONTINUATION: 0,
+            UploadFinisherFollowUpTaskType.WATCHDOG: min(
+                FINISHER_GATE_TTL_SECONDS - 60,
+                self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS)
+                + FINISHER_WATCHDOG_DELAY_OFFSET_SECONDS
+                + 150,
+            ),
+        }
+        self.app.tasks[upload_finisher_task_name].apply_async(
+            kwargs={
+                "commit_yaml": commit_yaml.to_dict(),
+                "commitid": commitid,
+                "repoid": repoid,
+                "trigger": followup_type.value,
             },
+            countdown=default_countdowns[followup_type],
         )
-
-        # Check which uploads have intermediate reports (confirms they were processed)
-        redis_connection = get_redis_connection()
-        upload_ids_with_reports = set()
-
-        for upload in started_uploads:
-            report_key = intermediate_report_key(upload.id_)
-            if redis_connection.exists(report_key):
-                upload_ids_with_reports.add(upload.id_)
-            else:
-                log.warning(
-                    "Upload in started state but no intermediate report found (may have expired)",
-                    extra={"upload_id": upload.id_},
-                )
-
-        return upload_ids_with_reports
 
     def _reconstruct_processing_results(
         self, db_session, state: ProcessingState, commit: Commit
@@ -140,40 +157,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         """Reconstruct processing_results from ProcessingState when finisher is triggered
         outside of a chord (e.g., from orphaned upload recovery).
 
-        This ensures ALL uploads that were marked as processed in Redis are included
+        This ensures all uploads marked as processed in state tracking are included
         in the final merged report, even if they completed via retry/recovery.
-
-        If Redis state has expired (TTL: PROCESSING_STATE_TTL), falls back to database
-        to find uploads in "started" state that have intermediate reports, preventing data loss.
         """
 
-        # Get all upload IDs that are ready to be merged (in "processed" set)
+        # Get all upload IDs that are ready to be merged up to MERGE_BATCH_SIZE
         upload_ids = state.get_uploads_for_merging()
-
         if not upload_ids:
-            log.warning(
-                "No uploads found in Redis processed set, checking database for started uploads",
-                extra={"repoid": commit.repoid, "commitid": commit.commitid},
-            )
-            # Fallback: Redis state expired (TTL: PROCESSING_STATE_TTL), check DB for uploads
-            # in "started" state that might have been processed but never finalized
-            upload_ids = self._find_started_uploads_with_reports(db_session, commit)
-
-            if not upload_ids:
-                log.warning(
-                    "No started uploads with intermediate reports found in database",
-                    extra={"repoid": commit.repoid, "commitid": commit.commitid},
-                )
-                return []
-
-            log.info(
-                "Found started uploads with intermediate reports (Redis state expired)",
-                extra={
-                    "upload_ids": list(upload_ids),
-                    "count": len(upload_ids),
-                },
-            )
-
+            return []
         log.info(
             "Reconstructing processing results from ProcessingState",
             extra={"upload_ids": list(upload_ids), "count": len(upload_ids)},
@@ -184,7 +175,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         # Check which uploads have intermediate reports in Redis
         redis_connection = get_redis_connection()
-
         processing_results = []
         for upload in uploads:
             # Check if intermediate report exists (indicates successful processing)
@@ -192,16 +182,15 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             has_report = redis_connection.exists(report_key)
 
             processing_result: ProcessingResult = {
-                "upload_id": upload.id_,
                 "arguments": {
                     "commit": commit.commitid,
+                    "reportid": str(upload.report.external_id),
                     "upload_id": upload.id_,
                     "version": "v4",  # Assume v4 for recovered uploads
-                    "reportid": str(upload.report.external_id),
                 },
                 "successful": bool(has_report),
+                "upload_id": upload.id_,
             }
-
             if not has_report:
                 log.warning(
                     "Upload in processed set but no intermediate report found",
@@ -211,7 +200,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     "code": "missing_intermediate_report",
                     "params": {},
                 }
-
             processing_results.append(processing_result)
 
         log.info(
@@ -235,85 +223,38 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit_yaml,
         **kwargs,
     ):
-        try:
-            UploadFlow.log(UploadFlow.BATCH_PROCESSING_COMPLETE)
-        except ValueError as e:
-            log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
-
         milestone = Milestones.UPLOAD_COMPLETE
-
         log.info(
             "Received upload_finisher task",
-            extra={
-                "processing_results": processing_results,
-            },
+            extra={"processing_results": processing_results},
         )
 
         repoid = int(repoid)
         commit_yaml = UserYaml(commit_yaml)
-
-        log.info("run_impl: Getting commit")
-
         commit = (
             db_session.query(Commit)
             .filter(Commit.repoid == repoid, Commit.commitid == commitid)
             .first()
         )
         assert commit, "Commit not found in database."
-
         log.info("run_impl: Got commit")
 
-        state = ProcessingState(repoid, commitid)
-
-        # If processing_results not provided (e.g., from orphaned upload recovery),
-        # reconstruct it from ProcessingState to ensure ALL uploads are included
-        if processing_results is None:
-            log.info(
-                "run_impl: processing_results not provided, reconstructing from ProcessingState"
-            )
-            processing_results = self._reconstruct_processing_results(
-                db_session, state, commit
-            )
-            log.info(
-                "run_impl: Reconstructed processing results",
-                extra={
-                    "upload_count": len(processing_results),
-                    "upload_ids": [r["upload_id"] for r in processing_results],
-                },
-            )
-
+        # TODO - tom - you should just check to see if any uploads are in existence, have the lock handle pulling uploads
+        state = ProcessingState(repoid, commitid, db_session=db_session)
+        processing_results = self._reconstruct_processing_results(
+            db_session, state, commit
+        )
         upload_ids = [upload["upload_id"] for upload in processing_results]
-
-        # Idempotency check: Skip if all uploads are already processed
-        # This prevents wasted work if multiple finishers are triggered (e.g., from
-        # visibility timeout re-queuing) or if finisher is manually retried
-        if upload_ids:
-            uploads_in_db = (
-                db_session.query(Upload).filter(Upload.id_.in_(upload_ids)).all()
-            )
-            # Only skip if ALL uploads exist in DB and ALL are in final states
-            if len(uploads_in_db) == len(upload_ids):
-                all_already_processed = all(
-                    upload.state in ("processed", "error") for upload in uploads_in_db
-                )
-                if all_already_processed:
-                    log.info(
-                        "All uploads already in final state, skipping finisher work",
-                        extra={
-                            "upload_ids": upload_ids,
-                            "states": [u.state for u in uploads_in_db],
-                        },
-                    )
-                    inc_counter(UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER)
-                    return {
-                        "already_completed": True,
-                        "upload_ids": upload_ids,
-                    }
+        log.info(
+            "run_impl: Reconstructed processing results",
+            extra={
+                "upload_count": len(upload_ids),
+                "upload_ids": upload_ids,
+            },
+        )
 
         try:
-            log.info("run_impl: Processing reports with lock")
-
-            self._process_reports_with_lock(
+            merge_result = self._process_reports_with_lock(
                 db_session,
                 commit,
                 commit_yaml,
@@ -322,25 +263,38 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids,
                 state,
             )
-
-            # Check if there are still unprocessed coverage uploads in the database
-            # Use DB as source of truth - if any coverage uploads are still in UPLOADED state,
-            # another finisher will process them and we shouldn't send notifications yet
-            remaining_uploads = (
-                db_session.query(Upload)
-                .join(Upload.report)
-                .filter(
-                    Upload.report.has(commit=commit),
-                    Upload.report.has(report_type=ReportType.COVERAGE.value),
-                    Upload.state_id == UploadState.UPLOADED.db_id,
+            if merge_result:
+                processing_results = merge_result.get(
+                    "processing_results", processing_results
                 )
-                .count()
+                upload_ids = merge_result.get("upload_ids", upload_ids)
+            continuation_needed = bool(
+                merge_result and merge_result.get("continuation_needed")
             )
+            if continuation_needed:
+                self._schedule_followup(
+                    repoid,
+                    commitid,
+                    commit_yaml,
+                    UploadFinisherFollowUpTaskType.CONTINUATION,
+                )
+                return {
+                    "continuation_scheduled": True,
+                    "upload_ids": upload_ids,
+                }
+
+            remaining_uploads = count_unfinished_uploads(db_session, commit).uploaded
 
             if remaining_uploads > 0:
                 log.info(
-                    "run_impl: Postprocessing should not be triggered - uploads still pending",
+                    "run_impl: Scheduling sweep because uploads are still pending",
                     extra={"remaining_uploads": remaining_uploads},
+                )
+                self._schedule_followup(
+                    repoid,
+                    commitid,
+                    commit_yaml,
+                    UploadFinisherFollowUpTaskType.SWEEP,
                 )
                 UploadFlow.log(UploadFlow.PROCESSING_COMPLETE)
                 UploadFlow.log(UploadFlow.SKIPPING_NOTIFICATION)
@@ -350,11 +304,14 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     milestone=milestone,
                     upload_ids=upload_ids,
                 )
-                return
+                return {
+                    "sweep_scheduled": True,
+                    "remaining_uploads": remaining_uploads,
+                }
 
             log.info("run_impl: Handling finisher lock")
 
-            return self._handle_finisher_lock(
+            result = self._handle_finisher_lock(
                 db_session,
                 commit,
                 commit_yaml,
@@ -362,12 +319,17 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone,
                 upload_ids,
             )
+            # `_handle_finisher_lock` only returns `None` on terminal lock exhaustion.
+            # Clear gate in either terminal outcome to avoid stalling this commit.
+            delete_finisher_gate(repoid, commitid)
+            return result
 
         except Retry:
             raise
 
         except SoftTimeLimitExceeded:
             log.warning("run_impl: soft time limit exceeded")
+            delete_finisher_gate(repoid, commitid)
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,
@@ -382,6 +344,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         except Exception as e:
             log.exception("run_impl: unexpected error in upload finisher")
+            delete_finisher_gate(repoid, commitid)
             sentry_sdk.capture_exception(e)
             log.exception(
                 "Unexpected error in upload finisher",
@@ -411,10 +374,9 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         state: ProcessingState,
     ):
         """Process reports with a lock to prevent concurrent modifications."""
-        diff = load_commit_diff(commit, self.name)
         repoid = commit.repoid
         commitid = commit.commitid
-
+        diff = load_commit_diff(commit, self.name)
         log.info("run_impl: Loaded commit diff")
 
         lock_manager = LockManager(
@@ -432,34 +394,62 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             ):
                 db_session.refresh(commit)
                 report_service = ReportService(commit_yaml)
+                merge_start_time = time.monotonic()
+                merged_processing_results: list[ProcessingResult] = []
+                merged_upload_ids: list[int] = []
 
-                log.info("run_impl: Performing report merging")
+                while True:
+                    elapsed = time.monotonic() - merge_start_time
+                    if (
+                        elapsed
+                        >= FINISHER_MERGE_TIME_BUDGET_SECONDS
+                        - FINISHER_CONTINUATION_BUFFER_SECONDS
+                    ):
+                        remaining = count_unfinished_uploads(db_session, commit)
+                        return {
+                            "continuation_needed": remaining.processed > 0,
+                            "processing_results": merged_processing_results,
+                            "upload_ids": merged_upload_ids,
+                        }
 
-                report = perform_report_merging(
-                    report_service, commit_yaml, commit, processing_results
-                )
+                    processing_results = self._reconstruct_processing_results(
+                        db_session, state, commit
+                    )
+                    if not processing_results:
+                        break
+                    current_batch = processing_results[
+                        :FINISHER_UPLOAD_MERGE_BATCH_SIZE
+                    ]
+                    pending_upload_ids = [
+                        upload["upload_id"] for upload in current_batch
+                    ]
 
-                log.info(
-                    "run_impl: Saving combined report",
-                    extra={"processing_results": processing_results},
-                )
+                    log.info("run_impl: Performing report merging")
+                    report = perform_report_merging(
+                        report_service, commit_yaml, commit, current_batch
+                    )
+                    log.info(
+                        "run_impl: Saving combined report",
+                        extra={"processing_results": current_batch},
+                    )
+                    save_and_commit(
+                        db_session,
+                        report_service,
+                        commit,
+                        report,
+                        pending_upload_ids,
+                        diff,
+                    )
 
-                if diff:
-                    log.info("run_impl: Applying diff to report")
-                    report.apply_diff(diff)
+                    merged_processing_results.extend(current_batch)
+                    merged_upload_ids.extend(pending_upload_ids)
 
-                log.info("run_impl: Saving report")
-                report_service.save_report(commit, report)
-
-                db_session.commit()
-
-                log.info("run_impl: Marking uploads as merged")
-                state.mark_uploads_as_merged(upload_ids)
-
-                log.info("run_impl: Cleaning up intermediate reports")
-                cleanup_intermediate_reports(upload_ids)
-
-                log.info("run_impl: Finished upload_finisher task")
+                remaining = count_unfinished_uploads(db_session, commit)
+                return {
+                    "processing_results": merged_processing_results,
+                    "upload_ids": merged_upload_ids,
+                    "continuation_needed": remaining.processed > 0,
+                }
 
         except LockRetry as retry:
             self._call_upload_breadcrumb_task(
@@ -469,6 +459,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
+            UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
             if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
                 UPLOAD_PROCESSOR_MAX_RETRIES
             ):
@@ -498,7 +489,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(
+            return self.retry(
                 max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
             )
 
@@ -589,7 +580,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
-            UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
             if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
                 UPLOAD_PROCESSOR_MAX_RETRIES
             ):
@@ -619,7 +609,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.INTERNAL_RETRYING,
             )
-            self.retry(
+            return self.retry(
                 max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
             )
 
@@ -762,16 +752,10 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         # Check if there are still pending uploads in the database
         # Use DB as source of truth for upload completion status
         if db_session:
-            remaining_uploads = (
-                db_session.query(Upload)
-                .join(Upload.report)
-                .filter(
-                    Upload.report.has(commit=commit),
-                    Upload.report.has(report_type=ReportType.COVERAGE.value),
-                    Upload.state_id == UploadState.UPLOADED.db_id,
-                )
-                .count()
+            state = ProcessingState(
+                commit.repoid, commit.commitid, db_session=db_session
             )
+            remaining_uploads = state.count_remaining_coverage_uploads()
             if remaining_uploads > 0:
                 log.info(
                     "Not scheduling notify because there are still pending uploads",

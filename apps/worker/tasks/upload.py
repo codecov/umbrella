@@ -4,12 +4,13 @@ import time
 import uuid
 from copy import deepcopy
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any, TypedDict
 
 import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery import chain, chord
+from celery import chain
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from redis import Redis
@@ -54,7 +55,6 @@ from tasks.bundle_analysis_notify import bundle_analysis_notify_task
 from tasks.bundle_analysis_processor import bundle_analysis_processor_task
 from tasks.test_results_finisher import test_results_finisher_task
 from tasks.test_results_processor import test_results_processor_task
-from tasks.upload_finisher import upload_finisher_task
 from tasks.upload_processor import UPLOAD_PROCESSING_LOCK_NAME, upload_processor_task
 
 log = logging.getLogger(__name__)
@@ -835,7 +835,9 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
     ):
         self.maybe_log_upload_checkpoint(UploadFlow.INITIAL_PROCESSING_COMPLETE)
 
-        state = ProcessingState(commit.repoid, commit.commitid)
+        state = ProcessingState(
+            commit.repoid, commit.commitid, db_session=commit.get_db_session()
+        )
         state.mark_uploads_as_processing(
             [int(upload["upload_id"]) for upload in argument_list]
         )
@@ -850,16 +852,12 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             for arguments in argument_list
         ]
 
-        finisher_kwargs = {
-            "repoid": commit.repoid,
-            "commitid": commit.commitid,
-            "commit_yaml": commit_yaml,
-        }
-        finisher_kwargs = UploadFlow.save_to_kwargs(finisher_kwargs)
-        finish_parallel_sig = upload_finisher_task.signature(kwargs=finisher_kwargs)
-
-        parallel_tasks = chord(parallel_processing_tasks, finish_parallel_sig)
-        return parallel_tasks.apply_async()
+        scheduled_task_ids: list[str] = []
+        for processor_task in parallel_processing_tasks:
+            result = processor_task.apply_async()
+            if result and result.id:
+                scheduled_task_ids.append(result.id)
+        return SimpleNamespace(as_tuple=lambda: tuple(scheduled_task_ids))
 
     def _schedule_bundle_analysis_processing_task(
         self,

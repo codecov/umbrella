@@ -54,10 +54,10 @@ def test_batch_merging_many_uploads():
     for id in range(1, 12):
         state.mark_upload_as_processed(id)
 
-    # we have only processed 8 out of 9. we want to do a batched merge
+    # We now reconstruct all processed uploads in one pass.
     assert should_perform_merge(state.get_upload_numbers())
     merging = state.get_uploads_for_merging()
-    assert len(merging) == 10  # = MERGE_BATCH_SIZE
+    assert len(merging) == 11
     state.mark_uploads_as_merged(merging)
 
     # but no notifications yet
@@ -68,7 +68,7 @@ def test_batch_merging_many_uploads():
     # with the last upload being processed, we do another merge, and then trigger notifications
     assert should_perform_merge(state.get_upload_numbers())
     merging = state.get_uploads_for_merging()
-    assert len(merging) == 2
+    assert len(merging) == 1
     state.mark_uploads_as_merged(merging)
 
     assert should_trigger_postprocessing(state.get_upload_numbers())
