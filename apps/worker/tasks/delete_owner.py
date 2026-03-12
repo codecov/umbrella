@@ -1,7 +1,5 @@
 import logging
 
-from celery.exceptions import SoftTimeLimitExceeded
-
 from app import celery_app
 from services.cleanup.owner import cleanup_owner
 from services.cleanup.utils import CleanupSummary
@@ -16,10 +14,8 @@ class DeleteOwnerTask(BaseCodecovTask, name=delete_owner_task_name):
     max_retries = None  # aka, no limit on retries
 
     def run_impl(self, _db_session, ownerid: int) -> CleanupSummary:
-        try:
-            return cleanup_owner(ownerid)
-        except SoftTimeLimitExceeded:
-            raise self.retry()
+        # Purposefully not catching errors since this task runs on a cron
+        return cleanup_owner(ownerid)
 
 
 RegisteredDeleteOwnerTask = celery_app.register_task(DeleteOwnerTask())
