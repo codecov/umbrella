@@ -1,6 +1,6 @@
 from shared.helpers.redis import get_redis_connection
 
-FINISHER_GATE_KEY_PREFIX = "upload_finisher_lock"
+FINISHER_GATE_KEY_PREFIX = "upload_finisher_gate"
 FINISHER_GATE_TTL_SECONDS = 900
 
 
@@ -19,9 +19,11 @@ def try_acquire_finisher_gate(repo_id: int, commit_sha: str) -> bool:
     )
 
 
-def refresh_finisher_gate_ttl(repo_id: int, commit_sha: str) -> None:
-    get_redis_connection().expire(
-        finisher_gate_key(repo_id, commit_sha), FINISHER_GATE_TTL_SECONDS
+def refresh_finisher_gate_ttl(repo_id: int, commit_sha: str) -> bool:
+    return bool(
+        get_redis_connection().expire(
+            finisher_gate_key(repo_id, commit_sha), FINISHER_GATE_TTL_SECONDS
+        )
     )
 
 
