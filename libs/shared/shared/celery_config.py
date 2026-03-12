@@ -304,6 +304,9 @@ PREPROCESS_UPLOAD_MAX_RETRIES = int(
 UPLOAD_PROCESSOR_MAX_RETRIES = int(
     get_config("setup", "tasks", "upload", "processor_max_retries", default=5)
 )
+UPLOAD_FINISHER_MAX_RETRIES = int(
+    get_config("setup", "tasks", "upload", "finisher_max_retries", default=10)
+)
 
 # Bundle analysis processor max_retries (max total attempts)
 # Default: matches TASK_MAX_RETRIES_DEFAULT

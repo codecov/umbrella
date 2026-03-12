@@ -33,7 +33,7 @@ from services.timeseries import repository_datasets_query
 from services.yaml import read_yaml_field
 from shared.celery_config import (
     DEFAULT_LOCK_TIMEOUT_SECONDS,
-    UPLOAD_PROCESSOR_MAX_RETRIES,
+    UPLOAD_FINISHER_MAX_RETRIES,
     compute_comparison_task_name,
     notify_task_name,
     pulls_task_name,
@@ -84,7 +84,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         - Invalidating whatever cache is done
     """
 
-    max_retries = UPLOAD_PROCESSOR_MAX_RETRIES
+    max_retries = UPLOAD_FINISHER_MAX_RETRIES
 
     def _find_started_uploads_with_reports(
         self, db_session, commit: Commit
@@ -470,7 +470,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 error=Errors.INTERNAL_LOCK_ERROR,
             )
             if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
-                UPLOAD_PROCESSOR_MAX_RETRIES
+                UPLOAD_FINISHER_MAX_RETRIES
             ):
                 log.error(
                     "Upload finisher exceeded max retries",
@@ -479,7 +479,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         if retry.max_retries_exceeded
                         else self.attempts,
                         "commitid": commitid,
-                        "max_retries": UPLOAD_PROCESSOR_MAX_RETRIES,
+                        "max_retries": UPLOAD_FINISHER_MAX_RETRIES,
                         "repoid": repoid,
                     },
                 )
@@ -499,7 +499,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 error=Errors.INTERNAL_RETRYING,
             )
             self.retry(
-                max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
+                max_retries=UPLOAD_FINISHER_MAX_RETRIES, countdown=retry.countdown
             )
 
     def _handle_finisher_lock(
@@ -591,7 +591,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             )
             UploadFlow.log(UploadFlow.FINISHER_LOCK_ERROR)
             if retry.max_retries_exceeded or self._has_exceeded_max_attempts(
-                UPLOAD_PROCESSOR_MAX_RETRIES
+                UPLOAD_FINISHER_MAX_RETRIES
             ):
                 log.error(
                     "Upload finisher exceeded max retries (finisher lock)",
@@ -600,7 +600,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                         if retry.max_retries_exceeded
                         else self.attempts,
                         "commitid": commitid,
-                        "max_retries": UPLOAD_PROCESSOR_MAX_RETRIES,
+                        "max_retries": UPLOAD_FINISHER_MAX_RETRIES,
                         "repoid": repoid,
                     },
                 )
@@ -620,7 +620,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 error=Errors.INTERNAL_RETRYING,
             )
             self.retry(
-                max_retries=UPLOAD_PROCESSOR_MAX_RETRIES, countdown=retry.countdown
+                max_retries=UPLOAD_FINISHER_MAX_RETRIES, countdown=retry.countdown
             )
 
     def finish_reports_processing(
