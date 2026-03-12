@@ -146,7 +146,7 @@ def update_uploads(
                 error_code=result["error"]["code"]
                 if result.get("error")
                 else UploadErrorCode.UNKNOWN_PROCESSING,
-                error_params=result["error"]["params"] if result.get("error") else {},
+                error_params=result.get("error", {}).get("params", {}),
             )
             all_errors.append(error)
 
