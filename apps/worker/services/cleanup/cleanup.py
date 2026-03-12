@@ -1,5 +1,7 @@
 import logging
 
+from celery.exceptions import SoftTimeLimitExceeded
+from django.db import OperationalError
 from django.db.models.query import QuerySet
 
 from services.cleanup.models import MANUAL_CLEANUP
@@ -31,5 +33,30 @@ def cleanup_queryset(query: QuerySet, context: CleanupContext):
             if manual_cleanup is not None:
                 manual_cleanup(context, query)
             else:
-                cleaned_models = query._raw_delete(query.db)
+                log.info(
+                    "cleanup_queryset: deleting %s with query %.500s",
+                    model.__name__,
+                    query.query,
+                )
+                try:
+                    cleaned_models = query._raw_delete(query.db)
+                except SoftTimeLimitExceeded:
+                    log.warning(
+                        "cleanup_queryset: soft time limit hit, rolling back delete of %s",
+                        model.__name__,
+                        exc_info=True,
+                    )
+                    raise
+                except OperationalError:
+                    log.warning(
+                        "cleanup_queryset: db connection dropped, rolling back delete of %s",
+                        model.__name__,
+                        exc_info=True,
+                    )
+                    raise
+                log.info(
+                    "cleanup_queryset: deleted %d rows from %s",
+                    cleaned_models,
+                    model.__name__,
+                )
                 context.add_progress(cleaned_models)
