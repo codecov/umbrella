@@ -1,6 +1,7 @@
 import logging
 
 from celery.exceptions import SoftTimeLimitExceeded
+from django.core.exceptions import EmptyResultSet
 from django.db import OperationalError
 from django.db.models.query import QuerySet
 
@@ -33,10 +34,14 @@ def cleanup_queryset(query: QuerySet, context: CleanupContext):
             if manual_cleanup is not None:
                 manual_cleanup(context, query)
             else:
+                try:
+                    query_str = str(query.query)[:500]
+                except EmptyResultSet:
+                    query_str = "(empty)"
                 log.info(
-                    "cleanup_queryset: deleting %s with query %.500s",
+                    "cleanup_queryset: deleting %s with query %s",
                     model.__name__,
-                    query.query,
+                    query_str,
                 )
                 try:
                     cleaned_models = query._raw_delete(query.db)
