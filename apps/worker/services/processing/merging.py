@@ -12,6 +12,7 @@ from services.report import delete_uploads_by_sessionid
 from services.yaml.reader import read_yaml_field
 from shared.reports.enums import UploadState
 from shared.reports.resources import Report, ReportTotals
+from shared.upload.constants import UploadErrorCode
 from shared.utils.sessions import SessionType
 from shared.yaml import UserYaml
 
@@ -129,21 +130,23 @@ def update_uploads(
 
         if result["successful"]:
             update = {
-                "state_id": UploadState.PROCESSED.db_id,
-                "state": "processed",
+                "state_id": UploadState.MERGED.db_id,
+                "state": "merged",
             }
             report = reports.get(upload_id)
             if report is not None:
                 all_totals.append(make_totals(upload_id, report.totals))
-        elif result["error"]:
+        else:
             update = {
                 "state_id": UploadState.ERROR.db_id,
                 "state": "error",
             }
             error = UploadError(
                 upload_id=upload_id,
-                error_code=result["error"]["code"],
-                error_params=result["error"]["params"],
+                error_code=result["error"]["code"]
+                if result.get("error")
+                else UploadErrorCode.UNKNOWN_PROCESSING,
+                error_params=result.get("error", {}).get("params", {}),
             )
             all_errors.append(error)
 
