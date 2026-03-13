@@ -56,9 +56,19 @@ log = logging.getLogger(__name__)
 FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
 FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
 
+# Only this many finisher tasks are allowed to actively work on a single commit
+# at the same time.  Excess tasks exit immediately, freeing their worker slot.
+# A small number (>1) allows for failover if the active finisher crashes.
+MAX_CONCURRENT_FINISHERS_PER_COMMIT = 3
+
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
     "Number of times finisher skipped work because uploads were already in final state",
+)
+
+UPLOAD_FINISHER_CONCURRENCY_LIMITED_COUNTER = Counter(
+    "upload_finisher_concurrency_limited",
+    "Number of finisher tasks that exited early due to per-commit concurrency limit",
 )
 
 regexp_ci_skip = re.compile(r"\[(ci|skip| |-){3,}\]")
@@ -252,6 +262,51 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         repoid = int(repoid)
         commit_yaml = UserYaml(commit_yaml)
 
+        # ── Per-commit concurrency gate ──────────────────────────────────
+        # Large CI matrices fire one finisher per upload (e.g. 167 tasks).
+        # Only MAX_CONCURRENT_FINISHERS_PER_COMMIT should actively work;
+        # the rest exit immediately so they don't starve the worker pool.
+        redis = get_redis_connection()
+        active_key = f"upload_finisher_active:{repoid}:{commitid}"
+        active_count = redis.incr(active_key)
+        redis.expire(active_key, 660)
+
+        if active_count > MAX_CONCURRENT_FINISHERS_PER_COMMIT:
+            redis.decr(active_key)
+            log.info(
+                "Per-commit finisher concurrency limit reached, scheduling retry",
+                extra={
+                    "active": active_count,
+                    "limit": MAX_CONCURRENT_FINISHERS_PER_COMMIT,
+                    "repoid": repoid,
+                    "commitid": commitid,
+                },
+            )
+            inc_counter(UPLOAD_FINISHER_CONCURRENCY_LIMITED_COUNTER)
+            raise self.retry(countdown=FINISHER_BASE_RETRY_COUNTDOWN_SECONDS)
+
+        try:
+            return self._run_impl_inner(
+                db_session,
+                processing_results,
+                repoid=repoid,
+                commitid=commitid,
+                commit_yaml=commit_yaml,
+                milestone=milestone,
+            )
+        finally:
+            redis.decr(active_key)
+
+    def _run_impl_inner(
+        self,
+        db_session,
+        processing_results: list[ProcessingResult] | None,
+        *,
+        repoid: int,
+        commitid: str,
+        commit_yaml: UserYaml,
+        milestone: Milestones,
+    ):
         log.info("run_impl: Getting commit")
 
         commit = (
@@ -265,22 +320,25 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         state = ProcessingState(repoid, commitid)
 
-        # If processing_results not provided (e.g., from orphaned upload recovery),
-        # reconstruct it from ProcessingState to ensure ALL uploads are included
-        if processing_results is None:
-            log.info(
-                "run_impl: processing_results not provided, reconstructing from ProcessingState"
-            )
-            processing_results = self._reconstruct_processing_results(
-                db_session, state, commit
-            )
-            log.info(
-                "run_impl: Reconstructed processing results",
-                extra={
-                    "upload_count": len(processing_results),
-                    "upload_ids": [r["upload_id"] for r in processing_results],
-                },
-            )
+        # Always reconstruct from state so the finisher covers all uploads for the commit,
+        # not just what happened to be passed as callback payload.
+        reconstructed_results = self._reconstruct_processing_results(
+            db_session, state, commit
+        )
+        processing_results_by_id = {
+            result["upload_id"]: result for result in (processing_results or [])
+        }
+        processing_results_by_id.update(
+            {result["upload_id"]: result for result in reconstructed_results}
+        )
+        processing_results = list(processing_results_by_id.values())
+        log.info(
+            "run_impl: Reconstructed processing results",
+            extra={
+                "upload_count": len(processing_results),
+                "upload_ids": [r["upload_id"] for r in processing_results],
+            },
+        )
 
         upload_ids = [upload["upload_id"] for upload in processing_results]
 
@@ -294,7 +352,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             # Only skip if ALL uploads exist in DB and ALL are in final states
             if len(uploads_in_db) == len(upload_ids):
                 all_already_processed = all(
-                    upload.state in ("processed", "error") for upload in uploads_in_db
+                    upload.state in ("processed", "merged", "error")
+                    for upload in uploads_in_db
                 )
                 if all_already_processed:
                     log.info(
