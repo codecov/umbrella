@@ -84,6 +84,27 @@ def test_leaf_table(snapshot):
     assert dump_delete_queries(query) == snapshot("leaf.txt")
 
 
+@pytest.mark.django_db
+def test_deletion_querysets_use_pk_filter():
+    """build_relation_graph should replace FK-filtered querysets with PK-filtered
+    ones after materialization, so DELETEs use an index scan not a seq scan."""
+    with patch("services.cleanup.relations._get_eager_eval_threshold", return_value=10):
+        repo_qs = Repository.objects.filter(repoid__in=[1, 2, 3])
+        relations = build_relation_graph(repo_qs)
+
+    for relation in relations:
+        for qs in relation.querysets:
+            where = qs.query.where
+            if not where.children:
+                continue
+            condition = where.children[0]
+            if hasattr(condition, "lhs"):
+                assert condition.lhs.target.primary_key, (
+                    f"{relation.model.__name__} queryset should filter by PK "
+                    f"but filters by '{condition.lhs.target.name}'"
+                )
+
+
 def test_chunked_in_filter():
     # QuerySets are yielded unchanged
     qs = Repository.objects.filter(repoid=1)
@@ -112,8 +133,8 @@ def test_chunks_large_in_filter():
         relations = build_relation_graph(repo_qs)
 
     repo_relation = next(r for r in relations if r.model is Repository)
-    # The root queryset is never split (it is the original QuerySet, not a list)
-    assert len(repo_relation.querysets) == 1
+    # The root IDs [1, 2, 3] are materialized and split into 2 chunks of size 2
+    assert len(repo_relation.querysets) == 2
 
     # At least one child model should have more than one queryset due to chunking
     child_counts = [len(r.querysets) for r in relations if r.model is not Repository]

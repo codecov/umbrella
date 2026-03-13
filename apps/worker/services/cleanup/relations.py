@@ -146,6 +146,15 @@ def build_relation_graph(query: QuerySet) -> list[ModelQueries]:
         depth = node.depth + 1
         in_filters = [simplified_lookup(qs) for qs in node.querysets]
 
+        # If all IDs were materialized, replace the FK-filtered querysets with
+        # PK-filtered ones so the DELETE uses an index scan instead of a seq scan.
+        if all(isinstance(f, list) for f in in_filters):
+            node.querysets = [
+                model.objects.filter(pk__in=chunk)
+                for ids in in_filters
+                for chunk in _chunked_in_filter(ids)
+            ]
+
         for related_model, related_fields in node.edges.items():
             related_node = nodes[related_model]
 
