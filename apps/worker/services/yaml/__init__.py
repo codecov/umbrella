@@ -2,12 +2,12 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-from database.enums import CommitErrorTypes
 from database.models import Commit
 from database.models.core import Repository
 from helpers.save_commit_error import save_commit_error
 from services.yaml.fetcher import fetch_commit_yaml_from_provider
 from services.yaml.reader import read_yaml_field
+from shared.django_apps.enums import CommitErrorTypes
 from shared.django_apps.utils.model_utils import get_ownerid_if_member
 from shared.torngit.exceptions import TorngitClientError, TorngitError
 from shared.validation.exceptions import InvalidYamlException
