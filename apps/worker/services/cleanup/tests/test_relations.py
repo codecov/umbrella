@@ -13,7 +13,7 @@ from services.cleanup.relations import (
 )
 from shared.django_apps.codecov_auth.models import Owner
 from shared.django_apps.core.models import Repository
-from shared.django_apps.reports.models import UploadLevelTotals
+from shared.django_apps.reports.models import ReportSession, UploadLevelTotals
 
 
 def dump_delete_queries(queryset: QuerySet) -> str:
@@ -85,24 +85,24 @@ def test_leaf_table(snapshot):
 
 
 @pytest.mark.django_db
-def test_deletion_querysets_use_pk_filter():
-    """build_relation_graph should replace FK-filtered querysets with PK-filtered
-    ones after materialization, so DELETEs use an index scan not a seq scan."""
+def test_report_session_deletion_uses_pk_filter():
+    """build_relation_graph should replace ReportSession (reports_upload) FK-filtered
+    querysets with PK-filtered ones so DELETEs use an index scan not a seq scan."""
     with patch("services.cleanup.relations._get_eager_eval_threshold", return_value=10):
         repo_qs = Repository.objects.filter(repoid__in=[1, 2, 3])
         relations = build_relation_graph(repo_qs)
 
-    for relation in relations:
-        for qs in relation.querysets:
-            where = qs.query.where
-            if not where.children:
-                continue
-            condition = where.children[0]
-            if hasattr(condition, "lhs"):
-                assert condition.lhs.target.primary_key, (
-                    f"{relation.model.__name__} queryset should filter by PK "
-                    f"but filters by '{condition.lhs.target.name}'"
-                )
+    report_session = next(r for r in relations if r.model is ReportSession)
+    for qs in report_session.querysets:
+        where = qs.query.where
+        if not where.children:
+            continue
+        condition = where.children[0]
+        if hasattr(condition, "lhs"):
+            assert condition.lhs.target.primary_key, (
+                f"ReportSession queryset filters by '{condition.lhs.target.name}' "
+                f"but should filter by PK to avoid a seq scan on reports_upload"
+            )
 
 
 def test_chunked_in_filter():
@@ -133,8 +133,8 @@ def test_chunks_large_in_filter():
         relations = build_relation_graph(repo_qs)
 
     repo_relation = next(r for r in relations if r.model is Repository)
-    # The root IDs [1, 2, 3] are materialized and split into 2 chunks of size 2
-    assert len(repo_relation.querysets) == 2
+    # The root queryset is never split (it is the original QuerySet, not a list)
+    assert len(repo_relation.querysets) == 1
 
     # At least one child model should have more than one queryset due to chunking
     child_counts = [len(r.querysets) for r in relations if r.model is not Repository]

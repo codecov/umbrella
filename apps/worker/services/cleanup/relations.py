@@ -15,6 +15,7 @@ from shared.config import get_config
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.codecov_auth.models import Owner, OwnerProfile
 from shared.django_apps.core.models import Commit, Pull, Repository
+from shared.django_apps.reports.models import ReportSession
 from shared.django_apps.test_analytics.models import TAPullComment, TAUpload
 from shared.django_apps.upload_breadcrumbs.models import UploadBreadcrumb
 from shared.django_apps.user_measurements.models import UserMeasurement
@@ -146,9 +147,9 @@ def build_relation_graph(query: QuerySet) -> list[ModelQueries]:
         depth = node.depth + 1
         in_filters = [simplified_lookup(qs) for qs in node.querysets]
 
-        # If all IDs were materialized, replace the FK-filtered querysets with
+        # For ReportSession (reports_upload), replace FK-filtered querysets with
         # PK-filtered ones so the DELETE uses an index scan instead of a seq scan.
-        if all(isinstance(f, list) for f in in_filters):
+        if model is ReportSession and all(isinstance(f, list) for f in in_filters):
             node.querysets = [
                 model.objects.filter(pk__in=chunk)
                 for ids in in_filters
