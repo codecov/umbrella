@@ -13,7 +13,7 @@ from services.cleanup.relations import (
 )
 from shared.django_apps.codecov_auth.models import Owner
 from shared.django_apps.core.models import Repository
-from shared.django_apps.reports.models import UploadLevelTotals
+from shared.django_apps.reports.models import ReportSession, UploadLevelTotals
 
 
 def dump_delete_queries(queryset: QuerySet) -> str:
@@ -82,6 +82,27 @@ def test_can_simplify_queries():
 def test_leaf_table(snapshot):
     query = UploadLevelTotals.objects.all()
     assert dump_delete_queries(query) == snapshot("leaf.txt")
+
+
+@pytest.mark.django_db
+def test_report_session_deletion_uses_pk_filter():
+    """build_relation_graph should replace ReportSession (reports_upload) FK-filtered
+    querysets with PK-filtered ones so DELETEs use an index scan not a seq scan."""
+    with patch("services.cleanup.relations._get_eager_eval_threshold", return_value=10):
+        repo_qs = Repository.objects.filter(repoid__in=[1, 2, 3])
+        relations = build_relation_graph(repo_qs)
+
+    report_session = next(r for r in relations if r.model is ReportSession)
+    for qs in report_session.querysets:
+        where = qs.query.where
+        if not where.children:
+            continue
+        condition = where.children[0]
+        if hasattr(condition, "lhs"):
+            assert condition.lhs.target.primary_key, (
+                f"ReportSession queryset filters by '{condition.lhs.target.name}' "
+                f"but should filter by PK to avoid a seq scan on reports_upload"
+            )
 
 
 def test_chunked_in_filter():
