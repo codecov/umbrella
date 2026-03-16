@@ -64,6 +64,7 @@ class BitbucketLoginView(View, LoginMixin):
             state,
             domain=settings.COOKIES_DOMAIN,
             httponly=True,
+            secure=settings.SESSION_COOKIE_SECURE,
         )
         self.store_to_cookie_utm_tags(response)
         return response

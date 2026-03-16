@@ -246,7 +246,7 @@ class TestUnitBitbucket:
                 return_value=httpx.Response(status_code=200, json=new_token)
             )
             async with httpx.AsyncClient() as client:
-                result = await valid_handler.refresh_token(client, "/some/url")
+                result = await valid_handler.refresh_token(client)
         assert result == {"key": "new_access_token", "secret": "new_refresh_token"}
         assert valid_handler.token == result
 
@@ -255,7 +255,7 @@ class TestUnitBitbucket:
         """If no refresh_token stored, refresh_token() returns None."""
         valid_handler._token = {"key": "old_access", "secret": None}
         async with httpx.AsyncClient() as client:
-            result = await valid_handler.refresh_token(client, "/some/url")
+            result = await valid_handler.refresh_token(client)
         assert result is None
 
     @pytest.mark.asyncio

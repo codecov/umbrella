@@ -98,7 +98,7 @@ class Bitbucket(TorngitBaseAdapter):
             ):
                 tried_refresh = True
                 try:
-                    new_token = await self.refresh_token(client, url)
+                    new_token = await self.refresh_token(client)
                 except (TorngitClientGeneralError, TorngitServer5xxCodeError):
                     log.warning(
                         "Bitbucket token refresh failed, raising original 401",
@@ -130,7 +130,7 @@ class Bitbucket(TorngitBaseAdapter):
             else:
                 return res.text
 
-    async def refresh_token(self, client, original_url):
+    async def refresh_token(self, client):
         """
         Exchanges the stored refresh token for a new access + refresh token pair.
         Returns the new token dict, or None if no refresh token is stored.
