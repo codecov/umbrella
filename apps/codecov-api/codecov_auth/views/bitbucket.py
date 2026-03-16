@@ -1,6 +1,4 @@
-import base64
 import logging
-from urllib.parse import urlencode
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
@@ -13,8 +11,7 @@ from shared.django_apps.codecov_metrics.service.codecov_metrics import (
     UserOnboardingMetricsService,
 )
 from shared.torngit import Bitbucket
-from shared.torngit.exceptions import TorngitServerFailureError
-from utils.encryption import encryptor
+from shared.torngit.exceptions import TorngitClientGeneralError, TorngitServerFailureError
 
 log = logging.getLogger(__name__)
 
@@ -53,24 +50,10 @@ class BitbucketLoginView(View, LoginMixin):
                 "secret": settings.BITBUCKET_CLIENT_SECRET,
             }
         )
-        oauth_token_pair = repo_service.generate_request_token(
+        url_to_redirect = repo_service.generate_redirect_url(
             settings.BITBUCKET_REDIRECT_URI
         )
-        oauth_token = oauth_token_pair["oauth_token"]
-        oauth_token_secret = oauth_token_pair["oauth_token_secret"]
-        url_params = urlencode({"oauth_token": oauth_token})
-        url_to_redirect = f"{Bitbucket._OAUTH_AUTHORIZE_URL}?{url_params}"
         response = redirect(url_to_redirect)
-        data = (
-            base64.b64encode(oauth_token.encode())
-            + b"|"
-            + base64.b64encode(oauth_token_secret.encode())
-        ).decode()
-        response.set_signed_cookie(
-            "_oauth_request_token",
-            encryptor.encode(data).decode(),
-            domain=settings.COOKIES_DOMAIN,
-        )
         self.store_to_cookie_utm_tags(response)
         return response
 
@@ -81,20 +64,8 @@ class BitbucketLoginView(View, LoginMixin):
                 "secret": settings.BITBUCKET_CLIENT_SECRET,
             }
         )
-        oauth_verifier = request.GET.get("oauth_verifier")
-        request_cookie = request.get_signed_cookie("_oauth_request_token", default=None)
-        if not request_cookie:
-            log.warning(
-                "Request arrived with proper url params but not the proper cookies"
-            )
-            return redirect(reverse("bitbucket-login"))
-        request_cookie = encryptor.decode(request_cookie)
-        cookie_key, cookie_secret = [
-            base64.b64decode(i).decode() for i in request_cookie.split("|")
-        ]
-        token = repo_service.generate_access_token(
-            cookie_key, cookie_secret, oauth_verifier
-        )
+        code = request.GET.get("code")
+        token = repo_service.generate_access_token(code, settings.BITBUCKET_REDIRECT_URI)
         user_dict = self.fetch_user_data(token)
         user = self.get_and_modify_owner(user_dict, request)
         redirection_url = settings.CODECOV_DASHBOARD_URL + "/bb"
@@ -102,7 +73,6 @@ class BitbucketLoginView(View, LoginMixin):
             redirection_url, user
         )
         response = redirect(redirection_url)
-        response.delete_cookie("_oauth_request_token", domain=settings.COOKIES_DOMAIN)
         self.login_owner(user, request, response)
         log.info("User successfully logged in", extra={"ownerid": user.ownerid})
         UserOnboardingMetricsService.create_user_onboarding_metric(
@@ -115,7 +85,7 @@ class BitbucketLoginView(View, LoginMixin):
             return redirect(f"{settings.CODECOV_DASHBOARD_URL}/login")
 
         try:
-            if request.GET.get("oauth_verifier"):
+            if request.GET.get("code"):
                 log.info("Logging into bitbucket after authorization")
                 return self.actual_login_step(request)
             else:
@@ -123,4 +93,7 @@ class BitbucketLoginView(View, LoginMixin):
                 return self.redirect_to_bitbucket_step(request)
         except TorngitServerFailureError:
             log.warning("Bitbucket not available for login")
+            return redirect(reverse("bitbucket-login"))
+        except TorngitClientGeneralError:
+            log.warning("Bitbucket OAuth error during login")
             return redirect(reverse("bitbucket-login"))

@@ -3,7 +3,6 @@ import os
 import urllib.parse as urllib_parse
 
 import httpx
-from oauthlib import oauth1
 
 from shared.torngit.base import TokenType, TorngitBaseAdapter
 from shared.torngit.enums import Endpoints
@@ -24,9 +23,8 @@ METRICS_PREFIX = "services.torngit.bitbucket"
 
 
 class Bitbucket(TorngitBaseAdapter):
-    _OAUTH_REQUEST_TOKEN_URL = "https://bitbucket.org/api/1.0/oauth/request_token"
-    _OAUTH_ACCESS_TOKEN_URL = "https://bitbucket.org/api/1.0/oauth/access_token"
-    _OAUTH_AUTHORIZE_URL = "https://bitbucket.org/api/1.0/oauth/authenticate"
+    _OAUTH_AUTHORIZE_URL = "https://bitbucket.org/site/oauth2/authorize"
+    _OAUTH_ACCESS_TOKEN_URL = "https://bitbucket.org/site/oauth2/access_token"
     service = "bitbucket"
     api_url = "https://bitbucket.org"
     service_url = "https://bitbucket.org"
@@ -54,30 +52,19 @@ class Bitbucket(TorngitBaseAdapter):
             "User-Agent": os.getenv("USER_AGENT", "Default"),
         }
 
-        oauth_body = None
         url = url_concat(url, kwargs)
 
         if json:
             headers["Content-Type"] = "application/json"
         elif body is not None:
             headers["Content-Type"] = "application/x-www-form-urlencoded"
-            oauth_body = body
 
         token_to_use = token or self.token
-        oauth_client = oauth1.Client(
-            self._oauth_consumer_token()["key"],
-            client_secret=self._oauth_consumer_token()["secret"],
-            resource_owner_key=token_to_use["key"],
-            resource_owner_secret=token_to_use["secret"],
-            signature_type=oauth1.SIGNATURE_TYPE_QUERY,
-        )
-        url, headers, oauth_body = oauth_client.sign(
-            url, http_method=method, body=oauth_body, headers=headers
-        )
+        headers["Authorization"] = f"Bearer {token_to_use['key']}"
 
         kwargs = {
             "json": body if body is not None and json else None,
-            "data": oauth_body if not json else None,
+            "data": body if body is not None and not json else None,
             "headers": headers,
         }
         log_dict = {
@@ -118,34 +105,46 @@ class Bitbucket(TorngitBaseAdapter):
         else:
             return res.text
 
-    def generate_request_token(self, redirect_url):
-        client = oauth1.Client(
-            self._oauth["key"],
-            client_secret=self._oauth["secret"],
-            callback_uri=redirect_url,
+    def generate_redirect_url(self, redirect_url):
+        """
+        Returns the Bitbucket OAuth 2.0 authorization URL to redirect the user to.
+        """
+        params = urllib_parse.urlencode(
+            {
+                "client_id": self._oauth["key"],
+                "response_type": "code",
+                "redirect_uri": redirect_url,
+            }
         )
-        uri, headers, body = client.sign(self._OAUTH_REQUEST_TOKEN_URL)
-        r = httpx.get(uri, headers=headers)
-        oauth_token = urllib_parse.parse_qs(r.text)["oauth_token"][0]
-        oauth_token_secret = urllib_parse.parse_qs(r.text)["oauth_token_secret"][0]
-        return {"oauth_token": oauth_token, "oauth_token_secret": oauth_token_secret}
+        return f"{self._OAUTH_AUTHORIZE_URL}?{params}"
 
-    def generate_access_token(
-        self, resource_owner_key, resource_owner_secret, verifier
-    ):
-        client = oauth1.Client(
-            self._oauth["key"],
-            client_secret=self._oauth["secret"],
-            resource_owner_key=resource_owner_key,
-            resource_owner_secret=resource_owner_secret,
-            verifier=verifier,
+    def generate_access_token(self, code, redirect_url):
+        """
+        Exchanges an OAuth 2.0 authorization code for an access token.
+        Returns a dict with 'key' (access token) and 'secret' (refresh token).
+        """
+        r = httpx.post(
+            self._OAUTH_ACCESS_TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_url,
+            },
+            auth=(self._oauth["key"], self._oauth["secret"]),
         )
-        uri, headers, body = client.sign(self._OAUTH_ACCESS_TOKEN_URL)
-        r = httpx.get(uri, headers=headers)
-        resp_args = urllib_parse.parse_qs(r.text)
+        if r.status_code >= 500:
+            raise TorngitServer5xxCodeError("Bitbucket is having 5xx issues")
+        elif r.status_code >= 400:
+            message = f"Bitbucket OAuth2: {r.reason_phrase}"
+            raise TorngitClientGeneralError(
+                r.status_code,
+                response_data={"content": r.content},
+                message=message,
+            )
+        data = r.json()
         return {
-            "key": resp_args["oauth_token"][0],
-            "secret": resp_args["oauth_token_secret"][0],
+            "key": data["access_token"],
+            "secret": data.get("refresh_token", ""),
         }
 
     async def get_authenticated_user(self):
