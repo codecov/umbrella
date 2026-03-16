@@ -294,7 +294,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             # Only skip if ALL uploads exist in DB and ALL are in final states
             if len(uploads_in_db) == len(upload_ids):
                 all_already_processed = all(
-                    upload.state in ("processed", "error") for upload in uploads_in_db
+                    upload.state in ("merged", "processed", "error") for upload in uploads_in_db
                 )
                 if all_already_processed:
                     log.info(
