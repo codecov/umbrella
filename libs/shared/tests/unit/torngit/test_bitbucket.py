@@ -259,6 +259,41 @@ class TestUnitBitbucket:
         assert result is None
 
     @pytest.mark.asyncio
+    async def test_api_refresh_failure_raises_original_401(self, mocker):
+        """If refresh_token() raises, the original 401 error is raised."""
+        on_token_refresh = mocker.AsyncMock()
+        handler = Bitbucket(
+            repo={"name": "example-python"},
+            owner={"username": "ThiagoCodecov"},
+            oauth_consumer_token={
+                "key": "oauth_consumer_key_value",
+                "secret": "oauth_consumer_token_secret_value",
+            },
+            token={"key": "expired_token", "secret": "old_refresh_token"},
+            on_token_refresh=on_token_refresh,
+        )
+        mocker.patch.object(
+            handler,
+            "refresh_token",
+            side_effect=TorngitClientGeneralError(400, {}, "invalid_grant"),
+        )
+        client = mocker.MagicMock(
+            request=mocker.AsyncMock(
+                return_value=mocker.MagicMock(
+                    status_code=401,
+                    text="Unauthorized",
+                    reason_phrase="Unauthorized",
+                    content=b"Unauthorized",
+                    headers={"Content-Type": "text/plain"},
+                )
+            )
+        )
+        with pytest.raises(TorngitClientGeneralError):
+            await handler.api(client, "2", "GET", "/some/path")
+        assert client.request.call_count == 1
+        on_token_refresh.assert_not_awaited()
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "permission_name, expected_result",
         [("read", (True, False)), ("write", (True, True)), ("admin", (True, True))],

@@ -18,6 +18,10 @@ def get_token_refresh_callback(owner: Owner) -> Callable[[dict], None]:
     if owner is None:
         return None
 
+    service = owner.service
+    if service == "bitbucket_server":
+        return None
+
     async def callback(new_token: dict) -> None:
         log.info(
             "Saving new token after refresh",

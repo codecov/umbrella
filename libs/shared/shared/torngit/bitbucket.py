@@ -97,12 +97,19 @@ class Bitbucket(TorngitBaseAdapter):
                 and callable(self._on_token_refresh)
             ):
                 tried_refresh = True
-                new_token = await self.refresh_token(client, url)
-                if new_token is not None:
-                    headers["Authorization"] = f"Bearer {new_token['key']}"
-                    kwargs["headers"] = headers
-                    await self._on_token_refresh(new_token)
-                    continue
+                try:
+                    new_token = await self.refresh_token(client, url)
+                except (TorngitClientGeneralError, TorngitServer5xxCodeError):
+                    log.warning(
+                        "Bitbucket token refresh failed, raising original 401",
+                        extra=log_dict,
+                    )
+                else:
+                    if new_token is not None:
+                        headers["Authorization"] = f"Bearer {new_token['key']}"
+                        kwargs["headers"] = headers
+                        await self._on_token_refresh(new_token)
+                        continue
             if res.status_code == 599:
                 raise TorngitServerUnreachableError(
                     "Bitbucket was not able to be reached, server timed out."
