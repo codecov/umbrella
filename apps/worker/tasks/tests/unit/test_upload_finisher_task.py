@@ -1047,16 +1047,18 @@ class TestUploadFinisherTask:
         )
 
     @pytest.mark.django_db
-    def test_idempotency_check_skips_already_processed_uploads(
+    def test_idempotency_check_skips_already_merged_uploads(
         self, dbsession, mocker, mock_self_app
     ):
-        """Test that finisher skips work if all uploads are already in final state.
+        """Regression: 'merged' must be treated as a final state in the idempotency check.
 
-        This test validates the idempotency check that prevents wasted work when:
-        - Multiple finishers are triggered (e.g., visibility timeout re-queuing)
-        - Finisher is manually retried
+        After #766 changed successful uploads from 'processed' to 'merged', the
+        idempotency check only recognised ('processed', 'error') as final states.
+        Re-triggered finishers bypassed the check, ran finish_reports_processing
+        again, and enqueued duplicate save_commit_measurements tasks — flooding
+        the timeseries queue to 200K+.
 
-        The check only skips when ALL uploads exist in DB and are in final states.
+        The fix drops 'processed' (now a dead state) and uses ('merged', 'error').
         """
         commit = CommitFactory.create()
         dbsession.add(commit)
@@ -1066,14 +1068,12 @@ class TestUploadFinisherTask:
         dbsession.add(report)
         dbsession.flush()
 
-        # Create uploads that are already in "processed" state
-        upload_1 = UploadFactory.create(report=report, state="processed")
+        upload_1 = UploadFactory.create(report=report, state="merged")
         upload_2 = UploadFactory.create(report=report, state="error")
         dbsession.add(upload_1)
         dbsession.add(upload_2)
         dbsession.flush()
 
-        # Mock the _process_reports_with_lock to verify it's NOT called
         mock_process = mocker.patch.object(
             UploadFinisherTask, "_process_reports_with_lock"
         )
@@ -1091,13 +1091,10 @@ class TestUploadFinisherTask:
             commit_yaml={},
         )
 
-        # Verify that the finisher skipped all work
         assert result == {
             "already_completed": True,
             "upload_ids": [upload_1.id, upload_2.id],
         }
-
-        # Verify that _process_reports_with_lock was NOT called
         mock_process.assert_not_called()
 
     @pytest.mark.django_db
