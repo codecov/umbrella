@@ -43,6 +43,22 @@ class Bitbucket(TorngitBaseAdapter):
         "compare": "{username}/{name}",
     }
 
+    async def _send_request(self, client, method, url, kwargs, log_dict):
+        try:
+            res = await client.request(method.upper(), url, **kwargs)
+            logged_body = None
+            if res.status_code >= 300 and res.text is not None:
+                logged_body = res.text
+            log.log(
+                logging.WARNING if res.status_code >= 300 else logging.INFO,
+                "Bitbucket HTTP %s",
+                res.status_code,
+                extra=dict(body=logged_body, **log_dict),
+            )
+            return res
+        except (httpx.NetworkError, httpx.TimeoutException):
+            raise TorngitServerUnreachableError("Bitbucket was not able to be reached.")
+
     async def api(
         self, client, version, method, path, json=False, body=None, token=None, **kwargs
     ):
@@ -74,61 +90,43 @@ class Bitbucket(TorngitBaseAdapter):
             "bot": token_to_use.get("username"),
             "repo_slug": self.slug,
         }
-        tried_refresh = False
-        while True:
+
+        res = await self._send_request(client, method, url, kwargs, log_dict)
+
+        if res.status_code == 401 and callable(self._on_token_refresh):
+            new_token = None
             try:
-                res = await client.request(method.upper(), url, **kwargs)
-                logged_body = None
-                if res.status_code >= 300 and res.text is not None:
-                    logged_body = res.text
-                log.log(
-                    logging.WARNING if res.status_code >= 300 else logging.INFO,
-                    "Bitbucket HTTP %s",
-                    res.status_code,
-                    extra=dict(body=logged_body, **log_dict),
+                new_token = await self.refresh_token(client)
+            except (TorngitClientGeneralError, TorngitServer5xxCodeError):
+                log.warning(
+                    "Bitbucket token refresh failed, raising original 401",
+                    extra=log_dict,
                 )
-            except (httpx.NetworkError, httpx.TimeoutException):
-                raise TorngitServerUnreachableError(
-                    "Bitbucket was not able to be reached."
-                )
-            if (
-                res.status_code == 401
-                and not tried_refresh
-                and callable(self._on_token_refresh)
-            ):
-                tried_refresh = True
-                try:
-                    new_token = await self.refresh_token(client)
-                except (TorngitClientGeneralError, TorngitServer5xxCodeError):
-                    log.warning(
-                        "Bitbucket token refresh failed, raising original 401",
-                        extra=log_dict,
-                    )
-                else:
-                    if new_token is not None:
-                        headers["Authorization"] = f"Bearer {new_token['key']}"
-                        kwargs["headers"] = headers
-                        await self._on_token_refresh(new_token)
-                        continue
-            if res.status_code == 599:
-                raise TorngitServerUnreachableError(
-                    "Bitbucket was not able to be reached, server timed out."
-                )
-            elif res.status_code >= 500:
-                raise TorngitServer5xxCodeError("Bitbucket is having 5xx issues")
-            elif res.status_code >= 300:
-                message = f"Bitbucket API: {res.reason_phrase}"
-                raise TorngitClientGeneralError(
-                    res.status_code,
-                    response_data={"content": res.content},
-                    message=message,
-                )
-            if res.status_code == 204:
-                return None
-            elif "application/json" in res.headers.get("Content-Type"):
-                return res.json()
-            else:
-                return res.text
+            if new_token is not None:
+                headers["Authorization"] = f"Bearer {new_token['key']}"
+                kwargs["headers"] = headers
+                await self._on_token_refresh(new_token)
+                res = await self._send_request(client, method, url, kwargs, log_dict)
+
+        if res.status_code == 599:
+            raise TorngitServerUnreachableError(
+                "Bitbucket was not able to be reached, server timed out."
+            )
+        elif res.status_code >= 500:
+            raise TorngitServer5xxCodeError("Bitbucket is having 5xx issues")
+        elif res.status_code >= 300:
+            message = f"Bitbucket API: {res.reason_phrase}"
+            raise TorngitClientGeneralError(
+                res.status_code,
+                response_data={"content": res.content},
+                message=message,
+            )
+        if res.status_code == 204:
+            return None
+        elif "application/json" in res.headers.get("Content-Type"):
+            return res.json()
+        else:
+            return res.text
 
     async def refresh_token(self, client):
         """
