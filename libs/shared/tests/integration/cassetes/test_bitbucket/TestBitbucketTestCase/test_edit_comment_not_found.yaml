@@ -9,7 +9,7 @@ interactions:
       User-Agent:
       - Default
     method: PUT
-    uri: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/pullrequests/1/comments/113979999?oauth_consumer_key=arubajamaicaohiwan&oauth_token=testss3hxhcfqf1h6g&oauth_signature_method=HMAC-SHA1&oauth_timestamp=1566631150&oauth_nonce=5aeac543acea436d9f0594d750a98dd3&oauth_version=1.0&oauth_signature=16DIGrfTGyeo8k90tViVI%2BcqBPw%3D
+    uri: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/pullrequests/1/comments/113979999
   response:
     content: '{"type": "error", "error": {"message": "113979999"}}'
     headers:
