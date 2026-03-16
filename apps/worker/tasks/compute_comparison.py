@@ -7,7 +7,6 @@ from asgiref.sync import async_to_sync
 from celery import group
 
 from app import celery_app
-from database.enums import CompareCommitError, CompareCommitState
 from database.models import CompareCommit, CompareComponent, CompareFlag
 from database.models.reports import RepositoryFlag
 from helpers.comparison import minimal_totals
@@ -20,6 +19,7 @@ from services.yaml import get_current_yaml, get_repo_yaml
 from shared.api_archive.archive import ArchiveService
 from shared.celery_config import compute_comparison_task_name
 from shared.components import Component
+from shared.django_apps.enums import CompareCommitError, CompareCommitState
 from shared.helpers.flag import Flag
 from shared.torngit.exceptions import TorngitRateLimitError
 from shared.yaml import UserYaml

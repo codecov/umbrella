@@ -1,4 +1,3 @@
-from database.enums import Notification
 from services.comparison import ComparisonProxy, FilteredComparison
 from services.notification.notifiers.checks.base import (
     CheckOutput,
@@ -6,6 +5,7 @@ from services.notification.notifiers.checks.base import (
     ChecksNotifier,
 )
 from services.notification.notifiers.mixins.status import StatusChangesMixin
+from shared.django_apps.enums import Notification
 
 
 class ChangesChecksNotifier(StatusChangesMixin, ChecksNotifier):

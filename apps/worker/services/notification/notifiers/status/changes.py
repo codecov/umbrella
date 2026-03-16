@@ -1,12 +1,12 @@
 import logging
 
-from database.enums import Notification
 from services.comparison import ComparisonProxy, FilteredComparison
 from services.notification.notifiers.mixins.status import (
     StatusChangesMixin,
     StatusResult,
 )
 from services.notification.notifiers.status.base import StatusNotifier
+from shared.django_apps.enums import Notification
 
 log = logging.getLogger(__name__)
 
