@@ -111,7 +111,6 @@ def test__is_using_integration_ghapp_covers_some_repos(mock_get_config, db):
     "should_have_owner,service",
     [
         (False, Service.GITHUB.value),
-        (True, Service.BITBUCKET.value),
         (True, Service.BITBUCKET_SERVER.value),
     ],
 )
@@ -120,6 +119,13 @@ def test_token_refresh_callback_none_cases(should_have_owner, service, db):
     if should_have_owner:
         owner = OwnerFactory(service=service)
     assert get_token_refresh_callback(owner, service) is None
+
+
+def test_token_refresh_callback_bitbucket(db):
+    owner = OwnerFactory(service=Service.BITBUCKET.value)
+    callback = get_token_refresh_callback(owner, Service.BITBUCKET)
+    assert callback is not None
+    assert inspect.iscoroutinefunction(callback)
 
 
 GITHUB_SENTRY_APP_ID = 4321
