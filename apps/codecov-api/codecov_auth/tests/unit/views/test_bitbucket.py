@@ -31,6 +31,8 @@ def test_get_bitbucket_redirect(client, settings, mocker):
     assert cookie.value
     assert cookie.get("domain") == settings.COOKIES_DOMAIN
     assert cookie.get("secure")
+    assert cookie.get("samesite") == settings.COOKIE_SAME_SITE
+    assert cookie.get("max-age") == 300
     assert mocked_generate.call_count == 1
     # state kwarg was passed through
     _, kwargs = mocked_generate.call_args
