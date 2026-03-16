@@ -105,18 +105,18 @@ class Bitbucket(TorngitBaseAdapter):
         else:
             return res.text
 
-    def generate_redirect_url(self, redirect_url):
+    def generate_redirect_url(self, redirect_url, state=None):
         """
         Returns the Bitbucket OAuth 2.0 authorization URL to redirect the user to.
         """
-        params = urllib_parse.urlencode(
-            {
-                "client_id": self._oauth["key"],
-                "response_type": "code",
-                "redirect_uri": redirect_url,
-            }
-        )
-        return f"{self._OAUTH_AUTHORIZE_URL}?{params}"
+        params: dict = {
+            "client_id": self._oauth["key"],
+            "response_type": "code",
+            "redirect_uri": redirect_url,
+        }
+        if state is not None:
+            params["state"] = state
+        return f"{self._OAUTH_AUTHORIZE_URL}?{urllib_parse.urlencode(params)}"
 
     def generate_access_token(self, code, redirect_url):
         """

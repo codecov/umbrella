@@ -7,6 +7,7 @@ import respx
 from shared.torngit.bitbucket import Bitbucket
 from shared.torngit.exceptions import (
     TorngitClientError,
+    TorngitClientGeneralError,
     TorngitObjectNotFoundError,
     TorngitServer5xxCodeError,
     TorngitServerUnreachableError,
@@ -100,63 +101,76 @@ class TestUnitBitbucket:
         assert parsed_url.path == "/api/2.0/random_url"
         assert parsed_url.params == ""
         assert parsed_url.fragment == ""
+        # OAuth 2.0: auth is via Bearer token in headers, not query params
         query = dict(parse_qsl(parsed_url.query, keep_blank_values=True))
-        assert sorted(query.keys()) == [
-            "oauth_consumer_key",
-            "oauth_nonce",
-            "oauth_signature",
-            "oauth_signature_method",
-            "oauth_timestamp",
-            "oauth_token",
-            "oauth_version",
-        ]
-        assert (
-            query["oauth_consumer_key"] == "oauth_consumer_key_value"
-        )  # defined on `valid_handler`
-        assert query["oauth_signature_method"] == "HMAC-SHA1"
-        assert query["oauth_token"] == "somekey"  # defined on `valid_handler`
-        assert query["oauth_version"] == "1.0"  # our class uses
+        assert query == {}
+        assert kwargs["headers"]["Authorization"] == "Bearer somekey"
 
-    def test_generate_request_token(self, valid_handler):
-        with respx.mock:
-            my_route = respx.get(
-                "https://bitbucket.org/api/1.0/oauth/request_token"
-            ).mock(
-                return_value=httpx.Response(
-                    status_code=200,
-                    content="oauth_token_secret=test7f35jt40fnbz5xanwn9tlsi5ci10&oauth_token=testh3xen5q215b9ex&oauth_callback_confirmed=true",
-                )
-            )
-            v = valid_handler.generate_request_token("127.0.0.1/bb")
-            assert v == {
-                "oauth_token": "testh3xen5q215b9ex",
-                "oauth_token_secret": "test7f35jt40fnbz5xanwn9tlsi5ci10",
-            }
-            assert my_route.call_count == 1
+    def test_generate_redirect_url(self, valid_handler):
+        url = valid_handler.generate_redirect_url(
+            "https://codecov.io/login/bitbucket", state="teststate123"
+        )
+        parsed = urlparse(url)
+        query = dict(parse_qsl(parsed.query))
+        assert parsed.scheme == "https"
+        assert parsed.netloc == "bitbucket.org"
+        assert parsed.path == "/site/oauth2/authorize"
+        assert query["client_id"] == "oauth_consumer_key_value"
+        assert query["response_type"] == "code"
+        assert query["redirect_uri"] == "https://codecov.io/login/bitbucket"
+        assert query["state"] == "teststate123"
+
+    def test_generate_redirect_url_without_state(self, valid_handler):
+        url = valid_handler.generate_redirect_url("https://codecov.io/login/bitbucket")
+        parsed = urlparse(url)
+        query = dict(parse_qsl(parsed.query))
+        assert "state" not in query
 
     def test_generate_access_token(self, valid_handler):
         with respx.mock:
-            my_route = respx.get(
-                "https://bitbucket.org/api/1.0/oauth/access_token"
+            my_route = respx.post(
+                "https://bitbucket.org/site/oauth2/access_token"
             ).mock(
                 return_value=httpx.Response(
                     status_code=200,
-                    content="oauth_token_secret=test3j3wxslwkw2j27ncbntpcwq50kzh&oauth_token=testss3hxhcfqf1h6g",
+                    json={
+                        "access_token": "testss3hxhcfqf1h6g",
+                        "refresh_token": "testrefreshtoken",
+                        "token_type": "bearer",
+                        "scopes": "account",
+                    },
                 )
             )
-            cookie_key, cookie_secret, oauth_verifier = (
-                "rz5RKUeSbag6eeGrYj",
-                "WG8RYGfhMggdj6aKVhHq4qtSUJq4paDX",
-                "7403692316",
-            )
             v = valid_handler.generate_access_token(
-                cookie_key, cookie_secret, oauth_verifier
+                "auth_code_from_bitbucket", "https://codecov.io/login/bitbucket"
             )
             assert v == {
                 "key": "testss3hxhcfqf1h6g",
-                "secret": "test3j3wxslwkw2j27ncbntpcwq50kzh",
+                "secret": "testrefreshtoken",
             }
             assert my_route.call_count == 1
+
+    def test_generate_access_token_4xx(self, valid_handler):
+        with respx.mock:
+            respx.post("https://bitbucket.org/site/oauth2/access_token").mock(
+                return_value=httpx.Response(
+                    status_code=400, json={"error": "invalid_grant"}
+                )
+            )
+            with pytest.raises(TorngitClientGeneralError):
+                valid_handler.generate_access_token(
+                    "bad_code", "https://codecov.io/login/bitbucket"
+                )
+
+    def test_generate_access_token_5xx(self, valid_handler):
+        with respx.mock:
+            respx.post("https://bitbucket.org/site/oauth2/access_token").mock(
+                return_value=httpx.Response(status_code=503)
+            )
+            with pytest.raises(TorngitServer5xxCodeError):
+                valid_handler.generate_access_token(
+                    "code", "https://codecov.io/login/bitbucket"
+                )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

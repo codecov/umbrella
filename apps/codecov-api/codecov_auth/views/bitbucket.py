@@ -1,4 +1,5 @@
 import logging
+import secrets
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
@@ -11,7 +12,10 @@ from shared.django_apps.codecov_metrics.service.codecov_metrics import (
     UserOnboardingMetricsService,
 )
 from shared.torngit import Bitbucket
-from shared.torngit.exceptions import TorngitClientGeneralError, TorngitServerFailureError
+from shared.torngit.exceptions import (
+    TorngitClientGeneralError,
+    TorngitServerFailureError,
+)
 
 log = logging.getLogger(__name__)
 
@@ -50,10 +54,17 @@ class BitbucketLoginView(View, LoginMixin):
                 "secret": settings.BITBUCKET_CLIENT_SECRET,
             }
         )
+        state = secrets.token_urlsafe(32)
         url_to_redirect = repo_service.generate_redirect_url(
-            settings.BITBUCKET_REDIRECT_URI
+            settings.BITBUCKET_REDIRECT_URI, state=state
         )
         response = redirect(url_to_redirect)
+        response.set_signed_cookie(
+            "_bb_oauth_state",
+            state,
+            domain=settings.COOKIES_DOMAIN,
+            httponly=True,
+        )
         self.store_to_cookie_utm_tags(response)
         return response
 
@@ -64,8 +75,14 @@ class BitbucketLoginView(View, LoginMixin):
                 "secret": settings.BITBUCKET_CLIENT_SECRET,
             }
         )
+        expected_state = request.get_signed_cookie("_bb_oauth_state", default=None)
+        if not expected_state or request.GET.get("state") != expected_state:
+            log.warning("Bitbucket OAuth state mismatch — possible CSRF attempt")
+            return redirect(reverse("bitbucket-login"))
         code = request.GET.get("code")
-        token = repo_service.generate_access_token(code, settings.BITBUCKET_REDIRECT_URI)
+        token = repo_service.generate_access_token(
+            code, settings.BITBUCKET_REDIRECT_URI
+        )
         user_dict = self.fetch_user_data(token)
         user = self.get_and_modify_owner(user_dict, request)
         redirection_url = settings.CODECOV_DASHBOARD_URL + "/bb"
@@ -73,6 +90,7 @@ class BitbucketLoginView(View, LoginMixin):
             redirection_url, user
         )
         response = redirect(redirection_url)
+        response.delete_cookie("_bb_oauth_state", domain=settings.COOKIES_DOMAIN)
         self.login_owner(user, request, response)
         log.info("User successfully logged in", extra={"ownerid": user.ownerid})
         UserOnboardingMetricsService.create_user_onboarding_metric(
