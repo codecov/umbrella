@@ -173,6 +173,92 @@ class TestUnitBitbucket:
                 )
 
     @pytest.mark.asyncio
+    async def test_api_token_refresh_on_401(self, mocker):
+        new_token = {"key": "new_access_token", "secret": "new_refresh_token"}
+        on_token_refresh = mocker.AsyncMock()
+        handler = Bitbucket(
+            repo={"name": "example-python"},
+            owner={"username": "ThiagoCodecov"},
+            oauth_consumer_token={
+                "key": "oauth_consumer_key_value",
+                "secret": "oauth_consumer_token_secret_value",
+            },
+            token={"key": "expired_token", "secret": "old_refresh_token"},
+            on_token_refresh=on_token_refresh,
+        )
+        mocker.patch.object(handler, "refresh_token", return_value=new_token)
+        response_401 = mocker.MagicMock(
+            status_code=401,
+            text="Unauthorized",
+            headers={"Content-Type": "text/plain"},
+        )
+        response_200 = mocker.MagicMock(
+            status_code=200,
+            text="ok",
+            headers={"Content-Type": "text/plain"},
+        )
+        client = mocker.MagicMock(
+            request=mocker.AsyncMock(side_effect=[response_401, response_200])
+        )
+        result = await handler.api(client, "2", "GET", "/some/path")
+        assert result == "ok"
+        assert client.request.call_count == 2
+        on_token_refresh.assert_awaited_once_with(new_token)
+        # Second call should use the new token
+        _, kwargs = client.request.call_args
+        assert kwargs["headers"]["Authorization"] == "Bearer new_access_token"
+
+    @pytest.mark.asyncio
+    async def test_api_no_refresh_without_callback(self, mocker):
+        """Without on_token_refresh, a 401 should raise immediately."""
+        handler = Bitbucket(
+            repo={"name": "example-python"},
+            owner={"username": "ThiagoCodecov"},
+            oauth_consumer_token={
+                "key": "oauth_consumer_key_value",
+                "secret": "oauth_consumer_token_secret_value",
+            },
+            token={"key": "expired_token", "secret": "old_refresh_token"},
+        )
+        client = mocker.MagicMock(
+            request=mocker.AsyncMock(
+                return_value=mocker.MagicMock(
+                    status_code=401,
+                    text="Unauthorized",
+                    headers={"Content-Type": "text/plain"},
+                )
+            )
+        )
+        with pytest.raises(TorngitClientGeneralError):
+            await handler.api(client, "2", "GET", "/some/path")
+        assert client.request.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_refresh_token(self, valid_handler):
+        new_token = {
+            "access_token": "new_access_token",
+            "refresh_token": "new_refresh_token",
+            "token_type": "bearer",
+        }
+        valid_handler._token = {"key": "old_access", "secret": "old_refresh"}
+        with respx.mock:
+            respx.post("https://bitbucket.org/site/oauth2/access_token").mock(
+                return_value=httpx.Response(status_code=200, json=new_token)
+            )
+            async with httpx.AsyncClient() as client:
+                result = await valid_handler.refresh_token(client, "/some/url")
+        assert result == {"key": "new_access_token", "secret": "new_refresh_token"}
+        assert valid_handler.token == result
+
+    @pytest.mark.asyncio
+    async def test_refresh_token_no_refresh_token(self, valid_handler):
+        """If no refresh_token stored, refresh_token() returns None."""
+        valid_handler._token = {"key": "old_access", "secret": None}
+        async with httpx.AsyncClient() as client:
+            result = await valid_handler.refresh_token(client, "/some/url")
+        assert result is None
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "permission_name, expected_result",
         [("read", (True, False)), ("write", (True, True)), ("admin", (True, True))],
