@@ -13,7 +13,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/diff/b92edba..6ae5f17?context=1
+    uri: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/diff/b92edba..6ae5f17?context=1&oauth_consumer_key=arubajamaicaohiwan&oauth_signature_method=HMAC-SHA1&oauth_token=testss3hxhcfqf1h6g&oauth_version=1.0
   response:
     content: "diff --git a/README.rst b/README.rst\nindex 09c90a8..405d834 100644\n---
       a/README.rst\n+++ b/README.rst\n@@ -11,3 +11,4 @@ Overview\n \n-Main website:

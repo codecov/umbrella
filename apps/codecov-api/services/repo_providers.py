@@ -42,7 +42,7 @@ def get_token_refresh_callback(
     """
     if owner is None:
         return None
-    if service == Service.BITBUCKET_SERVER:
+    if service == Service.BITBUCKET or service == Service.BITBUCKET_SERVER:
         return None
 
     @sync_to_async
