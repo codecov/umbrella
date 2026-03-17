@@ -75,6 +75,12 @@ class ShouldCallNotifyResult(Enum):
     NOTIFY = "notify"
 
 
+class UploadFinisherFollowUpTaskType(Enum):
+    SWEEP = "sweep"
+    WATCHDOG = "watchdog"
+    CONTINUATION = "continuation"
+
+
 class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
     """This is the third task of the series of tasks designed to process an `upload` made
     by the user
@@ -229,13 +235,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         )
 
         return processing_results
-
-
-    class UploadFinisherFollowUpTaskType(Enum):
-        SWEEP = "sweep"
-        WATCHDOG = "watchdog"
-        CONTINUATION = "continuation"
-
 
     def _schedule_followup(
         self,
