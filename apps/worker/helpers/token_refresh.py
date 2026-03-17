@@ -19,7 +19,7 @@ def get_token_refresh_callback(owner: Owner) -> Callable[[dict], None]:
         return None
 
     service = owner.service
-    if service == "bitbucket_server":
+    if service == "bitbucket" or service == "bitbucket_server":
         return None
 
     async def callback(new_token: dict) -> None:
