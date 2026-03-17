@@ -7,6 +7,7 @@ import respx
 from shared.torngit.bitbucket import Bitbucket
 from shared.torngit.exceptions import (
     TorngitClientError,
+    TorngitClientGeneralError,
     TorngitObjectNotFoundError,
     TorngitServer5xxCodeError,
     TorngitServerUnreachableError,
@@ -100,63 +101,197 @@ class TestUnitBitbucket:
         assert parsed_url.path == "/api/2.0/random_url"
         assert parsed_url.params == ""
         assert parsed_url.fragment == ""
+        # OAuth 2.0: auth is via Bearer token in headers, not query params
         query = dict(parse_qsl(parsed_url.query, keep_blank_values=True))
-        assert sorted(query.keys()) == [
-            "oauth_consumer_key",
-            "oauth_nonce",
-            "oauth_signature",
-            "oauth_signature_method",
-            "oauth_timestamp",
-            "oauth_token",
-            "oauth_version",
-        ]
-        assert (
-            query["oauth_consumer_key"] == "oauth_consumer_key_value"
-        )  # defined on `valid_handler`
-        assert query["oauth_signature_method"] == "HMAC-SHA1"
-        assert query["oauth_token"] == "somekey"  # defined on `valid_handler`
-        assert query["oauth_version"] == "1.0"  # our class uses
+        assert query == {}
+        assert kwargs["headers"]["Authorization"] == "Bearer somekey"
 
-    def test_generate_request_token(self, valid_handler):
-        with respx.mock:
-            my_route = respx.get(
-                "https://bitbucket.org/api/1.0/oauth/request_token"
-            ).mock(
-                return_value=httpx.Response(
-                    status_code=200,
-                    content="oauth_token_secret=test7f35jt40fnbz5xanwn9tlsi5ci10&oauth_token=testh3xen5q215b9ex&oauth_callback_confirmed=true",
-                )
-            )
-            v = valid_handler.generate_request_token("127.0.0.1/bb")
-            assert v == {
-                "oauth_token": "testh3xen5q215b9ex",
-                "oauth_token_secret": "test7f35jt40fnbz5xanwn9tlsi5ci10",
-            }
-            assert my_route.call_count == 1
+    def test_generate_redirect_url(self, valid_handler):
+        url = valid_handler.generate_redirect_url(
+            "https://codecov.io/login/bitbucket", state="teststate123"
+        )
+        parsed = urlparse(url)
+        query = dict(parse_qsl(parsed.query))
+        assert parsed.scheme == "https"
+        assert parsed.netloc == "bitbucket.org"
+        assert parsed.path == "/site/oauth2/authorize"
+        assert query["client_id"] == "oauth_consumer_key_value"
+        assert query["response_type"] == "code"
+        assert query["redirect_uri"] == "https://codecov.io/login/bitbucket"
+        assert query["state"] == "teststate123"
+
+    def test_generate_redirect_url_without_state(self, valid_handler):
+        url = valid_handler.generate_redirect_url("https://codecov.io/login/bitbucket")
+        parsed = urlparse(url)
+        query = dict(parse_qsl(parsed.query))
+        assert "state" not in query
 
     def test_generate_access_token(self, valid_handler):
         with respx.mock:
-            my_route = respx.get(
-                "https://bitbucket.org/api/1.0/oauth/access_token"
+            my_route = respx.post(
+                "https://bitbucket.org/site/oauth2/access_token"
             ).mock(
                 return_value=httpx.Response(
                     status_code=200,
-                    content="oauth_token_secret=test3j3wxslwkw2j27ncbntpcwq50kzh&oauth_token=testss3hxhcfqf1h6g",
+                    json={
+                        "access_token": "testss3hxhcfqf1h6g",
+                        "refresh_token": "testrefreshtoken",
+                        "token_type": "bearer",
+                        "scopes": "account",
+                    },
                 )
             )
-            cookie_key, cookie_secret, oauth_verifier = (
-                "rz5RKUeSbag6eeGrYj",
-                "WG8RYGfhMggdj6aKVhHq4qtSUJq4paDX",
-                "7403692316",
-            )
             v = valid_handler.generate_access_token(
-                cookie_key, cookie_secret, oauth_verifier
+                "auth_code_from_bitbucket", "https://codecov.io/login/bitbucket"
             )
             assert v == {
                 "key": "testss3hxhcfqf1h6g",
-                "secret": "test3j3wxslwkw2j27ncbntpcwq50kzh",
+                "secret": "testrefreshtoken",
             }
             assert my_route.call_count == 1
+
+    def test_generate_access_token_4xx(self, valid_handler):
+        with respx.mock:
+            respx.post("https://bitbucket.org/site/oauth2/access_token").mock(
+                return_value=httpx.Response(
+                    status_code=400, json={"error": "invalid_grant"}
+                )
+            )
+            with pytest.raises(TorngitClientGeneralError):
+                valid_handler.generate_access_token(
+                    "bad_code", "https://codecov.io/login/bitbucket"
+                )
+
+    def test_generate_access_token_5xx(self, valid_handler):
+        with respx.mock:
+            respx.post("https://bitbucket.org/site/oauth2/access_token").mock(
+                return_value=httpx.Response(status_code=503)
+            )
+            with pytest.raises(TorngitServer5xxCodeError):
+                valid_handler.generate_access_token(
+                    "code", "https://codecov.io/login/bitbucket"
+                )
+
+    @pytest.mark.asyncio
+    async def test_api_token_refresh_on_401(self, mocker):
+        new_token = {"key": "new_access_token", "secret": "new_refresh_token"}
+        on_token_refresh = mocker.AsyncMock()
+        handler = Bitbucket(
+            repo={"name": "example-python"},
+            owner={"username": "ThiagoCodecov"},
+            oauth_consumer_token={
+                "key": "oauth_consumer_key_value",
+                "secret": "oauth_consumer_token_secret_value",
+            },
+            token={"key": "expired_token", "secret": "old_refresh_token"},
+            on_token_refresh=on_token_refresh,
+        )
+        mocker.patch.object(handler, "refresh_token", return_value=new_token)
+        response_401 = mocker.MagicMock(
+            status_code=401,
+            text="Unauthorized",
+            headers={"Content-Type": "text/plain"},
+        )
+        response_200 = mocker.MagicMock(
+            status_code=200,
+            text="ok",
+            headers={"Content-Type": "text/plain"},
+        )
+        client = mocker.MagicMock(
+            request=mocker.AsyncMock(side_effect=[response_401, response_200])
+        )
+        result = await handler.api(client, "2", "GET", "/some/path")
+        assert result == "ok"
+        assert client.request.call_count == 2
+        on_token_refresh.assert_awaited_once_with(new_token)
+        # Second call should use the new token
+        _, kwargs = client.request.call_args
+        assert kwargs["headers"]["Authorization"] == "Bearer new_access_token"
+
+    @pytest.mark.asyncio
+    async def test_api_no_refresh_without_callback(self, mocker):
+        """Without on_token_refresh, a 401 should raise immediately."""
+        handler = Bitbucket(
+            repo={"name": "example-python"},
+            owner={"username": "ThiagoCodecov"},
+            oauth_consumer_token={
+                "key": "oauth_consumer_key_value",
+                "secret": "oauth_consumer_token_secret_value",
+            },
+            token={"key": "expired_token", "secret": "old_refresh_token"},
+        )
+        client = mocker.MagicMock(
+            request=mocker.AsyncMock(
+                return_value=mocker.MagicMock(
+                    status_code=401,
+                    text="Unauthorized",
+                    headers={"Content-Type": "text/plain"},
+                )
+            )
+        )
+        with pytest.raises(TorngitClientGeneralError):
+            await handler.api(client, "2", "GET", "/some/path")
+        assert client.request.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_refresh_token(self, valid_handler):
+        new_token = {
+            "access_token": "new_access_token",
+            "refresh_token": "new_refresh_token",
+            "token_type": "bearer",
+        }
+        valid_handler._token = {"key": "old_access", "secret": "old_refresh"}
+        with respx.mock:
+            respx.post("https://bitbucket.org/site/oauth2/access_token").mock(
+                return_value=httpx.Response(status_code=200, json=new_token)
+            )
+            async with httpx.AsyncClient() as client:
+                result = await valid_handler.refresh_token(client)
+        assert result == {"key": "new_access_token", "secret": "new_refresh_token"}
+        assert valid_handler.token == result
+
+    @pytest.mark.asyncio
+    async def test_refresh_token_no_refresh_token(self, valid_handler):
+        """If no refresh_token stored, refresh_token() returns None."""
+        valid_handler._token = {"key": "old_access", "secret": None}
+        async with httpx.AsyncClient() as client:
+            result = await valid_handler.refresh_token(client)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_api_refresh_failure_raises_original_401(self, mocker):
+        """If refresh_token() raises, the original 401 error is raised."""
+        on_token_refresh = mocker.AsyncMock()
+        handler = Bitbucket(
+            repo={"name": "example-python"},
+            owner={"username": "ThiagoCodecov"},
+            oauth_consumer_token={
+                "key": "oauth_consumer_key_value",
+                "secret": "oauth_consumer_token_secret_value",
+            },
+            token={"key": "expired_token", "secret": "old_refresh_token"},
+            on_token_refresh=on_token_refresh,
+        )
+        mocker.patch.object(
+            handler,
+            "refresh_token",
+            side_effect=TorngitClientGeneralError(400, {}, "invalid_grant"),
+        )
+        client = mocker.MagicMock(
+            request=mocker.AsyncMock(
+                return_value=mocker.MagicMock(
+                    status_code=401,
+                    text="Unauthorized",
+                    reason_phrase="Unauthorized",
+                    content=b"Unauthorized",
+                    headers={"Content-Type": "text/plain"},
+                )
+            )
+        )
+        with pytest.raises(TorngitClientGeneralError):
+            await handler.api(client, "2", "GET", "/some/path")
+        assert client.request.call_count == 1
+        on_token_refresh.assert_not_awaited()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

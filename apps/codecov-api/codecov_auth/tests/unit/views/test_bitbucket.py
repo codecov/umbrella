@@ -8,18 +8,16 @@ from django.urls import reverse
 from codecov_auth.models import Owner
 from codecov_auth.views.bitbucket import BitbucketLoginView
 from shared.torngit.bitbucket import Bitbucket
-from shared.torngit.exceptions import TorngitServer5xxCodeError
-from utils.encryption import encryptor
+from shared.torngit.exceptions import (
+    TorngitClientGeneralError,
+)
 
 
 def test_get_bitbucket_redirect(client, settings, mocker):
-    mocked_get = mocker.patch.object(
+    mocked_generate = mocker.patch.object(
         Bitbucket,
-        "generate_request_token",
-        return_value={
-            "oauth_token": "testy6r2of6ajkmrub",
-            "oauth_token_secret": "testzibw5q01scpl8qeeupzh8u9yu8hz",
-        },
+        "generate_redirect_url",
+        return_value="https://bitbucket.org/site/oauth2/authorize?client_id=testqmo19ebdkseoby&response_type=code&redirect_uri=http%3A%2F%2Flocalhost&state=teststate",
     )
     settings.BITBUCKET_REDIRECT_URI = "http://localhost"
     settings.BITBUCKET_CLIENT_ID = "testqmo19ebdkseoby"
@@ -28,20 +26,24 @@ def test_get_bitbucket_redirect(client, settings, mocker):
     res = client.get(url, SERVER_NAME="localhost:8000")
     assert res.status_code == 302
 
-    assert "_oauth_request_token" in res.cookies
-    cookie = res.cookies["_oauth_request_token"]
+    assert "_bb_oauth_state" in res.cookies
+    cookie = res.cookies["_bb_oauth_state"]
     assert cookie.value
     assert cookie.get("domain") == settings.COOKIES_DOMAIN
-    assert (
-        res.url
-        == "https://bitbucket.org/api/1.0/oauth/authenticate?oauth_token=testy6r2of6ajkmrub"
-    )
-    mocked_get.assert_called_with(settings.BITBUCKET_REDIRECT_URI)
+    assert cookie.get("secure")
+    assert cookie.get("samesite") == settings.COOKIE_SAME_SITE
+    assert cookie.get("max-age") == 300
+    assert mocked_generate.call_count == 1
+    # state kwarg was passed through
+    _, kwargs = mocked_generate.call_args
+    assert kwargs.get("state") is not None
 
 
-def test_get_bitbucket_redirect_bitbucket_unavailable(client, settings, mocker):
-    mocked_get = mocker.patch.object(
-        Bitbucket, "generate_request_token", side_effect=TorngitServer5xxCodeError()
+def test_get_bitbucket_redirect_bitbucket_error(client, settings, mocker):
+    mocker.patch.object(
+        Bitbucket,
+        "generate_redirect_url",
+        side_effect=TorngitClientGeneralError(400, {}, "bad request"),
     )
     settings.BITBUCKET_REDIRECT_URI = "http://localhost"
     settings.BITBUCKET_CLIENT_ID = "testqmo19ebdkseoby"
@@ -49,9 +51,8 @@ def test_get_bitbucket_redirect_bitbucket_unavailable(client, settings, mocker):
     url = reverse("bitbucket-login")
     res = client.get(url, SERVER_NAME="localhost:8000")
     assert res.status_code == 302
-    assert "_oauth_request_token" not in res.cookies
+    assert "_bb_oauth_state" not in res.cookies
     assert res.url == url
-    mocked_get.assert_called_with(settings.BITBUCKET_REDIRECT_URI)
 
 
 async def fake_get_authenticated_user():
@@ -110,7 +111,7 @@ def test_get_bitbucket_already_token(client, settings, mocker, db, mock_redis):
         "generate_access_token",
         return_value={
             "key": "test6tl3evq7c8vuyn",
-            "secret": "testdm61tppb5x0tam7nae3qajhcepzz",
+            "secret": "testrefreshtoken",
         },
     )
     settings.BITBUCKET_REDIRECT_URI = "http://localhost"
@@ -118,15 +119,14 @@ def test_get_bitbucket_already_token(client, settings, mocker, db, mock_redis):
     settings.BITBUCKET_CLIENT_SECRET = "testfi8hzehvz453qj8mhv21ca4rf83f"
     settings.CODECOV_DASHBOARD_URL = "dashboard.value"
     settings.COOKIE_SECRET = "aaaaa"
+
+    state = "test_state_value_abc123"
     url = reverse("bitbucket-login")
-    oauth_request_token = (
-        "dGVzdDZ0bDNldnE3Yzh2dXlu|dGVzdGRtNjF0cHBiNXgwdGFtN25hZTNxYWpoY2Vweno="
-    )
     client.cookies = SimpleCookie(
         {
-            "_oauth_request_token": signing.get_cookie_signer(
-                salt="_oauth_request_token"
-            ).sign(encryptor.encode(oauth_request_token).decode())
+            "_bb_oauth_state": signing.get_cookie_signer(salt="_bb_oauth_state").sign(
+                state
+            )
         }
     )
     mock_create_user_onboarding_metric = mocker.patch(
@@ -135,17 +135,17 @@ def test_get_bitbucket_already_token(client, settings, mocker, db, mock_redis):
 
     res = client.get(
         url,
-        {"oauth_verifier": 8519288973, "oauth_token": "test1daxl4jnhegoh4"},
+        {"code": "auth_code_from_bitbucket", "state": state},
         SERVER_NAME="localhost:8000",
     )
     assert res.status_code == 302
     assert res.url == "dashboard.value/bb"
-    assert "_oauth_request_token" in res.cookies
-    cookie = res.cookies["_oauth_request_token"]
+    assert "_bb_oauth_state" in res.cookies
+    cookie = res.cookies["_bb_oauth_state"]
     assert cookie.value == ""
     assert cookie.get("domain") == settings.COOKIES_DOMAIN
     mocked_get.assert_called_with(
-        "test6tl3evq7c8vuyn", "testdm61tppb5x0tam7nae3qajhcepzz", "8519288973"
+        "auth_code_from_bitbucket", settings.BITBUCKET_REDIRECT_URI
     )
     owner = Owner.objects.get(username="ThiagoCodecov", service="bitbucket")
     expected_call = call(
@@ -155,13 +155,8 @@ def test_get_bitbucket_already_token(client, settings, mocker, db, mock_redis):
     )
     assert mock_create_user_onboarding_metric.call_args_list == [expected_call]
 
-    assert (
-        encryptor.decode(owner.oauth_token)
-        == "test6tl3evq7c8vuyn:testdm61tppb5x0tam7nae3qajhcepzz"
-    )
 
-
-def test_get_bitbucket_already_token_no_cookie(
+def test_get_bitbucket_already_token_no_state_cookie(
     client, settings, mocker, db, mock_redis
 ):
     mocker.patch(
@@ -175,7 +170,7 @@ def test_get_bitbucket_already_token_no_cookie(
         "generate_access_token",
         return_value={
             "key": "test6tl3evq7c8vuyn",
-            "secret": "testdm61tppb5x0tam7nae3qajhcepzz",
+            "secret": "testrefreshtoken",
         },
     )
     settings.BITBUCKET_REDIRECT_URI = "http://localhost"
@@ -184,7 +179,39 @@ def test_get_bitbucket_already_token_no_cookie(
     url = reverse("bitbucket-login")
     res = client.get(
         url,
-        {"oauth_verifier": 8519288973, "oauth_token": "test1daxl4jnhegoh4"},
+        {"code": "auth_code_from_bitbucket", "state": "some_state"},
+        SERVER_NAME="localhost:8000",
+    )
+    assert res.status_code == 302
+    assert res.url == "/login/bitbucket"
+    assert not mocked_get.called
+
+
+def test_get_bitbucket_state_mismatch(client, settings, mocker, db, mock_redis):
+    mocked_get = mocker.patch.object(
+        Bitbucket,
+        "generate_access_token",
+        return_value={
+            "key": "test6tl3evq7c8vuyn",
+            "secret": "testrefreshtoken",
+        },
+    )
+    settings.BITBUCKET_REDIRECT_URI = "http://localhost"
+    settings.BITBUCKET_CLIENT_ID = "testqmo19ebdkseoby"
+    settings.BITBUCKET_CLIENT_SECRET = "testfi8hzehvz453qj8mhv21ca4rf83f"
+    settings.COOKIE_SECRET = "aaaaa"
+
+    url = reverse("bitbucket-login")
+    client.cookies = SimpleCookie(
+        {
+            "_bb_oauth_state": signing.get_cookie_signer(salt="_bb_oauth_state").sign(
+                "legit_state"
+            )
+        }
+    )
+    res = client.get(
+        url,
+        {"code": "auth_code_from_bitbucket", "state": "attacker_injected_state"},
         SERVER_NAME="localhost:8000",
     )
     assert res.status_code == 302

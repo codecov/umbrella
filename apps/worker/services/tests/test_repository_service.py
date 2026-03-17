@@ -224,7 +224,7 @@ def test_get_repo_provider_service_bitbucket(dbsession):
     }
     assert res.data == expected_data
     assert repo.author.service == "bitbucket"
-    assert res._on_token_refresh is None
+    assert res._on_token_refresh is not None
     assert res.token == {
         "username": repo.author.username,
         "key": "testyftq3ovzkb3zmt823u3t04lkrt9w",
