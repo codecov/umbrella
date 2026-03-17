@@ -4,7 +4,7 @@ import os
 import time
 from collections import deque
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import sentry_sdk
@@ -196,6 +196,10 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                 "reason": "not_in_provider",
             }
         self.trigger_ai_pr_review(enriched_pull, current_yaml)
+
+        # Check for related commits to improve PR context
+        self.analyze_related_commits_for_context(db_session, pull, current_yaml)
+
         report_service = ReportService(
             current_yaml, gh_app_installation_name=installation_name_to_use
         )
@@ -595,6 +599,45 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                 self.app.tasks[ai_pr_review_task_name].apply_async(
                     kwargs={"repoid": pull.repoid, "pullid": pull.pullid}
                 )
+
+    def analyze_related_commits_for_context(self, db_session, pull, current_yaml):
+        """
+        Analyzes related commits to provide better context for the pull request.
+        This helps identify patterns and dependencies in the codebase.
+        """
+        repoid = pull.repoid
+        head_commit = pull.get_head_commit()
+
+        if not head_commit:
+            return
+
+        # Look for recent commits on the same branch for context
+        recent_cutoff = head_commit.timestamp - timedelta(days=30)
+
+        related_commits = (
+            db_session.query(Commit)
+            .filter(
+                Commit.repoid == repoid,
+                Commit.branch == head_commit.branch,
+                Commit.timestamp.between(recent_cutoff, head_commit.timestamp),
+                (Commit.pullid.is_(None) | (Commit.pullid != pull.pullid)),
+                Commit.deleted == False,
+            )
+            .order_by(Commit.timestamp.desc())
+            .limit(100)
+            .all()
+        )
+
+        if related_commits:
+            log.info(
+                "Found related commits for pull request context",
+                extra={
+                    "repoid": repoid,
+                    "pullid": pull.pullid,
+                    "related_commits_count": len(related_commits),
+                    "head_commit": head_commit.commitid,
+                },
+            )
 
 
 RegisteredPullSyncTask = celery_app.register_task(PullSyncTask())
