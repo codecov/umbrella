@@ -66,6 +66,10 @@ class CommitUploadsSerializer(serializers.ModelSerializer):
     job_code = serializers.CharField()
     build_url = serializers.CharField()
     state = serializers.CharField()
+    state_id = serializers.IntegerField(allow_null=True)
+    state_name = serializers.CharField(
+        source="get_state_id_display", allow_null=True, read_only=True
+    )
     env = serializers.JSONField()
     upload_type = serializers.CharField()
     upload_extras = serializers.JSONField()
@@ -84,6 +88,8 @@ class CommitUploadsSerializer(serializers.ModelSerializer):
             "job_code",
             "build_url",
             "state",
+            "state_id",
+            "state_name",
             "env",
             "upload_type",
             "upload_extras",

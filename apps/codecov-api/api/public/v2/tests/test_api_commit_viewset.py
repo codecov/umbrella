@@ -9,6 +9,7 @@ from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
+from shared.reports.enums import UploadState
 from shared.reports.types import ReportTotals
 from utils.test_utils import APIClient
 
@@ -416,7 +417,14 @@ class RepoCommitUploadsTestCase(BaseRepoCommitTestCase):
     ):
         build_report_from_commit.return_value = MockReport()
         get_repo_permissions.return_value = (True, True)
-        commit = CommitWithReportFactory(author=self.org, repository=self.repo)
+        commit = CommitWithReportFactory(
+            author=self.org,
+            repository=self.repo,
+            _upload_state_ids=[
+                UploadState.MERGED.db_id,
+                UploadState.PROCESSED.db_id,
+            ],
+        )
 
         response = self.client.get(
             reverse(
@@ -432,12 +440,7 @@ class RepoCommitUploadsTestCase(BaseRepoCommitTestCase):
         data = response.json()
 
         expected_storage_path = "v4/raw/2019-01-10/4434BC2A2EC4FCA57F77B473D83F928C/abf6d4df662c47e32460020ab14abf9303581429/9ccc55a1-8b41-4bb1-a946-ee7a33a7fb56.txt"
-
-        assert response.status_code == 200
-        assert len(data["results"]) == 2
-        assert data["results"][0]["storage_path"] == expected_storage_path
-        assert data["results"][1]["storage_path"] == expected_storage_path
-        assert data["results"][0]["totals"] == {
+        expected_totals = {
             "files": 3,
             "lines": 20,
             "hits": 17,
@@ -447,15 +450,19 @@ class RepoCommitUploadsTestCase(BaseRepoCommitTestCase):
             "branches": 0,
             "methods": 0,
         }
-        assert data["results"][1]["totals"] == {
-            "files": 3,
-            "lines": 20,
-            "hits": 17,
-            "misses": 3,
-            "partials": 0,
-            "coverage": 85.0,
-            "branches": 0,
-            "methods": 0,
+
+        assert response.status_code == 200
+        assert len(data["results"]) == 2
+        assert all(
+            result["storage_path"] == expected_storage_path
+            for result in data["results"]
+        )
+        assert all(result["totals"] == expected_totals for result in data["results"])
+        assert {
+            (result["state_id"], result["state_name"]) for result in data["results"]
+        } == {
+            (UploadState.MERGED.db_id, UploadState.MERGED.name),
+            (UploadState.PROCESSED.db_id, UploadState.PROCESSED.name),
         }
 
     @patch("shared.reports.api_report_service.build_report_from_commit")
