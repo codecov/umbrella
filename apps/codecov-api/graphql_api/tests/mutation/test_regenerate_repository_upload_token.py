@@ -21,8 +21,20 @@ mutation($input: RegenerateRepositoryUploadTokenInput!) {
 class RegenerateRepositoryUploadTokenTests(GraphQLTestHelper, TestCase):
     def setUp(self):
         self.org = OwnerFactory(username="codecov")
-        self.repo = RepositoryFactory(author=self.org, name="gazebo")
+        self.repo = RepositoryFactory(author=self.org, name="gazebo", private=False)
         self.old_repo_token = self.repo.upload_token
+
+    def test_when_unauthorized_user_not_part_of_org(self):
+        random_user = OwnerFactory()
+        data = self.gql_request(
+            query,
+            owner=random_user,
+            variables={"input": {"repoName": "gazebo", "owner": "codecov"}},
+        )
+        assert (
+            data["regenerateRepositoryUploadToken"]["error"]["__typename"]
+            == "UnauthorizedError"
+        )
 
     def test_when_authenticated_updates_token(self):
         user = OwnerFactory(
