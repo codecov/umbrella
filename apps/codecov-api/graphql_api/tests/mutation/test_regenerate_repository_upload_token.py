@@ -24,6 +24,16 @@ class RegenerateRepositoryUploadTokenTests(GraphQLTestHelper, TestCase):
         self.repo = RepositoryFactory(author=self.org, name="gazebo", private=False)
         self.old_repo_token = self.repo.upload_token
 
+    def test_when_unauthenticated(self):
+        data = self.gql_request(
+            query,
+            variables={"input": {"repoName": "gazebo", "owner": "codecov"}},
+        )
+        assert (
+            data["regenerateRepositoryUploadToken"]["error"]["__typename"]
+            == "UnauthenticatedError"
+        )
+
     def test_when_unauthorized_user_not_part_of_org(self):
         random_user = OwnerFactory()
         data = self.gql_request(
