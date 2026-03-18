@@ -9,7 +9,6 @@ from shared.django_apps.core.tests.factories import (
     OwnerFactory,
     RepositoryFactory,
 )
-from shared.django_apps.reports.models import ReportSession
 from shared.reports.enums import UploadState
 from shared.reports.types import ReportTotals
 from utils.test_utils import APIClient
@@ -418,14 +417,14 @@ class RepoCommitUploadsTestCase(BaseRepoCommitTestCase):
     ):
         build_report_from_commit.return_value = MockReport()
         get_repo_permissions.return_value = (True, True)
-        commit = CommitWithReportFactory(author=self.org, repository=self.repo)
-        uploads = list(
-            ReportSession.objects.filter(report__commit=commit.id).order_by("id")
+        commit = CommitWithReportFactory(
+            author=self.org,
+            repository=self.repo,
+            _upload_state_ids=[
+                UploadState.MERGED.db_id,
+                UploadState.PROCESSED.db_id,
+            ],
         )
-        uploads[0].state_id = UploadState.MERGED.db_id
-        uploads[1].state_id = UploadState.PROCESSED.db_id
-        uploads[0].save(update_fields=["state_id"])
-        uploads[1].save(update_fields=["state_id"])
 
         response = self.client.get(
             reverse(
