@@ -19,6 +19,10 @@ from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.save_commit_error import save_commit_error
 from services.comparison import get_or_create_comparison
 from services.lock_manager import LockManager, LockRetry, LockType
+from services.processing.finisher_gate import (
+    FINISHER_GATE_TTL_SECONDS,
+    refresh_finisher_gate_ttl,
+)
 from services.processing.intermediate import (
     cleanup_intermediate_reports,
     intermediate_report_key,
@@ -53,8 +57,9 @@ from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
-FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
 FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
+FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
+FINISHER_SWEEP_DELAY = 30
 
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
@@ -68,6 +73,12 @@ class ShouldCallNotifyResult(Enum):
     DO_NOT_NOTIFY = "do_not_notify"
     NOTIFY_ERROR = "notify_error"
     NOTIFY = "notify"
+
+
+class UploadFinisherFollowUpTaskType(Enum):
+    SWEEP = "sweep"
+    WATCHDOG = "watchdog"
+    CONTINUATION = "continuation"
 
 
 class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
@@ -224,6 +235,29 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         )
 
         return processing_results
+
+    def _schedule_followup(
+        self,
+        repoid: int,
+        commitid: str,
+        commit_yaml: UserYaml,
+        followup_type: UploadFinisherFollowUpTaskType,
+    ):
+        refresh_finisher_gate_ttl(repoid, commitid)
+        default_countdowns = {
+            UploadFinisherFollowUpTaskType.SWEEP: FINISHER_SWEEP_DELAY,
+            UploadFinisherFollowUpTaskType.CONTINUATION: 0,
+            UploadFinisherFollowUpTaskType.WATCHDOG: FINISHER_GATE_TTL_SECONDS,
+        }
+        self.app.tasks[upload_finisher_task_name].apply_async(
+            kwargs={
+                "commit_yaml": commit_yaml.to_dict(),
+                "commitid": commitid,
+                "repoid": repoid,
+                "trigger": followup_type.value,
+            },
+            countdown=default_countdowns[followup_type],
+        )
 
     def run_impl(
         self,
