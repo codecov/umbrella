@@ -67,7 +67,9 @@ class CommitFactory(DjangoModelFactory):
 class CommitWithReportFactory(CommitFactory):
     @classmethod
     def _create(cls, model_class, *args, **kwargs):
-        upload_state_ids = kwargs.pop("_upload_state_ids", None)
+        default_state_id = UploadState.PROCESSED.db_id
+        upload_state_ids = list(kwargs.pop("_upload_state_ids", []))
+        upload_state_ids = (upload_state_ids + [default_state_id, default_state_id])[:2]
         commit = super()._create(
             model_class,
             _report={
@@ -143,9 +145,7 @@ class CommitWithReportFactory(CommitFactory):
             report=commit_report,
             order_number=0,
             storage_path="v4/raw/2019-01-10/4434BC2A2EC4FCA57F77B473D83F928C/abf6d4df662c47e32460020ab14abf9303581429/9ccc55a1-8b41-4bb1-a946-ee7a33a7fb56.txt",
-            state_id=(
-                upload_state_ids[0] if upload_state_ids else UploadState.PROCESSED.db_id
-            ),
+            state_id=upload_state_ids[0],
         )
         UploadLevelTotalsFactory(
             report_session=upload1,
@@ -167,11 +167,7 @@ class CommitWithReportFactory(CommitFactory):
             report=commit_report,
             order_number=1,
             storage_path="v4/raw/2019-01-10/4434BC2A2EC4FCA57F77B473D83F928C/abf6d4df662c47e32460020ab14abf9303581429/9ccc55a1-8b41-4bb1-a946-ee7a33a7fb56.txt",
-            state_id=(
-                upload_state_ids[1]
-                if upload_state_ids and len(upload_state_ids) > 1
-                else UploadState.PROCESSED.db_id
-            ),
+            state_id=upload_state_ids[1],
         )
         UploadLevelTotalsFactory(
             report_session=upload2,
