@@ -1,4 +1,4 @@
-union RegenerateRepositoryTokenError = UnauthenticatedError | ValidationError
+union RegenerateRepositoryTokenError = UnauthenticatedError | UnauthorizedError | ValidationError
 
 type RegenerateRepositoryTokenPayload {
     token: String

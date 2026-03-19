@@ -25,7 +25,9 @@ mutation($input: RegenerateRepositoryTokenInput!) {
 class RegeneratRepositoryTokenTests(GraphQLTestHelper, TestCase):
     def setUp(self):
         self.org = OwnerFactory(username="codecov")
-        self.repo = RepositoryFactory(author=self.org, name="gazebo", active=True)
+        self.repo = RepositoryFactory(
+            author=self.org, name="gazebo", active=True, private=False
+        )
 
     def test_when_unauthenticated(self):
         data = self.gql_request(
@@ -43,14 +45,35 @@ class RegeneratRepositoryTokenTests(GraphQLTestHelper, TestCase):
             == "UnauthenticatedError"
         )
 
-    def test_when_validation_error_repo_not_viewable(self):
-        random_user = OwnerFactory(organizations=[self.org.ownerid])
+    def test_when_unauthorized_user_not_part_of_org(self):
+        random_user = OwnerFactory()
         data = self.gql_request(
             query,
             owner=random_user,
             variables={
                 "input": {
                     "repoName": "gazebo",
+                    "owner": "codecov",
+                    "tokenType": "PROFILING",
+                }
+            },
+        )
+        assert (
+            data["regenerateRepositoryToken"]["error"]["__typename"]
+            == "UnauthorizedError"
+        )
+
+    def test_when_validation_error_repo_not_viewable(self):
+        private_repo = RepositoryFactory(
+            author=self.org, name="private-repo", active=True, private=True
+        )
+        random_user = OwnerFactory(organizations=[self.org.ownerid])
+        data = self.gql_request(
+            query,
+            owner=random_user,
+            variables={
+                "input": {
+                    "repoName": "private-repo",
                     "owner": "codecov",
                     "tokenType": "PROFILING",
                 }
