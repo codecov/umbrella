@@ -21,6 +21,7 @@ from services.comparison import get_or_create_comparison
 from services.lock_manager import LockManager, LockRetry, LockType
 from services.processing.finisher_gate import (
     FINISHER_GATE_TTL_SECONDS,
+    delete_finisher_gate,
     refresh_finisher_gate_ttl,
 )
 from services.processing.intermediate import (
@@ -268,7 +269,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit_yaml,
         **kwargs,
     ):
-		try:
+        try:
             UploadFlow.log(UploadFlow.BATCH_PROCESSING_COMPLETE)
         except ValueError as e:
             log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
@@ -400,7 +401,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
             log.info("run_impl: Handling finisher lock")
 
-            return self._handle_finisher_lock(
+            result = self._handle_finisher_lock(
                 db_session,
                 commit,
                 commit_yaml,
@@ -408,6 +409,10 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 milestone,
                 upload_ids,
             )
+
+            delete_finisher_gate(repoid, commitid)
+
+            return result
 
         except Retry:
             raise
