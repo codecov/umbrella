@@ -65,16 +65,16 @@ UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
 regexp_ci_skip = re.compile(r"\[(ci|skip| |-){3,}\]")
 
 
-class UploadFinisherFollowUpTaskType(Enum):
-    SWEEP = "sweep"
-    WATCHDOG = "watchdog"
-    CONTINUATION = "continuation"
-
-
 class ShouldCallNotifyResult(Enum):
     DO_NOT_NOTIFY = "do_not_notify"
     NOTIFY_ERROR = "notify_error"
     NOTIFY = "notify"
+
+
+class UploadFinisherFollowUpTaskType(Enum):
+    SWEEP = "sweep"
+    WATCHDOG = "watchdog"
+    CONTINUATION = "continuation"
 
 
 class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
@@ -268,6 +268,10 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit_yaml,
         **kwargs,
     ):
+		try:
+            UploadFlow.log(UploadFlow.BATCH_PROCESSING_COMPLETE)
+        except ValueError as e:
+            log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
         milestone = Milestones.UPLOAD_COMPLETE
 
         log.info(
@@ -453,16 +457,17 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         state: ProcessingState,
     ):
         """Process reports with a lock to prevent concurrent modifications."""
+        diff = load_commit_diff(commit, self.name)
         repoid = commit.repoid
         commitid = commit.commitid
-        diff = load_commit_diff(commit, self.name)
         log.info("run_impl: Loaded commit diff")
 
         lock_manager = LockManager(
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=None,
+            blocking_timeout=FINISHER_BLOCKING_TIMEOUT_SECONDS,
+            base_retry_countdown=FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
         )
 
         try:
@@ -561,7 +566,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=None,
+            blocking_timeout=FINISHER_BLOCKING_TIMEOUT_SECONDS,
+            base_retry_countdown=FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
         )
 
         try:
