@@ -243,7 +243,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit_yaml: UserYaml,
         followup_type: "UploadFinisherTask.UploadFinisherFollowUpTaskType",
     ):
-        # refresh_finisher_gate_ttl(repoid, commitid)
         default_countdowns = {
             UploadFinisherFollowUpTaskType.SWEEP: self.FINISHER_BUFFER_TIME,
             UploadFinisherFollowUpTaskType.CONTINUATION: 0,
@@ -384,6 +383,8 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     milestone=milestone,
                     upload_ids=upload_ids,
                 )
+
+                refresh_finisher_gate_ttl(repoid, commitid)
                 self._schedule_followup(
                     repoid=repoid,
                     commitid=commitid,
@@ -391,13 +392,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     followup_type=self.UploadFinisherFollowUpTaskType.CONTINUATION,
                 )
                 return
-
-            self._schedule_followup(
-                repoid=repoid,
-                commitid=commitid,
-                commit_yaml=commit_yaml,
-                followup_type=self.UploadFinisherFollowUpTaskType.SWEEP,
-            )
 
             log.info("run_impl: Handling finisher lock")
 
@@ -410,6 +404,12 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids,
             )
 
+            self._schedule_followup(
+                repoid=repoid,
+                commitid=commitid,
+                commit_yaml=commit_yaml,
+                followup_type=self.UploadFinisherFollowUpTaskType.SWEEP,
+            )
             delete_finisher_gate(repoid, commitid)
 
             return result
@@ -426,6 +426,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 upload_ids=upload_ids,
                 error=Errors.TASK_TIMED_OUT,
             )
+            delete_finisher_gate(repoid, commitid)
             return {
                 "error": "Soft time limit exceeded",
                 "upload_ids": upload_ids,
@@ -438,6 +439,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                 "Unexpected error in upload finisher",
                 extra={"upload_ids": upload_ids},
             )
+            delete_finisher_gate(repoid, commitid)
             self._call_upload_breadcrumb_task(
                 commit_sha=commitid,
                 repo_id=repoid,

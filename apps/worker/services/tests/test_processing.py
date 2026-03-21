@@ -12,7 +12,7 @@ from services.processing.types import UploadArguments
 from shared.yaml import UserYaml
 
 
-def _setup_process_upload_mocks(mocker, processing=0, processed=1, gate_acquired=True):
+def _setup_process_upload_mocks(mocker, gate_acquired=True):
     """Common mock setup for process_upload tests."""
     mock_report_service = mocker.patch(
         "services.processing.processing.ReportService"
@@ -24,14 +24,9 @@ def _setup_process_upload_mocks(mocker, processing=0, processed=1, gate_acquired
         mock_processing_result
     )
 
-    mock_state_instance = MagicMock()
-    mock_state_instance.get_upload_numbers.return_value = MagicMock(
-        processing=processing,
-        processed=processed,
-    )
     mocker.patch(
         "services.processing.processing.ProcessingState",
-        return_value=mock_state_instance,
+        return_value=MagicMock(),
     )
 
     mocker.patch(
@@ -54,15 +49,16 @@ class TestProcessUploadFinisherTriggering:
     """
     Tests for the finisher triggering mechanism at the end of processing.
 
-    After each upload is processed, the processor checks if all uploads are done
-    (processing == 0) and tries to acquire the finisher gate (Redis SET NX) to
-    ensure exactly one processor dispatches the finisher.
+    After each upload is processed, the processor tries to acquire the finisher
+    gate (Redis SET NX). The first processor to win dispatches the finisher;
+    all others are no-ops. The finisher itself handles partial-completion via
+    its CONTINUATION/SWEEP follow-ups.
     """
 
-    def test_triggers_finisher_when_last_upload_and_gate_acquired(
+    def test_triggers_finisher_when_gate_acquired(
         self, dbsession, mocker, mock_storage
     ):
-        """Finisher is dispatched when processing == 0 and gate is acquired."""
+        """Finisher is dispatched when this processor wins the gate."""
         repository = RepositoryFactory.create()
         commit = CommitFactory.create(repository=repository)
         upload = UploadFactory.create(report__commit=commit, state="started")
@@ -70,7 +66,7 @@ class TestProcessUploadFinisherTriggering:
         dbsession.flush()
 
         mock_finisher_task = _setup_process_upload_mocks(
-            mocker, processing=0, processed=1, gate_acquired=True
+            mocker, gate_acquired=True
         )
         commit_yaml = UserYaml({})
 
@@ -97,10 +93,10 @@ class TestProcessUploadFinisherTriggering:
             }
         )
 
-    def test_does_not_trigger_finisher_when_uploads_still_processing(
+    def test_does_not_trigger_finisher_when_gate_already_held(
         self, dbsession, mocker, mock_storage
     ):
-        """Finisher is NOT dispatched when other uploads are still processing."""
+        """Finisher is NOT dispatched when another processor already holds the gate."""
         repository = RepositoryFactory.create()
         commit = CommitFactory.create(repository=repository)
         upload = UploadFactory.create(report__commit=commit, state="started")
@@ -108,39 +104,7 @@ class TestProcessUploadFinisherTriggering:
         dbsession.flush()
 
         mock_finisher_task = _setup_process_upload_mocks(
-            mocker, processing=2, processed=1, gate_acquired=True
-        )
-        commit_yaml = UserYaml({})
-
-        result = process_upload(
-            on_processing_error=lambda error: None,
-            db_session=dbsession,
-            repo_id=repository.repoid,
-            commit_sha=commit.commitid,
-            commit_yaml=commit_yaml,
-            arguments=UploadArguments(
-                commit=commit.commitid,
-                upload_id=upload.id_,
-                version="v4",
-                reportid=str(upload.report.external_id),
-            ),
-        )
-
-        assert result["successful"] is True
-        mock_finisher_task.apply_async.assert_not_called()
-
-    def test_does_not_trigger_finisher_when_gate_already_acquired(
-        self, dbsession, mocker, mock_storage
-    ):
-        """Finisher is NOT dispatched when another processor already acquired the gate."""
-        repository = RepositoryFactory.create()
-        commit = CommitFactory.create(repository=repository)
-        upload = UploadFactory.create(report__commit=commit, state="started")
-        dbsession.add_all([repository, commit, upload])
-        dbsession.flush()
-
-        mock_finisher_task = _setup_process_upload_mocks(
-            mocker, processing=0, processed=1, gate_acquired=False
+            mocker, gate_acquired=False
         )
         commit_yaml = UserYaml({})
 

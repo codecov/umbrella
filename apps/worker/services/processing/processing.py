@@ -72,17 +72,13 @@ def process_upload(
             save_intermediate_report(upload_id, processing_result.report)
         state.mark_upload_as_processed(upload_id)
 
-        upload_numbers = state.get_upload_numbers()
-        if upload_numbers.processing == 0 and try_acquire_finisher_gate(
-            repo_id, commit_sha
-        ):
+        if try_acquire_finisher_gate(repo_id, commit_sha):
             log.info(
-                "All uploads processed, acquired finisher gate — triggering finisher",
+                "Acquired finisher gate — triggering finisher",
                 extra={
                     "repo_id": repo_id,
                     "commit_sha": commit_sha,
                     "upload_id": upload_id,
-                    "processed": upload_numbers.processed,
                 },
             )
             celery_app.tasks[upload_finisher_task_name].apply_async(
