@@ -57,10 +57,6 @@ from tasks.base import BaseCodecovTask
 
 log = logging.getLogger(__name__)
 
-FINISHER_BASE_RETRY_COUNTDOWN_SECONDS = 10
-FINISHER_BLOCKING_TIMEOUT_SECONDS = 30
-FINISHER_SWEEP_DELAY = 30
-
 UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
     "upload_finisher_already_completed",
     "Number of times finisher skipped work because uploads were already in final state",
@@ -69,16 +65,16 @@ UPLOAD_FINISHER_ALREADY_COMPLETED_COUNTER = Counter(
 regexp_ci_skip = re.compile(r"\[(ci|skip| |-){3,}\]")
 
 
-class ShouldCallNotifyResult(Enum):
-    DO_NOT_NOTIFY = "do_not_notify"
-    NOTIFY_ERROR = "notify_error"
-    NOTIFY = "notify"
-
-
 class UploadFinisherFollowUpTaskType(Enum):
     SWEEP = "sweep"
     WATCHDOG = "watchdog"
     CONTINUATION = "continuation"
+
+
+class ShouldCallNotifyResult(Enum):
+    DO_NOT_NOTIFY = "do_not_notify"
+    NOTIFY_ERROR = "notify_error"
+    NOTIFY = "notify"
 
 
 class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
@@ -236,16 +232,19 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         return processing_results
 
+
+    FINISHER_BUFFER_TIME = 30
+
     def _schedule_followup(
         self,
         repoid: int,
         commitid: str,
         commit_yaml: UserYaml,
-        followup_type: UploadFinisherFollowUpTaskType,
+        followup_type: "UploadFinisherTask.UploadFinisherFollowUpTaskType",
     ):
-        refresh_finisher_gate_ttl(repoid, commitid)
+        # refresh_finisher_gate_ttl(repoid, commitid)
         default_countdowns = {
-            UploadFinisherFollowUpTaskType.SWEEP: FINISHER_SWEEP_DELAY,
+            UploadFinisherFollowUpTaskType.SWEEP: self.FINISHER_BUFFER_TIME,
             UploadFinisherFollowUpTaskType.CONTINUATION: 0,
             UploadFinisherFollowUpTaskType.WATCHDOG: FINISHER_GATE_TTL_SECONDS,
         }
@@ -269,11 +268,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         commit_yaml,
         **kwargs,
     ):
-        try:
-            UploadFlow.log(UploadFlow.BATCH_PROCESSING_COMPLETE)
-        except ValueError as e:
-            log.warning("CheckpointLogger failed to log/submit", extra={"error": e})
-
         milestone = Milestones.UPLOAD_COMPLETE
 
         log.info(
@@ -385,7 +379,20 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     milestone=milestone,
                     upload_ids=upload_ids,
                 )
+                self._schedule_followup(
+                    repoid=repoid,
+                    commitid=commitid,
+                    commit_yaml=commit_yaml,
+                    followup_type=self.UploadFinisherFollowUpTaskType.CONTINUATION,
+                )
                 return
+
+            self._schedule_followup(
+                repoid=repoid,
+                commitid=commitid,
+                commit_yaml=commit_yaml,
+                followup_type=self.UploadFinisherFollowUpTaskType.SWEEP,
+            )
 
             log.info("run_impl: Handling finisher lock")
 
@@ -446,23 +453,22 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
         state: ProcessingState,
     ):
         """Process reports with a lock to prevent concurrent modifications."""
-        diff = load_commit_diff(commit, self.name)
         repoid = commit.repoid
         commitid = commit.commitid
-
+        diff = load_commit_diff(commit, self.name)
         log.info("run_impl: Loaded commit diff")
 
         lock_manager = LockManager(
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=FINISHER_BLOCKING_TIMEOUT_SECONDS,
-            base_retry_countdown=FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
+            blocking_timeout=None,
         )
 
         try:
             with lock_manager.locked(
                 LockType.UPLOAD_PROCESSING,
+                max_retries=UPLOAD_FINISHER_MAX_RETRIES,
                 retry_num=self.attempts,
             ):
                 db_session.refresh(commit)
@@ -555,13 +561,13 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             repoid=repoid,
             commitid=commitid,
             lock_timeout=self.get_lock_timeout(DEFAULT_LOCK_TIMEOUT_SECONDS),
-            blocking_timeout=FINISHER_BLOCKING_TIMEOUT_SECONDS,
-            base_retry_countdown=FINISHER_BASE_RETRY_COUNTDOWN_SECONDS,
+            blocking_timeout=None,
         )
 
         try:
             with lock_manager.locked(
                 LockType.UPLOAD_FINISHER,
+                max_retries=UPLOAD_FINISHER_MAX_RETRIES,
                 retry_num=self.attempts,
             ):
                 result = self.finish_reports_processing(

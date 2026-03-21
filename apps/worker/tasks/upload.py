@@ -9,7 +9,7 @@ from typing import Any, TypedDict
 import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
-from celery import chain, chord
+from celery import chain, group
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from redis import Redis
@@ -256,18 +256,6 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
         *args: Any,
         **kwargs: Any,
     ):
-        # DEBUG: Log that upload task is actually running
-        log.info(
-            "UPLOAD TASK STARTED - Upload task is running",
-            extra={
-                "repoid": repoid,
-                "commitid": commitid,
-                "report_type": report_type,
-                "task_args": args,
-                "task_kwargs": kwargs,
-            },
-        )
-
         upload_context = UploadContext(
             repoid=int(repoid), commitid=commitid, report_type=ReportType(report_type)
         )
@@ -840,7 +828,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
             [int(upload["upload_id"]) for upload in argument_list]
         )
 
-        parallel_processing_tasks = [
+        return group(
             upload_processor_task.s(
                 repoid=commit.repoid,
                 commitid=commit.commitid,
@@ -848,18 +836,7 @@ class UploadTask(BaseCodecovTask, name=upload_task_name):
                 arguments=arguments,
             )
             for arguments in argument_list
-        ]
-
-        finisher_kwargs = {
-            "repoid": commit.repoid,
-            "commitid": commit.commitid,
-            "commit_yaml": commit_yaml,
-        }
-        finisher_kwargs = UploadFlow.save_to_kwargs(finisher_kwargs)
-        finish_parallel_sig = upload_finisher_task.signature(kwargs=finisher_kwargs)
-
-        parallel_tasks = chord(parallel_processing_tasks, finish_parallel_sig)
-        return parallel_tasks.apply_async()
+        ).apply_async()
 
     def _schedule_bundle_analysis_processing_task(
         self,

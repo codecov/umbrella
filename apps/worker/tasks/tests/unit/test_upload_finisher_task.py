@@ -41,6 +41,7 @@ from tasks.upload_finisher import (
     FINISHER_BLOCKING_TIMEOUT_SECONDS,
     ReportService,
     ShouldCallNotifyResult,
+    UploadFinisherFollowUpTaskType,
     UploadFinisherTask,
     load_commit_diff,
 )
@@ -1140,6 +1141,50 @@ class TestUploadFinisherTask:
 
         # Verify that _process_reports_with_lock WAS called
         mock_process.assert_called_once()
+
+    @pytest.mark.django_db
+    def test_run_impl_schedules_continuation_when_uploads_are_still_pending(
+        self, dbsession, mocker, mock_self_app
+    ):
+        commit = CommitFactory.create()
+        dbsession.add(commit)
+        dbsession.flush()
+
+        pending_upload = UploadFactory.create(
+            report__commit=commit,
+            report__report_type=ReportType.COVERAGE.value,
+            state="started",
+            state_id=UploadState.UPLOADED.db_id,
+        )
+        dbsession.add(pending_upload)
+        dbsession.flush()
+
+        mocker.patch.object(UploadFinisherTask, "_process_reports_with_lock")
+        mock_handle_finisher_lock = mocker.patch.object(
+            UploadFinisherTask, "_handle_finisher_lock"
+        )
+        mock_schedule_followup = mocker.patch.object(
+            UploadFinisherTask, "_schedule_followup"
+        )
+
+        UploadFinisherTask().run_impl(
+            dbsession,
+            processing_results=[
+                {"upload_id": pending_upload.id, "successful": True, "arguments": {}}
+            ],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+        )
+
+        mock_schedule_followup.assert_called_once()
+        followup_kwargs = mock_schedule_followup.call_args.kwargs
+        assert followup_kwargs["repoid"] == commit.repoid
+        assert followup_kwargs["commitid"] == commit.commitid
+        assert followup_kwargs["followup_type"] == UploadFinisherFollowUpTaskType.CONTINUATION
+        assert isinstance(followup_kwargs["commit_yaml"], UserYaml)
+        assert followup_kwargs["commit_yaml"].to_dict() == {}
+        mock_handle_finisher_lock.assert_not_called()
 
     @pytest.mark.django_db
     def test_reconstruct_processing_results_falls_back_to_database_when_redis_expires(
