@@ -232,7 +232,6 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
 
         return processing_results
 
-
     FINISHER_BUFFER_TIME = 30
 
     def _schedule_followup(
@@ -416,7 +415,7 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
                     repoid=repoid,
                     commitid=commitid,
                     commit_yaml=commit_yaml,
-                    followup_type=self.UploadFinisherFollowUpTaskType.CONTINUATION,
+                    followup_type=UploadFinisherFollowUpTaskType.CONTINUATION,
                     expected_uploads=total_uploads,
                 )
                 return
@@ -435,12 +434,12 @@ class UploadFinisherTask(BaseCodecovTask, name=upload_finisher_task_name):
             if is_sweep:
                 delete_finisher_gate(repoid, commitid)
             else:
-                refresh_finisher_gate_ttl(repoid, commitid)
+                delete_finisher_gate(repoid, commitid)
                 self._schedule_followup(
                     repoid=repoid,
                     commitid=commitid,
                     commit_yaml=commit_yaml,
-                    followup_type=self.UploadFinisherFollowUpTaskType.SWEEP,
+                    followup_type=UploadFinisherFollowUpTaskType.SWEEP,
                 )
             return result
 
