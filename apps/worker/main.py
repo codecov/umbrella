@@ -120,6 +120,7 @@ def worker(name: str, concurrency: int, debug: bool, queue: list[str]):
         concurrency,
         "-l",
         ("debug" if debug else "info"),
+        "-Ofair",
     ]
     if get_config("setup", "celery_queues_enabled", default=True):
         actual_queues = _get_queues_param_from_queue_input(queue)
