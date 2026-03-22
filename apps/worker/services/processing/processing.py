@@ -88,6 +88,15 @@ def process_upload(
                     "commit_yaml": commit_yaml.to_dict(),
                 }
             )
+        else:
+            log.info(
+                "Did not acquire finisher gate",
+                extra={
+                    "repo_id": repo_id,
+                    "commit_sha": commit_sha,
+                    "upload_id": upload_id,
+                },
+            )
 
         rewrite_or_delete_upload(archive_service, commit_yaml, report_info)
 
