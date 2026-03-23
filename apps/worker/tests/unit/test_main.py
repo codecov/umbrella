@@ -143,7 +143,6 @@ def test_deal_worker_command_default(
             2,
             "-l",
             "info",
-            "-Ofair",
             "-Q",
             f"celery,enterprise_celery,{BaseCeleryConfig.health_check_default_queue}",
             "-B",
@@ -189,7 +188,6 @@ def test_deal_worker_command(
             2,
             "-l",
             "info",
-            "-Ofair",
             "-Q",
             f"simple,one,two,some,enterprise_simple,enterprise_one,enterprise_two,enterprise_some,{BaseCeleryConfig.health_check_default_queue}",
             "-B",
@@ -237,7 +235,6 @@ def test_deal_worker_no_beat(
             2,
             "-l",
             "info",
-            "-Ofair",
             "-Q",
             f"simple,one,two,some,enterprise_simple,enterprise_one,enterprise_two,enterprise_some,{BaseCeleryConfig.health_check_default_queue}",
         ]
@@ -283,7 +280,6 @@ def test_deal_worker_no_queues(
             2,
             "-l",
             "info",
-            "-Ofair",
             "-B",
             "-s",
             "/home/codecov/celerybeat-schedule",
@@ -333,7 +329,6 @@ def test_deal_worker_no_queues_or_beat(
             2,
             "-l",
             "info",
-            "-Ofair",
         ]
     )
     mock_license_logging.assert_called_once()
