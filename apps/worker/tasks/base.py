@@ -43,7 +43,7 @@ from shared.django_apps.upload_breadcrumbs.models import (
 )
 from shared.metrics import Counter, Histogram
 from shared.torngit.base import TorngitBaseAdapter
-from shared.torngit.exceptions import TorngitClientError, TorngitRepoNotFoundError
+from shared.torngit.exceptions import TorngitClientError, TorngitRefreshTokenFailedError, TorngitRepoNotFoundError
 from shared.typings.torngit import AdditionalData
 from shared.utils.sentry import current_sentry_trace_id
 
@@ -636,6 +636,18 @@ class BaseCodecovTask(celery_app.Task):
             log.warning(
                 "Unable to reach git provider because this specific bot/integration can't see that repository",
                 extra={"repoid": repository.repoid},
+            )
+        except TorngitRefreshTokenFailedError:
+            if commit:
+                self._call_upload_breadcrumb_task(
+                    commit_sha=commit.commitid,
+                    repo_id=repository.repoid,
+                    error=Errors.GIT_CLIENT_ERROR,
+                )
+            log.warning(
+                "Unable to refresh git provider token",
+                extra={"repoid": repository.repoid},
+                exc_info=True,
             )
         except TorngitClientError:
             if commit:

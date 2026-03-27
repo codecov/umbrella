@@ -28,7 +28,7 @@ from shared.celery_config import (
 )
 from shared.django_apps.upload_breadcrumbs.models import BreadcrumbData, Errors
 from shared.plan.constants import PlanName
-from shared.torngit.exceptions import TorngitClientError
+from shared.torngit.exceptions import TorngitClientError, TorngitRefreshTokenFailedError
 from tasks.base import BaseCodecovRequest, BaseCodecovTask
 from tasks.base import celery_app as base_celery_app
 from tests.helpers import mock_all_plans_and_tiers
@@ -406,6 +406,35 @@ class TestBaseCodecovTask:
         mock_commit = mocker.MagicMock()
         mock_commit.commitid = "abc123"
         task.get_repo_provider_service(mock_repo, commit=mock_commit)
+        mock_self_app.tasks[
+            upload_breadcrumb_task_name
+        ].apply_async.assert_called_once_with(
+            kwargs={
+                "commit_sha": mock_commit.commitid,
+                "repo_id": mock_repo.repoid,
+                "breadcrumb_data": BreadcrumbData(
+                    error=Errors.GIT_CLIENT_ERROR,
+                ),
+                "upload_ids": [],
+                "sentry_trace_id": None,
+            }
+        )
+
+    def test_get_repo_provider_service_refresh_token_failed(
+        self, mocker, mock_self_app
+    ):
+        mocker.patch(
+            "tasks.base.get_repo_provider_service",
+            side_effect=TorngitRefreshTokenFailedError("400 Bad Request"),
+        )
+
+        task = BaseCodecovTask()
+        mock_repo = mocker.MagicMock()
+        mock_repo.repoid = 8
+        mock_commit = mocker.MagicMock()
+        mock_commit.commitid = "abc123"
+        result = task.get_repo_provider_service(mock_repo, commit=mock_commit)
+        assert result is None
         mock_self_app.tasks[
             upload_breadcrumb_task_name
         ].apply_async.assert_called_once_with(
