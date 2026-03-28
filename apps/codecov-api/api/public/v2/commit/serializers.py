@@ -9,6 +9,7 @@ from api.shared.commit.serializers import (
 from api.shared.serializers import StringListField
 from core.models import Commit
 from reports.models import ReportSession
+from shared.reports.enums import UploadState
 
 
 class CommitSerializer(serializers.ModelSerializer):
@@ -67,8 +68,11 @@ class CommitUploadsSerializer(serializers.ModelSerializer):
     build_url = serializers.CharField()
     state = serializers.CharField()
     state_id = serializers.IntegerField(allow_null=True)
-    state_name = serializers.CharField(
-        source="get_state_id_display", allow_null=True, read_only=True
+    state_name = serializers.ChoiceField(
+        choices=[(name, name) for _, name in UploadState.choices()],
+        source="get_state_id_display",
+        allow_null=True,
+        read_only=True,
     )
     env = serializers.JSONField()
     upload_type = serializers.CharField()
