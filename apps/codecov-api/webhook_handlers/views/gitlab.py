@@ -89,15 +89,26 @@ class GitLabWebhookHandler(APIView):
             or request.data.get("path_with_namespace")
             or request.data.get("project_name")
         )
-        repo_filter = {
-            "author__service": self.service_name,
-            "service_id": project_id,
-        }
-        if path_with_ns and "/" in path_with_ns:
-            repo_filter["author__username"] = path_with_ns.split("/")[0].strip()
+        owner_namespace = (
+            path_with_ns.split("/")[0].strip()
+            if path_with_ns and "/" in path_with_ns
+            else None
+        )
 
         try:
-            repo = get_object_or_404(Repository, **repo_filter)
+            if owner_namespace:
+                repo = get_object_or_404(
+                    Repository,
+                    author__service=self.service_name,
+                    author__username=owner_namespace,
+                    service_id=project_id,
+                )
+            else:
+                repo = get_object_or_404(
+                    Repository,
+                    author__service=self.service_name,
+                    service_id=project_id,
+                )
         except Exception as e:
             self._inc_err("repo_not_found")
             raise e
