@@ -50,7 +50,9 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         comparison: CompareCommit = (
             db_session.query(CompareCommit)
             .options(
-                joinedload(CompareCommit.compare_commit).joinedload(Commit.repository).joinedload(Repository.author),
+                joinedload(CompareCommit.compare_commit)
+                .joinedload(Commit.repository)
+                .joinedload(Repository.author),
                 joinedload(CompareCommit.base_commit).joinedload(Commit.repository),
             )
             .get(comparison_id)
