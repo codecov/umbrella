@@ -103,7 +103,9 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
             db_session.query(Commit)
             .filter(Commit.repoid == repoid, Commit.commitid == commitid)
             .options(
-                joinedload(Commit.repository).joinedload(Repository.author).joinedload(
+                joinedload(Commit.repository)
+                .joinedload(Repository.author)
+                .joinedload(
                     Owner.github_app_installations
                 )
             )
