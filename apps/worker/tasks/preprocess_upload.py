@@ -1,8 +1,11 @@
 import logging
 
+from sqlalchemy.orm import joinedload
+
 from app import celery_app
 from database.enums import CommitErrorTypes
 from database.models import Commit
+from database.models.core import GithubAppInstallation, Owner, Repository
 from helpers.exceptions import RepositoryWithoutValidBotError
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from helpers.save_commit_error import save_commit_error
@@ -99,6 +102,11 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
         commit = (
             db_session.query(Commit)
             .filter(Commit.repoid == repoid, Commit.commitid == commitid)
+            .options(
+                joinedload(Commit.repository).joinedload(Repository.author).joinedload(
+                    Owner.github_app_installations
+                )
+            )
             .first()
         )
         assert commit, "Commit not found in database."
@@ -123,7 +131,9 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
         )
         commit_yaml = fetch_commit_yaml_and_possibly_store(commit, repository_service)
         report_service = ReportService(
-            commit_yaml, gh_app_installation_name=installation_name_to_use
+            commit_yaml,
+            gh_app_installation_name=installation_name_to_use,
+            repository_service=repository_service,
         )
         commit_report = report_service.initialize_and_save_report(commit)
         # Persist changes from within the lock
