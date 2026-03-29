@@ -51,60 +51,6 @@ class GitLabWebhookHandler(APIView):
             error_reason=reason,
         ).inc()
 
-    def _get_owner_namespace(self, request) -> str | None:
-        """Extract the owner namespace from the webhook payload.
-
-        Different GitLab event types place this in different fields:
-        - Push/MR/Pipeline events: project.path_with_namespace ("namespace/repo")
-        - System hooks: path_with_namespace ("namespace/repo")
-        - Job hooks: project_name ("namespace/repo" or "namespace / repo")
-
-        See: https://docs.gitlab.com/ee/user/project/integrations/webhook_events.html
-        """
-        path_with_namespace = request.data.get("project", {}).get(
-            "path_with_namespace"
-        ) or request.data.get("path_with_namespace")
-
-        if path_with_namespace:
-            parts = path_with_namespace.split("/")
-            if len(parts) >= 2:
-                return parts[0].strip()
-
-        project_name = request.data.get("project_name")
-        if project_name:
-            parts = project_name.split("/")
-            if len(parts) >= 2:
-                return parts[0].strip()
-
-        return None
-
-    def _get_repo_from_webhook(self, request, project_id) -> Repository:
-        """Look up the Repository for the given webhook, disambiguating by owner
-        namespace when multiple repos share the same service_id."""
-        base_filter = {
-            "author__service": self.service_name,
-            "service_id": project_id,
-        }
-        owner_namespace = self._get_owner_namespace(request)
-
-        if owner_namespace:
-            try:
-                return Repository.objects.get(
-                    **base_filter, author__username=owner_namespace
-                )
-            except Repository.DoesNotExist:
-                pass
-            except Repository.MultipleObjectsReturned:
-                log.warning(
-                    "Multiple repos found even with namespace filter",
-                    extra={
-                        "service_id": project_id,
-                        "namespace": owner_namespace,
-                    },
-                )
-
-        return get_object_or_404(Repository, **base_filter)
-
     def post(self, request, *args, **kwargs):
         """
         Helpful docs for working with GitLab webhooks
@@ -135,11 +81,23 @@ class GitLabWebhookHandler(APIView):
                 self._inc_err("permission_denied")
                 raise PermissionDenied()
 
+        # Use the owner namespace from the payload to disambiguate when
+        # multiple owners have repos with the same GitLab project_id.
+        # See: https://docs.gitlab.com/ee/user/project/integrations/webhook_events.html
+        path_with_ns = (
+            request.data.get("project", {}).get("path_with_namespace")
+            or request.data.get("path_with_namespace")
+            or request.data.get("project_name")
+        )
+        repo_filter = {
+            "author__service": self.service_name,
+            "service_id": project_id,
+        }
+        if path_with_ns and "/" in path_with_ns:
+            repo_filter["author__username"] = path_with_ns.split("/")[0].strip()
+
         try:
-            repo = self._get_repo_from_webhook(request, project_id)
-        except Repository.MultipleObjectsReturned as e:
-            self._inc_err("repo_multiple_found")
-            raise e
+            repo = get_object_or_404(Repository, **repo_filter)
         except Exception as e:
             self._inc_err("repo_not_found")
             raise e

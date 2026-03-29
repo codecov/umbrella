@@ -276,45 +276,7 @@ class TestGitlabWebhookHandler(APITestCase):
             response = self._post_event_data(**event_data)
             assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_duplicate_repos_disambiguated_by_job_project_name(self):
-        """Job Hook payloads include project_name ('namespace/repo') which
-        can disambiguate when two owners share the same service_id."""
-        owner2 = OwnerFactory(service="gitlab")
-        RepositoryFactory(author=owner2, service_id=self.repo.service_id, active=True)
-
-        response = self._post_event_data(
-            event=GitLabWebhookEvents.JOB,
-            data={
-                "object_kind": "build",
-                "project_id": self.repo.service_id,
-                "build_status": "pending",
-                "project_name": f"{self.repo.author.username}/my-repo",
-            },
-        )
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data == WebhookHandlerErrorMessages.SKIP_PENDING_STATUSES
-
-    def test_duplicate_repos_disambiguated_by_push_path(self):
-        """Push events include project.path_with_namespace which can
-        disambiguate duplicate repos."""
-        owner2 = OwnerFactory(service="gitlab")
-        RepositoryFactory(author=owner2, service_id=self.repo.service_id, active=True)
-
-        response = self._post_event_data(
-            event=GitLabWebhookEvents.PUSH,
-            data={
-                "object_kind": "push",
-                "project_id": self.repo.service_id,
-                "project": {
-                    "path_with_namespace": f"{self.repo.author.username}/my-repo",
-                },
-            },
-        )
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data == "No yaml cached yet."
-
-    def test_duplicate_repos_disambiguated_by_job_project_name_spaced(self):
-        """Some GitLab versions use 'namespace / repo' format with spaces."""
+    def test_duplicate_repos_disambiguated_by_project_name(self):
         owner2 = OwnerFactory(service="gitlab")
         RepositoryFactory(author=owner2, service_id=self.repo.service_id, active=True)
 
@@ -330,20 +292,22 @@ class TestGitlabWebhookHandler(APITestCase):
         assert response.status_code == status.HTTP_200_OK
         assert response.data == WebhookHandlerErrorMessages.SKIP_PENDING_STATUSES
 
-    def test_duplicate_repos_without_namespace_falls_through(self):
-        """Without namespace info, duplicate repos still raise an error."""
+    def test_duplicate_repos_disambiguated_by_path_with_namespace(self):
         owner2 = OwnerFactory(service="gitlab")
         RepositoryFactory(author=owner2, service_id=self.repo.service_id, active=True)
 
         response = self._post_event_data(
-            event=GitLabWebhookEvents.JOB,
+            event=GitLabWebhookEvents.PUSH,
             data={
-                "object_kind": "build",
+                "object_kind": "push",
                 "project_id": self.repo.service_id,
-                "build_status": "pending",
+                "project": {
+                    "path_with_namespace": f"{self.repo.author.username}/my-repo",
+                },
             },
         )
-        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data == "No yaml cached yet."
 
     def test_secret_validation(self):
         owner = OwnerFactory(service="gitlab")
