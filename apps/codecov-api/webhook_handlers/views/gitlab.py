@@ -84,23 +84,20 @@ class GitLabWebhookHandler(APIView):
         # Use the owner namespace from the payload to disambiguate when
         # multiple owners have repos with the same GitLab project_id.
         # See: https://docs.gitlab.com/ee/user/project/integrations/webhook_events.html
-        path_with_ns = (
+        path = (
             request.data.get("project", {}).get("path_with_namespace")
             or request.data.get("path_with_namespace")
+            or request.data.get("project_path_with_namespace")
             or request.data.get("project_name")
         )
-        owner_namespace = (
-            path_with_ns.split("/")[0].strip()
-            if path_with_ns and "/" in path_with_ns
-            else None
-        )
+        owner = path.split("/")[0].strip() if path and "/" in path else None
 
         try:
-            if owner_namespace:
+            if owner:
                 repo = get_object_or_404(
                     Repository,
                     author__service=self.service_name,
-                    author__username=owner_namespace,
+                    author__username=owner,
                     service_id=project_id,
                 )
             else:
