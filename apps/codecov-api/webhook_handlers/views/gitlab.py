@@ -91,12 +91,17 @@ class GitLabWebhookHandler(APIView):
 
         try:
             if owner:
-                repo = get_object_or_404(
-                    Repository,
+                repo = Repository.objects.filter(
                     author__service=self.service_name,
                     author__username=owner,
                     service_id=project_id,
-                )
+                ).first()
+                if not repo:
+                    repo = get_object_or_404(
+                        Repository,
+                        author__service=self.service_name,
+                        service_id=project_id,
+                    )
             else:
                 repo = get_object_or_404(
                     Repository,
