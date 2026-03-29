@@ -135,35 +135,57 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         comparison_proxy: ComparisonProxy,
     ):
         repository_id = comparison.compare_commit.repository.repoid
-        for flag_name in head_report_flags.keys():
-            totals = self.get_flag_comparison_totals(flag_name, comparison_proxy)
-            repositoryflag = (
-                db_session.query(RepositoryFlag)
-                .filter_by(
-                    flag_name=flag_name,
-                    repository_id=repository_id,
-                )
-                .first()
-            )
-            if not repositoryflag:
-                log.warning(
-                    "Repository flag not found for flag. Created repository flag.",
-                    extra={"repoid": repository_id, "flag_name": flag_name},
-                )
-                repositoryflag = RepositoryFlag(
-                    repository_id=repository_id,
-                    flag_name=flag_name,
-                )
-                db_session.add(repositoryflag)
-                db_session.flush()
+        flag_names = list(head_report_flags.keys())
 
-            flag_comparison_entry = (
-                db_session.query(CompareFlag)
-                .filter_by(
-                    commit_comparison_id=comparison.id,
-                    repositoryflag_id=repositoryflag.id,
+        # Batch-fetch all existing RepositoryFlag records for this repo and flag set
+        existing_repo_flags = (
+            db_session.query(RepositoryFlag)
+            .filter(
+                RepositoryFlag.repository_id == repository_id,
+                RepositoryFlag.flag_name.in_(flag_names),
+            )
+            .all()
+        )
+        repo_flags_by_name = {rf.flag_name: rf for rf in existing_repo_flags}
+
+        # Bulk-create any missing RepositoryFlag records in one flush
+        missing_flag_names = [
+            name for name in flag_names if name not in repo_flags_by_name
+        ]
+        if missing_flag_names:
+            log.warning(
+                "Repository flag not found for flag(s). Created repository flag(s).",
+                extra={"repoid": repository_id, "flag_names": missing_flag_names},
+            )
+            for flag_name in missing_flag_names:
+                new_repo_flag = RepositoryFlag(
+                    repository_id=repository_id,
+                    flag_name=flag_name,
                 )
-                .first()
+                db_session.add(new_repo_flag)
+                repo_flags_by_name[flag_name] = new_repo_flag
+            db_session.flush()
+
+        # Batch-fetch all existing CompareFlag records for this comparison
+        repositoryflag_ids = [rf.id for rf in repo_flags_by_name.values()]
+        existing_flag_comparisons = (
+            db_session.query(CompareFlag)
+            .filter(
+                CompareFlag.commit_comparison_id == comparison.id,
+                CompareFlag.repositoryflag_id.in_(repositoryflag_ids),
+            )
+            .all()
+        )
+        flag_comparisons_by_repositoryflag_id = {
+            fc.repositoryflag_id: fc for fc in existing_flag_comparisons
+        }
+
+        # Now iterate using the pre-fetched data — no per-flag DB queries
+        for flag_name in flag_names:
+            totals = self.get_flag_comparison_totals(flag_name, comparison_proxy)
+            repositoryflag = repo_flags_by_name[flag_name]
+            flag_comparison_entry = flag_comparisons_by_repositoryflag_id.get(
+                repositoryflag.id
             )
 
             if not flag_comparison_entry:
