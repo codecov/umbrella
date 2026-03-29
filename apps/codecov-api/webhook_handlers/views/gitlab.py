@@ -81,9 +81,6 @@ class GitLabWebhookHandler(APIView):
                 self._inc_err("permission_denied")
                 raise PermissionDenied()
 
-        # Use the owner namespace from the payload to disambiguate when
-        # multiple owners have repos with the same GitLab project_id.
-        # See: https://docs.gitlab.com/ee/user/project/integrations/webhook_events.html
         path = (
             request.data.get("project", {}).get("path_with_namespace")
             or request.data.get("path_with_namespace")
