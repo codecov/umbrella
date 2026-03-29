@@ -5,10 +5,12 @@ import orjson
 import sentry_sdk
 from asgiref.sync import async_to_sync
 from celery import group
+from sqlalchemy.orm import joinedload
 
 from app import celery_app
 from database.enums import CompareCommitError, CompareCommitState
 from database.models import CompareCommit, CompareComponent, CompareFlag
+from database.models.core import Commit, Repository
 from database.models.reports import RepositoryFlag
 from helpers.comparison import minimal_totals
 from helpers.github_installation import get_installation_name_for_owner_for_task
@@ -45,7 +47,14 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
     def run_impl(
         self, db_session, comparison_id, *args, **kwargs
     ) -> ComputeComparisonTaskReturn:
-        comparison: CompareCommit = db_session.query(CompareCommit).get(comparison_id)
+        comparison: CompareCommit = (
+            db_session.query(CompareCommit)
+            .options(
+                joinedload(CompareCommit.compare_commit).joinedload(Commit.repository).joinedload(Repository.author),
+                joinedload(CompareCommit.base_commit).joinedload(Commit.repository),
+            )
+            .get(comparison_id)
+        )
         repo = comparison.compare_commit.repository
         log_extra = {
             "comparison_id": comparison_id,
