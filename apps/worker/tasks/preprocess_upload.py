@@ -105,9 +105,7 @@ class PreProcessUpload(BaseCodecovTask, name=pre_process_upload_task_name):
             .options(
                 joinedload(Commit.repository)
                 .joinedload(Repository.author)
-                .joinedload(
-                    Owner.github_app_installations
-                )
+                .joinedload(Owner.github_app_installations)
             )
             .first()
         )
