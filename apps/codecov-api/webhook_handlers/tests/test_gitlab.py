@@ -276,6 +276,39 @@ class TestGitlabWebhookHandler(APITestCase):
             response = self._post_event_data(**event_data)
             assert response.status_code == status.HTTP_403_FORBIDDEN
 
+    def test_duplicate_repos_disambiguated_by_project_name(self):
+        owner2 = OwnerFactory(service="gitlab")
+        RepositoryFactory(author=owner2, service_id=self.repo.service_id, active=True)
+
+        response = self._post_event_data(
+            event=GitLabWebhookEvents.JOB,
+            data={
+                "object_kind": "build",
+                "project_id": self.repo.service_id,
+                "build_status": "pending",
+                "project_name": f"{self.repo.author.username} / my-repo",
+            },
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data == WebhookHandlerErrorMessages.SKIP_PENDING_STATUSES
+
+    def test_duplicate_repos_disambiguated_by_path_with_namespace(self):
+        owner2 = OwnerFactory(service="gitlab")
+        RepositoryFactory(author=owner2, service_id=self.repo.service_id, active=True)
+
+        response = self._post_event_data(
+            event=GitLabWebhookEvents.PUSH,
+            data={
+                "object_kind": "push",
+                "project_id": self.repo.service_id,
+                "project": {
+                    "path_with_namespace": f"{self.repo.author.username}/my-repo",
+                },
+            },
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data == "No yaml cached yet."
+
     def test_secret_validation(self):
         owner = OwnerFactory(service="gitlab")
         repo = RepositoryFactory(

@@ -81,11 +81,33 @@ class GitLabWebhookHandler(APIView):
                 self._inc_err("permission_denied")
                 raise PermissionDenied()
 
+        path = (
+            request.data.get("project", {}).get("path_with_namespace")
+            or request.data.get("path_with_namespace")
+            or request.data.get("project_path_with_namespace")
+            or request.data.get("project_name")
+        )
+        owner = path.split("/")[0].strip() if path and "/" in path else None
+
         try:
-            # all other events should correspond to a repo in the db
-            repo = get_object_or_404(
-                Repository, author__service=self.service_name, service_id=project_id
-            )
+            if owner:
+                repo = Repository.objects.filter(
+                    author__service=self.service_name,
+                    author__username=owner,
+                    service_id=project_id,
+                ).first()
+                if not repo:
+                    repo = get_object_or_404(
+                        Repository,
+                        author__service=self.service_name,
+                        service_id=project_id,
+                    )
+            else:
+                repo = get_object_or_404(
+                    Repository,
+                    author__service=self.service_name,
+                    service_id=project_id,
+                )
         except Exception as e:
             self._inc_err("repo_not_found")
             raise e
