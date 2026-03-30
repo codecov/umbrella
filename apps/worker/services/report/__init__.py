@@ -48,6 +48,7 @@ from shared.reports.enums import UploadState, UploadType
 from shared.reports.resources import Report
 from shared.reports.types import TOTALS_MAP
 from shared.storage.exceptions import FileNotInStorageError
+from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import TorngitError
 from shared.upload.constants import UploadErrorCode
 from shared.utils.sessions import Session, SessionType
@@ -192,11 +193,15 @@ class BaseReportService:
 
 class ReportService(BaseReportService):
     def __init__(
-        self, current_yaml: UserYaml | dict, gh_app_installation_name: str | None = None
+        self,
+        current_yaml: UserYaml | dict,
+        gh_app_installation_name: str | None = None,
+        repository_service: TorngitBaseAdapter | None = None,
     ):
         super().__init__(current_yaml)
         self.flag_dict: dict[str, RepositoryFlag] | None = None
         self.gh_app_installation_name = gh_app_installation_name
+        self.repository_service = repository_service
 
     def has_initialized_report(self, commit: Commit) -> bool:
         """
@@ -413,7 +418,7 @@ class ReportService(BaseReportService):
         self, carryforward_report: Report, base_commit: Commit, head_commit: Commit
     ) -> Report:
         try:
-            provider_service = get_repo_provider_service(
+            provider_service = self.repository_service or get_repo_provider_service(
                 repository=head_commit.repository,
                 installation_name_to_use=self.gh_app_installation_name,
             )
