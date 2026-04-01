@@ -1,5 +1,4 @@
 import logging
-from contextlib import nullcontext
 from typing import Any, TypedDict
 
 import sentry_sdk
@@ -11,7 +10,6 @@ from services.notification.notifiers.mixins.status import StatusState
 from services.notification.notifiers.status.base import StatusNotifier
 from services.urls import (
     append_tracking_params_to_urls,
-    get_commit_url,
     get_members_url,
     get_pull_url,
 )
@@ -95,7 +93,66 @@ class ChecksNotifier(StatusNotifier):
         comparison: ComparisonProxy,
         status_or_checks_helper_text: dict[str, str] | None = None,
     ) -> NotificationResult:
-        if comparison.pull is None or ():
+        pr_result = self._validate_pull_request(comparison)
+        if pr_result is not None:
+            return pr_result
+        precondition_result = self._check_notify_preconditions(comparison)
+        if precondition_result is not None:
+            return precondition_result
+        status_result = self._check_preexisting_status(comparison)
+        if status_result is not None:
+            return status_result
+        payload = None
+        try:
+            result_or_payload = self._build_payload_with_behavior(comparison)
+            if isinstance(result_or_payload, NotificationResult):
+                return result_or_payload
+            payload = result_or_payload
+            self._set_payload_url(comparison, payload)
+            return self.maybe_send_notification(comparison, payload)
+        except TorngitClientError as e:
+            if e.code == 403:
+                raise e
+            log.warning(
+                "Unable to send checks notification to user due to a client-side error",
+                exc_info=True,
+                extra={
+                    "repoid": comparison.head.commit.repoid,
+                    "commit": comparison.head.commit.commitid,
+                    "notifier_name": self.name,
+                },
+            )
+            return NotificationResult(
+                notification_attempted=True,
+                notification_successful=False,
+                explanation="client_side_error_provider",
+                data_sent=payload,
+            )
+        except TorngitError:
+            log.warning(
+                "Unable to send checks notification to user due to an unexpected error",
+                exc_info=True,
+                extra={
+                    "repoid": comparison.head.commit.repoid,
+                    "commit": comparison.head.commit.commitid,
+                    "notifier_name": self.name,
+                },
+            )
+            return NotificationResult(
+                notification_attempted=True,
+                notification_successful=False,
+                explanation="server_side_error_provider",
+                data_sent=payload,
+            )
+
+    def _validate_pull_request(
+        self, comparison: ComparisonProxy
+    ) -> NotificationResult | None:
+        """Validate that the comparison has a valid, open pull request.
+
+        Returns a NotificationResult if validation fails, or None to continue.
+        """
+        if comparison.pull is None:
             log.debug(
                 "Falling back to commit_status: Not a pull request",
                 extra={
@@ -149,24 +206,12 @@ class ChecksNotifier(StatusNotifier):
                 data_sent=None,
                 data_received=None,
             )
-        # Check branches config for this status before sending the check
-        if not self.can_we_set_this_status(comparison):
-            return NotificationResult(
-                notification_attempted=False,
-                notification_successful=None,
-                explanation="not_fit_criteria",
-                data_sent=None,
-            )
-        if not self.required_builds(comparison):
-            return NotificationResult(
-                notification_attempted=False,
-                notification_successful=None,
-                explanation="need_more_builds",
-                data_sent=None,
-                data_received=None,
-            )
-        # Check for existing statuses for this commit. If so, retain
-        # statuses and don't do a check as well
+        return None
+
+    def _check_preexisting_status(
+        self, comparison: ComparisonProxy
+    ) -> NotificationResult | None:
+        """Check if a commit status already exists. Returns a result to return early, or None."""
         statuses = comparison.get_existing_statuses()
         status_title = self.get_status_external_name()
         if statuses and statuses.get(status_title):
@@ -187,89 +232,55 @@ class ChecksNotifier(StatusNotifier):
                 data_sent=None,
                 data_received=None,
             )
-        payload = None
-        try:
-            with nullcontext():
-                # If flag coverage wasn't uploaded, apply the appropriate behavior
-                flag_coverage_not_uploaded_behavior = (
-                    self.determine_status_check_behavior_to_apply(
-                        comparison, "flag_coverage_not_uploaded_behavior"
-                    )
-                )
-                if not comparison.has_head_report():
-                    payload = self.build_payload(comparison)
-                elif (
-                    flag_coverage_not_uploaded_behavior == "exclude"
-                    and not self.flag_coverage_was_uploaded(comparison)
-                ):
-                    return NotificationResult(
-                        notification_attempted=False,
-                        notification_successful=None,
-                        explanation="exclude_flag_coverage_not_uploaded_checks",
-                        data_sent=None,
-                        data_received=None,
-                    )
-                elif (
-                    flag_coverage_not_uploaded_behavior == "pass"
-                    and not self.flag_coverage_was_uploaded(comparison)
-                ):
-                    filtered_comparison = comparison.get_filtered_comparison(
-                        **self.get_notifier_filters()
-                    )
-                    payload = self.build_payload(filtered_comparison)
-                    payload["state"] = "success"
-                    payload["output"]["summary"] = (
-                        payload.get("output", {}).get("summary", "")
-                        + " [Auto passed due to carriedforward or missing coverage]"
-                    )
-                else:
-                    filtered_comparison = comparison.get_filtered_comparison(
-                        **self.get_notifier_filters()
-                    )
-                    payload = self.build_payload(filtered_comparison)
-            if comparison.pull:
-                payload["url"] = get_pull_url(comparison.pull)
-            else:
-                payload["url"] = get_commit_url(comparison.head.commit)
-            return self.maybe_send_notification(comparison, payload)
-        except TorngitClientError as e:
-            if e.code == 403:
-                raise e
-            log.warning(
-                "Unable to send checks notification to user due to a client-side error",
-                exc_info=True,
-                extra={
-                    "repoid": comparison.head.commit.repoid,
-                    "commit": comparison.head.commit.commitid,
-                    "notifier_name": self.name,
-                },
+        return None
+
+    def _build_payload_with_behavior(
+        self, comparison: ComparisonProxy
+    ) -> NotificationResult | dict:
+        """Build the checks notification payload, applying flag coverage behavior rules.
+
+        Returns a NotificationResult for early exit, or a payload dict to send.
+        """
+        flag_coverage_not_uploaded_behavior = (
+            self.determine_status_check_behavior_to_apply(
+                comparison, "flag_coverage_not_uploaded_behavior"
             )
+        )
+        if not comparison.has_head_report():
+            return self.build_payload(comparison)
+        if (
+            flag_coverage_not_uploaded_behavior == "exclude"
+            and not self.flag_coverage_was_uploaded(comparison)
+        ):
             return NotificationResult(
-                notification_attempted=True,
-                notification_successful=False,
-                explanation="client_side_error_provider",
-                data_sent=payload,
+                notification_attempted=False,
+                notification_successful=None,
+                explanation="exclude_flag_coverage_not_uploaded_checks",
+                data_sent=None,
+                data_received=None,
             )
-        except TorngitError:
-            log.warning(
-                "Unable to send checks notification to user due to an unexpected error",
-                exc_info=True,
-                extra={
-                    "repoid": comparison.head.commit.repoid,
-                    "commit": comparison.head.commit.commitid,
-                    "notifier_name": self.name,
-                },
+        if (
+            flag_coverage_not_uploaded_behavior == "pass"
+            and not self.flag_coverage_was_uploaded(comparison)
+        ):
+            filtered_comparison = comparison.get_filtered_comparison(
+                **self.get_notifier_filters()
             )
-            return NotificationResult(
-                notification_attempted=True,
-                notification_successful=False,
-                explanation="server_side_error_provider",
-                data_sent=payload,
+            payload = self.build_payload(filtered_comparison)
+            payload["state"] = "success"
+            payload["output"]["summary"] = (
+                payload.get("output", {}).get("summary", "")
+                + " [Auto passed due to carriedforward or missing coverage]"
             )
+            return payload
+        filtered_comparison = comparison.get_filtered_comparison(
+            **self.get_notifier_filters()
+        )
+        return self.build_payload(filtered_comparison)
 
     def get_line_diff(self, file_diff):
         """
-        This method traverses a git file diff and returns the lines (as line numbers) that where chnaged
+        This method traverses a git file diff and returns the lines (as line numbers) that were changed
         Note: For now it only looks for line additions on diff, we can quickly add functionality to handle
               line deletions if needed
 

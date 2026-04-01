@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from database.enums import TrialStatus
 from database.tests.factories import (
     CommitFactory,
     OwnerFactory,
@@ -26,6 +25,7 @@ from shared.django_apps.core.tests.factories import CommitFactory as DjangoCommi
 from shared.django_apps.core.tests.factories import (
     RepositoryFactory as DjangoRepositoryFactory,
 )
+from shared.django_apps.enums import TrialStatus
 from shared.django_apps.reports.models import ReportSession, ReportType
 from shared.django_apps.reports.tests.factories import CommitReportFactory
 from shared.django_apps.reports.tests.factories import (

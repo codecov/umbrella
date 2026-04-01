@@ -3,7 +3,6 @@ import logging
 from celery.exceptions import MaxRetriesExceededError
 
 from app import celery_app
-from database.enums import ReportType
 from database.models import Commit, Pull
 from database.models.reports import CommitReport, Upload
 from services.comparison import get_or_create_comparison
@@ -16,6 +15,7 @@ from shared.celery_config import (
     notify_task_name,
     pulls_task_name,
 )
+from shared.django_apps.enums import ReportType
 from shared.reports.enums import UploadState
 from tasks.base import BaseCodecovTask
 

@@ -4,7 +4,6 @@ from typing import Literal, Self, TypeVar
 
 import sentry_sdk
 
-from database.enums import ReportType
 from database.models.core import Commit, Repository
 from database.models.reports import CommitReport
 from services.bundle_analysis.notify.helpers import to_BundleThreshold
@@ -14,6 +13,7 @@ from services.bundle_analysis.notify.types import (
 )
 from services.repository import get_repo_provider_service
 from shared.bundle_analysis import BundleAnalysisReport, BundleAnalysisReportLoader
+from shared.django_apps.enums import ReportType
 from shared.torngit.base import TorngitBaseAdapter
 from shared.typings.torngit import AdditionalData, UploadType
 from shared.validation.types import BundleThreshold

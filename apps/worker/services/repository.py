@@ -11,7 +11,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, Session, lazyload
 
 import shared.torngit as torngit
-from database.enums import CommitErrorTypes
 from database.models import Commit, Owner, Pull
 from database.models import Repository as SQLAlchemyRepository
 from database.models.core import GITHUB_APP_INSTALLATION_DEFAULT_NAME
@@ -23,6 +22,7 @@ from services.yaml.fetcher import fetch_commit_yaml_from_provider
 from shared.bots import get_adapter_auth_information
 from shared.config import get_config, get_verify_ssl
 from shared.django_apps.core.models import Repository
+from shared.django_apps.enums import CommitErrorTypes
 from shared.torngit.base import TorngitBaseAdapter
 from shared.torngit.exceptions import (
     TorngitClientError,

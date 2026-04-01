@@ -2,7 +2,6 @@ from datetime import datetime
 
 import pytest
 
-from database.enums import Decoration, Notification, NotificationState
 from database.tests.factories import (
     CommitFactory,
     CommitNotificationFactory,
@@ -10,6 +9,7 @@ from database.tests.factories import (
     PullFactory,
     RepositoryFactory,
 )
+from shared.django_apps.enums import Decoration, Notification, NotificationState
 from tasks.new_user_activated import NewUserActivatedTask
 from tests.helpers import mock_all_plans_and_tiers
 
