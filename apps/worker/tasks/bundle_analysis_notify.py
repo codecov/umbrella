@@ -107,10 +107,22 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
             },
         )
 
+        db_session.expire_all()
         commit = (
             db_session.query(Commit).filter_by(repoid=repoid, commitid=commitid).first()
         )
-        assert commit, "commit not found"
+        if commit is None:
+            log.error(
+                "Commit not found for bundle analysis notify",
+                extra={
+                    "repoid": repoid,
+                    "commitid": commitid,
+                },
+            )
+            return {
+                "notify_attempted": False,
+                "notify_succeeded": None,
+            }
 
         # previous_result is the list of processing results from prior processor tasks
         # (they get accumulated as we execute each task in succession)
