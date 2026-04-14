@@ -28,6 +28,7 @@ from shared.torngit.exceptions import (
     TorngitClientError,
     TorngitError,
     TorngitObjectNotFoundError,
+    TorngitServerUnreachableError,
 )
 from shared.torngit.response_types import ProviderPull
 from shared.typings.torngit import (
@@ -663,6 +664,13 @@ def fetch_commit_yaml_and_possibly_store(
     except TorngitClientError:
         log.warning(
             "Unable to use yaml from commit because it cannot be fetched",
+            extra={"repoid": repository.repoid, "commit": commit.commitid},
+            exc_info=True,
+        )
+        commit_yaml = None
+    except TorngitServerUnreachableError:
+        log.warning(
+            "Unable to use yaml from commit because the provider is unreachable",
             extra={"repoid": repository.repoid, "commit": commit.commitid},
             exc_info=True,
         )
