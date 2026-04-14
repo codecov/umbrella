@@ -2,9 +2,11 @@ import logging
 from typing import Any
 
 import sentry_sdk
+from sqlalchemy.orm import joinedload
 
 from app import celery_app
 from database.models import Commit
+from database.models.core import Owner, Repository
 from helpers.github_installation import get_installation_name_for_owner_for_task
 from services.bundle_analysis.notify import BundleAnalysisNotifyService
 from services.bundle_analysis.notify.types import NotificationSuccess
@@ -108,7 +110,14 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
         )
 
         commit = (
-            db_session.query(Commit).filter_by(repoid=repoid, commitid=commitid).first()
+            db_session.query(Commit)
+            .filter_by(repoid=repoid, commitid=commitid)
+            .options(
+                joinedload(Commit.repository)
+                .joinedload(Repository.author)
+                .joinedload(Owner.github_app_installations)
+            )
+            .first()
         )
         assert commit, "commit not found"
 
