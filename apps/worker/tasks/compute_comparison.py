@@ -188,7 +188,9 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             .all()
         }
 
-        base_report_flags = comparison_proxy.comparison.project_coverage_base.report.flags
+        base_report_flags = (
+            comparison_proxy.comparison.project_coverage_base.report.flags
+        )
         diff = comparison_proxy.get_diff()
 
         for flag_name in flag_names:
