@@ -277,9 +277,21 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         ):
             self.parallel_compute_component_comparison(comparison.id, components)
         else:
+            # Pre-load all existing CompareComponent records in a single bulk query
+            # to avoid N+1 queries (one per component) in the loop below.
+            existing_component_comparisons: dict[str, CompareComponent] = {
+                cc.component_id: cc
+                for cc in db_session.query(CompareComponent)
+                .filter(CompareComponent.commit_comparison_id == comparison.id)
+                .all()
+            }
             for component in components:
                 self.compute_component_comparison(
-                    db_session, comparison, comparison_proxy, component
+                    db_session,
+                    comparison,
+                    comparison_proxy,
+                    component,
+                    existing_component_comparisons,
                 )
 
     @sentry_sdk.trace
@@ -304,15 +316,21 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         comparison: CompareCommit,
         comparison_proxy: ComparisonProxy,
         component: Component,
+        existing_component_comparisons: dict[str, CompareComponent] | None = None,
     ):
-        component_comparison = (
-            db_session.query(CompareComponent)
-            .filter_by(
-                commit_comparison_id=comparison.id,
-                component_id=component.component_id,
+        if existing_component_comparisons is not None:
+            component_comparison = existing_component_comparisons.get(
+                component.component_id
             )
-            .first()
-        )
+        else:
+            component_comparison = (
+                db_session.query(CompareComponent)
+                .filter_by(
+                    commit_comparison_id=comparison.id,
+                    component_id=component.component_id,
+                )
+                .first()
+            )
         if not component_comparison:
             component_comparison = CompareComponent(
                 commit_comparison=comparison,
