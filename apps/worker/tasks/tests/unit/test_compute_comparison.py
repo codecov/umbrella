@@ -1,4 +1,5 @@
 import json
+from unittest.mock import Mock
 
 from celery import group
 
@@ -779,3 +780,50 @@ class TestComputeComparisonTask:
         assert len(flag_comparisons) == 2
         for comparison in flag_comparisons:
             assert comparison.patch_totals is None
+
+    def test_get_flag_comparison_totals_without_diff(self):
+        task = ComputeComparisonTask()
+        head_flag = Mock()
+        head_flag.totals.asdict.return_value = {"hits": 5}
+        base_flag = Mock()
+        base_flag.totals.asdict.return_value = {"hits": 3}
+        totals = task.get_flag_comparison_totals(
+            "unit",
+            {"unit": head_flag},
+            {"unit": base_flag},
+            None,
+        )
+        assert totals == {
+            "head_totals": {"hits": 5},
+            "base_totals": {"hits": 3},
+            "patch_totals": None,
+        }
+
+    def test_get_flag_comparison_totals_with_diff_sets_patch_totals(self):
+        task = ComputeComparisonTask()
+        patch_totals = Mock()
+        patch_totals.asdict.return_value = {"hits": 1}
+        head_flag = Mock()
+        head_flag.totals.asdict.return_value = {"hits": 5}
+        head_flag.apply_diff.return_value = patch_totals
+        totals = task.get_flag_comparison_totals(
+            "unit",
+            {"unit": head_flag},
+            {},
+            {"files": {}},
+        )
+        head_flag.apply_diff.assert_called_once_with({"files": {}})
+        assert totals["patch_totals"] == {"hits": 1}
+
+    def test_get_flag_comparison_totals_skips_patch_when_apply_diff_empty(self):
+        task = ComputeComparisonTask()
+        head_flag = Mock()
+        head_flag.totals.asdict.return_value = {"hits": 5}
+        head_flag.apply_diff.return_value = None
+        totals = task.get_flag_comparison_totals(
+            "unit",
+            {"unit": head_flag},
+            {},
+            {"files": {}},
+        )
+        assert totals["patch_totals"] is None
