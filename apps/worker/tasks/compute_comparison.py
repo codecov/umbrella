@@ -148,9 +148,8 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
         repository_id = comparison.compare_commit.repository.repoid
         flag_names = list(head_report_flags.keys())
 
-        # Batch-fetch all RepositoryFlag records for this repository matching
-        # the flag names in the head report, to avoid one query per flag.
-        existing_repository_flags: dict[str, RepositoryFlag] = {
+        # Load repository flags in bulk; create missing rows before querying compare flags.
+        repository_flags_by_name: dict[str, RepositoryFlag] = {
             rf.flag_name: rf
             for rf in db_session.query(RepositoryFlag)
             .filter(
@@ -160,10 +159,9 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             .all()
         }
 
-        # Create any missing RepositoryFlag records up front so we can
-        # build a complete id→flag map before querying CompareFlag.
+        created_missing_repository_flags = False
         for flag_name in flag_names:
-            if flag_name not in existing_repository_flags:
+            if flag_name not in repository_flags_by_name:
                 log.warning(
                     "Repository flag not found for flag. Created repository flag.",
                     extra={"repoid": repository_id, "flag_name": flag_name},
@@ -173,13 +171,14 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
                     flag_name=flag_name,
                 )
                 db_session.add(new_flag)
-                db_session.flush()
-                existing_repository_flags[flag_name] = new_flag
+                repository_flags_by_name[flag_name] = new_flag
+                created_missing_repository_flags = True
 
-        # Batch-fetch all CompareFlag records for this comparison whose
-        # repositoryflag_id is among the flags we care about.
-        repositoryflag_ids = [rf.id for rf in existing_repository_flags.values()]
-        existing_flag_comparisons: dict[int, CompareFlag] = {
+        if created_missing_repository_flags:
+            db_session.flush()
+
+        repositoryflag_ids = [rf.id for rf in repository_flags_by_name.values()]
+        compare_flags_by_repo_flag_id: dict[int, CompareFlag] = {
             cf.repositoryflag_id: cf
             for cf in db_session.query(CompareFlag)
             .filter(
@@ -191,8 +190,8 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
 
         for flag_name in flag_names:
             totals = self.get_flag_comparison_totals(flag_name, comparison_proxy)
-            repositoryflag = existing_repository_flags[flag_name]
-            flag_comparison_entry = existing_flag_comparisons.get(repositoryflag.id)
+            repositoryflag = repository_flags_by_name[flag_name]
+            flag_comparison_entry = compare_flags_by_repo_flag_id.get(repositoryflag.id)
 
             if not flag_comparison_entry:
                 log.debug(
