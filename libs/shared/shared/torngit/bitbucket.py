@@ -56,7 +56,7 @@ class Bitbucket(TorngitBaseAdapter):
                 extra=dict(body=logged_body, **log_dict),
             )
             return res
-        except (httpx.NetworkError, httpx.TimeoutException):
+        except (httpx.NetworkError, httpx.TimeoutException, httpx.RemoteProtocolError):
             raise TorngitServerUnreachableError("Bitbucket was not able to be reached.")
 
     async def api(

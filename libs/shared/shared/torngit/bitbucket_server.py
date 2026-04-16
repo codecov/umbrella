@@ -144,7 +144,7 @@ class BitbucketServer(TorngitBaseAdapter):
                 res.status_code,
                 extra=dict(body=logged_body, **log_dict),
             )
-        except (httpx.NetworkError, httpx.TimeoutException):
+        except (httpx.NetworkError, httpx.TimeoutException, httpx.RemoteProtocolError):
             raise TorngitServerUnreachableError("Bitbucket was not able to be reached.")
         if res.status_code == 599:
             raise TorngitServerUnreachableError(
