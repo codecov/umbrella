@@ -135,7 +135,7 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
     Flake.objects.bulk_create(
         curr_flakes.values(),
         update_conflicts=True,
-        unique_fields=["id"],
+        unique_fields=["repoid", "test_id"],
         update_fields=["end_date", "count", "recent_passes_count", "fail_count"],
     )
 

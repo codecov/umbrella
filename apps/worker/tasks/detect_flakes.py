@@ -105,7 +105,7 @@ def process_flakes_for_repo(repo_id: int, upload_ids: list[int]):
                 Flake.objects.bulk_create(
                     curr_flakes.values(),
                     update_conflicts=True,
-                    unique_fields=["id"],
+                    unique_fields=["repoid", "test_id"],
                     update_fields=[
                         "end_date",
                         "count",
