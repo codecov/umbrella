@@ -477,7 +477,7 @@ class Gitlab(TorngitBaseAdapter):
                 else:
                     # Success case
                     return res
-            except (httpx.TimeoutException, httpx.NetworkError):
+            except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError):
                 raise TorngitServerUnreachableError(
                     "GitLab was not able to be reached. Gateway 502. Please try again."
                 )
