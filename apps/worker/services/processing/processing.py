@@ -117,12 +117,13 @@ def rewrite_or_delete_upload(
     archive_url = report_info.archive_url
 
     if should_delete_archive_setting and not report_info.error:
-        if not archive_url.startswith("http"):
+        if not archive_url.startswith("http") and not archive_url.startswith("shelter/"):
             archive_service.delete_file(archive_url)
 
     elif isinstance(report_info.raw_report, VersionOneParsedRawReport):
         # only a version 1 report needs to be "rewritten readable"
-
-        archive_service.write_file(
-            archive_url, report_info.raw_report.content().getvalue()
-        )
+        # shelter paths are managed by the Shelter service and should not be rewritten
+        if not archive_url.startswith("shelter/"):
+            archive_service.write_file(
+                archive_url, report_info.raw_report.content().getvalue()
+            )
