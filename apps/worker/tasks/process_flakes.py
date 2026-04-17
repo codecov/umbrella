@@ -17,6 +17,11 @@ class ProcessFlakesTask(BaseCodecovTask, name=process_flakes_task_name):
     This task is currently called in the test results finisher task and in the sync pulls task
     """
 
+    # Skip the DB query that populates log context with owner/repo details.
+    # This task is called frequently and the extra JOIN query creates unnecessary
+    # database load without providing meaningful benefit.
+    populate_log_context_from_db = False
+
     def run_impl(
         self,
         _db_session: Session,
