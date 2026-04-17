@@ -160,7 +160,7 @@ def get_github_integration_token(
         if host_override is not None:
             headers["Host"] = host_override
 
-        res = requests.post(url, headers=headers)
+        res = requests.post(url, headers=headers, proxies={})
         if res.status_code in [401, 403, 404, 422]:
             error_cause = decide_installation_error_cause(res)
             log.warning(
