@@ -17,6 +17,12 @@ class ProcessFlakesTask(BaseCodecovTask, name=process_flakes_task_name):
     This task is currently called in the test results finisher task and in the sync pulls task
     """
 
+    # This task only uses repo_id for Redis operations and does not need the
+    # owner/repo lookup that populate_from_sqlalchemy performs (which is only
+    # for logging purposes). Skipping it avoids an unnecessary JOIN query on
+    # the repos and owners tables on every task invocation.
+    should_populate_log_context = False
+
     def run_impl(
         self,
         _db_session: Session,
