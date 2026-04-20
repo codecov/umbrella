@@ -13,7 +13,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/user/permissions/repositories?q=repository.full_name%3D%22ThiagoCodecov%2Fexample-python%22+AND+%28permission%3D%22admin%22+OR+permission%3D%22write%22%29
+    uri: https://api.bitbucket.org/2.0/user/permissions/repositories?q=repository.full_name%3D%22ThiagoCodecov%2Fexample-python%22+AND+%28permission%3D%22admin%22+OR+permission%3D%22write%22%29
   response:
     content: '{"pagelen": 10, "values": [{"type": "repository_permission", "user":
       {"display_name": "Thiago Ramos", "uuid": "{9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645}",

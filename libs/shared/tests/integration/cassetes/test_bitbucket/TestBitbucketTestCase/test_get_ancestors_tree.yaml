@@ -7,7 +7,7 @@ interactions:
       User-Agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/commits?include=6ae5f17
+    uri: https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python/commits?include=6ae5f17
   response:
     content: "{\"pagelen\": 30, \"values\": [{\"rendered\": {\"message\": {\"raw\"\
       : \"Update README.rst\", \"markup\": \"markdown\", \"html\": \"<p>Update README.rst</p>\"\
@@ -773,7 +773,7 @@ interactions:
       \ \"links\": {\"self\": {\"href\": \"https://bitbucket.org/!api/2.0/repositories/ThiagoCodecov/example-python/commit/b1598e3d561f5f21b10150e98ad5c0bab286a6f2\"\
       }, \"html\": {\"href\": \"https://bitbucket.org/ThiagoCodecov/example-python/commits/b1598e3d561f5f21b10150e98ad5c0bab286a6f2\"\
       }}}], \"date\": \"2015-10-21T07:04:33+00:00\", \"message\": \"Update README.md\"\
-      , \"type\": \"commit\"}], \"next\": \"https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/commits?ctx=79edd3eec30e322dee687ae3870c45bb&page=2\"\
+      , \"type\": \"commit\"}], \"next\": \"https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python/commits?ctx=79edd3eec30e322dee687ae3870c45bb&page=2\"\
       }"
     headers:
       Accept-Ranges:
@@ -827,5 +827,5 @@ interactions:
       code: 200
       message: OK
     status_code: 200
-    url: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/commits?include=6ae5f17&oauth_consumer_key=arubajamaicaohiwan&oauth_token=testss3hxhcfqf1h6g&oauth_signature_method=HMAC-SHA1&oauth_timestamp=1568980339&oauth_nonce=1dcb7a2eedd544b395184b18231388a8&oauth_version=1.0&oauth_signature=XdUUtgGHNy2XcsbYlW%2Ftq3Od4qo%3D
+    url: https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python/commits?include=6ae5f17&oauth_consumer_key=arubajamaicaohiwan&oauth_token=testss3hxhcfqf1h6g&oauth_signature_method=HMAC-SHA1&oauth_timestamp=1568980339&oauth_nonce=1dcb7a2eedd544b395184b18231388a8&oauth_version=1.0&oauth_signature=XdUUtgGHNy2XcsbYlW%2Ftq3Od4qo%3D
 version: 1

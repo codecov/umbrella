@@ -26,7 +26,7 @@ class Bitbucket(TorngitBaseAdapter):
     _OAUTH_AUTHORIZE_URL = "https://bitbucket.org/site/oauth2/authorize"
     _OAUTH_ACCESS_TOKEN_URL = "https://bitbucket.org/site/oauth2/access_token"
     service = "bitbucket"
-    api_url = "https://bitbucket.org"
+    api_url = "https://api.bitbucket.org"
     service_url = "https://bitbucket.org"
     urls = {
         "repo": "{username}/{name}",
@@ -62,7 +62,7 @@ class Bitbucket(TorngitBaseAdapter):
     async def api(
         self, client, version, method, path, json=False, body=None, token=None, **kwargs
     ):
-        url = f"https://bitbucket.org/api/{version}.0{path}"
+        url = f"{self.api_url}/{version}.0{path}"
         headers = {
             "Accept": "application/json",
             "User-Agent": os.getenv("USER_AGENT", "Default"),
@@ -274,20 +274,17 @@ class Bitbucket(TorngitBaseAdapter):
 
     async def get_is_admin(self, user, token=None):
         user_uuid = "{" + user["service_id"] + "}"
-        workspace_uuid = "{" + self.data["owner"]["service_id"] + "}"
+        workspace_slug = self.data["owner"]["service_id"]
         async with self.get_client() as client:
             groups = await self.api(
-                client, "2", "get", "/user/permissions/workspaces", token=token
+                client,
+                "2",
+                "get",
+                f"/workspaces/{workspace_slug}/permissions",
+                q=f'permission="owner" AND user.uuid="{user_uuid}"',
+                token=token,
             )
-        if groups["values"]:
-            for group in groups["values"]:
-                if (
-                    group["permission"] == "owner"
-                    and group["workspace"]["uuid"] == workspace_uuid
-                    and group["user"]["uuid"] == user_uuid
-                ):
-                    return True
-        return False
+        return bool(groups["values"])
 
     async def list_teams(self, token=None):
         teams, page = [], None
@@ -297,19 +294,16 @@ class Bitbucket(TorngitBaseAdapter):
                     kwargs = {"page": page, "token": token}
                 else:
                     kwargs = {"token": token}
-                res = await self.api(
-                    client, "2", "get", "/user/permissions/workspaces", **kwargs
+                res = await self.api(client, "2", "get", "/user/workspaces", **kwargs)
+                teams.extend(
+                    {
+                        "name": workspace["name"],
+                        "id": workspace["uuid"][1:-1],
+                        "email": None,
+                        "username": workspace["slug"],
+                    }
+                    for workspace in res["values"]
                 )
-                for groups in res["values"]:
-                    team = groups["workspace"]
-                    teams.append(
-                        {
-                            "name": team["name"],
-                            "id": team["uuid"][1:-1],
-                            "email": None,
-                            "username": team["slug"],
-                        }
-                    )
 
                 if not res.get("next"):
                     break
