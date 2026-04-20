@@ -407,14 +407,20 @@ class TestUnitBitbucket:
             json={
                 "values": [
                     {
-                        "name": "banana",
-                        "uuid": "[uuid]",
-                        "slug": "specialslug",
+                        "type": "workspace_access",
+                        "workspace": {
+                            "type": "workspace_base",
+                            "slug": "specialslug",
+                            "uuid": "[uuid]",
+                        },
                     },
                     {
-                        "name": "apple",
-                        "uuid": "[abcdef]",
-                        "slug": "anotherslug",
+                        "type": "workspace_access",
+                        "workspace": {
+                            "type": "workspace_base",
+                            "slug": "anotherslug",
+                            "uuid": "[abcdef]",
+                        },
                     },
                 ]
             },
