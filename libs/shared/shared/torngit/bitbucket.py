@@ -26,7 +26,7 @@ class Bitbucket(TorngitBaseAdapter):
     _OAUTH_AUTHORIZE_URL = "https://bitbucket.org/site/oauth2/authorize"
     _OAUTH_ACCESS_TOKEN_URL = "https://bitbucket.org/site/oauth2/access_token"
     service = "bitbucket"
-    api_url = "https://bitbucket.org"
+    api_url = "https://api.bitbucket.org"
     service_url = "https://bitbucket.org"
     urls = {
         "repo": "{username}/{name}",
