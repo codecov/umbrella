@@ -62,7 +62,7 @@ class Bitbucket(TorngitBaseAdapter):
     async def api(
         self, client, version, method, path, json=False, body=None, token=None, **kwargs
     ):
-        url = f"https://bitbucket.org/api/{version}.0{path}"
+        url = f"{self.api_url}/{version}.0{path}"
         headers = {
             "Accept": "application/json",
             "User-Agent": os.getenv("USER_AGENT", "Default"),
