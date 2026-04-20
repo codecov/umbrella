@@ -274,16 +274,19 @@ class Bitbucket(TorngitBaseAdapter):
 
     async def get_is_admin(self, user, token=None):
         user_uuid = "{" + user["service_id"] + "}"
-        workspace_uuid = "{" + self.data["owner"]["service_id"] + "}"
+        workspace_slug = self.data["owner"]["service_id"]
         async with self.get_client() as client:
             groups = await self.api(
-                client, "2", "get", "/user/permissions/workspaces", token=token
+                client,
+                "2",
+                "get",
+                f"/workspaces/{workspace_slug}/permissions",
+                token=token,
             )
         if groups["values"]:
             for group in groups["values"]:
                 if (
                     group["permission"] == "owner"
-                    and group["workspace"]["uuid"] == workspace_uuid
                     and group["user"]["uuid"] == user_uuid
                 ):
                     return True
@@ -297,19 +300,16 @@ class Bitbucket(TorngitBaseAdapter):
                     kwargs = {"page": page, "token": token}
                 else:
                     kwargs = {"token": token}
-                res = await self.api(
-                    client, "2", "get", "/user/permissions/workspaces", **kwargs
+                res = await self.api(client, "2", "get", "/user/workspaces", **kwargs)
+                teams.extend(
+                    {
+                        "name": workspace["name"],
+                        "id": workspace["uuid"][1:-1],
+                        "email": None,
+                        "username": workspace["slug"],
+                    }
+                    for workspace in res["values"]
                 )
-                for groups in res["values"]:
-                    team = groups["workspace"]
-                    teams.append(
-                        {
-                            "name": team["name"],
-                            "id": team["uuid"][1:-1],
-                            "email": None,
-                            "username": team["slug"],
-                        }
-                    )
 
                 if not res.get("next"):
                     break
