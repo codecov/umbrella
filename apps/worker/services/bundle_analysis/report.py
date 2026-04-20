@@ -211,11 +211,14 @@ class BundleAnalysisReportService(BaseReportService):
             # if caching is on then update bundle.is_cached property to true
             # if caching is off then delete that bundle from the report
             update_fields = {}
+            bundles_to_delete = []
             for bundle in bundle_report.bundle_reports():
                 if bundle.name in bundles_to_be_cached:
                     update_fields[bundle.name] = True
                 else:
-                    bundle_report.delete_bundle_by_name(bundle.name)
+                    bundles_to_delete.append(bundle.name)
+            if bundles_to_delete:
+                bundle_report.delete_bundles_by_names(bundles_to_delete)
             if update_fields:
                 bundle_report.update_is_cached(update_fields)
             return bundle_report
