@@ -109,7 +109,7 @@ def _beat_schedule():
         },
         "process_owners_to_be_deleted": {
             "task": process_owners_to_be_deleted_cron_task_name,
-            "schedule": crontab(minute="*/15"),  # Every 15 minutes
+            "schedule": crontab(minute="0", hour="2"),  # 2 AM UTC nightly
             "kwargs": {
                 "cron_task_generation_time_iso": BeatLazyFunc(get_utc_now_as_iso_format)
             },
