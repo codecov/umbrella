@@ -297,10 +297,10 @@ class Bitbucket(TorngitBaseAdapter):
                 res = await self.api(client, "2", "get", "/user/workspaces", **kwargs)
                 teams.extend(
                     {
-                        "name": workspace["name"],
-                        "id": workspace["uuid"][1:-1],
+                        "name": workspace["workspace"]["slug"],
+                        "id": workspace["workspace"]["uuid"][1:-1],
                         "email": None,
-                        "username": workspace["slug"],
+                        "username": workspace["workspace"]["slug"],
                     }
                     for workspace in res["values"]
                 )
