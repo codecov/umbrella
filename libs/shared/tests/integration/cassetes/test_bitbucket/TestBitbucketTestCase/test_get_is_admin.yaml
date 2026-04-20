@@ -13,7 +13,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://api.bitbucket.org/2.0/workspaces/727d78e8-7431-4532-9519-1e5fe2b61d4b/permissions
+    uri: https://api.bitbucket.org/2.0/workspaces/727d78e8-7431-4532-9519-1e5fe2b61d4b/permissions?q=permission%3D%22owner%22+AND+user.uuid%3D%22%7B9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645%7D%22
   response:
     content: '{"pagelen": 50, "values": [{"permission": "owner", "user": {"display_name":
       "Thiago Ramos", "uuid": "{9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645}", "links": {"self":

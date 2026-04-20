@@ -281,16 +281,10 @@ class Bitbucket(TorngitBaseAdapter):
                 "2",
                 "get",
                 f"/workspaces/{workspace_slug}/permissions",
+                q=f'permission="owner" AND user.uuid="{user_uuid}"',
                 token=token,
             )
-        if groups["values"]:
-            for group in groups["values"]:
-                if (
-                    group["permission"] == "owner"
-                    and group["user"]["uuid"] == user_uuid
-                ):
-                    return True
-        return False
+        return bool(groups["values"])
 
     async def list_teams(self, token=None):
         teams, page = [], None

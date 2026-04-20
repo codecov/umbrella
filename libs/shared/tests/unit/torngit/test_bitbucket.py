@@ -402,23 +402,19 @@ class TestUnitBitbucket:
 
     @pytest.mark.asyncio
     async def test_list_repos_exception_mid_call(self, valid_handler, respx_vcr):
-        respx.get("https://api.bitbucket.org/2.0/user/permissions/workspaces").respond(
+        respx.get("https://api.bitbucket.org/2.0/user/workspaces").respond(
             status_code=200,
             json={
                 "values": [
                     {
-                        "workspace": {
-                            "name": "banana",
-                            "uuid": "[uuid]",
-                            "slug": "specialslug",
-                        }
+                        "name": "banana",
+                        "uuid": "[uuid]",
+                        "slug": "specialslug",
                     },
                     {
-                        "workspace": {
-                            "name": "apple",
-                            "uuid": "[abcdef]",
-                            "slug": "anotherslug",
-                        }
+                        "name": "apple",
+                        "uuid": "[abcdef]",
+                        "slug": "anotherslug",
                     },
                 ]
             },
