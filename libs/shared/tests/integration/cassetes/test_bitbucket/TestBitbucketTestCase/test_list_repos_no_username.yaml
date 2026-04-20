@@ -13,7 +13,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/user/permissions/workspaces
+    uri: https://api.bitbucket.org/2.0/user/permissions/workspaces
   response:
     content: '{"pagelen": 50, "values": [{"links": {"self": {"href": "https://bitbucket.org/!api/2.0/workspaces/thiagorramostestnumbar3/members/%7B9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645%7D"}},
       "permission": "member", "last_accessed": null, "user": {"display_name": "Thiago
@@ -154,7 +154,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/user/permissions/repositories?page=1
+    uri: https://api.bitbucket.org/2.0/user/permissions/repositories?page=1
   response:
     content: '{"pagelen": 10, "values": [{"type": "repository_permission", "user":
       {"display_name": "Thiago Ramos", "uuid": "{9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645}",
@@ -234,7 +234,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/repositories/thiagocodecovbanana?page=1
+    uri: https://api.bitbucket.org/2.0/repositories/thiagocodecovbanana?page=1
   response:
     content: '{"pagelen": 10, "values": [], "page": 1, "size": 0}'
     headers:
@@ -301,7 +301,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov?page=1
+    uri: https://api.bitbucket.org/2.0/repositories/ThiagoCodecov?page=1
   response:
     content: '{"pagelen": 10, "values": [{"scm": "git", "website": "", "has_wiki":
       false, "uuid": "{a8c50527-2c3a-480e-afe1-7700e2b00074}", "links": {"watchers":
@@ -404,7 +404,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/repositories/thiagorramosworkspace?page=1
+    uri: https://api.bitbucket.org/2.0/repositories/thiagorramosworkspace?page=1
   response:
     content: '{"pagelen": 10, "values": [], "page": 1, "size": 0}'
     headers:
@@ -471,7 +471,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/repositories/thiagorramostestnumbar3?page=1
+    uri: https://api.bitbucket.org/2.0/repositories/thiagorramostestnumbar3?page=1
   response:
     content: '{"pagelen": 10, "values": [], "page": 1, "size": 0}'
     headers:
@@ -538,7 +538,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/repositories/thiagorramostest2?page=1
+    uri: https://api.bitbucket.org/2.0/repositories/thiagorramostest2?page=1
   response:
     content: '{"pagelen": 10, "values": [], "page": 1, "size": 0}'
     headers:
@@ -605,7 +605,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/repositories/thiagorramosanotherw?page=1
+    uri: https://api.bitbucket.org/2.0/repositories/thiagorramosanotherw?page=1
   response:
     content: '{"pagelen": 10, "values": [], "page": 1, "size": 0}'
     headers:

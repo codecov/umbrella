@@ -13,7 +13,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/user/permissions/workspaces
+    uri: https://api.bitbucket.org/2.0/user/permissions/workspaces
   response:
     content: '{"pagelen": 50, "values": [{"links": {"self": {"href": "https://bitbucket.org/!api/2.0/workspaces/thiagorramostestnumbar3/members/%7B9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645%7D"}},
       "permission": "member", "last_accessed": null, "user": {"display_name": "Thiago
