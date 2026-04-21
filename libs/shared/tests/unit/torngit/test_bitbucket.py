@@ -402,10 +402,6 @@ class TestUnitBitbucket:
                 ]
             },
         )
-        respx.get("https://api.bitbucket.org/2.0/repositories").respond(
-            status_code=200,
-            json={"values": [{"full_name": "codecov/worker"}]},
-        )
         respx.get("https://api.bitbucket.org/2.0/repositories/specialslug").respond(
             status_code=200, json={"values": []}
         )
