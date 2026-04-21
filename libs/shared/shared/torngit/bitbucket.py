@@ -274,7 +274,7 @@ class Bitbucket(TorngitBaseAdapter):
 
     async def get_is_admin(self, user, token=None):
         user_uuid = "{" + user["service_id"] + "}"
-        workspace_slug = self.data["owner"]["service_id"]
+        workspace_slug = self.data["owner"]["username"]
         async with self.get_client() as client:
             groups = await self.api(
                 client,
@@ -338,26 +338,15 @@ class Bitbucket(TorngitBaseAdapter):
         return commits
 
     async def _get_teams_and_username_to_list(self, username=None, token=None):
-        # if username is not provided, list all repos
         repos_to_log = []
         if username is None:
-            # get all teams a user is member of
             teams = await self.list_teams(token)
             usernames = {team["username"] for team in teams}
-            # get permission of all repositories a user is member of
-            permissions = await self.list_permissions(token=token)
-            # get repo owners
-            for permission in permissions:
-                repo = permission["repository"]
+            # list_permissions discovers repo owners not covered by workspace membership
+            repos = await self.list_permissions(token=token)
+            for repo in repos:
                 repos_to_log.append(repo["full_name"])
-                name = repo["full_name"].split("/")
-                if repo.get("owner") and repo.get("owner").get("username") != name:
-                    log.warning(
-                        "Owner username different from what we think it is",
-                        extra={"repo_dict": repo, "found_name": name},
-                    )
-                usernames.add(name[0])
-            # add user's own username
+                usernames.add(repo["full_name"].split("/")[0])
             usernames.add(self.data["owner"]["username"])
         else:
             usernames = [username]
@@ -494,17 +483,16 @@ class Bitbucket(TorngitBaseAdapter):
                     client,
                     "2",
                     "get",
-                    "/user/permissions/repositories",
+                    "/repositories",
+                    role="member",
                     page=page,
                     token=token,
                 )
                 if not res["values"]:
-                    page = 0
-                else:
-                    data.extend(res["values"])
-                    if not res.get("next"):
-                        page = 0
-                        break
+                    break
+                data.extend(res["values"])
+                if not res.get("next"):
+                    break
         return data
 
     async def get_pull_request(self, pullid, token=None) -> ProviderPull | None:
@@ -969,43 +957,23 @@ class Bitbucket(TorngitBaseAdapter):
     async def get_authenticated(self, token=None):
         async with self.get_client() as client:
             if self.data["repo"].get("private"):
-                # https://confluence.atlassian.com/bitbucket/repository-resource-423626331.html#repositoryResource-GETarepository
+                # Verify user can access the private repo (raises on 4xx/5xx)
                 await self.api(
                     client, "2", "get", "/repositories/" + self.slug, token=token
                 )
-                response = await self.api(
-                    client,
-                    "2",
-                    "get",
-                    "/user/permissions/repositories",
-                    token=token,
-                    q=f'repository.full_name="{self.slug}"',
-                )
-                repo_permissions = response["values"] or []
-                can_edit = any(
-                    perm["permission"] in ("admin", "write")
-                    for perm in repo_permissions
-                )
-                if not can_edit:
-                    # Temporary log to track this down more easily
-                    # If you see this, just remove it
-                    log.info("New logic is disallowing customer from editing Bitbucket")
-                return (True, can_edit)
-            else:
-                # https://developer.atlassian.com/bitbucket/api/2/reference/resource/user/permissions/repositories
-                groups = await self.api(
-                    client,
-                    "2",
-                    "get",
-                    "/user/permissions/repositories",
-                    token=token,
-                    q=f'repository.full_name="{self.slug}" AND (permission="admin" OR permission="write")',
-                )
-                if groups["values"]:
-                    for group in groups["values"]:
-                        assert group["permission"] in ("admin", "write")
-                        return (True, True)
-                return (True, False)
+            # GET /repositories?role=contributor returns only repos where the user
+            # has write or admin access; presence means can_edit=True
+            response = await self.api(
+                client,
+                "2",
+                "get",
+                "/repositories",
+                role="contributor",
+                q=f'full_name="{self.slug}"',
+                token=token,
+            )
+            can_edit = bool(response.get("values"))
+            return (True, can_edit)
 
     async def get_source(self, path, ref, token=None):
         # https://confluence.atlassian.com/bitbucket/src-resources-296095214.html
