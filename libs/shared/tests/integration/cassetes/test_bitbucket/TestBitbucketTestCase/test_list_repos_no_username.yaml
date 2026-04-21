@@ -58,26 +58,6 @@ interactions:
     http_version: HTTP/1.1
     status_code: 200
 - request:
-    body: null
-    headers:
-      Accept:
-      - application/json
-      User-Agent:
-      - Default
-    method: GET
-    uri: https://api.bitbucket.org/2.0/repositories?role=member&page=1
-  response:
-    content: '{"pagelen": 10, "values": [{"type": "repository", "name": "example-python",
-      "full_name": "ThiagoCodecov/example-python", "uuid": "{a8c50527-2c3a-480e-afe1-7700e2b00074}",
-      "is_private": true, "scm": "git", "language": "", "owner": {"type": "user",
-      "uuid": "{9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645}", "nickname": "ThiagoCodecov"}}],
-      "page": 1, "size": 1}'
-    headers:
-      Content-Type:
-      - application/json; charset=utf-8
-    http_version: HTTP/1.1
-    status_code: 200
-- request:
     body: ''
     headers:
       accept:

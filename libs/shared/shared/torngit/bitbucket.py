@@ -338,20 +338,14 @@ class Bitbucket(TorngitBaseAdapter):
         return commits
 
     async def _get_teams_and_username_to_list(self, username=None, token=None):
-        repos_to_log = []
         if username is None:
             teams = await self.list_teams(token)
             usernames = {team["username"] for team in teams}
-            # list_permissions discovers repo owners not covered by workspace membership
-            repos = await self.list_permissions(token=token)
-            for repo in repos:
-                repos_to_log.append(repo["full_name"])
-                usernames.add(repo["full_name"].split("/")[0])
             usernames.add(self.data["owner"]["username"])
         else:
             usernames = [username]
 
-        return (usernames, repos_to_log)
+        return (usernames, [])
 
     async def _fetch_page_of_repos(self, client, username, token, page):
         # https://confluence.atlassian.com/display/BITBUCKET/repositories+Endpoint#repositoriesEndpoint-GETalistofrepositoriesforanaccount
@@ -386,22 +380,6 @@ class Bitbucket(TorngitBaseAdapter):
         return (repos, res.get("next"))
 
     async def list_repos(self, username=None, token=None):
-        """
-        Lists all repositories a user is part of.
-        *Note:
-        Bitbucket API V2 does not provide a dedicated endpoint which returns all repos a user is part of.
-        It provides however, an endpoint to get all the repos a user is part of from an specific org or user.
-        Endpoint to list repos from an specific user:
-            - /repositories/{username}
-        In order to get all the repositories a user is part of, we first need to get all the orgs and repo owners
-        - Orgs/Teams can be obtained using the 'list_teams' method
-        - Usernames of repo owners is a bit tricky since Bitbucket doesnt provide an endpoint for this
-            - Solution:
-                Use the 'list_permissions' method to get all repo permissions and exctract owner's username
-                from the repository 'full_name' attribute
-        Once we have all orgs/teams and owner's usernames we should call "/repositories/{username}" endpoint
-        for each of the orgs/teams and owner's usernames.
-        """
         data, page = [], 0
         usernames, repos_to_log = await self._get_teams_and_username_to_list(
             username, token
@@ -473,27 +451,6 @@ class Bitbucket(TorngitBaseAdapter):
             "Bitbucket: finished fetching repos",
             extra={"usernames": usernames},
         )
-
-    async def list_permissions(self, token=None):
-        data, page = [], 0
-        async with self.get_client() as client:
-            while True:
-                page += 1
-                res = await self.api(
-                    client,
-                    "2",
-                    "get",
-                    "/repositories",
-                    role="member",
-                    page=page,
-                    token=token,
-                )
-                if not res["values"]:
-                    break
-                data.extend(res["values"])
-                if not res.get("next"):
-                    break
-        return data
 
     async def get_pull_request(self, pullid, token=None) -> ProviderPull | None:
         # https://confluence.atlassian.com/display/BITBUCKET/pullrequests+Resource#pullrequestsResource-GETaspecificpullrequest
