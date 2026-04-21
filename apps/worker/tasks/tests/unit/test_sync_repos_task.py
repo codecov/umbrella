@@ -159,6 +159,179 @@ class TestSyncReposTaskUnit:
         assert updated_repo.updatestamp is not None
         assert updated_repo.deleted is False
 
+    def test_upsert_repo_real_name_change_proceeds(self, dbsession):
+        """Test that repo name changes proceed normally"""
+        service = "github"
+        repo_service_id = "12345"
+
+        # Create existing repo
+        user = OwnerFactory.create(
+            service=service,
+            username="testuser",
+            service_id="54321",
+        )
+        dbsession.add(user)
+
+        existing_repo = RepositoryFactory.create(
+            name="OldRepoName",
+            service_id=repo_service_id,
+            owner=user,
+            private=False,
+            language="python",
+        )
+        dbsession.add(existing_repo)
+        dbsession.flush()
+
+        # Try to update with completely different name
+        repo_data = {
+            "service_id": repo_service_id,
+            "name": "NewRepoName",  # Real name change
+            "private": False,
+            "language": "python",
+            "branch": "main",
+        }
+
+        upserted_repoid = SyncReposTask().upsert_repo(
+            dbsession, service, user.ownerid, repo_data
+        )
+
+        # Should return same repo ID
+        assert upserted_repoid == existing_repo.repoid
+
+        # Check that name WAS updated
+        updated_repo = (
+            dbsession.query(Repository)
+            .filter(Repository.repoid == existing_repo.repoid)
+            .first()
+        )
+        assert updated_repo.name == "NewRepoName"  # Should be updated
+        assert updated_repo.updatestamp is not None  # Should be updated
+
+    @pytest.mark.django_db
+    def test_repos_trigger_case_insensitive_no_conflict(self, dbsession):
+        """Test that the repos trigger doesn't fire for case-only changes"""
+        # Create owner and repo with capitalized name
+        user = OwnerFactory.create(
+            service="github",
+            username="testuser",
+            service_id="54321",
+        )
+        dbsession.add(user)
+
+        repo = RepositoryFactory.create(
+            name="TestRepo",  # Capitalized name
+            service_id="12345",
+            owner=user,
+            private=False,
+        )
+        dbsession.add(repo)
+        dbsession.flush()
+
+        # Update with case-only change - this should NOT trigger the repos trigger
+        # because the trigger condition is now case-insensitive
+        repo.name = "testrepo"  # lowercase
+        dbsession.commit()
+
+        # Verify the update succeeded (no trigger conflict)
+        updated_repo = (
+            dbsession.query(Repository).filter(Repository.repoid == repo.repoid).first()
+        )
+        assert updated_repo.name == "testrepo"
+        assert updated_repo.deleted is False  # Should NOT be marked as deleted
+
+    @pytest.mark.django_db
+    def test_repos_trigger_fires_for_real_name_conflict(self, dbsession):
+        """Test that the repos trigger still fires for real name conflicts"""
+        # Create owner
+        user = OwnerFactory.create(
+            service="github",
+            username="testuser",
+            service_id="54321",
+        )
+        dbsession.add(user)
+
+        # Create first repo
+        repo1 = RepositoryFactory.create(
+            name="ExistingRepo",
+            service_id="11111",
+            owner=user,
+            private=False,
+        )
+        dbsession.add(repo1)
+
+        # Create second repo with different name
+        repo2 = RepositoryFactory.create(
+            name="DifferentRepo",
+            service_id="22222",
+            owner=user,
+            private=False,
+        )
+        dbsession.add(repo2)
+        dbsession.flush()
+
+        # Update repo2 to have same name as repo1 - this SHOULD trigger the repos trigger
+        repo2.name = "ExistingRepo"
+        dbsession.commit()
+
+        # Verify repo1 was "soft deleted" by the trigger
+        dbsession.refresh(repo1)
+        dbsession.refresh(repo2)
+
+        assert repo1.name is None  # Should be nulled by trigger
+        assert repo1.deleted is True  # Should be marked as deleted by trigger
+        assert repo1.activated is False  # Should be marked as inactive by trigger
+
+        # repo2 should have the name successfully
+        assert repo2.name == "ExistingRepo"
+        assert repo2.deleted is False
+
+    @pytest.mark.django_db
+    def test_repos_trigger_case_insensitive_real_conflict(self, dbsession):
+        """Test trigger with mixed case real conflicts"""
+        # Create owner
+        user = OwnerFactory.create(
+            service="github",
+            username="testuser",
+            service_id="54321",
+        )
+        dbsession.add(user)
+
+        # Create first repo with lowercase name
+        repo1 = RepositoryFactory.create(
+            name="myrepo",
+            service_id="11111",
+            owner=user,
+            private=False,
+        )
+        dbsession.add(repo1)
+
+        # Create second repo
+        repo2 = RepositoryFactory.create(
+            name="DifferentRepo",
+            service_id="22222",
+            owner=user,
+            private=False,
+        )
+        dbsession.add(repo2)
+        dbsession.flush()
+
+        # Update repo2 to "MyRepo" (different case but same logical name)
+        # This SHOULD trigger because it's a conflict with different repo
+        repo2.name = "MyRepo"  # Different case
+        dbsession.commit()
+
+        # Verify repo1 was "soft deleted" by the trigger
+        # (because citext treats "myrepo" and "MyRepo" as the same)
+        dbsession.refresh(repo1)
+        dbsession.refresh(repo2)
+
+        assert repo1.name is None  # Should be nulled by trigger
+        assert repo1.deleted is True  # Should be marked as deleted by trigger
+
+        # repo2 should have the name successfully
+        assert repo2.name == "MyRepo"
+        assert repo2.deleted is False
+
     def test_upsert_repo_exists_but_wrong_owner(self, dbsession):
         service = "gitlab"
         repo_service_id = "12071992"
