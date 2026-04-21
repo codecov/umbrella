@@ -345,7 +345,7 @@ class Bitbucket(TorngitBaseAdapter):
         else:
             usernames = [username]
 
-        return (usernames, [])
+        return usernames
 
     async def _fetch_page_of_repos(self, client, username, token, page):
         # https://confluence.atlassian.com/display/BITBUCKET/repositories+Endpoint#repositoriesEndpoint-GETalistofrepositoriesforanaccount
@@ -381,14 +381,8 @@ class Bitbucket(TorngitBaseAdapter):
 
     async def list_repos(self, username=None, token=None):
         data, page = [], 0
-        usernames, repos_to_log = await self._get_teams_and_username_to_list(
-            username, token
-        )
-        # fetch repo information
-        log.info(
-            "Bitbucket: fetching repos from teams",
-            extra={"usernames": usernames, "repos": repos_to_log},
-        )
+        usernames = await self._get_teams_and_username_to_list(username, token)
+        log.info("Bitbucket: fetching repos from teams", extra={"usernames": usernames})
         async with self.get_client() as client:
             for team in usernames:
                 page = 0
@@ -398,15 +392,13 @@ class Bitbucket(TorngitBaseAdapter):
                         repos, has_next = await self._fetch_page_of_repos(
                             client, team, token, page
                         )
-
                         data.extend(repos)
-
                         if len(repos) == 0 or not has_next:
                             break
                 except TorngitClientError:
                     log.warning(
                         "Unable to fetch repos from team on Bitbucket",
-                        extra={"team_name": team, "repository_names": repos_to_log},
+                        extra={"team_name": team},
                     )
         log.info(
             "Bitbucket: finished fetching repos",
@@ -419,15 +411,8 @@ class Bitbucket(TorngitBaseAdapter):
         New version of list_repos() that should replace the old one after safely
         rolling out in the worker.
         """
-        usernames, repos_to_log = await self._get_teams_and_username_to_list(
-            username, token
-        )
-
-        # fetch repo information
-        log.info(
-            "Bitbucket: fetching repos from teams",
-            extra={"usernames": usernames, "repos": repos_to_log},
-        )
+        usernames = await self._get_teams_and_username_to_list(username, token)
+        log.info("Bitbucket: fetching repos from teams", extra={"usernames": usernames})
         async with self.get_client() as client:
             for team in usernames:
                 page = 0
@@ -437,15 +422,13 @@ class Bitbucket(TorngitBaseAdapter):
                         repos, has_next = await self._fetch_page_of_repos(
                             client, team, token, page
                         )
-
                         yield repos
-
                         if len(repos) == 0 or not has_next:
                             break
                 except TorngitClientError:
                     log.warning(
                         "Unable to fetch repos from team on Bitbucket",
-                        extra={"team_name": team, "repository_names": repos_to_log},
+                        extra={"team_name": team},
                     )
         log.info(
             "Bitbucket: finished fetching repos",
