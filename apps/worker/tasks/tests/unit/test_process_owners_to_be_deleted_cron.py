@@ -11,7 +11,7 @@ pytestmark = pytest.mark.django_db
 class TestProcessOwnersToBeDeletedCronTask:
     def test_get_min_seconds_interval_between_executions(self):
         interval = ProcessOwnersToBeDeletedCronTask.get_min_seconds_interval_between_executions()
-        assert interval == 60 * 60 * 24  # 24 hours
+        assert interval == 60 * 10  # 10 minutes
 
     def _make_task(self, mock_delete_task):
         task = ProcessOwnersToBeDeletedCronTask()
