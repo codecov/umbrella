@@ -153,7 +153,11 @@ class BundleAnalysisProcessorTask(
                     retry_num=self.request.retries,
                 )
                 return previous_result
-            self.retry(max_retries=self.max_retries, countdown=retry.countdown)
+            # Cap at 870s (30s below the 900s Redis visibility timeout) so the
+            # message is never held unacked longer than the visibility window.
+            self.retry(
+                max_retries=self.max_retries, countdown=min(retry.countdown, 870)
+            )
 
     @staticmethod
     def _ba_report_already_exists(db_session, repoid: int, commitid: str) -> bool:
