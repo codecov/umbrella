@@ -7,7 +7,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://api.bitbucket.org/2.0/repositories?role=contributor&q=full_name%3D%22atlassian%2Fstash-example-plugin%22
+    uri: https://api.bitbucket.org/2.0/repositories/atlassian?role=contributor&q=full_name%3D%22atlassian%2Fstash-example-plugin%22
   response:
     content: '{"pagelen": 10, "values": [], "page": 1}'
     headers:

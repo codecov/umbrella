@@ -7,7 +7,7 @@ interactions:
       user-agent:
       - Default
     method: GET
-    uri: https://api.bitbucket.org/2.0/repositories?role=contributor&q=full_name%3D%22ThiagoCodecov%2Fexample-python%22
+    uri: https://api.bitbucket.org/2.0/repositories/ThiagoCodecov?role=contributor&q=full_name%3D%22ThiagoCodecov%2Fexample-python%22
   response:
     content: '{"pagelen": 10, "values": [{"type": "repository", "name": "example-python",
       "full_name": "ThiagoCodecov/example-python", "uuid": "{a8c50527-2c3a-480e-afe1-7700e2b00074}",

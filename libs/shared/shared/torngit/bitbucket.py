@@ -918,13 +918,12 @@ class Bitbucket(TorngitBaseAdapter):
                 await self.api(
                     client, "2", "get", "/repositories/" + self.slug, token=token
                 )
-            # GET /repositories?role=contributor returns only repos where the user
-            # has write or admin access; presence means can_edit=True
+            workspace = self.data["owner"]["username"]
             response = await self.api(
                 client,
                 "2",
                 "get",
-                "/repositories",
+                f"/repositories/{workspace}",
                 role="contributor",
                 q=f'full_name="{self.slug}"',
                 token=token,

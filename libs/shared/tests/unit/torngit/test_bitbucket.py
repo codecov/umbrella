@@ -307,7 +307,7 @@ class TestUnitBitbucket:
         values = (
             [{"full_name": "ThiagoCodecov/example-python"}] if has_write_access else []
         )
-        respx.get("https://api.bitbucket.org/2.0/repositories").respond(
+        respx.get("https://api.bitbucket.org/2.0/repositories/ThiagoCodecov").respond(
             status_code=200,
             json={"pagelen": 10, "values": values, "page": 1},
         )
@@ -333,7 +333,7 @@ class TestUnitBitbucket:
         respx.get(
             "https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python"
         ).respond(status_code=200, json={})
-        respx.get("https://api.bitbucket.org/2.0/repositories").respond(
+        respx.get("https://api.bitbucket.org/2.0/repositories/ThiagoCodecov").respond(
             status_code=200, json={"pagelen": 10, "values": [], "page": 1}
         )
         handler = Bitbucket(
