@@ -30,7 +30,9 @@ class ProcessOwnersToBeDeletedCronTask(
 
     @classmethod
     def get_min_seconds_interval_between_executions(cls) -> int:
-        return 60 * 60 * 24  # 24 hours
+        return (
+            60 * 45
+        )  # this is  crontab interval for jobs that have large data sets that timeout.
 
     def run_cron_task(self, db_session, *args, **kwargs) -> dict[str, Any]:
         """
@@ -58,7 +60,7 @@ class ProcessOwnersToBeDeletedCronTask(
         )
 
         if not owners_to_delete:
-            log.info("No owners found in OwnerToBeDeleted table")
+            log.info("No owners eligible for deletion (none older than 48 hours)")
             return {
                 "owners_processed": 0,
                 "tasks_started": 0,
