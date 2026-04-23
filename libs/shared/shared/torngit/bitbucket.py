@@ -380,6 +380,13 @@ class Bitbucket(TorngitBaseAdapter):
         return (repos, res.get("next"))
 
     async def list_repos(self, username=None, token=None):
+        """
+        Lists all repositories a user has access to across their workspaces.
+
+        Fetches workspaces via list_teams() (GET /user/workspaces), then calls
+        GET /repositories/{workspace} for each workspace slug. This uses only
+        workspace-scoped, non-deprecated endpoints per the Bitbucket API v2 spec.
+        """
         data, page = [], 0
         usernames = await self._get_teams_and_username_to_list(username, token)
         log.info("Bitbucket: fetching repos from teams", extra={"usernames": usernames})
