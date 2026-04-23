@@ -188,8 +188,15 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
             .all()
         }
 
+        # Pre-fetch both flag dicts and the diff once, outside the per-flag loop,
+        # so get_flag_comparison_totals doesn't re-fetch them on every iteration.
+        base_report_flags = comparison_proxy.comparison.project_coverage_base.report.flags
+        diff = comparison_proxy.get_diff()
+
         for flag_name in flag_names:
-            totals = self.get_flag_comparison_totals(flag_name, comparison_proxy)
+            head_flag = head_report_flags.get(flag_name)
+            base_flag = base_report_flags.get(flag_name)
+            totals = self.get_flag_comparison_totals(head_flag, base_flag, diff)
             repositoryflag = repository_flags_by_name[flag_name]
             flag_comparison_entry = compare_flags_by_repo_flag_id.get(repositoryflag.id)
 
@@ -216,25 +223,27 @@ class ComputeComparisonTask(BaseCodecovTask, name=compute_comparison_task_name):
 
     def get_flag_comparison_totals(
         self,
-        flag_name: str,
-        comparison_proxy: ComparisonProxy,
+        head_flag: Flag | None,
+        base_flag: Flag | None,
+        diff,
     ):
-        flag_head_report = comparison_proxy.comparison.head.report.flags.get(flag_name)
-        flag_base_report = (
-            comparison_proxy.comparison.project_coverage_base.report.flags.get(
-                flag_name
-            )
-        )
-        head_totals = None if not flag_head_report else flag_head_report.totals.asdict()
-        base_totals = None if not flag_base_report else flag_base_report.totals.asdict()
+        # Obtain the filtered report for each flag exactly once and reuse it for
+        # both totals and apply_diff.  Flag.report calls ReadOnlyReport.filter()
+        # every time it is accessed (no caching on the Flag object), so calling
+        # it twice per flag (once for .totals, once for .apply_diff) creates two
+        # unnecessary FilteredReport objects per flag.
+        head_filtered = head_flag.report if head_flag else None
+        base_filtered = base_flag.report if base_flag else None
+
+        head_totals = None if head_filtered is None else head_filtered.totals.asdict()
+        base_totals = None if base_filtered is None else base_filtered.totals.asdict()
         totals = {
             "head_totals": head_totals,
             "base_totals": base_totals,
             "patch_totals": None,
         }
-        diff = comparison_proxy.get_diff()
-        if diff:
-            patch_totals = flag_head_report.apply_diff(diff)
+        if diff and head_filtered is not None:
+            patch_totals = head_filtered.apply_diff(diff, _save=False)
             if patch_totals:
                 totals["patch_totals"] = patch_totals.asdict()
         return totals
