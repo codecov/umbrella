@@ -16,39 +16,8 @@ jobs:
         with:
           fetch-depth: 2
 
-      ######
-      # Setting up caches for the base and test requirements images.
-      #
-      # If both caches hit, we don't need to do anything else.
-      # Otherwise, we have to auth with GCP and Docker Hub, build the missing
-      # images, and then push them.
-      ######
-      - name: Cache Requirements
-        id: cache-requirements
-        uses: actions/cache@v4
-        env:
-          # Forks can't access the variable containing our actual image repository. We want to
-          # use a separate cache to make sure they don't interfere with reqs images being pushed.
-          cache-name: ${{ !github.event.pull_request.repo.fork && 'umbrella-requirements' || 'umbrella-requirements-fork' }}
-        with:
-          path: |
-            ./requirements.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('./uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('libs/shared/**') }}
-
-      - name: Cache Test Requirements
-        id: cache-test-requirements
-        uses: actions/cache@v4
-        env:
-          cache-name: umbrella-test-requirements
-        with:
-          path: |
-            ./test-requirements.tar
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('./uv.lock') }}-${{ hashFiles('docker/Dockerfile.requirements') }}-${{ hashFiles('docker/Dockerfile.test-requirements') }}-${{ hashFiles('libs/shared/**') }}
-
       - id: "auth"
-        if: |
-          (steps.cache-requirements.outputs.cache-hit != 'true' || steps.cache-test-requirements.outputs.cache-hit != 'true') &&
-          !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov'
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
         name: "Authenticate to Google Cloud"
         uses: "google-github-actions/auth@v2.1.2"
         with:
@@ -57,36 +26,30 @@ jobs:
           service_account: ${{ secrets.CODECOV_GCP_WIDSA }}
 
       - name: Docker configuration
-        if: |
-          (steps.cache-requirements.outputs.cache-hit != 'true' || steps.cache-test-requirements.outputs.cache-hit != 'true') &&
-          !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov'
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
         run: |-
           echo ${{steps.auth.outputs.access_token}} | docker login -u oauth2accesstoken --password-stdin https://us-docker.pkg.dev
 
       ######
-      # Building/pushing the base requirements image if not cached
+      # Building/pushing the base requirements image
       ######
       - name: Build/pull requirements
-        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' }}
         run: |
           make build.requirements
-          make save.requirements
 
       - name: Push Requirements
-        if: ${{ steps.cache-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
         run: |
           make push.requirements
 
       ######
-      # Building/pushing the test requirements image if not cached
+      # Building/pushing the test requirements image
       ######
       - name: Build/pull test requirements
-        if: ${{ steps.cache-test-requirements.outputs.cache-hit != 'true' }}
         run: |
           make build.test-requirements
-          make save.test-requirements
 
       - name: Push Test Requirements
-        if: ${{ steps.cache-test-requirements.outputs.cache-hit != 'true' && !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
+        if: ${{ !github.event.pull_request.head.repo.fork && github.repository_owner == 'codecov' }}
         run: |
           make push.test-requirements
