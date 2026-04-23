@@ -55,6 +55,7 @@ def _set_upload_error_and_commit(
     commitid: str,
     repoid: int,
     log_suffix: str = "",
+    upload_id: int | None = None,
 ) -> None:
     upload.state_id = UploadState.ERROR.db_id
     upload.state = "error"
@@ -63,7 +64,7 @@ def _set_upload_error_and_commit(
     except Exception:
         log.exception(
             f"Failed to commit upload error state{log_suffix}",
-            extra={"commit": commitid, "repoid": repoid, "upload_id": upload.id_},
+            extra={"commit": commitid, "repoid": repoid, "upload_id": upload_id},
         )
 
 
@@ -259,6 +260,11 @@ class BundleAnalysisProcessorTask(
 
         assert upload is not None
 
+        # Capture upload_id as a plain integer immediately so it can be safely
+        # used in logging even if the SQLAlchemy session later enters a DEACTIVE
+        # state (e.g. after a StaleDataError rolls back the transaction).
+        upload_id = upload.id_
+
         # Override base commit of comparisons with a custom commit SHA if applicable
         compare_sha: str | None = cast(
             str | None, params.get("bundle_analysis_compare_sha")
@@ -273,7 +279,7 @@ class BundleAnalysisProcessorTask(
                     "commit": commitid,
                     "commit_yaml": commit_yaml,
                     "params": params,
-                    "upload_id": upload.id_,
+                    "upload_id": upload_id,
                     "parent_task": self.request.parent_id,
                     "compare_sha": compare_sha,
                 },
@@ -293,16 +299,27 @@ class BundleAnalysisProcessorTask(
                         result.update_upload(carriedforward=carriedforward)
                         db_session.commit()
                     except Exception:
+                        # result.update_upload() may have triggered a StaleDataError
+                        # (e.g. the Upload row was deleted by a cleanup process),
+                        # leaving the session in a DEACTIVE/rolled-back state.
+                        # Roll back before doing anything else so the session is
+                        # usable again for the fallback commit below.
+                        db_session.rollback()
                         log.exception(
                             "Failed to update and commit upload error state after max retries exceeded",
                             extra={
                                 "commit": commitid,
                                 "repoid": repoid,
-                                "upload_id": upload.id_,
+                                "upload_id": upload_id,
                             },
                         )
                         _set_upload_error_and_commit(
-                            db_session, upload, commitid, repoid, log_suffix=" fallback"
+                            db_session,
+                            upload,
+                            commitid,
+                            repoid,
+                            log_suffix=" fallback",
+                            upload_id=upload_id,
                         )
                     return processing_results
                 log.warn(
@@ -329,6 +346,10 @@ class BundleAnalysisProcessorTask(
             # saved, but if the BA processor runs before that we will error and need to retry.
             raise
         except Exception:
+            # An earlier flush/commit may have left the session in a DEACTIVE
+            # state (e.g. after a StaleDataError). Roll back first so the
+            # session is clean before we attempt to log and update.
+            db_session.rollback()
             log.exception(
                 "Unable to process bundle analysis upload",
                 extra={
@@ -336,11 +357,13 @@ class BundleAnalysisProcessorTask(
                     "commit": commitid,
                     "commit_yaml": commit_yaml,
                     "params": params,
-                    "upload_id": upload.id_,
+                    "upload_id": upload_id,
                     "parent_task": self.request.parent_id,
                 },
             )
-            _set_upload_error_and_commit(db_session, upload, commitid, repoid)
+            _set_upload_error_and_commit(
+                db_session, upload, commitid, repoid, upload_id=upload_id
+            )
             return processing_results
         finally:
             if result is not None and result.bundle_report:
