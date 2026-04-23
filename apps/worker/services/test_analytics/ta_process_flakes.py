@@ -42,17 +42,20 @@ def get_testruns(upload: ReportSession) -> QuerySet[Testrun]:
     ).order_by("timestamp")
 
 
-def handle_pass(curr_flakes: dict[bytes, Flake], test_id: bytes):
+def handle_pass(
+    curr_flakes: dict[bytes, Flake], test_id: bytes
+) -> Flake | None:
     # possible that we expire it and stop caring about it
     if test_id not in curr_flakes:
-        return
+        return None
 
     curr_flakes[test_id].recent_passes_count += 1
     curr_flakes[test_id].count += 1
     if curr_flakes[test_id].recent_passes_count == 30:
         curr_flakes[test_id].end_date = timezone.now()
-        curr_flakes[test_id].save()
-        del curr_flakes[test_id]
+        return curr_flakes.pop(test_id)
+
+    return None
 
 
 def handle_failure(
@@ -82,8 +85,9 @@ def handle_failure(
 @sentry_sdk.trace
 def process_single_upload(
     upload: ReportSession, curr_flakes: dict[bytes, Flake], repo_id: int
-):
+) -> list[Flake]:
     testruns = get_testruns(upload)
+    ended_flakes: list[Flake] = []
 
     for testrun in testruns:
         test_id = bytes(testrun.test_id)
@@ -92,13 +96,16 @@ def process_single_upload(
                 if test_id not in curr_flakes:
                     continue
 
-                handle_pass(curr_flakes, test_id)
+                ended_flake = handle_pass(curr_flakes, test_id)
+                if ended_flake is not None:
+                    ended_flakes.append(ended_flake)
             case "failure" | "flaky_fail" | "error":
                 handle_failure(curr_flakes, test_id, testrun, repo_id)
             case _:
                 continue
 
     Testrun.objects.bulk_update(testruns, ["outcome"])
+    return ended_flakes
 
 
 @sentry_sdk.trace
@@ -120,8 +127,9 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
 
+    ended_flakes: list[Flake] = []
     for upload in uploads:
-        process_single_upload(upload, curr_flakes, repo_id)
+        ended_flakes.extend(process_single_upload(upload, curr_flakes, repo_id))
         log.info(
             "process_flakes_for_commit: processed upload",
             extra={"upload": upload.id},
@@ -131,6 +139,11 @@ def process_flakes_for_commit(repo_id: int, commit_id: str):
         "process_flakes_for_commit: bulk creating flakes",
         extra={"flakes": [flake.test_id.hex() for flake in curr_flakes.values()]},
     )
+
+    if ended_flakes:
+        Flake.objects.bulk_update(
+            ended_flakes, ["end_date", "count", "recent_passes_count"]
+        )
 
     Flake.objects.bulk_create(
         curr_flakes.values(),
