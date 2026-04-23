@@ -535,20 +535,24 @@ class Pull(CodecovBaseModel):
         return f"Pull<{self.pullid}@repo<{self.repoid}>>"
 
     def get_head_commit(self):
-        return (
-            self.get_db_session()
-            .query(Commit)
-            .filter_by(repoid=self.repoid, commitid=self.head)
-            .first()
-        )
+        if "_head_commit_cache" not in self.__dict__:
+            self.__dict__["_head_commit_cache"] = (
+                self.get_db_session()
+                .query(Commit)
+                .filter_by(repoid=self.repoid, commitid=self.head)
+                .first()
+            )
+        return self.__dict__["_head_commit_cache"]
 
     def get_comparedto_commit(self):
-        return (
-            self.get_db_session()
-            .query(Commit)
-            .filter_by(repoid=self.repoid, commitid=self.compared_to)
-            .first()
-        )
+        if "_comparedto_commit_cache" not in self.__dict__:
+            self.__dict__["_comparedto_commit_cache"] = (
+                self.get_db_session()
+                .query(Commit)
+                .filter_by(repoid=self.repoid, commitid=self.compared_to)
+                .first()
+            )
+        return self.__dict__["_comparedto_commit_cache"]
 
     def get_head_commit_notifications(self):
         head_commit = self.get_head_commit()
