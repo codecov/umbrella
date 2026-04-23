@@ -263,10 +263,10 @@ class BundleAnalysisReportService(BaseReportService):
 
                 # Turn on caching option by default for all new bundles only for default branch
                 if commit.branch == commit.repository.branch:
-                    for bundle in bundle_report.bundle_reports():
-                        BundleAnalysisCacheConfigService.create_if_not_exists(
-                            commit.repoid, bundle.name
-                        )
+                    BundleAnalysisCacheConfigService.bulk_create_if_not_exists(
+                        commit.repoid,
+                        [bundle.name for bundle in bundle_report.bundle_reports()],
+                    )
 
             # save the bundle report back to storage
             bundle_loader.save(bundle_report, commit_report.external_id)
