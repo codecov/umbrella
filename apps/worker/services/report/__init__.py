@@ -286,7 +286,9 @@ class ReportService(BaseReportService):
 
         return current_report_row
 
-    def _attach_flags_to_upload(self, upload: Upload, flag_names: list[str]):
+    def _attach_flags_to_upload(
+        self, upload: Upload, flag_names: list[str], repoid: int
+    ):
         """
         Internal function that manages creating the proper `RepositoryFlag`s,
         and attach them to the `Upload`
@@ -294,7 +296,6 @@ class ReportService(BaseReportService):
 
         all_flags = []
         db_session = upload.get_db_session()
-        repoid = upload.report.commit.repoid
         flag_dict = self.fetch_repo_flags(db_session, repoid)
 
         for individual_flag in flag_names:
@@ -820,7 +821,9 @@ class ReportService(BaseReportService):
             )
             db_session.add(upload)
             db_session.flush()
-            self._attach_flags_to_upload(upload, session.flags if session.flags else [])
+            self._attach_flags_to_upload(
+                upload, session.flags if session.flags else [], commit.repoid
+            )
             if session.totals is not None:
                 upload_totals = UploadLevelTotals(upload_id=upload.id_)
                 db_session.add(upload_totals)

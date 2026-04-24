@@ -7,7 +7,7 @@ interactions:
       User-Agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/pullrequests/1/commits
+    uri: https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python/pullrequests/1/commits
   response:
     content: '{"pagelen": 10, "values": [{"hash": "f8a26b4c1bf8eef0bc3aeeb0b23f74f4b96a7d04",
       "repository": {"links": {"self": {"href": "https://bitbucket.org/!api/2.0/repositories/ThiagoCodecov/example-python"},
@@ -249,7 +249,7 @@ interactions:
       "type": "commit", "links": {"self": {"href": "https://bitbucket.org/!api/2.0/repositories/ThiagoCodecov/example-python/commit/266e6b98f88847c8c4b6e8cf38cf5397266211d3"},
       "html": {"href": "https://bitbucket.org/ThiagoCodecov/example-python/commits/266e6b98f88847c8c4b6e8cf38cf5397266211d3"}}}],
       "date": "2019-05-08T15:35:10+00:00", "message": "Message 2\n", "type": "commit"}],
-      "page": 1, "next": "https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/pullrequests/1/commits?page=8xhd"}'
+      "page": 1, "next": "https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python/pullrequests/1/commits?page=8xhd"}'
     headers:
       Accept-Ranges:
       - bytes
@@ -298,7 +298,7 @@ interactions:
       code: 200
       message: OK
     status_code: 200
-    url: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/pullrequests/1/commits?oauth_consumer_key=arubajamaicaohiwan&oauth_token=testss3hxhcfqf1h6g&oauth_signature_method=HMAC-SHA1&oauth_timestamp=1557330116&oauth_nonce=3a21bf1970bd4e85830de3519e931ea1&oauth_version=1.0&oauth_signature=7kTJV1LCOK1AVDDahsDfcEgPdNs%3D
+    url: https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python/pullrequests/1/commits?oauth_consumer_key=arubajamaicaohiwan&oauth_token=testss3hxhcfqf1h6g&oauth_signature_method=HMAC-SHA1&oauth_timestamp=1557330116&oauth_nonce=3a21bf1970bd4e85830de3519e931ea1&oauth_version=1.0&oauth_signature=7kTJV1LCOK1AVDDahsDfcEgPdNs%3D
 - request:
     body: null
     headers:
@@ -307,7 +307,7 @@ interactions:
       User-Agent:
       - Default
     method: GET
-    uri: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/pullrequests/1/commits?page=8xhd
+    uri: https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python/pullrequests/1/commits?page=8xhd
   response:
     content: '{"pagelen": 10, "values": [{"hash": "266e6b98f88847c8c4b6e8cf38cf5397266211d3",
       "repository": {"links": {"self": {"href": "https://bitbucket.org/!api/2.0/repositories/ThiagoCodecov/example-python"},
@@ -402,5 +402,5 @@ interactions:
       code: 200
       message: OK
     status_code: 200
-    url: https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/pullrequests/1/commits?page=8xhd&oauth_consumer_key=arubajamaicaohiwan&oauth_token=testss3hxhcfqf1h6g&oauth_signature_method=HMAC-SHA1&oauth_timestamp=1557330116&oauth_nonce=09f75b95d13247bfb56fb579bcc6deab&oauth_version=1.0&oauth_signature=%2Bawwc%2F%2FfMR9Vr6YRo9rV5zZUxME%3D
+    url: https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python/pullrequests/1/commits?page=8xhd&oauth_consumer_key=arubajamaicaohiwan&oauth_token=testss3hxhcfqf1h6g&oauth_signature_method=HMAC-SHA1&oauth_timestamp=1557330116&oauth_nonce=09f75b95d13247bfb56fb579bcc6deab&oauth_version=1.0&oauth_signature=%2Bawwc%2F%2FfMR9Vr6YRo9rV5zZUxME%3D
 version: 1

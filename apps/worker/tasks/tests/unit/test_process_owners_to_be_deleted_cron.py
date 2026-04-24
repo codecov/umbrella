@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,147 +10,131 @@ pytestmark = pytest.mark.django_db
 
 class TestProcessOwnersToBeDeletedCronTask:
     def test_get_min_seconds_interval_between_executions(self):
-        """Test that the task has the correct minimum interval between executions."""
         interval = ProcessOwnersToBeDeletedCronTask.get_min_seconds_interval_between_executions()
-        assert interval == 60 * 60  # 1 hour
+        assert interval == 60 * 45  # 45 minutes
+
+    def _make_task(self, mock_delete_task):
+        task = ProcessOwnersToBeDeletedCronTask()
+        task.app = MagicMock()
+        task.app.tasks = {"app.tasks.delete_owner.DeleteOwner": mock_delete_task}
+        return task
+
+    @patch("tasks.process_owners_to_be_deleted_cron.OwnerToBeDeleted")
+    @patch("tasks.process_owners_to_be_deleted_cron.timezone")
+    def test_run_cron_task_no_owners(self, mock_timezone, mock_model):
+        now = datetime(2026, 4, 20, 12, 0, 0, tzinfo=UTC)
+        mock_timezone.now.return_value = now
+
+        mock_qs = MagicMock()
+        mock_qs.__getitem__ = MagicMock(return_value=[])
+        mock_model.objects.filter.return_value = mock_qs
+
+        mock_delete_task = MagicMock()
+        task = self._make_task(mock_delete_task)
+        result = task.run_cron_task(MagicMock())
+
+        expected_cutoff = now - timedelta(hours=48)
+        mock_model.objects.filter.assert_called_once_with(
+            created_at__lte=expected_cutoff
+        )
+        assert result["owners_processed"] == 0
+        assert result["message"] == "No owners to process"
+        mock_delete_task.apply_async.assert_not_called()
+
+    @patch("tasks.process_owners_to_be_deleted_cron.OwnerToBeDeleted")
+    @patch("tasks.process_owners_to_be_deleted_cron.timezone")
+    def test_run_cron_task_with_owners(self, mock_timezone, mock_model):
+        now = datetime(2026, 4, 20, 12, 0, 0, tzinfo=UTC)
+        mock_timezone.now.return_value = now
+
+        mock_owners = [MagicMock(owner_id=1), MagicMock(owner_id=2)]
+        mock_qs = MagicMock()
+        mock_qs.__getitem__ = MagicMock(return_value=mock_owners)
+        mock_model.objects.filter.return_value = mock_qs
+
+        mock_delete_task = MagicMock()
+        task = self._make_task(mock_delete_task)
+        result = task.run_cron_task(MagicMock())
+
+        assert result["owners_processed"] == 2
+        assert "Processed 2 owners" in result["message"]
+        assert mock_delete_task.apply_async.call_count == 2
+        mock_delete_task.apply_async.assert_any_call(kwargs={"ownerid": 1})
+        mock_delete_task.apply_async.assert_any_call(kwargs={"ownerid": 2})
 
     @patch("django.conf.settings")
-    def test_run_cron_task_no_owners(self, mock_settings):
-        """Test that the task handles the case when no owners are found."""
-        mock_settings.MAX_OWNERS_TO_DELETE_PER_CRON_RUN = 10
-
-        # Mock empty queryset
-        with patch(
-            "shared.django_apps.codecov_auth.models.OwnerToBeDeleted.objects.all"
-        ) as mock_queryset:
-            mock_queryset.return_value = []
-
-            task = ProcessOwnersToBeDeletedCronTask()
-            # Mock the app.tasks access
-            mock_delete_task = MagicMock()
-            task.app = MagicMock()
-            task.app.tasks = {"app.tasks.delete_owner.DeleteOwner": mock_delete_task}
-
-            result = task.run_cron_task(MagicMock())
-
-            assert result["owners_processed"] == 0
-            assert result["tasks_started"] == 0
-            assert result["message"] == "No owners to process"
-            mock_delete_task.apply_async.assert_not_called()
-
-    @patch("django.conf.settings")
-    def test_run_cron_task_with_owners(self, mock_settings):
-        """Test that the task processes owners correctly."""
-        mock_settings.MAX_OWNERS_TO_DELETE_PER_CRON_RUN = 5
-
-        # Create mock owner records
-        mock_owners = [
-            MagicMock(owner_id=1),
-            MagicMock(owner_id=2),
-            MagicMock(owner_id=3),
-        ]
-
-        with patch(
-            "shared.django_apps.codecov_auth.models.OwnerToBeDeleted.objects.all"
-        ) as mock_queryset:
-            mock_queryset.return_value = mock_owners[:2]  # Limit to 2 owners
-
-            task = ProcessOwnersToBeDeletedCronTask()
-            # Mock the app.tasks access
-            mock_delete_task = MagicMock()
-            task.app = MagicMock()
-            task.app.tasks = {"app.tasks.delete_owner.DeleteOwner": mock_delete_task}
-
-            result = task.run_cron_task(MagicMock())
-
-            assert result["owners_processed"] == 2
-            assert "Processed 2 owners" in result["message"]
-
-            # Verify delete_owner_task was called for each owner
-            assert mock_delete_task.apply_async.call_count == 2
-            mock_delete_task.apply_async.assert_any_call(kwargs={"ownerid": 1})
-            mock_delete_task.apply_async.assert_any_call(kwargs={"ownerid": 2})
-
-    @patch("django.conf.settings")
-    def test_run_cron_task_respects_limit(self, mock_settings):
-        """Test that the task respects the maximum owners per run limit."""
+    @patch("tasks.process_owners_to_be_deleted_cron.OwnerToBeDeleted")
+    @patch("tasks.process_owners_to_be_deleted_cron.timezone")
+    def test_run_cron_task_respects_limit(
+        self, mock_timezone, mock_model, mock_settings
+    ):
         mock_settings.MAX_OWNERS_TO_DELETE_PER_CRON_RUN = 2
+        now = datetime(2026, 4, 20, 12, 0, 0, tzinfo=UTC)
+        mock_timezone.now.return_value = now
 
-        # Create mock owner records
-        mock_owners = [
-            MagicMock(owner_id=1),
-            MagicMock(owner_id=2),
-            MagicMock(owner_id=3),
-            MagicMock(owner_id=4),
-        ]
+        # Queryset slice already limited externally; simulate returning only 2
+        mock_owners = [MagicMock(owner_id=1), MagicMock(owner_id=2)]
+        mock_qs = MagicMock()
+        mock_qs.__getitem__ = MagicMock(return_value=mock_owners)
+        mock_model.objects.filter.return_value = mock_qs
 
-        with patch(
-            "shared.django_apps.codecov_auth.models.OwnerToBeDeleted.objects.all"
-        ) as mock_queryset:
-            mock_queryset.return_value = mock_owners[:2]  # Limit to 2 owners
+        mock_delete_task = MagicMock()
+        task = self._make_task(mock_delete_task)
+        result = task.run_cron_task(MagicMock())
 
-            task = ProcessOwnersToBeDeletedCronTask()
-            # Mock the app.tasks access
-            mock_delete_task = MagicMock()
-            task.app = MagicMock()
-            task.app.tasks = {"app.tasks.delete_owner.DeleteOwner": mock_delete_task}
+        assert result["owners_processed"] == 2
+        assert mock_delete_task.apply_async.call_count == 2
 
-            result = task.run_cron_task(MagicMock())
+    @patch("tasks.process_owners_to_be_deleted_cron.OwnerToBeDeleted")
+    @patch("tasks.process_owners_to_be_deleted_cron.timezone")
+    def test_run_cron_task_handles_failure(self, mock_timezone, mock_model):
+        now = datetime(2026, 4, 20, 12, 0, 0, tzinfo=UTC)
+        mock_timezone.now.return_value = now
 
-            assert result["owners_processed"] == 2
-            assert mock_delete_task.apply_async.call_count == 2
+        mock_owners = [MagicMock(owner_id=1), MagicMock(owner_id=2)]
+        mock_qs = MagicMock()
+        mock_qs.__getitem__ = MagicMock(return_value=mock_owners)
+        mock_model.objects.filter.return_value = mock_qs
 
-    @patch("django.conf.settings")
-    def test_run_cron_task_handles_failure(self, mock_settings):
-        """Test that the task handles failures gracefully."""
-        mock_settings.MAX_OWNERS_TO_DELETE_PER_CRON_RUN = 10
+        mock_delete_task = MagicMock()
+        mock_delete_task.apply_async.side_effect = [Exception("Task failed"), None]
 
-        # Create mock owner records
-        mock_owner1 = MagicMock(owner_id=1)
-        mock_owner2 = MagicMock(owner_id=2)
-        mock_owners = [mock_owner1, mock_owner2]
+        task = self._make_task(mock_delete_task)
+        result = task.run_cron_task(MagicMock())
 
-        with patch(
-            "shared.django_apps.codecov_auth.models.OwnerToBeDeleted.objects.all"
-        ) as mock_queryset:
-            mock_queryset.return_value = mock_owners
+        assert result["owners_processed"] == 1
+        assert mock_delete_task.apply_async.call_count == 2
 
-            task = ProcessOwnersToBeDeletedCronTask()
-            # Mock the app.tasks access
-            mock_delete_task = MagicMock()
-            task.app = MagicMock()
-            task.app.tasks = {"app.tasks.delete_owner.DeleteOwner": mock_delete_task}
+    @patch("tasks.process_owners_to_be_deleted_cron.OwnerToBeDeleted")
+    @patch("tasks.process_owners_to_be_deleted_cron.timezone")
+    def test_run_cron_task_uses_48h_cutoff(self, mock_timezone, mock_model):
+        now = datetime(2026, 4, 20, 12, 0, 0, tzinfo=UTC)
+        mock_timezone.now.return_value = now
 
-            # Make the first owner fail
-            mock_delete_task.apply_async.side_effect = [Exception("Task failed"), None]
+        mock_qs = MagicMock()
+        mock_qs.__getitem__ = MagicMock(return_value=[])
+        mock_model.objects.filter.return_value = mock_qs
 
-            result = task.run_cron_task(MagicMock())
+        task = self._make_task(MagicMock())
+        task.run_cron_task(MagicMock())
 
-            # Only the second owner should be processed successfully
-            assert result["owners_processed"] == 1
-            assert mock_delete_task.apply_async.call_count == 2
+        expected_cutoff = datetime(2026, 4, 18, 12, 0, 0, tzinfo=UTC)
+        mock_model.objects.filter.assert_called_once_with(
+            created_at__lte=expected_cutoff
+        )
 
-    @patch("django.conf.settings")
-    def test_run_cron_task_default_limit(self, mock_settings):
-        """Test that the task uses the default limit when setting is not configured."""
-        # Don't set MAX_OWNERS_TO_DELETE_PER_CRON_RUN
+    @patch("tasks.process_owners_to_be_deleted_cron.OwnerToBeDeleted")
+    @patch("tasks.process_owners_to_be_deleted_cron.timezone")
+    def test_run_cron_task_default_limit(self, mock_timezone, mock_model):
+        now = datetime(2026, 4, 20, 12, 0, 0, tzinfo=UTC)
+        mock_timezone.now.return_value = now
 
-        mock_owners = [
-            MagicMock(owner_id=1),
-            MagicMock(owner_id=2),
-        ]
+        mock_owners = [MagicMock(owner_id=1), MagicMock(owner_id=2)]
+        mock_qs = MagicMock()
+        mock_qs.__getitem__ = MagicMock(return_value=mock_owners)
+        mock_model.objects.filter.return_value = mock_qs
 
-        with patch(
-            "shared.django_apps.codecov_auth.models.OwnerToBeDeleted.objects.all"
-        ) as mock_queryset:
-            mock_queryset.return_value = mock_owners
+        task = self._make_task(MagicMock())
+        result = task.run_cron_task(MagicMock())
 
-            task = ProcessOwnersToBeDeletedCronTask()
-            # Mock the app.tasks access
-            mock_delete_task = MagicMock()
-            task.app = MagicMock()
-            task.app.tasks = {"app.tasks.delete_owner.DeleteOwner": mock_delete_task}
-
-            result = task.run_cron_task(MagicMock())
-
-            assert result["owners_processed"] == 2
+        assert result["owners_processed"] == 2

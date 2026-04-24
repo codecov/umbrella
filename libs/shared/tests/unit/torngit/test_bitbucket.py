@@ -97,8 +97,8 @@ class TestUnitBitbucket:
         built_url = args[1]
         parsed_url = urlparse(built_url)
         assert parsed_url.scheme == "https"
-        assert parsed_url.netloc == "bitbucket.org"
-        assert parsed_url.path == "/api/2.0/random_url"
+        assert parsed_url.netloc == "api.bitbucket.org"
+        assert parsed_url.path == "/2.0/random_url"
         assert parsed_url.params == ""
         assert parsed_url.fragment == ""
         # OAuth 2.0: auth is via Bearer token in headers, not query params
@@ -295,44 +295,21 @@ class TestUnitBitbucket:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "permission_name, expected_result",
-        [("read", (True, False)), ("write", (True, True)), ("admin", (True, True))],
+        "has_write_access, expected_result",
+        [(True, (True, True)), (False, (True, False))],
     )
     async def test_get_authenticated_private_200_status_some_permissions(
-        self, mocker, respx_vcr, permission_name, expected_result
+        self, mocker, respx_vcr, has_write_access, expected_result
     ):
         respx.get(
-            "https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python"
+            "https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python"
         ).respond(status_code=200, json={})
-        respx.get(
-            "https://bitbucket.org/api/2.0/user/permissions/repositories"
-        ).respond(
+        values = (
+            [{"full_name": "ThiagoCodecov/example-python"}] if has_write_access else []
+        )
+        respx.get("https://api.bitbucket.org/2.0/repositories/ThiagoCodecov").respond(
             status_code=200,
-            json={
-                "pagelen": 10,
-                "values": [
-                    {
-                        "type": "repository_permission",
-                        "user": {
-                            "display_name": "Thiago Ramos",
-                            "uuid": "{9a01f37b-b1b2-40c5-8c5e-1a39f4b5e645}",
-                            "links": {},
-                            "nickname": "thiago",
-                            "type": "user",
-                            "account_id": "5bce04c759d0e84f8c7555e9",
-                        },
-                        "repository": {
-                            "links": {},
-                            "type": "repository",
-                            "name": "example-python",
-                            "full_name": "ThiagoCodecov/example-python",
-                            "uuid": "{a8c50527-2c3a-480e-afe1-7700e2b00074}",
-                        },
-                        "permission": permission_name,
-                    }
-                ],
-                "page": 1,
-            },
+            json={"pagelen": 10, "values": values, "page": 1},
         )
         handler = Bitbucket(
             repo={"name": "example-python", "private": True},
@@ -354,11 +331,11 @@ class TestUnitBitbucket:
         self, mocker, respx_vcr
     ):
         respx.get(
-            "https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python"
+            "https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python"
         ).respond(status_code=200, json={})
-        respx.get(
-            "https://bitbucket.org/api/2.0/user/permissions/repositories"
-        ).respond(status_code=200, json={"pagelen": 10, "values": [], "page": 1})
+        respx.get("https://api.bitbucket.org/2.0/repositories/ThiagoCodecov").respond(
+            status_code=200, json={"pagelen": 10, "values": [], "page": 1}
+        )
         handler = Bitbucket(
             repo={"name": "example-python", "private": True},
             owner={
@@ -383,7 +360,7 @@ class TestUnitBitbucket:
         self, mocker, respx_vcr, permission_name, expected_result
     ):
         respx.get(
-            "https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python"
+            "https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python"
         ).respond(status_code=404, json={})
         handler = Bitbucket(
             repo={"name": "example-python", "private": True},
@@ -402,49 +379,36 @@ class TestUnitBitbucket:
 
     @pytest.mark.asyncio
     async def test_list_repos_exception_mid_call(self, valid_handler, respx_vcr):
-        respx.get("https://bitbucket.org/api/2.0/user/permissions/workspaces").respond(
+        respx.get("https://api.bitbucket.org/2.0/user/workspaces").respond(
             status_code=200,
             json={
                 "values": [
                     {
+                        "type": "workspace_access",
                         "workspace": {
-                            "name": "banana",
-                            "uuid": "[uuid]",
+                            "type": "workspace_base",
                             "slug": "specialslug",
-                        }
+                            "uuid": "[uuid]",
+                        },
                     },
                     {
+                        "type": "workspace_access",
                         "workspace": {
-                            "name": "apple",
-                            "uuid": "[abcdef]",
+                            "type": "workspace_base",
                             "slug": "anotherslug",
-                        }
+                            "uuid": "[abcdef]",
+                        },
                     },
                 ]
             },
         )
-        respx.get(
-            "https://bitbucket.org/api/2.0/user/permissions/repositories"
-        ).respond(
-            status_code=200,
-            json={
-                "values": [
-                    {
-                        "repository": {
-                            "full_name": "codecov/worker",
-                            "owner": {"username": "differentone"},
-                        }
-                    }
-                ]
-            },
-        )
-        respx.get("https://bitbucket.org/api/2.0/repositories/specialslug").respond(
+        respx.get("https://api.bitbucket.org/2.0/repositories/specialslug").respond(
             status_code=200, json={"values": []}
         )
-        respx.get("https://bitbucket.org/api/2.0/repositories/ThiagoCodecov").respond(
+        respx.get("https://api.bitbucket.org/2.0/repositories/ThiagoCodecov").respond(
             status_code=200, json={"values": []}
         )
-        respx.get("https://bitbucket.org/api/2.0/repositories/anotherslug").respond(
+        respx.get("https://api.bitbucket.org/2.0/repositories/anotherslug").respond(
             status_code=200,
             json={
                 "values": [
@@ -465,7 +429,7 @@ class TestUnitBitbucket:
                 ]
             },
         )
-        respx.get("https://bitbucket.org/api/2.0/repositories/codecov").respond(
+        respx.get("https://api.bitbucket.org/2.0/repositories/codecov").respond(
             status_code=404, json={"values": []}
         )
         res = await valid_handler.list_repos()
@@ -509,7 +473,7 @@ class TestUnitBitbucket:
         )
         base, head = "6ae5f17", "b92edba"
         respx.get(
-            "https://bitbucket.org/api/2.0/repositories/ThiagoCodecov/example-python/diff/b92edba..6ae5f17",
+            "https://api.bitbucket.org/2.0/repositories/ThiagoCodecov/example-python/diff/b92edba..6ae5f17",
             params__contains={"context": "1"},
         ).respond(status_code=200, content=diff, headers={"Content-Type": "aaaa"})
         expected_result = {
@@ -584,7 +548,7 @@ class TestUnitBitbucket:
         )
         with respx.mock:
             respx.get(
-                "https://bitbucket.org/api/2.0/repositories/e2e-org/test-repo/pullrequests/1/diffstat"
+                "https://api.bitbucket.org/2.0/repositories/e2e-org/test-repo/pullrequests/1/diffstat"
             ).mock(
                 return_value=httpx.Response(
                     status_code=200,
@@ -641,7 +605,7 @@ class TestUnitBitbucket:
         )
         with respx.mock:
             respx.get(
-                "https://bitbucket.org/api/2.0/repositories/e2e-org/test-repo/pullrequests/4/diffstat"
+                "https://api.bitbucket.org/2.0/repositories/e2e-org/test-repo/pullrequests/4/diffstat"
             ).mock(
                 return_value=httpx.Response(
                     status_code=404,
@@ -669,7 +633,7 @@ class TestUnitBitbucket:
         )
         with respx.mock:
             respx.get(
-                "https://bitbucket.org/api/2.0/repositories/e2e-org/test-repo/pullrequests/4/diffstat"
+                "https://api.bitbucket.org/2.0/repositories/e2e-org/test-repo/pullrequests/4/diffstat"
             ).mock(
                 return_value=httpx.Response(
                     status_code=403,
