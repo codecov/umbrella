@@ -46,29 +46,71 @@ def _build_redis_queue(model, key: str, family: Family, redis) -> Any:
     # We surface "no TTL" as None in the admin to keep the column readable.
     ttl_seconds = None if ttl is None or ttl < 0 else int(ttl)
 
+    parsed = family.parse_key(key)
+
     return model(
         name=key,
         family=family.name,
         redis_type=redis_type.upper(),
         depth=int(depth or 0),
         ttl_seconds=ttl_seconds,
+        repoid=parsed.repoid,
+        commitid=parsed.commitid,
+        report_type=parsed.report_type,
     )
 
 
-class RedisQueueQuerySet:
-    """Quacks like a Django QuerySet for the admin changelist."""
+# Filter kwargs `RedisQueueQuerySet.filter()` understands; everything else
+# raises NotImplementedError so missing functionality is loud, not silent.
+_QUEUE_FILTER_KEYS: dict[str, str] = {
+    "family": "family",
+    "family__exact": "family",
+    "repoid": "repoid",
+    "repoid__exact": "repoid",
+    "commitid": "commitid_prefix",
+    "commitid__exact": "commitid_prefix",
+    "commitid__startswith": "commitid_prefix",
+    "report_type": "report_type",
+    "report_type__exact": "report_type",
+    "depth__gte": "depth_gte",
+    "name__icontains": "name_substring",
+    "name__contains": "name_substring",
+}
 
-    def __init__(self, model, *, ordering: tuple[str, ...] = ()) -> None:
+
+class RedisQueueQuerySet:
+    """Quacks like a Django QuerySet for the admin changelist.
+
+    Filter kwargs in `_QUEUE_FILTER_KEYS` are honoured: `family`, `repoid`,
+    and `commitid` are pushed into a tighter SCAN MATCH; the rest
+    (`depth__gte`, `name__icontains`, `report_type`) are applied as a
+    post-scan filter on materialised rows.
+    """
+
+    def __init__(
+        self,
+        model,
+        *,
+        ordering: tuple[str, ...] = (),
+        filters: dict[str, Any] | None = None,
+    ) -> None:
         self.model = model
         self._ordering = ordering
+        self._filters: dict[str, Any] = dict(filters or {})
         self._result_cache: list | None = None
 
     # ---- Cloning helpers --------------------------------------------------
 
-    def _clone(self, *, ordering: tuple[str, ...] | None = None) -> RedisQueueQuerySet:
+    def _clone(
+        self,
+        *,
+        ordering: tuple[str, ...] | None = None,
+        filters: dict[str, Any] | None = None,
+    ) -> RedisQueueQuerySet:
         return RedisQueueQuerySet(
             self.model,
             ordering=self._ordering if ordering is None else ordering,
+            filters={**self._filters, **(filters or {})},
         )
 
     def all(self) -> RedisQueueQuerySet:
@@ -84,26 +126,57 @@ class RedisQueueQuerySet:
         # admin still calls this so we accept and ignore it.
         return self
 
-    # ---- Filtering / lookup (M3+) ----------------------------------------
+    # ---- Filtering -------------------------------------------------------
+
+    def _interpret_filter_kwargs(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        new_filters: dict[str, Any] = {}
+        unsupported: dict[str, Any] = {}
+        for key, value in kwargs.items():
+            target = _QUEUE_FILTER_KEYS.get(key)
+            if target is None:
+                unsupported[key] = value
+                continue
+            if value is None or value == "":
+                continue
+            if target == "repoid":
+                try:
+                    new_filters[target] = int(value)
+                except (TypeError, ValueError):
+                    # An int-only filter against a non-int value can never
+                    # match; force the queryset empty rather than crashing.
+                    new_filters["__empty__"] = True
+            elif target == "depth_gte":
+                try:
+                    new_filters[target] = int(value)
+                except (TypeError, ValueError):
+                    new_filters["__empty__"] = True
+            elif target == "name_substring":
+                new_filters[target] = str(value).lower()
+            else:
+                new_filters[target] = str(value)
+        if unsupported:
+            raise NotImplementedError(
+                "RedisQueueQuerySet.filter received unsupported kwargs: "
+                f"{sorted(unsupported)!r}; supported: {sorted(_QUEUE_FILTER_KEYS)!r}"
+            )
+        return new_filters
 
     def filter(self, *args, **kwargs) -> RedisQueueQuerySet:
-        if not args and not kwargs:
+        if args:
+            raise NotImplementedError(
+                "RedisQueueQuerySet.filter does not accept positional Q objects"
+            )
+        if not kwargs:
             return self._clone()
-        raise NotImplementedError(
-            "redis_admin.RedisQueueQuerySet.filter is added in milestone 3"
-        )
+        return self._clone(filters=self._interpret_filter_kwargs(kwargs))
 
     def exclude(self, *args, **kwargs) -> RedisQueueQuerySet:
         if not args and not kwargs:
             return self._clone()
-        raise NotImplementedError(
-            "redis_admin.RedisQueueQuerySet.exclude is added in milestone 3"
-        )
+        raise NotImplementedError("RedisQueueQuerySet.exclude is added in milestone 5")
 
     def get(self, *args, **kwargs):
-        raise NotImplementedError(
-            "redis_admin.RedisQueueQuerySet.get is added in milestone 3"
-        )
+        raise NotImplementedError("RedisQueueQuerySet.get is added in milestone 5")
 
     # ---- Ordering --------------------------------------------------------
 
@@ -112,15 +185,45 @@ class RedisQueueQuerySet:
 
     # ---- Materialization -------------------------------------------------
 
+    def _post_scan_predicate(self, obj: Any) -> bool:
+        f = self._filters
+        depth_gte = f.get("depth_gte")
+        if depth_gte is not None and (obj.depth or 0) < depth_gte:
+            return False
+        name_substring = f.get("name_substring")
+        if name_substring and name_substring not in (obj.name or "").lower():
+            return False
+        report_type = f.get("report_type")
+        if report_type and (obj.report_type or "") != report_type:
+            return False
+        # Redis glob `*` matches `/`, so a `uploads/*/abc*` pushdown can
+        # surface `uploads/<r>/<other>/abc-something`; double-check the
+        # parsed commitid starts with the prefix the caller asked for.
+        commitid_prefix = f.get("commitid_prefix")
+        if commitid_prefix and not (obj.commitid or "").startswith(commitid_prefix):
+            return False
+        return True
+
     def _fetch_all(self) -> list:
         if self._result_cache is not None:
             return self._result_cache
 
+        if self._filters.get("__empty__"):
+            self._result_cache = []
+            return []
+
         redis = _conn.get_connection()
         items = [
             _build_redis_queue(self.model, key, family, redis)
-            for key, family in iter_keys(redis)
+            for key, family in iter_keys(
+                redis,
+                family=self._filters.get("family"),
+                repoid=self._filters.get("repoid"),
+                commitid_prefix=self._filters.get("commitid_prefix"),
+            )
         ]
+
+        items = [obj for obj in items if self._post_scan_predicate(obj)]
 
         for field in reversed(self._ordering):
             reverse = field.startswith("-")

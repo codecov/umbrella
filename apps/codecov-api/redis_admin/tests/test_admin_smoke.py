@@ -142,3 +142,117 @@ class RedisQueueItemAdminSmokeTest(TestCase):
             or "0 of 0" in body
             or "no Redis" in body.lower()
         )
+
+
+class RedisAdminFiltersAndSearchTest(TestCase):
+    """M3 end-to-end: list_filter, search, repo/commit links."""
+
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+
+        self.user = UserFactory(is_staff=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    def _populate_diverse_keys(self):
+        # repo 1234 has several queues across coverage / test_results /
+        # ta_flake_key, and repo 9999 has an unrelated queue we expect to
+        # be filtered out by repoid searches.
+        self.redis.rpush("uploads/1234/sha-aaa", "p1")
+        self.redis.rpush("uploads/1234/sha-aaa", "p2")
+        self.redis.rpush("uploads/1234/sha-bbb/test_results", "p3")
+        self.redis.rpush("ta_flake_key:1234", "p4")
+        self.redis.rpush("uploads/9999/sha-zzz", "p5")
+
+    def test_search_by_repoid_token_returns_only_that_repos_queues(self):
+        """End-of-M3 acceptance: 'repoid:1234' surfaces all backed-up
+        queues for that repo and excludes others."""
+
+        self._populate_diverse_keys()
+
+        response = self.client.get(
+            "/admin/redis_admin/redisqueue/", {"q": "repoid:1234"}
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "uploads/1234/sha-aaa" in body
+        assert "uploads/1234/sha-bbb/test_results" in body
+        assert "ta_flake_key:1234" in body
+        assert "uploads/9999/sha-zzz" not in body
+
+    def test_search_by_commitid_token_filters_to_matching_prefix(self):
+        self._populate_diverse_keys()
+
+        response = self.client.get(
+            "/admin/redis_admin/redisqueue/", {"q": "commitid:sha-aaa"}
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "uploads/1234/sha-aaa" in body
+        assert "uploads/1234/sha-bbb/test_results" not in body
+        assert "ta_flake_key:1234" not in body
+
+    def test_family_list_filter_narrows_results(self):
+        self._populate_diverse_keys()
+
+        response = self.client.get(
+            "/admin/redis_admin/redisqueue/", {"family": "ta_flake_key"}
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "ta_flake_key:1234" in body
+        assert "uploads/1234/sha-aaa" not in body
+
+    def test_min_depth_filter_drops_shallow_queues(self):
+        self.redis.rpush("uploads/1/shallow", "x")
+        for i in range(5):
+            self.redis.rpush("uploads/1/deep", f"x{i}")
+
+        response = self.client.get("/admin/redis_admin/redisqueue/", {"min_depth": "5"})
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "uploads/1/deep" in body
+        assert "uploads/1/shallow" not in body
+
+    def test_report_type_filter_narrows_to_typed_uploads(self):
+        self.redis.rpush("uploads/1/sha", "x")  # coverage default
+        self.redis.rpush("uploads/1/sha/test_results", "x")
+        self.redis.rpush("uploads/1/sha/bundle_analysis", "x")
+
+        response = self.client.get(
+            "/admin/redis_admin/redisqueue/",
+            {"report_type": "test_results"},
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "uploads/1/sha/test_results" in body
+        assert "uploads/1/sha/bundle_analysis" not in body
+
+    def test_repoid_link_points_at_repository_admin(self):
+        self.redis.rpush("uploads/4242/sha", "x")
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Default Django admin URL for `core.Repository` keyed by repoid.
+        assert "/admin/core/repository/4242/change/" in body
+
+    def test_commitid_link_points_at_commit_changelist_search(self):
+        self.redis.rpush("uploads/1/cafef00dcafef00d", "x")
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "/admin/core/commit/?q=cafef00dcafef00d" in body

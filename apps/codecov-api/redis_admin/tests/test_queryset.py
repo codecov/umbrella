@@ -73,9 +73,12 @@ def test_queryset_filter_with_no_args_is_a_clone(patched_redis):
     assert RedisQueue.objects.filter().count() == 1
 
 
-def test_queryset_filter_with_kwargs_raises_until_milestone3(patched_redis):
+def test_queryset_filter_unknown_kwarg_raises_not_implemented(patched_redis):
+    """Unrecognised filter kwargs should fail loudly so missing M3+ work
+    is obvious instead of silently returning everything."""
+    patched_redis.rpush("uploads/1/aa", "x")
     with pytest.raises(NotImplementedError):
-        list(RedisQueue.objects.filter(family="uploads"))
+        list(RedisQueue.objects.filter(repo_owner="not-a-real-field"))
 
 
 def test_queryset_delete_raises_until_milestone5(patched_redis):
@@ -96,6 +99,81 @@ def test_queryset_returns_positive_ttl_when_set(patched_redis):
     [row] = list(RedisQueue.objects.all())
     assert row.ttl_seconds is not None
     assert 0 < row.ttl_seconds <= 600
+
+
+def test_queryset_filter_by_repoid_pushes_into_scan(patched_redis):
+    patched_redis.rpush("uploads/1/abc", "x")
+    patched_redis.rpush("uploads/2/def", "x")
+    patched_redis.rpush("ta_flake_key:1", "x")
+
+    rows = list(RedisQueue.objects.filter(repoid=1))
+    names = {r.name for r in rows}
+    assert names == {"uploads/1/abc", "ta_flake_key:1"}
+    for row in rows:
+        assert row.repoid == 1
+
+
+def test_queryset_filter_by_family_only_returns_that_family(patched_redis):
+    patched_redis.rpush("uploads/1/abc", "x")
+    patched_redis.rpush("ta_flake_key:1", "x")
+
+    rows = list(RedisQueue.objects.filter(family__exact="uploads"))
+    assert {r.name for r in rows} == {"uploads/1/abc"}
+
+
+def test_queryset_filter_by_commitid_prefix_post_scan(patched_redis):
+    patched_redis.rpush("uploads/1/abcdef", "x")
+    patched_redis.rpush("uploads/1/abczzz", "x")
+    patched_redis.rpush("uploads/1/zzzzzz", "x")
+
+    rows = list(RedisQueue.objects.filter(commitid__startswith="abc"))
+    assert {r.name for r in rows} == {"uploads/1/abcdef", "uploads/1/abczzz"}
+
+
+def test_queryset_filter_by_depth_gte_drops_shallow_rows(patched_redis):
+    patched_redis.rpush("uploads/1/shallow", "x")
+    for i in range(5):
+        patched_redis.rpush("uploads/1/deep", f"x{i}")
+
+    rows = list(RedisQueue.objects.filter(depth__gte=3))
+    assert {r.name for r in rows} == {"uploads/1/deep"}
+
+
+def test_queryset_filter_by_report_type_post_scan(patched_redis):
+    patched_redis.rpush("uploads/1/sha", "x")  # coverage default
+    patched_redis.rpush("uploads/1/sha/test_results", "x")
+    patched_redis.rpush("uploads/1/sha/bundle_analysis", "x")
+
+    rows = list(RedisQueue.objects.filter(report_type="test_results"))
+    assert [r.name for r in rows] == ["uploads/1/sha/test_results"]
+
+
+def test_queryset_filter_with_non_int_repoid_returns_empty(patched_redis):
+    patched_redis.rpush("uploads/1/abc", "x")
+    rows = list(RedisQueue.objects.filter(repoid="not-a-number"))
+    assert rows == []
+
+
+def test_queryset_filter_by_name_icontains_post_scan(patched_redis):
+    patched_redis.rpush("uploads/1/abc", "x")
+    patched_redis.rpush("ta_flake_key:1", "x")
+
+    rows = list(RedisQueue.objects.filter(name__icontains="flake"))
+    assert {r.name for r in rows} == {"ta_flake_key:1"}
+
+
+def test_queryset_populates_repoid_commitid_report_type(patched_redis):
+    patched_redis.rpush("uploads/77/somesha/test_results", "x")
+    patched_redis.rpush("ta_flake_key:88", "x")
+
+    rows = {r.name: r for r in RedisQueue.objects.all()}
+    uploads_row = rows["uploads/77/somesha/test_results"]
+    assert uploads_row.repoid == 77
+    assert uploads_row.commitid == "somesha"
+    assert uploads_row.report_type == "test_results"
+    flake_row = rows["ta_flake_key:88"]
+    assert flake_row.repoid == 88
+    assert flake_row.commitid is None
 
 
 def test_max_scan_keys_limits_result_set(patched_redis, settings, monkeypatch):

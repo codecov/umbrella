@@ -28,6 +28,9 @@ class RedisQueue(models.Model):
     redis_type = models.CharField(max_length=16)
     depth = models.PositiveIntegerField(default=0)
     ttl_seconds = models.IntegerField(null=True, blank=True)
+    repoid = models.IntegerField(null=True, blank=True)
+    commitid = models.CharField(max_length=64, null=True, blank=True)
+    report_type = models.CharField(max_length=32, null=True, blank=True)
 
     objects = RedisQueueManager()
 
