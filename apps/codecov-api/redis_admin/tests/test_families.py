@@ -18,6 +18,8 @@ from redis_admin.families import (
     _celery_decode_value,
     _celery_pattern,
     _intermediate_report_pattern,
+    _lock_attempts_pattern,
+    _lock_pattern_factory,
     _parse_coordination_lock_key,
     _parse_intermediate_report_key,
     _parse_latest_upload_key,
@@ -371,3 +373,125 @@ def test_iter_keys_does_not_double_yield_lock_attempts(patched_redis):
         if k == "lock_attempts:upload_lock_1_abc"
     ]
     assert rows == [("lock_attempts:upload_lock_1_abc", "lock_attempts")]
+
+
+# ---- Lock SCAN pattern pushdown regressions (Bugbot review on PR #888) ----
+
+
+def test_ta_notifier_fence_pattern_pushes_down_commitid():
+    """Bugbot PR #888: the previous `_lock_pattern_factory(sep=":")` set
+    `has_commit = (sep == "_") = False`, so any `commitid_prefix`
+    filter caused `pattern_for` to return None and skip the family
+    entirely — even though `ta_notifier_fence:{repoid}_{commitid}`
+    actually does encode a commit. Now `has_commit=True` is explicit.
+    """
+
+    pattern_for = _lock_pattern_factory(
+        "ta_notifier_fence", prefix_sep=":", has_commit=True
+    )
+
+    assert pattern_for({}) == "ta_notifier_fence:*"
+    assert pattern_for({"repoid": 42}) == "ta_notifier_fence:42_*"
+    assert (
+        pattern_for({"repoid": 42, "commitid_prefix": "abc"})
+        == "ta_notifier_fence:42_abc*"
+    )
+    # commitid-only without repoid still falls back to the family
+    # wildcard (Redis MATCH globs can't anchor "skip the repoid").
+    assert pattern_for({"commitid_prefix": "abc"}) == "ta_notifier_fence:*"
+
+
+def test_ta_flake_lock_pattern_drops_when_filtered_by_commitid():
+    """`ta_flake_lock:{repoid}` truly has no commit segment, so
+    `has_commit=False` is correct here — and a `commitid_prefix`
+    filter must drop the family from the SCAN entirely.
+    """
+
+    pattern_for = _lock_pattern_factory(
+        "ta_flake_lock", prefix_sep=":", has_commit=False
+    )
+
+    assert pattern_for({}) == "ta_flake_lock:*"
+    assert pattern_for({"repoid": 7}) == "ta_flake_lock:7*"
+    assert pattern_for({"commitid_prefix": "abc"}) is None
+    assert pattern_for({"repoid": 7, "commitid_prefix": "abc"}) is None
+
+
+def test_upload_finisher_gate_pattern_uses_underscore_prefix_sep():
+    """`upload_finisher_gate_{repoid}_{commitid}` keeps the same
+    `_` separator on both boundaries; explicit `prefix_sep="_"`,
+    `has_commit=True` documents that.
+    """
+
+    pattern_for = _lock_pattern_factory(
+        "upload_finisher_gate", prefix_sep="_", has_commit=True
+    )
+
+    assert pattern_for({"repoid": 99}) == "upload_finisher_gate_99_*"
+    assert (
+        pattern_for({"repoid": 99, "commitid_prefix": "deadbeef"})
+        == "upload_finisher_gate_99_deadbeef*"
+    )
+
+
+def test_lock_attempts_pattern_uses_embedded_repoid_position():
+    """Bugbot PR #888: the previous factory call generated
+    `lock_attempts:{repoid}*`, but actual keys are
+    `lock_attempts:{coordination_lock_name}` where the coord-lock-
+    name is `<type>_lock_<repoid>_<commit>...`. The repoid lives
+    deep inside the suffix, so we pushdown the embedded structure
+    via `*_lock_<repoid>_*` instead.
+    """
+
+    assert _lock_attempts_pattern({}) == "lock_attempts:*"
+    assert _lock_attempts_pattern({"repoid": 42}) == "lock_attempts:*_lock_42_*"
+    assert (
+        _lock_attempts_pattern({"repoid": 42, "commitid_prefix": "abc"})
+        == "lock_attempts:*_lock_42_abc*"
+    )
+    # commitid-only is unsafe to push down (commitid digits could
+    # collide with repoid digits at any position) — fall back to
+    # the family wildcard and let the post-scan parse_key filter
+    # finish the job.
+    assert _lock_attempts_pattern({"commitid_prefix": "abc"}) == "lock_attempts:*"
+
+
+def test_iter_keys_finds_lock_attempts_filtered_by_repoid(patched_redis):
+    """End-to-end regression for bugbot bug #4: searching the locks
+    admin by `repoid:42` must surface `lock_attempts:upload_lock_42_*`
+    keys (previously the pushdown SCAN-MATCH excluded them).
+    """
+
+    patched_redis.set("lock_attempts:upload_lock_42_abc", "1")
+    patched_redis.set("lock_attempts:upload_lock_99_xyz", "1")
+
+    rows = {k for k, _ in iter_keys(patched_redis, family="lock_attempts", repoid=42)}
+
+    assert rows == {"lock_attempts:upload_lock_42_abc"}
+
+
+def test_iter_keys_finds_ta_notifier_fence_filtered_by_repoid_and_commit(
+    patched_redis,
+):
+    """End-to-end regression for bugbot bug #1: a `repoid:42
+    commitid:abc` filter on the locks admin must include
+    `ta_notifier_fence` keys (previously the family was skipped
+    entirely because `_lock_pattern_factory` returned `None` whenever
+    `commitid_prefix` was set against a `sep=":"` family).
+    """
+
+    patched_redis.set("ta_notifier_fence:42_abcdef", "1")
+    patched_redis.set("ta_notifier_fence:42_other00", "1")
+    patched_redis.set("ta_notifier_fence:99_abcdef", "1")
+
+    rows = {
+        k
+        for k, _ in iter_keys(
+            patched_redis,
+            family="ta_notifier_fence",
+            repoid=42,
+            commitid_prefix="abc",
+        )
+    }
+
+    assert rows == {"ta_notifier_fence:42_abcdef"}

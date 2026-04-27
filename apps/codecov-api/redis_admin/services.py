@@ -96,6 +96,25 @@ def _classify_items(
         if family is None or not family.is_deletable:
             refused.append(f"{item.queue_name}#{item.index_or_field}")
             continue
+        # Families with a `decode_value` transformer (today: only
+        # `celery_broker`) round-trip the raw Redis bytes through a
+        # display-decorator — `_celery_decode_value` prepends a
+        # `[task=… repoid=… commit=…]` prefix so backed-up celery
+        # queues are triagable from the admin. That same prefix
+        # would land in `LREM`/`SREM` selectors and silently match
+        # zero rows in Redis. We intentionally don't track an
+        # un-decorated copy on the model (it'd defeat the
+        # truncation budget for big payloads), so refuse item-
+        # level deletion for these families: operators clear the
+        # whole queue from `RedisQueueAdmin` instead. (LREM-by-
+        # index isn't a Redis primitive; the only ways to drop a
+        # single celery message are LREM by exact value or DEL the
+        # whole queue.) HASH-typed families with `decode_value` are
+        # safe — HDEL keys off `index_or_field`, not the value —
+        # but no current family hits that combination.
+        if family.redis_type in ("list", "set") and family.decode_value is not None:
+            refused.append(f"{item.queue_name}#{item.index_or_field}")
+            continue
         # The HASH selector is the field name; SET selector is the
         # member value; LIST uses the raw value (not the index) since
         # LREM is value-based — admin pagination already gave us the

@@ -374,33 +374,61 @@ def _parse_upload_finisher_gate_key(key: str) -> ParsedKey:
     return ParsedKey(family="upload_finisher_gate", repoid=repoid, commitid=commitid)
 
 
-def _lock_pattern_factory(prefix: str, *, sep: str):
+def _lock_pattern_factory(prefix: str, *, prefix_sep: str, has_commit: bool):
     """Build a `pattern_for` for a lock family whose key shape is
-    `<prefix><sep><repoid>[<sep>...]`. Pushes `repoid` into the SCAN
-    when known; drops the family if the user filtered by commitid
-    against a key shape that has no commit segment.
+    either `<prefix><prefix_sep><repoid>` (when `has_commit=False`) or
+    `<prefix><prefix_sep><repoid>_<commit>` (when `has_commit=True`).
+    Pushes `repoid` (and `commitid_prefix` when applicable) into the
+    SCAN; drops the family entirely when the user filtered by
+    `commitid_prefix` against a `has_commit=False` key shape.
+
+    `prefix_sep` is the literal between the family prefix and the
+    repoid (`:` for `ta_flake_lock`/`ta_notifier_fence`, `_` for
+    `upload_finisher_gate`). When `has_commit` is true the
+    repoid-to-commit separator is hardcoded `_` because that's what
+    every callsite in the worker uses.
     """
 
-    has_commit = sep == "_"  # only `_`-separated locks carry a commit
-
     def pattern_for(filters: Mapping[str, Any]) -> str | None:
-        if not has_commit and filters.get("commitid_prefix"):
+        commitid = filters.get("commitid_prefix")
+        if not has_commit and commitid:
             return None
         repoid = filters.get("repoid")
+        if repoid is not None and has_commit and commitid:
+            return f"{prefix}{prefix_sep}{repoid}_{commitid}*"
         if repoid is not None:
-            return f"{prefix}{sep}{repoid}{sep if has_commit else ''}*"
-        return f"{prefix}{sep}*"
+            tail = "_*" if has_commit else "*"
+            return f"{prefix}{prefix_sep}{repoid}{tail}"
+        return f"{prefix}{prefix_sep}*"
 
     return pattern_for
 
 
-def _coordination_lock_pattern(filters: Mapping[str, Any]) -> str:
-    """`*_lock_*` is broad on purpose; we de-dup against more specific
-    families (e.g. `lock_attempts:` keys also contain `_lock_`) by
-    relying on `find_family` registration order in `iter_keys`.
+def _lock_attempts_pattern(filters: Mapping[str, Any]) -> str:
+    """`pattern_for` for the `lock_attempts:` family whose keys are
+    `lock_attempts:<coordination_lock_name>` and the coordination-
+    lock-name in turn is `<type>_lock_<repoid>_<commit>...`. The
+    repoid is buried inside the suffix, so a naive
+    `lock_attempts:<repoid>*` pushdown matches zero keys (cf. the
+    Bugbot review on PR #888). We push the embedded structure into
+    the SCAN MATCH instead.
+
+    `lock_attempts:*_lock_<repoid>_*` is still tighter than the
+    full-keyspace fallback (`lock_attempts:*`) and keeps the SCAN
+    targeted enough to be useful on busy clusters.
     """
 
-    return "*_lock_*"
+    repoid = filters.get("repoid")
+    commitid = filters.get("commitid_prefix")
+    if repoid is not None and commitid:
+        return f"lock_attempts:*_lock_{repoid}_{commitid}*"
+    if repoid is not None:
+        return f"lock_attempts:*_lock_{repoid}_*"
+    # Commitid-only pushdown isn't safe (commitid can collide with
+    # repoid digits at any position in the key); fall back to the
+    # family wildcard and let the post-scan `parse_key` filter do
+    # the work.
+    return "lock_attempts:*"
 
 
 # ---- SCAN pattern pushdown -------------------------------------------------
@@ -571,7 +599,7 @@ FAMILIES: tuple[Family, ...] = (
         scan_pattern="lock_attempts:*",
         redis_type="string",
         parse_key=_parse_lock_attempts_key,
-        pattern_for=_lock_pattern_factory("lock_attempts", sep=":"),
+        pattern_for=_lock_attempts_pattern,
         is_deletable=False,
         category="lock",
     ),
@@ -580,7 +608,9 @@ FAMILIES: tuple[Family, ...] = (
         scan_pattern="ta_flake_lock:*",
         redis_type="string",
         parse_key=_parse_ta_flake_lock_key,
-        pattern_for=_lock_pattern_factory("ta_flake_lock", sep=":"),
+        pattern_for=_lock_pattern_factory(
+            "ta_flake_lock", prefix_sep=":", has_commit=False
+        ),
         is_deletable=False,
         category="lock",
     ),
@@ -589,7 +619,9 @@ FAMILIES: tuple[Family, ...] = (
         scan_pattern="ta_notifier_fence:*",
         redis_type="string",
         parse_key=_parse_ta_notifier_fence_key,
-        pattern_for=_lock_pattern_factory("ta_notifier_fence", sep=":"),
+        pattern_for=_lock_pattern_factory(
+            "ta_notifier_fence", prefix_sep=":", has_commit=True
+        ),
         is_deletable=False,
         category="lock",
     ),
@@ -598,7 +630,9 @@ FAMILIES: tuple[Family, ...] = (
         scan_pattern="upload_finisher_gate_*",
         redis_type="string",
         parse_key=_parse_upload_finisher_gate_key,
-        pattern_for=_lock_pattern_factory("upload_finisher_gate", sep="_"),
+        pattern_for=_lock_pattern_factory(
+            "upload_finisher_gate", prefix_sep="_", has_commit=True
+        ),
         is_deletable=False,
         category="lock",
     ),

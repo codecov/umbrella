@@ -227,3 +227,32 @@ class TestRedisDeleteService(TestCase):
         message = json.loads(entries.first().change_message)
         assert message["count"] == 0
         assert "upload_lock_1_abc" in message["refused"]
+
+    def test_item_delete_refuses_celery_lists(self):
+        """Bugbot PR #888: `_classify_items` used `item.raw_value` as
+        the LREM selector. For families with `decode_value` (today:
+        `celery_broker`), `raw_value` carries the
+        `[task=… repoid=… commit=…]` display prefix that's NOT in
+        Redis, so LREM matches zero rows. Refuse item-level
+        LIST/SET delete for those families and let operators clear
+        the whole queue from `RedisQueueAdmin` instead.
+        """
+
+        self.server.rpush("celery", b"raw-payload-bytes")
+        # Simulate what `_build_list_items` produces for a celery
+        # row: raw_value carries the decode-prefix.
+        item = RedisQueueItem(
+            pk_token="celery#0",
+            queue_name="celery",
+            index_or_field="0",
+            raw_value="[task=app.foo repoid=42 commit=abc] raw-payload-bytes",
+        )
+
+        result = redis_delete([item], user=self.user, dry_run=False)
+
+        assert result.count == 0
+        assert "celery#0" in result.refused
+        # Most importantly: the original Redis payload is still
+        # there. Without the refusal, LREM would silently no-op
+        # against the prefixed selector and report success.
+        assert self.server.llen("celery") == 1
