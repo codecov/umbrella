@@ -476,7 +476,7 @@ class RedisQueueAdminDeleteActionsTest(TestCase):
         self.redis.rpush("uploads/1/aaa", "p1")
         self.redis.rpush("uploads/1/bbb", "p2")
 
-    def test_non_superuser_cannot_see_delete_selected(self):
+    def test_non_superuser_cannot_see_clear_selected(self):
         staff = UserFactory(is_staff=True, is_superuser=False)
         self.client.force_login(staff)
         self._populate()
@@ -486,8 +486,26 @@ class RedisQueueAdminDeleteActionsTest(TestCase):
         assert response.status_code == 200
         body = response.content.decode("utf-8")
         # Non-superusers can dry-run but never see the destructive action.
+        assert "Clear selected" not in body
+        # Stock Django delete is stripped out for everyone.
         assert "Delete selected" not in body
         assert "Dry-run" in body
+
+    def test_stock_delete_selected_action_is_unavailable(self):
+        # `delete_selected` was Django's stock no-dry-run path; we
+        # deliberately strip it so the only real-mutation bulk action
+        # is `clear_selected`, which forces a dry-run interstitial.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate()
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert 'value="delete_selected"' not in body
+        # Sanity: our replacement is offered.
+        assert 'value="clear_selected"' in body
 
     def test_clear_dry_run_action_does_not_delete(self):
         superuser = UserFactory(is_staff=True, is_superuser=True)
@@ -512,39 +530,102 @@ class RedisQueueAdminDeleteActionsTest(TestCase):
         # Audit trail: dry-runs are recorded.
         assert LogEntry.objects.count() >= 1
 
-    def test_delete_selected_actually_clears_keys(self):
+    def test_clear_selected_renders_dry_run_preview_first(self):
+        # Stage 1 of the new bulk-clear flow: posting `clear_selected`
+        # with no `confirm` flag must render the dry-run preview page,
+        # NOT delete anything.
         superuser = UserFactory(is_staff=True, is_superuser=True)
         self.client.force_login(superuser)
         self._populate()
+        prior_logs = LogEntry.objects.count()
 
-        # Stage 1: post the bulk action and accept Django's confirmation page.
         response = self.client.post(
             "/admin/redis_admin/redisqueue/",
             {
-                "action": "delete_selected",
+                "action": "clear_selected",
                 "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
             },
         )
-        # The confirmation page is a 200, the actual delete needs `post`.
-        assert response.status_code == 200
 
-        # Stage 2: confirm the deletion.
-        response = self.client.post(
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Preview page renders the dry-run summary…
+        assert "Dry-run summary" in body
+        assert "Would delete:" in body
+        assert "<strong>2</strong>" in body
+        # …a sample list…
+        assert "uploads/1/aaa" in body
+        assert "uploads/1/bbb" in body
+        # …and a confirmation form that re-posts with `confirm=yes`.
+        assert 'name="confirm" value="yes"' in body
+        assert 'name="action" value="clear_selected"' in body
+        assert 'name="_selected_action" value="uploads/1/aaa"' in body
+        # No keys deleted yet.
+        assert self.redis.exists("uploads/1/aaa") == 1
+        assert self.redis.exists("uploads/1/bbb") == 1
+        # Audit trail still has the dry-run recorded.
+        assert LogEntry.objects.count() == prior_logs + 1
+
+    def test_clear_selected_with_confirm_actually_clears_keys(self):
+        # Stage 2: re-post with `confirm=yes` runs the real delete.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate()
+        prior_logs = LogEntry.objects.count()
+
+        # Stage 1: open the confirmation page (records a dry-run audit).
+        stage1 = self.client.post(
             "/admin/redis_admin/redisqueue/",
             {
-                "action": "delete_selected",
+                "action": "clear_selected",
                 "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
-                "post": "yes",
+            },
+        )
+        assert stage1.status_code == 200
+        # Mid-flight: keys still present.
+        assert self.redis.exists("uploads/1/aaa") == 1
+
+        # Stage 2: submit the confirmation form.
+        stage2 = self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "clear_selected",
+                "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
+                "confirm": "yes",
             },
             follow=True,
         )
 
-        assert response.status_code == 200
+        assert stage2.status_code == 200
         # Both keys should now be gone.
         assert self.redis.exists("uploads/1/aaa") == 0
         assert self.redis.exists("uploads/1/bbb") == 0
-        # Audit log should record the real delete.
-        assert LogEntry.objects.count() >= 1
+        # Audit log should record both the dry-run AND the real delete.
+        assert LogEntry.objects.count() == prior_logs + 2
+
+    def test_clear_selected_cancel_does_not_delete(self):
+        # Operators must be able to back out of the dry-run preview
+        # without deleting anything.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate()
+
+        # Stage 1.
+        self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "clear_selected",
+                "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
+            },
+        )
+        # The "No, take me back" link is just a GET to the changelist;
+        # exercise it explicitly.
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        # Nothing was deleted because stage 2 never happened.
+        assert self.redis.exists("uploads/1/aaa") == 1
+        assert self.redis.exists("uploads/1/bbb") == 1
 
 
 class RedisAdminClearByScopeTest(TestCase):

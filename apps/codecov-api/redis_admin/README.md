@@ -64,13 +64,20 @@ The sidebar adds standalone `family`, `min depth`, and
 Three deletion entry points, all funnel through the audited
 `services.redis_delete()` and all gated on `request.user.is_superuser`:
 
-1. **Per-queue / per-item `Delete selected`** — the standard admin
-   bulk action. `delete_queryset` is overridden to dispatch through
-   `redis_delete`, which issues `DEL` for queue rows and
-   `LREM` / `SREM` / `HDEL` for item rows.
-2. **`Dry-run: count what 'delete selected' would clear`** — sibling
-   action visible to staff users. Same code path with `dry_run=True`,
-   no mutations, but still writes a `LogEntry`.
+1. **`Clear selected (dry-run preview, then confirm)`** — the bulk
+   action that replaces Django's stock `delete_selected`. Two-stage
+   flow: stage 1 runs `redis_delete(dry_run=True)` and renders a
+   confirmation page with the dry-run's count, families, refused
+   keys, and a sample list rendered inline; stage 2 (when the form
+   re-posts with `confirm=yes`) runs `redis_delete(dry_run=False)`.
+   Operators cannot reach the destructive button without first seeing
+   the dry-run output. The stock `delete_selected` is stripped in
+   `RedisQueueAdmin.get_actions` so there's no no-dry-run path at
+   all.
+2. **`Dry-run: count what 'clear selected' would clear`** — sibling
+   action visible to staff users. Standalone dry-run with no
+   destructive button on the same page; useful for "let me see what
+   would happen" workflows. Still writes a `LogEntry`.
 3. **Clear by scope** — single endpoint at
    `/admin/redis_admin/redisqueue/clear-by-scope/`. Aggregates every
    deletable key tied to a `repoid`, `commitid`, and/or explicit

@@ -1,0 +1,94 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} delete-confirmation{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <p>
+    Confirm clearing the {{ selected|length }} selected Redis key(s).
+    The numbers below come from a real <strong>dry-run</strong>
+    against Redis &mdash; nothing has been deleted yet, but a dry-run
+    audit entry has already been recorded in
+    <code>django.contrib.admin.LogEntry</code>.
+  </p>
+
+  <fieldset class="module">
+    <h2>Dry-run summary</h2>
+    <ul style="list-style:disc;margin-left:1.5em;">
+      <li>
+        Would delete:
+        <strong>{{ dry_run_result.count }}</strong> key(s) /
+        item-level operation(s).
+      </li>
+      <li>
+        Families affected:
+        {% if dry_run_result.families %}
+          {% for f in dry_run_result.families %}
+            <code>{{ f }}</code>{% if not forloop.last %}, {% endif %}
+          {% endfor %}
+        {% else %}
+          <em>none</em>
+        {% endif %}
+      </li>
+      {% if dry_run_result.refused %}
+      <li>
+        Refused (locks / non-deletable families):
+        <strong>{{ dry_run_result.refused|length }}</strong>
+        &mdash; first few:
+        {% for r in dry_run_result.refused|slice:":5" %}
+          <code>{{ r }}</code>{% if not forloop.last %}, {% endif %}
+        {% endfor %}
+      </li>
+      {% endif %}
+    </ul>
+  </fieldset>
+
+  {% if dry_run_result.sample %}
+  <fieldset class="module">
+    <h2>Sample of keys that will be cleared (first {{ dry_run_result.sample|length }})</h2>
+    <ul style="list-style:disc;margin-left:1.5em;">
+      {% for s in dry_run_result.sample %}
+        <li><code>{{ s }}</code></li>
+      {% endfor %}
+    </ul>
+  </fieldset>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="{{ action_name }}">
+    <input type="hidden" name="confirm" value="yes">
+    {# Round-trip the original selection so Django's action helper
+       refetches the same queryset on the second POST. #}
+    {% for pk in selected_pks %}
+      <input type="hidden" name="_selected_action" value="{{ pk }}">
+    {% endfor %}
+
+    <div class="submit-row">
+      {% if dry_run_result.count == 0 %}
+        <p><em>Nothing to clear (dry-run found 0 deletable keys).</em></p>
+        <a href="{% url opts|admin_urlname:'changelist' %}" class="button cancel-link">
+          {% translate "Back to changelist" %}
+        </a>
+      {% else %}
+        <input type="submit" value="Yes, clear {{ dry_run_result.count }} key(s)" class="deletelink">
+        <a href="{% url opts|admin_urlname:'changelist' %}" class="button cancel-link" style="margin-left:1em;">
+          {% translate "No, take me back" %}
+        </a>
+      {% endif %}
+    </div>
+  </form>
+
+</div>
+{% endblock %}

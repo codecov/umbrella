@@ -626,12 +626,33 @@ class RedisQueueAdmin(admin.ModelAdmin):
         }
         return render(request, "admin/redis_admin/clear_by_scope.html", ctx)
 
-    # ---- Delete actions (M5.2) -----------------------------------------
+    # ---- Delete actions (M5.2 + dry-run-mandatory bulk) -----------------
+    #
+    # The standard `delete_selected` is replaced with `clear_selected`,
+    # a 2-stage action that always runs a dry-run *before* offering the
+    # destructive button. Django's stock flow is "select → confirm →
+    # delete"; ours is "select → dry-run preview → confirm → delete".
+    # The dry-run output (count, families, refused, sample) is rendered
+    # inline on the confirmation page so the operator can sanity-check
+    # the impact of the action before committing.
+    #
+    # `clear_dry_run` is kept as a separate action for the
+    # "let me see what would happen if I cleared X, with no risk of
+    # accidentally hitting the wrong button" workflow — it has no
+    # destructive sibling on the same page, just `message_user`.
 
-    actions = ("clear_dry_run",)
+    actions = ("clear_dry_run", "clear_selected")
+
+    def get_actions(self, request):
+        # Strip Django's stock `delete_selected` so the only path that
+        # actually mutates Redis from a bulk action goes through our
+        # dry-run-mandatory `clear_selected`.
+        actions = super().get_actions(request)
+        actions.pop("delete_selected", None)
+        return actions
 
     @admin.action(
-        description="Dry-run: count what 'delete selected' would clear",
+        description="Dry-run: count what 'clear selected' would clear",
         permissions=("change",),
     )
     def clear_dry_run(self, request: HttpRequest, queryset) -> None:
@@ -647,8 +668,75 @@ class RedisQueueAdmin(admin.ModelAdmin):
             level=messages.INFO,
         )
 
+    @admin.action(
+        description="Clear selected (dry-run preview, then confirm)",
+        permissions=("delete",),
+    )
+    def clear_selected(self, request: HttpRequest, queryset):
+        """Two-stage clear: shows dry-run results, then waits for confirm.
+
+        Stage 1 (no `confirm` flag): runs `redis_delete(dry_run=True)`
+        and renders a confirmation page that displays the dry-run's
+        count + families + refused + sample inline. The page's form
+        re-posts the same action with `confirm=yes`.
+
+        Stage 2 (`confirm=yes`): runs `redis_delete(dry_run=False)`,
+        the actual mutation. Returning `None` falls through to the
+        standard action redirect back to the changelist.
+        """
+
+        selected = list(queryset)
+        # Pull the original `_selected_action` checkbox values so we can
+        # round-trip them as hidden inputs on the confirmation form;
+        # Django's action helper re-fetches the queryset from these on
+        # the second POST.
+        selected_pks = request.POST.getlist("_selected_action") or [
+            obj.pk for obj in selected
+        ]
+
+        if request.POST.get("confirm") == "yes":
+            result = redis_delete(selected, user=request.user, dry_run=False)
+            self.message_user(
+                request,
+                (
+                    f"Cleared {result.count} Redis key(s) across "
+                    f"families={list(result.families) or '[]'}"
+                    + (
+                        f"; refused={list(result.refused[:5])}"
+                        if result.refused
+                        else ""
+                    )
+                ),
+                level=messages.SUCCESS,
+            )
+            # Falls through to Django's "redirect back to changelist"
+            # behaviour for actions that return None.
+            return None
+
+        dry_run_result = redis_delete(selected, user=request.user, dry_run=True)
+
+        opts = self.model._meta
+        ctx = {
+            **self.admin_site.each_context(request),
+            "title": "Confirm clear of selected Redis keys",
+            "opts": opts,
+            "action_name": "clear_selected",
+            "selected": selected,
+            "selected_pks": selected_pks,
+            "dry_run_result": dry_run_result,
+            "media": self.media,
+        }
+        return render(
+            request, "admin/redis_admin/clear_selected_confirmation.html", ctx
+        )
+
     def delete_queryset(self, request: HttpRequest, queryset) -> None:
-        """Bulk 'Delete selected' on the queues changelist."""
+        """Defensive: stock `delete_selected` is stripped in `get_actions`,
+        but if a future code path reintroduces it, route through the
+        same audited service rather than letting the ORM fall through
+        on an unmanaged model.
+        """
+
         result = redis_delete(list(queryset), user=request.user, dry_run=False)
         self.message_user(
             request,
@@ -661,7 +749,14 @@ class RedisQueueAdmin(admin.ModelAdmin):
         )
 
     def delete_model(self, request: HttpRequest, obj: RedisQueue) -> None:
-        """Single-object delete from the change page."""
+        """Single-object delete from the change page.
+
+        The change page already runs through Django's standard
+        `delete_view` confirmation interstitial, which displays the
+        full key path before the operator commits, so we don't add a
+        second dry-run gate here.
+        """
+
         result = redis_delete([obj], user=request.user, dry_run=False)
         self.message_user(
             request,
