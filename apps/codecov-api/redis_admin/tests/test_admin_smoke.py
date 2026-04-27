@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import fakeredis
 import pytest
+from django.contrib.admin.models import LogEntry
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from utils.test_utils import Client
 
 
@@ -126,6 +128,44 @@ class RedisQueueItemAdminSmokeTest(TestCase):
         # Index column shows 0/1/2 so users can identify positions.
         assert ">0<" in body or ">0 " in body
         assert ">2<" in body or ">2 " in body
+
+    def test_item_change_page_renders_for_list_item(self):
+        # Reproduces the user-reported NotImplementedError: clicking an
+        # item row on the changelist hits `/<pk_token>/change/`, which
+        # calls `queryset.get(pk_token=…)`. The pk_token is
+        # `<queue>#<index>` for LIST items, url-encoded by Django so
+        # `/` → `_2F` and `#` → `_23`.
+        self.redis.rpush("uploads/123/abcdef", "first-payload")
+        self.redis.rpush("uploads/123/abcdef", "second-payload")
+        url = "/admin/redis_admin/redisqueueitem/uploads_2F123_2Fabcdef_230/change/"
+
+        response = self.client.get(url)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # The first item's value renders on the readonly page.
+        assert "first-payload" in body
+        # No save buttons because the item is a strict read-only inspector.
+        assert 'name="_save"' not in body
+
+    def test_item_change_page_for_string_key(self):
+        self.redis.set("latest_upload/1/sha", "string-payload")
+        url = "/admin/redis_admin/redisqueueitem/latest_5Fupload_2F1_2Fsha_23v/change/"
+
+        response = self.client.get(url)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "string-payload" in body
+
+    def test_item_change_page_404s_for_missing_index(self):
+        self.redis.rpush("uploads/1/sha", "only-one")
+        # Index 99 doesn't exist; admin should 302/404 rather than 500.
+        url = "/admin/redis_admin/redisqueueitem/uploads_2F1_2Fsha_2399/change/"
+
+        response = self.client.get(url)
+
+        assert response.status_code in (302, 404)
 
     def test_items_changelist_with_unknown_queue_renders_empty(self):
         response = self.client.get(
@@ -256,3 +296,252 @@ class RedisAdminFiltersAndSearchTest(TestCase):
         assert response.status_code == 200
         body = response.content.decode("utf-8")
         assert "/admin/core/commit/?q=cafef00dcafef00d" in body
+
+    def test_repo_display_column_renders_service_owner_name(self):
+        owner = OwnerFactory(service="github", username="codecov")
+        repo = RepositoryFactory(author=owner, name="example")
+        self.redis.rpush(f"uploads/{repo.repoid}/abc", "x")
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert f"uploads/{repo.repoid}/abc" in body
+        assert "github:codecov/example" in body
+
+    def test_repo_display_column_falls_back_to_dash_when_repo_missing(self):
+        # Redis still has a queue for a repoid that no longer exists in
+        # the DB (e.g. repo was deleted); the column degrades gracefully
+        # rather than 500ing the changelist.
+        self.redis.rpush("uploads/9999999/abc", "x")
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Fallback is the em-dash placeholder.
+        assert "—" in body
+
+
+class RedisLockAdminSmokeTest(TestCase):
+    """M4.3 end-to-end checks for the read-only locks changelist."""
+
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+
+        self.user = UserFactory(is_staff=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    def test_lock_changelist_lists_lock_keys_only(self):
+        # Mix of lock and queue keys; only the lock ones should show up
+        # on /redislock/ and only the queue ones on /redisqueue/.
+        self.redis.set("upload_lock_1234_abc", "1")
+        self.redis.set("ta_flake_lock:1234", "1")
+        self.redis.set("upload_finisher_gate_1234_abc", "1")
+        self.redis.rpush("uploads/1234/abc", "payload")
+
+        response = self.client.get("/admin/redis_admin/redislock/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "upload_lock_1234_abc" in body
+        assert "ta_flake_lock:1234" in body
+        assert "upload_finisher_gate_1234_abc" in body
+        # Queue keys must not bleed into the locks page.
+        assert "uploads/1234/abc" not in body
+
+    def test_locks_changelist_has_no_delete_action(self):
+        self.redis.set("upload_lock_1_abc", "1")
+
+        response = self.client.get("/admin/redis_admin/redislock/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # The default "Delete selected" action must be stripped.
+        assert "delete_selected" not in body
+
+
+class RedisQueueAdminChangePageTest(TestCase):
+    """Clicking a row on the changelist opens the per-key inspector."""
+
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+
+        self.user = UserFactory(is_staff=True, is_superuser=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    def test_change_page_renders_for_keys_with_slashes(self):
+        # Reproduces the user-reported NotImplementedError: a `latest_upload/
+        # 123/<sha>` key is the changelist row's pk, so Django's admin
+        # url-quotes the slashes (`/` → `_2F`) and looks the row up via
+        # `queryset.get(name=…)`.
+        self.redis.set(
+            "latest_upload/123/8ebf8abc9d07cceb42ead4b94edb494d52eefd2f", "1"
+        )
+        url = "/admin/redis_admin/redisqueue/latest_5Fupload_2F123_2F8ebf8abc9d07cceb42ead4b94edb494d52eefd2f/change/"
+
+        response = self.client.get(url)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Family + repoid render in the inspector pane.
+        assert "latest_upload" in body
+        assert "123" in body
+        # Save buttons must be suppressed; only Delete (and history) render.
+        assert 'name="_save"' not in body
+        assert 'name="_continue"' not in body
+        assert 'name="_addanother"' not in body
+        # Superuser sees the delete link.
+        assert "delete/" in body
+
+    def test_change_page_404s_when_redis_key_missing(self):
+        url = "/admin/redis_admin/redisqueue/no_2Dsuch_2Fkey/change/"
+        response = self.client.get(url)
+        # Django's admin returns a 302 → "?" or a 404 for a missing object;
+        # both are fine, the important part is no 500 from
+        # NotImplementedError.
+        assert response.status_code in (302, 404)
+
+    def test_change_page_renders_inline_items_preview_for_list_queue(self):
+        # Operator clicks a backed-up `uploads/<repoid>/<sha>` queue;
+        # the change page should show the queue's items inline so they
+        # can investigate without a second tab.
+        for i in range(3):
+            self.redis.rpush("uploads/123/abc123", f'{{"upload_id": {i}}}'.encode())
+
+        url = "/admin/redis_admin/redisqueue/uploads_2F123_2Fabc123/change/"
+        response = self.client.get(url)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # The items render as a Django tabular inline (matching the
+        # admin's `TabularInline` look). The wrapper, headers, and
+        # row values should all be present. Values are HTML-escaped
+        # by `format_html`, so look for the escaped form.
+        assert 'class="js-inline-admin-formset inline-group"' in body
+        assert "Index / field" in body
+        for i in range(3):
+            assert f"upload_id&quot;: {i}" in body
+        # Each row should link to the per-item inspector for drill-in.
+        assert (
+            "/admin/redis_admin/redisqueueitem/uploads_2F123_2Fabc123_230/change/"
+            in body
+        )
+        # And the footer link points at the full items changelist.
+        assert "queue_name__exact=uploads/123/abc123" in body
+
+    def test_change_page_renders_inline_items_preview_for_string_key(self):
+        # `latest_upload/<repoid>/<sha>` is a STRING; the held value
+        # should appear in the preview.
+        self.redis.set(
+            "latest_upload/123/8ebf8abc9d07cceb42ead4b94edb494d52eefd2f",
+            "the-stored-id",
+        )
+
+        url = "/admin/redis_admin/redisqueue/latest_5Fupload_2F123_2F8ebf8abc9d07cceb42ead4b94edb494d52eefd2f/change/"
+        response = self.client.get(url)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "the-stored-id" in body
+        assert "(value)" in body
+
+
+class RedisQueueAdminDeleteActionsTest(TestCase):
+    """M5.2 end-to-end: dry-run action, real delete, non-superuser blocked."""
+
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+
+        self.client = Client()
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    def _populate(self):
+        self.redis.rpush("uploads/1/aaa", "p1")
+        self.redis.rpush("uploads/1/bbb", "p2")
+
+    def test_non_superuser_cannot_see_delete_selected(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+        self._populate()
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Non-superusers can dry-run but never see the destructive action.
+        assert "Delete selected" not in body
+        assert "Dry-run" in body
+
+    def test_clear_dry_run_action_does_not_delete(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate()
+
+        response = self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "clear_dry_run",
+                "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Dry-run: would delete 2" in body
+        # Keys must still be in Redis after a dry-run.
+        assert self.redis.exists("uploads/1/aaa") == 1
+        assert self.redis.exists("uploads/1/bbb") == 1
+        # Audit trail: dry-runs are recorded.
+        assert LogEntry.objects.count() >= 1
+
+    def test_delete_selected_actually_clears_keys(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate()
+
+        # Stage 1: post the bulk action and accept Django's confirmation page.
+        response = self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "delete_selected",
+                "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
+            },
+        )
+        # The confirmation page is a 200, the actual delete needs `post`.
+        assert response.status_code == 200
+
+        # Stage 2: confirm the deletion.
+        response = self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "delete_selected",
+                "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
+                "post": "yes",
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        # Both keys should now be gone.
+        assert self.redis.exists("uploads/1/aaa") == 0
+        assert self.redis.exists("uploads/1/bbb") == 0
+        # Audit log should record the real delete.
+        assert LogEntry.objects.count() >= 1

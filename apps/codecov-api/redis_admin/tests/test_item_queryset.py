@@ -104,23 +104,87 @@ def test_filter_by_unknown_queue_name_returns_empty(patched_redis):
     assert RedisQueueItem.objects.filter(queue_name__exact="missing").count() == 0
 
 
-def test_set_and_hash_queues_report_zero_until_milestone_4(patched_redis):
-    # M2 only handles LIST. SET/HASH/STRING families arrive in M4; until then
-    # the item view reports zero so the changelist renders cleanly without
-    # blowing up.
-    patched_redis.sadd("upload-processing-state/1/abc", "x", "y")
-    patched_redis.hset("intermediate-report/1/abc", mapping={"a": "1", "b": "2"})
+def test_set_queue_items_use_sscan_and_sort_lexically(patched_redis):
+    """M4: SET items render via SSCAN, sorted so admin pagination is stable."""
 
-    set_qs = RedisQueueItem.objects.filter(
-        queue_name__exact="upload-processing-state/1/abc"
+    patched_redis.sadd("upload-processing-state/1/abc/in_progress", "z", "a", "m")
+
+    qs = RedisQueueItem.objects.filter(
+        queue_name__exact="upload-processing-state/1/abc/in_progress"
     )
-    hash_qs = RedisQueueItem.objects.filter(
-        queue_name__exact="intermediate-report/1/abc"
+
+    rows = list(qs)
+    assert qs.count() == 3
+    # Sorted lexically so page-to-page navigation is stable across requests.
+    assert [row.raw_value for row in rows] == ["a", "m", "z"]
+    # pk_token uses the deterministic ordinal so items are unique-keyed.
+    assert {row.pk_token for row in rows} == {
+        "upload-processing-state/1/abc/in_progress#m:0",
+        "upload-processing-state/1/abc/in_progress#m:1",
+        "upload-processing-state/1/abc/in_progress#m:2",
+    }
+
+
+def test_hash_queue_items_use_hscan_sorted_by_field(patched_redis):
+    """M4: HASH items render via HSCAN, sorted by field name."""
+
+    patched_redis.hset(
+        "intermediate-report/upload-99",
+        mapping={"zeta": "3", "alpha": "1", "beta": "2"},
     )
-    assert set_qs.count() == 0
-    assert hash_qs.count() == 0
-    assert list(set_qs) == []
-    assert list(hash_qs) == []
+
+    qs = RedisQueueItem.objects.filter(
+        queue_name__exact="intermediate-report/upload-99"
+    )
+
+    rows = list(qs)
+    assert qs.count() == 3
+    assert [row.index_or_field for row in rows] == ["alpha", "beta", "zeta"]
+    assert [row.raw_value for row in rows] == ["1", "2", "3"]
+    assert [row.pk_token for row in rows] == [
+        "intermediate-report/upload-99#f:alpha",
+        "intermediate-report/upload-99#f:beta",
+        "intermediate-report/upload-99#f:zeta",
+    ]
+
+
+def test_string_queue_renders_a_single_item(patched_redis):
+    """M4: STRING (e.g. `latest_upload/...`) shows the value as one item."""
+
+    patched_redis.set("latest_upload/1/abc", "1234567890")
+
+    qs = RedisQueueItem.objects.filter(queue_name__exact="latest_upload/1/abc")
+
+    rows = list(qs)
+    assert qs.count() == 1
+    assert len(rows) == 1
+    assert rows[0].index_or_field == "(value)"
+    assert rows[0].raw_value == "1234567890"
+    assert rows[0].pk_token == "latest_upload/1/abc#v"
+
+
+def test_string_queue_count_is_zero_when_key_missing(patched_redis):
+    qs = RedisQueueItem.objects.filter(queue_name__exact="latest_upload/missing/key")
+    assert qs.count() == 0
+    assert list(qs) == []
+
+
+def test_set_items_capped_by_max_items_per_key(patched_redis, monkeypatch):
+    """A pathologically large SET stops streaming once we hit the cap."""
+
+    monkeypatch.setattr(redis_admin_settings, "MAX_ITEMS_PER_KEY", 5)
+    for i in range(20):
+        patched_redis.sadd("upload-processing-state/1/abc/in_progress", f"m{i:02d}")
+
+    qs = RedisQueueItem.objects.filter(
+        queue_name__exact="upload-processing-state/1/abc/in_progress"
+    )
+
+    # count() still reports the true SCARD so the paginator's totals stay
+    # honest; only materialised pages are truncated.
+    assert qs.count() == 20
+    rows = list(qs)
+    assert len(rows) == 5
 
 
 def test_delete_raises_until_milestone_5(patched_redis):

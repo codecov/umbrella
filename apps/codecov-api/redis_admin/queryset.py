@@ -75,6 +75,15 @@ _QUEUE_FILTER_KEYS: dict[str, str] = {
     "depth__gte": "depth_gte",
     "name__icontains": "name_substring",
     "name__contains": "name_substring",
+    # Admin bulk actions (delete_selected, custom actions) narrow the
+    # queryset to selected pks via `filter(pk__in=[...])`. We treat that
+    # as a direct-by-name lookup that bypasses iter_keys SCAN entirely.
+    "pk": "name_exact",
+    "pk__exact": "name_exact",
+    "pk__in": "name_in",
+    "name": "name_exact",
+    "name__exact": "name_exact",
+    "name__in": "name_in",
 }
 
 
@@ -93,10 +102,12 @@ class RedisQueueQuerySet:
         *,
         ordering: tuple[str, ...] = (),
         filters: dict[str, Any] | None = None,
+        category: str = "queue",
     ) -> None:
         self.model = model
         self._ordering = ordering
         self._filters: dict[str, Any] = dict(filters or {})
+        self._category = category
         self._result_cache: list | None = None
 
     # ---- Cloning helpers --------------------------------------------------
@@ -111,6 +122,7 @@ class RedisQueueQuerySet:
             self.model,
             ordering=self._ordering if ordering is None else ordering,
             filters={**self._filters, **(filters or {})},
+            category=self._category,
         )
 
     def all(self) -> RedisQueueQuerySet:
@@ -125,6 +137,21 @@ class RedisQueueQuerySet:
         # Database alias has no meaning for a Redis-backed queryset; the
         # admin still calls this so we accept and ignore it.
         return self
+
+    # ---- Compatibility shims for django.contrib.admin.utils ---------------
+
+    @property
+    def verbose_name(self):
+        # `delete_selected` calls `model_ngettext(queryset)` →
+        # `model_format_dict(obj)`; since our queryset doesn't subclass
+        # `django.db.models.QuerySet`, that helper falls into the
+        # `else: opts = obj` branch and reads `verbose_name` directly.
+        # Proxy to the model's Meta so the confirmation page renders.
+        return self.model._meta.verbose_name
+
+    @property
+    def verbose_name_plural(self):
+        return self.model._meta.verbose_name_plural
 
     # ---- Filtering -------------------------------------------------------
 
@@ -152,6 +179,18 @@ class RedisQueueQuerySet:
                     new_filters["__empty__"] = True
             elif target == "name_substring":
                 new_filters[target] = str(value).lower()
+            elif target == "name_in":
+                # `pk__in=[...]` from admin bulk actions; merge with any
+                # previously-set name_in so chained `.filter()` calls
+                # narrow the set rather than overwriting.
+                names = list(value) if not isinstance(value, str) else [value]
+                existing = self._filters.get("name_in")
+                if existing is not None:
+                    new_filters[target] = [n for n in names if n in set(existing)]
+                else:
+                    new_filters[target] = names
+            elif target == "name_exact":
+                new_filters[target] = str(value)
             else:
                 new_filters[target] = str(value)
         if unsupported:
@@ -176,7 +215,28 @@ class RedisQueueQuerySet:
         raise NotImplementedError("RedisQueueQuerySet.exclude is added in milestone 5")
 
     def get(self, *args, **kwargs):
-        raise NotImplementedError("RedisQueueQuerySet.get is added in milestone 5")
+        """Lookup a single queue by `pk=` / `name=` (or their `__exact` variants).
+
+        The admin's `get_object` calls `queryset.get(name=<key>)` when the
+        operator clicks a row on the changelist; we reuse the explicit-name
+        fast path in `_fetch_all` so this never triggers a SCAN.
+        """
+
+        if args:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} matching positional args is not supported"
+            )
+        filtered = self.filter(**kwargs)
+        items = filtered._fetch_all()
+        if not items:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} matching {kwargs!r} does not exist"
+            )
+        if len(items) > 1:
+            raise self.model.MultipleObjectsReturned(
+                f"get() returned {len(items)} {self.model.__name__} rows"
+            )
+        return items[0]
 
     # ---- Ordering --------------------------------------------------------
 
@@ -202,6 +262,13 @@ class RedisQueueQuerySet:
         commitid_prefix = f.get("commitid_prefix")
         if commitid_prefix and not (obj.commitid or "").startswith(commitid_prefix):
             return False
+        # Families without a repoid in their key shape (e.g. intermediate-
+        # report) opt out of repoid SCAN pushdown by returning None from
+        # `pattern_for`, but a defensive post-scan check guards future
+        # families that *do* scan and need the value re-verified.
+        repoid = f.get("repoid")
+        if repoid is not None and obj.repoid != repoid:
+            return False
         return True
 
     def _fetch_all(self) -> list:
@@ -213,15 +280,42 @@ class RedisQueueQuerySet:
             return []
 
         redis = _conn.get_connection()
-        items = [
-            _build_redis_queue(self.model, key, family, redis)
-            for key, family in iter_keys(
-                redis,
-                family=self._filters.get("family"),
-                repoid=self._filters.get("repoid"),
-                commitid_prefix=self._filters.get("commitid_prefix"),
-            )
-        ]
+
+        # `pk__in=[...]` / `pk=name` from admin bulk actions: skip SCAN
+        # and resolve each requested name directly against the family
+        # registry. This keeps the bulk-delete confirmation page fast
+        # even on a large keyspace, and avoids re-scanning for keys we
+        # already have names for.
+        explicit_names: list[str] | None = None
+        name_in = self._filters.get("name_in")
+        name_exact = self._filters.get("name_exact")
+        if name_in is not None:
+            explicit_names = list(name_in)
+        elif name_exact is not None:
+            explicit_names = [name_exact]
+
+        if explicit_names is not None:
+            items = []
+            for name in explicit_names:
+                family = find_family(name)
+                if family is None:
+                    continue
+                if family.category != self._category:
+                    continue
+                if not redis.exists(name):
+                    continue
+                items.append(_build_redis_queue(self.model, name, family, redis))
+        else:
+            items = [
+                _build_redis_queue(self.model, key, family, redis)
+                for key, family in iter_keys(
+                    redis,
+                    family=self._filters.get("family"),
+                    repoid=self._filters.get("repoid"),
+                    commitid_prefix=self._filters.get("commitid_prefix"),
+                    category=self._category,
+                )
+            ]
 
         items = [obj for obj in items if self._post_scan_predicate(obj)]
 
@@ -320,6 +414,9 @@ class RedisItemQuerySet:
         self.model = model
         self.queue_name = queue_name
         self._ordering = ordering
+        # Cached materialized snapshot for SET/HASH/STRING reads. LIST
+        # reads remain LRANGE-paginated so we don't bother caching.
+        self._snapshot: list | None = None
 
     # ---- Cloning helpers --------------------------------------------------
 
@@ -365,19 +462,138 @@ class RedisItemQuerySet:
         raise NotImplementedError("RedisItemQuerySet.exclude is added in milestone 5")
 
     def get(self, *args, **kwargs):
-        raise NotImplementedError("RedisItemQuerySet.get is added in milestone 5")
+        """Resolve a single item by its `pk_token` (`<queue>#<locator>`).
+
+        Used by Django admin's `get_object` when the operator clicks an
+        item row to open the per-item inspector. Locator shape varies by
+        Redis type:
+
+        * list   → numeric index (e.g. `uploads/1/abc#0`)
+        * set    → `m:<idx>` into the sorted snapshot
+        * hash   → `f:<field>` for the literal field name
+        * string → `v` (singleton)
+        """
+
+        if args:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} positional get() is not supported"
+            )
+        pk = (
+            kwargs.pop("pk", None)
+            or kwargs.pop("pk__exact", None)
+            or kwargs.pop("pk_token", None)
+            or kwargs.pop("pk_token__exact", None)
+        )
+        if kwargs:
+            raise NotImplementedError(
+                "RedisItemQuerySet.get only accepts pk/pk_token; "
+                f"got {sorted(kwargs)!r}"
+            )
+        if pk is None:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} matching no kwargs does not exist"
+            )
+        return self._get_one(str(pk))
+
+    def _get_one(self, pk_token: str):
+        queue_name, sep, locator = pk_token.rpartition("#")
+        if not sep or not queue_name or not locator:
+            raise self.model.DoesNotExist(
+                f"pk_token must look like 'queue#locator'; got {pk_token!r}"
+            )
+
+        redis = _conn.get_connection()
+        if not redis.exists(queue_name):
+            raise self.model.DoesNotExist(f"Redis key {queue_name!r} does not exist")
+
+        bound = self._clone(queue_name=queue_name)
+        kind = bound._resolve_type(redis)
+
+        if kind == "list":
+            try:
+                idx = int(locator)
+            except ValueError as exc:
+                raise self.model.DoesNotExist(
+                    f"list pk_token must be 'queue#<index>'; got {locator!r}"
+                ) from exc
+            raw = redis.lindex(queue_name, idx)
+            if raw is None:
+                raise self.model.DoesNotExist(
+                    f"index {idx} out of range for list {queue_name!r}"
+                )
+            return self.model(
+                pk_token=pk_token,
+                queue_name=queue_name,
+                index_or_field=str(idx),
+                raw_value=_truncate_for_display(bound._decode_with_family(raw)),
+            )
+
+        if kind == "set":
+            if not locator.startswith("m:"):
+                raise self.model.DoesNotExist(
+                    f"set pk_token must be 'queue#m:<idx>'; got {locator!r}"
+                )
+            try:
+                idx = int(locator[2:])
+            except ValueError as exc:
+                raise self.model.DoesNotExist(
+                    f"set pk_token index must be int; got {locator!r}"
+                ) from exc
+            snapshot = bound._materialize_set(redis)
+            if idx < 0 or idx >= len(snapshot):
+                raise self.model.DoesNotExist(
+                    f"set member index {idx} out of range for {queue_name!r}"
+                )
+            return snapshot[idx]
+
+        if kind == "hash":
+            if not locator.startswith("f:"):
+                raise self.model.DoesNotExist(
+                    f"hash pk_token must be 'queue#f:<field>'; got {locator!r}"
+                )
+            field = locator[2:]
+            raw = redis.hget(queue_name, field)
+            if raw is None:
+                raise self.model.DoesNotExist(
+                    f"hash field {field!r} does not exist on {queue_name!r}"
+                )
+            return self.model(
+                pk_token=pk_token,
+                queue_name=queue_name,
+                index_or_field=field,
+                raw_value=_truncate_for_display(_decode_value(raw)),
+            )
+
+        if kind == "string":
+            if locator != "v":
+                raise self.model.DoesNotExist(
+                    f"string pk_token must be 'queue#v'; got {locator!r}"
+                )
+            snapshot = bound._materialize_string(redis)
+            if not snapshot:
+                raise self.model.DoesNotExist(f"string {queue_name!r} does not exist")
+            return snapshot[0]
+
+        raise self.model.DoesNotExist(
+            f"unsupported Redis type {kind!r} for {queue_name!r}"
+        )
 
     def order_by(self, *fields: str) -> RedisItemQuerySet:
         return self._clone(ordering=tuple(fields))
 
     # ---- Materialization -------------------------------------------------
 
+    def _resolve_family(self) -> Family | None:
+        if not self.queue_name:
+            return None
+        return find_family(self.queue_name)
+
     def _resolve_type(self, redis) -> str | None:
         """Best-effort lookup of the Redis type for `self.queue_name`."""
 
         if not self.queue_name:
             return None
-        family = find_family(self.queue_name)
+        family = self._resolve_family()
         if family is not None:
             return family.redis_type
         raw_type = redis.type(self.queue_name)
@@ -386,13 +602,23 @@ class RedisItemQuerySet:
             return None
         return kind
 
+    def _decode_with_family(self, raw_value: bytes | str) -> str:
+        decoded = _decode_value(raw_value)
+        family = self._resolve_family()
+        if family is not None and family.decode_value is not None:
+            try:
+                decoded = family.decode_value(decoded)
+            except Exception:  # pragma: no cover - decoder bug shouldn't 500
+                pass
+        return decoded
+
     def _build_list_items(self, redis, start: int, raw_values: list) -> list:
         return [
             self.model(
                 pk_token=f"{self.queue_name}#{start + offset}",
                 queue_name=self.queue_name,
                 index_or_field=str(start + offset),
-                raw_value=_truncate_for_display(_decode_value(value)),
+                raw_value=_truncate_for_display(self._decode_with_family(value)),
             )
             for offset, value in enumerate(raw_values)
         ]
@@ -405,6 +631,78 @@ class RedisItemQuerySet:
         raw = redis.lrange(self.queue_name, start, capped_stop - 1)
         return self._build_list_items(redis, start, raw)
 
+    # ---- SET / HASH / STRING readers (M4) --------------------------------
+    #
+    # SETs and HASHes are read with SSCAN/HSCAN bounded by MAX_ITEMS_PER_KEY
+    # so a pathologically large container doesn't OOM the api process. The
+    # full snapshot is sorted lexically and paginated in Python; this gives
+    # the admin a stable page-to-page ordering that SSCAN cursors cannot
+    # provide on their own. Snapshots are cached per-queryset so repeated
+    # `count()` / `__getitem__` calls don't re-stream Redis.
+
+    def _materialize_set(self, redis) -> list:
+        if self._snapshot is not None:
+            return self._snapshot
+        cap = redis_admin_settings.MAX_ITEMS_PER_KEY
+        members: list[str] = []
+        for raw in redis.sscan_iter(
+            self.queue_name, count=redis_admin_settings.SCAN_COUNT
+        ):
+            members.append(_decode_value(raw))
+            if len(members) >= cap:
+                break
+        members.sort()
+        self._snapshot = [
+            self.model(
+                pk_token=f"{self.queue_name}#m:{idx}",
+                queue_name=self.queue_name,
+                index_or_field=member if len(member) <= 64 else member[:61] + "...",
+                raw_value=_truncate_for_display(member),
+            )
+            for idx, member in enumerate(members)
+        ]
+        return self._snapshot
+
+    def _materialize_hash(self, redis) -> list:
+        if self._snapshot is not None:
+            return self._snapshot
+        cap = redis_admin_settings.MAX_ITEMS_PER_KEY
+        pairs: list[tuple[str, str]] = []
+        for raw_field, raw_value in redis.hscan_iter(
+            self.queue_name, count=redis_admin_settings.SCAN_COUNT
+        ):
+            pairs.append((_decode_value(raw_field), _decode_value(raw_value)))
+            if len(pairs) >= cap:
+                break
+        pairs.sort(key=lambda fv: fv[0])
+        self._snapshot = [
+            self.model(
+                pk_token=f"{self.queue_name}#f:{field}",
+                queue_name=self.queue_name,
+                index_or_field=field,
+                raw_value=_truncate_for_display(value),
+            )
+            for field, value in pairs
+        ]
+        return self._snapshot
+
+    def _materialize_string(self, redis) -> list:
+        if self._snapshot is not None:
+            return self._snapshot
+        raw = redis.get(self.queue_name)
+        if raw is None:
+            self._snapshot = []
+            return self._snapshot
+        self._snapshot = [
+            self.model(
+                pk_token=f"{self.queue_name}#v",
+                queue_name=self.queue_name,
+                index_or_field="(value)",
+                raw_value=_truncate_for_display(_decode_value(raw)),
+            )
+        ]
+        return self._snapshot
+
     def count(self) -> int:
         if not self.queue_name:
             return 0
@@ -412,8 +710,12 @@ class RedisItemQuerySet:
         kind = self._resolve_type(redis)
         if kind == "list":
             return int(redis.llen(self.queue_name) or 0)
-        # SET/HASH/STRING land in M4 alongside their families. For now they
-        # report 0 so the changelist renders cleanly.
+        if kind == "set":
+            return int(redis.scard(self.queue_name) or 0)
+        if kind == "hash":
+            return int(redis.hlen(self.queue_name) or 0)
+        if kind == "string":
+            return 1 if redis.exists(self.queue_name) else 0
         return 0
 
     def __len__(self) -> int:
@@ -430,12 +732,25 @@ class RedisItemQuerySet:
     def __bool__(self) -> bool:
         return self.count() > 0
 
+    def _slice(self, redis, kind: str | None, start: int, stop: int) -> list:
+        if stop <= start:
+            return []
+        if kind == "list":
+            return self._list_slice(redis, start, stop)
+        if kind == "set":
+            return self._materialize_set(redis)[start:stop]
+        if kind == "hash":
+            return self._materialize_hash(redis)[start:stop]
+        if kind == "string":
+            return self._materialize_string(redis)[start:stop]
+        return []
+
     def __getitem__(self, item):
         if not self.queue_name:
             return [] if isinstance(item, slice) else None
         redis = _conn.get_connection()
         kind = self._resolve_type(redis)
-        if kind != "list":
+        if kind not in ("list", "set", "hash", "string"):
             return [] if isinstance(item, slice) else None
         if isinstance(item, slice):
             start = item.start or 0
@@ -444,9 +759,9 @@ class RedisItemQuerySet:
                 if item.stop is not None
                 else start + redis_admin_settings.ITEM_PAGE_SIZE
             )
-            return self._list_slice(redis, start, stop)
+            return self._slice(redis, kind, start, stop)
         if isinstance(item, int):
-            page = self._list_slice(redis, item, item + 1)
+            page = self._slice(redis, kind, item, item + 1)
             if not page:
                 raise IndexError(item)
             return page[0]

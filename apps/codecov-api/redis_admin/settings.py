@@ -22,3 +22,14 @@ ITEM_PAGE_SIZE: int = getattr(settings, "REDIS_ADMIN_ITEM_PAGE_SIZE", 100)
 # Maximum bytes of a single Redis value rendered in the admin item view; values
 # larger than this are truncated with a "(... N bytes truncated)" suffix.
 MAX_DECODE_BYTES: int = getattr(settings, "REDIS_ADMIN_MAX_DECODE_BYTES", 4_096)
+
+# Hard cap on the number of items materialised from a single SET/HASH key during
+# admin browsing (M4). LIST keys use bounded LRANGE windows so they aren't
+# constrained here. SCAN-based readers stop streaming once they reach this cap
+# so a runaway 10M-element SET can't OOM the api process.
+MAX_ITEMS_PER_KEY: int = getattr(settings, "REDIS_ADMIN_MAX_ITEMS_PER_KEY", 5_000)
+
+# Pipeline batch size for delete operations (M5). Keeps a single delete action
+# from blocking Redis with a single oversized MULTI when an operator clears
+# thousands of keys at once.
+DELETE_BATCH_SIZE: int = getattr(settings, "REDIS_ADMIN_DELETE_BATCH_SIZE", 500)
