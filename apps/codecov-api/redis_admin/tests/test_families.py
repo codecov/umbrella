@@ -40,7 +40,9 @@ from redis_admin.families import (
 @pytest.fixture
 def patched_redis(monkeypatch) -> fakeredis.FakeStrictRedis:
     server = fakeredis.FakeStrictRedis()
-    monkeypatch.setattr(redis_admin_conn, "get_connection", lambda: server)
+    monkeypatch.setattr(
+        redis_admin_conn, "get_connection", lambda kind="default": server
+    )
     return server
 
 
@@ -240,6 +242,79 @@ def test_iter_keys_yields_celery_queues_via_fixed_keys(patched_redis):
     assert classified["healthcheck"] == "celery_broker"
     assert classified["enterprise_uploadcoverage"] == "celery_broker"
     assert classified["uploads/1/abc"] == "uploads"
+
+
+def test_celery_broker_family_routes_to_broker_connection_kind():
+    """Pin the production routing decision: the `celery_broker` family
+    must declare it lives on the Celery broker Redis. Every other
+    family stays on the default cache Redis (the historical assumption
+    pre-PR).
+    """
+
+    by_name = {f.name: f for f in FAMILIES}
+    assert by_name["celery_broker"].connection_kind == "broker"
+    for name, family in by_name.items():
+        if name == "celery_broker":
+            continue
+        assert family.connection_kind == "default", (
+            f"family {name!r} unexpectedly opted into a non-default "
+            f"connection_kind={family.connection_kind!r}"
+        )
+
+
+def test_iter_keys_routes_per_family_when_no_explicit_redis(monkeypatch):
+    """`iter_keys()` (no explicit redis) must hit the connection each
+    family owns. Pre-PR, an admin sweep saw the cache Redis only and
+    missed Celery broker keys entirely. We model that here with two
+    fakeredis servers and assert keys land on the right side of the
+    split.
+    """
+
+    cache_server = fakeredis.FakeStrictRedis()
+    broker_server = fakeredis.FakeStrictRedis()
+
+    cache_server.rpush("uploads/1/abc", "x")
+    broker_server.rpush("enterprise_test", '{"task": "y"}')
+    # Guard against accidentally picking up keys from the wrong server
+    # — if routing were swapped, we'd see these under the wrong family.
+    cache_server.rpush("enterprise_wrong", '{"task": "leak"}')
+    broker_server.rpush("uploads/2/wrong", "leak")
+
+    def fake_get_connection(kind="default"):
+        return broker_server if kind == "broker" else cache_server
+
+    monkeypatch.setattr(redis_admin_conn, "get_connection", fake_get_connection)
+
+    classified = {k: f.name for k, f in iter_keys()}
+
+    # `uploads/` is the default-kind family → only the cache server's
+    # uploads/1/abc surfaces; uploads/2/wrong sits on the broker server
+    # and must not be visible.
+    assert classified.get("uploads/1/abc") == "uploads"
+    assert "uploads/2/wrong" not in classified
+
+    # `celery_broker` is the broker-kind family → only the broker
+    # server's enterprise_test surfaces; enterprise_wrong on the cache
+    # server is invisible to the admin.
+    assert classified.get("enterprise_test") == "celery_broker"
+    assert "enterprise_wrong" not in classified
+
+
+def test_iter_keys_with_explicit_redis_uses_single_client_for_all_families(
+    patched_redis,
+):
+    """Back-compat: passing an explicit redis bypasses per-family
+    routing and uses that one client for every family. This is the
+    shape every test in this module relies on (one fakeredis backs
+    cache + broker).
+    """
+
+    patched_redis.rpush("uploads/1/abc", "x")
+    patched_redis.rpush("enterprise_test", '{"task": "y"}')
+
+    classified = {k: f.name for k, f in iter_keys(patched_redis)}
+    assert classified["uploads/1/abc"] == "uploads"
+    assert classified["enterprise_test"] == "celery_broker"
 
 
 def test_celery_decode_value_extracts_task_repoid_commit():

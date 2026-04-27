@@ -25,6 +25,7 @@ import json
 import logging
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 import sentry_sdk
 from django.contrib.admin.models import DELETION, LogEntry
@@ -32,7 +33,7 @@ from django.contrib.contenttypes.models import ContentType
 
 from . import conn as _conn
 from . import settings as redis_admin_settings
-from .families import find_family
+from .families import ConnectionKind, find_family
 from .models import RedisLock, RedisQueue, RedisQueueItem
 
 log = logging.getLogger(__name__)
@@ -317,9 +318,43 @@ def _redis_delete(
             refused=refused,
         )
     else:
-        redis = _conn.get_connection()
-        keys_deleted = _execute_key_deletes(redis, deletable_keys)
-        items_deleted = _execute_item_deletes(redis, pending_items)
+        # Bucket deletes by the family's connection kind so each pipeline
+        # is dispatched against the Redis instance that actually owns
+        # those keys. In production, `celery_broker` lives on a separate
+        # Memorystore from everything else (see `redis_admin.conn`); a
+        # mixed selection (e.g. an admin "clear-by-scope" sweep across
+        # `uploads` + `celery_broker`) needs both clients to fully apply.
+        clients: dict[ConnectionKind, Any] = {}
+
+        def _client_for(kind: ConnectionKind) -> Any:
+            if kind not in clients:
+                clients[kind] = _conn.get_connection(kind=kind)
+            return clients[kind]
+
+        keys_by_kind: dict[ConnectionKind, list[str]] = {}
+        for name in deletable_keys:
+            family = find_family(name)
+            key_kind: ConnectionKind = (
+                family.connection_kind if family is not None else "default"
+            )
+            keys_by_kind.setdefault(key_kind, []).append(name)
+
+        items_by_kind: dict[ConnectionKind, list[_PendingItem]] = {}
+        for pending in pending_items:
+            family = find_family(pending.queue_name)
+            item_kind: ConnectionKind = (
+                family.connection_kind if family is not None else "default"
+            )
+            items_by_kind.setdefault(item_kind, []).append(pending)
+
+        keys_deleted = sum(
+            _execute_key_deletes(_client_for(kind), kind_keys)
+            for kind, kind_keys in keys_by_kind.items()
+        )
+        items_deleted = sum(
+            _execute_item_deletes(_client_for(kind), kind_items)
+            for kind, kind_items in items_by_kind.items()
+        )
         result = DeleteResult(
             count=keys_deleted + items_deleted,
             sample=sample,

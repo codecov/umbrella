@@ -31,7 +31,9 @@ from shared.django_apps.codecov_auth.tests.factories import UserFactory
 @pytest.fixture
 def patched_redis(monkeypatch) -> fakeredis.FakeStrictRedis:
     server = fakeredis.FakeStrictRedis()
-    monkeypatch.setattr(redis_admin_conn, "get_connection", lambda: server)
+    monkeypatch.setattr(
+        redis_admin_conn, "get_connection", lambda kind="default": server
+    )
     return server
 
 
@@ -53,7 +55,9 @@ class TestRedisDeleteService(TestCase):
     def _patch_connection(self):
         # Module-level monkeypatch so the service sees our fakeredis.
         original = redis_admin_conn.get_connection
-        redis_admin_conn.get_connection = lambda: self.server  # type: ignore
+        redis_admin_conn.get_connection = (  # type: ignore[assignment]
+            lambda kind="default": self.server
+        )
         self.addCleanup(setattr, redis_admin_conn, "get_connection", original)
         return None
 
@@ -227,6 +231,57 @@ class TestRedisDeleteService(TestCase):
         message = json.loads(entries.first().change_message)
         assert message["count"] == 0
         assert "upload_lock_1_abc" in message["refused"]
+
+    def test_mixed_family_delete_routes_to_per_kind_redis(self):
+        """A single redis_delete that spans cache + broker families
+        must dispatch each batch against the Redis instance that owns
+        those keys. We model the production split with two fakeredis
+        servers and verify keys are deleted on the matching side and
+        untouched on the other.
+        """
+
+        cache_server = fakeredis.FakeStrictRedis()
+        broker_server = fakeredis.FakeStrictRedis()
+
+        cache_server.rpush("uploads/1/abc", "x")
+        broker_server.rpush("enterprise_test", "y")
+        # Cross-server "ghosts" — keys with a name that *would* belong
+        # to the other family but living on the wrong Redis. They must
+        # be left untouched, since the service should never try to
+        # DEL a cache-family key against the broker (and vice versa).
+        cache_server.rpush("enterprise_ghost", "ghost-1")
+        broker_server.rpush("uploads/2/ghost", "ghost-2")
+
+        original = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = (  # type: ignore[assignment]
+            lambda kind="default": (
+                broker_server if kind == "broker" else cache_server
+            )
+        )
+        try:
+            result = redis_delete(
+                [
+                    _make_queue("uploads/1/abc"),
+                    _make_queue(
+                        "enterprise_test",
+                        family="celery_broker",
+                        redis_type="LIST",
+                    ),
+                ],
+                user=self.user,
+                dry_run=False,
+            )
+        finally:
+            redis_admin_conn.get_connection = original  # type: ignore[assignment]
+
+        assert result.count == 2
+        # Targeted keys gone from their respective servers...
+        assert cache_server.exists("uploads/1/abc") == 0
+        assert broker_server.exists("enterprise_test") == 0
+        # ...and the cross-server ghosts are still intact, proving the
+        # delete didn't fan out into the wrong instance.
+        assert cache_server.exists("enterprise_ghost") == 1
+        assert broker_server.exists("uploads/2/ghost") == 1
 
     def test_item_delete_refuses_celery_lists(self):
         """Bugbot PR #888: `_classify_items` used `item.raw_value` as

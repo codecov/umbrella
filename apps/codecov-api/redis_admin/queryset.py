@@ -281,7 +281,17 @@ class RedisQueueQuerySet:
             self._result_cache = []
             return []
 
-        redis = _conn.get_connection()
+        # Cache one client per connection-kind so families that share a
+        # kind reuse a single Redis client across the page (the broker
+        # kind is the only non-default kind today, but the cache scales
+        # transparently if more get added).
+        clients: dict[str, Any] = {}
+
+        def _client_for(family: Family) -> Any:
+            kind = family.connection_kind
+            if kind not in clients:
+                clients[kind] = _conn.get_connection(kind=kind)
+            return clients[kind]
 
         # `pk__in=[...]` / `pk=name` from admin bulk actions: skip SCAN
         # and resolve each requested name directly against the family
@@ -304,14 +314,17 @@ class RedisQueueQuerySet:
                     continue
                 if family.category != self._category:
                     continue
+                redis = _client_for(family)
                 if not redis.exists(name):
                     continue
                 items.append(_build_redis_queue(self.model, name, family, redis))
         else:
+            # Don't pass an explicit redis to iter_keys here so it routes
+            # SCAN / EXISTS against the connection each family owns. The
+            # builder picks the matching client per yielded family.
             items = [
-                _build_redis_queue(self.model, key, family, redis)
+                _build_redis_queue(self.model, key, family, _client_for(family))
                 for key, family in iter_keys(
-                    redis,
                     family=self._filters.get("family"),
                     repoid=self._filters.get("repoid"),
                     commitid_prefix=self._filters.get("commitid_prefix"),
@@ -504,11 +517,11 @@ class RedisItemQuerySet:
                 f"pk_token must look like 'queue#locator'; got {pk_token!r}"
             )
 
-        redis = _conn.get_connection()
+        bound = self._clone(queue_name=queue_name)
+        redis = bound._connection()
         if not redis.exists(queue_name):
             raise self.model.DoesNotExist(f"Redis key {queue_name!r} does not exist")
 
-        bound = self._clone(queue_name=queue_name)
         kind = bound._resolve_type(redis)
 
         if kind == "list":
@@ -589,6 +602,20 @@ class RedisItemQuerySet:
         if not self.queue_name:
             return None
         return find_family(self.queue_name)
+
+    def _connection(self) -> Any:
+        """Return the Redis client that owns this queryset's queue.
+
+        Routes off the resolved family's `connection_kind` so a queue
+        belonging to `celery_broker` reads from the broker Redis instead
+        of the (default) cache Redis. Unknown families fall back to the
+        default kind, which preserves prior behavior for any operator
+        URL-tampering paths.
+        """
+
+        family = self._resolve_family()
+        kind = family.connection_kind if family is not None else "default"
+        return _conn.get_connection(kind=kind)
 
     def _resolve_type(self, redis) -> str | None:
         """Best-effort lookup of the Redis type for `self.queue_name`."""
@@ -712,7 +739,7 @@ class RedisItemQuerySet:
     def count(self) -> int:
         if not self.queue_name:
             return 0
-        redis = _conn.get_connection()
+        redis = self._connection()
         kind = self._resolve_type(redis)
         if kind == "list":
             return int(redis.llen(self.queue_name) or 0)
@@ -754,7 +781,7 @@ class RedisItemQuerySet:
     def __getitem__(self, item):
         if not self.queue_name:
             return [] if isinstance(item, slice) else None
-        redis = _conn.get_connection()
+        redis = self._connection()
         kind = self._resolve_type(redis)
         if kind not in ("list", "set", "hash", "string"):
             return [] if isinstance(item, slice) else None
