@@ -749,7 +749,7 @@ class RedisAdminClearByScopeTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8")
-        assert "scope must include a repoid or commitid" in body
+        assert "scope must include a repoid, commitid, or at least one family" in body
         # Sanity: nothing was cleared.
         assert self.redis.exists("uploads/42/abc123") == 1
 
@@ -775,3 +775,146 @@ class RedisAdminClearByScopeTest(TestCase):
         # Both commits-prefixed-with "abc" should be cleared.
         assert self.redis.exists("uploads/42/abc123") == 0
         assert self.redis.exists("uploads/99/abc456") == 0
+
+    # ---- Family-scope (M6 follow-up) -----------------------------------
+
+    def test_get_with_repoid_and_family_narrows_to_that_family(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        # Repo 42 has both `uploads/*` and `latest_upload/*` keys; the
+        # family filter restricts the scope to `uploads/*`.
+        response = self.client.get(self.URL + "?repoid=42&family=uploads")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Matched: 1 key(s)" in body
+        assert "uploads/42/abc123" in body
+        assert "latest_upload/42/abc123" not in body
+
+    def test_post_confirm_with_family_only_clears_all_keys_of_that_family(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        # Two repos with `uploads/*`; one repo with `latest_upload/*`.
+        self.redis.rpush("uploads/42/abc123", "p1")
+        self.redis.rpush("uploads/99/zzz999", "p2")
+        self.redis.set("latest_upload/42/abc123", "u1")
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "",
+                "commitid": "",
+                "family": ["uploads"],
+                # Family-only scope confirms by typing the joined family
+                # names.
+                "typed_confirm": "uploads",
+                "action": "confirm",
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        # Both `uploads/*` keys are gone, regardless of repo.
+        assert self.redis.exists("uploads/42/abc123") == 0
+        assert self.redis.exists("uploads/99/zzz999") == 0
+        # Other family is untouched.
+        assert self.redis.exists("latest_upload/42/abc123") == 1
+        body = response.content.decode("utf-8")
+        assert "Cleared 2 key(s)" in body
+
+    def test_post_confirm_with_multiple_families_clears_each(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self.redis.rpush("uploads/42/abc123", "p1")
+        self.redis.set("latest_upload/42/abc123", "u1")
+        # Third family (intermediate-report) intentionally untouched —
+        # it's not in the requested family list.
+        self.redis.hset("intermediate-report/42/abc123/coverage", "f", "v")
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "42",
+                "commitid": "",
+                "family": ["uploads", "latest_upload"],
+                "typed_confirm": "42",
+                "action": "confirm",
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        assert self.redis.exists("uploads/42/abc123") == 0
+        assert self.redis.exists("latest_upload/42/abc123") == 0
+        assert self.redis.exists("intermediate-report/42/abc123/coverage") == 1
+
+    def test_post_with_unknown_family_is_refused(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "42",
+                "commitid": "",
+                "family": ["nope"],
+                "typed_confirm": "42",
+                "action": "confirm",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "unknown or non-deletable family" in body
+        # Sanity: nothing was cleared.
+        assert self.redis.exists("uploads/42/abc123") == 1
+
+    def test_post_with_lock_family_is_refused(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        # `upload_finisher_gate` is a lock family — it's a real family
+        # name in the registry but `is_deletable=False`, so it must be
+        # rejected by the `_deletable_family_names` allowlist.
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "42",
+                "commitid": "",
+                "family": ["upload_finisher_gate"],
+                "typed_confirm": "42",
+                "action": "confirm",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "unknown or non-deletable family" in body
+        # Lock key still in Redis.
+        assert self.redis.exists("upload_finisher_gate_42_abc123") == 1
+
+    def test_form_renders_a_checkbox_for_each_deletable_family(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        response = self.client.get(self.URL)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Every deletable queue family gets a checkbox; locks do not.
+        for name in (
+            "uploads",
+            "ta_flake_key",
+            "latest_upload",
+            "upload-processing-state",
+            "intermediate-report",
+            "celery_broker",
+        ):
+            assert f'value="{name}"' in body
+        # Locks must not appear in the family checkbox list.
+        assert 'value="upload_finisher_gate"' not in body
+        assert 'value="coordination_lock"' not in body

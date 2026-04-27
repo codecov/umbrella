@@ -17,6 +17,7 @@ prefix-style tokens in addition to plain substrings:
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from urllib.parse import urlencode
 
 from django.contrib import admin, messages
@@ -377,22 +378,27 @@ class RedisQueueAdmin(admin.ModelAdmin):
 
     # ---- Cross-family clear-by-scope (M6) -------------------------------
     #
-    # `/admin/redis_admin/redisqueue/clear-by-scope/?repoid=…&commitid=…`
-    # aggregates every deletable Redis key tied to a given repo and/or
-    # commit across *all* registered queue families and clears them in a
-    # single audited operation. This is the on-call escape hatch for
-    # "rerun completely failed" — without it, an operator would have to
-    # navigate to every family's filter and run `delete_selected` for
-    # each.
+    # `/admin/redis_admin/redisqueue/clear-by-scope/?repoid=…&commitid=…
+    # &family=uploads&family=latest_upload`
+    # aggregates every deletable Redis key tied to a given repo, commit,
+    # and/or specific family list and clears them in a single audited
+    # operation. This is the on-call escape hatch for "rerun completely
+    # failed" — without it, an operator would have to navigate to every
+    # family's filter and run `delete_selected` for each.
+    #
+    # Scope is the cross-product of three optional dimensions:
+    #   - `repoid` (numeric)
+    #   - `commitid` (full SHA or any prefix)
+    #   - `family` (zero or more deletable family names; empty = all)
+    # At least one of repoid / commitid / explicit family list must be
+    # set. The empty form is refused.
     #
     # Safety stack:
     #   1. Superuser-only (matches `delete_selected` gating).
-    #   2. GET = preview / form. POST = mutation. The form must specify
-    #      a `repoid` or `commitid` (or both); a fully-empty scope is
-    #      refused so an operator can't accidentally clear the entire
-    #      Redis from this UI.
+    #   2. GET = preview / form. POST = mutation. Empty scope refused.
     #   3. Typed-confirmation guard: the operator must re-type the
-    #      repoid (or commitid if no repoid) into a confirmation field
+    #      "primary" scope value (repoid > commitid > joined family
+    #      names, in that preference order) into a confirmation field
     #      to enable the destructive button. A simple "I really meant
     #      it" gate that costs an extra second but blocks fat-fingered
     #      double-clicks.
@@ -414,37 +420,65 @@ class RedisQueueAdmin(admin.ModelAdmin):
         # `clear-by-scope/` doesn't get swallowed as an object_id.
         return [clear_url, *urls]
 
-    def _resolve_scope_targets(
-        self, *, repoid: int | None, commitid: str
-    ) -> list[RedisQueue]:
-        """Materialise every deletable queue matching `(repoid, commitid)`.
+    @staticmethod
+    def _deletable_family_names() -> list[str]:
+        """Names of every queue-category family that's safe to delete.
 
-        Skips lock families (`is_deletable=False`) and skips families
-        whose `pattern_for` returns None (i.e. families that can't
-        possibly match the requested filters, like `celery_broker`
-        keyed by task type rather than repo).
+        Used by the form to render the family checkbox list and by the
+        view to validate operator-supplied family names.
         """
 
-        if repoid is None and not commitid:
-            return []
+        return sorted(
+            f.name for f in FAMILIES if f.category == "queue" and f.is_deletable
+        )
+
+    def _resolve_scope_targets(
+        self,
+        *,
+        repoid: int | None,
+        commitid: str,
+        families: Sequence[str] | None,
+    ) -> list[RedisQueue]:
+        """Materialise every deletable queue matching the active scope.
+
+        Iterates per-requested-family when `families` is non-empty so
+        the SCAN MATCH pattern is family-specific (e.g. `uploads/42/*`
+        instead of a wildcard sweep). When `families` is None or
+        empty, sweeps all deletable families. Skips lock families
+        (`is_deletable=False`) regardless of how a key was surfaced.
+        """
+
         redis = _conn.get_connection()
+        family_iter: Iterable[str | None]
+        if families:
+            family_iter = list(families)
+        else:
+            family_iter = [None]
+
         targets: list[RedisQueue] = []
-        for key, family in iter_keys(
-            redis,
-            repoid=repoid,
-            commitid_prefix=commitid or None,
-            category="queue",
-        ):
-            if not family.is_deletable:
-                continue
-            obj = _build_redis_queue(self.model, key, family, redis)
-            # `iter_keys` already pushed the filter into SCAN MATCH,
-            # but glob `*` matches `/` so re-verify the parsed values.
-            if repoid is not None and obj.repoid != repoid:
-                continue
-            if commitid and not (obj.commitid or "").startswith(commitid):
-                continue
-            targets.append(obj)
+        seen: set[str] = set()
+        for family_name in family_iter:
+            for key, family in iter_keys(
+                redis,
+                family=family_name,
+                repoid=repoid,
+                commitid_prefix=commitid or None,
+                category="queue",
+            ):
+                if not family.is_deletable:
+                    continue
+                if key in seen:
+                    continue
+                obj = _build_redis_queue(self.model, key, family, redis)
+                # `iter_keys` already pushed the filter into SCAN MATCH,
+                # but glob `*` matches `/` so re-verify the parsed
+                # values.
+                if repoid is not None and obj.repoid != repoid:
+                    continue
+                if commitid and not (obj.commitid or "").startswith(commitid):
+                    continue
+                seen.add(key)
+                targets.append(obj)
         return targets
 
     def clear_by_scope_view(self, request: HttpRequest) -> HttpResponse:
@@ -456,6 +490,29 @@ class RedisQueueAdmin(admin.ModelAdmin):
         params = request.POST if request.method == "POST" else request.GET
         repoid_raw = (params.get("repoid") or "").strip()
         commitid = (params.get("commitid") or "").strip()
+        # Multi-select: each checked family round-trips as one `family`
+        # form value. `getlist` falls back to a query-string-friendly
+        # comma-separated `family=a,b,c` as well so the URL can be
+        # bookmarked.
+        family_values = list(params.getlist("family"))
+        if not family_values:
+            csv = (params.get("family") or "").strip()
+            if csv:
+                family_values = [csv]
+        families: list[str] = []
+        for fv in family_values:
+            for piece in fv.split(","):
+                piece = piece.strip()
+                if piece and piece not in families:
+                    families.append(piece)
+
+        deletable_families = self._deletable_family_names()
+        invalid_families = [f for f in families if f not in deletable_families]
+        family_error: str | None = None
+        if invalid_families:
+            family_error = "unknown or non-deletable family: " + ", ".join(
+                invalid_families
+            )
 
         repoid: int | None = None
         repoid_error: str | None = None
@@ -466,17 +523,29 @@ class RedisQueueAdmin(admin.ModelAdmin):
                 repoid_error = f"repoid must be an integer; got {repoid_raw!r}"
 
         targets: list[RedisQueue] = []
-        scope_specified = bool(repoid_raw or commitid)
-        if scope_specified and repoid_error is None:
-            targets = self._resolve_scope_targets(repoid=repoid, commitid=commitid)
+        scope_specified = bool(repoid_raw or commitid or families)
+        if scope_specified and repoid_error is None and family_error is None:
+            targets = self._resolve_scope_targets(
+                repoid=repoid,
+                commitid=commitid,
+                families=families,
+            )
 
         opts = self.model._meta
         changelist_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist")
 
         # Typed-confirmation: re-type whichever scope value drives the
-        # action. If both are present the repoid wins because it's the
-        # narrower / more memorable identifier in our UX.
-        expected_confirm = repoid_raw or commitid
+        # action. Preference order is repoid > commitid > joined family
+        # names because the more "operational" the identifier, the
+        # easier it is to remember (a repoid is a number you just
+        # typed; a list of family names is harder to fat-finger but
+        # more memorable than a 40-char SHA).
+        if repoid_raw:
+            expected_confirm = repoid_raw
+        elif commitid:
+            expected_confirm = commitid
+        else:
+            expected_confirm = ",".join(sorted(families))
         action = (request.POST.get("action") or "").strip()
         typed_confirm = (request.POST.get("typed_confirm") or "").strip()
         result = None
@@ -485,10 +554,13 @@ class RedisQueueAdmin(admin.ModelAdmin):
         if request.method == "POST":
             if repoid_error is not None:
                 messages.error(request, repoid_error)
+            elif family_error is not None:
+                messages.error(request, family_error)
             elif not scope_specified:
                 messages.error(
                     request,
-                    "Refusing to clear: scope must include a repoid or commitid",
+                    "Refusing to clear: scope must include a repoid, "
+                    "commitid, or at least one family",
                 )
             elif action not in ("dry_run", "confirm"):
                 messages.error(request, f"Unknown action: {action!r}")
@@ -520,7 +592,13 @@ class RedisQueueAdmin(admin.ModelAdmin):
             scope_label_parts.append(f"repoid={repoid_raw}")
         if commitid:
             scope_label_parts.append(f"commitid={commitid}")
+        if families:
+            scope_label_parts.append(f"family={','.join(sorted(families))}")
         scope_label = " ".join(scope_label_parts) if scope_label_parts else "(none)"
+
+        family_choices = [
+            {"name": name, "checked": name in families} for name in deletable_families
+        ]
 
         ctx = {
             **self.admin_site.each_context(request),
@@ -529,9 +607,12 @@ class RedisQueueAdmin(admin.ModelAdmin):
             "has_view_permission": self.has_view_permission(request),
             "repoid": repoid_raw,
             "commitid": commitid,
+            "selected_families": families,
+            "family_choices": family_choices,
             "scope_label": scope_label,
             "scope_specified": scope_specified,
             "repoid_error": repoid_error,
+            "family_error": family_error,
             "confirm_error": confirm_error,
             "expected_confirm": expected_confirm,
             "typed_confirm": typed_confirm,

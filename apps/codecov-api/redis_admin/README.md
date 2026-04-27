@@ -73,11 +73,15 @@ Three deletion entry points, all funnel through the audited
    no mutations, but still writes a `LogEntry`.
 3. **Clear by scope** — single endpoint at
    `/admin/redis_admin/redisqueue/clear-by-scope/`. Aggregates every
-   deletable key tied to a `repoid` and/or `commitid` across *all*
-   families and clears them in one operation. Required-scope guard
-   refuses an empty form. Typed-confirmation guard requires the
-   operator to re-type the repoid/commitid before the destructive
-   button arms. Both dry-run and confirm runs leave an audit trail.
+   deletable key tied to a `repoid`, `commitid`, and/or explicit
+   `family` list and clears them in one operation. Scope is the
+   cross-product of those three optional dimensions — at least one
+   must be set; a fully blank form is refused. Family is a multi-
+   select; leaving it blank sweeps every deletable family. Typed-
+   confirmation guard requires the operator to re-type the primary
+   scope value (repoid &gt; commitid &gt; joined family names) before
+   the destructive button arms. Both dry-run and confirm runs leave
+   an audit trail.
 
 Every call writes a `django.contrib.admin.LogEntry` (action_flag =
 `DELETION`) with a JSON `change_message` of the form:

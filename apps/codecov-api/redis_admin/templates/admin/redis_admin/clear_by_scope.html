@@ -17,8 +17,10 @@
 
   <p>
     Aggregates every <strong>deletable</strong> Redis key tied to the
-    given repo and/or commit across all queue families and clears them
-    in a single audited operation. Lock families are always refused.
+    given repo, commit, and/or family list across all queue families
+    and clears them in a single audited operation. Lock families are
+    always refused, and at least one of <em>repoid</em>,
+    <em>commitid</em>, or <em>family</em> must be set.
   </p>
   <p>
     Run a <strong>dry-run</strong> first to see what would be cleared.
@@ -37,7 +39,7 @@
           {% if repoid_error %}<ul class="errorlist"><li>{{ repoid_error }}</li></ul>{% endif %}
           <label for="id_repoid">Repository ID:</label>
           <input type="text" name="repoid" id="id_repoid" value="{{ repoid }}" placeholder="e.g. 1234">
-          <div class="help">Numeric repoid. Leave blank to scope by commitid only.</div>
+          <div class="help">Numeric repoid. Leave blank to skip the repo filter.</div>
         </div>
       </div>
 
@@ -45,7 +47,26 @@
         <div>
           <label for="id_commitid">Commit SHA (prefix OK):</label>
           <input type="text" name="commitid" id="id_commitid" value="{{ commitid }}" placeholder="e.g. abc123">
-          <div class="help">Commit SHA, or any prefix. Leave blank to scope by repoid only.</div>
+          <div class="help">Commit SHA, or any prefix. Leave blank to skip the commit filter.</div>
+        </div>
+      </div>
+
+      <div class="form-row{% if family_error %} errors{% endif %}">
+        <div>
+          {% if family_error %}<ul class="errorlist"><li>{{ family_error }}</li></ul>{% endif %}
+          <label>Families:</label>
+          <div style="display:flex;flex-wrap:wrap;gap:0.75em 1.5em;max-width:60em;">
+            {% for choice in family_choices %}
+              <label style="font-weight:normal;">
+                <input type="checkbox" name="family" value="{{ choice.name }}"{% if choice.checked %} checked{% endif %}>
+                <code>{{ choice.name }}</code>
+              </label>
+            {% endfor %}
+          </div>
+          <div class="help">
+            Check zero or more deletable families. Leave all unchecked
+            to sweep every deletable family at once.
+          </div>
         </div>
       </div>
 
@@ -54,7 +75,7 @@
       </div>
     </fieldset>
 
-    {% if scope_specified and not repoid_error %}
+    {% if scope_specified and not repoid_error and not family_error %}
     <fieldset class="module">
       <h2>Matched: {{ target_count }} key(s) for {{ scope_label }}</h2>
 
