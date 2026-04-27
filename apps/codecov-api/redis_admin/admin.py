@@ -653,7 +653,12 @@ class RedisQueueAdmin(admin.ModelAdmin):
 
     @admin.action(
         description="Dry-run: count what 'clear selected' would clear",
-        permissions=("change",),
+        # Staff with read-only access don't need a button that writes
+        # `LogEntry` rows; the dry-run action is a sibling of the
+        # destructive bulk-clear, and "anything next to a delete
+        # button is superuser-only" is the simpler invariant to
+        # reason about. Locks down the audit-log surface area too.
+        permissions=("delete",),
     )
     def clear_dry_run(self, request: HttpRequest, queryset) -> None:
         result = redis_delete(list(queryset), user=request.user, dry_run=True)
@@ -863,7 +868,11 @@ class RedisLockAdmin(admin.ModelAdmin):
         return bool(request.user and request.user.is_staff)
 
     # Locks are never deletable from the admin, regardless of role; the
-    # worker's `LockManager` is the only legitimate releaser.
+    # worker's `LockManager` is the only legitimate releaser. This is
+    # stricter than the per-admin "superuser-only deletion" invariant
+    # — locks aren't even superuser-deletable. `services.redis_delete`
+    # additionally refuses any key whose family has `is_deletable=
+    # False` so URL-tampering can't bypass this.
     def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
 
@@ -975,6 +984,13 @@ class RedisQueueItemAdmin(admin.ModelAdmin):
     def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
 
+    # Item-level mutations are not exposed in the admin: per-item
+    # `LREM` / `SREM` / `HDEL` would require reconstructing the
+    # original Redis value from the admin pk_token (and SETs/LISTs
+    # don't round-trip cleanly through SSCAN cursors), so operators
+    # who need to drop a bad message clear the entire queue from
+    # `RedisQueueAdmin`. If we ever lift this, the new gate must be
+    # `is_superuser` to match every other deletion path in this app.
     def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
 

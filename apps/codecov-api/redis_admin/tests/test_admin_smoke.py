@@ -485,11 +485,14 @@ class RedisQueueAdminDeleteActionsTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8")
-        # Non-superusers can dry-run but never see the destructive action.
+        # Non-superusers see neither destructive nor dry-run actions.
+        # `clear_dry_run` was originally staff-allowed, but we tightened
+        # it to `permissions=("delete",)` so the rule is uniformly
+        # "anything that touches deletion is superuser-only" — including
+        # dry-runs that record audit-log rows.
         assert "Clear selected" not in body
-        # Stock Django delete is stripped out for everyone.
         assert "Delete selected" not in body
-        assert "Dry-run" in body
+        assert "Dry-run" not in body
 
     def test_stock_delete_selected_action_is_unavailable(self):
         # `delete_selected` was Django's stock no-dry-run path; we
@@ -999,3 +1002,209 @@ class RedisAdminClearByScopeTest(TestCase):
         # Locks must not appear in the family checkbox list.
         assert 'value="upload_finisher_gate"' not in body
         assert 'value="coordination_lock"' not in body
+
+
+class RedisAdminSuperuserOnlyDeletionTest(TestCase):
+    """Pin down the "deletion is superuser-only" invariant across every
+    redis_admin model.
+
+    The rule, restated for the reader of these tests:
+      - `RedisQueueAdmin`        deletion gated to `is_superuser`
+      - `RedisLockAdmin`         deletion disabled for everyone
+      - `RedisQueueItemAdmin`    deletion disabled for everyone
+
+    These tests stay tight on URL/action endpoints because that's what
+    a misconfigured permission flip would actually expose. They cover
+    both the "button hidden" UX and the "raw POST rejected" backend
+    enforcement, so a regression that only fixes one half (e.g. hiding
+    the button while leaving the URL open) still fails the suite.
+    """
+
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+        self.client = Client()
+
+        self.redis.rpush("uploads/1/aaa", "p1")
+        self.redis.rpush("uploads/1/bbb", "p2")
+        self.redis.set("upload_finisher_gate_1_aaa", "1")
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    # ---- RedisQueueAdmin -----------------------------------------------
+
+    def test_staff_changelist_hides_every_destructive_action(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Every destructive action is hidden from the staff dropdown.
+        assert 'value="clear_selected"' not in body
+        assert 'value="clear_dry_run"' not in body
+        # And the stock Django bulk delete is stripped for everyone.
+        assert 'value="delete_selected"' not in body
+        # The cross-family clear-by-scope link is also superuser-only.
+        assert "Clear by scope" not in body
+
+    def test_staff_clear_selected_post_is_refused(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "clear_selected",
+                "_selected_action": ["uploads/1/aaa"],
+            },
+            follow=True,
+        )
+
+        # Django's action permission gate either refuses with a
+        # message or redirects to the changelist; either way the key
+        # must remain in Redis.
+        assert response.status_code == 200
+        assert self.redis.exists("uploads/1/aaa") == 1
+
+    def test_staff_clear_dry_run_post_is_refused(self):
+        # The dry-run action was previously `permissions=("change",)`
+        # and reachable by staff users. We tightened it to
+        # `permissions=("delete",)` so it lives behind the same
+        # superuser gate as its destructive sibling.
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+        prior_logs = LogEntry.objects.count()
+
+        self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "clear_dry_run",
+                "_selected_action": ["uploads/1/aaa"],
+            },
+            follow=True,
+        )
+
+        # No mutation in Redis (this is a dry-run) but more
+        # importantly: no LogEntry written, because the action was
+        # refused before reaching `redis_delete`.
+        assert self.redis.exists("uploads/1/aaa") == 1
+        assert LogEntry.objects.count() == prior_logs
+
+    def test_staff_change_page_hides_delete_button(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.get(
+            "/admin/redis_admin/redisqueue/uploads_2F1_2Faaa/change/"
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # No "Delete" link/button appears anywhere on the page.
+        assert "Delete</a>" not in body
+        assert ">Delete</button>" not in body
+
+    def test_staff_clear_by_scope_get_is_403(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.get(
+            "/admin/redis_admin/redisqueue/clear-by-scope/?repoid=1"
+        )
+
+        assert response.status_code == 403
+
+    def test_staff_clear_by_scope_post_is_403(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.post(
+            "/admin/redis_admin/redisqueue/clear-by-scope/",
+            {
+                "repoid": "1",
+                "commitid": "",
+                "typed_confirm": "1",
+                "action": "confirm",
+            },
+        )
+
+        assert response.status_code == 403
+        assert self.redis.exists("uploads/1/aaa") == 1
+        assert self.redis.exists("uploads/1/bbb") == 1
+
+    # ---- RedisLockAdmin ------------------------------------------------
+
+    def test_locks_are_undeletable_even_by_superusers(self):
+        # Locks are blanket-disabled, not just superuser-gated. This
+        # is a stricter rule than "deletion is superuser-only" and
+        # exists because the worker's `LockManager` is the only
+        # legitimate releaser of those keys.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        response = self.client.get("/admin/redis_admin/redislock/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # No bulk action dropdown options at all (`actions={}` for
+        # locks). Most importantly: no `delete_selected`.
+        assert 'value="delete_selected"' not in body
+        # And there's no clear_* siblings either.
+        assert 'value="clear_selected"' not in body
+        assert 'value="clear_dry_run"' not in body
+
+    def test_staff_cannot_post_delete_to_lock_change_page(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        # Even if staff somehow handcraft a delete POST to the lock
+        # change-form URL, it must be refused.
+        response = self.client.post(
+            "/admin/redis_admin/redislock/upload_finisher_gate_5F1_5Faaa/delete/",
+            {"post": "yes"},
+        )
+
+        # Django returns 403 for has_delete_permission=False. The lock
+        # must still be in Redis.
+        assert response.status_code in (302, 403, 404)
+        assert self.redis.exists("upload_finisher_gate_1_aaa") == 1
+
+    # ---- RedisQueueItemAdmin -------------------------------------------
+
+    def test_items_changelist_has_no_bulk_actions(self):
+        # `actions = ()` strips every bulk action — including
+        # delete-flavoured ones — for everyone.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        response = self.client.get(
+            "/admin/redis_admin/redisqueueitem/?queue_name__exact=uploads/1/aaa"
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert 'value="delete_selected"' not in body
+        assert 'value="clear_selected"' not in body
+        assert 'value="clear_dry_run"' not in body
+
+    def test_superuser_cannot_delete_individual_item(self):
+        # `has_delete_permission` returns `False` regardless of role,
+        # so even a superuser can't delete items from this admin.
+        # This is a deliberate design choice (see admin.py docstring);
+        # if the choice is ever reversed, the new gate must be
+        # superuser-only.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        response = self.client.post(
+            "/admin/redis_admin/redisqueueitem/uploads_2F1_2Faaa_230/delete/",
+            {"post": "yes"},
+        )
+
+        # 403 / 404 / redirect — anything but a successful delete.
+        assert response.status_code in (302, 403, 404)
+        assert self.redis.exists("uploads/1/aaa") == 1

@@ -59,6 +59,32 @@ rather than a full-keyspace scan.
 The sidebar adds standalone `family`, `min depth`, and
 `report_type` filters.
 
+## Permissions
+
+The "deletion is superuser-only" invariant is enforced at four
+layers, redundantly on purpose, so a misconfiguration in any one
+layer still leaves the others in place:
+
+1. `RedisQueueAdmin.has_delete_permission` returns `is_superuser`.
+   `RedisLockAdmin.has_delete_permission` returns `False` (locks are
+   blanket-disabled — even superusers can't delete them; the
+   worker's `LockManager` is the only legitimate releaser).
+   `RedisQueueItemAdmin.has_delete_permission` returns `False`
+   (item-level mutation isn't exposed; clear the whole queue
+   instead).
+2. Every bulk action (`clear_selected`, `clear_dry_run`) declares
+   `permissions=("delete",)`, so Django strips them from the action
+   dropdown for non-superusers and refuses raw POSTs.
+3. `clear_by_scope_view` raises `PermissionDenied` early if
+   `request.user.is_superuser` is false.
+4. `services.redis_delete()` is the single mutation choke point;
+   everything destructive funnels through it, including dry-runs,
+   so there's a single source of audit-log truth.
+
+Layer 1 is the "buttons aren't even rendered" guard; layers 2-3 are
+the "raw URL/POST is refused" guard; layer 4 keeps the audit log
+honest.
+
 ## Clearing subsets of Redis
 
 Three deletion entry points, all funnel through the audited
@@ -75,9 +101,14 @@ Three deletion entry points, all funnel through the audited
    `RedisQueueAdmin.get_actions` so there's no no-dry-run path at
    all.
 2. **`Dry-run: count what 'clear selected' would clear`** — sibling
-   action visible to staff users. Standalone dry-run with no
-   destructive button on the same page; useful for "let me see what
-   would happen" workflows. Still writes a `LogEntry`.
+   action that's also superuser-only (`permissions=("delete",)`).
+   Standalone dry-run with no destructive button on the same page;
+   useful for "let me see what would happen" workflows. Still writes
+   a `LogEntry`. Originally staff-allowed; tightened to superuser
+   because (a) it lives next to the destructive button, and "anything
+   adjacent to a delete button is superuser-only" is the cleaner
+   invariant, and (b) it writes audit log rows, which is the kind of
+   thing you don't want unprivileged staff users spamming.
 3. **Clear by scope** — single endpoint at
    `/admin/redis_admin/redisqueue/clear-by-scope/`. Aggregates every
    deletable key tied to a `repoid`, `commitid`, and/or explicit
