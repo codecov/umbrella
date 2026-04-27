@@ -19,6 +19,7 @@ from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from utils.test_utils import Client
 
 
@@ -257,6 +258,31 @@ class RedisAdminFiltersAndSearchTest(TestCase):
         assert response.status_code == 200
         body = response.content.decode("utf-8")
         assert "/admin/core/commit/?q=cafef00dcafef00d" in body
+
+    def test_repo_display_column_renders_service_owner_name(self):
+        owner = OwnerFactory(service="github", username="codecov")
+        repo = RepositoryFactory(author=owner, name="example")
+        self.redis.rpush(f"uploads/{repo.repoid}/abc", "x")
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert f"uploads/{repo.repoid}/abc" in body
+        assert "github:codecov/example" in body
+
+    def test_repo_display_column_falls_back_to_dash_when_repo_missing(self):
+        # Redis still has a queue for a repoid that no longer exists in
+        # the DB (e.g. repo was deleted); the column degrades gracefully
+        # rather than 500ing the changelist.
+        self.redis.rpush("uploads/9999999/abc", "x")
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Fallback is the em-dash placeholder.
+        assert "—" in body
 
 
 class RedisLockAdminSmokeTest(TestCase):

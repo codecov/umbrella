@@ -24,10 +24,39 @@ from django.http import HttpRequest
 from django.urls import NoReverseMatch, reverse
 from django.utils.html import format_html
 
+from core.models import Repository
+
 from . import settings as redis_admin_settings
 from .families import FAMILIES
 from .models import RedisLock, RedisQueue, RedisQueueItem
 from .services import redis_delete
+
+
+def _hydrate_repo_displays(rows) -> None:
+    """Attach `_repo_display = "service:owner/name"` to each row in one query.
+
+    Called from `get_changelist_instance` to avoid an N+1 lookup per row.
+    """
+
+    repoids = {row.repoid for row in rows if row.repoid}
+    for row in rows:
+        row._repo_display = None
+    if not repoids:
+        return
+
+    mapping = {
+        repo.repoid: (
+            f"{repo.author.service}:{repo.author.username}/{repo.name}"
+            if repo.author and repo.author.username
+            else repo.name
+        )
+        for repo in Repository.objects.select_related("author").filter(
+            repoid__in=repoids
+        )
+    }
+    for row in rows:
+        row._repo_display = mapping.get(row.repoid)
+
 
 # ---- list_filter classes ---------------------------------------------------
 
@@ -144,6 +173,7 @@ class RedisQueueAdmin(admin.ModelAdmin):
         "depth",
         "ttl_seconds",
         "repoid_link",
+        "repo_display",
         "commitid_link",
         "report_type",
         "items_link",
@@ -275,6 +305,10 @@ class RedisQueueAdmin(admin.ModelAdmin):
             return str(obj.repoid)
         return format_html('<a href="{}">{}</a>', url, obj.repoid)
 
+    @admin.display(description="repo (owner/name)")
+    def repo_display(self, obj: RedisQueue) -> str:
+        return getattr(obj, "_repo_display", None) or "—"
+
     @admin.display(description="commit")
     def commitid_link(self, obj: RedisQueue) -> str:
         if not obj.commitid:
@@ -293,6 +327,16 @@ class RedisQueueAdmin(admin.ModelAdmin):
         url = reverse("admin:redis_admin_redisqueueitem_changelist")
         query = urlencode({"queue_name__exact": obj.name})
         return format_html('<a href="{}?{}">view items</a>', url, query)
+
+    def get_changelist_instance(self, request):
+        # Hydrate `_repo_display` on the rows the template will actually
+        # iterate. Doing this on the root queryset doesn't work because
+        # `ChangeList` clones it (filter/order/paginate) and the clone
+        # rebuilds fresh `RedisQueue` instances without our decorations.
+        cl = super().get_changelist_instance(request)
+        if cl.result_list:
+            _hydrate_repo_displays(cl.result_list)
+        return cl
 
 
 # ---- Lock changelist (M4.3) ------------------------------------------------
@@ -316,6 +360,7 @@ class RedisLockAdmin(admin.ModelAdmin):
         "redis_type",
         "ttl_seconds",
         "repoid_link",
+        "repo_display",
         "commitid_link",
         "report_type",
     )
@@ -385,6 +430,12 @@ class RedisLockAdmin(admin.ModelAdmin):
             return queryset, False
         return queryset.filter(**kwargs), False
 
+    def get_changelist_instance(self, request):
+        cl = super().get_changelist_instance(request)
+        if cl.result_list:
+            _hydrate_repo_displays(cl.result_list)
+        return cl
+
     @admin.display(description="repo")
     def repoid_link(self, obj: RedisLock) -> str:
         if not obj.repoid:
@@ -394,6 +445,10 @@ class RedisLockAdmin(admin.ModelAdmin):
         except NoReverseMatch:
             return str(obj.repoid)
         return format_html('<a href="{}">{}</a>', url, obj.repoid)
+
+    @admin.display(description="repo (owner/name)")
+    def repo_display(self, obj: RedisLock) -> str:
+        return getattr(obj, "_repo_display", None) or "—"
 
     @admin.display(description="commit")
     def commitid_link(self, obj: RedisLock) -> str:
