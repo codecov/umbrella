@@ -18,6 +18,9 @@ from django.contrib.admin.models import LogEntry
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
+from redis_admin.families import (
+    _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701
+)
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from utils.test_utils import Client
@@ -321,6 +324,93 @@ class RedisAdminFiltersAndSearchTest(TestCase):
         body = response.content.decode("utf-8")
         # Fallback is the em-dash placeholder.
         assert "—" in body
+
+    def _populate_celery_queues(self):
+        """Push one envelope onto each well-known Celery broker queue
+        plus an unrelated `uploads/` row so we can prove the filter
+        narrows by *both* family and name."""
+
+        self._celery_names = _celery_queue_names()
+        # Every well-known queue gets at least one item so it shows up
+        # on the changelist (zero-depth queues are filtered out by
+        # `iter_keys` since the underlying key doesn't exist).
+        for name in self._celery_names:
+            self.redis.rpush(name, "envelope")
+        # An unrelated non-celery row so a working filter must
+        # actively *exclude* it, not just include the celery row.
+        self.redis.rpush("uploads/1/sha", "x")
+
+    def test_celery_queue_filter_narrows_changelist_to_single_queue(self):
+        """The filter mirrors the Codecov health-overview Grafana dashboard:
+        an operator who sees `notify_celery` spike in Grafana clicks the
+        sidebar entry and lands on a single-row changelist for that key,
+        rather than scrolling through the full broker family."""
+
+        self._populate_celery_queues()
+        # Pick a queue that's guaranteed present (the default queue is
+        # always emitted by `_resolve_celery_queue_names`, even when
+        # the Celery config import falls through to its hardcoded
+        # fallback).
+        target = "celery"
+        assert target in self._celery_names
+
+        response = self.client.get(
+            "/admin/redis_admin/redisqueue/", {"celery_queue": target}
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert target in body
+        # Other celery queues must be filtered out — the whole point of
+        # surfacing this in the sidebar is that operators rarely care
+        # about more than one queue at a time.
+        for other in self._celery_names:
+            if other == target:
+                continue
+            # `assertNotContains` would also match incidental substring
+            # collisions inside the page chrome (e.g. CSS class names);
+            # tighten the check to "isn't rendered as a changelist row
+            # value" by looking for the per-row anchor href the admin
+            # builds for each key.
+            assert f"/admin/redis_admin/redisqueue/{other}/change/" not in body, (
+                f"expected only `{target}`, also saw `{other}` in changelist"
+            )
+        # And non-celery rows must be filtered out — the filter pins
+        # `family__exact=celery_broker` alongside `name__exact=...`.
+        assert "uploads/1/sha" not in body
+
+    def test_celery_queue_filter_dropdown_lists_well_known_queue_names(self):
+        """The filter's lookups mirror `BaseCeleryConfig`'s queue set, so
+        adding a queue to `task_routes` automatically makes it pickable
+        in the sidebar — operators don't have to wait on a code change
+        to admin filters."""
+
+        # The lookups render as `<a href=\"...?celery_queue=<name>\">`
+        # links in the sidebar; pull the names out of the live config
+        # and assert each one is offered as a filter choice.
+        self._populate_celery_queues()
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        for name in _celery_queue_names():
+            assert f"celery_queue={name}" in body, (
+                f"expected `{name}` to appear as a celery_queue filter choice"
+            )
+
+    def test_celery_queue_filter_with_no_value_returns_full_changelist(self):
+        """Sanity check that the filter is opt-in: omitting the param
+        leaves the queryset alone, so the celery filter doesn't
+        secretly hide other families when nothing is selected."""
+
+        self._populate_celery_queues()
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # The unrelated `uploads/` row is back, alongside celery rows.
+        assert "uploads/1/sha" in body
+        assert "celery" in body
 
 
 class RedisLockAdminSmokeTest(TestCase):

@@ -34,6 +34,9 @@ from core.models import Repository
 from . import conn as _conn
 from . import settings as redis_admin_settings
 from .families import FAMILIES, iter_keys
+from .families import (
+    _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701 - reused for filter lookups
+)
 from .models import RedisLock, RedisQueue, RedisQueueItem
 from .queryset import RedisItemQuerySet, _build_redis_queue
 from .services import redis_delete
@@ -237,6 +240,55 @@ class ReportTypeFilter(admin.SimpleListFilter):
         return queryset
 
 
+class CeleryQueueFilter(admin.SimpleListFilter):
+    """Narrow the changelist to a single Celery broker queue.
+
+    The well-known Celery queues (`celery`, `healthcheck`, plus anything
+    routed via `BaseCeleryConfig.task_routes[...]['queue']`) show up
+    one-per-row in the Codecov health-overview Grafana dashboard, so an
+    on-call engineer who sees `notify_celery` spike in Grafana would
+    otherwise have to either remember the exact key name or hand-type
+    `family:celery_broker name:notify_celery` into the search bar.
+
+    This filter surfaces the same enumeration `families.celery_broker`
+    uses for its `fixed_keys`, so the picker is always in sync with the
+    queues the admin can actually inspect — adding a new queue to
+    `task_routes` automatically adds it to the filter on next request.
+
+    Selecting a queue narrows the changelist to a single row
+    (`family__exact=celery_broker AND name__exact=<queue>`); the
+    well-known queues are unique by name so this collapses cleanly to
+    "the row for that queue".
+
+    Dynamic `enterprise_*` queues aren't enumerable from configuration
+    and are intentionally excluded from the dropdown — operators who
+    need them can keep using the search bar (`family:celery_broker
+    enterprise_acme`) which already handles substring match.
+    """
+
+    title = "celery queue"
+    parameter_name = "celery_queue"
+
+    def lookups(self, request, model_admin):
+        # Re-resolved per request so a config change picks up without
+        # requiring a worker restart; `_celery_queue_names` itself
+        # falls back to `("celery", "healthcheck")` if the celery
+        # config import fails, so the dropdown is never empty.
+        return tuple((name, name) for name in _celery_queue_names())
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if not value:
+            return queryset
+        # Pin the family alongside the name so a stray collision with a
+        # non-celery key (theoretically possible if some other family
+        # ever picked a name matching a celery queue) can't silently
+        # surface the wrong row. Family + name__exact also lets the
+        # underlying queryset short-circuit to a single GET / TYPE
+        # round-trip rather than a full SCAN sweep.
+        return queryset.filter(family__exact="celery_broker", name__exact=value)
+
+
 # ---- Helpers ---------------------------------------------------------------
 
 
@@ -292,7 +344,7 @@ class RedisQueueAdmin(admin.ModelAdmin):
         "report_type",
         "items_link",
     )
-    list_filter = (FamilyFilter, MinDepthFilter, ReportTypeFilter)
+    list_filter = (FamilyFilter, CeleryQueueFilter, MinDepthFilter, ReportTypeFilter)
     list_per_page = 50
     show_full_result_count = False
     ordering = ("-depth", "name")
