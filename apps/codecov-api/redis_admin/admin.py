@@ -280,12 +280,15 @@ class CeleryQueueFilter(admin.SimpleListFilter):
         value = self.value()
         if not value:
             return queryset
-        # Pin the family alongside the name so a stray collision with a
-        # non-celery key (theoretically possible if some other family
-        # ever picked a name matching a celery queue) can't silently
-        # surface the wrong row. Family + name__exact also lets the
-        # underlying queryset short-circuit to a single GET / TYPE
-        # round-trip rather than a full SCAN sweep.
+        # `name__exact` lets `RedisQueueQuerySet._fetch_all` take the
+        # EXISTS-only shortcut (single GET / TYPE round-trip; no SCAN
+        # sweep), the same path admin bulk actions use for `pk__in=`.
+        # The `family__exact` guard is enforced post-resolve in
+        # `_post_scan_predicate`: if `find_family(<queue>)` ever
+        # routed the name to a non-celery family (theoretically
+        # possible if some other family adopted a colliding fixed_key),
+        # the row would be filtered out rather than silently surfacing
+        # under the wrong family.
         return queryset.filter(family__exact="celery_broker", name__exact=value)
 
 

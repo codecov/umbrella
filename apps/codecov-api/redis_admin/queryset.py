@@ -281,6 +281,18 @@ class RedisQueueQuerySet:
 
     def _post_scan_predicate(self, obj: Any) -> bool:
         f = self._filters
+        # Family pushdown happens in `iter_keys`, but the `name_exact` /
+        # `name_in` shortcut in `_fetch_all` skips that and resolves
+        # ownership purely via `find_family(name)`. Without re-checking
+        # here, a `family__exact=celery_broker name__exact=<queue>`
+        # filter (the shape `CeleryQueueFilter` builds) would silently
+        # surface the wrong row if some other family ever picked a
+        # name colliding with a celery queue. Cheap belt-and-braces
+        # check; harmless for the SCAN path where `iter_keys` already
+        # filtered by family.
+        family = f.get("family")
+        if family and obj.family != family:
+            return False
         depth_gte = f.get("depth_gte")
         if depth_gte is not None and (obj.depth or 0) < depth_gte:
             return False

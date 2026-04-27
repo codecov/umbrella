@@ -237,6 +237,36 @@ def test_queryset_sort_by_nullable_string_field_does_not_crash(patched_redis):
     assert names[-1] == "ta_flake_key:1"
 
 
+def test_queryset_family_filter_drops_explicit_name_under_wrong_family(
+    patched_redis, monkeypatch
+):
+    """The `name__exact` shortcut in `_fetch_all` resolves family
+    ownership via `find_family(name)` and bypasses the SCAN-time
+    family filter. Without a post-resolve `family` check, a
+    `family=celery_broker name__exact=<key>` filter (the shape
+    `CeleryQueueFilter` builds) would silently surface a non-celery
+    row if the name happened to belong to another family. Pin that
+    behaviour: family mismatch must drop the row.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset  # noqa: PLC0415
+
+    patched_redis.rpush("celery", '{"task": "x"}')
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "find_family",
+        lambda key: next(
+            (f for f in redis_admin_families.FAMILIES if f.name == "uploads"), None
+        ),
+    )
+
+    rows = list(
+        RedisQueue.objects.filter(family__exact="celery_broker", name__exact="celery")
+    )
+    assert rows == []
+
+
 def test_max_scan_keys_limits_result_set(patched_redis, settings, monkeypatch):
     settings.REDIS_ADMIN_MAX_SCAN_KEYS = 3
     # `families.iter_keys` reads MAX_SCAN_KEYS off the redis_admin settings
