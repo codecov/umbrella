@@ -476,7 +476,7 @@ class RedisQueueAdminDeleteActionsTest(TestCase):
         self.redis.rpush("uploads/1/aaa", "p1")
         self.redis.rpush("uploads/1/bbb", "p2")
 
-    def test_non_superuser_cannot_see_delete_selected(self):
+    def test_non_superuser_cannot_see_clear_selected(self):
         staff = UserFactory(is_staff=True, is_superuser=False)
         self.client.force_login(staff)
         self._populate()
@@ -485,9 +485,30 @@ class RedisQueueAdminDeleteActionsTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8")
-        # Non-superusers can dry-run but never see the destructive action.
+        # Non-superusers see neither destructive nor dry-run actions.
+        # `clear_dry_run` was originally staff-allowed, but we tightened
+        # it to `permissions=("delete",)` so the rule is uniformly
+        # "anything that touches deletion is superuser-only" — including
+        # dry-runs that record audit-log rows.
+        assert "Clear selected" not in body
         assert "Delete selected" not in body
-        assert "Dry-run" in body
+        assert "Dry-run" not in body
+
+    def test_stock_delete_selected_action_is_unavailable(self):
+        # `delete_selected` was Django's stock no-dry-run path; we
+        # deliberately strip it so the only real-mutation bulk action
+        # is `clear_selected`, which forces a dry-run interstitial.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate()
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert 'value="delete_selected"' not in body
+        # Sanity: our replacement is offered.
+        assert 'value="clear_selected"' in body
 
     def test_clear_dry_run_action_does_not_delete(self):
         superuser = UserFactory(is_staff=True, is_superuser=True)
@@ -512,36 +533,678 @@ class RedisQueueAdminDeleteActionsTest(TestCase):
         # Audit trail: dry-runs are recorded.
         assert LogEntry.objects.count() >= 1
 
-    def test_delete_selected_actually_clears_keys(self):
+    def test_clear_selected_renders_dry_run_preview_first(self):
+        # Stage 1 of the new bulk-clear flow: posting `clear_selected`
+        # with no `confirm` flag must render the dry-run preview page,
+        # NOT delete anything.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate()
+        prior_logs = LogEntry.objects.count()
+
+        response = self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "clear_selected",
+                "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Preview page renders the dry-run summary…
+        assert "Dry-run summary" in body
+        assert "Would delete:" in body
+        assert "<strong>2</strong>" in body
+        # …a sample list…
+        assert "uploads/1/aaa" in body
+        assert "uploads/1/bbb" in body
+        # …and a confirmation form that re-posts with `confirm=yes`.
+        assert 'name="confirm" value="yes"' in body
+        assert 'name="action" value="clear_selected"' in body
+        assert 'name="_selected_action" value="uploads/1/aaa"' in body
+        # No keys deleted yet.
+        assert self.redis.exists("uploads/1/aaa") == 1
+        assert self.redis.exists("uploads/1/bbb") == 1
+        # Audit trail still has the dry-run recorded.
+        assert LogEntry.objects.count() == prior_logs + 1
+
+    def test_clear_selected_with_confirm_actually_clears_keys(self):
+        # Stage 2: re-post with `confirm=yes` runs the real delete.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate()
+        prior_logs = LogEntry.objects.count()
+
+        # Stage 1: open the confirmation page (records a dry-run audit).
+        stage1 = self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "clear_selected",
+                "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
+            },
+        )
+        assert stage1.status_code == 200
+        # Mid-flight: keys still present.
+        assert self.redis.exists("uploads/1/aaa") == 1
+
+        # Stage 2: submit the confirmation form.
+        stage2 = self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "clear_selected",
+                "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
+                "confirm": "yes",
+            },
+            follow=True,
+        )
+
+        assert stage2.status_code == 200
+        # Both keys should now be gone.
+        assert self.redis.exists("uploads/1/aaa") == 0
+        assert self.redis.exists("uploads/1/bbb") == 0
+        # Audit log should record both the dry-run AND the real delete.
+        assert LogEntry.objects.count() == prior_logs + 2
+
+    def test_clear_selected_cancel_does_not_delete(self):
+        # Operators must be able to back out of the dry-run preview
+        # without deleting anything.
         superuser = UserFactory(is_staff=True, is_superuser=True)
         self.client.force_login(superuser)
         self._populate()
 
-        # Stage 1: post the bulk action and accept Django's confirmation page.
-        response = self.client.post(
+        # Stage 1.
+        self.client.post(
             "/admin/redis_admin/redisqueue/",
             {
-                "action": "delete_selected",
+                "action": "clear_selected",
                 "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
             },
         )
-        # The confirmation page is a 200, the actual delete needs `post`.
-        assert response.status_code == 200
+        # The "No, take me back" link is just a GET to the changelist;
+        # exercise it explicitly.
+        response = self.client.get("/admin/redis_admin/redisqueue/")
 
-        # Stage 2: confirm the deletion.
+        assert response.status_code == 200
+        # Nothing was deleted because stage 2 never happened.
+        assert self.redis.exists("uploads/1/aaa") == 1
+        assert self.redis.exists("uploads/1/bbb") == 1
+
+
+class RedisAdminClearByScopeTest(TestCase):
+    """M6: cross-family clear-by-scope view.
+
+    Verifies the dedicated `/clear-by-scope/` URL aggregates matching
+    keys across multiple deletable families and gates the destructive
+    action behind a typed-confirmation guard. Locks (`is_deletable=
+    False`) must never be cleared, even if the operator's scope picks
+    them up.
+    """
+
+    URL = "/admin/redis_admin/redisqueue/clear-by-scope/"
+
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+        self.client = Client()
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    def _populate_repo_42(self):
+        # Two queue-family keys for repoid=42; one for a different repo
+        # to verify scoping; one lock that must be refused.
+        self.redis.rpush("uploads/42/abc123", "p1")
+        self.redis.set("latest_upload/42/abc123", "u1")
+        self.redis.rpush("uploads/99/zzz999", "p2")
+        # Lock family — must be excluded from the matched targets.
+        self.redis.set("upload_finisher_gate_42_abc123", "1")
+
+    def test_link_visible_in_changelist_object_tools_for_superuser(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Clear by scope" in body
+        assert self.URL in body
+
+    def test_link_hidden_from_non_superuser(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+        self._populate_repo_42()
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Clear by scope" not in body
+
+    def test_non_superuser_gets_permission_denied(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.get(self.URL)
+
+        # Django's admin_view wraps PermissionDenied as a 403.
+        assert response.status_code == 403
+
+    def test_get_without_scope_renders_empty_form(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        response = self.client.get(self.URL)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Clear Redis by scope" in body
+        assert "Repository ID" in body
+        # No "Matched: N keys" panel appears until a scope is supplied.
+        assert "Matched:" not in body
+
+    def test_get_with_repoid_lists_matching_keys_across_families(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        response = self.client.get(self.URL + "?repoid=42")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Aggregated count: uploads/42/abc123 + latest_upload/42/abc123,
+        # NOT uploads/99/zzz999, NOT the lock.
+        assert "Matched: 2 key(s)" in body
+        assert "uploads/42/abc123" in body
+        assert "latest_upload/42/abc123" in body
+        assert "uploads/99/zzz999" not in body
+        assert "upload_finisher_gate" not in body
+        # Both family names render.
+        assert "uploads" in body
+        assert "latest_upload" in body
+
+    def test_get_with_invalid_repoid_shows_error(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        response = self.client.get(self.URL + "?repoid=not-an-int")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "repoid must be an integer" in body
+
+    def test_post_dry_run_does_not_delete_and_audits(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+        prior_logs = LogEntry.objects.count()
+
         response = self.client.post(
-            "/admin/redis_admin/redisqueue/",
+            self.URL,
             {
-                "action": "delete_selected",
-                "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
-                "post": "yes",
+                "repoid": "42",
+                "commitid": "",
+                "typed_confirm": "42",
+                "action": "dry_run",
             },
             follow=True,
         )
 
         assert response.status_code == 200
-        # Both keys should now be gone.
-        assert self.redis.exists("uploads/1/aaa") == 0
-        assert self.redis.exists("uploads/1/bbb") == 0
-        # Audit log should record the real delete.
-        assert LogEntry.objects.count() >= 1
+        body = response.content.decode("utf-8")
+        assert "Dry-run: would clear 2" in body
+        # Nothing is actually deleted.
+        assert self.redis.exists("uploads/42/abc123") == 1
+        assert self.redis.exists("latest_upload/42/abc123") == 1
+        # Out-of-scope and lock keys remain untouched.
+        assert self.redis.exists("uploads/99/zzz999") == 1
+        assert self.redis.exists("upload_finisher_gate_42_abc123") == 1
+        # Audit log still records the dry-run.
+        assert LogEntry.objects.count() == prior_logs + 1
+
+    def test_post_confirm_clears_matching_keys_only(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "42",
+                "commitid": "",
+                "typed_confirm": "42",
+                "action": "confirm",
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        # Repo-42 keys are gone.
+        assert self.redis.exists("uploads/42/abc123") == 0
+        assert self.redis.exists("latest_upload/42/abc123") == 0
+        # Other repo's keys are untouched.
+        assert self.redis.exists("uploads/99/zzz999") == 1
+        # Lock is untouched (refused by `is_deletable=False`).
+        assert self.redis.exists("upload_finisher_gate_42_abc123") == 1
+        # Confirm runs redirect to the changelist with a success
+        # message; both should appear in the followed response.
+        body = response.content.decode("utf-8")
+        assert "Cleared 2 key(s)" in body
+
+    def test_post_with_mismatched_typed_confirmation_blocks_delete(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "42",
+                "commitid": "",
+                "typed_confirm": "wrong",
+                "action": "confirm",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Typed confirmation must equal" in body
+        # Nothing was deleted.
+        assert self.redis.exists("uploads/42/abc123") == 1
+        assert self.redis.exists("latest_upload/42/abc123") == 1
+
+    def test_post_without_scope_is_refused(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "",
+                "commitid": "",
+                "typed_confirm": "",
+                "action": "confirm",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "scope must include a repoid, commitid, or at least one family" in body
+        # Sanity: nothing was cleared.
+        assert self.redis.exists("uploads/42/abc123") == 1
+
+    def test_post_confirm_with_commitid_only_clears_matching_keys(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        # Two different repos sharing a commit prefix.
+        self.redis.rpush("uploads/42/abc123", "p1")
+        self.redis.rpush("uploads/99/abc456", "p2")
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "",
+                "commitid": "abc",
+                "typed_confirm": "abc",
+                "action": "confirm",
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        # Both commits-prefixed-with "abc" should be cleared.
+        assert self.redis.exists("uploads/42/abc123") == 0
+        assert self.redis.exists("uploads/99/abc456") == 0
+
+    # ---- Family-scope (M6 follow-up) -----------------------------------
+
+    def test_get_with_repoid_and_family_narrows_to_that_family(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        # Repo 42 has both `uploads/*` and `latest_upload/*` keys; the
+        # family filter restricts the scope to `uploads/*`.
+        response = self.client.get(self.URL + "?repoid=42&family=uploads")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Matched: 1 key(s)" in body
+        assert "uploads/42/abc123" in body
+        assert "latest_upload/42/abc123" not in body
+
+    def test_post_confirm_with_family_only_clears_all_keys_of_that_family(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        # Two repos with `uploads/*`; one repo with `latest_upload/*`.
+        self.redis.rpush("uploads/42/abc123", "p1")
+        self.redis.rpush("uploads/99/zzz999", "p2")
+        self.redis.set("latest_upload/42/abc123", "u1")
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "",
+                "commitid": "",
+                "family": ["uploads"],
+                # Family-only scope confirms by typing the joined family
+                # names.
+                "typed_confirm": "uploads",
+                "action": "confirm",
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        # Both `uploads/*` keys are gone, regardless of repo.
+        assert self.redis.exists("uploads/42/abc123") == 0
+        assert self.redis.exists("uploads/99/zzz999") == 0
+        # Other family is untouched.
+        assert self.redis.exists("latest_upload/42/abc123") == 1
+        body = response.content.decode("utf-8")
+        assert "Cleared 2 key(s)" in body
+
+    def test_post_confirm_with_multiple_families_clears_each(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self.redis.rpush("uploads/42/abc123", "p1")
+        self.redis.set("latest_upload/42/abc123", "u1")
+        # Third family (intermediate-report) intentionally untouched —
+        # it's not in the requested family list.
+        self.redis.hset("intermediate-report/42/abc123/coverage", "f", "v")
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "42",
+                "commitid": "",
+                "family": ["uploads", "latest_upload"],
+                "typed_confirm": "42",
+                "action": "confirm",
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        assert self.redis.exists("uploads/42/abc123") == 0
+        assert self.redis.exists("latest_upload/42/abc123") == 0
+        assert self.redis.exists("intermediate-report/42/abc123/coverage") == 1
+
+    def test_post_with_unknown_family_is_refused(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "42",
+                "commitid": "",
+                "family": ["nope"],
+                "typed_confirm": "42",
+                "action": "confirm",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "unknown or non-deletable family" in body
+        # Sanity: nothing was cleared.
+        assert self.redis.exists("uploads/42/abc123") == 1
+
+    def test_post_with_lock_family_is_refused(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        # `upload_finisher_gate` is a lock family — it's a real family
+        # name in the registry but `is_deletable=False`, so it must be
+        # rejected by the `_deletable_family_names` allowlist.
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "42",
+                "commitid": "",
+                "family": ["upload_finisher_gate"],
+                "typed_confirm": "42",
+                "action": "confirm",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "unknown or non-deletable family" in body
+        # Lock key still in Redis.
+        assert self.redis.exists("upload_finisher_gate_42_abc123") == 1
+
+    def test_form_renders_a_checkbox_for_each_deletable_family(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        response = self.client.get(self.URL)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Every deletable queue family gets a checkbox; locks do not.
+        for name in (
+            "uploads",
+            "ta_flake_key",
+            "latest_upload",
+            "upload-processing-state",
+            "intermediate-report",
+            "celery_broker",
+        ):
+            assert f'value="{name}"' in body
+        # Locks must not appear in the family checkbox list.
+        assert 'value="upload_finisher_gate"' not in body
+        assert 'value="coordination_lock"' not in body
+
+
+class RedisAdminSuperuserOnlyDeletionTest(TestCase):
+    """Pin down the "deletion is superuser-only" invariant across every
+    redis_admin model.
+
+    The rule, restated for the reader of these tests:
+      - `RedisQueueAdmin`        deletion gated to `is_superuser`
+      - `RedisLockAdmin`         deletion disabled for everyone
+      - `RedisQueueItemAdmin`    deletion disabled for everyone
+
+    These tests stay tight on URL/action endpoints because that's what
+    a misconfigured permission flip would actually expose. They cover
+    both the "button hidden" UX and the "raw POST rejected" backend
+    enforcement, so a regression that only fixes one half (e.g. hiding
+    the button while leaving the URL open) still fails the suite.
+    """
+
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+        self.client = Client()
+
+        self.redis.rpush("uploads/1/aaa", "p1")
+        self.redis.rpush("uploads/1/bbb", "p2")
+        self.redis.set("upload_finisher_gate_1_aaa", "1")
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    # ---- RedisQueueAdmin -----------------------------------------------
+
+    def test_staff_changelist_hides_every_destructive_action(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Every destructive action is hidden from the staff dropdown.
+        assert 'value="clear_selected"' not in body
+        assert 'value="clear_dry_run"' not in body
+        # And the stock Django bulk delete is stripped for everyone.
+        assert 'value="delete_selected"' not in body
+        # The cross-family clear-by-scope link is also superuser-only.
+        assert "Clear by scope" not in body
+
+    def test_staff_clear_selected_post_is_refused(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "clear_selected",
+                "_selected_action": ["uploads/1/aaa"],
+            },
+            follow=True,
+        )
+
+        # Django's action permission gate either refuses with a
+        # message or redirects to the changelist; either way the key
+        # must remain in Redis.
+        assert response.status_code == 200
+        assert self.redis.exists("uploads/1/aaa") == 1
+
+    def test_staff_clear_dry_run_post_is_refused(self):
+        # The dry-run action was previously `permissions=("change",)`
+        # and reachable by staff users. We tightened it to
+        # `permissions=("delete",)` so it lives behind the same
+        # superuser gate as its destructive sibling.
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+        prior_logs = LogEntry.objects.count()
+
+        self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "clear_dry_run",
+                "_selected_action": ["uploads/1/aaa"],
+            },
+            follow=True,
+        )
+
+        # No mutation in Redis (this is a dry-run) but more
+        # importantly: no LogEntry written, because the action was
+        # refused before reaching `redis_delete`.
+        assert self.redis.exists("uploads/1/aaa") == 1
+        assert LogEntry.objects.count() == prior_logs
+
+    def test_staff_change_page_hides_delete_button(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.get(
+            "/admin/redis_admin/redisqueue/uploads_2F1_2Faaa/change/"
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # No "Delete" link/button appears anywhere on the page.
+        assert "Delete</a>" not in body
+        assert ">Delete</button>" not in body
+
+    def test_staff_clear_by_scope_get_is_403(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.get(
+            "/admin/redis_admin/redisqueue/clear-by-scope/?repoid=1"
+        )
+
+        assert response.status_code == 403
+
+    def test_staff_clear_by_scope_post_is_403(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.post(
+            "/admin/redis_admin/redisqueue/clear-by-scope/",
+            {
+                "repoid": "1",
+                "commitid": "",
+                "typed_confirm": "1",
+                "action": "confirm",
+            },
+        )
+
+        assert response.status_code == 403
+        assert self.redis.exists("uploads/1/aaa") == 1
+        assert self.redis.exists("uploads/1/bbb") == 1
+
+    # ---- RedisLockAdmin ------------------------------------------------
+
+    def test_locks_are_undeletable_even_by_superusers(self):
+        # Locks are blanket-disabled, not just superuser-gated. This
+        # is a stricter rule than "deletion is superuser-only" and
+        # exists because the worker's `LockManager` is the only
+        # legitimate releaser of those keys.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        response = self.client.get("/admin/redis_admin/redislock/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # No bulk action dropdown options at all (`actions={}` for
+        # locks). Most importantly: no `delete_selected`.
+        assert 'value="delete_selected"' not in body
+        # And there's no clear_* siblings either.
+        assert 'value="clear_selected"' not in body
+        assert 'value="clear_dry_run"' not in body
+
+    def test_staff_cannot_post_delete_to_lock_change_page(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        # Even if staff somehow handcraft a delete POST to the lock
+        # change-form URL, it must be refused.
+        response = self.client.post(
+            "/admin/redis_admin/redislock/upload_finisher_gate_5F1_5Faaa/delete/",
+            {"post": "yes"},
+        )
+
+        # Django returns 403 for has_delete_permission=False. The lock
+        # must still be in Redis.
+        assert response.status_code in (302, 403, 404)
+        assert self.redis.exists("upload_finisher_gate_1_aaa") == 1
+
+    # ---- RedisQueueItemAdmin -------------------------------------------
+
+    def test_items_changelist_has_no_bulk_actions(self):
+        # `actions = ()` strips every bulk action — including
+        # delete-flavoured ones — for everyone.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        response = self.client.get(
+            "/admin/redis_admin/redisqueueitem/?queue_name__exact=uploads/1/aaa"
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert 'value="delete_selected"' not in body
+        assert 'value="clear_selected"' not in body
+        assert 'value="clear_dry_run"' not in body
+
+    def test_superuser_cannot_delete_individual_item(self):
+        # `has_delete_permission` returns `False` regardless of role,
+        # so even a superuser can't delete items from this admin.
+        # This is a deliberate design choice (see admin.py docstring);
+        # if the choice is ever reversed, the new gate must be
+        # superuser-only.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        response = self.client.post(
+            "/admin/redis_admin/redisqueueitem/uploads_2F1_2Faaa_230/delete/",
+            {"post": "yes"},
+        )
+
+        # 403 / 404 / redirect — anything but a successful delete.
+        assert response.status_code in (302, 403, 404)
+        assert self.redis.exists("uploads/1/aaa") == 1

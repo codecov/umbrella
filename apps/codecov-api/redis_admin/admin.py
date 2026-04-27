@@ -17,20 +17,24 @@ prefix-style tokens in addition to plain substrings:
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from urllib.parse import urlencode
 
 from django.contrib import admin, messages
 from django.contrib.admin.utils import quote, unquote
-from django.http import HttpRequest
-from django.urls import NoReverseMatch, reverse
+from django.core.exceptions import PermissionDenied
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.shortcuts import render
+from django.urls import NoReverseMatch, path, reverse
 from django.utils.html import format_html, format_html_join
 
 from core.models import Repository
 
+from . import conn as _conn
 from . import settings as redis_admin_settings
-from .families import FAMILIES
+from .families import FAMILIES, iter_keys
 from .models import RedisLock, RedisQueue, RedisQueueItem
-from .queryset import RedisItemQuerySet
+from .queryset import RedisItemQuerySet, _build_redis_queue
 from .services import redis_delete
 
 # ---- Inline items preview (rendered on the queue change page) --------------
@@ -311,6 +315,9 @@ class RedisQueueAdmin(admin.ModelAdmin):
     # Override the change form so we can inject a tabular-inline-style
     # "Items" block below the readonly fields.
     change_form_template = "admin/redis_admin/items_inline_change_form.html"
+    # Override the changelist toolbar to surface the M6 "Clear by
+    # scope…" link next to the search box.
+    change_list_template = "admin/redis_admin/redisqueue/change_list.html"
 
     def has_add_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
@@ -369,13 +376,289 @@ class RedisQueueAdmin(admin.ModelAdmin):
             return queryset, False
         return queryset.filter(**kwargs), False
 
-    # ---- Delete actions (M5.2) -----------------------------------------
+    # ---- Cross-family clear-by-scope (M6) -------------------------------
+    #
+    # `/admin/redis_admin/redisqueue/clear-by-scope/?repoid=…&commitid=…
+    # &family=uploads&family=latest_upload`
+    # aggregates every deletable Redis key tied to a given repo, commit,
+    # and/or specific family list and clears them in a single audited
+    # operation. This is the on-call escape hatch for "rerun completely
+    # failed" — without it, an operator would have to navigate to every
+    # family's filter and run `delete_selected` for each.
+    #
+    # Scope is the cross-product of three optional dimensions:
+    #   - `repoid` (numeric)
+    #   - `commitid` (full SHA or any prefix)
+    #   - `family` (zero or more deletable family names; empty = all)
+    # At least one of repoid / commitid / explicit family list must be
+    # set. The empty form is refused.
+    #
+    # Safety stack:
+    #   1. Superuser-only (matches `delete_selected` gating).
+    #   2. GET = preview / form. POST = mutation. Empty scope refused.
+    #   3. Typed-confirmation guard: the operator must re-type the
+    #      "primary" scope value (repoid > commitid > joined family
+    #      names, in that preference order) into a confirmation field
+    #      to enable the destructive button. A simple "I really meant
+    #      it" gate that costs an extra second but blocks fat-fingered
+    #      double-clicks.
+    #   4. `dry_run` button always available alongside `confirm`.
+    #   5. The actual mutation funnels through the same `redis_delete`
+    #      service used by `delete_selected`, so locks (`is_deletable
+    #      =False`) are still refused even if a future family change
+    #      starts surfacing them as queues.
 
-    actions = ("clear_dry_run",)
+    def get_urls(self):
+        urls = super().get_urls()
+        opts = self.model._meta
+        clear_url = path(
+            "clear-by-scope/",
+            self.admin_site.admin_view(self.clear_by_scope_view),
+            name=f"{opts.app_label}_{opts.model_name}_clear_by_scope",
+        )
+        # Insert before the catch-all `<path:object_id>/` patterns so
+        # `clear-by-scope/` doesn't get swallowed as an object_id.
+        return [clear_url, *urls]
+
+    @staticmethod
+    def _deletable_family_names() -> list[str]:
+        """Names of every queue-category family that's safe to delete.
+
+        Used by the form to render the family checkbox list and by the
+        view to validate operator-supplied family names.
+        """
+
+        return sorted(
+            f.name for f in FAMILIES if f.category == "queue" and f.is_deletable
+        )
+
+    def _resolve_scope_targets(
+        self,
+        *,
+        repoid: int | None,
+        commitid: str,
+        families: Sequence[str] | None,
+    ) -> list[RedisQueue]:
+        """Materialise every deletable queue matching the active scope.
+
+        Iterates per-requested-family when `families` is non-empty so
+        the SCAN MATCH pattern is family-specific (e.g. `uploads/42/*`
+        instead of a wildcard sweep). When `families` is None or
+        empty, sweeps all deletable families. Skips lock families
+        (`is_deletable=False`) regardless of how a key was surfaced.
+        """
+
+        redis = _conn.get_connection()
+        family_iter: Iterable[str | None]
+        if families:
+            family_iter = list(families)
+        else:
+            family_iter = [None]
+
+        targets: list[RedisQueue] = []
+        seen: set[str] = set()
+        for family_name in family_iter:
+            for key, family in iter_keys(
+                redis,
+                family=family_name,
+                repoid=repoid,
+                commitid_prefix=commitid or None,
+                category="queue",
+            ):
+                if not family.is_deletable:
+                    continue
+                if key in seen:
+                    continue
+                obj = _build_redis_queue(self.model, key, family, redis)
+                # `iter_keys` already pushed the filter into SCAN MATCH,
+                # but glob `*` matches `/` so re-verify the parsed
+                # values.
+                if repoid is not None and obj.repoid != repoid:
+                    continue
+                if commitid and not (obj.commitid or "").startswith(commitid):
+                    continue
+                seen.add(key)
+                targets.append(obj)
+        return targets
+
+    def clear_by_scope_view(self, request: HttpRequest) -> HttpResponse:
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "redis_admin clear-by-scope is restricted to superusers"
+            )
+
+        params = request.POST if request.method == "POST" else request.GET
+        repoid_raw = (params.get("repoid") or "").strip()
+        commitid = (params.get("commitid") or "").strip()
+        # Multi-select: each checked family round-trips as one `family`
+        # form value. `getlist` falls back to a query-string-friendly
+        # comma-separated `family=a,b,c` as well so the URL can be
+        # bookmarked.
+        family_values = list(params.getlist("family"))
+        if not family_values:
+            csv = (params.get("family") or "").strip()
+            if csv:
+                family_values = [csv]
+        families: list[str] = []
+        for fv in family_values:
+            for piece in fv.split(","):
+                piece = piece.strip()
+                if piece and piece not in families:
+                    families.append(piece)
+
+        deletable_families = self._deletable_family_names()
+        invalid_families = [f for f in families if f not in deletable_families]
+        family_error: str | None = None
+        if invalid_families:
+            family_error = "unknown or non-deletable family: " + ", ".join(
+                invalid_families
+            )
+
+        repoid: int | None = None
+        repoid_error: str | None = None
+        if repoid_raw:
+            try:
+                repoid = int(repoid_raw)
+            except ValueError:
+                repoid_error = f"repoid must be an integer; got {repoid_raw!r}"
+
+        targets: list[RedisQueue] = []
+        scope_specified = bool(repoid_raw or commitid or families)
+        if scope_specified and repoid_error is None and family_error is None:
+            targets = self._resolve_scope_targets(
+                repoid=repoid,
+                commitid=commitid,
+                families=families,
+            )
+
+        opts = self.model._meta
+        changelist_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist")
+
+        # Typed-confirmation: re-type whichever scope value drives the
+        # action. Preference order is repoid > commitid > joined family
+        # names because the more "operational" the identifier, the
+        # easier it is to remember (a repoid is a number you just
+        # typed; a list of family names is harder to fat-finger but
+        # more memorable than a 40-char SHA).
+        if repoid_raw:
+            expected_confirm = repoid_raw
+        elif commitid:
+            expected_confirm = commitid
+        else:
+            expected_confirm = ",".join(sorted(families))
+        action = (request.POST.get("action") or "").strip()
+        typed_confirm = (request.POST.get("typed_confirm") or "").strip()
+        result = None
+        confirm_error: str | None = None
+
+        if request.method == "POST":
+            if repoid_error is not None:
+                messages.error(request, repoid_error)
+            elif family_error is not None:
+                messages.error(request, family_error)
+            elif not scope_specified:
+                messages.error(
+                    request,
+                    "Refusing to clear: scope must include a repoid, "
+                    "commitid, or at least one family",
+                )
+            elif action not in ("dry_run", "confirm"):
+                messages.error(request, f"Unknown action: {action!r}")
+            elif typed_confirm != expected_confirm:
+                confirm_error = f"Typed confirmation must equal {expected_confirm!r}"
+            else:
+                dry_run = action == "dry_run"
+                result = redis_delete(targets, user=request.user, dry_run=dry_run)
+                if dry_run:
+                    messages.info(
+                        request,
+                        f"Dry-run: would clear {result.count} key(s) across "
+                        f"families={list(result.families) or '[]'}",
+                    )
+                else:
+                    messages.success(
+                        request,
+                        f"Cleared {result.count} key(s) across "
+                        f"families={list(result.families) or '[]'}",
+                    )
+                    return HttpResponseRedirect(changelist_url)
+
+        sample_cap = 25
+        sample_targets = targets[:sample_cap]
+        scope_families = sorted({t.family for t in targets})
+
+        scope_label_parts = []
+        if repoid_raw:
+            scope_label_parts.append(f"repoid={repoid_raw}")
+        if commitid:
+            scope_label_parts.append(f"commitid={commitid}")
+        if families:
+            scope_label_parts.append(f"family={','.join(sorted(families))}")
+        scope_label = " ".join(scope_label_parts) if scope_label_parts else "(none)"
+
+        family_choices = [
+            {"name": name, "checked": name in families} for name in deletable_families
+        ]
+
+        ctx = {
+            **self.admin_site.each_context(request),
+            "title": "Clear Redis by scope",
+            "opts": opts,
+            "has_view_permission": self.has_view_permission(request),
+            "repoid": repoid_raw,
+            "commitid": commitid,
+            "selected_families": families,
+            "family_choices": family_choices,
+            "scope_label": scope_label,
+            "scope_specified": scope_specified,
+            "repoid_error": repoid_error,
+            "family_error": family_error,
+            "confirm_error": confirm_error,
+            "expected_confirm": expected_confirm,
+            "typed_confirm": typed_confirm,
+            "targets": targets,
+            "target_count": len(targets),
+            "sample_targets": sample_targets,
+            "sample_cap": sample_cap,
+            "scope_families": scope_families,
+            "changelist_url": changelist_url,
+            "result": result,
+        }
+        return render(request, "admin/redis_admin/clear_by_scope.html", ctx)
+
+    # ---- Delete actions (M5.2 + dry-run-mandatory bulk) -----------------
+    #
+    # The standard `delete_selected` is replaced with `clear_selected`,
+    # a 2-stage action that always runs a dry-run *before* offering the
+    # destructive button. Django's stock flow is "select → confirm →
+    # delete"; ours is "select → dry-run preview → confirm → delete".
+    # The dry-run output (count, families, refused, sample) is rendered
+    # inline on the confirmation page so the operator can sanity-check
+    # the impact of the action before committing.
+    #
+    # `clear_dry_run` is kept as a separate action for the
+    # "let me see what would happen if I cleared X, with no risk of
+    # accidentally hitting the wrong button" workflow — it has no
+    # destructive sibling on the same page, just `message_user`.
+
+    actions = ("clear_dry_run", "clear_selected")
+
+    def get_actions(self, request):
+        # Strip Django's stock `delete_selected` so the only path that
+        # actually mutates Redis from a bulk action goes through our
+        # dry-run-mandatory `clear_selected`.
+        actions = super().get_actions(request)
+        actions.pop("delete_selected", None)
+        return actions
 
     @admin.action(
-        description="Dry-run: count what 'delete selected' would clear",
-        permissions=("change",),
+        description="Dry-run: count what 'clear selected' would clear",
+        # Staff with read-only access don't need a button that writes
+        # `LogEntry` rows; the dry-run action is a sibling of the
+        # destructive bulk-clear, and "anything next to a delete
+        # button is superuser-only" is the simpler invariant to
+        # reason about. Locks down the audit-log surface area too.
+        permissions=("delete",),
     )
     def clear_dry_run(self, request: HttpRequest, queryset) -> None:
         result = redis_delete(list(queryset), user=request.user, dry_run=True)
@@ -390,8 +673,75 @@ class RedisQueueAdmin(admin.ModelAdmin):
             level=messages.INFO,
         )
 
+    @admin.action(
+        description="Clear selected (dry-run preview, then confirm)",
+        permissions=("delete",),
+    )
+    def clear_selected(self, request: HttpRequest, queryset):
+        """Two-stage clear: shows dry-run results, then waits for confirm.
+
+        Stage 1 (no `confirm` flag): runs `redis_delete(dry_run=True)`
+        and renders a confirmation page that displays the dry-run's
+        count + families + refused + sample inline. The page's form
+        re-posts the same action with `confirm=yes`.
+
+        Stage 2 (`confirm=yes`): runs `redis_delete(dry_run=False)`,
+        the actual mutation. Returning `None` falls through to the
+        standard action redirect back to the changelist.
+        """
+
+        selected = list(queryset)
+        # Pull the original `_selected_action` checkbox values so we can
+        # round-trip them as hidden inputs on the confirmation form;
+        # Django's action helper re-fetches the queryset from these on
+        # the second POST.
+        selected_pks = request.POST.getlist("_selected_action") or [
+            obj.pk for obj in selected
+        ]
+
+        if request.POST.get("confirm") == "yes":
+            result = redis_delete(selected, user=request.user, dry_run=False)
+            self.message_user(
+                request,
+                (
+                    f"Cleared {result.count} Redis key(s) across "
+                    f"families={list(result.families) or '[]'}"
+                    + (
+                        f"; refused={list(result.refused[:5])}"
+                        if result.refused
+                        else ""
+                    )
+                ),
+                level=messages.SUCCESS,
+            )
+            # Falls through to Django's "redirect back to changelist"
+            # behaviour for actions that return None.
+            return None
+
+        dry_run_result = redis_delete(selected, user=request.user, dry_run=True)
+
+        opts = self.model._meta
+        ctx = {
+            **self.admin_site.each_context(request),
+            "title": "Confirm clear of selected Redis keys",
+            "opts": opts,
+            "action_name": "clear_selected",
+            "selected": selected,
+            "selected_pks": selected_pks,
+            "dry_run_result": dry_run_result,
+            "media": self.media,
+        }
+        return render(
+            request, "admin/redis_admin/clear_selected_confirmation.html", ctx
+        )
+
     def delete_queryset(self, request: HttpRequest, queryset) -> None:
-        """Bulk 'Delete selected' on the queues changelist."""
+        """Defensive: stock `delete_selected` is stripped in `get_actions`,
+        but if a future code path reintroduces it, route through the
+        same audited service rather than letting the ORM fall through
+        on an unmanaged model.
+        """
+
         result = redis_delete(list(queryset), user=request.user, dry_run=False)
         self.message_user(
             request,
@@ -404,7 +754,14 @@ class RedisQueueAdmin(admin.ModelAdmin):
         )
 
     def delete_model(self, request: HttpRequest, obj: RedisQueue) -> None:
-        """Single-object delete from the change page."""
+        """Single-object delete from the change page.
+
+        The change page already runs through Django's standard
+        `delete_view` confirmation interstitial, which displays the
+        full key path before the operator commits, so we don't add a
+        second dry-run gate here.
+        """
+
         result = redis_delete([obj], user=request.user, dry_run=False)
         self.message_user(
             request,
@@ -511,7 +868,11 @@ class RedisLockAdmin(admin.ModelAdmin):
         return bool(request.user and request.user.is_staff)
 
     # Locks are never deletable from the admin, regardless of role; the
-    # worker's `LockManager` is the only legitimate releaser.
+    # worker's `LockManager` is the only legitimate releaser. This is
+    # stricter than the per-admin "superuser-only deletion" invariant
+    # — locks aren't even superuser-deletable. `services.redis_delete`
+    # additionally refuses any key whose family has `is_deletable=
+    # False` so URL-tampering can't bypass this.
     def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
 
@@ -623,6 +984,13 @@ class RedisQueueItemAdmin(admin.ModelAdmin):
     def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
 
+    # Item-level mutations are not exposed in the admin: per-item
+    # `LREM` / `SREM` / `HDEL` would require reconstructing the
+    # original Redis value from the admin pk_token (and SETs/LISTs
+    # don't round-trip cleanly through SSCAN cursors), so operators
+    # who need to drop a bad message clear the entire queue from
+    # `RedisQueueAdmin`. If we ever lift this, the new gate must be
+    # `is_superuser` to match every other deletion path in this app.
     def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
 
