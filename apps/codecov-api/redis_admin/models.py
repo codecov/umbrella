@@ -14,7 +14,12 @@ from .queryset import RedisItemQuerySet, RedisQueueQuerySet
 
 class RedisQueueManager(models.Manager):
     def get_queryset(self) -> RedisQueueQuerySet:  # type: ignore[override]
-        return RedisQueueQuerySet(self.model)
+        return RedisQueueQuerySet(self.model, category="queue")
+
+
+class RedisLockManager(models.Manager):
+    def get_queryset(self) -> RedisQueueQuerySet:  # type: ignore[override]
+        return RedisQueueQuerySet(self.model, category="lock")
 
 
 class RedisQueueItemManager(models.Manager):
@@ -51,6 +56,48 @@ class RedisQueue(models.Model):
 
     def delete(self, *args, **kwargs):  # pragma: no cover - milestone 5
         raise NotImplementedError("RedisQueue.delete arrives in milestone 5.")
+
+
+class RedisLock(models.Model):
+    """Read-only view of Redis locks/fences/gates.
+
+    Same field shape as `RedisQueue` but lives in its own admin so an
+    operator can't accidentally clear them from the queues page; the
+    queueset is wired with `category="lock"` so `iter_keys` only yields
+    families flagged with `is_deletable=False`. M5's delete service
+    refuses every key whose family has `is_deletable=False`, regardless
+    of which model the row is rendered through.
+    """
+
+    name = models.CharField(primary_key=True, max_length=512)
+    family = models.CharField(max_length=64)
+    redis_type = models.CharField(max_length=16)
+    depth = models.PositiveIntegerField(default=0)
+    ttl_seconds = models.IntegerField(null=True, blank=True)
+    repoid = models.IntegerField(null=True, blank=True)
+    commitid = models.CharField(max_length=64, null=True, blank=True)
+    report_type = models.CharField(max_length=32, null=True, blank=True)
+
+    objects = RedisLockManager()
+
+    class Meta:
+        managed = False
+        app_label = "redis_admin"
+        verbose_name = "Redis lock"
+        verbose_name_plural = "Redis locks"
+        default_permissions = ("view",)
+
+    def __str__(self) -> str:
+        return self.name
+
+    def save(self, *args, **kwargs):  # pragma: no cover - safety net
+        raise RuntimeError("RedisLock is read-only; saves are not supported.")
+
+    def delete(self, *args, **kwargs):  # pragma: no cover - intentional
+        raise RuntimeError(
+            "RedisLock entries are immutable from the admin; coordination "
+            "locks must be released by their owning task, not by an operator."
+        )
 
 
 class RedisQueueItem(models.Model):

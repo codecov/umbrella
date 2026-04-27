@@ -26,7 +26,8 @@ from django.utils.html import format_html
 
 from . import settings as redis_admin_settings
 from .families import FAMILIES
-from .models import RedisQueue, RedisQueueItem
+from .models import RedisLock, RedisQueue, RedisQueueItem
+from .services import redis_delete
 
 # ---- list_filter classes ---------------------------------------------------
 
@@ -34,15 +35,22 @@ from .models import RedisQueue, RedisQueueItem
 class FamilyFilter(admin.SimpleListFilter):
     title = "family"
     parameter_name = "family"
+    # `RedisQueueAdmin` and `RedisLockAdmin` override this on their
+    # subclass so each admin only lists families it actually surfaces.
+    category: str = "queue"
 
     def lookups(self, request, model_admin):
-        return tuple((f.name, f.name) for f in FAMILIES)
+        return tuple((f.name, f.name) for f in FAMILIES if f.category == self.category)
 
     def queryset(self, request, queryset):
         value = self.value()
         if value:
             return queryset.filter(family__exact=value)
         return queryset
+
+
+class LockFamilyFilter(FamilyFilter):
+    category = "lock"
 
 
 class MinDepthFilter(admin.SimpleListFilter):
@@ -159,8 +167,10 @@ class RedisQueueAdmin(admin.ModelAdmin):
     def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
         return bool(request.user and request.user.is_staff)
 
+    # M5: delete is gated on `is_superuser`, *not* `is_staff`. Staff
+    # users can still browse and dry-run; only superusers can commit.
     def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
-        return False
+        return bool(request.user and request.user.is_superuser)
 
     def get_search_results(self, request, queryset, search_term):
         if not search_term:
@@ -172,6 +182,49 @@ class RedisQueueAdmin(admin.ModelAdmin):
         if not kwargs:
             return queryset, False
         return queryset.filter(**kwargs), False
+
+    # ---- Delete actions (M5.2) -----------------------------------------
+
+    actions = ("clear_dry_run",)
+
+    @admin.action(
+        description="Dry-run: count what 'delete selected' would clear",
+        permissions=("change",),
+    )
+    def clear_dry_run(self, request: HttpRequest, queryset) -> None:
+        result = redis_delete(list(queryset), user=request.user, dry_run=True)
+        self.message_user(
+            request,
+            (
+                f"Dry-run: would delete {result.count} key(s) across "
+                f"families={list(result.families) or '[]'}; "
+                f"sample={list(result.sample[:5])}"
+                + (f"; refused={list(result.refused[:5])}" if result.refused else "")
+            ),
+            level=messages.INFO,
+        )
+
+    def delete_queryset(self, request: HttpRequest, queryset) -> None:
+        """Bulk 'Delete selected' on the queues changelist."""
+        result = redis_delete(list(queryset), user=request.user, dry_run=False)
+        self.message_user(
+            request,
+            (
+                f"Cleared {result.count} Redis key(s) across "
+                f"families={list(result.families) or '[]'}"
+                + (f"; refused={list(result.refused[:5])}" if result.refused else "")
+            ),
+            level=messages.SUCCESS,
+        )
+
+    def delete_model(self, request: HttpRequest, obj: RedisQueue) -> None:
+        """Single-object delete from the change page."""
+        result = redis_delete([obj], user=request.user, dry_run=False)
+        self.message_user(
+            request,
+            f"Cleared Redis key {obj.name!r} ({result.count} removed).",
+            level=messages.SUCCESS,
+        )
 
     @admin.display(description="repo")
     def repoid_link(self, obj: RedisQueue) -> str:
@@ -203,20 +256,118 @@ class RedisQueueAdmin(admin.ModelAdmin):
         return format_html('<a href="{}?{}">view items</a>', url, query)
 
 
-# ---- Item changelist (M2) --------------------------------------------------
+# ---- Lock changelist (M4.3) ------------------------------------------------
 
 
-@admin.register(RedisQueueItem)
-class RedisQueueItemAdmin(admin.ModelAdmin):
-    list_display = ("index_or_field", "raw_value_truncated")
-    list_per_page = redis_admin_settings.ITEM_PAGE_SIZE
+@admin.register(RedisLock)
+class RedisLockAdmin(admin.ModelAdmin):
+    """Read-only admin for coordination locks, gates, and fences.
+
+    Operators can browse to confirm a stuck task left a lock behind, but
+    deletion is hard-disabled: the worker tasks that own these locks
+    rely on them being released by `LockManager`, not by an operator
+    clicking around in the admin. M5's delete service additionally
+    refuses any key whose family has `is_deletable=False` so accidental
+    URL-tampering can't bypass this.
+    """
+
+    list_display = (
+        "name",
+        "family",
+        "redis_type",
+        "ttl_seconds",
+        "repoid_link",
+        "commitid_link",
+        "report_type",
+    )
+    list_filter = (LockFamilyFilter,)
+    list_per_page = 50
     show_full_result_count = False
+    ordering = ("family", "name")
+    search_fields = ("name",)
+    search_help_text = (
+        "search by 'repoid:1234', 'commitid:abc', 'family:upload_finisher_gate', "
+        "or any substring of the lock key"
+    )
 
     def has_add_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
 
     def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
-        # No detail/edit page yet; M5 wires up per-item delete actions.
+        return bool(request.user and request.user.is_staff)
+
+    # Locks are never deletable from the admin, regardless of role; the
+    # worker's `LockManager` is the only legitimate releaser.
+    def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
+        return False
+
+    def get_actions(self, request):
+        # Strip the default `delete_selected` even though
+        # `has_delete_permission` already blocks it; this keeps the
+        # action dropdown empty so there's nothing to click.
+        actions = super().get_actions(request)
+        actions.pop("delete_selected", None)
+        return actions
+
+    def get_search_results(self, request, queryset, search_term):
+        if not search_term:
+            return queryset, False
+        try:
+            kwargs = _parse_search_term(search_term)
+        except NotImplementedError:
+            return queryset.none(), False
+        if not kwargs:
+            return queryset, False
+        return queryset.filter(**kwargs), False
+
+    @admin.display(description="repo")
+    def repoid_link(self, obj: RedisLock) -> str:
+        if not obj.repoid:
+            return "—"
+        try:
+            url = reverse("admin:core_repository_change", args=[obj.repoid])
+        except NoReverseMatch:
+            return str(obj.repoid)
+        return format_html('<a href="{}">{}</a>', url, obj.repoid)
+
+    @admin.display(description="commit")
+    def commitid_link(self, obj: RedisLock) -> str:
+        if not obj.commitid:
+            return "—"
+        try:
+            base = reverse("admin:core_commit_changelist")
+        except NoReverseMatch:
+            return obj.commitid[:7]
+        url = f"{base}?{urlencode({'q': obj.commitid})}"
+        return format_html(
+            '<a href="{}" title="{}">{}</a>', url, obj.commitid, obj.commitid[:7]
+        )
+
+
+# ---- Item changelist (M2) --------------------------------------------------
+
+
+@admin.register(RedisQueueItem)
+class RedisQueueItemAdmin(admin.ModelAdmin):
+    """Read-only items view (M2). M5 mutations operate at the *queue*
+    level (DEL the whole key), not per-item: per-item LREM/SREM/HDEL
+    requires reconstructing the original Redis value from the admin
+    pk_token, which we deliberately don't expose to keep operator
+    actions auditable and unambiguous. Operators who need to drop a
+    bad message clear the entire queue from `RedisQueueAdmin`.
+    """
+
+    list_display = ("index_or_field", "raw_value_truncated")
+    list_per_page = redis_admin_settings.ITEM_PAGE_SIZE
+    show_full_result_count = False
+    # Empty actions tuple = no bulk actions at all (not even
+    # `delete_selected`), so the changelist's action dropdown is hidden.
+    actions = ()
+
+    def has_add_permission(self, request: HttpRequest, obj=None) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
 
     def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import fakeredis
 import pytest
+from django.contrib.admin.models import LogEntry
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
@@ -256,3 +257,135 @@ class RedisAdminFiltersAndSearchTest(TestCase):
         assert response.status_code == 200
         body = response.content.decode("utf-8")
         assert "/admin/core/commit/?q=cafef00dcafef00d" in body
+
+
+class RedisLockAdminSmokeTest(TestCase):
+    """M4.3 end-to-end checks for the read-only locks changelist."""
+
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+
+        self.user = UserFactory(is_staff=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    def test_lock_changelist_lists_lock_keys_only(self):
+        # Mix of lock and queue keys; only the lock ones should show up
+        # on /redislock/ and only the queue ones on /redisqueue/.
+        self.redis.set("upload_lock_1234_abc", "1")
+        self.redis.set("ta_flake_lock:1234", "1")
+        self.redis.set("upload_finisher_gate_1234_abc", "1")
+        self.redis.rpush("uploads/1234/abc", "payload")
+
+        response = self.client.get("/admin/redis_admin/redislock/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "upload_lock_1234_abc" in body
+        assert "ta_flake_lock:1234" in body
+        assert "upload_finisher_gate_1234_abc" in body
+        # Queue keys must not bleed into the locks page.
+        assert "uploads/1234/abc" not in body
+
+    def test_locks_changelist_has_no_delete_action(self):
+        self.redis.set("upload_lock_1_abc", "1")
+
+        response = self.client.get("/admin/redis_admin/redislock/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # The default "Delete selected" action must be stripped.
+        assert "delete_selected" not in body
+
+
+class RedisQueueAdminDeleteActionsTest(TestCase):
+    """M5.2 end-to-end: dry-run action, real delete, non-superuser blocked."""
+
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+
+        self.client = Client()
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    def _populate(self):
+        self.redis.rpush("uploads/1/aaa", "p1")
+        self.redis.rpush("uploads/1/bbb", "p2")
+
+    def test_non_superuser_cannot_see_delete_selected(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+        self._populate()
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Non-superusers can dry-run but never see the destructive action.
+        assert "Delete selected" not in body
+        assert "Dry-run" in body
+
+    def test_clear_dry_run_action_does_not_delete(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate()
+
+        response = self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "clear_dry_run",
+                "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Dry-run: would delete 2" in body
+        # Keys must still be in Redis after a dry-run.
+        assert self.redis.exists("uploads/1/aaa") == 1
+        assert self.redis.exists("uploads/1/bbb") == 1
+        # Audit trail: dry-runs are recorded.
+        assert LogEntry.objects.count() >= 1
+
+    def test_delete_selected_actually_clears_keys(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate()
+
+        # Stage 1: post the bulk action and accept Django's confirmation page.
+        response = self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "delete_selected",
+                "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
+            },
+        )
+        # The confirmation page is a 200, the actual delete needs `post`.
+        assert response.status_code == 200
+
+        # Stage 2: confirm the deletion.
+        response = self.client.post(
+            "/admin/redis_admin/redisqueue/",
+            {
+                "action": "delete_selected",
+                "_selected_action": ["uploads/1/aaa", "uploads/1/bbb"],
+                "post": "yes",
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        # Both keys should now be gone.
+        assert self.redis.exists("uploads/1/aaa") == 0
+        assert self.redis.exists("uploads/1/bbb") == 0
+        # Audit log should record the real delete.
+        assert LogEntry.objects.count() >= 1
