@@ -23,6 +23,8 @@ from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+import sentry_sdk
+
 from . import conn as _conn
 from . import settings as redis_admin_settings
 
@@ -689,13 +691,49 @@ def iter_keys(
     """
 
     redis = redis if redis is not None else _conn.get_connection()
-    seen = 0
     cap = redis_admin_settings.MAX_SCAN_KEYS
     count = redis_admin_settings.SCAN_COUNT
     filters: dict[str, Any] = {
         "repoid": repoid,
         "commitid_prefix": commitid_prefix,
     }
+    # Wrap the entire SCAN sweep in a span so an admin page that backs
+    # itself onto a slow Redis surfaces as a discrete unit in Sentry.
+    span_name = f"{category or 'all'}.{family or '*'}"
+    with sentry_sdk.start_span(op="redis.admin.iter_keys", name=span_name) as span:
+        try:
+            span.set_tag("redis_admin.category", category or "all")
+            span.set_tag("redis_admin.family", family or "*")
+            if repoid is not None:
+                span.set_tag("redis_admin.repoid", repoid)
+            if commitid_prefix:
+                span.set_tag("redis_admin.commitid_prefix", commitid_prefix)
+        except AttributeError:  # pragma: no cover - older sentry sdks
+            pass
+        yield from _iter_keys_inner(
+            redis,
+            family=family,
+            category=category,
+            cap=cap,
+            count=count,
+            filters=filters,
+        )
+
+
+def _iter_keys_inner(
+    redis,
+    *,
+    family: str | None,
+    category: Literal["queue", "lock"] | None,
+    cap: int,
+    count: int,
+    filters: Mapping[str, Any],
+) -> Iterator[tuple[str, Family]]:
+    """Body of `iter_keys`, factored out so the wrapping span lives in a
+    plain function and the inner generator can `yield` freely without
+    nested context-manager bookkeeping."""
+
+    seen = 0
     # Track yielded keys so an overlapping pattern (e.g.
     # `lock_attempts:upload_lock_…` is matched by both `lock_attempts:*`
     # and the broader `*_lock_*`) doesn't double-count.

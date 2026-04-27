@@ -17,6 +17,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any
 
+import sentry_sdk
+
 from . import conn as _conn
 from . import settings as redis_admin_settings
 from .families import Family, find_family, iter_keys
@@ -623,6 +625,7 @@ class RedisItemQuerySet:
             for offset, value in enumerate(raw_values)
         ]
 
+    @sentry_sdk.trace
     def _list_slice(self, redis, start: int, stop: int) -> list:
         if stop <= start:
             return []
@@ -640,6 +643,7 @@ class RedisItemQuerySet:
     # provide on their own. Snapshots are cached per-queryset so repeated
     # `count()` / `__getitem__` calls don't re-stream Redis.
 
+    @sentry_sdk.trace
     def _materialize_set(self, redis) -> list:
         if self._snapshot is not None:
             return self._snapshot
@@ -663,6 +667,7 @@ class RedisItemQuerySet:
         ]
         return self._snapshot
 
+    @sentry_sdk.trace
     def _materialize_hash(self, redis) -> list:
         if self._snapshot is not None:
             return self._snapshot
@@ -686,6 +691,7 @@ class RedisItemQuerySet:
         ]
         return self._snapshot
 
+    @sentry_sdk.trace
     def _materialize_string(self, redis) -> list:
         if self._snapshot is not None:
             return self._snapshot

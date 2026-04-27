@@ -26,6 +26,7 @@ import logging
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
+import sentry_sdk
 from django.contrib.admin.models import DELETION, LogEntry
 from django.contrib.contenttypes.models import ContentType
 
@@ -262,6 +263,22 @@ def redis_delete(
     mutations.
     """
 
+    span_name = "dry_run" if dry_run else "execute"
+    with sentry_sdk.start_span(op="redis.admin.delete", name=span_name) as span:
+        try:
+            span.set_tag("redis_admin.dry_run", dry_run)
+        except AttributeError:  # pragma: no cover - older sdks
+            pass
+        return _redis_delete(targets, user=user, dry_run=dry_run, span=span)
+
+
+def _redis_delete(
+    targets: Iterable[RedisQueue | RedisQueueItem],
+    *,
+    user,
+    dry_run: bool,
+    span,
+) -> DeleteResult:
     queue_targets: list[RedisQueue] = []
     item_targets: list[RedisQueueItem] = []
     for target in targets:
@@ -325,4 +342,10 @@ def redis_delete(
         families=families,
         dry_run=dry_run,
     )
+    try:
+        span.set_data("redis_admin.count", result.count)
+        span.set_data("redis_admin.refused_count", len(refused))
+        span.set_data("redis_admin.families", list(families))
+    except AttributeError:  # pragma: no cover - older sdks
+        pass
     return result

@@ -545,3 +545,233 @@ class RedisQueueAdminDeleteActionsTest(TestCase):
         assert self.redis.exists("uploads/1/bbb") == 0
         # Audit log should record the real delete.
         assert LogEntry.objects.count() >= 1
+
+
+class RedisAdminClearByScopeTest(TestCase):
+    """M6: cross-family clear-by-scope view.
+
+    Verifies the dedicated `/clear-by-scope/` URL aggregates matching
+    keys across multiple deletable families and gates the destructive
+    action behind a typed-confirmation guard. Locks (`is_deletable=
+    False`) must never be cleared, even if the operator's scope picks
+    them up.
+    """
+
+    URL = "/admin/redis_admin/redisqueue/clear-by-scope/"
+
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+        self.client = Client()
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    def _populate_repo_42(self):
+        # Two queue-family keys for repoid=42; one for a different repo
+        # to verify scoping; one lock that must be refused.
+        self.redis.rpush("uploads/42/abc123", "p1")
+        self.redis.set("latest_upload/42/abc123", "u1")
+        self.redis.rpush("uploads/99/zzz999", "p2")
+        # Lock family — must be excluded from the matched targets.
+        self.redis.set("upload_finisher_gate_42_abc123", "1")
+
+    def test_link_visible_in_changelist_object_tools_for_superuser(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Clear by scope" in body
+        assert self.URL in body
+
+    def test_link_hidden_from_non_superuser(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+        self._populate_repo_42()
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Clear by scope" not in body
+
+    def test_non_superuser_gets_permission_denied(self):
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.get(self.URL)
+
+        # Django's admin_view wraps PermissionDenied as a 403.
+        assert response.status_code == 403
+
+    def test_get_without_scope_renders_empty_form(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        response = self.client.get(self.URL)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Clear Redis by scope" in body
+        assert "Repository ID" in body
+        # No "Matched: N keys" panel appears until a scope is supplied.
+        assert "Matched:" not in body
+
+    def test_get_with_repoid_lists_matching_keys_across_families(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        response = self.client.get(self.URL + "?repoid=42")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Aggregated count: uploads/42/abc123 + latest_upload/42/abc123,
+        # NOT uploads/99/zzz999, NOT the lock.
+        assert "Matched: 2 key(s)" in body
+        assert "uploads/42/abc123" in body
+        assert "latest_upload/42/abc123" in body
+        assert "uploads/99/zzz999" not in body
+        assert "upload_finisher_gate" not in body
+        # Both family names render.
+        assert "uploads" in body
+        assert "latest_upload" in body
+
+    def test_get_with_invalid_repoid_shows_error(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        response = self.client.get(self.URL + "?repoid=not-an-int")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "repoid must be an integer" in body
+
+    def test_post_dry_run_does_not_delete_and_audits(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+        prior_logs = LogEntry.objects.count()
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "42",
+                "commitid": "",
+                "typed_confirm": "42",
+                "action": "dry_run",
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Dry-run: would clear 2" in body
+        # Nothing is actually deleted.
+        assert self.redis.exists("uploads/42/abc123") == 1
+        assert self.redis.exists("latest_upload/42/abc123") == 1
+        # Out-of-scope and lock keys remain untouched.
+        assert self.redis.exists("uploads/99/zzz999") == 1
+        assert self.redis.exists("upload_finisher_gate_42_abc123") == 1
+        # Audit log still records the dry-run.
+        assert LogEntry.objects.count() == prior_logs + 1
+
+    def test_post_confirm_clears_matching_keys_only(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "42",
+                "commitid": "",
+                "typed_confirm": "42",
+                "action": "confirm",
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        # Repo-42 keys are gone.
+        assert self.redis.exists("uploads/42/abc123") == 0
+        assert self.redis.exists("latest_upload/42/abc123") == 0
+        # Other repo's keys are untouched.
+        assert self.redis.exists("uploads/99/zzz999") == 1
+        # Lock is untouched (refused by `is_deletable=False`).
+        assert self.redis.exists("upload_finisher_gate_42_abc123") == 1
+        # Confirm runs redirect to the changelist with a success
+        # message; both should appear in the followed response.
+        body = response.content.decode("utf-8")
+        assert "Cleared 2 key(s)" in body
+
+    def test_post_with_mismatched_typed_confirmation_blocks_delete(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "42",
+                "commitid": "",
+                "typed_confirm": "wrong",
+                "action": "confirm",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Typed confirmation must equal" in body
+        # Nothing was deleted.
+        assert self.redis.exists("uploads/42/abc123") == 1
+        assert self.redis.exists("latest_upload/42/abc123") == 1
+
+    def test_post_without_scope_is_refused(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        self._populate_repo_42()
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "",
+                "commitid": "",
+                "typed_confirm": "",
+                "action": "confirm",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "scope must include a repoid or commitid" in body
+        # Sanity: nothing was cleared.
+        assert self.redis.exists("uploads/42/abc123") == 1
+
+    def test_post_confirm_with_commitid_only_clears_matching_keys(self):
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        # Two different repos sharing a commit prefix.
+        self.redis.rpush("uploads/42/abc123", "p1")
+        self.redis.rpush("uploads/99/abc456", "p2")
+
+        response = self.client.post(
+            self.URL,
+            {
+                "repoid": "",
+                "commitid": "abc",
+                "typed_confirm": "abc",
+                "action": "confirm",
+            },
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        # Both commits-prefixed-with "abc" should be cleared.
+        assert self.redis.exists("uploads/42/abc123") == 0
+        assert self.redis.exists("uploads/99/abc456") == 0
