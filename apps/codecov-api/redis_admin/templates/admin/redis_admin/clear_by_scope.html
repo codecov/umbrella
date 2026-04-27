@@ -1,0 +1,146 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-list{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{{ changelist_url }}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; Clear by scope
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <p>
+    Aggregates every <strong>deletable</strong> Redis key tied to the
+    given repo, commit, and/or family list across all queue families
+    and clears them in a single audited operation. Lock families are
+    always refused, and at least one of <em>repoid</em>,
+    <em>commitid</em>, or <em>family</em> must be set.
+  </p>
+  <p>
+    Run a <strong>dry-run</strong> first to see what would be cleared.
+    Both dry-run and confirm runs are written to the
+    <code>django.contrib.admin.LogEntry</code> audit log.
+  </p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+
+    <fieldset class="module aligned">
+      <h2>Scope</h2>
+
+      <div class="form-row{% if repoid_error %} errors{% endif %}">
+        <div>
+          {% if repoid_error %}<ul class="errorlist"><li>{{ repoid_error }}</li></ul>{% endif %}
+          <label for="id_repoid">Repository ID:</label>
+          <input type="text" name="repoid" id="id_repoid" value="{{ repoid }}" placeholder="e.g. 1234">
+          <div class="help">Numeric repoid. Leave blank to skip the repo filter.</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label for="id_commitid">Commit SHA (prefix OK):</label>
+          <input type="text" name="commitid" id="id_commitid" value="{{ commitid }}" placeholder="e.g. abc123">
+          <div class="help">Commit SHA, or any prefix. Leave blank to skip the commit filter.</div>
+        </div>
+      </div>
+
+      <div class="form-row{% if family_error %} errors{% endif %}">
+        <div>
+          {% if family_error %}<ul class="errorlist"><li>{{ family_error }}</li></ul>{% endif %}
+          <label>Families:</label>
+          <div style="display:flex;flex-wrap:wrap;gap:0.75em 1.5em;max-width:60em;">
+            {% for choice in family_choices %}
+              <label style="font-weight:normal;">
+                <input type="checkbox" name="family" value="{{ choice.name }}"{% if choice.checked %} checked{% endif %}>
+                <code>{{ choice.name }}</code>
+              </label>
+            {% endfor %}
+          </div>
+          <div class="help">
+            Check zero or more deletable families. Leave all unchecked
+            to sweep every deletable family at once.
+          </div>
+        </div>
+      </div>
+
+      <div class="submit-row">
+        <input type="submit" name="_preview" value="Preview matching keys" formmethod="get" class="default">
+      </div>
+    </fieldset>
+
+    {% if scope_specified and not repoid_error and not family_error %}
+    <fieldset class="module">
+      <h2>Matched: {{ target_count }} key(s) for {{ scope_label }}</h2>
+
+      {% if target_count == 0 %}
+        <p><em>No deletable keys matched this scope.</em></p>
+      {% else %}
+        <p>
+          Families involved:
+          {% for f in scope_families %}<code>{{ f }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}
+        </p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Family</th>
+              <th>Type</th>
+              <th>Depth</th>
+              <th>repoid</th>
+              <th>commit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in sample_targets %}
+            <tr>
+              <td><code>{{ t.name }}</code></td>
+              <td>{{ t.family }}</td>
+              <td>{{ t.redis_type }}</td>
+              <td>{{ t.depth }}</td>
+              <td>{{ t.repoid|default_if_none:"—" }}</td>
+              <td>{% if t.commitid %}<code>{{ t.commitid|slice:":7" }}</code>{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if target_count > sample_cap %}
+          <p><em>Showing first {{ sample_cap }} of {{ target_count }} matching keys.</em></p>
+        {% endif %}
+
+        <h3>Confirm and clear</h3>
+        <div class="form-row{% if confirm_error %} errors{% endif %}">
+          <div>
+            {% if confirm_error %}<ul class="errorlist"><li>{{ confirm_error }}</li></ul>{% endif %}
+            <label for="id_typed_confirm">Type <code>{{ expected_confirm }}</code> to confirm:</label>
+            <input type="text" name="typed_confirm" id="id_typed_confirm" value="{{ typed_confirm }}" autocomplete="off">
+            <div class="help">Re-type the scope value above to enable the destructive button.</div>
+          </div>
+        </div>
+
+        <div class="submit-row">
+          <button type="submit" name="action" value="dry_run" class="default">
+            Dry-run (audit only, no mutations)
+          </button>
+          <button type="submit" name="action" value="confirm" class="deletelink" style="margin-left:1em;">
+            Clear {{ target_count }} key(s) from Redis
+          </button>
+        </div>
+      {% endif %}
+    </fieldset>
+    {% endif %}
+
+    <p>
+      <a href="{{ changelist_url }}">&larr; back to {{ opts.verbose_name_plural }}</a>
+    </p>
+  </form>
+
+</div>
+{% endblock %}
