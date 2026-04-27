@@ -203,7 +203,7 @@ def _operator_configured_celery_queues() -> tuple[str, ...]:
         return ()
     if isinstance(raw, str):
         candidates: Iterable[str] = raw.split(",")
-    elif isinstance(raw, (list, tuple, set)):
+    elif isinstance(raw, list | tuple | set):
         candidates = raw
     else:  # pragma: no cover - defensive
         log.warning(
