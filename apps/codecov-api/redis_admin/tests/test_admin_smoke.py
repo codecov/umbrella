@@ -27,7 +27,7 @@ class RedisAdminSmokeTest(TestCase):
     def setUp(self):
         self.redis = fakeredis.FakeStrictRedis()
         self._orig_get_connection = redis_admin_conn.get_connection
-        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+        redis_admin_conn.get_connection = lambda kind="default": self.redis  # type: ignore[assignment]
 
         self.user = UserFactory(is_staff=True)
         self.client = Client()
@@ -84,7 +84,7 @@ class RedisQueueItemAdminSmokeTest(TestCase):
     def setUp(self):
         self.redis = fakeredis.FakeStrictRedis()
         self._orig_get_connection = redis_admin_conn.get_connection
-        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+        redis_admin_conn.get_connection = lambda kind="default": self.redis  # type: ignore[assignment]
 
         self.user = UserFactory(is_staff=True)
         self.client = Client()
@@ -190,7 +190,7 @@ class RedisAdminFiltersAndSearchTest(TestCase):
     def setUp(self):
         self.redis = fakeredis.FakeStrictRedis()
         self._orig_get_connection = redis_admin_conn.get_connection
-        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+        redis_admin_conn.get_connection = lambda kind="default": self.redis  # type: ignore[assignment]
 
         self.user = UserFactory(is_staff=True)
         self.client = Client()
@@ -329,7 +329,7 @@ class RedisLockAdminSmokeTest(TestCase):
     def setUp(self):
         self.redis = fakeredis.FakeStrictRedis()
         self._orig_get_connection = redis_admin_conn.get_connection
-        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+        redis_admin_conn.get_connection = lambda kind="default": self.redis  # type: ignore[assignment]
 
         self.user = UserFactory(is_staff=True)
         self.client = Client()
@@ -373,7 +373,7 @@ class RedisQueueAdminChangePageTest(TestCase):
     def setUp(self):
         self.redis = fakeredis.FakeStrictRedis()
         self._orig_get_connection = redis_admin_conn.get_connection
-        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+        redis_admin_conn.get_connection = lambda kind="default": self.redis  # type: ignore[assignment]
 
         self.user = UserFactory(is_staff=True, is_superuser=True)
         self.client = Client()
@@ -465,7 +465,7 @@ class RedisQueueAdminDeleteActionsTest(TestCase):
     def setUp(self):
         self.redis = fakeredis.FakeStrictRedis()
         self._orig_get_connection = redis_admin_conn.get_connection
-        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+        redis_admin_conn.get_connection = lambda kind="default": self.redis  # type: ignore[assignment]
 
         self.client = Client()
 
@@ -646,7 +646,7 @@ class RedisAdminClearByScopeTest(TestCase):
     def setUp(self):
         self.redis = fakeredis.FakeStrictRedis()
         self._orig_get_connection = redis_admin_conn.get_connection
-        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+        redis_admin_conn.get_connection = lambda kind="default": self.redis  # type: ignore[assignment]
         self.client = Client()
 
     def tearDown(self):
@@ -1023,7 +1023,7 @@ class RedisAdminSuperuserOnlyDeletionTest(TestCase):
     def setUp(self):
         self.redis = fakeredis.FakeStrictRedis()
         self._orig_get_connection = redis_admin_conn.get_connection
-        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+        redis_admin_conn.get_connection = lambda kind="default": self.redis  # type: ignore[assignment]
         self.client = Client()
 
         self.redis.rpush("uploads/1/aaa", "p1")

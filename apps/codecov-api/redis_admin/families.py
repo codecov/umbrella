@@ -33,6 +33,12 @@ log = logging.getLogger(__name__)
 
 RedisType = Literal["list", "set", "hash", "string"]
 
+# Which Redis connection a family lives on. `default` = cache Redis at
+# `services.redis_url`; `broker` = Celery broker at
+# `services.celery_broker`, which is a separate Memorystore instance in
+# production. See `redis_admin.conn` for the URL plumbing.
+ConnectionKind = Literal["default", "broker"]
+
 
 @dataclass(frozen=True)
 class ParsedKey:
@@ -537,6 +543,13 @@ class Family:
     # with a `[task=... repoid=... commit=...]` prefix without
     # special-casing the queryset itself.
     decode_value: Callable[[str], str] | None = None
+    # Which Redis instance owns this family's keys. Production splits
+    # the Celery broker onto its own Memorystore (see
+    # `redis_admin.conn`) — `celery_broker` is the only family that
+    # opts in today, but keeping this as a per-family knob means future
+    # split-Redis surfaces (e.g. a dedicated rate-limit cluster) can
+    # plug in the same way.
+    connection_kind: ConnectionKind = "default"
 
     def build_scan_pattern(self, filters: Mapping[str, Any]) -> str | None:
         if self.pattern_for is None:
@@ -590,6 +603,10 @@ FAMILIES: tuple[Family, ...] = (
         pattern_for=_celery_pattern,
         fixed_keys=_resolve_celery_queue_names(),
         decode_value=_celery_decode_value,
+        # Celery queues live on the broker Redis (`services.celery_broker`),
+        # which in production is a separate Memorystore from the cache Redis
+        # the rest of the families use. See `redis_admin.conn` for details.
+        connection_kind="broker",
     ),
     # ---- Locks (M4.3) -----------------------------------------------------
     # Order matters: more-specific prefixes go BEFORE the broad
@@ -688,9 +705,30 @@ def iter_keys(
     `RedisQueueQuerySet`. `category` separates queue families (default
     `RedisQueue` audience) from lock families (`RedisLock` audience).
     Total work is bounded by `MAX_SCAN_KEYS`.
+
+    When `redis` is `None` (the production path) each family is iterated
+    against the connection it owns via `family.connection_kind` —
+    `celery_broker` runs against the Celery broker Redis while everyone
+    else runs against the cache Redis. Passing an explicit `redis`
+    overrides routing and uses that single client for every family,
+    which is the shape tests rely on (one fakeredis backs all kinds).
     """
 
-    redis = redis if redis is not None else _conn.get_connection()
+    if redis is not None:
+
+        def resolve_client(kind: ConnectionKind) -> Any:
+            return redis
+    else:
+        # Cache one client per kind so iter_keys at most opens two
+        # connections per call (default + broker), regardless of how
+        # many families we sweep.
+        client_cache: dict[ConnectionKind, Any] = {}
+
+        def resolve_client(kind: ConnectionKind) -> Any:
+            if kind not in client_cache:
+                client_cache[kind] = _conn.get_connection(kind=kind)
+            return client_cache[kind]
+
     cap = redis_admin_settings.MAX_SCAN_KEYS
     count = redis_admin_settings.SCAN_COUNT
     filters: dict[str, Any] = {
@@ -711,7 +749,7 @@ def iter_keys(
         except AttributeError:  # pragma: no cover - older sentry sdks
             pass
         yield from _iter_keys_inner(
-            redis,
+            resolve_client,
             family=family,
             category=category,
             cap=cap,
@@ -721,7 +759,7 @@ def iter_keys(
 
 
 def _iter_keys_inner(
-    redis,
+    resolve_client: Callable[[ConnectionKind], Any],
     *,
     family: str | None,
     category: Literal["queue", "lock"] | None,
@@ -753,10 +791,12 @@ def _iter_keys_inner(
         if pattern is None:
             continue
 
+        client = resolve_client(fam.connection_kind)
+
         for key in fam.fixed_keys:
             if key in yielded:
                 continue
-            if redis.exists(key):
+            if client.exists(key):
                 yielded.add(key)
                 yield key, fam
                 seen += 1
@@ -770,7 +810,7 @@ def _iter_keys_inner(
         if not pattern:
             continue
 
-        for raw_key in redis.scan_iter(match=pattern, count=count):
+        for raw_key in client.scan_iter(match=pattern, count=count):
             key = _decode(raw_key)
             if key in yielded:
                 continue

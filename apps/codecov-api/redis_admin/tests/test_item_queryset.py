@@ -13,7 +13,9 @@ from redis_admin.models import RedisQueueItem
 @pytest.fixture
 def patched_redis(monkeypatch) -> fakeredis.FakeStrictRedis:
     server = fakeredis.FakeStrictRedis()
-    monkeypatch.setattr(redis_admin_conn, "get_connection", lambda: server)
+    monkeypatch.setattr(
+        redis_admin_conn, "get_connection", lambda kind="default": server
+    )
     return server
 
 

@@ -18,6 +18,7 @@ prefix-style tokens in addition to plain substrings:
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from typing import Any
 from urllib.parse import urlencode
 
 from django.contrib import admin, messages
@@ -448,18 +449,27 @@ class RedisQueueAdmin(admin.ModelAdmin):
         (`is_deletable=False`) regardless of how a key was surfaced.
         """
 
-        redis = _conn.get_connection()
         family_iter: Iterable[str | None]
         if families:
             family_iter = list(families)
         else:
             family_iter = [None]
 
+        # See `RedisQueueQuerySet._fetch_all` — same per-family
+        # connection-kind cache so a clear-by-scope that spans the cache
+        # and broker Redis instances opens at most one client per kind.
+        clients: dict[str, Any] = {}
+
+        def _client_for(family) -> Any:
+            kind = family.connection_kind
+            if kind not in clients:
+                clients[kind] = _conn.get_connection(kind=kind)
+            return clients[kind]
+
         targets: list[RedisQueue] = []
         seen: set[str] = set()
         for family_name in family_iter:
             for key, family in iter_keys(
-                redis,
                 family=family_name,
                 repoid=repoid,
                 commitid_prefix=commitid or None,
@@ -469,7 +479,7 @@ class RedisQueueAdmin(admin.ModelAdmin):
                     continue
                 if key in seen:
                     continue
-                obj = _build_redis_queue(self.model, key, family, redis)
+                obj = _build_redis_queue(self.model, key, family, _client_for(family))
                 # `iter_keys` already pushed the filter into SCAN MATCH,
                 # but glob `*` matches `/` so re-verify the parsed
                 # values.
