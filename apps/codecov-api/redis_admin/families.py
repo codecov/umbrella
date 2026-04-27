@@ -12,6 +12,7 @@ this module rather than touching the queryset/admin layers.
 
 from __future__ import annotations
 
+import fnmatch
 import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -85,6 +86,24 @@ def _decode(value: bytes | str) -> str:
         except UnicodeDecodeError:
             return value.decode("utf-8", errors="replace")
     return value
+
+
+def find_family(key: str) -> Family | None:
+    """Return the `Family` whose `scan_pattern` matches `key`, or None.
+
+    Used by the item view: given a queue name pulled from a URL filter, look
+    up the family so we know its declared `redis_type` and (in later
+    milestones) its parser. We fall back to None for keys that don't belong
+    to any known family; the item queryset then asks Redis directly for the
+    type via `TYPE`.
+    """
+
+    for family in FAMILIES:
+        if key in family.fixed_keys:
+            return family
+        if family.scan_pattern and fnmatch.fnmatchcase(key, family.scan_pattern):
+            return family
+    return None
 
 
 def iter_keys(redis=None) -> Iterator[tuple[str, Family]]:

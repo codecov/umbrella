@@ -74,3 +74,71 @@ def test_non_staff_user_is_redirected_from_redis_admin():
 
     # Non-staff hits the admin login redirect.
     assert response.status_code in (302, 403)
+
+
+class RedisQueueItemAdminSmokeTest(TestCase):
+    """End-to-end checks for the M2 per-queue items view."""
+
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+
+        self.user = UserFactory(is_staff=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    def test_queue_changelist_links_to_items_view(self):
+        self.redis.rpush("uploads/123/abc", "payload-1")
+
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # The items_link column emits a relative URL with the encoded key.
+        assert "/admin/redis_admin/redisqueueitem/" in body
+        assert "queue_name__exact=uploads%2F123%2Fabc" in body
+        assert "view items" in body
+
+    def test_items_changelist_without_queue_filter_shows_helper_message(self):
+        response = self.client.get("/admin/redis_admin/redisqueueitem/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "Pick a queue from the Redis queues list" in body
+
+    def test_items_changelist_with_queue_filter_renders_list_items(self):
+        for i in range(3):
+            self.redis.rpush("uploads/9/deadbeef", f"payload-{i}")
+
+        response = self.client.get(
+            "/admin/redis_admin/redisqueueitem/",
+            {"queue_name__exact": "uploads/9/deadbeef"},
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        for i in range(3):
+            assert f"payload-{i}" in body
+        # Index column shows 0/1/2 so users can identify positions.
+        assert ">0<" in body or ">0 " in body
+        assert ">2<" in body or ">2 " in body
+
+    def test_items_changelist_with_unknown_queue_renders_empty(self):
+        response = self.client.get(
+            "/admin/redis_admin/redisqueueitem/",
+            {"queue_name__exact": "no-such-queue"},
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Django admin's empty-results phrase varies a bit between releases;
+        # the important thing is no 500 and no unrelated payload leaks in.
+        assert (
+            "0 Redis queue items" in body
+            or "0 of 0" in body
+            or "no Redis" in body.lower()
+        )
