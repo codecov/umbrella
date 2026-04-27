@@ -132,7 +132,5 @@ def test_factory_must_be_dotted_path():
 
 def test_broker_factory_must_be_dotted_path():
     with override_settings(REDIS_ADMIN_BROKER_CONNECTION_FACTORY="bare_name"):
-        with pytest.raises(
-            ValueError, match="REDIS_ADMIN_BROKER_CONNECTION_FACTORY"
-        ):
+        with pytest.raises(ValueError, match="REDIS_ADMIN_BROKER_CONNECTION_FACTORY"):
             redis_admin_conn.get_connection(kind="broker")

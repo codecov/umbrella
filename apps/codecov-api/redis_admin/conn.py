@@ -55,9 +55,7 @@ _FACTORY_SETTINGS: dict[str, str] = {
 def _resolve_factory(dotted: str, *, setting_name: str) -> Callable[[], Any]:
     module_path, _, attr = dotted.rpartition(".")
     if not module_path:
-        raise ValueError(
-            f"{setting_name} must be a dotted path, got {dotted!r}"
-        )
+        raise ValueError(f"{setting_name} must be a dotted path, got {dotted!r}")
     module = import_module(module_path)
     return getattr(module, attr)
 

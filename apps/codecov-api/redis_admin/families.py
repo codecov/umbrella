@@ -715,6 +715,7 @@ def iter_keys(
     """
 
     if redis is not None:
+
         def resolve_client(kind: ConnectionKind) -> Any:
             return redis
     else:

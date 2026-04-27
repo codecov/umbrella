@@ -254,9 +254,7 @@ class TestRedisDeleteService(TestCase):
 
         original = redis_admin_conn.get_connection
         redis_admin_conn.get_connection = (  # type: ignore[assignment]
-            lambda kind="default": (
-                broker_server if kind == "broker" else cache_server
-            )
+            lambda kind="default": (broker_server if kind == "broker" else cache_server)
         )
         try:
             result = redis_delete(
