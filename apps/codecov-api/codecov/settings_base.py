@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "django_prometheus",
     "psqlextra",
     "django_better_admin_arrayfield",
+    "redis_admin",
     # Shared Models
     "shared.django_apps.rollouts",
     "shared.django_apps.user_measurements",
