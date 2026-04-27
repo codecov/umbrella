@@ -414,6 +414,50 @@ class RedisQueueAdminChangePageTest(TestCase):
         # NotImplementedError.
         assert response.status_code in (302, 404)
 
+    def test_change_page_renders_inline_items_preview_for_list_queue(self):
+        # Operator clicks a backed-up `uploads/<repoid>/<sha>` queue;
+        # the change page should show the queue's items inline so they
+        # can investigate without a second tab.
+        for i in range(3):
+            self.redis.rpush("uploads/123/abc123", f'{{"upload_id": {i}}}'.encode())
+
+        url = "/admin/redis_admin/redisqueue/uploads_2F123_2Fabc123/change/"
+        response = self.client.get(url)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # The items render as a Django tabular inline (matching the
+        # admin's `TabularInline` look). The wrapper, headers, and
+        # row values should all be present. Values are HTML-escaped
+        # by `format_html`, so look for the escaped form.
+        assert 'class="js-inline-admin-formset inline-group"' in body
+        assert "Index / field" in body
+        for i in range(3):
+            assert f"upload_id&quot;: {i}" in body
+        # Each row should link to the per-item inspector for drill-in.
+        assert (
+            "/admin/redis_admin/redisqueueitem/uploads_2F123_2Fabc123_230/change/"
+            in body
+        )
+        # And the footer link points at the full items changelist.
+        assert "queue_name__exact=uploads/123/abc123" in body
+
+    def test_change_page_renders_inline_items_preview_for_string_key(self):
+        # `latest_upload/<repoid>/<sha>` is a STRING; the held value
+        # should appear in the preview.
+        self.redis.set(
+            "latest_upload/123/8ebf8abc9d07cceb42ead4b94edb494d52eefd2f",
+            "the-stored-id",
+        )
+
+        url = "/admin/redis_admin/redisqueue/latest_5Fupload_2F123_2F8ebf8abc9d07cceb42ead4b94edb494d52eefd2f/change/"
+        response = self.client.get(url)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "the-stored-id" in body
+        assert "(value)" in body
+
 
 class RedisQueueAdminDeleteActionsTest(TestCase):
     """M5.2 end-to-end: dry-run action, real delete, non-superuser blocked."""

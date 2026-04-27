@@ -20,16 +20,119 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 from django.contrib import admin, messages
+from django.contrib.admin.utils import quote, unquote
 from django.http import HttpRequest
 from django.urls import NoReverseMatch, reverse
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 
 from core.models import Repository
 
 from . import settings as redis_admin_settings
 from .families import FAMILIES
 from .models import RedisLock, RedisQueue, RedisQueueItem
+from .queryset import RedisItemQuerySet
 from .services import redis_delete
+
+# ---- Inline items preview (rendered on the queue change page) --------------
+#
+# Showing the items "below" the readonly field block on the change page
+# saves a click on the overwhelmingly common "operator clicked a
+# backed-up queue, wants to see what's stuck" investigation flow.
+#
+# We deliberately render this as Django admin's *tabular inline* DOM
+# (`<div class="js-inline-admin-formset inline-group"><fieldset
+# class="module">…</fieldset></div>`) rather than as a readonly field
+# value, so it picks up the standard admin CSS for inlines and visually
+# matches `TabularInline` blocks elsewhere in the admin. We can't use a
+# real `TabularInline` because `RedisQueueItem` is unmanaged and has no
+# FK back to the parent queue.
+_ITEMS_PREVIEW_MAX_ROWS = 20
+
+
+def _render_items_inline(obj, *, max_rows: int = _ITEMS_PREVIEW_MAX_ROWS):
+    """Render the items in `obj` as Django admin tabular-inline HTML.
+
+    Called from `RedisQueueAdmin.change_view` /
+    `RedisLockAdmin.change_view` and injected into the change form via
+    a custom template. Each row links to the per-item inspector for
+    drill-in; a footer link points at the full items changelist so
+    paging beyond the preview is one click away.
+    """
+
+    items_qs = RedisItemQuerySet(RedisQueueItem, queue_name=obj.name)
+    snapshot = list(items_qs[:max_rows])
+
+    full_url = reverse("admin:redis_admin_redisqueueitem_changelist")
+    full_link = format_html(
+        '<a href="{}?queue_name__exact={}">view all items \u2192</a>',
+        full_url,
+        obj.name,
+    )
+
+    heading = format_html("<h2>{}</h2>", "Items")
+
+    if not snapshot:
+        body = format_html(
+            '<p class="paginator">{} <em>(empty / nothing to preview)</em></p>',
+            full_link,
+        )
+        return format_html(
+            '<div class="js-inline-admin-formset inline-group">'
+            '<div class="tabular inline-related last-related">'
+            '<fieldset class="module">{}{}</fieldset>'
+            "</div></div>",
+            heading,
+            body,
+        )
+
+    item_change_url = "admin:redis_admin_redisqueueitem_change"
+    rows = format_html_join(
+        "",
+        '<tr class="form-row has_original">'
+        '<td class="original">'
+        '<p><a href="{}" class="inlineviewlink">View</a></p>'
+        "</td>"
+        '<td class="field-index_or_field"><p>{}</p></td>'
+        '<td class="field-raw_value"><pre style="margin:0;'
+        'white-space:pre-wrap;word-break:break-all;">{}</pre></td>'
+        "</tr>",
+        (
+            (
+                reverse(item_change_url, args=[quote(item.pk_token)]),
+                item.index_or_field,
+                item.raw_value or "",
+            )
+            for item in snapshot
+        ),
+    )
+
+    table = format_html(
+        "<table>"
+        "<thead><tr>"
+        '<th class="original"></th>'
+        '<th class="column-index_or_field">Index / field</th>'
+        '<th class="column-raw_value">Value</th>'
+        "</tr></thead>"
+        "<tbody>{}</tbody>"
+        "</table>",
+        rows,
+    )
+
+    footer = format_html(
+        '<p class="paginator">showing first {} item(s); {}</p>',
+        len(snapshot),
+        full_link,
+    )
+
+    return format_html(
+        '<div class="js-inline-admin-formset inline-group">'
+        '<div class="tabular inline-related last-related">'
+        '<fieldset class="module">{}{}{}</fieldset>'
+        "</div></div>",
+        heading,
+        table,
+        footer,
+    )
 
 
 def _hydrate_repo_displays(rows) -> None:
@@ -205,6 +308,10 @@ class RedisQueueAdmin(admin.ModelAdmin):
         "report_type",
     )
 
+    # Override the change form so we can inject a tabular-inline-style
+    # "Items" block below the readonly fields.
+    change_form_template = "admin/redis_admin/items_inline_change_form.html"
+
     def has_add_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
 
@@ -231,6 +338,16 @@ class RedisQueueAdmin(admin.ModelAdmin):
             "show_save_and_add_another": False,
             "show_save_as_new": False,
         }
+        if object_id is not None:
+            try:
+                # `object_id` arrives URL-escaped (admin uses `_2F` rather
+                # than `%2F` for `/`); Django's `_changeform_view` runs the
+                # same `unquote` before its own `get_object` call.
+                obj = self.get_object(request, unquote(object_id))
+            except self.model.DoesNotExist:
+                obj = None
+            if obj is not None:
+                ctx["redis_admin_items_inline"] = _render_items_inline(obj)
         if extra_context:
             ctx.update(extra_context)
         return super().changeform_view(request, object_id, form_url, ctx)
@@ -383,6 +500,10 @@ class RedisLockAdmin(admin.ModelAdmin):
         "report_type",
     )
 
+    # Inject the same tabular-inline items block as `RedisQueueAdmin`,
+    # so an operator can see what value the lock holds.
+    change_form_template = "admin/redis_admin/items_inline_change_form.html"
+
     def has_add_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
 
@@ -412,6 +533,13 @@ class RedisLockAdmin(admin.ModelAdmin):
             "show_save_and_add_another": False,
             "show_save_as_new": False,
         }
+        if object_id is not None:
+            try:
+                obj = self.get_object(request, unquote(object_id))
+            except self.model.DoesNotExist:
+                obj = None
+            if obj is not None:
+                ctx["redis_admin_items_inline"] = _render_items_inline(obj)
         if extra_context:
             ctx.update(extra_context)
         return super().changeform_view(request, object_id, form_url, ctx)
