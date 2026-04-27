@@ -160,6 +160,20 @@ class RedisQueueAdmin(admin.ModelAdmin):
         "search by 'repoid:1234', 'commitid:abc', 'family:uploads', "
         "'report_type:test_results', or any substring of the Redis key"
     )
+    # The change page is a read-only inspector: every field is `readonly_fields`
+    # so the form has no inputs, and `change_view` strips the Save buttons.
+    # The standard "Delete" button still renders for superusers and routes
+    # through our audited `redis_delete` service via `delete_model`.
+    readonly_fields = (
+        "name",
+        "family",
+        "redis_type",
+        "depth",
+        "ttl_seconds",
+        "repoid",
+        "commitid",
+        "report_type",
+    )
 
     def has_add_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
@@ -171,6 +185,31 @@ class RedisQueueAdmin(admin.ModelAdmin):
     # users can still browse and dry-run; only superusers can commit.
     def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
         return bool(request.user and request.user.is_superuser)
+
+    def get_fieldsets(self, request, obj=None):
+        # Avoid the default ModelForm-based fieldset detection (which would
+        # build a form against an unmanaged model); render every readonly
+        # field in a single section instead.
+        return ((None, {"fields": list(self.readonly_fields)}),)
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        # Strip every save-related button so a stray POST can't reach
+        # `save_model`. Delete still renders via the standard admin button.
+        ctx = {
+            "show_save": False,
+            "show_save_and_continue": False,
+            "show_save_and_add_another": False,
+            "show_save_as_new": False,
+        }
+        if extra_context:
+            ctx.update(extra_context)
+        return super().changeform_view(request, object_id, form_url, ctx)
+
+    def save_model(self, request, obj, form, change):
+        # Defensive: should be unreachable because the change form has no
+        # editable fields, but Redis-backed rows must never round-trip
+        # through Django's SQL save path.
+        raise RuntimeError("RedisQueue rows are read-only.")
 
     def get_search_results(self, request, queryset, search_term):
         if not search_term:
@@ -289,6 +328,15 @@ class RedisLockAdmin(admin.ModelAdmin):
         "search by 'repoid:1234', 'commitid:abc', 'family:upload_finisher_gate', "
         "or any substring of the lock key"
     )
+    readonly_fields = (
+        "name",
+        "family",
+        "redis_type",
+        "ttl_seconds",
+        "repoid",
+        "commitid",
+        "report_type",
+    )
 
     def has_add_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
@@ -308,6 +356,23 @@ class RedisLockAdmin(admin.ModelAdmin):
         actions = super().get_actions(request)
         actions.pop("delete_selected", None)
         return actions
+
+    def get_fieldsets(self, request, obj=None):
+        return ((None, {"fields": list(self.readonly_fields)}),)
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        ctx = {
+            "show_save": False,
+            "show_save_and_continue": False,
+            "show_save_and_add_another": False,
+            "show_save_as_new": False,
+        }
+        if extra_context:
+            ctx.update(extra_context)
+        return super().changeform_view(request, object_id, form_url, ctx)
+
+    def save_model(self, request, obj, form, change):
+        raise RuntimeError("RedisLock rows are read-only.")
 
     def get_search_results(self, request, queryset, search_term):
         if not search_term:

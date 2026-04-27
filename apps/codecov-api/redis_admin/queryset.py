@@ -215,7 +215,28 @@ class RedisQueueQuerySet:
         raise NotImplementedError("RedisQueueQuerySet.exclude is added in milestone 5")
 
     def get(self, *args, **kwargs):
-        raise NotImplementedError("RedisQueueQuerySet.get is added in milestone 5")
+        """Lookup a single queue by `pk=` / `name=` (or their `__exact` variants).
+
+        The admin's `get_object` calls `queryset.get(name=<key>)` when the
+        operator clicks a row on the changelist; we reuse the explicit-name
+        fast path in `_fetch_all` so this never triggers a SCAN.
+        """
+
+        if args:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} matching positional args is not supported"
+            )
+        filtered = self.filter(**kwargs)
+        items = filtered._fetch_all()
+        if not items:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} matching {kwargs!r} does not exist"
+            )
+        if len(items) > 1:
+            raise self.model.MultipleObjectsReturned(
+                f"get() returned {len(items)} {self.model.__name__} rows"
+            )
+        return items[0]
 
     # ---- Ordering --------------------------------------------------------
 

@@ -303,6 +303,54 @@ class RedisLockAdminSmokeTest(TestCase):
         assert "delete_selected" not in body
 
 
+class RedisQueueAdminChangePageTest(TestCase):
+    """Clicking a row on the changelist opens the per-key inspector."""
+
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda: self.redis  # type: ignore[assignment]
+
+        self.user = UserFactory(is_staff=True, is_superuser=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
+
+    def test_change_page_renders_for_keys_with_slashes(self):
+        # Reproduces the user-reported NotImplementedError: a `latest_upload/
+        # 123/<sha>` key is the changelist row's pk, so Django's admin
+        # url-quotes the slashes (`/` → `_2F`) and looks the row up via
+        # `queryset.get(name=…)`.
+        self.redis.set(
+            "latest_upload/123/8ebf8abc9d07cceb42ead4b94edb494d52eefd2f", "1"
+        )
+        url = "/admin/redis_admin/redisqueue/latest_5Fupload_2F123_2F8ebf8abc9d07cceb42ead4b94edb494d52eefd2f/change/"
+
+        response = self.client.get(url)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # Family + repoid render in the inspector pane.
+        assert "latest_upload" in body
+        assert "123" in body
+        # Save buttons must be suppressed; only Delete (and history) render.
+        assert 'name="_save"' not in body
+        assert 'name="_continue"' not in body
+        assert 'name="_addanother"' not in body
+        # Superuser sees the delete link.
+        assert "delete/" in body
+
+    def test_change_page_404s_when_redis_key_missing(self):
+        url = "/admin/redis_admin/redisqueue/no_2Dsuch_2Fkey/change/"
+        response = self.client.get(url)
+        # Django's admin returns a 302 → "?" or a 404 for a missing object;
+        # both are fine, the important part is no 500 from
+        # NotImplementedError.
+        assert response.status_code in (302, 404)
+
+
 class RedisQueueAdminDeleteActionsTest(TestCase):
     """M5.2 end-to-end: dry-run action, real delete, non-superuser blocked."""
 
