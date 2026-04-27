@@ -462,7 +462,121 @@ class RedisItemQuerySet:
         raise NotImplementedError("RedisItemQuerySet.exclude is added in milestone 5")
 
     def get(self, *args, **kwargs):
-        raise NotImplementedError("RedisItemQuerySet.get is added in milestone 5")
+        """Resolve a single item by its `pk_token` (`<queue>#<locator>`).
+
+        Used by Django admin's `get_object` when the operator clicks an
+        item row to open the per-item inspector. Locator shape varies by
+        Redis type:
+
+        * list   → numeric index (e.g. `uploads/1/abc#0`)
+        * set    → `m:<idx>` into the sorted snapshot
+        * hash   → `f:<field>` for the literal field name
+        * string → `v` (singleton)
+        """
+
+        if args:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} positional get() is not supported"
+            )
+        pk = (
+            kwargs.pop("pk", None)
+            or kwargs.pop("pk__exact", None)
+            or kwargs.pop("pk_token", None)
+            or kwargs.pop("pk_token__exact", None)
+        )
+        if kwargs:
+            raise NotImplementedError(
+                "RedisItemQuerySet.get only accepts pk/pk_token; "
+                f"got {sorted(kwargs)!r}"
+            )
+        if pk is None:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} matching no kwargs does not exist"
+            )
+        return self._get_one(str(pk))
+
+    def _get_one(self, pk_token: str):
+        queue_name, sep, locator = pk_token.rpartition("#")
+        if not sep or not queue_name or not locator:
+            raise self.model.DoesNotExist(
+                f"pk_token must look like 'queue#locator'; got {pk_token!r}"
+            )
+
+        redis = _conn.get_connection()
+        if not redis.exists(queue_name):
+            raise self.model.DoesNotExist(f"Redis key {queue_name!r} does not exist")
+
+        bound = self._clone(queue_name=queue_name)
+        kind = bound._resolve_type(redis)
+
+        if kind == "list":
+            try:
+                idx = int(locator)
+            except ValueError as exc:
+                raise self.model.DoesNotExist(
+                    f"list pk_token must be 'queue#<index>'; got {locator!r}"
+                ) from exc
+            raw = redis.lindex(queue_name, idx)
+            if raw is None:
+                raise self.model.DoesNotExist(
+                    f"index {idx} out of range for list {queue_name!r}"
+                )
+            return self.model(
+                pk_token=pk_token,
+                queue_name=queue_name,
+                index_or_field=str(idx),
+                raw_value=_truncate_for_display(bound._decode_with_family(raw)),
+            )
+
+        if kind == "set":
+            if not locator.startswith("m:"):
+                raise self.model.DoesNotExist(
+                    f"set pk_token must be 'queue#m:<idx>'; got {locator!r}"
+                )
+            try:
+                idx = int(locator[2:])
+            except ValueError as exc:
+                raise self.model.DoesNotExist(
+                    f"set pk_token index must be int; got {locator!r}"
+                ) from exc
+            snapshot = bound._materialize_set(redis)
+            if idx < 0 or idx >= len(snapshot):
+                raise self.model.DoesNotExist(
+                    f"set member index {idx} out of range for {queue_name!r}"
+                )
+            return snapshot[idx]
+
+        if kind == "hash":
+            if not locator.startswith("f:"):
+                raise self.model.DoesNotExist(
+                    f"hash pk_token must be 'queue#f:<field>'; got {locator!r}"
+                )
+            field = locator[2:]
+            raw = redis.hget(queue_name, field)
+            if raw is None:
+                raise self.model.DoesNotExist(
+                    f"hash field {field!r} does not exist on {queue_name!r}"
+                )
+            return self.model(
+                pk_token=pk_token,
+                queue_name=queue_name,
+                index_or_field=field,
+                raw_value=_truncate_for_display(_decode_value(raw)),
+            )
+
+        if kind == "string":
+            if locator != "v":
+                raise self.model.DoesNotExist(
+                    f"string pk_token must be 'queue#v'; got {locator!r}"
+                )
+            snapshot = bound._materialize_string(redis)
+            if not snapshot:
+                raise self.model.DoesNotExist(f"string {queue_name!r} does not exist")
+            return snapshot[0]
+
+        raise self.model.DoesNotExist(
+            f"unsupported Redis type {kind!r} for {queue_name!r}"
+        )
 
     def order_by(self, *fields: str) -> RedisItemQuerySet:
         return self._clone(ordering=tuple(fields))

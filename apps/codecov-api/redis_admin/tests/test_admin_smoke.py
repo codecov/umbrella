@@ -129,6 +129,44 @@ class RedisQueueItemAdminSmokeTest(TestCase):
         assert ">0<" in body or ">0 " in body
         assert ">2<" in body or ">2 " in body
 
+    def test_item_change_page_renders_for_list_item(self):
+        # Reproduces the user-reported NotImplementedError: clicking an
+        # item row on the changelist hits `/<pk_token>/change/`, which
+        # calls `queryset.get(pk_token=…)`. The pk_token is
+        # `<queue>#<index>` for LIST items, url-encoded by Django so
+        # `/` → `_2F` and `#` → `_23`.
+        self.redis.rpush("uploads/123/abcdef", "first-payload")
+        self.redis.rpush("uploads/123/abcdef", "second-payload")
+        url = "/admin/redis_admin/redisqueueitem/uploads_2F123_2Fabcdef_230/change/"
+
+        response = self.client.get(url)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # The first item's value renders on the readonly page.
+        assert "first-payload" in body
+        # No save buttons because the item is a strict read-only inspector.
+        assert 'name="_save"' not in body
+
+    def test_item_change_page_for_string_key(self):
+        self.redis.set("latest_upload/1/sha", "string-payload")
+        url = "/admin/redis_admin/redisqueueitem/latest_5Fupload_2F1_2Fsha_23v/change/"
+
+        response = self.client.get(url)
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        assert "string-payload" in body
+
+    def test_item_change_page_404s_for_missing_index(self):
+        self.redis.rpush("uploads/1/sha", "only-one")
+        # Index 99 doesn't exist; admin should 302/404 rather than 500.
+        url = "/admin/redis_admin/redisqueueitem/uploads_2F1_2Fsha_2399/change/"
+
+        response = self.client.get(url)
+
+        assert response.status_code in (302, 404)
+
     def test_items_changelist_with_unknown_queue_renders_empty(self):
         response = self.client.get(
             "/admin/redis_admin/redisqueueitem/",

@@ -483,6 +483,11 @@ class RedisQueueItemAdmin(admin.ModelAdmin):
     # Empty actions tuple = no bulk actions at all (not even
     # `delete_selected`), so the changelist's action dropdown is hidden.
     actions = ()
+    # The "change" page is a strict read-only inspector for a single
+    # item: every field is readonly, the form is short-circuited so we
+    # never build a ModelForm against an unmanaged model, and any save
+    # POST is refused.
+    readonly_fields = ("pk_token", "queue_name", "index_or_field", "raw_value")
 
     def has_add_permission(self, request: HttpRequest, obj=None) -> bool:
         return False
@@ -495,6 +500,23 @@ class RedisQueueItemAdmin(admin.ModelAdmin):
 
     def has_view_permission(self, request: HttpRequest, obj=None) -> bool:
         return bool(request.user and request.user.is_staff)
+
+    def get_fieldsets(self, request, obj=None):
+        return ((None, {"fields": list(self.readonly_fields)}),)
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        ctx = {
+            "show_save": False,
+            "show_save_and_continue": False,
+            "show_save_and_add_another": False,
+            "show_save_as_new": False,
+        }
+        if extra_context:
+            ctx.update(extra_context)
+        return super().changeform_view(request, object_id, form_url, ctx)
+
+    def save_model(self, request, obj, form, change):
+        raise RuntimeError("RedisQueueItem rows are read-only.")
 
     def lookup_allowed(self, lookup, value) -> bool:
         if lookup == "queue_name__exact":
