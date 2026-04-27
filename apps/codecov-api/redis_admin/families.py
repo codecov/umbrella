@@ -19,11 +19,13 @@ import base64
 import fnmatch
 import json
 import logging
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import sentry_sdk
+
+from shared.config import get_config
 
 from . import conn as _conn
 from . import settings as redis_admin_settings
@@ -175,25 +177,80 @@ def _parse_celery_broker_key(_: str) -> ParsedKey:
     return ParsedKey(family="celery_broker")
 
 
+def _operator_configured_celery_queues() -> tuple[str, ...]:
+    """Read the deployment's declared list of Celery queue names.
+
+    The actual production queue topology lives in private deployment
+    config (`setup.tasks.*.queue` env vars on worker pods). The API
+    pod doesn't get those, so `BaseCeleryConfig.task_routes` inside
+    the API process resolves every route to `task_default_queue`
+    (`"celery"`) and the admin can't see queues like `uploads`,
+    `notify`, `sync`, etc. — even though they exist on the broker.
+
+    Operators close that gap by setting
+
+        SETUP__REDIS_ADMIN__CELERY_QUEUES="uploads,notify,sync,..."
+
+    on the API pod (or the equivalent in `codecov.yaml`). The names
+    are deployment-specific and intentionally not committed to this
+    OSS repo. `iter_keys` runs `EXISTS` against every entry, so
+    listing a queue that doesn't exist in Redis is harmless: it just
+    won't show up in the admin.
+    """
+
+    raw = get_config("setup", "redis_admin", "celery_queues", default=None)
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        candidates: Iterable[str] = raw.split(",")
+    elif isinstance(raw, (list, tuple, set)):
+        candidates = raw
+    else:  # pragma: no cover - defensive
+        log.warning(
+            "setup.redis_admin.celery_queues has unexpected type %s; ignoring",
+            type(raw).__name__,
+        )
+        return ()
+    cleaned = [str(name).strip() for name in candidates]
+    return tuple(name for name in cleaned if name)
+
+
 def _resolve_celery_queue_names() -> tuple[str, ...]:
     """Best-effort enumeration of the well-known Celery queue names.
 
-    Reads from the live `BaseCeleryConfig` so we pick up any queues an
-    operator configured via `setup.tasks.*.queue`. Falls back to the two
-    documented defaults if the import fails (e.g. during tests or in a
-    minimal environment).
+    Combines, in order of authority:
+
+    1. `setup.redis_admin.celery_queues` from the running config —
+       the deployment-specific list operators populate (see
+       `_operator_configured_celery_queues`). This is how a
+       production API pod learns about queues like `uploads` /
+       `notify` / `sync` that aren't reachable via
+       `BaseCeleryConfig` because the API doesn't carry the
+       worker-side `setup.tasks.*.queue` env vars.
+    2. `BaseCeleryConfig.task_routes[*]['queue']` — picks up any
+       queues *this* process has been told about via
+       `setup.tasks.*.queue` (rare in the API, normal in workers).
+    3. `task_default_queue` / `health_check_default_queue` so the
+       `celery` / `healthcheck` names are always present even on a
+       bare-bones deploy that hasn't set anything else.
+
+    Falls back to just (1) + the hardcoded `("celery",
+    "healthcheck")` defaults if `BaseCeleryConfig` can't be imported
+    (e.g. minimal-env tests).
     """
+
+    names: set[str] = set(_operator_configured_celery_queues())
 
     try:
         from shared.celery_config import BaseCeleryConfig  # noqa: PLC0415
     except Exception:  # pragma: no cover - defensive: any import error
         log.warning(
             "redis_admin: could not import BaseCeleryConfig; "
-            "using ('celery', 'healthcheck') only"
+            "falling back to operator-configured queues plus defaults"
         )
-        return ("celery", "healthcheck")
+        names.update(("celery", "healthcheck"))
+        return tuple(sorted(names))
 
-    names: set[str] = set()
     names.add(getattr(BaseCeleryConfig, "task_default_queue", "celery") or "celery")
     names.add(
         getattr(BaseCeleryConfig, "health_check_default_queue", "healthcheck")

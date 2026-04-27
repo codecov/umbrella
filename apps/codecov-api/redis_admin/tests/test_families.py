@@ -231,6 +231,74 @@ def test_celery_broker_family_resolves_known_queue_names():
     assert "healthcheck" in family.fixed_keys
 
 
+def test_resolve_celery_queue_names_includes_operator_configured_queues(monkeypatch):
+    """Real production queues (`uploads`, `notify`, `sync`, ...) live in
+    private deployment config, not in the OSS `BaseCeleryConfig`. The
+    API pod surfaces them via `setup.redis_admin.celery_queues`. Without
+    this we silently miss every non-default queue on the broker — the
+    exact regression that motivated this change.
+    """
+
+    from redis_admin import families as families_mod  # noqa: PLC0415
+
+    config_overrides = {
+        ("setup", "redis_admin", "celery_queues"): "uploads, notify ,sync,",
+    }
+
+    def fake_get_config(*keys, default=None):
+        return config_overrides.get(tuple(keys), default)
+
+    monkeypatch.setattr(families_mod, "get_config", fake_get_config)
+
+    names = families_mod._resolve_celery_queue_names()
+    assert "uploads" in names
+    assert "notify" in names
+    assert "sync" in names
+    assert "celery" in names
+    assert "healthcheck" in names
+    assert "" not in names
+
+
+def test_resolve_celery_queue_names_accepts_list_form(monkeypatch):
+    """`get_config` returns a list when the value is set via
+    JSON/YAML rather than a comma-separated env var; we treat both
+    shapes identically so operators don't have to care which knob
+    they used.
+    """
+
+    from redis_admin import families as families_mod  # noqa: PLC0415
+
+    config_overrides = {
+        ("setup", "redis_admin", "celery_queues"): ["uploads", "  notify  ", ""],
+    }
+
+    def fake_get_config(*keys, default=None):
+        return config_overrides.get(tuple(keys), default)
+
+    monkeypatch.setattr(families_mod, "get_config", fake_get_config)
+
+    names = families_mod._resolve_celery_queue_names()
+    assert "uploads" in names
+    assert "notify" in names
+    assert "" not in names
+
+
+def test_resolve_celery_queue_names_unset_keeps_defaults(monkeypatch):
+    """When the operator hasn't configured anything we still get the
+    `task_default_queue` / `health_check_default_queue` baseline so a
+    bare-bones deploy (dev, enterprise) keeps working unchanged.
+    """
+
+    from redis_admin import families as families_mod  # noqa: PLC0415
+
+    monkeypatch.setattr(
+        families_mod, "get_config", lambda *_args, default=None: default
+    )
+    names = families_mod._resolve_celery_queue_names()
+    assert "celery" in names
+    assert "healthcheck" in names
+
+
 def test_iter_keys_yields_celery_queues_via_fixed_keys(patched_redis):
     patched_redis.rpush("celery", '{"task": "x"}')
     patched_redis.rpush("healthcheck", '{"task": "y"}')
