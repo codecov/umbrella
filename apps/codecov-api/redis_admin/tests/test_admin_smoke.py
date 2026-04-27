@@ -440,7 +440,37 @@ class RedisQueueAdminChangePageTest(TestCase):
             in body
         )
         # And the footer link points at the full items changelist.
-        assert "queue_name__exact=uploads/123/abc123" in body
+        # The queue name is `urlencode`'d so `/` round-trips as `%2F`,
+        # matching the `items_link` column on the changelist (and the
+        # behaviour of every other URL-building admin helper).
+        assert "queue_name__exact=uploads%2F123%2Fabc123" in body
+
+    def test_inline_items_preview_url_encodes_special_chars_in_queue_name(self):
+        """Regression for the Bugbot review on PR #888: `_render_items_inline`
+        embedded `obj.name` directly into a query string via `format_html`,
+        which only HTML-escapes — keys containing `&` or `#` would split the
+        query parameter and silently land the operator on the wrong items
+        view. The footer link must round-trip the full key via `urlencode`.
+        """
+
+        # `&` would otherwise terminate the `queue_name__exact` value.
+        weird_key = "uploads/1/sha&extra#frag"
+        self.redis.rpush(weird_key, "payload")
+
+        # The change-form URL still uses Django admin's `quote` (`/` →
+        # `_2F`, `&` → `_26`, `#` → `_23`) for the path component.
+        encoded_pk = "uploads_2F1_2Fsha_26extra_23frag"
+        response = self.client.get(
+            f"/admin/redis_admin/redisqueue/{encoded_pk}/change/"
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # The footer "view all items →" link percent-encodes each
+        # special character. The naked key would surface as a substring
+        # of the bare anchor href — and would split the query string in
+        # browsers — so insist on the encoded form.
+        assert "queue_name__exact=uploads%2F1%2Fsha%26extra%23frag" in body
 
     def test_change_page_renders_inline_items_preview_for_string_key(self):
         # `latest_upload/<repoid>/<sha>` is a STRING; the held value
