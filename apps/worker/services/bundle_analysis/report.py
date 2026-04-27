@@ -1,4 +1,5 @@
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -224,18 +225,18 @@ class BundleAnalysisReportService(BaseReportService):
         self,
         commit: Commit,
         upload: Upload,
-        pre_downloaded_path: str,
+        pre_downloaded_path: str | None,
         compare_sha: str | None = None,
     ) -> ProcessingResult:
         """
-        Download and parse the data associated with the given upload and
-        merge the results into a bundle report.
+        Parse a pre-downloaded upload file and merge the result into the bundle report.
 
         Args:
             commit: The commit being processed
             upload: The upload record
-            pre_downloaded_path: Path to pre-downloaded upload file.
-                Skips the GCS download (optimization for reducing lock time).
+            pre_downloaded_path: Path to the pre-downloaded upload file. If None or
+                empty when upload.storage_path is set, returns a retryable error so
+                the task re-queues and re-downloads.
             compare_sha: Optional SHA for comparison
         """
         commit_report: CommitReport = upload.report
@@ -251,6 +252,25 @@ class BundleAnalysisReportService(BaseReportService):
         try:
             session_id, prev_bar, bundle_name = None, None, None
             if upload.storage_path != "":
+                # pre_downloaded_path is None only if the calling code skips
+                # temporary_upload_file; in normal flow it's always a path.
+                # An empty file means the pre-download failed before the lock.
+                if (
+                    pre_downloaded_path is None
+                    or not os.path.exists(pre_downloaded_path)
+                    or os.path.getsize(pre_downloaded_path) == 0
+                ):
+                    log.warning(
+                        "Pre-downloaded file missing or empty inside lock; will retry",
+                        extra={
+                            "repoid": commit.repoid,
+                            "commitid": commit.commitid,
+                            "upload_id": upload.id_,
+                            "storage_path": upload.storage_path,
+                            "pre_downloaded_path": pre_downloaded_path,
+                        },
+                    )
+                    raise FileNotInStorageError(upload.storage_path)
                 session_id, bundle_name = bundle_report.ingest(
                     pre_downloaded_path, compare_sha
                 )

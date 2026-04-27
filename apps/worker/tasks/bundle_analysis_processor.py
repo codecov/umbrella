@@ -76,31 +76,16 @@ def _set_upload_error_and_commit(
 @contextmanager
 def temporary_upload_file(db_session, repoid: int, upload_params: UploadArguments):
     """
-    Context manager that pre-downloads a bundle upload file to a temporary location.
-
-    This optimization downloads the file from GCS before acquiring the commit-level
-    lock, reducing lock contention by 30-50% per bundle. The temporary file is
-    automatically cleaned up when exiting the context, regardless of success or failure.
-
-    Args:
-        db_session: Database session for querying upload records
-        repoid: Repository ID for logging
-        upload_params: Upload parameters containing the upload_id
+    Context manager that pre-downloads a bundle upload file to a temporary location
+    before lock acquisition. The file is cleaned up automatically on exit.
 
     Yields:
-        str | None: Path to the downloaded temporary file, or None if download failed
-                   or upload_id is not available
-
-    Example:
-        with temporary_upload_file(db_session, repoid, params) as local_path:
-            if local_path:
-                # Process the pre-downloaded file
-                process_upload(commit, upload, pre_downloaded_path=local_path)
-            # File is automatically cleaned up here
+        str | None: Absolute path to a local temp file, or None for carryforward tasks
+                    (no upload_id). When a path is yielded, the file may be empty if
+                    the pre-download failed. report.py's process_upload detects this
+                    and raises FileNotInStorageError to trigger a retry.
     """
-    local_path = None
     temp_file_path = None
-    should_cleanup = False
 
     try:
         upload_id = upload_params.get("upload_id")
@@ -113,64 +98,43 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
             yield None
             return
 
-        # Get storage service from the repository
         commit = upload.report.commit
         archive_service = ArchiveService(commit.repository)
         storage_service = archive_service.storage
 
-        # Download the upload file to a temporary location
         fd, temp_file_path = tempfile.mkstemp()
-        should_cleanup = True
-
-        # Close the file descriptor immediately since we only need the path
-        # and will open it again for writing. This prevents file descriptor leaks.
         os.close(fd)
 
+        log_extra = {
+            "repoid": repoid,
+            "commitid": commit.commitid,
+            "upload_id": upload.id_,
+        }
         try:
             with open(temp_file_path, "wb") as f:
                 storage_service.read_file(
                     get_bucket_name(), upload.storage_path, file_obj=f
                 )
-
-            # Only set local_path on successful download
-            local_path = temp_file_path
-
             log.info(
-                "Pre-downloaded upload file before lock acquisition",
-                extra={
-                    "repoid": repoid,
-                    "upload_id": upload_id,
-                    "local_path": local_path,
-                },
+                "Pre-downloaded upload file before lock acquisition", extra=log_extra
             )
-
         except FileNotInStorageError:
-            # File not yet available in storage, will retry inside lock
             log.info(
                 "Upload file not yet available in storage for pre-download",
-                extra={"repoid": repoid, "upload_id": upload_id},
+                extra=log_extra,
             )
-            # local_path remains None to signal failure, but temp_file_path has the path for cleanup
-
         except Exception as e:
             log.warning(
                 "Failed to pre-download upload file",
-                extra={"repoid": repoid, "upload_id": upload_id, "error": str(e)},
+                extra={**log_extra, "error": str(e)},
             )
-            # local_path remains None to signal failure, but temp_file_path has the path for cleanup
 
-        # Yield outside the nested try block to properly handle exceptions from caller
-        yield local_path
+        yield temp_file_path
 
     finally:
-        # Ensure temporary file is always cleaned up using temp_file_path
-        if should_cleanup and temp_file_path and os.path.exists(temp_file_path):
+        if temp_file_path and os.path.exists(temp_file_path):
             try:
                 os.remove(temp_file_path)
-                log.debug(
-                    "Cleaned up temporary upload file",
-                    extra={"local_path": temp_file_path},
-                )
             except OSError as e:
                 log.warning(
                     "Failed to clean up temporary file",
@@ -230,11 +194,6 @@ class BundleAnalysisProcessorTask(
                 )
                 return processing_results
 
-        # Pre-download the upload file before acquiring lock to reduce lock contention.
-        # This allows the GCS download to happen while another worker may hold the lock.
-        # The context manager ensures automatic cleanup of the temporary file.
-        # Note: We still use per-commit locking because all bundles share the same
-        # SQLite report file, which requires serialized access to prevent data loss.
         with temporary_upload_file(db_session, repoid, params) as pre_downloaded_path:
             lock_manager = get_bundle_analysis_lock_manager(
                 repoid=repoid,
@@ -265,7 +224,9 @@ class BundleAnalysisProcessorTask(
                         commitid=commitid,
                         repoid=repoid,
                         attempts=(
-                            retry.retry_num if retry.max_retries_exceeded else self.attempts
+                            retry.retry_num
+                            if retry.max_retries_exceeded
+                            else self.attempts
                         ),
                         max_retries=self.max_retries,
                         retry_num=self.request.retries,
@@ -400,7 +361,7 @@ class BundleAnalysisProcessorTask(
             assert params.get("commit") == commit.commitid
 
             result = report_service.process_upload(
-                commit, upload, compare_sha, pre_downloaded_path
+                commit, upload, pre_downloaded_path, compare_sha
             )
             if result.error and result.error.is_retryable:
                 if self._has_exceeded_max_attempts(self.max_retries):
