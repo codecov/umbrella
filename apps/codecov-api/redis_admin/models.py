@@ -9,7 +9,11 @@ Redis SCAN results and are never saved.
 
 from django.db import models
 
-from .queryset import RedisItemQuerySet, RedisQueueQuerySet
+from .queryset import (
+    CeleryBrokerQueueQuerySet,
+    RedisItemQuerySet,
+    RedisQueueQuerySet,
+)
 
 
 class RedisQueueManager(models.Manager):
@@ -97,6 +101,76 @@ class RedisLock(models.Model):
         raise RuntimeError(
             "RedisLock entries are immutable from the admin; coordination "
             "locks must be released by their owning task, not by an operator."
+        )
+
+
+class CeleryBrokerQueueManager(models.Manager):
+    def get_queryset(self) -> CeleryBrokerQueueQuerySet:  # type: ignore[override]
+        return CeleryBrokerQueueQuerySet(self.model)
+
+
+class CeleryBrokerQueue(models.Model):
+    """A single celery message inside a `celery_broker` Redis list.
+
+    Mirrors `RedisQueue`'s "fake managed=False model that the admin
+    renders directly off Redis" pattern, but specialised for the
+    celery broker: each row is one task in flight, with the kombu
+    envelope already parsed into structured columns
+    (`task_name`, `repoid`, `commitid`, etc.) so an on-call operator
+    can filter and selectively clear stuck messages without DEL-ing
+    the whole queue.
+
+    The model lives in its own admin (`CeleryBrokerQueueAdmin`)
+    rather than re-using `RedisQueueItem`: the celery body is a
+    base64-wrapped kombu envelope that's noisy in the generic items
+    view, and per-item delete needs the LSET-tombstone path
+    (`services.celery_broker_clear`) which is unsafe for other
+    families.
+
+    `pk_token` shape: `<queue_name>#<index>` — same convention as
+    `RedisQueueItem` so the admin's `change_view` URL construction
+    works without customisation. `default_permissions` includes
+    `delete` because superusers can clear individual messages from
+    the changelist; a non-superuser sees the read-only inspector
+    only.
+    """
+
+    pk_token = models.CharField(primary_key=True, max_length=600)
+    queue_name = models.CharField(max_length=512)
+    index_in_queue = models.IntegerField(default=0)
+    task_name = models.CharField(max_length=256, null=True, blank=True)
+    task_id = models.CharField(max_length=128, null=True, blank=True)
+    repoid = models.IntegerField(null=True, blank=True)
+    commitid = models.CharField(max_length=64, null=True, blank=True)
+    ownerid = models.IntegerField(null=True, blank=True)
+    pullid = models.IntegerField(null=True, blank=True)
+    payload_preview = models.TextField(blank=True)
+
+    objects = CeleryBrokerQueueManager()
+
+    class Meta:
+        managed = False
+        app_label = "redis_admin"
+        verbose_name = "Celery broker queue message"
+        verbose_name_plural = "Celery broker queue messages"
+        default_permissions = ("view", "delete")
+
+    def __str__(self) -> str:
+        if self.task_name:
+            return f"{self.queue_name}[{self.index_in_queue}] {self.task_name}"
+        return f"{self.queue_name}[{self.index_in_queue}]"
+
+    def save(self, *args, **kwargs):  # pragma: no cover - safety net
+        raise RuntimeError("CeleryBrokerQueue is read-only; saves are not supported.")
+
+    def delete(self, *args, **kwargs):  # pragma: no cover - routed via service
+        # Real deletion goes through `services.celery_broker_clear` so
+        # the LSET-tombstone path runs and the audit log captures it;
+        # bypassing that here would leave stale list entries.
+        raise NotImplementedError(
+            "CeleryBrokerQueue.delete is not supported on individual "
+            "instances; use redis_admin.services.celery_broker_clear "
+            "(which the admin's clear flow already invokes)."
         )
 
 

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -34,7 +35,7 @@ from django.contrib.contenttypes.models import ContentType
 from . import conn as _conn
 from . import settings as redis_admin_settings
 from .families import ConnectionKind, find_family
-from .models import RedisLock, RedisQueue, RedisQueueItem
+from .models import CeleryBrokerQueue, RedisLock, RedisQueue, RedisQueueItem
 
 log = logging.getLogger(__name__)
 
@@ -381,6 +382,187 @@ def _redis_delete(
         span.set_data("redis_admin.count", result.count)
         span.set_data("redis_admin.refused_count", len(refused))
         span.set_data("redis_admin.families", list(families))
+    except AttributeError:  # pragma: no cover - older sdks
+        pass
+    return result
+
+
+# ---- Celery broker per-message clear (M6) ----------------------------------
+#
+# `redis_delete()`'s `_classify_items` deliberately refuses item-level
+# deletes for `celery_broker` because the family's `decode_value`
+# transformer prepends a `[task=… repoid=… commit=…]` summary and the
+# decorated string can't round-trip back to LREM (LREM matches on
+# exact bytes). The new `CeleryBrokerQueueAdmin` solves this with the
+# canonical LSET-tombstone idiom: replace each target index with a
+# unique sentinel value, then LREM the sentinel in one pass. Race-safe
+# under concurrent celery consumers since the sentinel only matches
+# the slot we replaced — even if a worker BLPOPs from the head between
+# our LSET and LREM, the popped (sentinel) message is recognised at
+# task-decode time as garbage and we still end up with a consistent
+# delete count.
+
+# Tombstone prefix is intentionally distinctive so a stray LREM
+# attempt on the wrong queue couldn't accidentally match a real
+# message. Each call appends a fresh UUID so simultaneous clears
+# don't step on each other.
+_CELERY_TOMBSTONE_PREFIX = "__redis_admin_celery_tombstone__"
+
+
+def _celery_clear_tombstone() -> str:
+    return f"{_CELERY_TOMBSTONE_PREFIX}:{uuid.uuid4().hex}"
+
+
+def _execute_celery_clear(
+    redis,
+    queue_name: str,
+    indexes: Sequence[int],
+    *,
+    tombstone: str,
+) -> int:
+    """LSET-then-LREM the given indexes inside `queue_name`.
+
+    Returns the number of list elements actually removed (the LREM
+    reply); we don't double-count duplicates because LSET writes the
+    same sentinel for every selected idx and LREM count=0 wipes them
+    all in a single sweep.
+    """
+
+    if not indexes:
+        return 0
+    pipe = redis.pipeline(transaction=False)
+    for idx in indexes:
+        # `LSET` raises if the index is out of range; the admin
+        # already materialised these from `LRANGE`, so the only way
+        # we'd see that here is if a celery consumer drained the queue
+        # between the operator clicking "Clear" and us reaching this
+        # line. Don't crash the whole pipeline in that case — the
+        # subsequent LREM for the sentinel will simply remove zero
+        # entries. We tolerate per-op failures by reading replies
+        # rather than raising.
+        try:
+            pipe.lset(queue_name, idx, tombstone)
+        except Exception:  # pragma: no cover - defensive
+            log.exception(
+                "redis_admin.celery_broker_clear: failed to enqueue LSET for %s[%s]",
+                queue_name,
+                idx,
+            )
+    try:
+        replies = pipe.execute(raise_on_error=False)
+    except TypeError:  # pragma: no cover - some clients don't accept the kwarg
+        replies = pipe.execute()
+    failures = sum(1 for reply in replies if isinstance(reply, Exception))
+    if failures:
+        log.warning(
+            "redis_admin.celery_broker_clear: %s LSET op(s) failed on %s "
+            "(likely consumer drained the slot mid-clear); proceeding to LREM",
+            failures,
+            queue_name,
+        )
+
+    deleted = redis.lrem(queue_name, 0, tombstone)
+    try:
+        return int(deleted or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def celery_broker_clear(
+    targets: Iterable[CeleryBrokerQueue],
+    *,
+    user,
+    dry_run: bool = False,
+) -> DeleteResult:
+    """Clear the given celery broker messages with the LSET-tombstone path.
+
+    Parallels `redis_delete()` for the `RedisQueue` / `RedisQueueItem`
+    surfaces but is celery-broker-specific: targets must already be
+    `CeleryBrokerQueue` rows materialised from
+    `CeleryBrokerQueueQuerySet`, which carry the per-queue index we
+    need for LSET. Wraps in a sentry span and writes a `LogEntry`
+    audit row with `scope="celery_broker_clear"` so the existing
+    operator audit trail keeps capturing celery clears alongside
+    family-level deletes.
+    """
+
+    span_name = "celery_broker_dry_run" if dry_run else "celery_broker_execute"
+    with sentry_sdk.start_span(op="redis.admin.delete", name=span_name) as span:
+        try:
+            span.set_tag("redis_admin.dry_run", dry_run)
+            span.set_tag("redis_admin.scope", "celery_broker_clear")
+        except AttributeError:  # pragma: no cover - older sdks
+            pass
+        return _celery_broker_clear(targets, user=user, dry_run=dry_run, span=span)
+
+
+def _celery_broker_clear(
+    targets: Iterable[CeleryBrokerQueue],
+    *,
+    user,
+    dry_run: bool,
+    span,
+) -> DeleteResult:
+    by_queue: dict[str, list[int]] = {}
+    sample_source: list[str] = []
+    for target in targets:
+        if not isinstance(target, CeleryBrokerQueue):
+            log.warning(
+                "redis_admin.celery_broker_clear: ignoring non-celery target %r",
+                type(target),
+            )
+            continue
+        if not target.queue_name:
+            continue
+        by_queue.setdefault(target.queue_name, []).append(target.index_in_queue)
+        sample_source.append(f"{target.queue_name}#{target.index_in_queue}")
+
+    sample = tuple(sample_source[:_AUDIT_SAMPLE_SIZE])
+    families = ("celery_broker",) if by_queue else ()
+    pending_count = sum(len(v) for v in by_queue.values())
+
+    if dry_run or not by_queue:
+        result = DeleteResult(
+            count=pending_count,
+            sample=sample,
+            families=families,
+            dry_run=dry_run,
+            refused=(),
+        )
+    else:
+        redis = _conn.get_connection(kind="broker")
+        deleted = 0
+        for queue_name, indexes in by_queue.items():
+            tombstone = _celery_clear_tombstone()
+            # Sort descending so if two pipelines race against the same
+            # queue, the higher-index LSETs land before lower-index
+            # ones — keeps the failure mode "the slot we missed has
+            # been consumed" instead of "we wrote a tombstone over a
+            # message we hadn't intended to".
+            indexes_sorted = sorted(set(indexes), reverse=True)
+            deleted += _execute_celery_clear(
+                redis, queue_name, indexes_sorted, tombstone=tombstone
+            )
+        result = DeleteResult(
+            count=deleted,
+            sample=sample,
+            families=families,
+            dry_run=False,
+            refused=(),
+        )
+
+    _record_audit(
+        user=user,
+        scope="celery_broker_clear",
+        count=result.count,
+        refused=(),
+        sample=sample,
+        families=families,
+        dry_run=dry_run,
+    )
+    try:
+        span.set_data("redis_admin.count", result.count)
+        span.set_data("redis_admin.queues", sorted(by_queue))
     except AttributeError:  # pragma: no cover - older sdks
         pass
     return result

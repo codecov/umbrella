@@ -37,9 +37,13 @@ from .families import FAMILIES, iter_keys
 from .families import (
     _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701 - reused for filter lookups
 )
-from .models import RedisLock, RedisQueue, RedisQueueItem
-from .queryset import RedisItemQuerySet, _build_redis_queue
-from .services import redis_delete
+from .models import CeleryBrokerQueue, RedisLock, RedisQueue, RedisQueueItem
+from .queryset import (
+    CeleryBrokerQueueQuerySet,
+    RedisItemQuerySet,
+    _build_redis_queue,
+)
+from .services import celery_broker_clear, redis_delete
 
 # ---- Inline items preview (rendered on the queue change page) --------------
 #
@@ -65,7 +69,15 @@ def _render_items_inline(obj, *, max_rows: int = _ITEMS_PREVIEW_MAX_ROWS):
     a custom template. Each row links to the per-item inspector for
     drill-in; a footer link points at the full items changelist so
     paging beyond the preview is one click away.
+
+    For `celery_broker` queues we route into `CeleryBrokerQueueAdmin`
+    instead — its inline preview is structured (task / repoid /
+    commit columns rather than raw kombu envelopes), and the bulk
+    "view all items →" link goes to the celery-aware changelist.
     """
+
+    if getattr(obj, "family", None) == "celery_broker":
+        return _render_celery_items_inline(obj, max_rows=max_rows)
 
     items_qs = RedisItemQuerySet(RedisQueueItem, queue_name=obj.name)
     snapshot = list(items_qs[:max_rows])
@@ -134,6 +146,99 @@ def _render_items_inline(obj, *, max_rows: int = _ITEMS_PREVIEW_MAX_ROWS):
 
     footer = format_html(
         '<p class="paginator">showing first {} item(s); {}</p>',
+        len(snapshot),
+        full_link,
+    )
+
+    return format_html(
+        '<div class="js-inline-admin-formset inline-group">'
+        '<div class="tabular inline-related last-related">'
+        '<fieldset class="module">{}{}{}</fieldset>'
+        "</div></div>",
+        heading,
+        table,
+        footer,
+    )
+
+
+def _render_celery_items_inline(obj, *, max_rows: int = _ITEMS_PREVIEW_MAX_ROWS):
+    """Tabular-inline preview specialised for `celery_broker` queues.
+
+    Mirrors `_render_items_inline` for non-celery families but pulls
+    rows from `CeleryBrokerQueueQuerySet` so the inline columns are
+    `idx | task | repoid | commit` instead of the raw kombu envelope
+    that `RedisQueueItem` would surface. The "view all items →"
+    footer points at the celery-aware changelist
+    (`CeleryBrokerQueueAdmin`) rather than the generic items view.
+    """
+
+    items_qs = CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name=obj.name)
+    snapshot = list(items_qs[:max_rows])
+
+    full_url = reverse("admin:redis_admin_celerybrokerqueue_changelist")
+    full_link_query = urlencode({"queue_name__exact": obj.name})
+    full_link = format_html(
+        '<a href="{}?{}">view all items \u2192</a>',
+        full_url,
+        full_link_query,
+    )
+
+    heading = format_html("<h2>{}</h2>", "Celery messages")
+
+    if not snapshot:
+        body = format_html(
+            '<p class="paginator">{} <em>(empty / nothing to preview)</em></p>',
+            full_link,
+        )
+        return format_html(
+            '<div class="js-inline-admin-formset inline-group">'
+            '<div class="tabular inline-related last-related">'
+            '<fieldset class="module">{}{}</fieldset>'
+            "</div></div>",
+            heading,
+            body,
+        )
+
+    item_change_url = "admin:redis_admin_celerybrokerqueue_change"
+    rows = format_html_join(
+        "",
+        '<tr class="form-row has_original">'
+        '<td class="original">'
+        '<p><a href="{}" class="inlineviewlink">View</a></p>'
+        "</td>"
+        '<td class="field-index_in_queue"><p>{}</p></td>'
+        '<td class="field-task_name"><p>{}</p></td>'
+        '<td class="field-repoid"><p>{}</p></td>'
+        '<td class="field-commitid"><p>{}</p></td>'
+        "</tr>",
+        (
+            (
+                reverse(item_change_url, args=[quote(item.pk_token)]),
+                item.index_in_queue,
+                item.task_name or "—",
+                item.repoid if item.repoid is not None else "—",
+                (item.commitid[:7] if item.commitid else "—"),
+            )
+            for item in snapshot
+        ),
+    )
+
+    table = format_html(
+        "<table>"
+        "<thead><tr>"
+        '<th class="original"></th>'
+        '<th class="column-index_in_queue">Idx</th>'
+        '<th class="column-task_name">Task</th>'
+        '<th class="column-repoid">Repo</th>'
+        '<th class="column-commitid">Commit</th>'
+        "</tr></thead>"
+        "<tbody>{}</tbody>"
+        "</table>",
+        rows,
+    )
+
+    footer = format_html(
+        '<p class="paginator">showing first {} message(s); {}</p>',
         len(snapshot),
         full_link,
     )
@@ -869,7 +974,15 @@ class RedisQueueAdmin(admin.ModelAdmin):
 
     @admin.display(description="items")
     def items_link(self, obj: RedisQueue) -> str:
-        url = reverse("admin:redis_admin_redisqueueitem_changelist")
+        # Celery broker queues land on the celery-aware admin
+        # (`CeleryBrokerQueueAdmin`) which decodes each kombu envelope
+        # into structured columns and offers per-message clear with
+        # the LSET-tombstone path. Other families keep using the
+        # generic items view.
+        if obj.family == "celery_broker":
+            url = reverse("admin:redis_admin_celerybrokerqueue_changelist")
+        else:
+            url = reverse("admin:redis_admin_redisqueueitem_changelist")
         query = urlencode({"queue_name__exact": obj.name})
         return format_html('<a href="{}?{}">view items</a>', url, query)
 
@@ -1113,3 +1226,408 @@ class RedisQueueItemAdmin(admin.ModelAdmin):
         # Truncation already applied at queryset materialization time using
         # MAX_DECODE_BYTES, so this column just renders what's there.
         return obj.raw_value or ""
+
+
+# ---- Celery broker per-message changelist (M6) -----------------------------
+
+
+def _parse_celery_search_term(term: str) -> dict[str, str]:
+    """Pull `key:value` tokens out of the celery changelist search bar.
+
+    Recognised keys: `repoid`, `commit` / `commitid`, `task` /
+    `task_name`, `task_id`, `ownerid`, `pullid`, `queue` /
+    `queue_name`. Bare tokens become a `task_name__icontains` so a
+    user can paste a task class name (`BundleAnalysisProcessor`)
+    without remembering the prefix.
+    """
+
+    bare: list[str] = []
+    out: dict[str, str] = {}
+    for tok in term.split():
+        if ":" in tok:
+            key, _, value = tok.partition(":")
+            key = key.strip().lower()
+            value = value.strip()
+            if not value:
+                continue
+            if key == "repoid":
+                out["repoid__exact"] = value
+            elif key in ("commit", "commitid"):
+                out["commitid__startswith"] = value
+            elif key in ("task", "task_name"):
+                out["task_name__icontains"] = value
+            elif key == "task_id":
+                out["task_id__exact"] = value
+            elif key == "ownerid":
+                out["ownerid__exact"] = value
+            elif key == "pullid":
+                out["pullid__exact"] = value
+            elif key in ("queue", "queue_name"):
+                out["queue_name__exact"] = value
+            else:
+                bare.append(tok)
+        else:
+            bare.append(tok)
+    if bare:
+        out["task_name__icontains"] = " ".join(bare)
+    return out
+
+
+class CeleryBrokerTaskFilter(admin.SimpleListFilter):
+    """Sidebar dropdown of `task_name` values present in the queue.
+
+    Built dynamically off the currently-filtered queue so the picker
+    only shows tasks the operator can actually drill into.
+    `lookups()` returns an empty tuple when no `queue_name__exact`
+    is set — the admin renders the filter as "All" only.
+    """
+
+    title = "celery task"
+    parameter_name = "celery_task"
+
+    def lookups(self, request, model_admin):
+        queue = request.GET.get("queue_name__exact")
+        if not queue:
+            return ()
+        try:
+            qs = CeleryBrokerQueueQuerySet(
+                CeleryBrokerQueue, queue_name=queue
+            )._fetch_all()
+        except Exception:  # pragma: no cover - defensive
+            return ()
+        seen: list[tuple[str, str]] = []
+        seen_set: set[str] = set()
+        for row in qs:
+            name = row.task_name
+            if name and name not in seen_set:
+                seen_set.add(name)
+                seen.append((name, name))
+        seen.sort()
+        return tuple(seen)
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value:
+            return queryset.filter(task_name__exact=value)
+        return queryset
+
+
+class CeleryBrokerRepoidFilter(admin.SimpleListFilter):
+    """Free-text `repoid` filter, rendered as a sidebar input.
+
+    Django doesn't ship a stock text-input list filter, but
+    `SimpleListFilter` with empty `lookups()` plus a `?repoid=`
+    query string is enough to honour the URL parameter; the admin
+    template surfaces it via `lookup_allowed`. Operators paste a
+    repoid into the URL or the search bar (`repoid:1234`); this
+    filter just makes the URL parameter participate in the
+    queryset filter pipeline.
+    """
+
+    title = "repoid"
+    parameter_name = "repoid"
+
+    def lookups(self, request, model_admin):
+        return ()
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value:
+            return queryset.filter(repoid__exact=value)
+        return queryset
+
+    def has_output(self) -> bool:  # pragma: no cover - admin convention
+        return False
+
+
+class CeleryBrokerCommitFilter(admin.SimpleListFilter):
+    """Same shape as `CeleryBrokerRepoidFilter` but matches by commit prefix.
+
+    `commitid__startswith` so pasting either the 7-char abbrev
+    (rendered next to each row) or the full SHA both narrow
+    correctly.
+    """
+
+    title = "commit"
+    parameter_name = "commitid"
+
+    def lookups(self, request, model_admin):
+        return ()
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value:
+            return queryset.filter(commitid__startswith=value)
+        return queryset
+
+    def has_output(self) -> bool:  # pragma: no cover - admin convention
+        return False
+
+
+@admin.register(CeleryBrokerQueue)
+class CeleryBrokerQueueAdmin(admin.ModelAdmin):
+    """Per-message admin for `celery_broker` queues.
+
+    Mirrors `RedisQueueAdmin`'s "view + dry-run + clear" flow, but
+    one row = one celery message, with the kombu envelope already
+    decoded into `task_name` / `repoid` / `commitid` columns so an
+    operator can filter by repo or commit and clear stuck messages
+    without DEL-ing the whole queue. Required pre-filter is
+    `queue_name__exact` — without it the changelist short-circuits
+    to empty + an info nudge. Per-message delete uses the canonical
+    LSET-tombstone path (`services.celery_broker_clear`) so it's
+    race-safe under concurrent celery consumers.
+    """
+
+    list_display = (
+        "index_in_queue",
+        "task_name",
+        "repoid_link",
+        "commitid_link",
+        "ownerid",
+        "pullid",
+        "task_id_short",
+        "payload_preview_truncated",
+    )
+    list_filter = (
+        CeleryQueueFilter,
+        CeleryBrokerTaskFilter,
+        CeleryBrokerRepoidFilter,
+        CeleryBrokerCommitFilter,
+    )
+    list_per_page = redis_admin_settings.ITEM_PAGE_SIZE
+    show_full_result_count = False
+    ordering = ("index_in_queue",)
+    search_fields = ("task_name",)
+    search_help_text = (
+        "search by 'repoid:1234', 'commit:abc', 'task:BundleAnalysisProcessor', "
+        "'task_id:<uuid>', 'ownerid:N', 'pullid:N', or 'queue:notify'. "
+        "Bare tokens are matched against the task name."
+    )
+    readonly_fields = (
+        "pk_token",
+        "queue_name",
+        "index_in_queue",
+        "task_name",
+        "task_id",
+        "repoid",
+        "commitid",
+        "ownerid",
+        "pullid",
+        "payload_preview",
+    )
+    actions = ("clear_dry_run", "clear_selected")
+
+    # ---- Permissions / read-only safety -----------------------------------
+
+    def has_add_permission(self, request: HttpRequest, obj=None) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
+        return bool(request.user and request.user.is_staff)
+
+    def has_view_permission(self, request: HttpRequest, obj=None) -> bool:
+        return bool(request.user and request.user.is_staff)
+
+    def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
+        # Mirrors `RedisQueueAdmin`: dry-run is staff-allowed via the
+        # `permissions=("delete",)` action gate, but the destructive
+        # commit is superuser-only.
+        return bool(request.user and request.user.is_superuser)
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop("delete_selected", None)
+        return actions
+
+    def lookup_allowed(self, lookup, value) -> bool:
+        if lookup in (
+            "queue_name__exact",
+            "queue_name",
+            "repoid",
+            "repoid__exact",
+            "commitid",
+            "commitid__startswith",
+            "commitid__exact",
+            "task_name",
+            "task_name__exact",
+            "task_name__icontains",
+            "task_id",
+            "task_id__exact",
+            "ownerid",
+            "ownerid__exact",
+            "pullid",
+            "pullid__exact",
+        ):
+            return True
+        return super().lookup_allowed(lookup, value)
+
+    def get_queryset(self, request: HttpRequest):
+        # Bypass ChangeList's `.filter(**lookup_params)` plumbing so the
+        # required `queue_name__exact` survives untouched even when no
+        # list_filter is declared on the URL.
+        queryset = self.model._default_manager.all()
+        queue_name = request.GET.get("queue_name__exact")
+        if queue_name:
+            queryset = queryset.filter(queue_name__exact=queue_name)
+        return queryset
+
+    def changelist_view(self, request: HttpRequest, extra_context=None):
+        if not request.GET.get("queue_name__exact"):
+            messages.info(
+                request,
+                "Pick a celery_broker queue from the Redis queues list "
+                "(the 'view items' link) to see its messages.",
+            )
+        return super().changelist_view(request, extra_context)
+
+    def get_search_results(self, request, queryset, search_term):
+        if not search_term:
+            return queryset, False
+        kwargs = _parse_celery_search_term(search_term)
+        if not kwargs:
+            return queryset, False
+        try:
+            return queryset.filter(**kwargs), False
+        except NotImplementedError:
+            return queryset.none(), False
+
+    # ---- Change form (per-message inspector) -----------------------------
+
+    def get_fieldsets(self, request, obj=None):
+        return ((None, {"fields": list(self.readonly_fields)}),)
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        ctx = {
+            "show_save": False,
+            "show_save_and_continue": False,
+            "show_save_and_add_another": False,
+            "show_save_as_new": False,
+        }
+        if extra_context:
+            ctx.update(extra_context)
+        return super().changeform_view(request, object_id, form_url, ctx)
+
+    def save_model(self, request, obj, form, change):
+        raise RuntimeError("CeleryBrokerQueue rows are read-only.")
+
+    # ---- Bulk clear (dry-run + confirm) ----------------------------------
+
+    @admin.action(
+        description="Dry-run: count what 'clear selected' would clear",
+        permissions=("delete",),
+    )
+    def clear_dry_run(self, request: HttpRequest, queryset) -> None:
+        result = celery_broker_clear(list(queryset), user=request.user, dry_run=True)
+        self.message_user(
+            request,
+            (
+                f"Dry-run: would clear {result.count} celery message(s); "
+                f"sample={list(result.sample[:5])}"
+            ),
+            level=messages.INFO,
+        )
+
+    @admin.action(
+        description="Clear selected (dry-run preview, then confirm)",
+        permissions=("delete",),
+    )
+    def clear_selected(self, request: HttpRequest, queryset):
+        """Two-stage clear; LSET-tombstone path on commit."""
+
+        selected = list(queryset)
+        selected_pks = request.POST.getlist("_selected_action") or [
+            obj.pk for obj in selected
+        ]
+
+        if request.POST.get("confirm") == "yes":
+            result = celery_broker_clear(selected, user=request.user, dry_run=False)
+            self.message_user(
+                request,
+                (
+                    f"Cleared {result.count} celery message(s) "
+                    f"across {len({obj.queue_name for obj in selected})} queue(s)."
+                ),
+                level=messages.SUCCESS,
+            )
+            return None
+
+        dry_run_result = celery_broker_clear(selected, user=request.user, dry_run=True)
+        opts = self.model._meta
+        ctx = {
+            **self.admin_site.each_context(request),
+            "title": "Confirm clear of selected celery messages",
+            "opts": opts,
+            "action_name": "clear_selected",
+            "selected": selected,
+            "selected_pks": selected_pks,
+            "dry_run_result": dry_run_result,
+            "media": self.media,
+        }
+        return render(
+            request, "admin/redis_admin/clear_selected_confirmation.html", ctx
+        )
+
+    def delete_queryset(self, request: HttpRequest, queryset) -> None:
+        """Defensive: stripped from `get_actions` but route through the
+        audited celery clear if anything reintroduces it.
+        """
+
+        result = celery_broker_clear(list(queryset), user=request.user, dry_run=False)
+        self.message_user(
+            request,
+            f"Cleared {result.count} celery message(s).",
+            level=messages.SUCCESS,
+        )
+
+    def delete_model(self, request: HttpRequest, obj: CeleryBrokerQueue) -> None:
+        """Single-message delete from the change page."""
+
+        result = celery_broker_clear([obj], user=request.user, dry_run=False)
+        self.message_user(
+            request,
+            (
+                f"Cleared celery message {obj.queue_name}[{obj.index_in_queue}] "
+                f"({result.count} removed)."
+            ),
+            level=messages.SUCCESS,
+        )
+
+    # ---- Display helpers --------------------------------------------------
+
+    @admin.display(description="repo")
+    def repoid_link(self, obj: CeleryBrokerQueue) -> str:
+        if obj.repoid is None:
+            return "—"
+        try:
+            url = reverse("admin:core_repository_change", args=[obj.repoid])
+        except NoReverseMatch:
+            return str(obj.repoid)
+        return format_html('<a href="{}">{}</a>', url, obj.repoid)
+
+    @admin.display(description="commit")
+    def commitid_link(self, obj: CeleryBrokerQueue) -> str:
+        if not obj.commitid:
+            return "—"
+        try:
+            base = reverse("admin:core_commit_changelist")
+        except NoReverseMatch:
+            return obj.commitid[:7]
+        url = f"{base}?{urlencode({'q': obj.commitid})}"
+        return format_html(
+            '<a href="{}" title="{}">{}</a>', url, obj.commitid, obj.commitid[:7]
+        )
+
+    @admin.display(description="task id")
+    def task_id_short(self, obj: CeleryBrokerQueue) -> str:
+        if not obj.task_id:
+            return "—"
+        # Task IDs are kombu UUIDs; the first 8 chars uniquely identify
+        # them in nearly every realistic queue size and keep the column
+        # narrow.
+        short = obj.task_id[:8]
+        return format_html('<span title="{}">{}</span>', obj.task_id, short)
+
+    @admin.display(description="payload")
+    def payload_preview_truncated(self, obj: CeleryBrokerQueue) -> str:
+        return obj.payload_preview or ""

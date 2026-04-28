@@ -14,6 +14,7 @@ hood so the models need no real database table.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from typing import Any
 
@@ -21,7 +22,13 @@ import sentry_sdk
 
 from . import conn as _conn
 from . import settings as redis_admin_settings
-from .families import Family, find_family, iter_keys
+from .families import (
+    CeleryEnvelopeMeta,
+    Family,
+    find_family,
+    iter_keys,
+    parse_celery_envelope,
+)
 from .families import _decode as _decode_value  # noqa: PLC2701 - shared helper
 
 _UNSET: Any = object()
@@ -853,6 +860,443 @@ class RedisItemQuerySet:
 
     def delete(self):
         raise NotImplementedError("RedisItemQuerySet.delete is added in milestone 5")
+
+    # ---- Admin compatibility shims ---------------------------------------
+
+    @property
+    def query(self):
+        ordering = self._ordering
+
+        class _Query:
+            order_by = ordering
+            select_related = False
+            distinct = False
+
+        return _Query()
+
+    @property
+    def ordered(self) -> bool:
+        return bool(self._ordering)
+
+    @property
+    def db(self) -> str:
+        return "default"
+
+
+# ---- Celery broker per-message queryset (M6) -------------------------------
+#
+# Backs `CeleryBrokerQueue`, the celery-broker-specific drill-down: one
+# row per message inside one celery queue, with the kombu envelope
+# already parsed into structured columns. Deliberately not a subclass of
+# `RedisItemQuerySet` because field shape, pk conventions, and
+# connection routing all differ — `RedisItemQuerySet` stays the
+# generic-Redis-types fallback for non-celery families.
+
+# Names of body kwargs that are routinely huge (megabytes of base64 YAML)
+# and would blow past `MAX_DECODE_BYTES` if rendered verbatim in
+# `payload_preview`. We replace them with a `<truncated: N chars>`
+# placeholder so the preview stays scannable; operators who genuinely
+# need the raw envelope can fall through to the existing `RedisQueueItem`
+# admin.
+_LARGE_KWARGS_KEYS: frozenset[str] = frozenset(
+    {
+        "commit_yaml",
+        "commit_yaml_dict",
+        "current_yaml",
+        "processing_results",
+        "report_json",
+        "raw_upload",
+    }
+)
+
+# Per-value cap inside `payload_preview` so a single oversized kwarg
+# can't monopolise the line even when it isn't on the known-large list.
+_PAYLOAD_PER_VALUE_CAP: int = 256
+
+
+_CELERY_FILTER_KEYS: dict[str, str] = {
+    "queue_name": "queue_name",
+    "queue_name__exact": "queue_name",
+    "repoid": "repoid",
+    "repoid__exact": "repoid",
+    "commitid": "commitid_prefix",
+    "commitid__exact": "commitid_exact",
+    "commitid__startswith": "commitid_prefix",
+    "task_name": "task_name_exact",
+    "task_name__exact": "task_name_exact",
+    "task_name__icontains": "task_name_substring",
+    "task_id": "task_id_exact",
+    "task_id__exact": "task_id_exact",
+    "ownerid": "ownerid",
+    "ownerid__exact": "ownerid",
+    "pullid": "pullid",
+    "pullid__exact": "pullid",
+    # Admin bulk-action `filter(pk__in=[...])` shortcut so
+    # `clear_selected` confirmation pages can re-resolve rows by
+    # pk_token. Each pk_token is `<queue>#<idx>`, so we cross-check
+    # below that every selected pk shares the same queue.
+    "pk__in": "pk_in",
+}
+
+
+def _summarise_kwargs_for_preview(
+    kwargs: dict[str, Any] | None,
+    *,
+    cap: int | None = None,
+) -> str:
+    """Render kombu body kwargs as a one-line preview string.
+
+    Known-large keys (`commit_yaml`, `processing_results`, …) are
+    swapped for a `<truncated: N chars>` placeholder so the preview
+    stays under the global `MAX_DECODE_BYTES` cap; everything else is
+    JSON-serialised, with each value individually truncated so one
+    oversized field can't monopolise the line.
+    """
+
+    if not kwargs:
+        return ""
+    summarised: dict[str, Any] = {}
+    for key, value in kwargs.items():
+        if key in _LARGE_KWARGS_KEYS:
+            try:
+                marshalled = json.dumps(value, default=str)
+            except (TypeError, ValueError):
+                marshalled = str(value)
+            summarised[key] = f"<truncated: {len(marshalled)} chars>"
+            continue
+        try:
+            marshalled = json.dumps(value, default=str)
+        except (TypeError, ValueError):
+            marshalled = str(value)
+        if len(marshalled) > _PAYLOAD_PER_VALUE_CAP:
+            summarised[key] = (
+                f"{marshalled[:_PAYLOAD_PER_VALUE_CAP]}\u2026 "
+                f"(+{len(marshalled) - _PAYLOAD_PER_VALUE_CAP} chars)"
+            )
+        else:
+            summarised[key] = value
+    try:
+        rendered = json.dumps(summarised, default=str)
+    except (TypeError, ValueError):
+        rendered = str(summarised)
+    return _truncate_for_display(rendered, cap=cap)
+
+
+class CeleryBrokerQueueQuerySet:
+    """Fake QuerySet over messages inside one celery_broker queue.
+
+    Required pre-filter: `queue_name__exact=<queue>`. Without it the
+    queryset short-circuits to empty and the admin renders an info
+    message — the alternative would be fanning out across every
+    well-known celery queue, which is unbounded by design.
+
+    Materialisation is `LRANGE 0 MAX_ITEMS_PER_KEY-1` once, parse
+    each element via `parse_celery_envelope`, then apply Python-side
+    filters and ordering. The result snapshot is cached on the
+    queryset instance so repeated `count()` / `__getitem__` /
+    `__iter__` calls during a single admin request reuse it.
+
+    Connection routing is hard-coded to `kind="broker"` since this
+    queryset is celery-only; no `find_family` round-trip needed.
+    """
+
+    def __init__(
+        self,
+        model,
+        *,
+        queue_name: str | None = None,
+        ordering: tuple[str, ...] = (),
+        filters: dict[str, Any] | None = None,
+    ) -> None:
+        self.model = model
+        self.queue_name = queue_name
+        self._ordering = ordering
+        self._filters: dict[str, Any] = dict(filters or {})
+        self._result_cache: list | None = None
+
+    # ---- Cloning helpers --------------------------------------------------
+
+    def _clone(
+        self,
+        *,
+        queue_name: Any = _UNSET,
+        ordering: tuple[str, ...] | None = None,
+        filters: dict[str, Any] | None = None,
+    ) -> CeleryBrokerQueueQuerySet:
+        return CeleryBrokerQueueQuerySet(
+            self.model,
+            queue_name=self.queue_name if queue_name is _UNSET else queue_name,
+            ordering=self._ordering if ordering is None else ordering,
+            filters=(
+                {**self._filters, **(filters or {})} if filters else dict(self._filters)
+            ),
+        )
+
+    def all(self) -> CeleryBrokerQueueQuerySet:
+        return self._clone()
+
+    def none(self) -> CeleryBrokerQueueQuerySet:
+        empty = self._clone(queue_name=None)
+        empty._result_cache = []
+        return empty
+
+    def using(self, alias) -> CeleryBrokerQueueQuerySet:
+        return self
+
+    # ---- Compatibility shims for django.contrib.admin.utils ---------------
+
+    @property
+    def verbose_name(self):
+        return self.model._meta.verbose_name
+
+    @property
+    def verbose_name_plural(self):
+        return self.model._meta.verbose_name_plural
+
+    # ---- Filtering -------------------------------------------------------
+
+    def _interpret_filter_kwargs(
+        self, kwargs: dict[str, Any]
+    ) -> tuple[Any, dict[str, Any]]:
+        """Translate Django-style lookups into our internal filter buckets.
+
+        `new_queue_name` stays `_UNSET` when no `queue_name`-shaped
+        lookup was supplied so `_clone` can preserve the existing one.
+        """
+
+        new_queue_name: Any = _UNSET
+        new_filters: dict[str, Any] = {}
+        for key, value in kwargs.items():
+            target = _CELERY_FILTER_KEYS.get(key)
+            if target is None:
+                raise NotImplementedError(
+                    "CeleryBrokerQueueQuerySet.filter only supports "
+                    f"{sorted(_CELERY_FILTER_KEYS)}; got {key!r}"
+                )
+            if target == "queue_name":
+                new_queue_name = None if value is None or value == "" else str(value)
+                continue
+            if value is None or value == "":
+                continue
+            if target in ("repoid", "ownerid", "pullid"):
+                try:
+                    new_filters[target] = int(value)
+                except (TypeError, ValueError):
+                    new_filters["__empty__"] = True
+            elif target in ("commitid_prefix", "commitid_exact"):
+                new_filters[target] = str(value)
+            elif target in ("task_name_exact", "task_id_exact"):
+                new_filters[target] = str(value)
+            elif target == "task_name_substring":
+                new_filters[target] = str(value).lower()
+            elif target == "pk_in":
+                indexes: set[int] = set()
+                queue_names: set[str] = set()
+                bad = False
+                for raw in value or ():
+                    raw_str = str(raw)
+                    queue, sep, idx = raw_str.rpartition("#")
+                    if not sep or not queue or not idx:
+                        bad = True
+                        break
+                    try:
+                        indexes.add(int(idx))
+                    except ValueError:
+                        bad = True
+                        break
+                    queue_names.add(queue)
+                if bad or len(queue_names) > 1:
+                    # `pk__in` spanning multiple queues would force a
+                    # cross-queue fan-out and break the
+                    # `queue_name`-required invariant.
+                    new_filters["__empty__"] = True
+                elif queue_names:
+                    new_queue_name = next(iter(queue_names))
+                    new_filters["pk_in_indexes"] = indexes
+        return new_queue_name, new_filters
+
+    def filter(self, *args, **kwargs) -> CeleryBrokerQueueQuerySet:
+        if args:
+            raise NotImplementedError(
+                "CeleryBrokerQueueQuerySet.filter does not accept positional Q objects"
+            )
+        new_queue_name, new_filters = self._interpret_filter_kwargs(kwargs)
+        return self._clone(queue_name=new_queue_name, filters=new_filters)
+
+    def exclude(self, *args, **kwargs) -> CeleryBrokerQueueQuerySet:
+        if not args and not kwargs:
+            return self._clone()
+        raise NotImplementedError(
+            "CeleryBrokerQueueQuerySet.exclude is not implemented"
+        )
+
+    def order_by(self, *fields: str) -> CeleryBrokerQueueQuerySet:
+        return self._clone(ordering=tuple(fields))
+
+    def get(self, *args, **kwargs):
+        """Resolve a single message by `pk_token = '<queue>#<index>'`."""
+
+        if args:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} positional get() is not supported"
+            )
+        pk = (
+            kwargs.pop("pk", None)
+            or kwargs.pop("pk__exact", None)
+            or kwargs.pop("pk_token", None)
+            or kwargs.pop("pk_token__exact", None)
+        )
+        if kwargs:
+            raise NotImplementedError(
+                "CeleryBrokerQueueQuerySet.get only supports pk/pk_token; "
+                f"got extra {list(kwargs)!r}"
+            )
+        if pk is None:
+            raise self.model.DoesNotExist(
+                f"{self.model.__name__} matching no kwargs does not exist"
+            )
+        pk_str = str(pk)
+        queue, sep, idx_str = pk_str.rpartition("#")
+        if not sep or not queue or not idx_str:
+            raise self.model.DoesNotExist(
+                f"pk_token must look like 'queue#<index>'; got {pk_str!r}"
+            )
+        try:
+            idx = int(idx_str)
+        except ValueError as exc:
+            raise self.model.DoesNotExist(
+                f"pk_token index must be int; got {idx_str!r}"
+            ) from exc
+        bound = self._clone(queue_name=queue)
+        for row in bound._fetch_all():
+            if row.index_in_queue == idx:
+                return row
+        raise self.model.DoesNotExist(
+            f"index {idx} not found in queue {queue!r} "
+            f"(may exceed MAX_ITEMS_PER_KEY or have been consumed)"
+        )
+
+    # ---- Materialisation -------------------------------------------------
+
+    def _connection(self) -> Any:
+        # Celery broker queues always live on the broker Redis; the
+        # family registry routes `celery_broker` here too.
+        return _conn.get_connection(kind="broker")
+
+    def _build_row(self, idx: int, meta: CeleryEnvelopeMeta) -> Any:
+        return self.model(
+            pk_token=f"{self.queue_name}#{idx}",
+            queue_name=self.queue_name,
+            index_in_queue=idx,
+            task_name=meta.task,
+            task_id=meta.task_id,
+            repoid=meta.repoid,
+            commitid=meta.commitid,
+            ownerid=meta.ownerid,
+            pullid=meta.pullid,
+            payload_preview=_summarise_kwargs_for_preview(meta.kwargs),
+        )
+
+    @sentry_sdk.trace
+    def _materialise(self) -> list:
+        if not self.queue_name:
+            return []
+        redis = self._connection()
+        if not redis.exists(self.queue_name):
+            return []
+        cap = redis_admin_settings.MAX_ITEMS_PER_KEY
+        # `LRANGE 0 cap-1` rather than streaming because celery queues
+        # are bounded in practice and a single round-trip beats paging
+        # for the typical "operator filtered to one repoid" case where
+        # filtering happens client-side anyway.
+        raw_values = redis.lrange(self.queue_name, 0, cap - 1)
+        rows: list = []
+        for offset, raw in enumerate(raw_values):
+            decoded = _decode_value(raw)
+            meta = parse_celery_envelope(decoded)
+            rows.append(self._build_row(offset, meta))
+        return rows
+
+    def _matches_filters(self, row: Any) -> bool:
+        f = self._filters
+        if f.get("__empty__"):
+            return False
+        repoid = f.get("repoid")
+        if repoid is not None and row.repoid != repoid:
+            return False
+        ownerid = f.get("ownerid")
+        if ownerid is not None and row.ownerid != ownerid:
+            return False
+        pullid = f.get("pullid")
+        if pullid is not None and row.pullid != pullid:
+            return False
+        commit_exact = f.get("commitid_exact")
+        if commit_exact and (row.commitid or "") != commit_exact:
+            return False
+        commit_prefix = f.get("commitid_prefix")
+        if commit_prefix and not (row.commitid or "").startswith(commit_prefix):
+            return False
+        task_exact = f.get("task_name_exact")
+        if task_exact and (row.task_name or "") != task_exact:
+            return False
+        task_substring = f.get("task_name_substring")
+        if task_substring and task_substring not in (row.task_name or "").lower():
+            return False
+        task_id_exact = f.get("task_id_exact")
+        if task_id_exact and (row.task_id or "") != task_id_exact:
+            return False
+        pk_in_indexes = f.get("pk_in_indexes")
+        if pk_in_indexes is not None and row.index_in_queue not in pk_in_indexes:
+            return False
+        return True
+
+    def _fetch_all(self) -> list:
+        if self._result_cache is not None:
+            return self._result_cache
+        if not self.queue_name:
+            self._result_cache = []
+            return []
+        if self._filters.get("__empty__"):
+            self._result_cache = []
+            return []
+        rows = self._materialise()
+        rows = [r for r in rows if self._matches_filters(r)]
+        for field in reversed(self._ordering):
+            reverse = field.startswith("-")
+            attr = field.lstrip("-")
+            rows.sort(
+                key=lambda obj, attr=attr: _ordering_key(obj, attr), reverse=reverse
+            )
+        self._result_cache = rows
+        return rows
+
+    def __iter__(self) -> Iterator:
+        return iter(self._fetch_all())
+
+    def iterator(self, chunk_size: int | None = None) -> Iterator:
+        return iter(self._fetch_all())
+
+    def __len__(self) -> int:
+        return len(self._fetch_all())
+
+    def count(self) -> int:
+        return len(self._fetch_all())
+
+    def __getitem__(self, item):
+        return self._fetch_all()[item]
+
+    def __bool__(self) -> bool:
+        return bool(self._fetch_all())
+
+    def delete(self):
+        # Real deletion goes through `services.celery_broker_clear`
+        # so the LSET-tombstone path runs and audit logs capture the
+        # operation. The admin's `clear_selected` action calls that
+        # service directly.
+        raise NotImplementedError(
+            "CeleryBrokerQueueQuerySet.delete is not supported; use "
+            "redis_admin.services.celery_broker_clear"
+        )
 
     # ---- Admin compatibility shims ---------------------------------------
 
