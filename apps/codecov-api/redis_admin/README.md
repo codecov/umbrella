@@ -151,6 +151,23 @@ All configurable via `REDIS_ADMIN_*` Django settings; defaults shown.
 | `REDIS_ADMIN_MAX_DECODE_BYTES` | `4_096` | Per-value display truncation. |
 | `REDIS_ADMIN_DELETE_BATCH_SIZE` | `500` | Pipeline batch size for `DEL` / `LREM` / `SREM` / `HDEL`. |
 | `REDIS_ADMIN_CONNECTION_FACTORY` | unset | Dotted path to a callable returning a `redis.Redis`. Defaults to `shared.helpers.redis.get_redis_connection`. |
+| `REDIS_ADMIN_BROKER_CONNECTION_FACTORY` | unset | Dotted path for the Celery broker connection. Defaults to building a client from `services.celery_broker` (falls back to `services.redis_url` for single-Redis dev/enterprise). |
+
+The `celery_broker` family also reads one shared-config knob (not a
+Django setting) to learn which Celery queue names to enumerate
+beyond the `BaseCeleryConfig` defaults:
+
+| Config key | Form | Purpose |
+|---|---|---|
+| `setup.redis_admin.celery_queues` | comma-separated string or list | Operator-supplied list of broker queue names (e.g. `uploads,notify,sync,...`). Reads via `shared.config.get_config("setup", "redis_admin", "celery_queues")`, so an env var like `SETUP__REDIS_ADMIN__CELERY_QUEUES=...` works on the API pod. The actual production list lives in private deployment config (it varies per environment), so this isn't shipped with defaults. Each name is `EXISTS`-checked before being yielded — listing a queue that doesn't exist is harmless. |
+
+Without this set the admin's `celery_broker` family only sees
+`celery`, `healthcheck`, and whatever the `enterprise_*` SCAN
+matches; queues like `uploads` / `notify` / `sync` stay invisible
+even when the broker has them, because the API pod doesn't carry
+the worker-side `setup.tasks.*.queue` env vars and so
+`BaseCeleryConfig.task_routes` resolves every route to
+`task_default_queue`.
 
 ## Adding a new family
 
