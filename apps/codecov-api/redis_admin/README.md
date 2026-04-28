@@ -22,7 +22,8 @@ ORM-backed rows — list_display, search, filters, pagination, and
 | Model | Audience | Mutable? |
 |---|---|---|
 | `RedisQueue` | Queue families: `uploads/*`, `ta_flake_key:*`, `latest_upload/*`, `upload-processing-state/*`, `intermediate-report/*`, Celery broker queues (`celery`, `healthcheck`, `enterprise_*`, `task_routes` values) | Yes (superuser only) |
-| `RedisQueueItem` | Items inside a single queue (LIST entries / SET members / HASH fields / STRING value) | Yes (superuser only) |
+| `RedisQueueItem` | Items inside a single queue (LIST entries / SET members / HASH fields / STRING value). Used for non-celery families. | Yes (superuser only) |
+| `CeleryBrokerQueue` | One row per celery message inside one `celery_broker` queue, with the kombu envelope already parsed into `task_name` / `repoid` / `commitid` / `task_id` / `ownerid` / `pullid` columns. The default click-through from a `celery_broker` `RedisQueue` row lands here. | Yes (superuser only) |
 | `RedisLock` | Lock families: `*_lock_*`, `upload_finisher_gate_*`, `ta_flake_lock:*`, `lock_attempts:*`, `ta_notifier_fence:*`, `coordination_lock:*` | Read-only (always) |
 
 Lock families are flagged `is_deletable=False` in the registry and
@@ -35,8 +36,9 @@ accidentally surfaces them under `RedisQueue`.
 |---|---|
 | `/admin/redis_admin/redisqueue/` | Browse Redis queue keys |
 | `/admin/redis_admin/redisqueue/<key>/change/` | Inspect a single queue, with a tabular-inline preview of its items |
-| `/admin/redis_admin/redisqueueitem/?queue_name__exact=<key>` | Browse the full items of a queue |
+| `/admin/redis_admin/redisqueueitem/?queue_name__exact=<key>` | Browse the full items of a queue (non-celery families) |
 | `/admin/redis_admin/redisqueueitem/<token>/change/` | Inspect a single item |
+| `/admin/redis_admin/celerybrokerqueue/?queue_name__exact=<queue>` | Browse messages inside a celery broker queue with structured task / repoid / commitid columns and per-message clear |
 | `/admin/redis_admin/redislock/` | Browse Redis locks (read-only) |
 | `/admin/redis_admin/redisqueue/clear-by-scope/` | M6 — cross-family clear-by-scope (superuser only) |
 
@@ -168,6 +170,69 @@ even when the broker has them, because the API pod doesn't carry
 the worker-side `setup.tasks.*.queue` env vars and so
 `BaseCeleryConfig.task_routes` resolves every route to
 `task_default_queue`.
+
+## Celery broker drill-down
+
+Clicking `view items` on a `celery_broker` `RedisQueue` row lands
+on `CeleryBrokerQueueAdmin` (URL: `/admin/redis_admin/celerybrokerqueue/?queue_name__exact=<queue>`),
+which is the celery-aware drill-down: one row = one celery
+message, with the kombu envelope already parsed into structured
+columns. Other families keep using the generic `RedisQueueItem`
+inspector unchanged.
+
+| Column | Source |
+|---|---|
+| `index_in_queue` | LRANGE position |
+| `task_name` | `headers.task` (e.g. `app.tasks.bundle_analysis.BundleAnalysisProcessor`) |
+| `repoid` / `commitid` | body kwargs |
+| `ownerid` / `pullid` | body kwargs (for owner / pull-shaped tasks) |
+| `task_id` | `headers.id` (kombu UUID; useful for cross-referencing flower / Sentry) |
+| `payload_preview` | the body kwargs dict, rendered as one line. Known-large keys (`commit_yaml`, `processing_results`, `current_yaml`, `report_json`, `raw_upload`, `commit_yaml_dict`) are replaced with a `<truncated: N chars>` placeholder so a single 97 KB envelope can't blow past `MAX_DECODE_BYTES`. |
+
+Search bar tokens (in addition to bare substrings, which match
+`task_name__icontains`):
+
+- `repoid:1234` &mdash; exact repoid
+- `commit:abc` / `commitid:abc` &mdash; commit prefix (works with the 7-char abbrev or the full SHA)
+- `task:Notify` / `task_name:Notify` &mdash; task substring
+- `task_id:<uuid>` &mdash; full kombu task id
+- `ownerid:N` / `pullid:N` &mdash; for owner / pull-shaped tasks
+- `queue:notify` &mdash; switch the active queue without leaving the page
+
+Sidebar filters: queue (well-known celery queue names), celery
+task (dynamic dropdown built from the `task_name` values present
+in the currently filtered queue), repoid, commit prefix.
+
+### Per-message clear (LSET-tombstone)
+
+Item-level deletion of celery messages goes through
+`services.celery_broker_clear`, not `redis_delete`. The reason is
+that `redis_delete`'s `_classify_items` deliberately refuses
+celery_broker items because the family's `decode_value`
+transformer rewrites the raw bytes into a
+`[task=… repoid=… commit=…]` summary, and the decorated string
+won't round-trip back to `LREM` (which matches on exact bytes).
+
+`celery_broker_clear` solves this with the canonical LSET-
+tombstone idiom:
+
+1. For each selected message, `LSET <queue> <idx> <sentinel>`
+   (sentinel = `__redis_admin_celery_tombstone__:<uuid>`).
+2. Once all sentinels are written, one `LREM <queue> 0 <sentinel>`
+   sweeps them all out of the list.
+
+Per-call UUID means simultaneous clears can't step on each
+other's sentinels. Race-safe under concurrent celery consumers:
+even if a worker `BLPOP`s from the head of the list between our
+LSETs and our LREM, the popped (sentinel) message is recognised at
+task-decode time as garbage and discarded, and we still get a
+consistent count from LREM.
+
+The same dry-run + audit log apparatus as `redis_delete` is
+reused: `LogEntry.change_message` with `scope =
+"celery_broker_clear"`, count, sample, families. Superuser-only
+(`has_delete_permission`) and dry-run-required (`clear_dry_run`
+must run before the destructive `clear_selected` arms).
 
 ## Adding a new family
 

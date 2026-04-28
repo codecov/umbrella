@@ -265,27 +265,82 @@ def _resolve_celery_queue_names() -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
-def _peek_celery_envelope(decoded: str) -> tuple[str | None, int | None, str | None]:
-    """Pull `(task, repoid, commitid)` from a kombu JSON envelope.
+@dataclass(frozen=True)
+class CeleryEnvelopeMeta:
+    """Structured view of a kombu broker envelope.
 
-    Returns `(None, None, None)` for anything we can't parse so the
-    fallback is "show the raw payload" rather than "crash the admin".
+    The admin's `CeleryBrokerQueue` model surfaces these fields as
+    columns and accepts them as filters, so they're typed and
+    optional — a malformed or unrecognised envelope yields an
+    instance with everything set to `None`.
+
+    `kwargs` carries the raw decoded keyword-args dict (the second
+    element of the kombu body list) when present, so the admin can
+    render a `payload_preview` without re-parsing the envelope.
+    """
+
+    task: str | None = None
+    task_id: str | None = None
+    repoid: int | None = None
+    commitid: str | None = None
+    ownerid: int | None = None
+    pullid: int | None = None
+    kwargs: dict[str, Any] | None = None
+
+
+def _coerce_int(value: Any) -> int | None:
+    """Best-effort int coercion that survives JSON's int/str ambiguity."""
+
+    if isinstance(value, bool):  # `bool` subclasses `int`; reject.
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
+    """Parse a kombu broker envelope into structured metadata.
+
+    Returns an empty `CeleryEnvelopeMeta()` for anything we can't
+    parse so the fallback is "show the raw payload" rather than
+    "crash the admin".
+
+    Kombu envelopes shape:
+        {"body": "<base64 JSON>", "headers": {"task": "...", "id": "..."}, ...}
+
+    Inside the decoded body, index `[1]` is the task's keyword-args
+    dict — `repoid`, `commitid`, `ownerid`, `pullid` are read from
+    there. Different worker tasks carry different subsets (notify
+    has repoid+commitid, sync_pull has repoid+pullid, sync_repos
+    has ownerid only) so callers should treat every field as
+    independently optional.
     """
 
     try:
         envelope = json.loads(decoded)
     except (ValueError, TypeError):
-        return (None, None, None)
+        return CeleryEnvelopeMeta()
     if not isinstance(envelope, dict):
-        return (None, None, None)
+        return CeleryEnvelopeMeta()
 
     headers = envelope.get("headers") or {}
-    task = headers.get("task") if isinstance(headers, dict) else None
-    if not isinstance(task, str):
-        task = None
+    task: str | None = None
+    task_id: str | None = None
+    if isinstance(headers, dict):
+        raw_task = headers.get("task")
+        if isinstance(raw_task, str):
+            task = raw_task
+        raw_task_id = headers.get("id")
+        if isinstance(raw_task_id, str) and raw_task_id:
+            task_id = raw_task_id
 
     repoid: int | None = None
     commitid: str | None = None
+    ownerid: int | None = None
+    pullid: int | None = None
+    kwargs: dict[str, Any] | None = None
     body_b64 = envelope.get("body")
     if isinstance(body_b64, str) and body_b64:
         try:
@@ -295,15 +350,34 @@ def _peek_celery_envelope(decoded: str) -> tuple[str | None, int | None, str | N
             body = None
         if isinstance(body, list) and len(body) >= 2 and isinstance(body[1], dict):
             kwargs = body[1]
-            rid = kwargs.get("repoid")
-            if isinstance(rid, int):
-                repoid = rid
-            elif isinstance(rid, str) and rid.isdigit():
-                repoid = int(rid)
+            repoid = _coerce_int(kwargs.get("repoid"))
             cid = kwargs.get("commitid")
             if isinstance(cid, str) and cid:
                 commitid = cid
-    return (task, repoid, commitid)
+            ownerid = _coerce_int(kwargs.get("ownerid"))
+            pullid = _coerce_int(kwargs.get("pullid"))
+    return CeleryEnvelopeMeta(
+        task=task,
+        task_id=task_id,
+        repoid=repoid,
+        commitid=commitid,
+        ownerid=ownerid,
+        pullid=pullid,
+        kwargs=kwargs,
+    )
+
+
+def _peek_celery_envelope(decoded: str) -> tuple[str | None, int | None, str | None]:
+    """Backwards-compatible 3-tuple shim around `parse_celery_envelope`.
+
+    Kept for the existing `_celery_decode_value` summary line and any
+    downstream import that used the M4 signature; new callers should
+    prefer `parse_celery_envelope` to reach the additional fields
+    (`task_id`, `ownerid`, `pullid`, `kwargs`).
+    """
+
+    meta = parse_celery_envelope(decoded)
+    return (meta.task, meta.repoid, meta.commitid)
 
 
 def _celery_decode_value(raw_decoded: str) -> str:
