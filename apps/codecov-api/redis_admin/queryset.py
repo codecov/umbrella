@@ -22,8 +22,32 @@ import sentry_sdk
 from . import conn as _conn
 from . import settings as redis_admin_settings
 from .families import Family, find_family, iter_keys
+from .families import _decode as _decode_value  # noqa: PLC2701 - shared helper
 
 _UNSET: Any = object()
+
+
+def _ordering_key(obj: Any, attr: str) -> tuple:
+    """Sort key tolerant of `None` on mixed-type columns.
+
+    `list_display` columns like `report_type` are nullable strings:
+    rows from the `uploads` family populate them with `"coverage"` /
+    `"test_results"` while `ta_flake_key` rows leave them as `None`.
+    Python 3 won't compare `str` and `int`, so the previous
+    `getattr(obj, attr) or 0` sort key crashed with `TypeError` as
+    soon as one row's column was `None` and another's was a string
+    (Bugbot review on PR #887).
+
+    Returning a 2-tuple `(is_none, value_or_blank)` keeps `None` rows
+    grouped together (sorted last), and the inner `value_or_blank` is
+    only ever compared between two non-None values of the same
+    underlying field — so the comparison stays type-consistent.
+    """
+
+    value = getattr(obj, attr, None)
+    if value is None:
+        return (1, "")
+    return (0, value)
 
 
 def _build_redis_queue(model, key: str, family: Family, redis) -> Any:
@@ -64,13 +88,21 @@ def _build_redis_queue(model, key: str, family: Family, redis) -> Any:
 
 # Filter kwargs `RedisQueueQuerySet.filter()` understands; everything else
 # raises NotImplementedError so missing functionality is loud, not silent.
+#
+# Note on commitid: bare `commitid=` and `commitid__startswith=` map to
+# `commitid_prefix`, while `commitid__exact=` maps to its own
+# `commitid_exact` bucket. Both still pushdown the supplied value into
+# the SCAN MATCH (an exact value is a valid prefix), but the post-scan
+# predicate enforces equality vs. prefix so `__exact` keeps its Django
+# semantics — see Bugbot review on PR #887, where `__exact` was silently
+# behaving as a prefix match.
 _QUEUE_FILTER_KEYS: dict[str, str] = {
     "family": "family",
     "family__exact": "family",
     "repoid": "repoid",
     "repoid__exact": "repoid",
     "commitid": "commitid_prefix",
-    "commitid__exact": "commitid_prefix",
+    "commitid__exact": "commitid_exact",
     "commitid__startswith": "commitid_prefix",
     "report_type": "report_type",
     "report_type__exact": "report_type",
@@ -264,6 +296,12 @@ class RedisQueueQuerySet:
         commitid_prefix = f.get("commitid_prefix")
         if commitid_prefix and not (obj.commitid or "").startswith(commitid_prefix):
             return False
+        # `commitid__exact` shares the SCAN pushdown with `__startswith`
+        # (an exact value is a valid prefix), but enforces equality
+        # post-scan so its Django semantics are preserved.
+        commitid_exact = f.get("commitid_exact")
+        if commitid_exact and (obj.commitid or "") != commitid_exact:
+            return False
         # Families without a repoid in their key shape (e.g. intermediate-
         # report) opt out of repoid SCAN pushdown by returning None from
         # `pattern_for`, but a defensive post-scan check guards future
@@ -322,12 +360,20 @@ class RedisQueueQuerySet:
             # Don't pass an explicit redis to iter_keys here so it routes
             # SCAN / EXISTS against the connection each family owns. The
             # builder picks the matching client per yielded family.
+            #
+            # `commitid__exact` value is a valid prefix for SCAN MATCH
+            # purposes (an exact 40-char SHA tightens the pattern even
+            # more than a prefix); the post-scan predicate is what
+            # actually enforces the exact-vs-prefix semantic split.
+            scan_commitid = self._filters.get("commitid_prefix") or self._filters.get(
+                "commitid_exact"
+            )
             items = [
                 _build_redis_queue(self.model, key, family, _client_for(family))
                 for key, family in iter_keys(
                     family=self._filters.get("family"),
                     repoid=self._filters.get("repoid"),
-                    commitid_prefix=self._filters.get("commitid_prefix"),
+                    commitid_prefix=scan_commitid,
                     category=self._category,
                 )
             ]
@@ -338,7 +384,7 @@ class RedisQueueQuerySet:
             reverse = field.startswith("-")
             attr = field.lstrip("-")
             items.sort(
-                key=lambda obj, attr=attr: getattr(obj, attr) or 0, reverse=reverse
+                key=lambda obj, attr=attr: _ordering_key(obj, attr), reverse=reverse
             )
 
         self._result_cache = items
@@ -391,15 +437,6 @@ class RedisQueueQuerySet:
     @property
     def db(self) -> str:
         return "default"
-
-
-def _decode_value(value: bytes | str) -> str:
-    if isinstance(value, bytes):
-        try:
-            return value.decode("utf-8")
-        except UnicodeDecodeError:
-            return value.decode("utf-8", errors="replace")
-    return value
 
 
 def _truncate_for_display(value: str, *, cap: int | None = None) -> str:

@@ -178,6 +178,65 @@ def test_queryset_populates_repoid_commitid_report_type(patched_redis):
     assert flake_row.commitid is None
 
 
+def test_queryset_filter_by_commitid_exact_does_not_match_prefix(patched_redis):
+    """`commitid__exact` must do exact matching, not prefix matching.
+
+    Regression for the Bugbot review on PR #887: `commitid__exact` was
+    silently mapped onto the `commitid_prefix` post-scan predicate, so
+    `filter(commitid__exact="abc")` matched `"abcdef"` too. Operators
+    drilling in via the admin's `?commitid__exact=…` URL parameter
+    expected Django's standard `__exact` semantics.
+    """
+
+    patched_redis.rpush("uploads/1/abc", "x")
+    patched_redis.rpush("uploads/1/abcdef", "x")
+    patched_redis.rpush("uploads/1/abczzz", "x")
+
+    rows = list(RedisQueue.objects.filter(commitid__exact="abc"))
+    assert {r.name for r in rows} == {"uploads/1/abc"}
+
+
+def test_queryset_commitid_exact_and_startswith_have_distinct_semantics(patched_redis):
+    """`commitid__exact` and `commitid__startswith` must not alias."""
+
+    patched_redis.rpush("uploads/1/abc", "x")
+    patched_redis.rpush("uploads/1/abcdef", "x")
+
+    exact = {r.name for r in RedisQueue.objects.filter(commitid__exact="abc")}
+    starts = {r.name for r in RedisQueue.objects.filter(commitid__startswith="abc")}
+
+    assert exact == {"uploads/1/abc"}
+    assert starts == {"uploads/1/abc", "uploads/1/abcdef"}
+
+
+def test_queryset_sort_by_nullable_string_field_does_not_crash(patched_redis):
+    """Sorting a column that mixes string and `None` values must not crash.
+
+    Regression for the Bugbot review on PR #887: the previous
+    `getattr(obj, attr) or 0` sort key produced `int(0)` for `None`
+    rows and a `str` for populated ones, raising `TypeError` from
+    Python 3's `<` between `int` and `str` as soon as both row shapes
+    coexisted (e.g. an `uploads` row with `report_type="coverage"` and
+    a `ta_flake_key` row with `report_type=None`).
+    """
+
+    patched_redis.rpush("uploads/1/sha/coverage", "x")
+    patched_redis.rpush("uploads/1/sha/test_results", "x")
+    patched_redis.rpush("ta_flake_key:1", "x")
+
+    rows = list(RedisQueue.objects.all().order_by("report_type"))
+    names = [r.name for r in rows]
+
+    assert set(names) == {
+        "uploads/1/sha/coverage",
+        "uploads/1/sha/test_results",
+        "ta_flake_key:1",
+    }
+    # `None` rows sort last, so the populated rows come first in
+    # whatever order their string values dictate.
+    assert names[-1] == "ta_flake_key:1"
+
+
 def test_max_scan_keys_limits_result_set(patched_redis, settings, monkeypatch):
     settings.REDIS_ADMIN_MAX_SCAN_KEYS = 3
     # `families.iter_keys` reads MAX_SCAN_KEYS off the redis_admin settings

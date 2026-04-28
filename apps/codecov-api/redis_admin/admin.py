@@ -68,10 +68,16 @@ def _render_items_inline(obj, *, max_rows: int = _ITEMS_PREVIEW_MAX_ROWS):
     snapshot = list(items_qs[:max_rows])
 
     full_url = reverse("admin:redis_admin_redisqueueitem_changelist")
+    # URL-encode the queue name so keys containing `&`, `#`, `?`, or other
+    # query-meaningful characters round-trip cleanly into the items
+    # changelist filter (`format_html` only HTML-escapes; it doesn't
+    # percent-encode). Mirrors the `items_link` helper on
+    # `RedisQueueAdmin`, which already uses `urlencode`.
+    full_link_query = urlencode({"queue_name__exact": obj.name})
     full_link = format_html(
-        '<a href="{}?queue_name__exact={}">view all items \u2192</a>',
+        '<a href="{}?{}">view all items \u2192</a>',
         full_url,
-        obj.name,
+        full_link_query,
     )
 
     heading = format_html("<h2>{}</h2>", "Items")

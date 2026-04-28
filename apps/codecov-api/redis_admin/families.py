@@ -33,11 +33,12 @@ log = logging.getLogger(__name__)
 
 RedisType = Literal["list", "set", "hash", "string"]
 
-# Which Redis connection a family lives on. `default` = cache Redis at
-# `services.redis_url`; `broker` = Celery broker at
-# `services.celery_broker`, which is a separate Memorystore instance in
-# production. See `redis_admin.conn` for the URL plumbing.
-ConnectionKind = Literal["default", "broker"]
+# Which Redis connection a family lives on. Re-exported from
+# `redis_admin.conn` so callers can keep their `ConnectionKind`
+# imports family-shaped (`from .families import ConnectionKind`)
+# without spawning a duplicate definition that could silently drift
+# from the canonical one in `conn.py`.
+ConnectionKind = _conn.ConnectionKind
 
 
 @dataclass(frozen=True)
