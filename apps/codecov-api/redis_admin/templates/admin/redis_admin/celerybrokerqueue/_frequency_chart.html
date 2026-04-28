@@ -1,0 +1,139 @@
+{% load admin_urls %}
+
+{# Frequency chart for the celery_broker drill-down page.
+
+   Shape:
+   * `chart.queue_name` — the queue we materialised.
+   * `chart.total_visible` — total messages in the snapshot the chart
+     was computed from (`len(_fetch_all())`, NOT `LLEN`).
+   * `chart.total_depth` — `LLEN(queue)` at the time the chart was
+     built. When > `total_visible` we surface a "showing top N of
+     M" banner so operators know the percentages are over the
+     visible window.
+   * `chart.buckets` — list of `FrequencyBucket(repoid, commitid,
+     count, pct)`. Already sorted; rendered top-to-bottom.
+   * `chart.clear_by_filter_url` — base URL for the row-level
+     "Clear N" form action; we POST to it with `repoid` /
+     `commitid` / `csrfmiddlewaretoken`.
+   * `chart.can_clear` — boolean toggling the visibility of the
+     "Clear N" buttons (superuser-only; staff users see read-only
+     percentages).
+#}
+
+<div class="module" id="celery-frequency-chart" style="margin-bottom: 16px;">
+  <h2>Top {{ chart.buckets|length }} (repoid, commitid) pairs in
+    {{ chart.queue_name }}</h2>
+  {% if chart.total_depth > chart.total_visible %}
+    <p class="help">
+      Showing top {{ chart.buckets|length }} of
+      {{ chart.total_visible }} sampled messages
+      (queue depth: {{ chart.total_depth }}). Percentages are over the
+      sampled window, not the full queue.
+    </p>
+  {% else %}
+    <p class="help">
+      Showing top {{ chart.buckets|length }} of
+      {{ chart.total_visible }} message(s).
+    </p>
+  {% endif %}
+  <table class="celery-frequency">
+    <thead>
+      <tr>
+        <th scope="col">repoid</th>
+        <th scope="col">commitid</th>
+        <th scope="col" class="num">count</th>
+        <th scope="col">share</th>
+        {% if chart.can_clear %}
+          <th scope="col">action</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for bucket in chart.buckets %}
+        <tr>
+          <td>{{ bucket.repoid|default:"—" }}</td>
+          <td>
+            {% if bucket.commitid %}
+              <span title="{{ bucket.commitid }}">{{ bucket.commitid|slice:":7" }}</span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="num">{{ bucket.count }}</td>
+          <td>
+            <div class="celery-bar-track" aria-label="{{ bucket.pct|floatformat:1 }}% of sampled messages">
+              <div class="celery-bar-fill" style="width: {{ bucket.pct|floatformat:1 }}%;"></div>
+              <span class="celery-bar-pct">{{ bucket.pct|floatformat:1 }}%</span>
+            </div>
+          </td>
+          {% if chart.can_clear %}
+            <td>
+              <form method="post" action="{{ chart.clear_by_filter_url }}" style="margin: 0;">
+                {% csrf_token %}
+                <input type="hidden" name="queue_name" value="{{ chart.queue_name }}">
+                {% if bucket.repoid is not None %}
+                  <input type="hidden" name="repoid" value="{{ bucket.repoid }}">
+                {% endif %}
+                {% if bucket.commitid %}
+                  <input type="hidden" name="commitid" value="{{ bucket.commitid }}">
+                {% endif %}
+                <button type="submit" class="button" name="confirm" value="dry_run">
+                  Clear {{ bucket.count }}&hellip;
+                </button>
+              </form>
+            </td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<style>
+  /* Theme-safe styles (no hard-coded colours): we lean on
+     `var(--body-quiet-color)`, `var(--button-bg)`, etc. so the
+     panel adapts to Django's light/dark admin themes. */
+  #celery-frequency-chart table.celery-frequency {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  #celery-frequency-chart table.celery-frequency th,
+  #celery-frequency-chart table.celery-frequency td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-color, var(--hairline-color, #ccc));
+    vertical-align: middle;
+  }
+  #celery-frequency-chart table.celery-frequency th.num,
+  #celery-frequency-chart table.celery-frequency td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  #celery-frequency-chart .celery-bar-track {
+    position: relative;
+    height: 14px;
+    width: 100%;
+    min-width: 120px;
+    background: var(--darkened-bg, var(--body-bg, transparent));
+    border: 1px solid var(--border-color, var(--hairline-color, #ccc));
+    border-radius: 2px;
+  }
+  #celery-frequency-chart .celery-bar-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    background: var(--primary, currentColor);
+    opacity: 0.65;
+    border-radius: 2px;
+  }
+  #celery-frequency-chart .celery-bar-pct {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 6px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+</style>

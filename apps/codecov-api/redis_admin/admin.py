@@ -452,7 +452,16 @@ class RedisQueueAdmin(admin.ModelAdmin):
         "report_type",
         "items_link",
     )
-    list_filter = (FamilyFilter, CeleryQueueFilter, MinDepthFilter, ReportTypeFilter)
+    # `celery_broker` is intentionally absent from the queue
+    # changelist now: those queues are surfaced one-per-row (with a
+    # frequency chart and per-`(repoid, commitid)` clear flow) by
+    # `CeleryBrokerQueueAdmin`. `get_queryset` hides them with
+    # `.family_exclude("celery_broker")`. The `CeleryQueueFilter`
+    # sidebar — which existed only to let operators jump from the
+    # queue list to a specific celery queue — is removed for the
+    # same reason; the new admin's landing page is the discovery
+    # surface for celery queues.
+    list_filter = (FamilyFilter, MinDepthFilter, ReportTypeFilter)
     list_per_page = 50
     show_full_result_count = False
     ordering = ("-depth", "name")
@@ -496,6 +505,17 @@ class RedisQueueAdmin(admin.ModelAdmin):
     # users can still browse and dry-run; only superusers can commit.
     def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
         return bool(request.user and request.user.is_superuser)
+
+    def get_queryset(self, request: HttpRequest):
+        # Hide `celery_broker` queues: they have their own admin
+        # (`CeleryBrokerQueueAdmin`) which understands the
+        # one-row-per-message shape and surfaces a `(repoid,
+        # commitid)` frequency chart on the drill-down page. Showing
+        # them here would offer a redundant, less-informative view
+        # (one row + DEL of the entire queue) and defeat the
+        # discovery flow that points operators at the per-message
+        # admin from Grafana.
+        return super().get_queryset(request).family_exclude("celery_broker")
 
     def get_fieldsets(self, request, obj=None):
         # Avoid the default ModelForm-based fieldset detection (which would
@@ -1366,20 +1386,35 @@ class CeleryBrokerCommitFilter(admin.SimpleListFilter):
 
 @admin.register(CeleryBrokerQueue)
 class CeleryBrokerQueueAdmin(admin.ModelAdmin):
-    """Per-message admin for `celery_broker` queues.
+    """Two-mode admin for `celery_broker` queues.
 
-    Mirrors `RedisQueueAdmin`'s "view + dry-run + clear" flow, but
-    one row = one celery message, with the kombu envelope already
-    decoded into `task_name` / `repoid` / `commitid` columns so an
-    operator can filter by repo or commit and clear stuck messages
-    without DEL-ing the whole queue. Required pre-filter is
-    `queue_name__exact` — without it the changelist short-circuits
-    to empty + an info nudge. Per-message delete uses the canonical
-    LSET-tombstone path (`services.celery_broker_clear`) so it's
-    race-safe under concurrent celery consumers.
+    The same URL serves two different views, switched by whether the
+    request carries a `?queue_name__exact=<queue>` filter:
+
+    * **No queue filter (landing page).** One row per known celery
+      queue with `depth = LLEN(queue)`. The "messages" column is a
+      drill-in link that re-renders this admin with
+      `?queue_name__exact=<queue>`. This is the default entry
+      point so an on-call engineer who hits
+      `/admin/redis_admin/celerybrokerqueue/` from Grafana sees
+      every queue and its current depth at a glance.
+    * **`?queue_name__exact=<queue>` (drill-down).** One row per
+      kombu message inside that queue, with the envelope decoded
+      into `task_name` / `repoid` / `commitid` / `task_id` /
+      `ownerid` / `pullid` / `payload_preview` columns. Per-message
+      delete uses the canonical LSET-tombstone path
+      (`services.celery_broker_clear`) so it's race-safe under
+      concurrent celery consumers.
+
+    The model is the same `CeleryBrokerQueue` for both modes;
+    `get_list_display` / `get_list_display_links` /
+    `get_list_filter` / `get_actions` flip based on URL so each
+    mode shows the columns that are actually populated and the
+    actions that make sense for that scope.
     """
 
-    list_display = (
+    summary_list_display = ("queue_name", "depth", "messages_link")
+    message_list_display = (
         "index_in_queue",
         "task_name",
         "repoid_link",
@@ -1389,6 +1424,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         "task_id_short",
         "payload_preview_truncated",
     )
+    list_display = message_list_display
     list_filter = (
         CeleryQueueFilter,
         CeleryBrokerTaskFilter,
@@ -1435,11 +1471,6 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         # commit is superuser-only.
         return bool(request.user and request.user.is_superuser)
 
-    def get_actions(self, request):
-        actions = super().get_actions(request)
-        actions.pop("delete_selected", None)
-        return actions
-
     def lookup_allowed(self, lookup, value) -> bool:
         if lookup in (
             "queue_name__exact",
@@ -1462,10 +1493,51 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             return True
         return super().lookup_allowed(lookup, value)
 
+    @staticmethod
+    def _is_summary_request(request: HttpRequest) -> bool:
+        """Summary mode = no `queue_name__exact` filter on the URL."""
+
+        return not request.GET.get("queue_name__exact")
+
+    def get_list_display(self, request: HttpRequest):
+        if self._is_summary_request(request):
+            return self.summary_list_display
+        return self.message_list_display
+
+    def get_list_display_links(self, request: HttpRequest, list_display):
+        if self._is_summary_request(request):
+            # Summary rows expose their drill-in via `messages_link`;
+            # don't make Django wrap `queue_name` in a change-view link
+            # (the change-view for a summary pk doesn't render anything
+            # useful, since there's no real "queue object" to inspect).
+            return (None,) if not list_display else None
+        return super().get_list_display_links(request, list_display)
+
+    def get_list_filter(self, request: HttpRequest):
+        if self._is_summary_request(request):
+            # The message-shaped sidebar filters (task / repoid /
+            # commit) don't apply to queue summaries; hide them so
+            # the landing page stays focused on "pick a queue".
+            return ()
+        return self.list_filter
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop("delete_selected", None)
+        if self._is_summary_request(request):
+            # Bulk-clear lives on the per-message view; selecting
+            # whole queues and clearing them would amount to a `DEL`,
+            # which the existing `RedisQueueAdmin` clear flow already
+            # owns. Keep the surfaces non-overlapping.
+            actions.pop("clear_dry_run", None)
+            actions.pop("clear_selected", None)
+        return actions
+
     def get_queryset(self, request: HttpRequest):
         # Bypass ChangeList's `.filter(**lookup_params)` plumbing so the
-        # required `queue_name__exact` survives untouched even when no
-        # list_filter is declared on the URL.
+        # `queue_name__exact` flip between summary and per-message
+        # mode survives untouched even when no list_filter is
+        # declared on the URL.
         queryset = self.model._default_manager.all()
         queue_name = request.GET.get("queue_name__exact")
         if queue_name:
@@ -1473,13 +1545,190 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         return queryset
 
     def changelist_view(self, request: HttpRequest, extra_context=None):
-        if not request.GET.get("queue_name__exact"):
-            messages.info(
-                request,
-                "Pick a celery_broker queue from the Redis queues list "
-                "(the 'view items' link) to see its messages.",
+        # No info nudge — the empty-state used to ask the operator to
+        # navigate back to `RedisQueue`, but `celery_broker` is now
+        # hidden from that admin; the landing page itself is the
+        # queue-discovery surface.
+        ctx = dict(extra_context or {})
+        if not self._is_summary_request(request):
+            chart_ctx = self._build_frequency_chart_context(request)
+            if chart_ctx is not None:
+                ctx["frequency_chart"] = chart_ctx
+        return super().changelist_view(request, ctx)
+
+    def _build_frequency_chart_context(self, request: HttpRequest) -> dict | None:
+        """Compute the frequency chart payload for the drill-down view.
+
+        Returns `None` when the chart should not render (no queue
+        filter, no buckets, or `LRANGE` couldn't reach the broker).
+        Bound to the changelist's underlying queryset rather than a
+        fresh `_default_manager.all()` so the frequency totals stay
+        consistent with the visible row set.
+        """
+
+        queue_name = request.GET.get("queue_name__exact")
+        if not queue_name:
+            return None
+        queryset = self.get_queryset(request)
+        try:
+            buckets = queryset.frequency_by_repo_commit()
+        except Exception:  # pragma: no cover - broker outage path
+            return None
+        if not buckets:
+            return None
+        total_visible = len(queryset)
+        total_depth = total_visible
+        try:
+            client = _conn.client_for("broker")
+            llen = client.llen(queue_name)
+            if isinstance(llen, int) and llen >= 0:
+                total_depth = llen
+        except Exception:  # pragma: no cover - defensive
+            pass
+        try:
+            clear_url = reverse("admin:redis_admin_celerybrokerqueue_clear_by_filter")
+        except NoReverseMatch:  # pragma: no cover - URL is wired below
+            clear_url = ""
+        return {
+            "queue_name": queue_name,
+            "buckets": buckets,
+            "total_visible": total_visible,
+            "total_depth": total_depth,
+            "can_clear": request.user.is_superuser,
+            "clear_by_filter_url": clear_url,
+        }
+
+    def get_urls(self):
+        urls = super().get_urls()
+        opts = self.model._meta
+        clear_url = path(
+            "clear-by-filter/",
+            self.admin_site.admin_view(self.clear_by_filter_view),
+            name=f"{opts.app_label}_{opts.model_name}_clear_by_filter",
+        )
+        # Inserted before the catch-all `<path:object_id>/` patterns so
+        # `clear-by-filter/` doesn't get swallowed as an object_id.
+        return [clear_url, *urls]
+
+    def clear_by_filter_view(self, request: HttpRequest) -> HttpResponse:
+        """Targeted clear by `(queue_name, repoid?, commitid?)`.
+
+        Reached from the frequency chart's per-row "Clear N…" button
+        (see `_frequency_chart.html`). The button submits a POST with
+        the bucket's `repoid` / `commitid` already wired in; this view
+        re-materialises the matching messages, asks the operator for a
+        typed confirmation, then routes the deletion through
+        `services.celery_broker_clear` so the LSET-tombstone path runs
+        and the audit log captures the operation.
+        """
+
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "redis_admin clear-by-filter is restricted to superusers"
             )
-        return super().changelist_view(request, extra_context)
+
+        params = request.POST if request.method == "POST" else request.GET
+        queue_name = (params.get("queue_name") or "").strip()
+        repoid_raw = (params.get("repoid") or "").strip()
+        commitid = (params.get("commitid") or "").strip()
+        action = (request.POST.get("action") or "").strip()
+        # Default action when the chart's primary submit (named
+        # `confirm=dry_run`) lands here is a dry-run preview.
+        if not action and (request.POST.get("confirm") or "") == "dry_run":
+            action = "dry_run"
+
+        opts = self.model._meta
+        changelist_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist")
+        if queue_name:
+            changelist_url = (
+                f"{changelist_url}?{urlencode({'queue_name__exact': queue_name})}"
+            )
+
+        if not queue_name:
+            messages.error(request, "queue_name is required for clear-by-filter")
+            return HttpResponseRedirect(changelist_url)
+
+        repoid: int | None = None
+        if repoid_raw:
+            try:
+                repoid = int(repoid_raw)
+            except ValueError:
+                messages.error(
+                    request,
+                    f"repoid must be an integer; got {repoid_raw!r}",
+                )
+                return HttpResponseRedirect(changelist_url)
+
+        # At least one narrowing filter beyond the queue is required —
+        # otherwise this view collapses into "clear the whole queue",
+        # which the M5 `clear_by_scope` flow already owns. Keeping
+        # the surfaces non-overlapping prevents two ways to do the
+        # same thing with subtly different audit-log shapes.
+        if repoid is None and not commitid:
+            messages.error(
+                request,
+                "Refusing to clear: at least one of repoid or commitid must be set",
+            )
+            return HttpResponseRedirect(changelist_url)
+
+        queryset = self.model._default_manager.all().filter(
+            queue_name__exact=queue_name
+        )
+        if repoid is not None:
+            queryset = queryset.filter(repoid=repoid)
+        if commitid:
+            queryset = queryset.filter(commitid__startswith=commitid)
+        targets = list(queryset)
+
+        expected_confirm = queue_name
+        typed_confirm = (request.POST.get("typed_confirm") or "").strip()
+        confirm_error: str | None = None
+
+        if request.method == "POST" and action in ("dry_run", "confirm"):
+            if not targets:
+                messages.info(
+                    request,
+                    "No messages match the filter — nothing to clear.",
+                )
+                return HttpResponseRedirect(changelist_url)
+            if action == "confirm" and typed_confirm != expected_confirm:
+                confirm_error = f"Typed confirmation must equal {expected_confirm!r}"
+            else:
+                dry_run = action == "dry_run"
+                result = celery_broker_clear(
+                    targets, user=request.user, dry_run=dry_run
+                )
+                if dry_run:
+                    messages.info(
+                        request,
+                        f"Dry-run: would clear {result.count} message(s) from "
+                        f"{queue_name}",
+                    )
+                else:
+                    messages.success(
+                        request,
+                        f"Cleared {result.count} message(s) from {queue_name}",
+                    )
+                    return HttpResponseRedirect(changelist_url)
+
+        sample_targets = targets[:25]
+        ctx = {
+            **self.admin_site.each_context(request),
+            "title": f"Clear {queue_name} by filter",
+            "opts": opts,
+            "queue_name": queue_name,
+            "repoid": repoid,
+            "commitid": commitid,
+            "target_count": len(targets),
+            "sample_targets": sample_targets,
+            "expected_confirm": expected_confirm,
+            "typed_confirm": typed_confirm,
+            "confirm_error": confirm_error,
+            "changelist_url": changelist_url,
+        }
+        return render(
+            request, "admin/redis_admin/celerybrokerqueue/clear_by_filter.html", ctx
+        )
 
     def get_search_results(self, request, queryset, search_term):
         if not search_term:
@@ -1631,3 +1880,28 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
     @admin.display(description="payload")
     def payload_preview_truncated(self, obj: CeleryBrokerQueue) -> str:
         return obj.payload_preview or ""
+
+    @admin.display(description="messages")
+    def messages_link(self, obj: CeleryBrokerQueue) -> str:
+        """Drill-in link rendered on each summary row.
+
+        Re-renders the same admin URL with `?queue_name__exact=<queue>`,
+        which flips `get_list_display` from `summary_list_display` to
+        `message_list_display` and replaces this column set with the
+        per-message decoder columns (`task_name`, `repoid_link`, …).
+        """
+
+        depth = obj.depth or 0
+        try:
+            base = reverse("admin:redis_admin_celerybrokerqueue_changelist")
+        except NoReverseMatch:  # pragma: no cover - defensive
+            return f"{depth} message(s)"
+        query = urlencode({"queue_name__exact": obj.queue_name})
+        # Match Django admin's standard "view link" copy and styling so
+        # the column reads naturally next to `depth`.
+        return format_html(
+            '<a href="{}?{}">view {} message(s) \u2192</a>',
+            base,
+            query,
+            depth,
+        )

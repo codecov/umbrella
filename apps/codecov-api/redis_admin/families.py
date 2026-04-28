@@ -825,6 +825,7 @@ def iter_keys(
     redis=None,
     *,
     family: str | None = None,
+    family_exclude: Iterable[str] | None = None,
     repoid: int | None = None,
     commitid_prefix: str | None = None,
     category: Literal["queue", "lock"] | None = None,
@@ -883,6 +884,7 @@ def iter_keys(
         yield from _iter_keys_inner(
             resolve_client,
             family=family,
+            family_exclude=frozenset(family_exclude or ()),
             category=category,
             cap=cap,
             count=count,
@@ -894,6 +896,7 @@ def _iter_keys_inner(
     resolve_client: Callable[[ConnectionKind], Any],
     *,
     family: str | None,
+    family_exclude: frozenset[str],
     category: Literal["queue", "lock"] | None,
     cap: int,
     count: int,
@@ -911,6 +914,11 @@ def _iter_keys_inner(
 
     for fam in FAMILIES:
         if family and fam.name != family:
+            continue
+        if family_exclude and fam.name in family_exclude:
+            # Caller (typically `RedisQueueAdmin`) opted this family
+            # out of the changelist — skip both `fixed_keys` and SCAN
+            # entirely so we don't even open a connection for it.
             continue
         if category is not None and fam.category != category:
             continue

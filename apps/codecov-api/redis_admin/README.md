@@ -21,9 +21,9 @@ ORM-backed rows — list_display, search, filters, pagination, and
 
 | Model | Audience | Mutable? |
 |---|---|---|
-| `RedisQueue` | Queue families: `uploads/*`, `ta_flake_key:*`, `latest_upload/*`, `upload-processing-state/*`, `intermediate-report/*`, Celery broker queues (`celery`, `healthcheck`, `enterprise_*`, `task_routes` values) | Yes (superuser only) |
-| `RedisQueueItem` | Items inside a single queue (LIST entries / SET members / HASH fields / STRING value). Used for non-celery families. | Yes (superuser only) |
-| `CeleryBrokerQueue` | One row per celery message inside one `celery_broker` queue, with the kombu envelope already parsed into `task_name` / `repoid` / `commitid` / `task_id` / `ownerid` / `pullid` columns. The default click-through from a `celery_broker` `RedisQueue` row lands here. | Yes (superuser only) |
+| `RedisQueue` | Queue families excluding celery: `uploads/*`, `ta_flake_key:*`, `latest_upload/*`, `upload-processing-state/*`, `intermediate-report/*`. Celery broker queues are hidden here (see `CeleryBrokerQueue` row below). | Yes (superuser only) |
+| `RedisQueueItem` | Items inside a single non-celery queue (LIST entries / SET members / HASH fields / STRING value). | Yes (superuser only) |
+| `CeleryBrokerQueue` | Two-mode admin for `celery_broker`. **Summary mode** (no `queue_name__exact`): one row per known queue with `LLEN` and a drill-in link. **Drill-down mode** (`?queue_name__exact=<queue>`): one row per kombu message, with the envelope parsed into `task_name` / `repoid` / `commitid` / `task_id` / `ownerid` / `pullid` columns + a `(repoid, commitid)` frequency chart above the table. The default discovery surface for celery queues. | Yes (superuser only) |
 | `RedisLock` | Lock families: `*_lock_*`, `upload_finisher_gate_*`, `ta_flake_lock:*`, `lock_attempts:*`, `ta_notifier_fence:*`, `coordination_lock:*` | Read-only (always) |
 
 Lock families are flagged `is_deletable=False` in the registry and
@@ -34,11 +34,13 @@ accidentally surfaces them under `RedisQueue`.
 
 | Path | Purpose |
 |---|---|
-| `/admin/redis_admin/redisqueue/` | Browse Redis queue keys |
+| `/admin/redis_admin/redisqueue/` | Browse non-celery queue families (celery_broker is hidden via `family_exclude`) |
 | `/admin/redis_admin/redisqueue/<key>/change/` | Inspect a single queue, with a tabular-inline preview of its items |
 | `/admin/redis_admin/redisqueueitem/?queue_name__exact=<key>` | Browse the full items of a queue (non-celery families) |
 | `/admin/redis_admin/redisqueueitem/<token>/change/` | Inspect a single item |
-| `/admin/redis_admin/celerybrokerqueue/?queue_name__exact=<queue>` | Browse messages inside a celery broker queue with structured task / repoid / commitid columns and per-message clear |
+| `/admin/redis_admin/celerybrokerqueue/` | **Celery summary** — one row per known celery_broker queue with current `LLEN` and a drill-in link |
+| `/admin/redis_admin/celerybrokerqueue/?queue_name__exact=<queue>` | **Celery drill-down** — messages inside a celery broker queue with structured task / repoid / commitid columns, a `(repoid, commitid)` frequency chart, and per-message clear |
+| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/` | Clear every message in `<queue>` matching a given `(repoid, commitid?)` filter (POST-only, superuser-only). Wired up by the frequency chart's per-row "Clear N…" button |
 | `/admin/redis_admin/redislock/` | Browse Redis locks (read-only) |
 | `/admin/redis_admin/redisqueue/clear-by-scope/` | M6 — cross-family clear-by-scope (superuser only) |
 
@@ -171,14 +173,34 @@ the worker-side `setup.tasks.*.queue` env vars and so
 `BaseCeleryConfig.task_routes` resolves every route to
 `task_default_queue`.
 
-## Celery broker drill-down
+## Celery broker admin
 
-Clicking `view items` on a `celery_broker` `RedisQueue` row lands
-on `CeleryBrokerQueueAdmin` (URL: `/admin/redis_admin/celerybrokerqueue/?queue_name__exact=<queue>`),
-which is the celery-aware drill-down: one row = one celery
-message, with the kombu envelope already parsed into structured
-columns. Other families keep using the generic `RedisQueueItem`
-inspector unchanged.
+`CeleryBrokerQueueAdmin` is a two-mode polymorphic admin: the same
+URL serves a queue-summary landing page or a per-message drill-
+down depending on whether the request carries a
+`?queue_name__exact=<queue>` filter. Other families keep using
+`RedisQueue` / `RedisQueueItem` unchanged; `RedisQueueAdmin`
+calls `family_exclude("celery_broker")` so the celery queues
+don't double up between the two admins.
+
+### Summary mode (`/admin/redis_admin/celerybrokerqueue/`)
+
+The default landing page when an on-call engineer clicks through
+from Grafana. One row per known celery queue:
+
+| Column | Source |
+|---|---|
+| `queue_name` | `_resolve_celery_queue_names()` (`BaseCeleryConfig.task_routes` + `celery`/`healthcheck` defaults + operator-supplied `setup.redis_admin.celery_queues`) |
+| `depth` | `LLEN(<queue>)` |
+| `messages` | Drill-in link "view N message(s) →" that re-renders the same admin with `?queue_name__exact=<queue>` |
+
+`get_list_filter` returns `()` and `get_actions` strips the bulk
+clear actions in summary mode — the page is intentionally a
+read-only "pick a queue" surface; clears live on the drill-down.
+
+### Drill-down mode (`?queue_name__exact=<queue>`)
+
+One row per kombu message inside the selected queue:
 
 | Column | Source |
 |---|---|
@@ -202,6 +224,39 @@ Search bar tokens (in addition to bare substrings, which match
 Sidebar filters: queue (well-known celery queue names), celery
 task (dynamic dropdown built from the `task_name` values present
 in the currently filtered queue), repoid, commit prefix.
+
+### Frequency chart
+
+Above the message table on the drill-down view, the admin renders
+a `(repoid, commitid)` frequency chart computed from the same
+`LRANGE` snapshot the changelist iterated. One row per top-N
+bucket, sorted by `(count desc, repoid asc, commitid asc)` for a
+stable order across reloads. Each row shows:
+
+- `repoid` and the 7-char commit prefix (full SHA on hover)
+- the bucket's `count` and percentage share of the visible window
+- a per-bucket "Clear N…" submit button (superuser-only) that
+  POSTs the bucket's `(queue, repoid, commitid)` to
+  `clear-by-filter/`
+
+The chart's percentages are computed against the visible
+`LRANGE 0 MAX_ITEMS_PER_KEY-1` window, not against `LLEN`. When
+`LLEN > MAX_ITEMS_PER_KEY` the chart surfaces a "showing top N
+of M sampled messages (queue depth: K)" banner so operators know
+the share is over the visible window.
+
+### `clear-by-filter/` (chart-driven targeted clear)
+
+`POST /admin/redis_admin/celerybrokerqueue/clear-by-filter/` —
+superuser-only, dry-run-then-confirm. Required form fields:
+`queue_name`, plus at least one of `repoid` / `commitid`
+(refusing the empty-narrowing case keeps the surface from
+overlapping `clear-by-scope/`). Renders a confirmation page that
+lists matching messages and asks the operator to re-type the
+queue name before arming the destructive button. Both dry-run
+and confirm runs go through `services.celery_broker_clear`, so
+the LSET-tombstone path runs and the audit log captures the
+operation under `scope="celery_broker_clear"`.
 
 ### Per-message clear (LSET-tombstone)
 

@@ -1,0 +1,114 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-list{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{{ changelist_url }}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; Clear by filter
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <p>
+    Clears every kombu message in <code>{{ queue_name }}</code> whose
+    decoded envelope matches the <em>(repoid, commitid)</em> filter
+    below. Uses the LSET-tombstone path so concurrent celery
+    consumers stay safe (race window can only ever turn a real
+    message into a no-op tombstone, never the other way around).
+  </p>
+  <p>
+    Run a <strong>dry-run</strong> first to see what would be cleared.
+    Both dry-run and confirm runs are written to the
+    <code>django.contrib.admin.LogEntry</code> audit log under
+    <code>scope=&quot;celery_broker_clear&quot;</code>.
+  </p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="queue_name" value="{{ queue_name }}">
+    {% if repoid is not None %}<input type="hidden" name="repoid" value="{{ repoid }}">{% endif %}
+    {% if commitid %}<input type="hidden" name="commitid" value="{{ commitid }}">{% endif %}
+
+    <fieldset class="module">
+      <h2>Scope</h2>
+      <p>
+        Queue: <code>{{ queue_name }}</code><br>
+        Repo:  {% if repoid is not None %}<code>{{ repoid }}</code>{% else %}<em>(any)</em>{% endif %}<br>
+        Commit:
+        {% if commitid %}
+          <code title="{{ commitid }}">{{ commitid|slice:":7" }}</code>
+        {% else %}
+          <em>(any)</em>
+        {% endif %}
+      </p>
+    </fieldset>
+
+    <fieldset class="module">
+      <h2>Matched: {{ target_count }} message(s)</h2>
+
+      {% if target_count == 0 %}
+        <p><em>No celery_broker messages currently match this filter.</em></p>
+      {% else %}
+        <p>
+          The first {{ sample_targets|length }} matched message(s):
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Index</th>
+              <th>Task</th>
+              <th>repoid</th>
+              <th>commit</th>
+              <th>task id</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in sample_targets %}
+            <tr>
+              <td>{{ t.index_in_queue }}</td>
+              <td>{{ t.task_name|default:"—" }}</td>
+              <td>{{ t.repoid|default_if_none:"—" }}</td>
+              <td>{% if t.commitid %}<code>{{ t.commitid|slice:":7" }}</code>{% else %}—{% endif %}</td>
+              <td>{% if t.task_id %}<code>{{ t.task_id|slice:":8" }}</code>{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if target_count > sample_targets|length %}
+          <p><em>Showing first {{ sample_targets|length }} of {{ target_count }} matching message(s).</em></p>
+        {% endif %}
+
+        <h3>Confirm and clear</h3>
+        <div class="form-row{% if confirm_error %} errors{% endif %}">
+          <div>
+            {% if confirm_error %}<ul class="errorlist"><li>{{ confirm_error }}</li></ul>{% endif %}
+            <label for="id_typed_confirm">Type <code>{{ expected_confirm }}</code> to confirm:</label>
+            <input type="text" name="typed_confirm" id="id_typed_confirm" value="{{ typed_confirm }}" autocomplete="off">
+            <div class="help">Re-type the queue name above to enable the destructive button.</div>
+          </div>
+        </div>
+
+        <div class="submit-row">
+          <button type="submit" name="action" value="dry_run" class="default">
+            Dry-run (audit only, no mutations)
+          </button>
+          <button type="submit" name="action" value="confirm" class="deletelink" style="margin-left:1em;">
+            Clear {{ target_count }} message(s) from {{ queue_name }}
+          </button>
+        </div>
+      {% endif %}
+    </fieldset>
+
+    <p>
+      <a href="{{ changelist_url }}">&larr; back to {{ queue_name }} messages</a>
+    </p>
+  </form>
+
+</div>
+{% endblock %}
