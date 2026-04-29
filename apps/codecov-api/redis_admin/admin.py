@@ -42,6 +42,7 @@ from .queryset import (
     CeleryBrokerQueueQuerySet,
     RedisItemQuerySet,
     _build_redis_queue,
+    resolve_payload_preview,
 )
 from .services import celery_broker_clear, redis_delete
 
@@ -1554,6 +1555,12 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         queue_name = request.GET.get("queue_name__exact")
         if queue_name:
             queryset = queryset.filter(queue_name__exact=queue_name)
+        # Plumb the request through so the changelist and the
+        # frequency-chart context builder share a single LRANGE +
+        # parse pass on the same queue (each calls `get_queryset`
+        # separately during one render; without the cache, each
+        # round-trips Redis on its own).
+        queryset._request = request
         return queryset
 
     def changelist_view(self, request: HttpRequest, extra_context=None):
@@ -1999,7 +2006,11 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
 
     @admin.display(description="payload")
     def payload_preview_truncated(self, obj: CeleryBrokerQueue) -> str:
-        return obj.payload_preview or ""
+        # Lazy-render on first display: the changelist queryset
+        # constructs every row with an empty preview and a stashed
+        # `_kwargs_for_preview`, so the per-row JSON-render cost only
+        # gets paid for rows that actually paginate onto the screen.
+        return resolve_payload_preview(obj)
 
     @admin.display(description="messages")
     def messages_link(self, obj: CeleryBrokerQueue) -> str:
