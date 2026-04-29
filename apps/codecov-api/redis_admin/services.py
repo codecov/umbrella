@@ -542,8 +542,6 @@ def _streaming_celery_clear(
     "clear all but first (lowest-index match)" semantic.
     """
 
-    tombstone_bytes = tombstone.encode() if isinstance(tombstone, str) else tombstone
-
     total_lset = 0
     total_drifted = 0
     prev_lset: int | None = None
