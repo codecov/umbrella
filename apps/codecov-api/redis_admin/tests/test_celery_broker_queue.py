@@ -33,6 +33,7 @@ from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
 from redis_admin import services as redis_admin_services
+from redis_admin.admin import _resolve_repo_displays
 from redis_admin.families import parse_celery_envelope
 from redis_admin.models import CeleryBrokerQueue, RedisQueue
 from redis_admin.queryset import (
@@ -44,6 +45,7 @@ from redis_admin.services import (
     celery_broker_clear,
 )
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
+from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from utils.test_utils import Client
 
 # ---- helpers ---------------------------------------------------------------
@@ -858,12 +860,21 @@ class CeleryFrequencyChartTest(TestCase):
         redis_admin_conn.get_connection = self._orig_get_connection  # type: ignore[assignment]
 
     def test_drill_down_renders_frequency_chart_panel(self):
+        # Seed a real Repository row so the chart's repo cell can
+        # resolve `repoid` → `service:owner/name` via
+        # `_resolve_repo_displays` (the same helper backing the
+        # `repo_display` column on `RedisQueueAdmin`).
+        owner = OwnerFactory(service="github", username="codecov")
+        repo = RepositoryFactory(author=owner, name="example")
         for _ in range(2):
             self.redis.rpush(
                 "celery",
                 _build_envelope(
                     task="app.tasks.notify.NotifyTask",
-                    kwargs={"repoid": 99, "commitid": "deadbeef"},
+                    kwargs={
+                        "repoid": repo.repoid,
+                        "commitid": "deadbeef",
+                    },
                 ),
             )
 
@@ -874,18 +885,92 @@ class CeleryFrequencyChartTest(TestCase):
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
         # Panel header anchored to the chart fragment ID + the
-        # bucket's per-row "Clear N…" button copy.
+        # bucket's per-row "Clear N…" button copy. Heading order
+        # mirrors the column order: repoid → commitid → task.
         assert "celery-frequency-chart" in body
-        assert "Top 1 (task, repoid, commitid) triples in" in body
+        assert "Top 1 (repoid, commitid, task) triples in" in body
         assert "Clear 2" in body
-        # Task name renders in the new column.
+        # Task name renders in the (now third) task column.
         assert "app.tasks.notify.NotifyTask" in body
+        # Repo cell renders the `service:owner/name` display string
+        # wrapped in a link to the standard `core_repository_change`
+        # admin page (matches what `RedisQueueAdmin`'s repo_display
+        # already does on the queues changelist).
+        assert "github:codecov/example" in body
+        assert f"/admin/core/repository/{repo.repoid}/change/" in body
+        # Destructive button is styled with Django admin's
+        # `deletelink` class, matching `clear_by_scope` /
+        # `clear_by_filter` confirm pages.
+        assert 'class="deletelink"' in body
+        # 2-message bucket gets the standard "keep first" sibling
+        # (count >= 2 gates this).
+        assert "Clear 1, keep first" in body
+        assert 'name="mode" value="keep_one"' in body
         # The form action wires through the chart's clear-by-filter
         # URL with the bucket's task_name + repoid + commitid pre-
         # populated.
         assert 'name="task_name"' in body
         assert 'name="repoid"' in body
         assert 'name="commitid"' in body
+        # Chart column header order (repoid, commitid, task) — assert
+        # task header appears AFTER the commitid header in the
+        # rendered HTML so a future template tweak that re-orders
+        # them gets caught here.
+        repoid_pos = body.find(">repoid<")
+        commitid_pos = body.find(">commitid<")
+        task_pos = body.find(">task<")
+        assert repoid_pos != -1 and commitid_pos != -1 and task_pos != -1
+        assert repoid_pos < commitid_pos < task_pos
+
+    def test_chart_does_not_render_keep_first_for_single_message_bucket(self):
+        # Singleton bucket (count=1) — "Clear N-1, keep first" would
+        # be a no-op so we don't render it. The destructive "Clear 1…"
+        # button is still emitted.
+        self.redis.rpush(
+            "celery",
+            _build_envelope(
+                task="app.tasks.notify.NotifyTask",
+                kwargs={"repoid": 1, "commitid": "abc"},
+            ),
+        )
+
+        response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/?queue_name__exact=celery"
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        assert "celery-frequency-chart" in body
+        # Destructive button still renders.
+        assert "Clear 1" in body
+        # No "keep first" button on a singleton bucket. Anchor on
+        # the form-input value (the explanatory string "keep first"
+        # also appears in the chart's CSS comments, so we assert on
+        # the structural marker instead).
+        assert 'name="mode" value="keep_one"' not in body
+        assert "Clear 0, keep first" not in body
+
+    def test_chart_falls_back_to_bare_repoid_when_repo_missing(self):
+        # No `Repository` row matches `repoid=99999` → the chart
+        # gracefully degrades to the bare numeric repoid instead of
+        # 500ing or rendering an empty cell.
+        for _ in range(2):
+            self.redis.rpush(
+                "celery",
+                _build_envelope(kwargs={"repoid": 99999, "commitid": "abc"}),
+            )
+
+        response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/?queue_name__exact=celery"
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        assert "celery-frequency-chart" in body
+        assert "99999" in body
+        # No `service:owner/name` should appear — the lookup miss
+        # returns `None` and the template falls back to the int.
+        assert "github:" not in body
 
     def test_summary_view_does_not_render_chart(self):
         self.redis.rpush(
@@ -1076,6 +1161,137 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
             "app.tasks.bundle_analysis.BundleAnalysisProcessor"
         )
 
+    def test_keep_one_leaves_lowest_index_match_in_queue(self):
+        # `mode=keep_one` should clear every match EXCEPT the one
+        # with the lowest `index_in_queue` — i.e. the head-of-queue,
+        # the next message a Celery worker would pop. With three
+        # matching messages at indexes 0/1/2, indexes 1 and 2 are
+        # cleared and index 0 stays.
+        self._push(
+            task="app.tasks.notify.NotifyTask",
+            task_id="keep-this-one",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+        self._push(
+            task="app.tasks.notify.NotifyTask",
+            task_id="drop-1",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+        self._push(
+            task="app.tasks.notify.NotifyTask",
+            task_id="drop-2",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+        # Plus an unrelated task that should be untouched regardless.
+        self._push(
+            task="app.tasks.notify.NotifyTask",
+            task_id="unrelated",
+            kwargs={"repoid": 99, "commitid": "zzzz"},
+        )
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "task_name": "app.tasks.notify.NotifyTask",
+                "repoid": "1",
+                "commitid": "aaaa",
+                "mode": "keep_one",
+                "action": "confirm",
+                "typed_confirm": "celery",
+            },
+            follow=False,
+        )
+
+        assert response.status_code in (302, 303)
+        remaining = self.redis.lrange("celery", 0, -1)
+        # Only `keep-this-one` (lowest-index match) and the
+        # unrelated repo=99 message survive.
+        surviving_task_ids = {json.loads(item)["headers"]["id"] for item in remaining}
+        assert surviving_task_ids == {"keep-this-one", "unrelated"}
+
+    def test_keep_one_dry_run_reports_n_minus_one_count(self):
+        # The dry-run path should preview "would clear N-1 of N
+        # (keeping index=K)" — surfacing the keep-first semantic so
+        # operators can sanity-check before re-submitting with
+        # `action=confirm`.
+        self._push(
+            task="app.tasks.notify.NotifyTask",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+        self._push(
+            task="app.tasks.notify.NotifyTask",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+        self._push(
+            task="app.tasks.notify.NotifyTask",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "task_name": "app.tasks.notify.NotifyTask",
+                "repoid": "1",
+                "commitid": "aaaa",
+                "mode": "keep_one",
+                "action": "dry_run",
+            },
+            follow=False,
+        )
+
+        # Dry-run re-renders the confirm template (200, no redirect).
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        # Confirm page surfaces the keep-first semantic in the
+        # heading + the "Mode" line in the scope fieldset.
+        assert "Matched: 3" in body
+        assert (
+            "will clear 2" in body
+            or "Matched: 3 message(s) &mdash; will clear 2" in body
+        )
+        assert "keep_one" in body
+        # All three messages still in the queue (dry-run doesn't
+        # mutate).
+        assert self.redis.llen("celery") == 3
+
+    def test_keep_one_is_noop_when_only_one_match(self):
+        # Single-message bucket: `mode=keep_one` would have to drop
+        # the only in-flight message to do anything, which defeats
+        # the "keep first" semantic. The chart only renders the
+        # button for count >= 2, but a hand-crafted POST or a count
+        # change between render and submit could still land here —
+        # the view must short-circuit with a friendly info message
+        # and leave the queue untouched.
+        self._push(
+            task="app.tasks.notify.NotifyTask",
+            task_id="only-one",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "task_name": "app.tasks.notify.NotifyTask",
+                "repoid": "1",
+                "commitid": "aaaa",
+                "mode": "keep_one",
+                "action": "confirm",
+                "typed_confirm": "celery",
+            },
+            follow=False,
+        )
+
+        # Redirected back to the queue's changelist with an info
+        # message; the message is still in the queue.
+        assert response.status_code in (302, 303)
+        remaining = self.redis.lrange("celery", 0, -1)
+        assert len(remaining) == 1
+        envelope = json.loads(remaining[0])
+        assert envelope["headers"]["id"] == "only-one"
+
     def test_refuses_clear_without_narrowing_filter(self):
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
 
@@ -1156,3 +1372,39 @@ def test_redisqueue_queryset_family_exclude_drops_listed_families(patched_broker
     families_present = {row.family for row in qs}
 
     assert "celery_broker" not in families_present
+
+
+# ---- _resolve_repo_displays -----------------------------------------------
+
+
+@pytest.mark.django_db
+def test_resolve_repo_displays_returns_service_owner_name():
+    owner = OwnerFactory(service="gitlab", username="acme")
+    repo = RepositoryFactory(author=owner, name="widgets")
+
+    mapping = _resolve_repo_displays([repo.repoid])
+
+    assert mapping[repo.repoid] == "gitlab:acme/widgets"
+
+
+@pytest.mark.django_db
+def test_resolve_repo_displays_falls_back_to_bare_name_without_username():
+    # `_hydrate_repo_displays` had this fallback inline before the
+    # extraction; pin it as part of the helper's contract so callers
+    # (the chart, the queues changelist, the locks changelist) stay
+    # aligned on what gets rendered for an authorless repo.
+    owner = OwnerFactory(service="github", username="")
+    repo = RepositoryFactory(author=owner, name="orphan")
+
+    mapping = _resolve_repo_displays([repo.repoid])
+
+    assert mapping[repo.repoid] == "orphan"
+
+
+@pytest.mark.django_db
+def test_resolve_repo_displays_skips_falsy_repoids():
+    # Empty / `None` repoids get skipped silently; the helper does
+    # not blow up on the chart's `(None, None, …)`-shaped buckets,
+    # which the chart drops anyway but defense-in-depth here keeps
+    # the helper safe to call from any caller.
+    assert _resolve_repo_displays([None, 0]) == {}

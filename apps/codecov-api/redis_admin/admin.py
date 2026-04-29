@@ -254,30 +254,42 @@ def _render_celery_items_inline(obj, *, max_rows: int = _ITEMS_PREVIEW_MAX_ROWS)
     )
 
 
+def _resolve_repo_displays(repoids: Iterable[int]) -> dict[int, str]:
+    """Build `{repoid: "service:owner/name"}` for the given ids in one query.
+
+    Single source of truth for the "service:owner/name" string the
+    queue + lock changelists already render in the `repo_display`
+    column; the celery_broker frequency chart reuses the same
+    mapping so its repo column matches what operators see elsewhere
+    (rather than rendering a bare numeric repoid).
+
+    Falls back to just the repo `name` when the author / username
+    is missing — same behaviour `_hydrate_repo_displays` had inline
+    before this was extracted.
+    """
+
+    ids = {rid for rid in repoids if rid}
+    if not ids:
+        return {}
+    return {
+        repo.repoid: (
+            f"{repo.author.service}:{repo.author.username}/{repo.name}"
+            if repo.author and repo.author.username
+            else repo.name
+        )
+        for repo in Repository.objects.select_related("author").filter(repoid__in=ids)
+    }
+
+
 def _hydrate_repo_displays(rows) -> None:
     """Attach `_repo_display = "service:owner/name"` to each row in one query.
 
     Called from `get_changelist_instance` to avoid an N+1 lookup per row.
     """
 
-    repoids = {row.repoid for row in rows if row.repoid}
+    mapping = _resolve_repo_displays(row.repoid for row in rows)
     for row in rows:
-        row._repo_display = None
-    if not repoids:
-        return
-
-    mapping = {
-        repo.repoid: (
-            f"{repo.author.service}:{repo.author.username}/{repo.name}"
-            if repo.author and repo.author.username
-            else repo.name
-        )
-        for repo in Repository.objects.select_related("author").filter(
-            repoid__in=repoids
-        )
-    }
-    for row in rows:
-        row._repo_display = mapping.get(row.repoid)
+        row._repo_display = mapping.get(row.repoid) if row.repoid else None
 
 
 # ---- list_filter classes ---------------------------------------------------
@@ -1589,9 +1601,36 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             clear_url = reverse("admin:redis_admin_celerybrokerqueue_clear_by_filter")
         except NoReverseMatch:  # pragma: no cover - URL is wired below
             clear_url = ""
+        # Hydrate `service:owner/name` strings + per-repo change URLs
+        # in one query, then attach to a flat view-model so the
+        # template stays free of attribute lookups against
+        # `FrequencyBucket` (which is frozen) or N+1 SQL.
+        repo_displays = _resolve_repo_displays(b.repoid for b in buckets)
+        rows: list[dict[str, Any]] = []
+        for bucket in buckets:
+            display = repo_displays.get(bucket.repoid) if bucket.repoid else None
+            change_url: str | None = None
+            if bucket.repoid is not None:
+                try:
+                    change_url = reverse(
+                        "admin:core_repository_change", args=[bucket.repoid]
+                    )
+                except NoReverseMatch:  # pragma: no cover - admin always wires this
+                    change_url = None
+            rows.append(
+                {
+                    "task_name": bucket.task_name,
+                    "repoid": bucket.repoid,
+                    "repo_display": display,
+                    "repo_change_url": change_url,
+                    "commitid": bucket.commitid,
+                    "count": bucket.count,
+                    "pct": bucket.pct,
+                }
+            )
         return {
             "queue_name": queue_name,
-            "buckets": buckets,
+            "buckets": rows,
             "total_visible": total_visible,
             "total_depth": total_depth,
             "can_clear": request.user.is_superuser,
@@ -1613,17 +1652,29 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
     def clear_by_filter_view(self, request: HttpRequest) -> HttpResponse:
         """Targeted clear by `(queue_name, task_name?, repoid?, commitid?)`.
 
-        Reached from the frequency chart's per-row "Clear N…" button
-        (see `_frequency_chart.html`). The button submits a POST with
-        the bucket's `task_name` / `repoid` / `commitid` already wired
-        in; this view re-materialises the matching messages, asks the
-        operator for a typed confirmation, then routes the deletion
-        through `services.celery_broker_clear` so the LSET-tombstone
-        path runs and the audit log captures the operation. Filtering
-        by `task_name` matters on shared queues like `celery` where
+        Reached from the frequency chart's per-row action buttons (see
+        `_frequency_chart.html`). The form POSTs the bucket's
+        `task_name` / `repoid` / `commitid` already wired in; this
+        view re-materialises the matching messages, asks the operator
+        for a typed confirmation, then routes the deletion through
+        `services.celery_broker_clear` so the LSET-tombstone path
+        runs and the audit log captures the operation. Filtering by
+        `task_name` matters on shared queues like `celery` where
         multiple task classes coexist — without it, "clear all
         messages for repo X commit Y" would silently drop unrelated
         tasks routed through the same queue.
+
+        Two clear modes are supported via the `mode` form value:
+
+        * `mode=all` (default, destructive) — clear every matching
+          message.
+        * `mode=keep_one` — clear every match EXCEPT the one with the
+          lowest `index_in_queue`. The queryset materialises via
+          `LRANGE 0 N-1` so `targets[0]` is the head-of-queue (the
+          next message a Celery worker would pop); dropping it from
+          the deletion set leaves a single representative in flight.
+          Typical workflow: "drop the duplicate retries but leave one
+          running so something still completes."
         """
 
         if not request.user.is_superuser:
@@ -1641,6 +1692,14 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         # `confirm=dry_run`) lands here is a dry-run preview.
         if not action and (request.POST.get("confirm") or "") == "dry_run":
             action = "dry_run"
+
+        # `mode` is the chart-button discriminator: `all` (the
+        # destructive `deletelink` button) or `keep_one` (the
+        # standard "Clear N-1, keep first" button). Anything else is
+        # treated as `all` so an explicit form-confirmation page POST
+        # without `mode` keeps the original semantics.
+        mode_raw = (request.POST.get("mode") or params.get("mode") or "all").strip()
+        mode = "keep_one" if mode_raw == "keep_one" else "all"
 
         opts = self.model._meta
         changelist_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist")
@@ -1686,13 +1745,37 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             queryset = queryset.filter(repoid=repoid)
         if commitid:
             queryset = queryset.filter(commitid__startswith=commitid)
-        targets = list(queryset)
+        # `_fetch_all` materialises in LRANGE order (ascending
+        # `index_in_queue`), so `matches[0]` is always the lowest-
+        # index match. We sort defensively in case a future ordering
+        # change perturbs that.
+        matches = sorted(queryset, key=lambda row: row.index_in_queue or 0)
+        kept_index: int | None = None
+        if mode == "keep_one" and matches:
+            kept_index = matches[0].index_in_queue
+            targets = matches[1:]
+        else:
+            targets = list(matches)
 
         expected_confirm = queue_name
         typed_confirm = (request.POST.get("typed_confirm") or "").strip()
         confirm_error: str | None = None
 
         if request.method == "POST" and action in ("dry_run", "confirm"):
+            if mode == "keep_one" and len(matches) <= 1:
+                # Single-message bucket: there's nothing to clear
+                # without removing the only in-flight message, which
+                # defeats the "keep first" semantic. The chart only
+                # renders this button for buckets with count >= 2,
+                # but a hand-crafted POST or a count change between
+                # render and submit could still land here.
+                messages.info(
+                    request,
+                    f"Nothing to clear: only {len(matches)} message(s) "
+                    f"match and 'keep first' would leave them all in "
+                    f"place.",
+                )
+                return HttpResponseRedirect(changelist_url)
             if not targets:
                 messages.info(
                     request,
@@ -1707,16 +1790,32 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
                     targets, user=request.user, dry_run=dry_run
                 )
                 if dry_run:
-                    messages.info(
-                        request,
-                        f"Dry-run: would clear {result.count} message(s) from "
-                        f"{queue_name}",
-                    )
+                    if mode == "keep_one":
+                        messages.info(
+                            request,
+                            f"Dry-run: would clear {result.count} of "
+                            f"{len(matches)} matching message(s) from "
+                            f"{queue_name} (keeping index={kept_index}).",
+                        )
+                    else:
+                        messages.info(
+                            request,
+                            f"Dry-run: would clear {result.count} message(s) from "
+                            f"{queue_name}",
+                        )
                 else:
-                    messages.success(
-                        request,
-                        f"Cleared {result.count} message(s) from {queue_name}",
-                    )
+                    if mode == "keep_one":
+                        messages.success(
+                            request,
+                            f"Cleared {result.count} of {len(matches)} matching "
+                            f"message(s) from {queue_name} "
+                            f"(kept index={kept_index}).",
+                        )
+                    else:
+                        messages.success(
+                            request,
+                            f"Cleared {result.count} message(s) from {queue_name}",
+                        )
                     return HttpResponseRedirect(changelist_url)
 
         sample_targets = targets[:25]
@@ -1728,6 +1827,9 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             "task_name": task_name,
             "repoid": repoid,
             "commitid": commitid,
+            "mode": mode,
+            "match_count": len(matches),
+            "kept_index": kept_index,
             "target_count": len(targets),
             "sample_targets": sample_targets,
             "expected_confirm": expected_confirm,

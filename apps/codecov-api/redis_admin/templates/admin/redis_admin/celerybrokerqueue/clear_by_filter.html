@@ -36,6 +36,14 @@
     {% if task_name %}<input type="hidden" name="task_name" value="{{ task_name }}">{% endif %}
     {% if repoid is not None %}<input type="hidden" name="repoid" value="{{ repoid }}">{% endif %}
     {% if commitid %}<input type="hidden" name="commitid" value="{{ commitid }}">{% endif %}
+    {% comment %}
+    Round-trip the chart's chosen mode through the dry-run-then-
+    confirm cycle. `mode=keep_one` excludes the lowest-index match
+    from `targets` server-side; we round-trip it here so the
+    operator's "Clear N-1, keep first" intent survives the second
+    POST.
+    {% endcomment %}
+    <input type="hidden" name="mode" value="{{ mode|default:'all' }}">
 
     <fieldset class="module">
       <h2>Scope</h2>
@@ -49,17 +57,30 @@
         {% else %}
           <em>(any)</em>
         {% endif %}
+        {% if mode == "keep_one" %}
+          <br>Mode: <code>keep_one</code> &mdash;
+          will keep the lowest-index match
+          {% if kept_index is not None %}(<code>index={{ kept_index }}</code>){% endif %}
+          and clear the remaining
+          {% if match_count %}{{ match_count|add:"-1" }} of {{ match_count }}{% else %}0{% endif %}
+          matching message(s).
+        {% endif %}
       </p>
     </fieldset>
 
     <fieldset class="module">
-      <h2>Matched: {{ target_count }} message(s)</h2>
+      {% if mode == "keep_one" %}
+        <h2>Matched: {{ match_count }} message(s) &mdash; will clear {{ target_count }} (keeping index={{ kept_index }})</h2>
+      {% else %}
+        <h2>Matched: {{ target_count }} message(s)</h2>
+      {% endif %}
 
       {% if target_count == 0 %}
         <p><em>No celery_broker messages currently match this filter.</em></p>
       {% else %}
         <p>
-          The first {{ sample_targets|length }} matched message(s):
+          The first {{ sample_targets|length }} message(s) that
+          {% if mode == "keep_one" %}<strong>would be cleared</strong>{% else %}match the filter{% endif %}:
         </p>
         <table>
           <thead>
@@ -84,7 +105,7 @@
           </tbody>
         </table>
         {% if target_count > sample_targets|length %}
-          <p><em>Showing first {{ sample_targets|length }} of {{ target_count }} matching message(s).</em></p>
+          <p><em>Showing first {{ sample_targets|length }} of {{ target_count }} message(s) to clear.</em></p>
         {% endif %}
 
         <h3>Confirm and clear</h3>
@@ -102,7 +123,11 @@
             Dry-run (audit only, no mutations)
           </button>
           <button type="submit" name="action" value="confirm" class="deletelink" style="margin-left:1em;">
-            Clear {{ target_count }} message(s) from {{ queue_name }}
+            {% if mode == "keep_one" %}
+              Clear {{ target_count }} of {{ match_count }} message(s) from {{ queue_name }}
+            {% else %}
+              Clear {{ target_count }} message(s) from {{ queue_name }}
+            {% endif %}
           </button>
         </div>
       {% endif %}

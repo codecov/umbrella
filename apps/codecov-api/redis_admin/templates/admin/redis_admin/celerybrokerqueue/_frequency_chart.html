@@ -11,8 +11,14 @@ Shape:
   built. When > `total_visible` we surface a "showing top N of M"
   banner so operators know the percentages are over the visible
   window.
-* `chart.buckets` — list of `FrequencyBucket(repoid, commitid,
-  count, pct)`. Already sorted; rendered top-to-bottom.
+* `chart.buckets` — list of view-model dicts shaped as
+  `{task_name, repoid, repo_display, repo_change_url, commitid,
+  count, pct}`. Already sorted; rendered top-to-bottom. The
+  `repo_display` / `repo_change_url` pair is computed in
+  `_build_frequency_chart_context` via the same
+  `_resolve_repo_displays` helper that powers the `repo_display`
+  column on `RedisQueueAdmin`, so the chart's repo cell matches
+  what operators see elsewhere.
 * `chart.clear_by_filter_url` — base URL for the row-level
   "Clear N" form action; we POST to it with `repoid` /
   `commitid` / `csrfmiddlewaretoken`.
@@ -22,7 +28,7 @@ Shape:
 {% endcomment %}
 
 <div class="module" id="celery-frequency-chart" style="margin-bottom: 16px;">
-  <h2>Top {{ chart.buckets|length }} (task, repoid, commitid) triples in
+  <h2>Top {{ chart.buckets|length }} (repoid, commitid, task) triples in
     {{ chart.queue_name }}</h2>
   {% if chart.total_depth > chart.total_visible %}
     <p class="help">
@@ -40,9 +46,9 @@ Shape:
   <table class="celery-frequency">
     <thead>
       <tr>
-        <th scope="col">task</th>
         <th scope="col">repoid</th>
         <th scope="col">commitid</th>
+        <th scope="col">task</th>
         <th scope="col" class="num">count</th>
         <th scope="col">share</th>
         {% if chart.can_clear %}
@@ -54,16 +60,26 @@ Shape:
       {% for bucket in chart.buckets %}
         <tr>
           <td>
-            {% if bucket.task_name %}
-              <span class="celery-task-cell" title="{{ bucket.task_name }}">{{ bucket.task_name }}</span>
+            {% if bucket.repoid is not None %}
+              {% if bucket.repo_change_url %}
+                <a href="{{ bucket.repo_change_url }}" title="repoid={{ bucket.repoid }}">{{ bucket.repo_display|default:bucket.repoid }}</a>
+              {% else %}
+                <span title="repoid={{ bucket.repoid }}">{{ bucket.repo_display|default:bucket.repoid }}</span>
+              {% endif %}
             {% else %}
               —
             {% endif %}
           </td>
-          <td>{{ bucket.repoid|default:"—" }}</td>
           <td>
             {% if bucket.commitid %}
               <span title="{{ bucket.commitid }}">{{ bucket.commitid|slice:":7" }}</span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if bucket.task_name %}
+              <span class="celery-task-cell" title="{{ bucket.task_name }}">{{ bucket.task_name }}</span>
             {% else %}
               —
             {% endif %}
@@ -76,8 +92,24 @@ Shape:
             </div>
           </td>
           {% if chart.can_clear %}
-            <td>
-              <form method="post" action="{{ chart.clear_by_filter_url }}" style="margin: 0;">
+            <td class="celery-actions">
+              {% comment %}
+              Two submit buttons share one form so the hidden scope
+              fields (queue/task/repoid/commitid) only need to be
+              declared once. Server-side, `clear_by_filter_view`
+              dispatches on the `mode` value:
+
+              * `mode=all` (the default destructive action, styled with
+                `deletelink` to match the rest of the admin's destruct-
+                ive buttons) — clears every matching message.
+              * `mode=keep_one` — clears every match EXCEPT the one
+                with the lowest `index_in_queue` so a single message
+                stays in flight (typical "drop the duplicate retries
+                but leave one running" workflow). Rendered as a
+                non-destructive standard `button` so it reads as the
+                safer first move; only emitted when count >= 2.
+              {% endcomment %}
+              <form method="post" action="{{ chart.clear_by_filter_url }}" class="celery-action-form">
                 {% csrf_token %}
                 <input type="hidden" name="queue_name" value="{{ chart.queue_name }}">
                 {% if bucket.task_name %}
@@ -89,9 +121,15 @@ Shape:
                 {% if bucket.commitid %}
                   <input type="hidden" name="commitid" value="{{ bucket.commitid }}">
                 {% endif %}
-                <button type="submit" class="button" name="confirm" value="dry_run">
+                <input type="hidden" name="confirm" value="dry_run">
+                <button type="submit" class="deletelink" name="mode" value="all">
                   Clear {{ bucket.count }}&hellip;
                 </button>
+                {% if bucket.count >= 2 %}
+                  <button type="submit" class="button" name="mode" value="keep_one">
+                    Clear {{ bucket.count|add:"-1" }}, keep first&hellip;
+                  </button>
+                {% endif %}
               </form>
             </td>
           {% endif %}
@@ -119,6 +157,23 @@ Shape:
   #celery-frequency-chart table.celery-frequency td.num {
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+  /* Two-button action cell: the destructive `deletelink` ships
+     with its own background colour from the admin theme; the
+     "keep first" sibling is a plain `button`. Stack them with a
+     small gap so the row height stays consistent with the bar
+     gauge on its left. */
+  #celery-frequency-chart table.celery-frequency td.celery-actions {
+    white-space: nowrap;
+  }
+  #celery-frequency-chart .celery-action-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0;
+  }
+  #celery-frequency-chart .celery-action-form button {
+    margin: 0;
   }
   /* Task names are dotted paths like
      `app.tasks.bundle_analysis.BundleAnalysisProcessor`. Cap the

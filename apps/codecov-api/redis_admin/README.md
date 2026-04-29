@@ -231,16 +231,29 @@ Above the message table on the drill-down view, the admin renders
 a `(task_name, repoid, commitid)` frequency chart computed from
 the same `LRANGE` snapshot the changelist iterated. One row per
 top-N bucket, sorted by `(count desc, task_name asc, repoid asc,
-commitid asc)` for a stable order across reloads. Each row shows:
+commitid asc)` for a stable order across reloads. Each row shows
+(in column order):
 
+- `repoid` rendered as a `service:owner/name` link to the standard
+  `admin:core_repository_change` page (matches the
+  `repo_display` column on `RedisQueueAdmin`); falls back to the
+  bare repoid when the repo isn't in the DB.
+- the 7-char `commitid` prefix (full SHA on hover)
 - `task` (the kombu `headers.task` value, e.g.
   `app.tasks.notify.NotifyTask`; truncated with full path on
   hover)
-- `repoid` and the 7-char commit prefix (full SHA on hover)
 - the bucket's `count` and percentage share of the visible window
-- a per-bucket "Clear N…" submit button (superuser-only) that
-  POSTs the bucket's `(queue, task_name, repoid, commitid)` to
-  `clear-by-filter/`
+- two per-bucket action buttons (superuser-only):
+  - **Clear N…** — destructive (`deletelink`); POSTs the bucket's
+    `(queue, task_name, repoid, commitid)` to `clear-by-filter/`
+    with `mode=all`, clearing every match.
+  - **Clear N-1, keep first…** — standard (non-destructive)
+    button, only rendered when `count >= 2`. POSTs with
+    `mode=keep_one`, which clears every match EXCEPT the one
+    with the lowest `index_in_queue`. Intent: "drop the
+    duplicate retries but leave one in flight so something still
+    runs." Indexes are LRANGE-asc, so the kept message is the
+    next one a Celery worker would pop.
 
 Grouping by `task_name` matters on shared queues like the default
 `celery` queue where multiple task classes coexist — without it,
@@ -259,10 +272,21 @@ the share is over the visible window.
 superuser-only, dry-run-then-confirm. Required form fields:
 `queue_name`, plus at least one of `task_name` / `repoid` /
 `commitid` (refusing the empty-narrowing case keeps the surface
-from overlapping `clear-by-scope/`). Renders a confirmation page
-that lists matching messages and asks the operator to re-type
-the queue name before arming the destructive button. Both
-dry-run and confirm runs go through
+from overlapping `clear-by-scope/`).
+
+The `mode` form field selects which messages get cleared:
+
+- `mode=all` (default) — every matching message.
+- `mode=keep_one` — every match EXCEPT the lowest-`index_in_queue`
+  one. Single-message buckets short-circuit with an info message
+  and don't mutate the queue.
+
+Renders a confirmation page that lists the messages slated for
+deletion and asks the operator to re-type the queue name before
+arming the destructive button. The confirmation page surfaces
+the chosen `mode` (and, in `keep_one` mode, the `kept_index`)
+so the keep-first semantic survives the dry-run-then-confirm
+round-trip. Both dry-run and confirm runs go through
 `services.celery_broker_clear`, so the LSET-tombstone path runs
 and the audit log captures the operation under
 `scope="celery_broker_clear"`.
