@@ -80,11 +80,11 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
     before lock acquisition. The file is cleaned up automatically on exit.
 
     Yields:
-        str | None: None only for carryforward tasks (no upload_id), where no file
-                    is expected. For all other tasks a str path is always yielded.
-                    The file may be empty if the upload record was not yet committed
-                    or the download failed; process_upload treats an empty file as a
-                    retryable error.
+        str: Empty string for carryforward tasks (no upload_id), where no file
+             is expected. For all other tasks a non-empty path is always yielded.
+             The file may be empty if the upload record was not yet committed
+             or the download failed; process_upload treats an empty file as a
+             retryable error.
     """
     temp_file_path = None
 
