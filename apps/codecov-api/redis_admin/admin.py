@@ -1579,7 +1579,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         total_visible = len(queryset)
         total_depth = total_visible
         try:
-            client = _conn.client_for("broker")
+            client = _conn.get_connection(kind="broker")
             llen = client.llen(queue_name)
             if isinstance(llen, int) and llen >= 0:
                 total_depth = llen
