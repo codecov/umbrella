@@ -1652,29 +1652,40 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
     def clear_by_filter_view(self, request: HttpRequest) -> HttpResponse:
         """Targeted clear by `(queue_name, task_name?, repoid?, commitid?)`.
 
-        Reached from the frequency chart's per-row action buttons (see
-        `_frequency_chart.html`). The form POSTs the bucket's
-        `task_name` / `repoid` / `commitid` already wired in; this
-        view re-materialises the matching messages, asks the operator
-        for a typed confirmation, then routes the deletion through
-        `services.celery_broker_clear` so the LSET-tombstone path
-        runs and the audit log captures the operation. Filtering by
+        Reached from the frequency chart's per-row "Clear queue"
+        button (see `_frequency_chart.html`). The chart submits the
+        bucket's `task_name` / `repoid` / `commitid` and lands on a
+        preview page; the operator then picks one of three explicit
+        actions:
+
+        * `action=dry_run` — audited dry-run via
+          `services.celery_broker_clear(dry_run=True)`. Leaves the
+          queue untouched but writes a `LogEntry` so we have a paper
+          trail for "what would have happened?". Re-renders the
+          preview with an info banner.
+        * `action=clear_keep_one` — clear every match EXCEPT the one
+          with the lowest `index_in_queue`. The queryset materialises
+          via `LRANGE 0 N-1` so `matches[0]` is the head-of-queue (the
+          next message a Celery worker would pop); dropping it from
+          the deletion set leaves a single representative in flight.
+          Typical workflow: "drop the duplicate retries but leave one
+          running so something still completes." Refused for
+          single-match buckets where it would have to clear nothing.
+        * `action=clear_all` — clear every matching message. The
+          broadest of the three; equivalent to the old
+          `mode=all` semantic.
+
+        The two destructive actions both gate on a typed-confirmation
+        check (operator must re-type the queue name). Filtering by
         `task_name` matters on shared queues like `celery` where
         multiple task classes coexist — without it, "clear all
         messages for repo X commit Y" would silently drop unrelated
         tasks routed through the same queue.
 
-        Two clear modes are supported via the `mode` form value:
-
-        * `mode=all` (default, destructive) — clear every matching
-          message.
-        * `mode=keep_one` — clear every match EXCEPT the one with the
-          lowest `index_in_queue`. The queryset materialises via
-          `LRANGE 0 N-1` so `targets[0]` is the head-of-queue (the
-          next message a Celery worker would pop); dropping it from
-          the deletion set leaves a single representative in flight.
-          Typical workflow: "drop the duplicate retries but leave one
-          running so something still completes."
+        Both POSTs ultimately funnel through
+        `services.celery_broker_clear`, which runs the LSET-tombstone
+        path and writes the audit log entry under
+        `scope="celery_broker_clear"`.
         """
 
         if not request.user.is_superuser:
@@ -1688,18 +1699,13 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         repoid_raw = (params.get("repoid") or "").strip()
         commitid = (params.get("commitid") or "").strip()
         action = (request.POST.get("action") or "").strip()
-        # Default action when the chart's primary submit (named
-        # `confirm=dry_run`) lands here is a dry-run preview.
-        if not action and (request.POST.get("confirm") or "") == "dry_run":
-            action = "dry_run"
-
-        # `mode` is the chart-button discriminator: `all` (the
-        # destructive `deletelink` button) or `keep_one` (the
-        # standard "Clear N-1, keep first" button). Anything else is
-        # treated as `all` so an explicit form-confirmation page POST
-        # without `mode` keeps the original semantics.
-        mode_raw = (request.POST.get("mode") or params.get("mode") or "all").strip()
-        mode = "keep_one" if mode_raw == "keep_one" else "all"
+        # Backward-compat alias: the previous version of this view
+        # used `action=confirm` paired with a `mode` form input. New
+        # callers send `clear_all` / `clear_keep_one`; honour the old
+        # shape for any stale tabs / scripts still in the wild.
+        if action == "confirm":
+            legacy_mode = (request.POST.get("mode") or "").strip()
+            action = "clear_keep_one" if legacy_mode == "keep_one" else "clear_all"
 
         opts = self.model._meta
         changelist_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist")
@@ -1750,39 +1756,51 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         # index match. We sort defensively in case a future ordering
         # change perturbs that.
         matches = sorted(queryset, key=lambda row: row.index_in_queue or 0)
-        kept_index: int | None = None
-        if mode == "keep_one" and matches:
-            kept_index = matches[0].index_in_queue
-            targets = matches[1:]
-        else:
-            targets = list(matches)
+        match_count = len(matches)
+        kept_index: int | None = matches[0].index_in_queue if matches else None
 
         expected_confirm = queue_name
         typed_confirm = (request.POST.get("typed_confirm") or "").strip()
         confirm_error: str | None = None
 
-        if request.method == "POST" and action in ("dry_run", "confirm"):
-            if mode == "keep_one" and len(matches) <= 1:
-                # Single-message bucket: there's nothing to clear
-                # without removing the only in-flight message, which
-                # defeats the "keep first" semantic. The chart only
-                # renders this button for buckets with count >= 2,
-                # but a hand-crafted POST or a count change between
-                # render and submit could still land here.
-                messages.info(
-                    request,
-                    f"Nothing to clear: only {len(matches)} message(s) "
-                    f"match and 'keep first' would leave them all in "
-                    f"place.",
-                )
-                return HttpResponseRedirect(changelist_url)
-            if not targets:
+        destructive_actions = {"clear_keep_one", "clear_all"}
+        valid_actions = destructive_actions | {"dry_run"}
+
+        # The chart-driven submit lands here with no `action` set
+        # (the chart's button just opens the preview page); fall
+        # through to the render path without invoking the service or
+        # writing a LogEntry.
+        if request.method == "POST" and action in valid_actions:
+            if not matches:
                 messages.info(
                     request,
                     "No messages match the filter — nothing to clear.",
                 )
                 return HttpResponseRedirect(changelist_url)
-            if action == "confirm" and typed_confirm != expected_confirm:
+
+            if action == "clear_keep_one":
+                if match_count <= 1:
+                    # Single-message bucket: there's nothing to clear
+                    # without removing the only in-flight message,
+                    # which defeats the "keep first" semantic. The
+                    # preview page only renders this button for
+                    # buckets with match_count >= 2, but a hand-
+                    # crafted POST or a count change between render
+                    # and submit could still land here.
+                    messages.info(
+                        request,
+                        f"Nothing to clear: only {match_count} message(s) "
+                        f"match and 'clear all but first' would leave "
+                        f"them all in place.",
+                    )
+                    return HttpResponseRedirect(changelist_url)
+                targets = matches[1:]
+            elif action == "clear_all":
+                targets = list(matches)
+            else:  # dry_run
+                targets = list(matches)
+
+            if action in destructive_actions and typed_confirm != expected_confirm:
                 confirm_error = f"Typed confirmation must equal {expected_confirm!r}"
             else:
                 dry_run = action == "dry_run"
@@ -1790,24 +1808,17 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
                     targets, user=request.user, dry_run=dry_run
                 )
                 if dry_run:
-                    if mode == "keep_one":
-                        messages.info(
-                            request,
-                            f"Dry-run: would clear {result.count} of "
-                            f"{len(matches)} matching message(s) from "
-                            f"{queue_name} (keeping index={kept_index}).",
-                        )
-                    else:
-                        messages.info(
-                            request,
-                            f"Dry-run: would clear {result.count} message(s) from "
-                            f"{queue_name}",
-                        )
+                    messages.info(
+                        request,
+                        f"Dry-run: would clear {result.count} of {match_count} "
+                        f"matching message(s) from {queue_name} (audit log "
+                        f"entry written; queue untouched).",
+                    )
                 else:
-                    if mode == "keep_one":
+                    if action == "clear_keep_one":
                         messages.success(
                             request,
-                            f"Cleared {result.count} of {len(matches)} matching "
+                            f"Cleared {result.count} of {match_count} matching "
                             f"message(s) from {queue_name} "
                             f"(kept index={kept_index}).",
                         )
@@ -1818,7 +1829,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
                         )
                     return HttpResponseRedirect(changelist_url)
 
-        sample_targets = targets[:25]
+        sample_targets = matches[:25]
         ctx = {
             **self.admin_site.each_context(request),
             "title": f"Clear {queue_name} by filter",
@@ -1827,10 +1838,8 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             "task_name": task_name,
             "repoid": repoid,
             "commitid": commitid,
-            "mode": mode,
-            "match_count": len(matches),
+            "match_count": match_count,
             "kept_index": kept_index,
-            "target_count": len(targets),
             "sample_targets": sample_targets,
             "expected_confirm": expected_confirm,
             "typed_confirm": typed_confirm,

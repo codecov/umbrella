@@ -884,12 +884,10 @@ class CeleryFrequencyChartTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        # Panel header anchored to the chart fragment ID + the
-        # bucket's per-row "Clear N…" button copy. Heading order
-        # mirrors the column order: repoid → commitid → task.
+        # Panel header anchored to the chart fragment ID. Heading
+        # order mirrors the column order: repoid → commitid → task.
         assert "celery-frequency-chart" in body
         assert "Top 1 (repoid, commitid, task) triples in" in body
-        assert "Clear 2" in body
         # Task name renders in the (now third) task column.
         assert "app.tasks.notify.NotifyTask" in body
         # Repo cell renders the `service:owner/name` display string
@@ -898,14 +896,17 @@ class CeleryFrequencyChartTest(TestCase):
         # already does on the queues changelist).
         assert "github:codecov/example" in body
         assert f"/admin/core/repository/{repo.repoid}/change/" in body
-        # Destructive button is styled with Django admin's
-        # `deletelink` class, matching `clear_by_scope` /
-        # `clear_by_filter` confirm pages.
-        assert 'class="deletelink"' in body
-        # 2-message bucket gets the standard "keep first" sibling
-        # (count >= 2 gates this).
-        assert "Clear 1, keep first" in body
-        assert 'name="mode" value="keep_one"' in body
+        # Single neutral "Clear queue" button per bucket — clicking
+        # it just opens the preview page, where the destructive
+        # choice (clear all / clear all but first) is made. Chart
+        # is intentionally NOT styled with `deletelink` because the
+        # row click is non-destructive.
+        assert "Clear queue" in body
+        assert "celery-clear-queue-btn" in body
+        assert 'class="deletelink"' not in body
+        # No mode discriminator on the chart anymore — the preview
+        # page owns that decision now.
+        assert 'name="mode"' not in body
         # The form action wires through the chart's clear-by-filter
         # URL with the bucket's task_name + repoid + commitid pre-
         # populated.
@@ -922,10 +923,12 @@ class CeleryFrequencyChartTest(TestCase):
         assert repoid_pos != -1 and commitid_pos != -1 and task_pos != -1
         assert repoid_pos < commitid_pos < task_pos
 
-    def test_chart_does_not_render_keep_first_for_single_message_bucket(self):
-        # Singleton bucket (count=1) — "Clear N-1, keep first" would
-        # be a no-op so we don't render it. The destructive "Clear 1…"
-        # button is still emitted.
+    def test_chart_renders_single_clear_button_regardless_of_count(self):
+        # Singleton bucket (count=1) and N>=2 buckets both render the
+        # SAME single "Clear queue" button — the chart no longer
+        # gates anything on count, because the choice between
+        # "clear all" and "clear all but first" lives on the preview
+        # page (which can decide based on `match_count` server-side).
         self.redis.rpush(
             "celery",
             _build_envelope(
@@ -941,14 +944,11 @@ class CeleryFrequencyChartTest(TestCase):
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
         assert "celery-frequency-chart" in body
-        # Destructive button still renders.
-        assert "Clear 1" in body
-        # No "keep first" button on a singleton bucket. Anchor on
-        # the form-input value (the explanatory string "keep first"
-        # also appears in the chart's CSS comments, so we assert on
-        # the structural marker instead).
-        assert 'name="mode" value="keep_one"' not in body
-        assert "Clear 0, keep first" not in body
+        assert "Clear queue" in body
+        # Old per-row button labels and the `mode` discriminator
+        # must not leak through.
+        assert "keep first" not in body
+        assert 'name="mode"' not in body
 
     def test_chart_falls_back_to_bare_repoid_when_repo_missing(self):
         # No `Repository` row matches `repoid=99999` → the chart
@@ -987,7 +987,7 @@ class CeleryFrequencyChartTest(TestCase):
 
     def test_chart_hidden_for_non_superuser_can_clear_flag(self):
         # Non-superuser: the chart still renders, but the per-bucket
-        # "Clear N…" submit buttons are gated.
+        # "Clear queue" submit buttons are gated by `can_clear`.
         self.redis.rpush(
             "celery", _build_envelope(kwargs={"repoid": 7, "commitid": "fff"})
         )
@@ -1002,7 +1002,8 @@ class CeleryFrequencyChartTest(TestCase):
         body = response.content.decode("utf-8", errors="replace")
         assert "celery-frequency-chart" in body
         # No clear-by-filter form for staff users.
-        assert "Clear 1" not in body
+        assert "Clear queue" not in body
+        assert "celery-clear-queue-btn" not in body
 
 
 # ---- clear-by-filter view --------------------------------------------------
@@ -1023,6 +1024,40 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
     def _push(self, **kwargs):
         self.redis.rpush("celery", _build_envelope(**kwargs))
 
+    def test_chart_open_renders_preview_with_three_actions(self):
+        # The chart's "Clear queue" button POSTs the bucket's scope
+        # without an `action` value; the view should land on the
+        # preview page rather than mutating anything. The preview
+        # page must render all three submit buttons (dry-run,
+        # clear-all-but-first, clear-all) when match_count >= 2.
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "repoid": "1",
+                "commitid": "aaaa",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        assert "Matched: 2 message(s)" in body
+        # All three action buttons are wired up via distinct
+        # `action` values — assert on the form-input markers, not
+        # on the visible labels, so a future copy tweak doesn't
+        # silently weaken the test.
+        assert 'name="action" value="dry_run"' in body
+        assert 'name="action" value="clear_keep_one"' in body
+        assert 'name="action" value="clear_all"' in body
+        # Both destructive buttons share the `celery-destructive-
+        # button` class, which carries the red-text styling.
+        assert "celery-destructive-button" in body
+        # No mutation happened.
+        assert self.redis.llen("celery") == 2
+
     def test_dry_run_lists_targets_without_mutating(self):
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
@@ -1035,7 +1070,6 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
                 "repoid": "1",
                 "commitid": "aaaa",
                 "action": "dry_run",
-                "typed_confirm": "celery",
             },
         )
 
@@ -1045,7 +1079,7 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         # Dry-run did not pop the queue.
         assert self.redis.llen("celery") == 3
 
-    def test_confirm_clears_only_matching_messages(self):
+    def test_clear_all_clears_only_matching_messages(self):
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
         self._push(kwargs={"repoid": 2, "commitid": "bbbb"})
@@ -1056,7 +1090,7 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
                 "queue_name": "celery",
                 "repoid": "1",
                 "commitid": "aaaa",
-                "action": "confirm",
+                "action": "clear_all",
                 "typed_confirm": "celery",
             },
             follow=False,
@@ -1073,7 +1107,7 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         assert body[1].get("repoid") == 2
         assert body[1].get("commitid") == "bbbb"
 
-    def test_confirm_requires_typed_confirmation(self):
+    def test_clear_all_requires_typed_confirmation(self):
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
 
         response = self.client.post(
@@ -1082,7 +1116,7 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
                 "queue_name": "celery",
                 "repoid": "1",
                 "commitid": "aaaa",
-                "action": "confirm",
+                "action": "clear_all",
                 "typed_confirm": "wrong-queue",
             },
         )
@@ -1094,11 +1128,34 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         assert "Typed confirmation must equal" in body
         assert self.redis.llen("celery") == 1
 
+    def test_clear_keep_one_requires_typed_confirmation(self):
+        # Same gate applies to the "clear all but first" destructive
+        # button — typed_confirm is the single chokepoint for both
+        # red buttons.
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "repoid": "1",
+                "commitid": "aaaa",
+                "action": "clear_keep_one",
+                "typed_confirm": "wrong-queue",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        assert "Typed confirmation must equal" in body
+        assert self.redis.llen("celery") == 2
+
     def test_task_name_filter_narrows_to_matching_task_only(self):
         # Two task classes share `(repoid, commitid)`. The chart's
-        # row-level "Clear N" submits `task_name` alongside repoid/
-        # commitid; that combination must clear only the targeted
-        # task and leave the other one in the queue.
+        # row-level "Clear queue" submits `task_name` alongside
+        # repoid/commitid; that combination must clear only the
+        # targeted task and leave the other one in the queue.
         self._push(
             task="app.tasks.bundle_analysis.BundleAnalysisProcessor",
             kwargs={"repoid": 1, "commitid": "aaaa"},
@@ -1115,7 +1172,7 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
                 "task_name": "app.tasks.bundle_analysis.BundleAnalysisProcessor",
                 "repoid": "1",
                 "commitid": "aaaa",
-                "action": "confirm",
+                "action": "clear_all",
                 "typed_confirm": "celery",
             },
             follow=False,
@@ -1147,7 +1204,7 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
             {
                 "queue_name": "celery",
                 "task_name": "app.tasks.notify.NotifyTask",
-                "action": "confirm",
+                "action": "clear_all",
                 "typed_confirm": "celery",
             },
             follow=False,
@@ -1161,12 +1218,12 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
             "app.tasks.bundle_analysis.BundleAnalysisProcessor"
         )
 
-    def test_keep_one_leaves_lowest_index_match_in_queue(self):
-        # `mode=keep_one` should clear every match EXCEPT the one
-        # with the lowest `index_in_queue` — i.e. the head-of-queue,
-        # the next message a Celery worker would pop. With three
-        # matching messages at indexes 0/1/2, indexes 1 and 2 are
-        # cleared and index 0 stays.
+    def test_clear_keep_one_leaves_lowest_index_match_in_queue(self):
+        # `action=clear_keep_one` should clear every match EXCEPT
+        # the one with the lowest `index_in_queue` — i.e. the head-
+        # of-queue, the next message a Celery worker would pop.
+        # With three matching messages at indexes 0/1/2, indexes 1
+        # and 2 are cleared and index 0 stays.
         self._push(
             task="app.tasks.notify.NotifyTask",
             task_id="keep-this-one",
@@ -1196,8 +1253,7 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
                 "task_name": "app.tasks.notify.NotifyTask",
                 "repoid": "1",
                 "commitid": "aaaa",
-                "mode": "keep_one",
-                "action": "confirm",
+                "action": "clear_keep_one",
                 "typed_confirm": "celery",
             },
             follow=False,
@@ -1210,19 +1266,37 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         surviving_task_ids = {json.loads(item)["headers"]["id"] for item in remaining}
         assert surviving_task_ids == {"keep-this-one", "unrelated"}
 
-    def test_keep_one_dry_run_reports_n_minus_one_count(self):
-        # The dry-run path should preview "would clear N-1 of N
-        # (keeping index=K)" — surfacing the keep-first semantic so
-        # operators can sanity-check before re-submitting with
-        # `action=confirm`.
-        self._push(
-            task="app.tasks.notify.NotifyTask",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
+    def test_dry_run_audited_via_service_does_not_mutate(self):
+        # The dry-run button on the preview page funnels through
+        # `celery_broker_clear(dry_run=True)` so the audit log
+        # captures it; the queue itself is untouched.
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "repoid": "1",
+                "commitid": "aaaa",
+                "action": "dry_run",
+            },
+            follow=False,
         )
-        self._push(
-            task="app.tasks.notify.NotifyTask",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
-        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        # Dry-run re-renders the preview (200, no redirect) and the
+        # full match set survives in the queue.
+        assert "Matched: 3" in body
+        assert self.redis.llen("celery") == 3
+
+    def test_clear_keep_one_button_hidden_when_only_one_match(self):
+        # Single-match preview: the destructive "Clear all but
+        # first" button must not render — there's only one message
+        # and the keep-first semantic would clear nothing. The
+        # "Clear all" button still shows.
         self._push(
             task="app.tasks.notify.NotifyTask",
             kwargs={"repoid": 1, "commitid": "aaaa"},
@@ -1235,35 +1309,24 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
                 "task_name": "app.tasks.notify.NotifyTask",
                 "repoid": "1",
                 "commitid": "aaaa",
-                "mode": "keep_one",
-                "action": "dry_run",
             },
-            follow=False,
         )
 
-        # Dry-run re-renders the confirm template (200, no redirect).
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        # Confirm page surfaces the keep-first semantic in the
-        # heading + the "Mode" line in the scope fieldset.
-        assert "Matched: 3" in body
-        assert (
-            "will clear 2" in body
-            or "Matched: 3 message(s) &mdash; will clear 2" in body
-        )
-        assert "keep_one" in body
-        # All three messages still in the queue (dry-run doesn't
-        # mutate).
-        assert self.redis.llen("celery") == 3
+        assert "Matched: 1 message(s)" in body
+        assert 'name="action" value="dry_run"' in body
+        assert 'name="action" value="clear_all"' in body
+        assert 'name="action" value="clear_keep_one"' not in body
 
-    def test_keep_one_is_noop_when_only_one_match(self):
-        # Single-message bucket: `mode=keep_one` would have to drop
-        # the only in-flight message to do anything, which defeats
-        # the "keep first" semantic. The chart only renders the
-        # button for count >= 2, but a hand-crafted POST or a count
-        # change between render and submit could still land here —
-        # the view must short-circuit with a friendly info message
-        # and leave the queue untouched.
+    def test_clear_keep_one_is_noop_when_only_one_match(self):
+        # Single-message bucket: `action=clear_keep_one` would have
+        # to drop the only in-flight message to do anything, which
+        # defeats the "keep first" semantic. The preview page only
+        # renders the button for match_count >= 2, but a hand-
+        # crafted POST or a count change between render and submit
+        # could still land here — the view must short-circuit with
+        # a friendly info message and leave the queue untouched.
         self._push(
             task="app.tasks.notify.NotifyTask",
             task_id="only-one",
@@ -1277,8 +1340,7 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
                 "task_name": "app.tasks.notify.NotifyTask",
                 "repoid": "1",
                 "commitid": "aaaa",
-                "mode": "keep_one",
-                "action": "confirm",
+                "action": "clear_keep_one",
                 "typed_confirm": "celery",
             },
             follow=False,
@@ -1292,6 +1354,64 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         envelope = json.loads(remaining[0])
         assert envelope["headers"]["id"] == "only-one"
 
+    def test_legacy_confirm_action_still_clears_all(self):
+        # Backward-compat shim: the previous version of this view
+        # used `action=confirm`. New callers send `clear_all` /
+        # `clear_keep_one`; the shim keeps stale tabs / scripts
+        # working without re-loading.
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "repoid": "1",
+                "commitid": "aaaa",
+                "action": "confirm",
+                "typed_confirm": "celery",
+            },
+            follow=False,
+        )
+
+        assert response.status_code in (302, 303)
+        assert self.redis.llen("celery") == 0
+
+    def test_legacy_confirm_with_mode_keep_one_routes_correctly(self):
+        # The old form posted `action=confirm` + `mode=keep_one` for
+        # the keep-first variant; the shim must route that to the
+        # new `clear_keep_one` action so the lowest-index match
+        # survives.
+        self._push(
+            task="t.K",
+            task_id="keep",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+        self._push(
+            task="t.K",
+            task_id="drop",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "task_name": "t.K",
+                "repoid": "1",
+                "commitid": "aaaa",
+                "mode": "keep_one",
+                "action": "confirm",
+                "typed_confirm": "celery",
+            },
+            follow=False,
+        )
+
+        assert response.status_code in (302, 303)
+        remaining = self.redis.lrange("celery", 0, -1)
+        assert len(remaining) == 1
+        assert json.loads(remaining[0])["headers"]["id"] == "keep"
+
     def test_refuses_clear_without_narrowing_filter(self):
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
 
@@ -1299,7 +1419,7 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
             "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
             {
                 "queue_name": "celery",
-                "action": "confirm",
+                "action": "clear_all",
                 "typed_confirm": "celery",
             },
             follow=True,
@@ -1322,7 +1442,7 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
             {
                 "queue_name": "celery",
                 "repoid": "1",
-                "action": "confirm",
+                "action": "clear_all",
                 "typed_confirm": "celery",
             },
         )

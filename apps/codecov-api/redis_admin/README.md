@@ -40,7 +40,7 @@ accidentally surfaces them under `RedisQueue`.
 | `/admin/redis_admin/redisqueueitem/<token>/change/` | Inspect a single item |
 | `/admin/redis_admin/celerybrokerqueue/` | **Celery summary** — one row per known celery_broker queue with current `LLEN` and a drill-in link |
 | `/admin/redis_admin/celerybrokerqueue/?queue_name__exact=<queue>` | **Celery drill-down** — messages inside a celery broker queue with structured task / repoid / commitid columns, a `(repoid, commitid)` frequency chart, and per-message clear |
-| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/` | Clear every message in `<queue>` matching a given `(repoid, commitid?)` filter (POST-only, superuser-only). Wired up by the frequency chart's per-row "Clear N…" button |
+| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/` | Preview + clear messages in `<queue>` matching a `(task_name?, repoid?, commitid?)` filter (POST-only, superuser-only). Wired up by the frequency chart's per-row "Clear queue" button; the preview page exposes three explicit actions (dry-run, clear all but first, clear all). |
 | `/admin/redis_admin/redislock/` | Browse Redis locks (read-only) |
 | `/admin/redis_admin/redisqueue/clear-by-scope/` | M6 — cross-family clear-by-scope (superuser only) |
 
@@ -243,17 +243,14 @@ commitid asc)` for a stable order across reloads. Each row shows
   `app.tasks.notify.NotifyTask`; truncated with full path on
   hover)
 - the bucket's `count` and percentage share of the visible window
-- two per-bucket action buttons (superuser-only):
-  - **Clear N…** — destructive (`deletelink`); POSTs the bucket's
-    `(queue, task_name, repoid, commitid)` to `clear-by-filter/`
-    with `mode=all`, clearing every match.
-  - **Clear N-1, keep first…** — standard (non-destructive)
-    button, only rendered when `count >= 2`. POSTs with
-    `mode=keep_one`, which clears every match EXCEPT the one
-    with the lowest `index_in_queue`. Intent: "drop the
-    duplicate retries but leave one in flight so something still
-    runs." Indexes are LRANGE-asc, so the kept message is the
-    next one a Celery worker would pop.
+- a single per-bucket **Clear queue…** button (superuser-only).
+  Clicking it POSTs the bucket's
+  `(queue, task_name, repoid, commitid)` to `clear-by-filter/`
+  and lands on the preview page, where the operator picks one of
+  three explicit actions (dry-run / clear all but first / clear
+  all). The chart row itself is intentionally non-destructive —
+  no count in the label, no `deletelink` styling — because the
+  click only opens a page; the destructive choice is made there.
 
 Grouping by `task_name` matters on shared queues like the default
 `celery` queue where multiple task classes coexist — without it,
@@ -269,27 +266,41 @@ the share is over the visible window.
 ### `clear-by-filter/` (chart-driven targeted clear)
 
 `POST /admin/redis_admin/celerybrokerqueue/clear-by-filter/` —
-superuser-only, dry-run-then-confirm. Required form fields:
-`queue_name`, plus at least one of `task_name` / `repoid` /
-`commitid` (refusing the empty-narrowing case keeps the surface
-from overlapping `clear-by-scope/`).
+superuser-only. Required form fields: `queue_name`, plus at
+least one of `task_name` / `repoid` / `commitid` (refusing the
+empty-narrowing case keeps the surface from overlapping
+`clear-by-scope/`).
 
-The `mode` form field selects which messages get cleared:
+The chart's per-row button POSTs without an `action`, which
+lands on a preview page listing the matched messages. The
+preview page then exposes three explicit submit buttons; the
+view dispatches on the form's `action` value:
 
-- `mode=all` (default) — every matching message.
-- `mode=keep_one` — every match EXCEPT the lowest-`index_in_queue`
-  one. Single-message buckets short-circuit with an info message
-  and don't mutate the queue.
+- `action=dry_run` — neutral / `default`-styled button. Audited
+  via `celery_broker_clear(dry_run=True)`; queue untouched.
+  Re-renders the preview with an info banner. No
+  typed-confirmation required.
+- `action=clear_keep_one` — destructive (red text). Only
+  rendered when `match_count >= 2`. Clears every match EXCEPT
+  the one with the lowest `index_in_queue` (the next message a
+  Celery worker would pop), so a single representative stays in
+  flight. Intent: "drop the duplicate retries but leave one
+  running."
+- `action=clear_all` — destructive (red text). Clears every
+  matching message; the broadest of the three.
 
-Renders a confirmation page that lists the messages slated for
-deletion and asks the operator to re-type the queue name before
-arming the destructive button. The confirmation page surfaces
-the chosen `mode` (and, in `keep_one` mode, the `kept_index`)
-so the keep-first semantic survives the dry-run-then-confirm
-round-trip. Both dry-run and confirm runs go through
+Both destructive buttons gate on the same typed-confirmation
+field (re-type the queue name); they share a common
+`celery-destructive-button` class that paints the text red and
+keeps them visually distinct from the dry-run button on the
+left. Server-side, both ultimately funnel through
 `services.celery_broker_clear`, so the LSET-tombstone path runs
 and the audit log captures the operation under
 `scope="celery_broker_clear"`.
+
+For backward compatibility, the older `action=confirm` form
+shape (paired with `mode=all` / `mode=keep_one`) is aliased to
+the new actions so stale tabs and scripts keep working.
 
 ### Per-message clear (LSET-tombstone)
 

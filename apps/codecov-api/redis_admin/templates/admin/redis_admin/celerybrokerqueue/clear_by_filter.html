@@ -24,10 +24,12 @@
     never the other way around).
   </p>
   <p>
-    Run a <strong>dry-run</strong> first to see what would be cleared.
-    Both dry-run and confirm runs are written to the
-    <code>django.contrib.admin.LogEntry</code> audit log under
-    <code>scope=&quot;celery_broker_clear&quot;</code>.
+    Three actions are available below. <strong>Dry-run</strong> is the
+    safe first move — it writes a <code>LogEntry</code> under
+    <code>scope=&quot;celery_broker_clear&quot;</code> but leaves the
+    queue untouched. The two destructive actions both gate on the
+    typed-confirmation field; both also write the same audit log
+    entry on success.
   </p>
 
   <form method="post" novalidate>
@@ -36,14 +38,6 @@
     {% if task_name %}<input type="hidden" name="task_name" value="{{ task_name }}">{% endif %}
     {% if repoid is not None %}<input type="hidden" name="repoid" value="{{ repoid }}">{% endif %}
     {% if commitid %}<input type="hidden" name="commitid" value="{{ commitid }}">{% endif %}
-    {% comment %}
-    Round-trip the chart's chosen mode through the dry-run-then-
-    confirm cycle. `mode=keep_one` excludes the lowest-index match
-    from `targets` server-side; we round-trip it here so the
-    operator's "Clear N-1, keep first" intent survives the second
-    POST.
-    {% endcomment %}
-    <input type="hidden" name="mode" value="{{ mode|default:'all' }}">
 
     <fieldset class="module">
       <h2>Scope</h2>
@@ -57,30 +51,23 @@
         {% else %}
           <em>(any)</em>
         {% endif %}
-        {% if mode == "keep_one" %}
-          <br>Mode: <code>keep_one</code> &mdash;
-          will keep the lowest-index match
-          {% if kept_index is not None %}(<code>index={{ kept_index }}</code>){% endif %}
-          and clear the remaining
-          {% if match_count %}{{ match_count|add:"-1" }} of {{ match_count }}{% else %}0{% endif %}
-          matching message(s).
+        {% if match_count >= 2 and kept_index is not None %}
+          <br>"Clear all but first" would keep
+          <code>index={{ kept_index }}</code> (the lowest-index match,
+          i.e. the next message a Celery worker would pop) and clear
+          the remaining {{ match_count|add:"-1" }} of {{ match_count }}.
         {% endif %}
       </p>
     </fieldset>
 
     <fieldset class="module">
-      {% if mode == "keep_one" %}
-        <h2>Matched: {{ match_count }} message(s) &mdash; will clear {{ target_count }} (keeping index={{ kept_index }})</h2>
-      {% else %}
-        <h2>Matched: {{ target_count }} message(s)</h2>
-      {% endif %}
+      <h2>Matched: {{ match_count }} message(s)</h2>
 
-      {% if target_count == 0 %}
+      {% if match_count == 0 %}
         <p><em>No celery_broker messages currently match this filter.</em></p>
       {% else %}
         <p>
-          The first {{ sample_targets|length }} message(s) that
-          {% if mode == "keep_one" %}<strong>would be cleared</strong>{% else %}match the filter{% endif %}:
+          The first {{ sample_targets|length }} matching message(s):
         </p>
         <table>
           <thead>
@@ -104,8 +91,8 @@
             {% endfor %}
           </tbody>
         </table>
-        {% if target_count > sample_targets|length %}
-          <p><em>Showing first {{ sample_targets|length }} of {{ target_count }} message(s) to clear.</em></p>
+        {% if match_count > sample_targets|length %}
+          <p><em>Showing first {{ sample_targets|length }} of {{ match_count }} matching message(s).</em></p>
         {% endif %}
 
         <h3>Confirm and clear</h3>
@@ -114,21 +101,47 @@
             {% if confirm_error %}<ul class="errorlist"><li>{{ confirm_error }}</li></ul>{% endif %}
             <label for="id_typed_confirm">Type <code>{{ expected_confirm }}</code> to confirm:</label>
             <input type="text" name="typed_confirm" id="id_typed_confirm" value="{{ typed_confirm }}" autocomplete="off">
-            <div class="help">Re-type the queue name above to enable the destructive button.</div>
+            <div class="help">
+              Re-type the queue name above to enable the destructive
+              actions on the right. Dry-run does not require it.
+            </div>
           </div>
         </div>
 
-        <div class="submit-row">
+        {% comment %}
+        Three submit buttons share the form. Server-side dispatch on
+        the `action` value:
+
+        * `dry_run` — neutral / `default` styling. Audited via
+          `celery_broker_clear(dry_run=True)`; queue untouched.
+        * `clear_keep_one` — destructive (red text). Only rendered
+          when match_count >= 2. Clears every match EXCEPT the
+          lowest-index one; "drop duplicate retries but leave one
+          running."
+        * `clear_all` — destructive (red text). Clears every match.
+
+        The two destructive buttons are stacked vertically and
+        anchored to the right edge so they read as a distinct "what
+        to do once you've confirmed" cluster, separated visually
+        both from the dry-run button on the left and from each
+        other.
+        {% endcomment %}
+        <div class="submit-row celery-clear-actions">
           <button type="submit" name="action" value="dry_run" class="default">
             Dry-run (audit only, no mutations)
           </button>
-          <button type="submit" name="action" value="confirm" class="deletelink" style="margin-left:1em;">
-            {% if mode == "keep_one" %}
-              Clear {{ target_count }} of {{ match_count }} message(s) from {{ queue_name }}
-            {% else %}
-              Clear {{ target_count }} message(s) from {{ queue_name }}
+          <div class="celery-destructive-actions">
+            {% if match_count >= 2 %}
+              <button type="submit" name="action" value="clear_keep_one"
+                      class="button celery-destructive-button celery-clear-keep-one">
+                Clear all but first ({{ match_count|add:"-1" }} of {{ match_count }} from {{ queue_name }})
+              </button>
             {% endif %}
-          </button>
+            <button type="submit" name="action" value="clear_all"
+                    class="button celery-destructive-button celery-clear-all">
+              Clear all ({{ match_count }} from {{ queue_name }})
+            </button>
+          </div>
         </div>
       {% endif %}
     </fieldset>
@@ -139,4 +152,45 @@
   </form>
 
 </div>
+
+<style>
+  /* Theme-safe styling: red TEXT (not red background) on the two
+     destructive buttons so they read as obviously dangerous while
+     staying readable on Django's light/dark admin themes. We
+     deliberately don't use Django admin's `deletelink` class here
+     because that swaps the background to red and the foreground to
+     white; the user spec for this surface is "red text". */
+  .celery-clear-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em 1em;
+    align-items: flex-start;
+  }
+  .celery-destructive-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75em;
+    margin-left: auto;
+    padding-left: 1em;
+    border-left: 1px solid var(--border-color, var(--hairline-color, #ccc));
+  }
+  .celery-destructive-button {
+    color: var(--error-fg, #ba2121);
+    font-weight: 600;
+  }
+  .celery-destructive-button:hover,
+  .celery-destructive-button:focus {
+    color: var(--error-fg, #ba2121);
+    text-decoration: underline;
+  }
+  /* Vertical separator between the two destructive options so they
+     don't read as a single chunk; the gap+border combo keeps the
+     two visually distinct without needing extra DOM. */
+  .celery-destructive-actions > .celery-clear-all {
+    margin-top: 0.25em;
+    border-top: 1px dashed var(--border-color, var(--hairline-color, #ccc));
+    padding-top: 0.75em;
+  }
+</style>
 {% endblock %}

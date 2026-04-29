@@ -20,11 +20,13 @@ Shape:
   column on `RedisQueueAdmin`, so the chart's repo cell matches
   what operators see elsewhere.
 * `chart.clear_by_filter_url` — base URL for the row-level
-  "Clear N" form action; we POST to it with `repoid` /
-  `commitid` / `csrfmiddlewaretoken`.
+  "Clear queue" form action; we POST to it with `task_name` /
+  `repoid` / `commitid` / `csrfmiddlewaretoken`. The POST opens
+  the preview page where the operator picks dry-run, clear-all-
+  but-first, or clear-all.
 * `chart.can_clear` — boolean toggling the visibility of the
-  "Clear N" buttons (superuser-only; staff users see read-only
-  percentages).
+  "Clear queue" buttons (superuser-only; staff users see read-
+  only percentages).
 {% endcomment %}
 
 <div class="module" id="celery-frequency-chart" style="margin-bottom: 16px;">
@@ -94,20 +96,18 @@ Shape:
           {% if chart.can_clear %}
             <td class="celery-actions">
               {% comment %}
-              Two submit buttons share one form so the hidden scope
-              fields (queue/task/repoid/commitid) only need to be
-              declared once. Server-side, `clear_by_filter_view`
-              dispatches on the `mode` value:
+              Single "Clear queue" button per row. POSTing the bucket's
+              hidden scope fields (queue/task/repoid/commitid) opens
+              the `clear_by_filter` preview page, where the operator
+              picks one of three explicit actions:
 
-              * `mode=all` (the default destructive action, styled with
-                `deletelink` to match the rest of the admin's destruct-
-                ive buttons) — clears every matching message.
-              * `mode=keep_one` — clears every match EXCEPT the one
-                with the lowest `index_in_queue` so a single message
-                stays in flight (typical "drop the duplicate retries
-                but leave one running" workflow). Rendered as a
-                non-destructive standard `button` so it reads as the
-                safer first move; only emitted when count >= 2.
+              1. dry-run (audited, leaves the queue untouched)
+              2. clear all but first (red text, destructive)
+              3. clear all (red text, destructive)
+
+              Keeping the chart row neutral — neither `deletelink` nor
+              a count in the label — communicates "this opens a page",
+              not "this clears N messages right now".
               {% endcomment %}
               <form method="post" action="{{ chart.clear_by_filter_url }}" class="celery-action-form">
                 {% csrf_token %}
@@ -121,15 +121,9 @@ Shape:
                 {% if bucket.commitid %}
                   <input type="hidden" name="commitid" value="{{ bucket.commitid }}">
                 {% endif %}
-                <input type="hidden" name="confirm" value="dry_run">
-                <button type="submit" class="deletelink" name="mode" value="all">
-                  Clear {{ bucket.count }}&hellip;
+                <button type="submit" class="button celery-clear-queue-btn">
+                  Clear queue&hellip;
                 </button>
-                {% if bucket.count >= 2 %}
-                  <button type="submit" class="button" name="mode" value="keep_one">
-                    Clear {{ bucket.count|add:"-1" }}, keep first&hellip;
-                  </button>
-                {% endif %}
               </form>
             </td>
           {% endif %}
@@ -158,18 +152,14 @@ Shape:
     text-align: right;
     font-variant-numeric: tabular-nums;
   }
-  /* Two-button action cell: the destructive `deletelink` ships
-     with its own background colour from the admin theme; the
-     "keep first" sibling is a plain `button`. Stack them with a
-     small gap so the row height stays consistent with the bar
-     gauge on its left. */
+  /* Single-button action cell. The chart's clear-queue button is
+     a neutral `button` (not `deletelink`) because clicking it just
+     opens the preview page; the destructive choice is made there. */
   #celery-frequency-chart table.celery-frequency td.celery-actions {
     white-space: nowrap;
   }
   #celery-frequency-chart .celery-action-form {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
+    display: inline-flex;
     margin: 0;
   }
   #celery-frequency-chart .celery-action-form button {
