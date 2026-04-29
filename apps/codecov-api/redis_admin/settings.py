@@ -27,7 +27,7 @@ MAX_DECODE_BYTES: int = getattr(settings, "REDIS_ADMIN_MAX_DECODE_BYTES", 4_096)
 # admin browsing (M4). LIST keys use bounded LRANGE windows so they aren't
 # constrained here. SCAN-based readers stop streaming once they reach this cap
 # so a runaway 10M-element SET can't OOM the api process.
-MAX_ITEMS_PER_KEY: int = getattr(settings, "REDIS_ADMIN_MAX_ITEMS_PER_KEY", 5_000)
+MAX_ITEMS_PER_KEY: int = getattr(settings, "REDIS_ADMIN_MAX_ITEMS_PER_KEY", 1_000_000)
 
 # Pipeline batch size for delete operations (M5). Keeps a single delete action
 # from blocking Redis with a single oversized MULTI when an operator clears
