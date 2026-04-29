@@ -1583,11 +1583,9 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         endpoint can invoke it in isolation.
         """
 
-        qs = CeleryBrokerQueueQuerySet(
-            CeleryBrokerQueue, queue_name=queue_name, request=request
-        )
         try:
-            buckets = _stream_frequency_aggregate(qs._connection(), queue_name)
+            broker_conn = _conn.get_connection(kind="broker")
+            buckets = _stream_frequency_aggregate(broker_conn, queue_name)
         except Exception:  # pragma: no cover - broker outage path
             return None
         if not buckets:

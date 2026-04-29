@@ -24,17 +24,20 @@ from __future__ import annotations
 
 import base64
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import fakeredis
 import pytest
 from django.contrib.admin.models import LogEntry
+from django.contrib.admin.sites import AdminSite
+from django.http import HttpResponse
 from django.test import Client as DjClient
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
 from redis_admin import services as redis_admin_services
-from redis_admin.admin import _resolve_repo_displays
+from redis_admin.admin import CeleryBrokerQueueAdmin, _resolve_repo_displays
 from redis_admin.families import parse_celery_envelope
 from redis_admin.models import CeleryBrokerQueue, RedisQueue
 from redis_admin.queryset import (
@@ -1750,6 +1753,37 @@ class ChartFragmentViewTest(TestCase):
         assert "celery-chart-fragment" in body
         assert "data-fragment-url" in body
         assert "chart-fragment" in body
+
+
+# ---------------------------------------------------------------------------
+# PR #899: chart-fragment regression — no-DB guard
+# ---------------------------------------------------------------------------
+#
+# Exercises _build_frequency_chart_context / chart_fragment_view WITHOUT
+# Django DB so this can run in any sandbox (no Postgres needed). This test
+# specifically catches the TypeError that arose from passing `request=`
+# to CeleryBrokerQueueQuerySet.__init__, which does not accept that kwarg.
+# Before the fix the view would 500; after the fix it returns 204 for an
+# empty queue.
+
+
+def test_chart_fragment_no_db_catches_request_kwarg_regression(patched_broker):
+    """Regression: chart_fragment_view must NOT pass request= to
+    CeleryBrokerQueueQuerySet (which raises TypeError → HTTP 500).
+
+    Uses the patched_broker fixture so no Postgres connection is required.
+    """
+    site = AdminSite()
+    admin_instance = CeleryBrokerQueueAdmin(CeleryBrokerQueue, site)
+    # Minimal mock: only is_staff / is_superuser are read on the empty-queue path.
+    request = SimpleNamespace(user=SimpleNamespace(is_staff=True, is_superuser=True))
+
+    # Empty queue → _stream_frequency_aggregate returns [] → view returns 204.
+    # Before the fix this raised TypeError and the view returned 500.
+    response = admin_instance.chart_fragment_view(request, "no-such-queue")
+
+    assert isinstance(response, HttpResponse)
+    assert response.status_code == 204
 
 
 # ---------------------------------------------------------------------------
