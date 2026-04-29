@@ -91,7 +91,7 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
     try:
         upload_id = upload_params.get("upload_id")
         if upload_id is None:
-            yield None
+            yield ""
             return
 
         # Create the temp file before querying the upload record so that
@@ -120,7 +120,7 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
                 storage_service.read_file(
                     get_bucket_name(), upload.storage_path, file_obj=f
                 )
-            log.info(
+            log.debug(
                 "Pre-downloaded upload file before lock acquisition", extra=log_extra
             )
         except FileNotInStorageError:

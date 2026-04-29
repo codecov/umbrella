@@ -225,7 +225,7 @@ class BundleAnalysisReportService(BaseReportService):
         self,
         commit: Commit,
         upload: Upload,
-        pre_downloaded_path: str | None,
+        pre_downloaded_path: str,
         compare_sha: str | None = None,
     ) -> ProcessingResult:
         """

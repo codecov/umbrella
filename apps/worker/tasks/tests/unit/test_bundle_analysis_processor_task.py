@@ -2193,11 +2193,11 @@ def test_pre_download_upload_file_no_upload_id(
     mocker,
     dbsession,
 ):
-    """Test that temporary_upload_file returns None when no upload_id in params"""
+    """Test that temporary_upload_file returns empty string when no upload_id in params (carryforward)"""
     params = {"commit": "abc123"}  # No upload_id
 
     with temporary_upload_file(dbsession, 123, params) as result:
-        assert result is None
+        assert result == ""
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})
