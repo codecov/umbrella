@@ -66,7 +66,7 @@ class ProcessingResult:
             "error": self.error.as_dict() if self.error else None,
         }
 
-    def update_upload(self, carriedforward: bool | None = False) -> None:
+    def update_upload(self, carriedforward: bool = False) -> None:
         """
         Updates this result's `Upload` record with information from
         this result.
@@ -234,9 +234,10 @@ class BundleAnalysisReportService(BaseReportService):
         Args:
             commit: The commit being processed
             upload: The upload record
-            pre_downloaded_path: Path to the pre-downloaded upload file. If None or
-                empty when upload.storage_path is set, returns a retryable error so
-                the task re-queues and re-downloads.
+            pre_downloaded_path: Path to the pre-downloaded upload file. Always a str
+                when upload.storage_path is non-empty (temporary_upload_file guarantees
+                this). An empty file means the pre-download failed; this returns a
+                retryable error so the task re-queues and re-downloads.
             compare_sha: Optional SHA for comparison
         """
         commit_report: CommitReport = upload.report
@@ -256,8 +257,7 @@ class BundleAnalysisReportService(BaseReportService):
                 # temporary_upload_file; in normal flow it's always a path.
                 # An empty file means the pre-download failed before the lock.
                 if (
-                    pre_downloaded_path is None
-                    or not os.path.exists(pre_downloaded_path)
+                    not os.path.exists(pre_downloaded_path)
                     or os.path.getsize(pre_downloaded_path) == 0
                 ):
                     log.warning(

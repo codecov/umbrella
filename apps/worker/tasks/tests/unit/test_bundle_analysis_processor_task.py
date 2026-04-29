@@ -2205,11 +2205,12 @@ def test_pre_download_upload_file_upload_not_found(
     mocker,
     dbsession,
 ):
-    """Test that temporary_upload_file returns None when upload doesn't exist"""
+    """Test that temporary_upload_file yields an empty file when upload doesn't exist"""
     params = {"upload_id": 99999, "commit": "abc123"}  # Non-existent upload_id
 
     with temporary_upload_file(dbsession, 123, params) as result:
-        assert result is None
+        assert result is not None
+        assert os.path.getsize(result) == 0
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})

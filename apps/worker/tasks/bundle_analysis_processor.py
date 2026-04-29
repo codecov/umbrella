@@ -80,10 +80,11 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
     before lock acquisition. The file is cleaned up automatically on exit.
 
     Yields:
-        str | None: Absolute path to a local temp file, or None for carryforward tasks
-                    (no upload_id). When a path is yielded, the file may be empty if
-                    the pre-download failed. report.py's process_upload detects this
-                    and raises FileNotInStorageError to trigger a retry.
+        str | None: None only for carryforward tasks (no upload_id), where no file
+                    is expected. For all other tasks a str path is always yielded.
+                    The file may be empty if the upload record was not yet committed
+                    or the download failed; process_upload treats an empty file as a
+                    retryable error.
     """
     temp_file_path = None
 
@@ -93,17 +94,21 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
             yield None
             return
 
+        # Create the temp file before querying the upload record so that
+        # non-carryforward tasks always yield a str path, never None.
+        # An empty file signals a failed download; process_upload treats it
+        # as a retryable error.
+        fd, temp_file_path = tempfile.mkstemp()
+        os.close(fd)
+
         upload = db_session.query(Upload).filter_by(id_=upload_id).first()
         if upload is None or not upload.storage_path:
-            yield None
+            yield temp_file_path
             return
 
         commit = upload.report.commit
         archive_service = ArchiveService(commit.repository)
         storage_service = archive_service.storage
-
-        fd, temp_file_path = tempfile.mkstemp()
-        os.close(fd)
 
         log_extra = {
             "repoid": repoid,
