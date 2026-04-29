@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import base64
 import fnmatch
-import json
 import logging
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+import orjson
 import sentry_sdk
 
 from shared.config import get_config
@@ -319,7 +319,7 @@ def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
     """
 
     try:
-        envelope = json.loads(decoded)
+        envelope = orjson.loads(decoded)
     except (ValueError, TypeError):
         return CeleryEnvelopeMeta()
     if not isinstance(envelope, dict):
@@ -345,7 +345,9 @@ def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
     if isinstance(body_b64, str) and body_b64:
         try:
             body_bytes = base64.b64decode(body_b64, validate=False)
-            body = json.loads(body_bytes.decode("utf-8", errors="replace"))
+            # orjson.loads accepts bytes directly — faster than
+            # body_bytes.decode("utf-8") → json.loads(str)
+            body = orjson.loads(body_bytes)
         except (ValueError, TypeError, UnicodeDecodeError):
             body = None
         if isinstance(body, list) and len(body) >= 2 and isinstance(body[1], dict):

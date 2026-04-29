@@ -1072,6 +1072,77 @@ class FrequencyBucket:
 # rendered table scannable above the changelist.
 _FREQUENCY_TOP_DEFAULT: int = 20
 
+# Chunk size for streaming LRANGE scans on deep queues (200–500k).
+# 10k rows per round-trip balances pipeline latency vs. memory.
+_STREAM_CHUNK: int = 10_000
+
+
+def _stream_frequency_aggregate(
+    redis,
+    queue_name: str,
+    *,
+    top: int = _FREQUENCY_TOP_DEFAULT,
+) -> list[FrequencyBucket]:
+    """Streaming `(task_name, repoid, commitid)` frequency aggregator.
+
+    Walks `queue_name` in `_STREAM_CHUNK`-sized LRANGE chunks up to
+    `MAX_ITEMS_PER_KEY` total messages. Each chunk is parsed and
+    immediately discarded — the only retained state is a rolling
+    `Counter` keyed on the 3-tuple. Memory footprint is bounded by
+    the number of unique `(task, repoid, commitid)` triples rather
+    than by queue depth.
+
+    Called by:
+    * `CeleryBrokerQueueQuerySet.frequency_by_task_repo_commit` when
+      the per-request LRANGE cache is empty (the changelist
+      materialised a capped window; the chart needs the full depth).
+    * The `chart_fragment_view` admin endpoint which renders the chart
+      in isolation without first materialising the changelist.
+    """
+
+    cap = redis_admin_settings.MAX_ITEMS_PER_KEY
+    counter: Counter[tuple[str | None, int | None, str | None]] = Counter()
+    total = 0
+
+    depth = int(redis.llen(queue_name) or 0)
+    for chunk_start in range(0, min(depth, cap), _STREAM_CHUNK):
+        chunk_end = chunk_start + _STREAM_CHUNK - 1
+        raw_chunk = redis.lrange(queue_name, chunk_start, chunk_end)
+        for raw in raw_chunk:
+            decoded = _decode_value(raw)
+            meta = parse_celery_envelope(decoded)
+            if meta.task is None and meta.repoid is None and meta.commitid is None:
+                total += 1
+                continue
+            counter[(meta.task, meta.repoid, meta.commitid)] += 1
+            total += 1
+
+    if not counter or total == 0:
+        return []
+
+    ordered = sorted(
+        counter.items(),
+        key=lambda kv: (
+            -kv[1],
+            _ordering_tuple_for_str(kv[0][0]),
+            _ordering_tuple_for_int(kv[0][1]),
+            _ordering_tuple_for_str(kv[0][2]),
+        ),
+    )
+    buckets: list[FrequencyBucket] = []
+    for (task_name, repoid, commitid), count in ordered[:top]:
+        pct = (count / total) * 100.0 if total else 0.0
+        buckets.append(
+            FrequencyBucket(
+                task_name=task_name,
+                repoid=repoid,
+                commitid=commitid,
+                count=count,
+                pct=pct,
+            )
+        )
+    return buckets
+
 
 class CeleryBrokerQueueQuerySet:
     """Fake QuerySet over messages inside one celery_broker queue.
@@ -1470,10 +1541,21 @@ class CeleryBrokerQueueQuerySet:
     ) -> list[FrequencyBucket]:
         """Top `(task_name, repoid, commitid)` triples by message count.
 
-        Drives the drill-down page's frequency chart. Pure aggregation
-        over rows already materialised by `_fetch_all`, so calling this
-        on a queryset that the changelist already iterated reuses the
-        cached snapshot rather than re-issuing `LRANGE`.
+        Drives the drill-down page's frequency chart. Two paths:
+
+        1. **Cached path**: if the per-request LRANGE snapshot is
+           already populated (i.e. the changelist materialised first),
+           aggregates directly over those rows. Zero extra Redis
+           round-trips; bounded by `MAX_ITEMS_PER_KEY`.
+        2. **Streaming path**: if the cache is empty (called from the
+           chart-fragment endpoint before the changelist materialised,
+           or in a standalone context), calls
+           `_stream_frequency_aggregate` which streams the full queue
+           in `_STREAM_CHUNK`-sized chunks. Memory is bounded by the
+           number of unique `(task, repoid, commitid)` triples rather
+           than queue depth. Does NOT backfill the request cache so the
+           subsequent changelist materialisation populates it fresh
+           for the visible window.
 
         Buckets where all three axes are `None` are dropped — the
         chart's click target maps to
@@ -1486,44 +1568,56 @@ class CeleryBrokerQueueQuerySet:
         """
 
         if self.is_summary_mode():
-            # Summary rows don't carry message-shaped fields.
             return []
-        rows = self._fetch_all()
-        total = len(rows)
-        if total == 0:
-            return []
-        counter: Counter[tuple[str | None, int | None, str | None]] = Counter()
-        for row in rows:
-            if row.task_name is None and row.repoid is None and row.commitid is None:
-                continue
-            counter[(row.task_name, row.repoid, row.commitid)] += 1
-        if not counter:
-            return []
-        # `Counter.most_common` doesn't guarantee tie-break order across
-        # Python versions, so re-sort with explicit secondary keys
-        # (None sorts last via `(is_none, value)` shape).
-        ordered = sorted(
-            counter.items(),
-            key=lambda kv: (
-                -kv[1],
-                _ordering_tuple_for_str(kv[0][0]),
-                _ordering_tuple_for_int(kv[0][1]),
-                _ordering_tuple_for_str(kv[0][2]),
-            ),
-        )
-        buckets: list[FrequencyBucket] = []
-        for (task_name, repoid, commitid), count in ordered[:top]:
-            pct = (count / total) * 100.0 if total else 0.0
-            buckets.append(
-                FrequencyBucket(
-                    task_name=task_name,
-                    repoid=repoid,
-                    commitid=commitid,
-                    count=count,
-                    pct=pct,
-                )
+
+        # Fast path: reuse already-materialised changelist snapshot.
+        cached = self._result_cache
+        if cached is not None:
+            rows = cached
+            total = len(rows)
+            if total == 0:
+                return []
+            counter: Counter[tuple[str | None, int | None, str | None]] = Counter()
+            for row in rows:
+                if (
+                    row.task_name is None
+                    and row.repoid is None
+                    and row.commitid is None
+                ):
+                    continue
+                counter[(row.task_name, row.repoid, row.commitid)] += 1
+            if not counter:
+                return []
+            ordered = sorted(
+                counter.items(),
+                key=lambda kv: (
+                    -kv[1],
+                    _ordering_tuple_for_str(kv[0][0]),
+                    _ordering_tuple_for_int(kv[0][1]),
+                    _ordering_tuple_for_str(kv[0][2]),
+                ),
             )
-        return buckets
+            buckets: list[FrequencyBucket] = []
+            for (task_name, repoid, commitid), count in ordered[:top]:
+                pct = (count / total) * 100.0 if total else 0.0
+                buckets.append(
+                    FrequencyBucket(
+                        task_name=task_name,
+                        repoid=repoid,
+                        commitid=commitid,
+                        count=count,
+                        pct=pct,
+                    )
+                )
+            return buckets
+
+        # Streaming path: no cache yet — stream the full queue in chunks
+        # without backfilling the request cache (the changelist will
+        # populate it for the visible window when it materialises later).
+        redis = self._connection()
+        if not self.queue_name or not redis.exists(self.queue_name):
+            return []
+        return _stream_frequency_aggregate(redis, self.queue_name, top=top)
 
     # ---- Admin compatibility shims ---------------------------------------
 

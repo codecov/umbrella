@@ -34,7 +34,8 @@ from django.contrib.contenttypes.models import ContentType
 
 from . import conn as _conn
 from . import settings as redis_admin_settings
-from .families import ConnectionKind, find_family
+from .families import ConnectionKind, find_family, parse_celery_envelope
+from .families import _decode as _decode_value
 from .models import CeleryBrokerQueue, RedisLock, RedisQueue, RedisQueueItem
 
 log = logging.getLogger(__name__)
@@ -212,25 +213,31 @@ def _record_audit(
     sample: Sequence[str],
     families: Sequence[str],
     dry_run: bool,
+    extra: dict | None = None,
 ) -> None:
     """Write a `LogEntry` row so operators can reconstruct what cleared what.
 
     Best-effort: a logging failure must never roll back the actual
     delete. The change_message is JSON for grep-ability.
+
+    `extra` is merged into the change_message dict so callers can
+    record scope-specific fields (e.g. `passes_run`, `total_drifted`
+    for the streaming celery clear).
     """
 
     try:
         ct = ContentType.objects.get_for_model(RedisQueue)
-        message = json.dumps(
-            {
-                "scope": scope,
-                "dry_run": dry_run,
-                "count": count,
-                "families": list(families),
-                "sample": list(sample),
-                "refused": list(refused)[:_AUDIT_SAMPLE_SIZE],
-            }
-        )
+        payload: dict = {
+            "scope": scope,
+            "dry_run": dry_run,
+            "count": count,
+            "families": list(families),
+            "sample": list(sample),
+            "refused": list(refused)[:_AUDIT_SAMPLE_SIZE],
+        }
+        if extra:
+            payload.update(extra)
+        message = json.dumps(payload)
         user_id = getattr(user, "id", None) or getattr(user, "pk", None)
         if user_id is None:
             log.warning("redis_admin: skipping audit log; no user supplied")
@@ -387,7 +394,7 @@ def _redis_delete(
     return result
 
 
-# ---- Celery broker per-message clear (M6) ----------------------------------
+# ---- Celery broker per-message clear (M6 + streaming) -----------------------
 #
 # `redis_delete()`'s `_classify_items` deliberately refuses item-level
 # deletes for `celery_broker` because the family's `decode_value`
@@ -401,12 +408,36 @@ def _redis_delete(
 # our LSET and LREM, the popped (sentinel) message is recognised at
 # task-decode time as garbage and we still end up with a consistent
 # delete count.
+#
+# Streaming clear (PR #899):
+#
+# For 200–500k-deep queues the old eager-materialise-then-LSET path
+# had two problems:
+#
+#   1. Memory: materialising up to `MAX_ITEMS_PER_KEY` rows into
+#      Python before clearing was O(N) in memory.
+#   2. Race drift: the index a Celery consumer sees between our
+#      `LRANGE` snapshot and our `LSET` call can shift if another
+#      consumer BLPOPs from the head. The old code had no verify step.
+#
+# The new path (see `_streaming_celery_clear`) walks the queue in
+# 10k-row LRANGE chunks.  For each candidate position it does a
+# verify-before-LSET (LINDEX to confirm the raw bytes still match the
+# snapshot row before writing the tombstone) and a
+# repeat-until-stable loop (max 3 passes) to catch messages that
+# drifted into our filter window between passes.
 
 # Tombstone prefix is intentionally distinctive so a stray LREM
 # attempt on the wrong queue couldn't accidentally match a real
 # message. Each call appends a fresh UUID so simultaneous clears
 # don't step on each other.
 _CELERY_TOMBSTONE_PREFIX = "__redis_admin_celery_tombstone__"
+
+# Chunk size for streaming LRANGE during clear.
+_CELERY_CLEAR_CHUNK: int = 10_000
+
+# Maximum passes in the repeat-until-stable loop.
+_CELERY_MAX_PASSES: int = 3
 
 
 def _celery_clear_tombstone() -> str:
@@ -468,11 +499,144 @@ def _execute_celery_clear(
         return 0
 
 
+@dataclass(frozen=True)
+class _StreamingClearStats:
+    """Per-run stats from `_streaming_celery_clear`."""
+
+    total_lset: int
+    total_drifted: int
+    passes_run: int
+
+
+def _streaming_celery_clear(
+    redis,
+    queue_name: str,
+    filter_tuples: frozenset,
+    tombstone: str,
+    *,
+    keep_one: bool = False,
+    dry_run: bool = False,
+) -> _StreamingClearStats:
+    """Streaming LRANGE+verify-before-LSET clear for `queue_name`.
+
+    Walks the queue in `_CELERY_CLEAR_CHUNK`-row chunks, identifies
+    messages whose parsed `(task_name, repoid, commitid)` triple
+    appears in `filter_tuples`, and for each match:
+
+    1. Issues `LINDEX key idx` to re-read the raw bytes at that
+       position.
+    2. Compares LINDEX bytes to the LRANGE snapshot bytes. If they
+       differ (drift — a consumer BLPOPed from the head, shifting
+       indexes), the slot is skipped.
+    3. Issues `LSET key idx tombstone` on a clean match.
+
+    After each full pass, `LREM key 0 tombstone` sweeps all
+    tombstones in one shot.
+
+    The loop repeats up to `_CELERY_MAX_PASSES` times, stopping
+    early when a pass finds zero matches OR two consecutive passes
+    tombstone the same count (stable point reached).
+
+    `keep_one=True` skips the first matching message encountered in
+    the first pass and on all subsequent passes, implementing the
+    "clear all but first (lowest-index match)" semantic.
+    """
+
+    tombstone_bytes = tombstone.encode() if isinstance(tombstone, str) else tombstone
+
+    total_lset = 0
+    total_drifted = 0
+    prev_lset: int | None = None
+    passes_run = 0
+    cap = redis_admin_settings.MAX_ITEMS_PER_KEY
+
+    # Track whether we've kept the "first" across all passes so that
+    # repeat passes honour the same semantic (first by queue index).
+    first_kept = not keep_one  # True means "no need to keep one"
+
+    for pass_num in range(_CELERY_MAX_PASSES):
+        passes_run = pass_num + 1
+        matches_found = 0
+        matches_lset = 0
+        matches_drifted = 0
+        # Reset first_kept for each pass so each pass independently
+        # skips its first match. This ensures the lowest-index
+        # surviving message is always kept, even as the queue shifts.
+        pass_first_kept = first_kept
+
+        depth = int(redis.llen(queue_name) or 0)
+        for chunk_start in range(0, min(depth, cap), _CELERY_CLEAR_CHUNK):
+            chunk_end = chunk_start + _CELERY_CLEAR_CHUNK - 1
+            raw_chunk = redis.lrange(queue_name, chunk_start, chunk_end)
+            for offset, raw in enumerate(raw_chunk):
+                # Skip already-tombstoned slots from this or a
+                # concurrent clear.
+                if isinstance(raw, bytes) and raw.startswith(
+                    _CELERY_TOMBSTONE_PREFIX.encode()
+                ):
+                    continue
+                idx = chunk_start + offset
+                decoded = _decode_value(raw)
+                meta = parse_celery_envelope(decoded)
+                key = (meta.task, meta.repoid, meta.commitid)
+                if key not in filter_tuples:
+                    continue
+                matches_found += 1
+
+                # keep_one: skip the first match across all chunks
+                # (lowest index in current pass).
+                if not pass_first_kept:
+                    pass_first_kept = True
+                    continue
+
+                if dry_run:
+                    continue
+
+                # Verify-before-LSET: re-read the slot via LINDEX
+                # and compare raw bytes to our LRANGE snapshot.
+                current_raw = redis.lindex(queue_name, idx)
+                if current_raw != raw:
+                    matches_drifted += 1
+                    continue
+
+                try:
+                    redis.lset(queue_name, idx, tombstone)
+                    matches_lset += 1
+                except Exception:
+                    # Out-of-range: consumer drained this slot.
+                    matches_drifted += 1
+
+        if not dry_run:
+            redis.lrem(queue_name, 0, tombstone)
+
+        total_lset += matches_lset
+        total_drifted += matches_drifted
+
+        # Stability check: stop when no matches or lset count plateaued.
+        if matches_found == 0:
+            break
+        if prev_lset is not None and matches_lset == prev_lset:
+            break
+        prev_lset = matches_lset
+
+        # After the first pass, keep_one is "done" (the message
+        # identified as the keeper in pass 1 is now the persistent
+        # survivor).
+        first_kept = True
+
+    return _StreamingClearStats(
+        total_lset=total_lset,
+        total_drifted=total_drifted,
+        passes_run=passes_run,
+    )
+
+
 def celery_broker_clear(
     targets: Iterable[CeleryBrokerQueue],
     *,
     user,
     dry_run: bool = False,
+    keep_one: bool = False,
 ) -> DeleteResult:
     """Clear the given celery broker messages with the LSET-tombstone path.
 
@@ -484,6 +648,10 @@ def celery_broker_clear(
     audit row with `scope="celery_broker_clear"` so the existing
     operator audit trail keeps capturing celery clears alongside
     family-level deletes.
+
+    `keep_one=True` skips the first (lowest-index) match in each
+    queue — implements the "clear all but first" action on the
+    `clear-by-filter` page.
     """
 
     span_name = "celery_broker_dry_run" if dry_run else "celery_broker_execute"
@@ -493,7 +661,9 @@ def celery_broker_clear(
             span.set_tag("redis_admin.scope", "celery_broker_clear")
         except AttributeError:  # pragma: no cover - older sdks
             pass
-        return _celery_broker_clear(targets, user=user, dry_run=dry_run, span=span)
+        return _celery_broker_clear(
+            targets, user=user, dry_run=dry_run, keep_one=keep_one, span=span
+        )
 
 
 def _celery_broker_clear(
@@ -501,10 +671,17 @@ def _celery_broker_clear(
     *,
     user,
     dry_run: bool,
+    keep_one: bool,
     span,
 ) -> DeleteResult:
-    by_queue: dict[str, list[int]] = {}
+    # Derive per-queue filter tuples from the pre-identified targets.
+    # For each queue we collect the set of (task_name, repoid,
+    # commitid) triples that the operator wants cleared and the sample
+    # tokens for the audit log.
+    by_queue_filters: dict[str, set] = {}
     sample_source: list[str] = []
+    pending_count = 0
+
     for target in targets:
         if not isinstance(target, CeleryBrokerQueue):
             log.warning(
@@ -514,43 +691,48 @@ def _celery_broker_clear(
             continue
         if not target.queue_name:
             continue
-        by_queue.setdefault(target.queue_name, []).append(target.index_in_queue)
+        key = (target.task_name, target.repoid, target.commitid)
+        by_queue_filters.setdefault(target.queue_name, set()).add(key)
         sample_source.append(f"{target.queue_name}#{target.index_in_queue}")
+        pending_count += 1
 
     sample = tuple(sample_source[:_AUDIT_SAMPLE_SIZE])
-    families = ("celery_broker",) if by_queue else ()
-    pending_count = sum(len(v) for v in by_queue.values())
+    families = ("celery_broker",) if by_queue_filters else ()
 
-    if dry_run or not by_queue:
-        result = DeleteResult(
-            count=pending_count,
-            sample=sample,
-            families=families,
-            dry_run=dry_run,
-            refused=(),
-        )
+    total_lset = 0
+    total_drifted = 0
+    total_passes = 0
+
+    if dry_run or not by_queue_filters:
+        result_count = pending_count
     else:
         redis = _conn.get_connection(kind="broker")
-        deleted = 0
-        for queue_name, indexes in by_queue.items():
+        for queue_name, filter_set in by_queue_filters.items():
             tombstone = _celery_clear_tombstone()
-            # Sort descending so if two pipelines race against the same
-            # queue, the higher-index LSETs land before lower-index
-            # ones — keeps the failure mode "the slot we missed has
-            # been consumed" instead of "we wrote a tombstone over a
-            # message we hadn't intended to".
-            indexes_sorted = sorted(set(indexes), reverse=True)
-            deleted += _execute_celery_clear(
-                redis, queue_name, indexes_sorted, tombstone=tombstone
+            stats = _streaming_celery_clear(
+                redis,
+                queue_name,
+                frozenset(filter_set),
+                tombstone,
+                keep_one=keep_one,
+                dry_run=False,
             )
-        result = DeleteResult(
-            count=deleted,
-            sample=sample,
-            families=families,
-            dry_run=False,
-            refused=(),
-        )
+            total_lset += stats.total_lset
+            total_drifted += stats.total_drifted
+            total_passes += stats.passes_run
+        result_count = total_lset
 
+    result = DeleteResult(
+        count=result_count,
+        sample=sample,
+        families=families,
+        dry_run=dry_run,
+        refused=(),
+    )
+
+    mode = (
+        "dry-run" if dry_run else ("all-but-first" if keep_one else "all-from-bucket")
+    )
     _record_audit(
         user=user,
         scope="celery_broker_clear",
@@ -559,10 +741,18 @@ def _celery_broker_clear(
         sample=sample,
         families=families,
         dry_run=dry_run,
+        extra={
+            "mode": mode,
+            "passes_run": total_passes,
+            "total_lset": total_lset,
+            "total_drifted": total_drifted,
+        },
     )
     try:
         span.set_data("redis_admin.count", result.count)
-        span.set_data("redis_admin.queues", sorted(by_queue))
+        span.set_data("redis_admin.queues", sorted(by_queue_filters))
+        span.set_data("redis_admin.passes_run", total_passes)
+        span.set_data("redis_admin.total_drifted", total_drifted)
     except AttributeError:  # pragma: no cover - older sdks
         pass
     return result
