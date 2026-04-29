@@ -1585,7 +1585,9 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
 
         try:
             broker_conn = _conn.get_connection(kind="broker")
-            buckets = _stream_frequency_aggregate(broker_conn, queue_name)
+            buckets, total_sampled = _stream_frequency_aggregate(
+                broker_conn, queue_name
+            )
         except Exception:  # pragma: no cover - broker outage path
             return None
         if not buckets:
@@ -1596,7 +1598,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             total_depth = int(llen) if isinstance(llen, int) and llen >= 0 else 0
         except Exception:  # pragma: no cover - defensive
             total_depth = sum(b.count for b in buckets)
-        total_visible = sum(b.count for b in buckets)
+        total_visible = total_sampled
         try:
             clear_url = reverse("admin:redis_admin_celerybrokerqueue_clear_by_filter")
         except NoReverseMatch:  # pragma: no cover - URL is wired below

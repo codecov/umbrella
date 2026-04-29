@@ -1082,7 +1082,7 @@ def _stream_frequency_aggregate(
     queue_name: str,
     *,
     top: int = _FREQUENCY_TOP_DEFAULT,
-) -> list[FrequencyBucket]:
+) -> tuple[list[FrequencyBucket], int]:
     """Streaming `(task_name, repoid, commitid)` frequency aggregator.
 
     Walks `queue_name` in `_STREAM_CHUNK`-sized LRANGE chunks up to
@@ -1091,6 +1091,13 @@ def _stream_frequency_aggregate(
     `Counter` keyed on the 3-tuple. Memory footprint is bounded by
     the number of unique `(task, repoid, commitid)` triples rather
     than by queue depth.
+
+    Returns a 2-tuple ``(buckets, total_sampled)`` where ``buckets``
+    is the top-N ``FrequencyBucket`` list and ``total_sampled`` is the
+    full sampled-message count (including all-None envelopes and triples
+    beyond the top-N cutoff). Use ``total_sampled`` as the denominator
+    when rendering percentages so they stay consistent with the
+    displayed total.
 
     Called by:
     * `CeleryBrokerQueueQuerySet.frequency_by_task_repo_commit` when
@@ -1118,7 +1125,7 @@ def _stream_frequency_aggregate(
             total += 1
 
     if not counter or total == 0:
-        return []
+        return [], 0
 
     ordered = sorted(
         counter.items(),
@@ -1141,7 +1148,7 @@ def _stream_frequency_aggregate(
                 pct=pct,
             )
         )
-    return buckets
+    return buckets, total
 
 
 class CeleryBrokerQueueQuerySet:
@@ -1617,7 +1624,8 @@ class CeleryBrokerQueueQuerySet:
         redis = self._connection()
         if not self.queue_name or not redis.exists(self.queue_name):
             return []
-        return _stream_frequency_aggregate(redis, self.queue_name, top=top)
+        buckets, _total = _stream_frequency_aggregate(redis, self.queue_name, top=top)
+        return buckets
 
     # ---- Admin compatibility shims ---------------------------------------
 

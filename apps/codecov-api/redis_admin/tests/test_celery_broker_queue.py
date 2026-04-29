@@ -1605,7 +1605,7 @@ def test_stream_frequency_aggregate_matches_eager_for_small_queue(patched_broker
             ),
         )
 
-    buckets = _stream_frequency_aggregate(patched_broker, "celery")
+    buckets, _ = _stream_frequency_aggregate(patched_broker, "celery")
 
     assert [(b.task_name, b.repoid, b.commitid, b.count) for b in buckets] == [
         ("app.tasks.notify.NotifyTask", 1, "aaaa", 3),
@@ -1628,7 +1628,7 @@ def test_stream_frequency_aggregate_large_queue_correct_counts(patched_broker):
             _build_envelope(task=task, kwargs={"repoid": 1, "commitid": "aaa"}),
         )
 
-    buckets = _stream_frequency_aggregate(patched_broker, "bigqueue")
+    buckets, _ = _stream_frequency_aggregate(patched_broker, "bigqueue")
 
     # n // 3 messages have task_b (every 3rd, i=0,3,6,…)
     count_b = n // 3
@@ -1661,6 +1661,60 @@ def test_frequency_by_task_repo_commit_uses_streaming_when_cache_empty(
     assert len(buckets) == 1
     assert buckets[0].count == 5
     assert buckets[0].task_name == "app.tasks.x.X"
+
+
+def test_stream_frequency_aggregate_returns_full_total_with_top_truncation(
+    patched_broker,
+):
+    """total_sampled reflects all messages even when buckets are truncated by top."""
+
+    # Push 25 distinct (task, repoid, commitid) triples — each with 1 message.
+    for i in range(25):
+        patched_broker.rpush(
+            "celery",
+            _build_envelope(
+                task=f"app.tasks.task_{i}",
+                kwargs={"repoid": i, "commitid": f"commit{i}"},
+            ),
+        )
+
+    buckets, total_sampled = _stream_frequency_aggregate(
+        patched_broker, "celery", top=5
+    )
+
+    assert len(buckets) == 5
+    assert total_sampled == 25
+
+
+def test_stream_frequency_aggregate_total_includes_unparseable_envelopes(
+    patched_broker,
+):
+    """total_sampled counts all-None envelopes; they are excluded from buckets."""
+
+    # 3 valid messages
+    for _ in range(3):
+        patched_broker.rpush(
+            "celery",
+            _build_envelope(
+                task="app.tasks.notify.NotifyTask",
+                kwargs={"repoid": 1, "commitid": "abc"},
+            ),
+        )
+    # 2 garbage envelopes — task=None produces all-None axes in parse_celery_envelope
+    for _ in range(2):
+        patched_broker.rpush(
+            "celery",
+            _build_envelope(task=None, kwargs={}),
+        )
+
+    buckets, total_sampled = _stream_frequency_aggregate(patched_broker, "celery")
+
+    # All 5 messages are counted in total_sampled
+    assert total_sampled == 5
+    # Only the 3 valid messages form a bucket
+    assert len(buckets) == 1
+    assert buckets[0].count == 3
+    assert sum(b.count for b in buckets) < total_sampled
 
 
 # ---------------------------------------------------------------------------
