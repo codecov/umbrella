@@ -1,24 +1,25 @@
 {% load admin_urls %}
 
-{# Frequency chart for the celery_broker drill-down page.
+{% comment %}
+Frequency chart for the celery_broker drill-down page.
 
-   Shape:
-   * `chart.queue_name` — the queue we materialised.
-   * `chart.total_visible` — total messages in the snapshot the chart
-     was computed from (`len(_fetch_all())`, NOT `LLEN`).
-   * `chart.total_depth` — `LLEN(queue)` at the time the chart was
-     built. When > `total_visible` we surface a "showing top N of
-     M" banner so operators know the percentages are over the
-     visible window.
-   * `chart.buckets` — list of `FrequencyBucket(repoid, commitid,
-     count, pct)`. Already sorted; rendered top-to-bottom.
-   * `chart.clear_by_filter_url` — base URL for the row-level
-     "Clear N" form action; we POST to it with `repoid` /
-     `commitid` / `csrfmiddlewaretoken`.
-   * `chart.can_clear` — boolean toggling the visibility of the
-     "Clear N" buttons (superuser-only; staff users see read-only
-     percentages).
-#}
+Shape:
+* `chart.queue_name` — the queue we materialised.
+* `chart.total_visible` — total messages in the snapshot the chart
+  was computed from (`len(_fetch_all())`, NOT `LLEN`).
+* `chart.total_depth` — `LLEN(queue)` at the time the chart was
+  built. When > `total_visible` we surface a "showing top N of M"
+  banner so operators know the percentages are over the visible
+  window.
+* `chart.buckets` — list of `FrequencyBucket(repoid, commitid,
+  count, pct)`. Already sorted; rendered top-to-bottom.
+* `chart.clear_by_filter_url` — base URL for the row-level
+  "Clear N" form action; we POST to it with `repoid` /
+  `commitid` / `csrfmiddlewaretoken`.
+* `chart.can_clear` — boolean toggling the visibility of the
+  "Clear N" buttons (superuser-only; staff users see read-only
+  percentages).
+{% endcomment %}
 
 <div class="module" id="celery-frequency-chart" style="margin-bottom: 16px;">
   <h2>Top {{ chart.buckets|length }} (repoid, commitid) pairs in

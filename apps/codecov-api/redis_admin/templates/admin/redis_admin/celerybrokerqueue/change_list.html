@@ -1,13 +1,15 @@
 {% extends "admin/change_list.html" %}
 {% load admin_urls %}
 
-{# Inject the frequency chart panel above the result list on the
-   per-message drill-down page. `extra_context.frequency_chart` is set
-   by `CeleryBrokerQueueAdmin.changelist_view` only when (a) the URL
-   carries `?queue_name__exact=<queue>` and (b) the materialised
-   snapshot has at least one bucket with structured `(repoid,
-   commitid)` data — empty queues / system queues without those
-   kwargs render the page without a chart. #}
+{% comment %}
+Inject the frequency chart panel above the result list on the
+per-message drill-down page. `extra_context.frequency_chart` is set
+by `CeleryBrokerQueueAdmin.changelist_view` only when (a) the URL
+carries `?queue_name__exact=<queue>` and (b) the materialised
+snapshot has at least one bucket with structured `(repoid,
+commitid)` data — empty queues / system queues without those
+kwargs render the page without a chart.
+{% endcomment %}
 {% block content %}
   {% if frequency_chart %}
     {% include "admin/redis_admin/celerybrokerqueue/_frequency_chart.html" with chart=frequency_chart %}
