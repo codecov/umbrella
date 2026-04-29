@@ -1,0 +1,208 @@
+{% load admin_urls %}
+
+{% comment %}
+Frequency chart for the celery_broker drill-down page.
+
+Shape:
+* `chart.queue_name` — the queue we materialised.
+* `chart.total_visible` — total messages in the snapshot the chart
+  was computed from (`len(_fetch_all())`, NOT `LLEN`).
+* `chart.total_depth` — `LLEN(queue)` at the time the chart was
+  built. When > `total_visible` we surface a "showing top N of M"
+  banner so operators know the percentages are over the visible
+  window.
+* `chart.buckets` — list of view-model dicts shaped as
+  `{task_name, repoid, repo_display, repo_change_url, commitid,
+  count, pct}`. Already sorted; rendered top-to-bottom. The
+  `repo_display` / `repo_change_url` pair is computed in
+  `_build_frequency_chart_context` via the same
+  `_resolve_repo_displays` helper that powers the `repo_display`
+  column on `RedisQueueAdmin`, so the chart's repo cell matches
+  what operators see elsewhere.
+* `chart.clear_by_filter_url` — base URL for the row-level
+  "Clear queue" form action; we POST to it with `task_name` /
+  `repoid` / `commitid` / `csrfmiddlewaretoken`. The POST opens
+  the preview page where the operator picks dry-run, clear-all-
+  but-first, or clear-all.
+* `chart.can_clear` — boolean toggling the visibility of the
+  "Clear queue" buttons (superuser-only; staff users see read-
+  only percentages).
+{% endcomment %}
+
+<div class="module" id="celery-frequency-chart" style="margin-bottom: 16px;">
+  <h2>Top {{ chart.buckets|length }} (repoid, commitid, task) triples in
+    {{ chart.queue_name }}</h2>
+  {% if chart.total_depth > chart.total_visible %}
+    <p class="help">
+      Showing top {{ chart.buckets|length }} of
+      {{ chart.total_visible }} sampled messages
+      (queue depth: {{ chart.total_depth }}). Percentages are over the
+      sampled window, not the full queue.
+    </p>
+  {% else %}
+    <p class="help">
+      Showing top {{ chart.buckets|length }} of
+      {{ chart.total_visible }} message(s).
+    </p>
+  {% endif %}
+  <table class="celery-frequency">
+    <thead>
+      <tr>
+        <th scope="col">repoid</th>
+        <th scope="col">commitid</th>
+        <th scope="col">task</th>
+        <th scope="col" class="num">count</th>
+        <th scope="col">share</th>
+        {% if chart.can_clear %}
+          <th scope="col">action</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for bucket in chart.buckets %}
+        <tr>
+          <td>
+            {% if bucket.repoid is not None %}
+              {% if bucket.repo_change_url %}
+                <a href="{{ bucket.repo_change_url }}" title="repoid={{ bucket.repoid }}">{{ bucket.repo_display|default:bucket.repoid }}</a>
+              {% else %}
+                <span title="repoid={{ bucket.repoid }}">{{ bucket.repo_display|default:bucket.repoid }}</span>
+              {% endif %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if bucket.commitid %}
+              <span title="{{ bucket.commitid }}">{{ bucket.commitid|slice:":7" }}</span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if bucket.task_name %}
+              <span class="celery-task-cell" title="{{ bucket.task_name }}">{{ bucket.task_name }}</span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="num">{{ bucket.count }}</td>
+          <td>
+            <div class="celery-bar-track" aria-label="{{ bucket.pct|floatformat:1 }}% of sampled messages">
+              <div class="celery-bar-fill" style="width: {{ bucket.pct|floatformat:1 }}%;"></div>
+              <span class="celery-bar-pct">{{ bucket.pct|floatformat:1 }}%</span>
+            </div>
+          </td>
+          {% if chart.can_clear %}
+            <td class="celery-actions">
+              {% comment %}
+              Single "Clear queue" button per row. POSTing the bucket's
+              hidden scope fields (queue/task/repoid/commitid) opens
+              the `clear_by_filter` preview page, where the operator
+              picks one of three explicit actions:
+
+              1. dry-run (audited, leaves the queue untouched)
+              2. clear all but first (red text, destructive)
+              3. clear all (red text, destructive)
+
+              Keeping the chart row neutral — neither `deletelink` nor
+              a count in the label — communicates "this opens a page",
+              not "this clears N messages right now".
+              {% endcomment %}
+              <form method="post" action="{{ chart.clear_by_filter_url }}" class="celery-action-form">
+                {% csrf_token %}
+                <input type="hidden" name="queue_name" value="{{ chart.queue_name }}">
+                {% if bucket.task_name %}
+                  <input type="hidden" name="task_name" value="{{ bucket.task_name }}">
+                {% endif %}
+                {% if bucket.repoid is not None %}
+                  <input type="hidden" name="repoid" value="{{ bucket.repoid }}">
+                {% endif %}
+                {% if bucket.commitid %}
+                  <input type="hidden" name="commitid" value="{{ bucket.commitid }}">
+                {% endif %}
+                <button type="submit" class="button celery-clear-queue-btn">
+                  Clear queue&hellip;
+                </button>
+              </form>
+            </td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<style>
+  /* Theme-safe styles (no hard-coded colours): we lean on
+     `var(--body-quiet-color)`, `var(--button-bg)`, etc. so the
+     panel adapts to Django's light/dark admin themes. */
+  #celery-frequency-chart table.celery-frequency {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  #celery-frequency-chart table.celery-frequency th,
+  #celery-frequency-chart table.celery-frequency td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-color, var(--hairline-color, #ccc));
+    vertical-align: middle;
+  }
+  #celery-frequency-chart table.celery-frequency th.num,
+  #celery-frequency-chart table.celery-frequency td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Single-button action cell. The chart's clear-queue button is
+     a neutral `button` (not `deletelink`) because clicking it just
+     opens the preview page; the destructive choice is made there. */
+  #celery-frequency-chart table.celery-frequency td.celery-actions {
+    white-space: nowrap;
+  }
+  #celery-frequency-chart .celery-action-form {
+    display: inline-flex;
+    margin: 0;
+  }
+  #celery-frequency-chart .celery-action-form button {
+    margin: 0;
+  }
+  /* Task names are dotted paths like
+     `app.tasks.bundle_analysis.BundleAnalysisProcessor`. Cap the
+     visible width at ~28em so the column doesn't blow up the
+     layout; full path stays available via the `title` tooltip. */
+  #celery-frequency-chart table.celery-frequency .celery-task-cell {
+    display: inline-block;
+    max-width: 28em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+  #celery-frequency-chart .celery-bar-track {
+    position: relative;
+    height: 14px;
+    width: 100%;
+    min-width: 120px;
+    background: var(--darkened-bg, var(--body-bg, transparent));
+    border: 1px solid var(--border-color, var(--hairline-color, #ccc));
+    border-radius: 2px;
+  }
+  #celery-frequency-chart .celery-bar-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    background: var(--primary, currentColor);
+    opacity: 0.65;
+    border-radius: 2px;
+  }
+  #celery-frequency-chart .celery-bar-pct {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 6px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+</style>

@@ -15,7 +15,9 @@ hood so the models need no real database table.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any
 
 import sentry_sdk
@@ -30,6 +32,9 @@ from .families import (
     parse_celery_envelope,
 )
 from .families import _decode as _decode_value  # noqa: PLC2701 - shared helper
+from .families import (
+    _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701
+)
 
 _UNSET: Any = object()
 
@@ -52,6 +57,22 @@ def _ordering_key(obj: Any, attr: str) -> tuple:
     """
 
     value = getattr(obj, attr, None)
+    if value is None:
+        return (1, "")
+    return (0, value)
+
+
+def _ordering_tuple_for_int(value: int | None) -> tuple:
+    """`None`-tolerant tie-break key for an int axis (used by chart sort)."""
+
+    if value is None:
+        return (1, 0)
+    return (0, value)
+
+
+def _ordering_tuple_for_str(value: str | None) -> tuple:
+    """`None`-tolerant tie-break key for a str axis (used by chart sort)."""
+
     if value is None:
         return (1, "")
     return (0, value)
@@ -144,11 +165,18 @@ class RedisQueueQuerySet:
         ordering: tuple[str, ...] = (),
         filters: dict[str, Any] | None = None,
         category: str = "queue",
+        family_exclude: tuple[str, ...] = (),
     ) -> None:
         self.model = model
         self._ordering = ordering
         self._filters: dict[str, Any] = dict(filters or {})
         self._category = category
+        # Families that should be hidden from the changelist regardless
+        # of any inbound `family` filter. Set by `RedisQueueAdmin` to
+        # exclude `celery_broker` so the queue surface (where one row =
+        # one queue + scalar depth) doesn't compete with the new
+        # `CeleryBrokerQueueAdmin` (where one row = one kombu message).
+        self._family_exclude: tuple[str, ...] = tuple(family_exclude)
         self._result_cache: list | None = None
 
     # ---- Cloning helpers --------------------------------------------------
@@ -158,16 +186,36 @@ class RedisQueueQuerySet:
         *,
         ordering: tuple[str, ...] | None = None,
         filters: dict[str, Any] | None = None,
+        family_exclude: tuple[str, ...] | None = None,
     ) -> RedisQueueQuerySet:
         return RedisQueueQuerySet(
             self.model,
             ordering=self._ordering if ordering is None else ordering,
             filters={**self._filters, **(filters or {})},
             category=self._category,
+            family_exclude=self._family_exclude
+            if family_exclude is None
+            else family_exclude,
         )
 
     def all(self) -> RedisQueueQuerySet:
         return self._clone()
+
+    def family_exclude(self, *names: str) -> RedisQueueQuerySet:
+        """Hide every key whose family is in `names` from this queryset.
+
+        Used by `RedisQueueAdmin.get_queryset` to keep `celery_broker`
+        out of the queue changelist now that those queues have their
+        own per-message admin (`CeleryBrokerQueueAdmin`). Implemented
+        as a dedicated builder rather than a generic `exclude` so the
+        admin's filter pipeline can't accidentally clobber the
+        exclusion via a stray `?family=celery_broker` query string —
+        the exclusion always wins (`_post_scan_predicate` enforces it
+        post-resolve, and `iter_keys` skips the family up front).
+        """
+
+        merged = tuple(dict.fromkeys((*self._family_exclude, *names)))
+        return self._clone(family_exclude=merged)
 
     def none(self) -> RedisQueueQuerySet:
         empty = self._clone()
@@ -300,6 +348,12 @@ class RedisQueueQuerySet:
         family = f.get("family")
         if family and obj.family != family:
             return False
+        if self._family_exclude and obj.family in self._family_exclude:
+            # Belt-and-braces: `iter_keys` already skips excluded
+            # families up front, but the `name_exact` / `name_in`
+            # shortcut bypasses `iter_keys` entirely, so re-check here
+            # to keep the shortcut honest.
+            return False
         depth_gte = f.get("depth_gte")
         if depth_gte is not None and (obj.depth or 0) < depth_gte:
             return False
@@ -391,6 +445,7 @@ class RedisQueueQuerySet:
                 _build_redis_queue(self.model, key, family, _client_for(family))
                 for key, family in iter_keys(
                     family=self._filters.get("family"),
+                    family_exclude=self._family_exclude or None,
                     repoid=self._filters.get("repoid"),
                     commitid_prefix=scan_commitid,
                     category=self._category,
@@ -982,6 +1037,42 @@ def _summarise_kwargs_for_preview(
     return _truncate_for_display(rendered, cap=cap)
 
 
+@dataclass(frozen=True)
+class FrequencyBucket:
+    """One row of the celery_broker drill-down frequency chart.
+
+    A bucket aggregates messages by `(task_name, repoid, commitid)`.
+    Grouping by `task_name` matters on shared queues like the default
+    `celery` queue where multiple task classes coexist — without it,
+    a "clear all messages for repo X commit Y" action would silently
+    drop unrelated tasks routed through the same queue. Buckets where
+    all three axes are `None` are skipped at construction time, since
+    the chart's row-level click target maps directly to a
+    `clear-by-filter/?queue_name=...&task_name=...&repoid=...&commitid=...`
+    URL and an all-empty row would produce an empty-scope clear with
+    no useful semantic.
+
+    `pct` is the bucket's share of the total queue depth, computed
+    against the snapshot the chart was built from (i.e. against the
+    `LRANGE 0 MAX_ITEMS_PER_KEY-1` materialisation, not against
+    `LLEN`). For queues larger than `MAX_ITEMS_PER_KEY` the chart
+    template surfaces a banner so operators know the percentages
+    are over the visible window.
+    """
+
+    task_name: str | None
+    repoid: int | None
+    commitid: str | None
+    count: int
+    pct: float
+
+
+# Default cap for the chart's "top N" cut. Large enough to cover the
+# head of any realistic distribution, small enough to keep the
+# rendered table scannable above the changelist.
+_FREQUENCY_TOP_DEFAULT: int = 20
+
+
 class CeleryBrokerQueueQuerySet:
     """Fake QuerySet over messages inside one celery_broker queue.
 
@@ -1099,6 +1190,13 @@ class CeleryBrokerQueueQuerySet:
                     if not sep or not queue or not idx:
                         bad = True
                         break
+                    if idx == "summary":
+                        # Summary pk_tokens identify a queue, not a
+                        # message; the only bulk actions we expose are
+                        # message-shaped clears, so a `pk__in=[<queue>#summary]`
+                        # selection has no valid resolution. Force empty.
+                        bad = True
+                        break
                     try:
                         indexes.add(int(idx))
                     except ValueError:
@@ -1156,16 +1254,25 @@ class CeleryBrokerQueueQuerySet:
                 f"{self.model.__name__} matching no kwargs does not exist"
             )
         pk_str = str(pk)
-        queue, sep, idx_str = pk_str.rpartition("#")
-        if not sep or not queue or not idx_str:
+        queue, sep, tail = pk_str.rpartition("#")
+        if not sep or not queue or not tail:
             raise self.model.DoesNotExist(
-                f"pk_token must look like 'queue#<index>'; got {pk_str!r}"
+                f"pk_token must look like 'queue#<index>' or 'queue#summary'; "
+                f"got {pk_str!r}"
             )
+        # Summary pk_tokens (`<queue>#summary`) are emitted by the
+        # queue-list landing page; resolving one is rare (`get_object`
+        # for the change view, which we don't expose) but kept
+        # symmetric with message pks for admin sanity.
+        if tail == "summary":
+            redis = self._connection()
+            depth = int(redis.llen(queue) or 0)
+            return self._build_summary_row(queue, depth)
         try:
-            idx = int(idx_str)
+            idx = int(tail)
         except ValueError as exc:
             raise self.model.DoesNotExist(
-                f"pk_token index must be int; got {idx_str!r}"
+                f"pk_token index must be int or 'summary'; got {tail!r}"
             ) from exc
         bound = self._clone(queue_name=queue)
         for row in bound._fetch_all():
@@ -1188,6 +1295,7 @@ class CeleryBrokerQueueQuerySet:
             pk_token=f"{self.queue_name}#{idx}",
             queue_name=self.queue_name,
             index_in_queue=idx,
+            depth=None,
             task_name=meta.task,
             task_id=meta.task_id,
             repoid=meta.repoid,
@@ -1197,10 +1305,63 @@ class CeleryBrokerQueueQuerySet:
             payload_preview=_summarise_kwargs_for_preview(meta.kwargs),
         )
 
+    def _build_summary_row(self, queue: str, depth: int) -> Any:
+        return self.model(
+            pk_token=f"{queue}#summary",
+            queue_name=queue,
+            index_in_queue=None,
+            depth=depth,
+            task_name=None,
+            task_id=None,
+            repoid=None,
+            commitid=None,
+            ownerid=None,
+            pullid=None,
+            payload_preview="",
+        )
+
+    def is_summary_mode(self) -> bool:
+        """No `queue_name` filter → render the per-queue summary list.
+
+        Routed off `queue_name` rather than a separate flag so that
+        `.filter(queue_name__exact=...)` flips us into per-message mode
+        automatically — same toggle the admin's `?queue_name__exact=`
+        URL parameter drives.
+        """
+
+        return not self.queue_name
+
+    @sentry_sdk.trace
+    def _materialise_summary(self) -> list:
+        """One row per known celery queue with `depth = LLEN(queue)`.
+
+        Drives the `/admin/redis_admin/celerybrokerqueue/` landing
+        page (no `queue_name` filter): operators see every queue and
+        its current depth at a glance, then click through to the
+        per-message drill-down. The set of queues is the same one
+        `CeleryQueueFilter` enumerates, so the picker stays in sync
+        with the admin's other surfaces.
+
+        Empty queues are kept in the list so an operator who knows a
+        queue exists but is currently drained doesn't lose the entry
+        point — `LLEN` returns 0 for both empty and missing keys, and
+        we treat them identically here.
+        """
+
+        redis = self._connection()
+        rows: list = []
+        for name in _celery_queue_names():
+            try:
+                depth = int(redis.llen(name) or 0)
+            except Exception:  # pragma: no cover - defensive
+                depth = 0
+            rows.append(self._build_summary_row(name, depth))
+        return rows
+
     @sentry_sdk.trace
     def _materialise(self) -> list:
-        if not self.queue_name:
-            return []
+        if self.is_summary_mode():
+            return self._materialise_summary()
         redis = self._connection()
         if not redis.exists(self.queue_name):
             return []
@@ -1221,6 +1382,13 @@ class CeleryBrokerQueueQuerySet:
         f = self._filters
         if f.get("__empty__"):
             return False
+        # Summary rows don't carry message-shaped fields, so the
+        # message-level predicates would always reject them. Skip the
+        # message filters entirely in summary mode — the only
+        # narrowing applied there is whatever `queue_name` the
+        # caller already pinned.
+        if row.depth is not None:
+            return True
         repoid = f.get("repoid")
         if repoid is not None and row.repoid != repoid:
             return False
@@ -1253,9 +1421,6 @@ class CeleryBrokerQueueQuerySet:
     def _fetch_all(self) -> list:
         if self._result_cache is not None:
             return self._result_cache
-        if not self.queue_name:
-            self._result_cache = []
-            return []
         if self._filters.get("__empty__"):
             self._result_cache = []
             return []
@@ -1297,6 +1462,68 @@ class CeleryBrokerQueueQuerySet:
             "CeleryBrokerQueueQuerySet.delete is not supported; use "
             "redis_admin.services.celery_broker_clear"
         )
+
+    # ---- Frequency aggregation (M6.1) ------------------------------------
+
+    def frequency_by_task_repo_commit(
+        self, *, top: int = _FREQUENCY_TOP_DEFAULT
+    ) -> list[FrequencyBucket]:
+        """Top `(task_name, repoid, commitid)` triples by message count.
+
+        Drives the drill-down page's frequency chart. Pure aggregation
+        over rows already materialised by `_fetch_all`, so calling this
+        on a queryset that the changelist already iterated reuses the
+        cached snapshot rather than re-issuing `LRANGE`.
+
+        Buckets where all three axes are `None` are dropped — the
+        chart's click target maps to
+        `clear-by-filter/?task_name=...&repoid=...&commitid=...`, and
+        an all-empty row would produce an empty-scope clear. Sort
+        order is stable across ties: `(count desc, task_name asc,
+        repoid asc, commitid asc)` so two runs against the same Redis
+        snapshot produce identical row order (no flicker between page
+        reloads).
+        """
+
+        if self.is_summary_mode():
+            # Summary rows don't carry message-shaped fields.
+            return []
+        rows = self._fetch_all()
+        total = len(rows)
+        if total == 0:
+            return []
+        counter: Counter[tuple[str | None, int | None, str | None]] = Counter()
+        for row in rows:
+            if row.task_name is None and row.repoid is None and row.commitid is None:
+                continue
+            counter[(row.task_name, row.repoid, row.commitid)] += 1
+        if not counter:
+            return []
+        # `Counter.most_common` doesn't guarantee tie-break order across
+        # Python versions, so re-sort with explicit secondary keys
+        # (None sorts last via `(is_none, value)` shape).
+        ordered = sorted(
+            counter.items(),
+            key=lambda kv: (
+                -kv[1],
+                _ordering_tuple_for_str(kv[0][0]),
+                _ordering_tuple_for_int(kv[0][1]),
+                _ordering_tuple_for_str(kv[0][2]),
+            ),
+        )
+        buckets: list[FrequencyBucket] = []
+        for (task_name, repoid, commitid), count in ordered[:top]:
+            pct = (count / total) * 100.0 if total else 0.0
+            buckets.append(
+                FrequencyBucket(
+                    task_name=task_name,
+                    repoid=repoid,
+                    commitid=commitid,
+                    count=count,
+                    pct=pct,
+                )
+            )
+        return buckets
 
     # ---- Admin compatibility shims ---------------------------------------
 

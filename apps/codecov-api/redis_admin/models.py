@@ -137,7 +137,21 @@ class CeleryBrokerQueue(models.Model):
 
     pk_token = models.CharField(primary_key=True, max_length=600)
     queue_name = models.CharField(max_length=512)
-    index_in_queue = models.IntegerField(default=0)
+    # Two row shapes share this model:
+    #
+    # * **Queue summary** (no `queue_name__exact` filter) — one row per
+    #   known celery queue, with `depth = LLEN(queue)` set and every
+    #   message-specific field `None`. `pk_token = "<queue>#summary"`.
+    # * **Message** (with `queue_name__exact=<queue>`) — one row per
+    #   kombu envelope inside that queue, with `index_in_queue` /
+    #   `task_name` / `repoid` / `commitid` / etc. set and `depth =
+    #   None`. `pk_token = "<queue>#<index>"`.
+    #
+    # The admin switches `list_display` between the two via
+    # `get_list_display(request)` so each mode shows the columns that
+    # are actually populated.
+    index_in_queue = models.IntegerField(null=True, blank=True)
+    depth = models.IntegerField(null=True, blank=True)
     task_name = models.CharField(max_length=256, null=True, blank=True)
     task_id = models.CharField(max_length=128, null=True, blank=True)
     repoid = models.IntegerField(null=True, blank=True)
