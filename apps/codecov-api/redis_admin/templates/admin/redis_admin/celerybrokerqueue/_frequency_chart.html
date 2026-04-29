@@ -22,7 +22,7 @@ Shape:
 {% endcomment %}
 
 <div class="module" id="celery-frequency-chart" style="margin-bottom: 16px;">
-  <h2>Top {{ chart.buckets|length }} (repoid, commitid) pairs in
+  <h2>Top {{ chart.buckets|length }} (task, repoid, commitid) triples in
     {{ chart.queue_name }}</h2>
   {% if chart.total_depth > chart.total_visible %}
     <p class="help">
@@ -40,6 +40,7 @@ Shape:
   <table class="celery-frequency">
     <thead>
       <tr>
+        <th scope="col">task</th>
         <th scope="col">repoid</th>
         <th scope="col">commitid</th>
         <th scope="col" class="num">count</th>
@@ -52,6 +53,13 @@ Shape:
     <tbody>
       {% for bucket in chart.buckets %}
         <tr>
+          <td>
+            {% if bucket.task_name %}
+              <span class="celery-task-cell" title="{{ bucket.task_name }}">{{ bucket.task_name }}</span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
           <td>{{ bucket.repoid|default:"—" }}</td>
           <td>
             {% if bucket.commitid %}
@@ -72,6 +80,9 @@ Shape:
               <form method="post" action="{{ chart.clear_by_filter_url }}" style="margin: 0;">
                 {% csrf_token %}
                 <input type="hidden" name="queue_name" value="{{ chart.queue_name }}">
+                {% if bucket.task_name %}
+                  <input type="hidden" name="task_name" value="{{ bucket.task_name }}">
+                {% endif %}
                 {% if bucket.repoid is not None %}
                   <input type="hidden" name="repoid" value="{{ bucket.repoid }}">
                 {% endif %}
@@ -108,6 +119,18 @@ Shape:
   #celery-frequency-chart table.celery-frequency td.num {
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+  /* Task names are dotted paths like
+     `app.tasks.bundle_analysis.BundleAnalysisProcessor`. Cap the
+     visible width at ~28em so the column doesn't blow up the
+     layout; full path stays available via the `title` tooltip. */
+  #celery-frequency-chart table.celery-frequency .celery-task-cell {
+    display: inline-block;
+    max-width: 28em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
   }
   #celery-frequency-chart .celery-bar-track {
     position: relative;

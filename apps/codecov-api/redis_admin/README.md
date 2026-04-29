@@ -228,16 +228,24 @@ in the currently filtered queue), repoid, commit prefix.
 ### Frequency chart
 
 Above the message table on the drill-down view, the admin renders
-a `(repoid, commitid)` frequency chart computed from the same
-`LRANGE` snapshot the changelist iterated. One row per top-N
-bucket, sorted by `(count desc, repoid asc, commitid asc)` for a
-stable order across reloads. Each row shows:
+a `(task_name, repoid, commitid)` frequency chart computed from
+the same `LRANGE` snapshot the changelist iterated. One row per
+top-N bucket, sorted by `(count desc, task_name asc, repoid asc,
+commitid asc)` for a stable order across reloads. Each row shows:
 
+- `task` (the kombu `headers.task` value, e.g.
+  `app.tasks.notify.NotifyTask`; truncated with full path on
+  hover)
 - `repoid` and the 7-char commit prefix (full SHA on hover)
 - the bucket's `count` and percentage share of the visible window
 - a per-bucket "Clear N…" submit button (superuser-only) that
-  POSTs the bucket's `(queue, repoid, commitid)` to
+  POSTs the bucket's `(queue, task_name, repoid, commitid)` to
   `clear-by-filter/`
+
+Grouping by `task_name` matters on shared queues like the default
+`celery` queue where multiple task classes coexist — without it,
+"clear all messages for repo X commit Y" would silently drop
+unrelated tasks routed through the same queue.
 
 The chart's percentages are computed against the visible
 `LRANGE 0 MAX_ITEMS_PER_KEY-1` window, not against `LLEN`. When
@@ -249,14 +257,15 @@ the share is over the visible window.
 
 `POST /admin/redis_admin/celerybrokerqueue/clear-by-filter/` —
 superuser-only, dry-run-then-confirm. Required form fields:
-`queue_name`, plus at least one of `repoid` / `commitid`
-(refusing the empty-narrowing case keeps the surface from
-overlapping `clear-by-scope/`). Renders a confirmation page that
-lists matching messages and asks the operator to re-type the
-queue name before arming the destructive button. Both dry-run
-and confirm runs go through `services.celery_broker_clear`, so
-the LSET-tombstone path runs and the audit log captures the
-operation under `scope="celery_broker_clear"`.
+`queue_name`, plus at least one of `task_name` / `repoid` /
+`commitid` (refusing the empty-narrowing case keeps the surface
+from overlapping `clear-by-scope/`). Renders a confirmation page
+that lists matching messages and asks the operator to re-type
+the queue name before arming the destructive button. Both
+dry-run and confirm runs go through
+`services.celery_broker_clear`, so the LSET-tombstone path runs
+and the audit log captures the operation under
+`scope="celery_broker_clear"`.
 
 ### Per-message clear (LSET-tombstone)
 

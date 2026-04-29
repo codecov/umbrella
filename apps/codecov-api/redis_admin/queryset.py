@@ -1041,12 +1041,16 @@ def _summarise_kwargs_for_preview(
 class FrequencyBucket:
     """One row of the celery_broker drill-down frequency chart.
 
-    A bucket aggregates messages by `(repoid, commitid)`. Buckets
-    where both axes are `None` are skipped at construction time —
+    A bucket aggregates messages by `(task_name, repoid, commitid)`.
+    Grouping by `task_name` matters on shared queues like the default
+    `celery` queue where multiple task classes coexist — without it,
+    a "clear all messages for repo X commit Y" action would silently
+    drop unrelated tasks routed through the same queue. Buckets where
+    all three axes are `None` are skipped at construction time, since
     the chart's row-level click target maps directly to a
-    `clear-by-filter/?queue_name=...&repoid=...&commitid=...` URL,
-    and an `(None, None)` row would produce an empty-scope clear
-    with no useful semantic.
+    `clear-by-filter/?queue_name=...&task_name=...&repoid=...&commitid=...`
+    URL and an all-empty row would produce an empty-scope clear with
+    no useful semantic.
 
     `pct` is the bucket's share of the total queue depth, computed
     against the snapshot the chart was built from (i.e. against the
@@ -1056,6 +1060,7 @@ class FrequencyBucket:
     are over the visible window.
     """
 
+    task_name: str | None
     repoid: int | None
     commitid: str | None
     count: int
@@ -1460,22 +1465,24 @@ class CeleryBrokerQueueQuerySet:
 
     # ---- Frequency aggregation (M6.1) ------------------------------------
 
-    def frequency_by_repo_commit(
+    def frequency_by_task_repo_commit(
         self, *, top: int = _FREQUENCY_TOP_DEFAULT
     ) -> list[FrequencyBucket]:
-        """Top `(repoid, commitid)` pairs by message count.
+        """Top `(task_name, repoid, commitid)` triples by message count.
 
         Drives the drill-down page's frequency chart. Pure aggregation
         over rows already materialised by `_fetch_all`, so calling this
         on a queryset that the changelist already iterated reuses the
         cached snapshot rather than re-issuing `LRANGE`.
 
-        Buckets where both axes are `None` are dropped — the chart's
-        click target maps to `clear-by-filter/?repoid=...&commitid=...`,
-        and a `(None, None)` row would produce an empty-scope clear.
-        Sort order is stable across ties: `(count desc, repoid asc,
-        commitid asc)` so two runs against the same Redis snapshot
-        produce identical row order (no flicker between page reloads).
+        Buckets where all three axes are `None` are dropped — the
+        chart's click target maps to
+        `clear-by-filter/?task_name=...&repoid=...&commitid=...`, and
+        an all-empty row would produce an empty-scope clear. Sort
+        order is stable across ties: `(count desc, task_name asc,
+        repoid asc, commitid asc)` so two runs against the same Redis
+        snapshot produce identical row order (no flicker between page
+        reloads).
         """
 
         if self.is_summary_mode():
@@ -1485,11 +1492,11 @@ class CeleryBrokerQueueQuerySet:
         total = len(rows)
         if total == 0:
             return []
-        counter: Counter[tuple[int | None, str | None]] = Counter()
+        counter: Counter[tuple[str | None, int | None, str | None]] = Counter()
         for row in rows:
-            if row.repoid is None and row.commitid is None:
+            if row.task_name is None and row.repoid is None and row.commitid is None:
                 continue
-            counter[(row.repoid, row.commitid)] += 1
+            counter[(row.task_name, row.repoid, row.commitid)] += 1
         if not counter:
             return []
         # `Counter.most_common` doesn't guarantee tie-break order across
@@ -1499,15 +1506,17 @@ class CeleryBrokerQueueQuerySet:
             counter.items(),
             key=lambda kv: (
                 -kv[1],
-                _ordering_tuple_for_int(kv[0][0]),
-                _ordering_tuple_for_str(kv[0][1]),
+                _ordering_tuple_for_str(kv[0][0]),
+                _ordering_tuple_for_int(kv[0][1]),
+                _ordering_tuple_for_str(kv[0][2]),
             ),
         )
         buckets: list[FrequencyBucket] = []
-        for (repoid, commitid), count in ordered[:top]:
+        for (task_name, repoid, commitid), count in ordered[:top]:
             pct = (count / total) * 100.0 if total else 0.0
             buckets.append(
                 FrequencyBucket(
+                    task_name=task_name,
                     repoid=repoid,
                     commitid=commitid,
                     count=count,

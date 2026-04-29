@@ -738,59 +738,108 @@ def test_non_staff_user_cannot_view_celery_broker_admin():
 # ---- Frequency chart helper ------------------------------------------------
 
 
-def test_frequency_by_repo_commit_groups_and_sorts(patched_broker):
-    # Two distinct (repoid, commit) pairs with different cardinalities
-    # so the sort order has something to express.
+def test_frequency_by_task_repo_commit_groups_and_sorts(patched_broker):
+    # Two distinct (task, repoid, commit) triples with different
+    # cardinalities so the sort order has something to express. The
+    # `task=None` row also exercises the (None sorts last) tie-break
+    # rule on the `task_name` axis.
     for _ in range(3):
         patched_broker.rpush(
             "celery",
-            _build_envelope(kwargs={"repoid": 1, "commitid": "aaaa"}),
+            _build_envelope(
+                task="app.tasks.notify.NotifyTask",
+                kwargs={"repoid": 1, "commitid": "aaaa"},
+            ),
         )
     for _ in range(2):
         patched_broker.rpush(
             "celery",
-            _build_envelope(kwargs={"repoid": 2, "commitid": "bbbb"}),
+            _build_envelope(
+                task="app.tasks.bundle_analysis.BundleAnalysisProcessor",
+                kwargs={"repoid": 2, "commitid": "bbbb"},
+            ),
         )
     patched_broker.rpush(
         "celery",
-        _build_envelope(kwargs={"repoid": 1, "commitid": "cccc"}),
+        _build_envelope(
+            task="app.tasks.notify.NotifyTask",
+            kwargs={"repoid": 1, "commitid": "cccc"},
+        ),
     )
 
     qs = CeleryBrokerQueueQuerySet(CeleryBrokerQueue).filter(queue_name__exact="celery")
-    buckets = qs.frequency_by_repo_commit()
+    buckets = qs.frequency_by_task_repo_commit()
 
-    assert [(b.repoid, b.commitid, b.count) for b in buckets] == [
-        (1, "aaaa", 3),
-        (2, "bbbb", 2),
-        (1, "cccc", 1),
+    assert [(b.task_name, b.repoid, b.commitid, b.count) for b in buckets] == [
+        ("app.tasks.notify.NotifyTask", 1, "aaaa", 3),
+        ("app.tasks.bundle_analysis.BundleAnalysisProcessor", 2, "bbbb", 2),
+        ("app.tasks.notify.NotifyTask", 1, "cccc", 1),
     ]
     # Percentages sum to ~100 over the 6 messages we pushed.
     total_pct = sum(b.pct for b in buckets)
     assert 99.0 < total_pct < 101.0
 
 
-def test_frequency_by_repo_commit_drops_unstructured_rows(patched_broker):
-    # Both axes None → bucket dropped (the chart's row click target
+def test_frequency_by_task_repo_commit_separates_tasks_on_shared_queue(
+    patched_broker,
+):
+    # Two different tasks share the same `(repoid, commitid)` pair —
+    # the chart MUST split them into separate buckets so a per-row
+    # "Clear N" doesn't silently drop messages from the unrelated
+    # task. The `notify` task has fewer messages but appears earlier
+    # alphabetically; verify the count-desc tie-break still wins.
+    for _ in range(2):
+        patched_broker.rpush(
+            "celery",
+            _build_envelope(
+                task="app.tasks.bundle_analysis.BundleAnalysisProcessor",
+                kwargs={"repoid": 1, "commitid": "aaaa"},
+            ),
+        )
+    patched_broker.rpush(
+        "celery",
+        _build_envelope(
+            task="app.tasks.notify.NotifyTask",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        ),
+    )
+
+    qs = CeleryBrokerQueueQuerySet(CeleryBrokerQueue).filter(queue_name__exact="celery")
+    buckets = qs.frequency_by_task_repo_commit()
+
+    assert [(b.task_name, b.count) for b in buckets] == [
+        ("app.tasks.bundle_analysis.BundleAnalysisProcessor", 2),
+        ("app.tasks.notify.NotifyTask", 1),
+    ]
+
+
+def test_frequency_by_task_repo_commit_drops_fully_empty_rows(patched_broker):
+    # Every axis None → bucket dropped (the chart's row click target
     # would otherwise produce a `clear-by-filter/?queue=celery` with
     # no narrowing filter, which is refused server-side anyway).
     patched_broker.rpush(
         "celery",
-        _build_envelope(kwargs={}),  # no repoid / commitid
+        _build_envelope(task=None, kwargs={}),  # no task / repoid / commitid
     )
-    patched_broker.rpush("celery", _build_envelope(kwargs={"repoid": 9}))
+    patched_broker.rpush(
+        "celery",
+        _build_envelope(task="app.tasks.notify.NotifyTask", kwargs={"repoid": 9}),
+    )
 
     qs = CeleryBrokerQueueQuerySet(CeleryBrokerQueue).filter(queue_name__exact="celery")
-    buckets = qs.frequency_by_repo_commit()
+    buckets = qs.frequency_by_task_repo_commit()
 
-    assert [(b.repoid, b.commitid, b.count) for b in buckets] == [(9, None, 1)]
+    assert [(b.task_name, b.repoid, b.commitid, b.count) for b in buckets] == [
+        ("app.tasks.notify.NotifyTask", 9, None, 1),
+    ]
 
 
-def test_frequency_by_repo_commit_returns_empty_in_summary_mode(patched_broker):
+def test_frequency_by_task_repo_commit_returns_empty_in_summary_mode(patched_broker):
     # Summary mode (no queue selected) doesn't materialise messages,
     # so the chart helper has no per-message data to aggregate.
     qs = CeleryBrokerQueueQuerySet(CeleryBrokerQueue)
     assert qs.is_summary_mode()
-    assert qs.frequency_by_repo_commit() == []
+    assert qs.frequency_by_task_repo_commit() == []
 
 
 # ---- Frequency chart panel rendering --------------------------------------
@@ -812,7 +861,10 @@ class CeleryFrequencyChartTest(TestCase):
         for _ in range(2):
             self.redis.rpush(
                 "celery",
-                _build_envelope(kwargs={"repoid": 99, "commitid": "deadbeef"}),
+                _build_envelope(
+                    task="app.tasks.notify.NotifyTask",
+                    kwargs={"repoid": 99, "commitid": "deadbeef"},
+                ),
             )
 
         response = self.client.get(
@@ -824,10 +876,14 @@ class CeleryFrequencyChartTest(TestCase):
         # Panel header anchored to the chart fragment ID + the
         # bucket's per-row "Clear N…" button copy.
         assert "celery-frequency-chart" in body
-        assert "Top 1 (repoid, commitid) pairs in" in body
+        assert "Top 1 (task, repoid, commitid) triples in" in body
         assert "Clear 2" in body
+        # Task name renders in the new column.
+        assert "app.tasks.notify.NotifyTask" in body
         # The form action wires through the chart's clear-by-filter
-        # URL with the bucket's repoid + commitid pre-populated.
+        # URL with the bucket's task_name + repoid + commitid pre-
+        # populated.
+        assert 'name="task_name"' in body
         assert 'name="repoid"' in body
         assert 'name="commitid"' in body
 
@@ -952,6 +1008,73 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         body = response.content.decode("utf-8", errors="replace")
         assert "Typed confirmation must equal" in body
         assert self.redis.llen("celery") == 1
+
+    def test_task_name_filter_narrows_to_matching_task_only(self):
+        # Two task classes share `(repoid, commitid)`. The chart's
+        # row-level "Clear N" submits `task_name` alongside repoid/
+        # commitid; that combination must clear only the targeted
+        # task and leave the other one in the queue.
+        self._push(
+            task="app.tasks.bundle_analysis.BundleAnalysisProcessor",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+        self._push(
+            task="app.tasks.notify.NotifyTask",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "task_name": "app.tasks.bundle_analysis.BundleAnalysisProcessor",
+                "repoid": "1",
+                "commitid": "aaaa",
+                "action": "confirm",
+                "typed_confirm": "celery",
+            },
+            follow=False,
+        )
+
+        assert response.status_code in (302, 303)
+        remaining = self.redis.lrange("celery", 0, -1)
+        assert len(remaining) == 1
+        envelope = json.loads(remaining[0])
+        # The surviving message is the unrelated `notify` task.
+        assert envelope["headers"]["task"] == "app.tasks.notify.NotifyTask"
+
+    def test_task_name_alone_is_a_valid_narrowing_filter(self):
+        # task_name on its own (no repoid / commitid) is enough to
+        # clear — the chart's leftmost column lets operators clear
+        # "every notify task in this queue" without needing to pin
+        # a repo or commit.
+        self._push(
+            task="app.tasks.notify.NotifyTask",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+        self._push(
+            task="app.tasks.bundle_analysis.BundleAnalysisProcessor",
+            kwargs={"repoid": 1, "commitid": "aaaa"},
+        )
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "task_name": "app.tasks.notify.NotifyTask",
+                "action": "confirm",
+                "typed_confirm": "celery",
+            },
+            follow=False,
+        )
+
+        assert response.status_code in (302, 303)
+        remaining = self.redis.lrange("celery", 0, -1)
+        assert len(remaining) == 1
+        envelope = json.loads(remaining[0])
+        assert envelope["headers"]["task"] == (
+            "app.tasks.bundle_analysis.BundleAnalysisProcessor"
+        )
 
     def test_refuses_clear_without_narrowing_filter(self):
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})

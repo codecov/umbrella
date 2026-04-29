@@ -17,10 +17,11 @@
 
   <p>
     Clears every kombu message in <code>{{ queue_name }}</code> whose
-    decoded envelope matches the <em>(repoid, commitid)</em> filter
-    below. Uses the LSET-tombstone path so concurrent celery
-    consumers stay safe (race window can only ever turn a real
-    message into a no-op tombstone, never the other way around).
+    decoded envelope matches the
+    <em>(task_name, repoid, commitid)</em> filter below. Uses the
+    LSET-tombstone path so concurrent celery consumers stay safe (race
+    window can only ever turn a real message into a no-op tombstone,
+    never the other way around).
   </p>
   <p>
     Run a <strong>dry-run</strong> first to see what would be cleared.
@@ -32,6 +33,7 @@
   <form method="post" novalidate>
     {% csrf_token %}
     <input type="hidden" name="queue_name" value="{{ queue_name }}">
+    {% if task_name %}<input type="hidden" name="task_name" value="{{ task_name }}">{% endif %}
     {% if repoid is not None %}<input type="hidden" name="repoid" value="{{ repoid }}">{% endif %}
     {% if commitid %}<input type="hidden" name="commitid" value="{{ commitid }}">{% endif %}
 
@@ -39,6 +41,7 @@
       <h2>Scope</h2>
       <p>
         Queue: <code>{{ queue_name }}</code><br>
+        Task:  {% if task_name %}<code>{{ task_name }}</code>{% else %}<em>(any)</em>{% endif %}<br>
         Repo:  {% if repoid is not None %}<code>{{ repoid }}</code>{% else %}<em>(any)</em>{% endif %}<br>
         Commit:
         {% if commitid %}

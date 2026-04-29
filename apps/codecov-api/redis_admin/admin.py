@@ -1571,7 +1571,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             return None
         queryset = self.get_queryset(request)
         try:
-            buckets = queryset.frequency_by_repo_commit()
+            buckets = queryset.frequency_by_task_repo_commit()
         except Exception:  # pragma: no cover - broker outage path
             return None
         if not buckets:
@@ -1611,15 +1611,19 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         return [clear_url, *urls]
 
     def clear_by_filter_view(self, request: HttpRequest) -> HttpResponse:
-        """Targeted clear by `(queue_name, repoid?, commitid?)`.
+        """Targeted clear by `(queue_name, task_name?, repoid?, commitid?)`.
 
         Reached from the frequency chart's per-row "Clear N…" button
         (see `_frequency_chart.html`). The button submits a POST with
-        the bucket's `repoid` / `commitid` already wired in; this view
-        re-materialises the matching messages, asks the operator for a
-        typed confirmation, then routes the deletion through
-        `services.celery_broker_clear` so the LSET-tombstone path runs
-        and the audit log captures the operation.
+        the bucket's `task_name` / `repoid` / `commitid` already wired
+        in; this view re-materialises the matching messages, asks the
+        operator for a typed confirmation, then routes the deletion
+        through `services.celery_broker_clear` so the LSET-tombstone
+        path runs and the audit log captures the operation. Filtering
+        by `task_name` matters on shared queues like `celery` where
+        multiple task classes coexist — without it, "clear all
+        messages for repo X commit Y" would silently drop unrelated
+        tasks routed through the same queue.
         """
 
         if not request.user.is_superuser:
@@ -1629,6 +1633,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
 
         params = request.POST if request.method == "POST" else request.GET
         queue_name = (params.get("queue_name") or "").strip()
+        task_name = (params.get("task_name") or "").strip()
         repoid_raw = (params.get("repoid") or "").strip()
         commitid = (params.get("commitid") or "").strip()
         action = (request.POST.get("action") or "").strip()
@@ -1664,16 +1669,19 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         # which the M5 `clear_by_scope` flow already owns. Keeping
         # the surfaces non-overlapping prevents two ways to do the
         # same thing with subtly different audit-log shapes.
-        if repoid is None and not commitid:
+        if repoid is None and not commitid and not task_name:
             messages.error(
                 request,
-                "Refusing to clear: at least one of repoid or commitid must be set",
+                "Refusing to clear: at least one of task_name, repoid, "
+                "or commitid must be set",
             )
             return HttpResponseRedirect(changelist_url)
 
         queryset = self.model._default_manager.all().filter(
             queue_name__exact=queue_name
         )
+        if task_name:
+            queryset = queryset.filter(task_name__exact=task_name)
         if repoid is not None:
             queryset = queryset.filter(repoid=repoid)
         if commitid:
@@ -1717,6 +1725,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             "title": f"Clear {queue_name} by filter",
             "opts": opts,
             "queue_name": queue_name,
+            "task_name": task_name,
             "repoid": repoid,
             "commitid": commitid,
             "target_count": len(targets),
