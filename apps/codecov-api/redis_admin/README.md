@@ -322,6 +322,51 @@ reused: `LogEntry.change_message` with `scope =
 (`has_delete_permission`) and dry-run-required (`clear_dry_run`
 must run before the destructive `clear_selected` arms).
 
+### Local dev seeding
+
+`redis_admin/scripts/seed_celery_broker.py` is a one-shot helper for
+exercising the celery_broker drill-down (and especially its
+`(task_name, repoid, commitid)` frequency chart) on a fresh local
+checkout. The chart's repo column renders `service:owner/name` only
+when the envelope's `repoid` resolves to a row in Postgres; without
+matching DB rows it falls back to the bare numeric repoid, which is
+useless for spotting which repo a stuck queue belongs to. The seeder
+creates the rows AND pushes envelopes referencing them, so what you
+see in the admin matches what you'd see in production.
+
+Run from inside the api container (its `WORKDIR` is
+`/app/apps/codecov-api`, so the relative path resolves):
+
+```bash
+docker compose exec api python redis_admin/scripts/seed_celery_broker.py
+docker compose exec api python redis_admin/scripts/seed_celery_broker.py --queue notify
+docker compose exec api python redis_admin/scripts/seed_celery_broker.py --clear
+```
+
+What it creates (idempotent — reruns reuse existing rows by
+`(service, username)` and `(author, name)`):
+
+| Owner+Repo | Why it's there |
+|---|---|
+| `github:codecov/example` | Dominant bucket: 5x `BundleAnalysisProcessor` on commit `0832c11…` |
+| `github:codecov/example` (commit B) | Second bucket: 3x `BundleAnalysisProcessor` on commit `abcdef0…` (proves grouping by commitid) |
+| `github:codecov/another-repo` | 2x `NotifyTask` on commit `0832c11…` (proves grouping by repoid + task) |
+| `gitlab:other-org/some-project` | 1x `NotifyTask` on commit `deadbeef` with `pullid=42` (exercises non-github service rendering) |
+
+The script prints the assigned `repoid` for each fixture and the
+operator-facing URL
+(`/admin/redis_admin/celerybrokerqueue/?queue_name__exact=<queue>`)
+so it can be copy/pasted into a browser. Use `--clear` between
+runs to reset the queue without touching DB rows.
+
+The seeded queue only appears on the celery summary landing page
+(`/admin/redis_admin/celerybrokerqueue/`) when its name is in the
+resolved set, which on a local pod means setting
+`SETUP__REDIS_ADMIN__CELERY_QUEUES=bundle_analysis,notify,...` on
+the api container. The drill-down URL printed by the script
+(`?queue_name__exact=<queue>`) bypasses the summary list and works
+either way.
+
 ## Adding a new family
 
 A "family" is a Redis key pattern owned by some part of the system,
