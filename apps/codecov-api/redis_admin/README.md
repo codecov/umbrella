@@ -151,7 +151,7 @@ All configurable via `REDIS_ADMIN_*` Django settings; defaults shown.
 | `REDIS_ADMIN_MAX_SCAN_KEYS` | `10_000` | Hard cap on keys visited per `iter_keys()` sweep. |
 | `REDIS_ADMIN_SCAN_COUNT` | `500` | `COUNT` hint for each `SCAN` / `SSCAN` / `HSCAN`. |
 | `REDIS_ADMIN_ITEM_PAGE_SIZE` | `100` | Page size for the items-in-a-queue view. |
-| `REDIS_ADMIN_MAX_ITEMS_PER_KEY` | `100_000` | Hard cap on members materialised from a single SET/HASH/LIST for browsing (drives the celery_broker chart's sample window via `LRANGE 0 cap-1`). |
+| `REDIS_ADMIN_MAX_ITEMS_PER_KEY` | `20_000` | Hard cap on members materialised from a single SET/HASH/LIST for browsing (drives the celery_broker chart's sample window via `LRANGE 0 cap-1`). |
 | `REDIS_ADMIN_MAX_DECODE_BYTES` | `4_096` | Per-value display truncation. |
 | `REDIS_ADMIN_DELETE_BATCH_SIZE` | `500` | Pipeline batch size for `DEL` / `LREM` / `SREM` / `HDEL`. |
 | `REDIS_ADMIN_CONNECTION_FACTORY` | unset | Dotted path to a callable returning a `redis.Redis`. Defaults to `shared.helpers.redis.get_redis_connection`. |
