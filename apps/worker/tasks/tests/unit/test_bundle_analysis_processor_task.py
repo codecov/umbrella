@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from celery.exceptions import Retry
 from redis.exceptions import LockError
@@ -12,7 +14,10 @@ from shared.bundle_analysis.storage import get_bucket_name
 from shared.celery_config import BUNDLE_ANALYSIS_PROCESSOR_MAX_RETRIES
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.storage.exceptions import PutRequestRateLimitError
-from tasks.bundle_analysis_processor import BundleAnalysisProcessorTask
+from tasks.bundle_analysis_processor import (
+    BundleAnalysisProcessorTask,
+    temporary_upload_file,
+)
 from tasks.bundle_analysis_save_measurements import (
     bundle_analysis_save_measurements_task_name,
 )
@@ -2117,3 +2122,187 @@ def test_bundle_analysis_processor_task_cleanup_with_none_result(
 
     assert result == previous_result
     assert upload.state == "error"
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_file_not_in_storage(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that temporary_upload_file returns None when file is not in storage"""
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    # Create upload with a storage path that doesn't exist in mock_storage
+    upload = UploadFactory.create(
+        storage_path="v1/uploads/nonexistent.json", report=commit_report
+    )
+    dbsession.add(upload)
+    dbsession.flush()
+
+    params = {"upload_id": upload.id_, "commit": commit.commitid}
+
+    # The file doesn't exist in mock_storage; an empty temp file is still yielded
+    # so report.py can detect the failure via os.path.getsize and raise FileNotInStorageError.
+    with temporary_upload_file(dbsession, commit.repoid, params) as result:
+        assert result is not None
+        assert os.path.getsize(result) == 0
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_general_error(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that temporary_upload_file yields an empty temp file on general error"""
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    storage_path = "v1/uploads/test.json"
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    # Mock storage to raise a general exception
+    mocker.patch.object(
+        mock_storage, "read_file", side_effect=Exception("Connection error")
+    )
+
+    params = {"upload_id": upload.id_, "commit": commit.commitid}
+
+    # A general error leaves the temp file empty; report.py treats this as retryable.
+    with temporary_upload_file(dbsession, commit.repoid, params) as result:
+        assert result is not None
+        assert os.path.getsize(result) == 0
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_no_upload_id(
+    mocker,
+    dbsession,
+):
+    """Test that temporary_upload_file returns empty string when no upload_id in params (carryforward)"""
+    params = {"commit": "abc123"}  # No upload_id
+
+    with temporary_upload_file(dbsession, 123, params) as result:
+        assert result == ""
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_upload_not_found(
+    mocker,
+    dbsession,
+):
+    """Test that temporary_upload_file yields an empty file when upload doesn't exist"""
+    params = {"upload_id": 99999, "commit": "abc123"}  # Non-existent upload_id
+
+    with temporary_upload_file(dbsession, 123, params) as result:
+        assert result is not None
+        assert os.path.getsize(result) == 0
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_pre_download_upload_file_success(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that temporary_upload_file returns local path when successful"""
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    storage_path = "v1/uploads/test.json"
+    mock_storage.write_file(get_bucket_name(), storage_path, b'{"bundleName": "test"}')
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    params = {"upload_id": upload.id_, "commit": commit.commitid}
+
+    with temporary_upload_file(dbsession, commit.repoid, params) as result:
+        assert result is not None
+        assert os.path.exists(result)
+        with open(result) as f:
+            content = f.read()
+        assert "bundleName" in content
+
+    # After context manager exits, file should be cleaned up
+    assert not os.path.exists(result)
+
+
+@pytest.mark.django_db(databases={"default", "timeseries"})
+def test_bundle_analysis_processor_passes_pre_downloaded_path(
+    mocker,
+    dbsession,
+    mock_storage,
+):
+    """Test that process_upload is called with pre_downloaded_path when pre-download succeeds"""
+    storage_path = "v1/uploads/test_bundle.json"
+    mock_storage.write_file(
+        get_bucket_name(), storage_path, b'{"bundleName": "test-bundle"}'
+    )
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    # Mock ingest to track what path was passed (following pattern from success tests)
+    ingest_mock = mocker.patch("shared.bundle_analysis.BundleAnalysisReport.ingest")
+    ingest_mock.return_value = (123, "test-bundle")
+
+    result = BundleAnalysisProcessorTask().run_impl(
+        dbsession,
+        [{"previous": "result"}],
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={
+            "upload_id": upload.id_,
+            "commit": commit.commitid,
+        },
+    )
+
+    # Verify the task completed successfully
+    assert result[-1]["error"] is None
+    assert result[-1]["session_id"] == 123
+    assert result[-1]["bundle_name"] == "test-bundle"
+
+    # Verify ingest was called with the pre-downloaded temp file path (not a GCS URI)
+    assert ingest_mock.call_count == 1
+    pre_downloaded_path = ingest_mock.call_args[0][0]
+    assert pre_downloaded_path is not None
+    assert os.path.isabs(pre_downloaded_path), "Expected an absolute temp file path"

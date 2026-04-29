@@ -1,6 +1,5 @@
 import logging
 import os
-import tempfile
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,7 +15,6 @@ from services.report import BaseReportService
 from services.timeseries import repository_datasets_query
 from shared.bundle_analysis import BundleAnalysisReport, BundleAnalysisReportLoader
 from shared.bundle_analysis.models import AssetType, MetadataKey
-from shared.bundle_analysis.storage import get_bucket_name
 from shared.django_apps.bundle_analysis.models import CacheConfig
 from shared.django_apps.bundle_analysis.service.bundle_analysis import (
     BundleAnalysisCacheConfigService,
@@ -68,7 +66,7 @@ class ProcessingResult:
             "error": self.error.as_dict() if self.error else None,
         }
 
-    def update_upload(self, carriedforward: bool | None = False) -> None:
+    def update_upload(self, carriedforward: bool = False) -> None:
         """
         Updates this result's `Upload` record with information from
         this result.
@@ -224,15 +222,26 @@ class BundleAnalysisReportService(BaseReportService):
 
     @sentry_sdk.trace
     def process_upload(
-        self, commit: Commit, upload: Upload, compare_sha: str | None = None
+        self,
+        commit: Commit,
+        upload: Upload,
+        pre_downloaded_path: str,
+        compare_sha: str | None = None,
     ) -> ProcessingResult:
         """
-        Download and parse the data associated with the given upload and
-        merge the results into a bundle report.
+        Parse a pre-downloaded upload file and merge the result into the bundle report.
+
+        Args:
+            commit: The commit being processed
+            upload: The upload record
+            pre_downloaded_path: Path to the pre-downloaded upload file. Always a str
+                when upload.storage_path is non-empty (temporary_upload_file guarantees
+                this). An empty file means the pre-download failed; this returns a
+                retryable error so the task re-queues and re-downloads.
+            compare_sha: Optional SHA for comparison
         """
         commit_report: CommitReport = upload.report
         bundle_loader = BundleAnalysisReportLoader(commit_report.commit.repository)
-        storage_service = bundle_loader.storage_service
 
         # fetch existing bundle report from storage
         bundle_report = bundle_loader.load(commit_report.external_id)
@@ -241,20 +250,31 @@ class BundleAnalysisReportService(BaseReportService):
                 commit, bundle_loader
             )
 
-        # download raw upload data to local tempfile
-        _, local_path = tempfile.mkstemp()
         try:
             session_id, prev_bar, bundle_name = None, None, None
             if upload.storage_path != "":
-                with open(local_path, "wb") as f:
-                    storage_service.read_file(
-                        get_bucket_name(), upload.storage_path, file_obj=f
+                # pre_downloaded_path is None only if the calling code skips
+                # temporary_upload_file; in normal flow it's always a path.
+                # An empty file means the pre-download failed before the lock.
+                if (
+                    not os.path.exists(pre_downloaded_path)
+                    or os.path.getsize(pre_downloaded_path) == 0
+                ):
+                    log.warning(
+                        "Pre-downloaded file missing or empty inside lock; will retry",
+                        extra={
+                            "repoid": commit.repoid,
+                            "commitid": commit.commitid,
+                            "upload_id": upload.id_,
+                            "storage_path": upload.storage_path,
+                            "pre_downloaded_path": pre_downloaded_path,
+                        },
                     )
+                    raise FileNotInStorageError(upload.storage_path)
+                session_id, bundle_name = bundle_report.ingest(
+                    pre_downloaded_path, compare_sha
+                )
 
-                # load the downloaded data into the bundle report
-                session_id, bundle_name = bundle_report.ingest(local_path, compare_sha)
-
-                # Retrieve previous commit's BAR and associate past Assets
                 prev_bar = self._previous_bundle_analysis_report(
                     bundle_loader, commit, head_bundle_report=bundle_report
                 )
@@ -331,9 +351,6 @@ class BundleAnalysisReportService(BaseReportService):
                     is_retryable=False,
                 ),
             )
-        finally:
-            os.remove(local_path)
-
         return ProcessingResult(
             upload=upload,
             commit=commit,
