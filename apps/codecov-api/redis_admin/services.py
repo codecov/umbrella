@@ -444,61 +444,6 @@ def _celery_clear_tombstone() -> str:
     return f"{_CELERY_TOMBSTONE_PREFIX}:{uuid.uuid4().hex}"
 
 
-def _execute_celery_clear(
-    redis,
-    queue_name: str,
-    indexes: Sequence[int],
-    *,
-    tombstone: str,
-) -> int:
-    """LSET-then-LREM the given indexes inside `queue_name`.
-
-    Returns the number of list elements actually removed (the LREM
-    reply); we don't double-count duplicates because LSET writes the
-    same sentinel for every selected idx and LREM count=0 wipes them
-    all in a single sweep.
-    """
-
-    if not indexes:
-        return 0
-    pipe = redis.pipeline(transaction=False)
-    for idx in indexes:
-        # `LSET` raises if the index is out of range; the admin
-        # already materialised these from `LRANGE`, so the only way
-        # we'd see that here is if a celery consumer drained the queue
-        # between the operator clicking "Clear" and us reaching this
-        # line. Don't crash the whole pipeline in that case — the
-        # subsequent LREM for the sentinel will simply remove zero
-        # entries. We tolerate per-op failures by reading replies
-        # rather than raising.
-        try:
-            pipe.lset(queue_name, idx, tombstone)
-        except Exception:  # pragma: no cover - defensive
-            log.exception(
-                "redis_admin.celery_broker_clear: failed to enqueue LSET for %s[%s]",
-                queue_name,
-                idx,
-            )
-    try:
-        replies = pipe.execute(raise_on_error=False)
-    except TypeError:  # pragma: no cover - some clients don't accept the kwarg
-        replies = pipe.execute()
-    failures = sum(1 for reply in replies if isinstance(reply, Exception))
-    if failures:
-        log.warning(
-            "redis_admin.celery_broker_clear: %s LSET op(s) failed on %s "
-            "(likely consumer drained the slot mid-clear); proceeding to LREM",
-            failures,
-            queue_name,
-        )
-
-    deleted = redis.lrem(queue_name, 0, tombstone)
-    try:
-        return int(deleted or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
 @dataclass(frozen=True)
 class _StreamingClearStats:
     """Per-run stats from `_streaming_celery_clear`."""
