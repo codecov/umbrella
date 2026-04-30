@@ -617,11 +617,6 @@ def _streaming_celery_clear(
             break
         prev_lset = matches_lset
 
-        # After the first pass, keep_one is "done" (the message
-        # identified as the keeper in pass 1 is now the persistent
-        # survivor).
-        first_kept = True
-
     return _StreamingClearStats(
         total_lset=total_lset,
         total_drifted=total_drifted,
