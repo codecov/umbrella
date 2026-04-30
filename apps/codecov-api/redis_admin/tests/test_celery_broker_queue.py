@@ -2034,7 +2034,13 @@ def test_streaming_clear_keep_one_leaves_lowest_index(broker_redis):
     broker_redis.rpush("notify", raw_unrelated)
     user = UserFactory()
 
-    targets = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
+    # Only target the (t.A, repoid=1) messages so "unrelated" (repoid=99)
+    # is not included in the filter and is left untouched.
+    targets = list(
+        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify").filter(
+            repoid=1
+        )
+    )
     result = celery_broker_clear(targets, user=user, dry_run=False, keep_one=True)
 
     remaining_raw = broker_redis.lrange("notify", 0, -1)
