@@ -315,9 +315,17 @@ class BundleAnalysisProcessorTask(
                         "result": result.as_dict(),
                     },
                 )
+                # Cap at 870s (30s below the 900s Redis visibility timeout) so
+                # the message is never held unacked longer than the visibility
+                # window. Without this cap, retries 5+ produce countdowns >900s
+                # (e.g. 960s, 1920s, 3840s, 7680s, 15360s) which the Redis
+                # broker redelivers to additional workers, causing exponential
+                # task amplification on retryable errors like
+                # `file_not_in_storage`. Mirrors the cap applied to the
+                # LockRetry path above (PR #852).
                 self.retry(
                     max_retries=self.max_retries,
-                    countdown=30 * (2**self.request.retries),
+                    countdown=min(30 * (2**self.request.retries), 870),
                 )
             result.update_upload(carriedforward=carriedforward)
             db_session.commit()
