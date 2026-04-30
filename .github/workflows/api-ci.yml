@@ -48,9 +48,13 @@ jobs:
       flag_prefix: api
       pytest_rootdir: /app
       make_target_prefix: api.
-      # API tests are pure pytest-django; xdist is supported via per-worker
-      # test DB suffixing baked into pytest-django.
-      pytest_xdist: auto
+      # NOTE: API tests intentionally run serially. Enabling xdist exposed
+      # ordering-sensitive test failures in `upload/tests/views/test_uploads.py`
+      # (parametrized tests where `upload.flags.all()` returns a subset of
+      # the M2M memberships actually present in the DB). Re-enable once those
+      # tests are made worker-safe; the wiring (set this to `auto`) is in
+      # place so it's a one-line flip.
+      pytest_xdist: ""
 
   # Builds the self-hosted image on every run and pushes the rolling tag only
   # on push-to-main. Previously a separate `api-self-hosted` job re-built the
