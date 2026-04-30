@@ -48,7 +48,14 @@ jobs:
       flag_prefix: api
       pytest_rootdir: /app
       make_target_prefix: api.
+      # API tests are pure pytest-django; xdist is supported via per-worker
+      # test DB suffixing baked into pytest-django.
+      pytest_xdist: auto
 
+  # Builds the self-hosted image on every run and pushes the rolling tag only
+  # on push-to-main. Previously a separate `api-self-hosted` job re-built the
+  # same image on push-to-main just to push it; this consolidates them so we
+  # only build the self-hosted image once per workflow run.
   api-build-self-hosted:
     name: Build Self Hosted (API)
     if: ${{ inputs.skip == false }}
@@ -56,6 +63,7 @@ jobs:
     uses: ./.github/workflows/_self-hosted.yml
     secrets: inherit
     with:
+      push_rolling: ${{ github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       output_directory: apps/codecov-api
       make_target_prefix: api.
@@ -71,18 +79,6 @@ jobs:
       repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
       output_directory: apps/codecov-api
       sentry_project: api
-      make_target_prefix: api.
-
-  api-self-hosted:
-    name: Push Self Hosted Image (API)
-    needs: [api-build-self-hosted, api-test]
-    secrets: inherit
-    if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
-    uses: ./.github/workflows/_self-hosted.yml
-    with:
-      push_rolling: true
-      repo: ${{ vars.CODECOV_API_IMAGE_V2 || vars.CODECOV_API_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-api' }}
-      output_directory: apps/codecov-api
       make_target_prefix: api.
 
   # This job works around a strange interaction between reusable workflows and

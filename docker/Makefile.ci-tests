@@ -6,6 +6,12 @@ PYTEST_ROOTDIR ?= "/app"
 # Directory containing source files to measure coverage for. Overridden by `shared`.
 COV_SOURCE ?= "./"
 
+# Optional pytest-xdist worker count. When non-empty, `-n <value>` is passed to
+# pytest. Accepts any value pytest-xdist accepts (e.g. `auto`, `logical`, `4`).
+# Empty (default) runs tests serially.
+PYTEST_XDIST ?=
+PYTEST_XDIST_FLAG := $(if $(PYTEST_XDIST),-n $(PYTEST_XDIST),)
+
 ######
 # Generic targets for running Python tests inside a Docker environment.
 #
@@ -43,7 +49,8 @@ _test_env.run_unit:
 		    --junitxml=unit.junit.xml \
 		    -o junit_family=legacy \
 		    -c pytest.ini \
-		    --rootdir=${PYTEST_ROOTDIR}"
+		    --rootdir=${PYTEST_ROOTDIR} \
+		    ${PYTEST_XDIST_FLAG}"
 
 # Outside the Docker env: Run integration tests.
 _test_env.run_integration:
@@ -56,7 +63,8 @@ _test_env.run_integration:
 		    --junitxml=integration.junit.xml \
 		    -o junit_family=legacy \
 		    -c pytest.ini \
-		    --rootdir=${PYTEST_ROOTDIR}"
+		    --rootdir=${PYTEST_ROOTDIR} \
+		    ${PYTEST_XDIST_FLAG}"
 
 # Outside the Docker env: Start the Docker env and run unit + integration tests in one go.
 _test_env:

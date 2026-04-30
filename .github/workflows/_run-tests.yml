@@ -22,6 +22,12 @@ on:
       make_target_prefix:
         type: string
         default: ""
+      # Forwarded to pytest as `-n <value>` via the Makefile. Accepts any value
+      # pytest-xdist accepts (e.g. `auto`, `logical`, `4`). Empty (default) runs
+      # tests serially.
+      pytest_xdist:
+        type: string
+        default: ""
     outputs:
       tests_passed:
         # Silly issue with returning job results as workflow outputs
@@ -67,11 +73,11 @@ jobs:
 
       - name: Run unit tests
         run: |
-          make ${{ inputs.make_target_prefix }}test_env.run_unit PYTEST_ROOTDIR=${{ inputs.pytest_rootdir }}
+          make ${{ inputs.make_target_prefix }}test_env.run_unit PYTEST_ROOTDIR=${{ inputs.pytest_rootdir }} PYTEST_XDIST=${{ inputs.pytest_xdist }}
       - name: Run integration tests
         if: ${{ !cancelled() && inputs.run_integration == true }}
         run: |
-          make ${{ inputs.make_target_prefix }}test_env.run_integration PYTEST_ROOTDIR=${{ inputs.pytest_rootdir }}
+          make ${{ inputs.make_target_prefix }}test_env.run_integration PYTEST_ROOTDIR=${{ inputs.pytest_rootdir }} PYTEST_XDIST=${{ inputs.pytest_xdist }}
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

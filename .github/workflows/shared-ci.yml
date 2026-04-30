@@ -39,6 +39,9 @@ jobs:
       flag_prefix: shared
       pytest_rootdir: /app
       make_target_prefix: shared.
+      # Shared tests use pytest-django; xdist is supported via per-worker test
+      # DB suffixing baked into pytest-django.
+      pytest_xdist: auto
 
   shared-benchmark:
     name: Benchmarks (Shared)
