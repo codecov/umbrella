@@ -1,11 +1,17 @@
 {% extends "admin/change_list.html" %}
 {% load admin_urls %}
+{% load static %}
 
 {% comment %}
 On the per-message drill-down page (queue_name is set), inject a lazy
 frequency chart above the result list. The chart is fetched
 asynchronously from `chart_fragment_view` so the changelist renders
 immediately regardless of queue depth (200–500k messages).
+
+The fetch helper lives in an external static file rather than an
+inline <script> so it survives the strict CSP on production
+(api-admin.codecov.io), which only allows `'self'` and one fixed
+sha256 for inline scripts. See settings_base.py CSP_DEFAULT_SRC.
 
 In summary mode (queue_name is absent) the block renders nothing extra.
 {% endcomment %}
@@ -15,31 +21,7 @@ In summary mode (queue_name is absent) the block renders nothing extra.
          data-fragment-url="{% url 'admin:celerybrokerqueue-chart-fragment' queue_name=queue_name %}">
       <p class="help">Loading frequency chart&hellip;</p>
     </div>
-    <script>
-      (function () {
-        var el = document.getElementById('celery-chart-fragment');
-        if (!el) return;
-        var url = el.dataset.fragmentUrl;
-        if (!url) return;
-        fetch(url, { credentials: 'same-origin' })
-          .then(function (r) {
-            if (r.status === 204) {
-              el.innerHTML = '';
-              return;
-            }
-            if (!r.ok) {
-              el.innerHTML = '<p class="errornote">Could not load frequency chart (HTTP ' + r.status + ').</p>';
-              return;
-            }
-            return r.text().then(function (html) {
-              el.innerHTML = html;
-            });
-          })
-          .catch(function () {
-            el.innerHTML = '<p class="errornote">Could not load frequency chart.</p>';
-          });
-      })();
-    </script>
+    <script src="{% static 'redis_admin/js/celery_chart_fragment.js' %}" defer></script>
   {% endif %}
   {{ block.super }}
 {% endblock %}

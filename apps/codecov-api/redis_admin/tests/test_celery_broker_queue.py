@@ -985,6 +985,12 @@ class CeleryFrequencyChartTest(TestCase):
         # Changelist renders the lazy-load placeholder, not the chart itself.
         assert 'id="celery-chart-fragment"' in body
         assert "data-fragment-url=" in body
+        # The loader is shipped as an EXTERNAL static file (not inline)
+        # so the strict CSP on api-admin.codecov.io — which only allows
+        # `'self'` and one fixed sha256 for inline scripts — does not
+        # block it. See settings_base.py CSP_DEFAULT_SRC.
+        assert "celery_chart_fragment.js" in body
+        assert 'src="' in body  # confirms external script form, not inline
 
         # Fetch the chart fragment directly (as the browser's JS would).
         fragment_response = self.client.get(
