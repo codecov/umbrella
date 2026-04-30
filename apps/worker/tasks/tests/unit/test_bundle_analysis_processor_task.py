@@ -2117,3 +2117,97 @@ def test_bundle_analysis_processor_task_cleanup_with_none_result(
 
     assert result == previous_result
     assert upload.state == "error"
+
+
+@pytest.mark.parametrize(
+    "request_retries, expected_countdown",
+    [
+        (0, 30),
+        (1, 60),
+        (2, 120),
+        (3, 240),
+        (4, 480),
+        # retries 5+ would naturally produce countdowns >= 960s, which exceeds
+        # the 900s Redis visibility timeout and causes message redelivery /
+        # exponential task amplification. The cap pins them at 870s.
+        (5, 870),
+        (6, 870),
+        (7, 870),
+        (8, 870),
+        (9, 870),
+    ],
+)
+def test_bundle_analysis_processor_task_retryable_error_countdown_capped(
+    mocker,
+    dbsession,
+    mock_storage,
+    request_retries,
+    expected_countdown,
+):
+    """The retryable-error retry path must cap its countdown below the 900s
+    Redis visibility timeout so the broker never redelivers the still-unacked
+    ETA message to additional workers (which produced exponential task
+    amplification on the bundles_analysis queue, e.g. for repeated
+    `file_not_in_storage` errors).
+    """
+    storage_path = (
+        "v1/repos/testing/ed1bdd67-8fd2-4cdb-ac9e-39b99e4a3892/bundle_report.sqlite"
+    )
+    mock_storage.write_file(get_bucket_name(), storage_path, "test-content")
+
+    mocker.patch.object(
+        BundleAnalysisProcessorTask,
+        "app",
+        tasks={
+            bundle_analysis_save_measurements_task_name: mocker.MagicMock(),
+        },
+    )
+
+    commit = CommitFactory.create(state="pending")
+    dbsession.add(commit)
+    dbsession.flush()
+
+    commit_report = CommitReport(commit_id=commit.id_)
+    dbsession.add(commit_report)
+    dbsession.flush()
+
+    upload = UploadFactory.create(storage_path=storage_path, report=commit_report)
+    dbsession.add(upload)
+    dbsession.flush()
+
+    retryable_error = ProcessingError(
+        code="file_not_in_storage",
+        params={"location": storage_path},
+        is_retryable=True,
+    )
+    processing_result = ProcessingResult(
+        upload=upload,
+        commit=commit,
+        error=retryable_error,
+    )
+    mocker.patch(
+        "services.bundle_analysis.report.BundleAnalysisReportService.process_upload",
+        return_value=processing_result,
+    )
+
+    task = BundleAnalysisProcessorTask()
+    task.request.retries = request_retries
+    # Pin the attempts header to 1 for every case so we always take the retry
+    # branch (not the max-retries-exceeded early return). In production these
+    # two counters can drift apart anyway: visibility-timeout redeliveries
+    # increment `attempts` while keeping `request.retries` low.
+    task.request.headers = {"attempts": 1}
+    retry_call = mocker.patch.object(task, "retry")
+
+    task.run_impl(
+        dbsession,
+        [],
+        repoid=commit.repoid,
+        commitid=commit.commitid,
+        commit_yaml={},
+        params={"upload_id": upload.id_, "commit": commit.commitid},
+    )
+
+    retry_call.assert_called_once()
+    assert retry_call.call_args.kwargs["countdown"] == expected_countdown
+    assert retry_call.call_args.kwargs["countdown"] < 900

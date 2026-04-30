@@ -969,6 +969,34 @@ _LARGE_KWARGS_KEYS: frozenset[str] = frozenset(
 _PAYLOAD_PER_VALUE_CAP: int = 256
 
 
+def resolve_payload_preview(obj: Any) -> str:
+    """Return `obj.payload_preview`, lazily rendering it on first access.
+
+    `CeleryBrokerQueueQuerySet._build_row` constructs rows with an empty
+    `payload_preview` and stashes the raw kombu body kwargs as
+    `obj._kwargs_for_preview`. The first caller that actually needs the
+    rendered preview (the admin's `payload_preview_truncated` display
+    method on the visible page, the change_form's readonly field, etc.)
+    pays the `_summarise_kwargs_for_preview` cost; further calls reuse
+    the cached result. Defensively handles rows that pre-populated the
+    field (tests that build `CeleryBrokerQueue(...)` directly) and rows
+    that never had a stash attached (summary rows, foreign callers).
+    """
+
+    cached = getattr(obj, "payload_preview", "") or ""
+    if cached:
+        return cached
+    kwargs = getattr(obj, "_kwargs_for_preview", None)
+    if kwargs is None:
+        return ""
+    rendered = _summarise_kwargs_for_preview(kwargs)
+    try:
+        obj.payload_preview = rendered
+    except (AttributeError, TypeError):  # pragma: no cover - defensive
+        pass
+    return rendered
+
+
 _CELERY_FILTER_KEYS: dict[str, str] = {
     "queue_name": "queue_name",
     "queue_name__exact": "queue_name",
@@ -1176,12 +1204,22 @@ class CeleryBrokerQueueQuerySet:
         queue_name: str | None = None,
         ordering: tuple[str, ...] = (),
         filters: dict[str, Any] | None = None,
+        request: Any = None,
     ) -> None:
         self.model = model
         self.queue_name = queue_name
         self._ordering = ordering
         self._filters: dict[str, Any] = dict(filters or {})
         self._result_cache: list | None = None
+        # Optional reference to the active `HttpRequest`. When set, the
+        # parsed `LRANGE` snapshot is stashed on the request so the
+        # changelist and the frequency-chart context builder reuse a
+        # single round-trip per page render instead of each issuing
+        # their own `LRANGE` + parse pass on the same queue. The
+        # admin's `get_queryset(request)` plumbs this through;
+        # standalone callers (tests, services) leave it `None` and
+        # eat the per-call materialisation cost.
+        self._request = request
 
     # ---- Cloning helpers --------------------------------------------------
 
@@ -1199,6 +1237,7 @@ class CeleryBrokerQueueQuerySet:
             filters=(
                 {**self._filters, **(filters or {})} if filters else dict(self._filters)
             ),
+            request=self._request,
         )
 
     def all(self) -> CeleryBrokerQueueQuerySet:
@@ -1355,6 +1394,13 @@ class CeleryBrokerQueueQuerySet:
         bound = self._clone(queue_name=queue)
         for row in bound._fetch_all():
             if row.index_in_queue == idx:
+                # Eagerly resolve the preview here so the change_form
+                # readonly field surface (which reads
+                # `obj.payload_preview` directly, not through the
+                # admin's display method) still shows the body kwargs.
+                # Singleton call — cost is one envelope's render, not
+                # the full queue's.
+                resolve_payload_preview(row)
                 return row
         raise self.model.DoesNotExist(
             f"index {idx} not found in queue {queue!r} "
@@ -1369,7 +1415,16 @@ class CeleryBrokerQueueQuerySet:
         return _conn.get_connection(kind="broker")
 
     def _build_row(self, idx: int, meta: CeleryEnvelopeMeta) -> Any:
-        return self.model(
+        # `payload_preview` is intentionally left blank here and rendered
+        # lazily on access (see `resolve_payload_preview` below). On a
+        # 20k-deep queue the eager call to `_summarise_kwargs_for_preview`
+        # used to dominate the page render — the changelist only ever
+        # surfaces ~100 rows per page, so 99% of the rendered previews
+        # were thrown away. Stashing the body kwargs on the row keeps
+        # the lazy path local: callers that need the preview (the
+        # admin's display method, the change_form) can resolve it
+        # without re-issuing `LRANGE` or re-parsing the envelope.
+        row = self.model(
             pk_token=f"{self.queue_name}#{idx}",
             queue_name=self.queue_name,
             index_in_queue=idx,
@@ -1380,8 +1435,10 @@ class CeleryBrokerQueueQuerySet:
             commitid=meta.commitid,
             ownerid=meta.ownerid,
             pullid=meta.pullid,
-            payload_preview=_summarise_kwargs_for_preview(meta.kwargs),
+            payload_preview="",
         )
+        row._kwargs_for_preview = meta.kwargs
+        return row
 
     def _build_summary_row(self, queue: str, depth: int) -> Any:
         return self.model(
@@ -1440,6 +1497,9 @@ class CeleryBrokerQueueQuerySet:
     def _materialise(self) -> list:
         if self.is_summary_mode():
             return self._materialise_summary()
+        cached = self._read_request_cache()
+        if cached is not None:
+            return cached
         redis = self._connection()
         if not redis.exists(self.queue_name):
             return []
@@ -1454,7 +1514,44 @@ class CeleryBrokerQueueQuerySet:
             decoded = _decode_value(raw)
             meta = parse_celery_envelope(decoded)
             rows.append(self._build_row(offset, meta))
+        self._write_request_cache(rows)
         return rows
+
+    # ---- Per-request LRANGE cache ----------------------------------------
+    #
+    # The drill-down page calls `_materialise` twice per render: once for
+    # the changelist itself, once for the frequency-chart context (each
+    # via `self.get_queryset(request)`, which builds a fresh queryset
+    # whose `_result_cache` is empty). Without a shared cache that's a
+    # 2x cost on the LRANGE round-trip and the per-envelope parse pass.
+    # Stashing the parsed list on the request (when one is plumbed
+    # through) lets the second call short-circuit; standalone callers
+    # without a request fall back to issuing a fresh LRANGE, same as
+    # before. The cache is keyed by `(queue_name, MAX_ITEMS_PER_KEY)` so
+    # a setting override mid-render (vanishingly rare, but) doesn't
+    # serve the wrong window size.
+
+    _REQUEST_CACHE_ATTR: str = "_celery_broker_lrange_cache"
+
+    def _request_cache_key(self) -> tuple[str, int]:
+        return (self.queue_name or "", redis_admin_settings.MAX_ITEMS_PER_KEY)
+
+    def _read_request_cache(self) -> list | None:
+        if self._request is None or not self.queue_name:
+            return None
+        cache = getattr(self._request, self._REQUEST_CACHE_ATTR, None)
+        if cache is None:
+            return None
+        return cache.get(self._request_cache_key())
+
+    def _write_request_cache(self, rows: list) -> None:
+        if self._request is None or not self.queue_name:
+            return
+        cache = getattr(self._request, self._REQUEST_CACHE_ATTR, None)
+        if cache is None:
+            cache = {}
+            setattr(self._request, self._REQUEST_CACHE_ATTR, cache)
+        cache[self._request_cache_key()] = rows
 
     def _matches_filters(self, row: Any) -> bool:
         f = self._filters

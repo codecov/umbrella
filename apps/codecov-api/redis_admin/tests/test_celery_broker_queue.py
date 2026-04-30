@@ -44,6 +44,7 @@ from redis_admin.queryset import (
     CeleryBrokerQueueQuerySet,
     _stream_frequency_aggregate,
     _summarise_kwargs_for_preview,
+    resolve_payload_preview,
 )
 from redis_admin.services import (
     _CELERY_MAX_PASSES,
@@ -225,6 +226,158 @@ def test_payload_preview_truncates_oversize_unknown_keys():
 def test_payload_preview_handles_empty_kwargs():
     assert _summarise_kwargs_for_preview(None) == ""
     assert _summarise_kwargs_for_preview({}) == ""
+
+
+# ---- lazy preview rendering (perf) -----------------------------------------
+
+
+def test_materialised_rows_have_empty_preview_until_resolved(patched_broker):
+    """Pin the perf invariant: `_materialise` doesn't render previews.
+
+    The drill-down page can pull tens of thousands of envelopes per
+    render but only paginates ~100 onto the screen, so paying the
+    `_summarise_kwargs_for_preview` JSON-render cost on every row was
+    the dominant page-render bottleneck. The lazy path stashes the
+    body kwargs on the row and defers rendering to the first caller
+    that actually displays it.
+    """
+
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.notify.NotifyTask",
+        kwargs={"repoid": 7, "commitid": "abc"},
+    )
+    rows = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
+
+    assert rows[0].payload_preview == ""
+    # The body kwargs are stashed for the lazy resolver, NOT eagerly
+    # rendered into the model field.
+    assert rows[0]._kwargs_for_preview == {"repoid": 7, "commitid": "abc"}
+
+
+def test_resolve_payload_preview_renders_lazily_and_caches(patched_broker):
+    _push(
+        patched_broker,
+        "notify",
+        kwargs={"repoid": 11, "commitid": "deadbeef"},
+    )
+    row = next(iter(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify")))
+
+    rendered = resolve_payload_preview(row)
+    assert '"repoid": 11' in rendered
+    # Second call short-circuits via the now-populated field.
+    assert resolve_payload_preview(row) == rendered
+    assert row.payload_preview == rendered
+
+
+def test_resolve_payload_preview_handles_rows_without_stash():
+    # Foreign callers (tests building `CeleryBrokerQueue(...)` by hand,
+    # the summary-mode landing-page rows) don't carry a kwargs stash —
+    # the resolver must degrade gracefully rather than `AttributeError`.
+    bare = CeleryBrokerQueue(pk_token="x#summary", queue_name="x")
+
+    assert resolve_payload_preview(bare) == ""
+
+
+def test_get_pk_token_eagerly_renders_preview_for_change_form(patched_broker):
+    # The change_form path reads `obj.payload_preview` directly off the
+    # readonly field surface, so `get(pk_token=...)` has to populate
+    # the preview eagerly even though the changelist path doesn't.
+    _push(
+        patched_broker,
+        "notify",
+        kwargs={"repoid": 99, "commitid": "feedface"},
+    )
+    qs = CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify")
+
+    row = qs.get(pk_token="notify#0")
+
+    assert '"repoid": 99' in row.payload_preview
+    assert "feedface" in row.payload_preview
+
+
+# ---- per-request LRANGE cache (perf) ---------------------------------------
+
+
+def test_request_cache_dedupes_lrange_across_querysets(patched_broker):
+    """The drill-down page builds two querysets per render (the
+    changelist's and the chart's), each calling `_materialise`. Without
+    the per-request cache that's a 2x cost on the LRANGE+parse round
+    trip; this test pins the invariant that the second materialisation
+    short-circuits via the request-stashed snapshot.
+    """
+
+    _push(patched_broker, "notify", kwargs={"repoid": 1, "commitid": "a"})
+    _push(patched_broker, "notify", kwargs={"repoid": 2, "commitid": "b"})
+
+    # `request` is duck-typed: anything that accepts arbitrary
+    # attribute writes is fine. The admin plumbs `HttpRequest`; we
+    # use a plain object here so the test doesn't need a request
+    # factory.
+    request = type("_Request", (), {})()
+    qs1 = CeleryBrokerQueueQuerySet(
+        CeleryBrokerQueue, queue_name="notify", request=request
+    )
+    list(qs1)
+
+    # Wipe the underlying queue so the second materialisation, if it
+    # actually round-trips Redis, would yield zero rows.
+    patched_broker.delete("notify")
+
+    qs2 = CeleryBrokerQueueQuerySet(
+        CeleryBrokerQueue, queue_name="notify", request=request
+    )
+    rows2 = list(qs2)
+
+    # The cache hit means `qs2` sees the snapshot `qs1` materialised,
+    # not the now-empty queue.
+    assert [r.repoid for r in rows2] == [1, 2]
+
+
+def test_request_cache_propagates_through_filter_clones(patched_broker):
+    # Django's ChangeList applies further `.filter()` clones on top of
+    # the queryset returned by `get_queryset(request)`. The cache only
+    # earns its keep if `_clone()` propagates the request marker so
+    # the clone reads the same stashed snapshot.
+    _push(patched_broker, "notify", kwargs={"repoid": 1, "commitid": "a"})
+    _push(patched_broker, "notify", kwargs={"repoid": 2, "commitid": "b"})
+
+    request = type("_Request", (), {})()
+    base = CeleryBrokerQueueQuerySet(
+        CeleryBrokerQueue, queue_name="notify", request=request
+    )
+    list(base)
+
+    patched_broker.delete("notify")
+
+    filtered = base.filter(repoid=1)
+    rows = list(filtered)
+
+    assert [r.repoid for r in rows] == [1]
+
+
+def test_request_cache_isolated_across_requests(patched_broker):
+    # Two distinct `request` markers must NOT share the cache —
+    # otherwise a stale snapshot from one operator's tab could leak
+    # into the next request.
+    _push(patched_broker, "notify", kwargs={"repoid": 1, "commitid": "a"})
+
+    req_a = type("_Request", (), {})()
+    list(
+        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify", request=req_a)
+    )
+
+    _push(patched_broker, "notify", kwargs={"repoid": 2, "commitid": "b"})
+
+    req_b = type("_Request", (), {})()
+    rows = list(
+        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify", request=req_b)
+    )
+
+    # `req_b` materialises against the live queue, picking up the
+    # second push that landed after `req_a`'s render.
+    assert [r.repoid for r in rows] == [1, 2]
 
 
 # ---- queryset filtering ----------------------------------------------------
