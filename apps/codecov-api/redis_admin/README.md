@@ -151,7 +151,9 @@ All configurable via `REDIS_ADMIN_*` Django settings; defaults shown.
 | `REDIS_ADMIN_MAX_SCAN_KEYS` | `10_000` | Hard cap on keys visited per `iter_keys()` sweep. |
 | `REDIS_ADMIN_SCAN_COUNT` | `500` | `COUNT` hint for each `SCAN` / `SSCAN` / `HSCAN`. |
 | `REDIS_ADMIN_ITEM_PAGE_SIZE` | `100` | Page size for the items-in-a-queue view. |
-| `REDIS_ADMIN_MAX_ITEMS_PER_KEY` | `20_000` | Hard cap on members materialised from a single SET/HASH/LIST for browsing (drives the celery_broker chart's sample window via `LRANGE 0 cap-1`). |
+| `REDIS_ADMIN_MAX_ITEMS_PER_KEY` | `20_000` | Hard cap on members materialised from a single SET/HASH for admin browsing (M4). LIST keys use bounded LRANGE windows so they aren't constrained here. |
+| `REDIS_ADMIN_CELERY_BROKER_DISPLAY_LIMIT` | `2_000` | Number of per-message rows materialised on the `celery_broker` changelist drill-down. Smaller than the scan limit because each row keeps a parsed envelope in the per-request cache. |
+| `REDIS_ADMIN_CELERY_BROKER_SCAN_LIMIT` | `100_000` | Sample window used by deep scans of a `celery_broker` queue (frequency chart + streaming clear). Both walk the queue in chunks and discard payloads, so memory stays flat regardless of this cap. |
 | `REDIS_ADMIN_MAX_DECODE_BYTES` | `4_096` | Per-value display truncation. |
 | `REDIS_ADMIN_DELETE_BATCH_SIZE` | `500` | Pipeline batch size for `DEL` / `LREM` / `SREM` / `HDEL`. |
 | `REDIS_ADMIN_CONNECTION_FACTORY` | unset | Dotted path to a callable returning a `redis.Redis`. Defaults to `shared.helpers.redis.get_redis_connection`. |
@@ -258,10 +260,10 @@ Grouping by `task_name` matters on shared queues like the default
 unrelated tasks routed through the same queue.
 
 The chart's percentages are computed against the visible
-`LRANGE 0 MAX_ITEMS_PER_KEY-1` window, not against `LLEN`. When
-`LLEN > MAX_ITEMS_PER_KEY` the chart surfaces a "showing top N
-of M sampled messages (queue depth: K)" banner so operators know
-the share is over the visible window.
+`LRANGE 0 CELERY_BROKER_SCAN_LIMIT-1` window, not against `LLEN`.
+When `LLEN > CELERY_BROKER_SCAN_LIMIT` the chart surfaces a
+"showing top N of M sampled messages (queue depth: K)" banner so
+operators know the share is over the visible window.
 
 ### `clear-by-filter/` (chart-driven targeted clear)
 

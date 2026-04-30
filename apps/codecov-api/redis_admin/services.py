@@ -414,7 +414,7 @@ def _redis_delete(
 # For 200–500k-deep queues the old eager-materialise-then-LSET path
 # had two problems:
 #
-#   1. Memory: materialising up to `MAX_ITEMS_PER_KEY` rows into
+#   1. Memory: materialising up to `CELERY_BROKER_SCAN_LIMIT` rows into
 #      Python before clearing was O(N) in memory.
 #   2. Race drift: the index a Celery consumer sees between our
 #      `LRANGE` snapshot and our `LSET` call can shift if another
@@ -491,7 +491,7 @@ def _streaming_celery_clear(
     total_drifted = 0
     prev_lset: int | None = None
     passes_run = 0
-    cap = redis_admin_settings.MAX_ITEMS_PER_KEY
+    cap = redis_admin_settings.CELERY_BROKER_SCAN_LIMIT
 
     # Track whether we've kept the "first" across all passes so that
     # repeat passes honour the same semantic (first by queue index).

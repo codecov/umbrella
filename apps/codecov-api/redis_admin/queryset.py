@@ -1082,8 +1082,8 @@ class FrequencyBucket:
 
     `pct` is the bucket's share of the total queue depth, computed
     against the snapshot the chart was built from (i.e. against the
-    `LRANGE 0 MAX_ITEMS_PER_KEY-1` materialisation, not against
-    `LLEN`). For queues larger than `MAX_ITEMS_PER_KEY` the chart
+    `LRANGE 0 CELERY_BROKER_SCAN_LIMIT-1` materialisation, not against
+    `LLEN`). For queues larger than `CELERY_BROKER_SCAN_LIMIT` the chart
     template surfaces a banner so operators know the percentages
     are over the visible window.
     """
@@ -1114,7 +1114,7 @@ def _stream_frequency_aggregate(
     """Streaming `(task_name, repoid, commitid)` frequency aggregator.
 
     Walks `queue_name` in `_STREAM_CHUNK`-sized LRANGE chunks up to
-    `MAX_ITEMS_PER_KEY` total messages. Each chunk is parsed and
+    `CELERY_BROKER_SCAN_LIMIT` total messages. Each chunk is parsed and
     immediately discarded — the only retained state is a rolling
     `Counter` keyed on the 3-tuple. Memory footprint is bounded by
     the number of unique `(task, repoid, commitid)` triples rather
@@ -1135,7 +1135,7 @@ def _stream_frequency_aggregate(
       in isolation without first materialising the changelist.
     """
 
-    cap = redis_admin_settings.MAX_ITEMS_PER_KEY
+    cap = redis_admin_settings.CELERY_BROKER_SCAN_LIMIT
     counter: Counter[tuple[str | None, int | None, str | None]] = Counter()
     total = 0
 
@@ -1187,7 +1187,7 @@ class CeleryBrokerQueueQuerySet:
     message — the alternative would be fanning out across every
     well-known celery queue, which is unbounded by design.
 
-    Materialisation is `LRANGE 0 MAX_ITEMS_PER_KEY-1` once, parse
+    Materialisation is `LRANGE 0 CELERY_BROKER_DISPLAY_LIMIT-1` once, parse
     each element via `parse_celery_envelope`, then apply Python-side
     filters and ordering. The result snapshot is cached on the
     queryset instance so repeated `count()` / `__getitem__` /
@@ -1404,7 +1404,7 @@ class CeleryBrokerQueueQuerySet:
                 return row
         raise self.model.DoesNotExist(
             f"index {idx} not found in queue {queue!r} "
-            f"(may exceed MAX_ITEMS_PER_KEY or have been consumed)"
+            f"(may exceed CELERY_BROKER_DISPLAY_LIMIT or have been consumed)"
         )
 
     # ---- Materialisation -------------------------------------------------
@@ -1503,7 +1503,7 @@ class CeleryBrokerQueueQuerySet:
         redis = self._connection()
         if not redis.exists(self.queue_name):
             return []
-        cap = redis_admin_settings.MAX_ITEMS_PER_KEY
+        cap = redis_admin_settings.CELERY_BROKER_DISPLAY_LIMIT
         # `LRANGE 0 cap-1` rather than streaming because celery queues
         # are bounded in practice and a single round-trip beats paging
         # for the typical "operator filtered to one repoid" case where
@@ -1527,14 +1527,17 @@ class CeleryBrokerQueueQuerySet:
     # Stashing the parsed list on the request (when one is plumbed
     # through) lets the second call short-circuit; standalone callers
     # without a request fall back to issuing a fresh LRANGE, same as
-    # before. The cache is keyed by `(queue_name, MAX_ITEMS_PER_KEY)` so
-    # a setting override mid-render (vanishingly rare, but) doesn't
+    # before. The cache is keyed by `(queue_name, CELERY_BROKER_DISPLAY_LIMIT)`
+    # so a setting override mid-render (vanishingly rare, but) doesn't
     # serve the wrong window size.
 
     _REQUEST_CACHE_ATTR: str = "_celery_broker_lrange_cache"
 
     def _request_cache_key(self) -> tuple[str, int]:
-        return (self.queue_name or "", redis_admin_settings.MAX_ITEMS_PER_KEY)
+        return (
+            self.queue_name or "",
+            redis_admin_settings.CELERY_BROKER_DISPLAY_LIMIT,
+        )
 
     def _read_request_cache(self) -> list | None:
         if self._request is None or not self.queue_name:
@@ -1650,7 +1653,7 @@ class CeleryBrokerQueueQuerySet:
         1. **Cached path**: if the per-request LRANGE snapshot is
            already populated (i.e. the changelist materialised first),
            aggregates directly over those rows. Zero extra Redis
-           round-trips; bounded by `MAX_ITEMS_PER_KEY`.
+           round-trips; bounded by `CELERY_BROKER_DISPLAY_LIMIT`.
         2. **Streaming path**: if the cache is empty (called from the
            chart-fragment endpoint before the changelist materialised,
            or in a standalone context), calls
