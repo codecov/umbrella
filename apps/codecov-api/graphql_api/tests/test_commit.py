@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import os
+import tempfile
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, PropertyMock, patch
 
@@ -1006,7 +1007,8 @@ class TestCommit(GraphQLTestHelper, TestCase):
         }
 
     def test_bundle_analysis_sqlite_file_deleted(self):
-        os.system("rm -rf /tmp/bundle_analysis_*")
+        tmpdir = tempfile.gettempdir()
+        os.system(f"rm -rf {tmpdir}/bundle_analysis_*")
 
         base_commit_report = CommitReportFactory(
             commit=self.parent_commit,
@@ -1055,13 +1057,14 @@ class TestCommit(GraphQLTestHelper, TestCase):
         }
         self.gql_request(query, variables=variables)
 
-        for file in os.listdir("/tmp"):
+        for file in os.listdir(tmpdir):
             assert not file.startswith("bundle_analysis_")
-        os.system("rm -rf /tmp/bundle_analysis_*")
+        os.system(f"rm -rf {tmpdir}/bundle_analysis_*")
 
     @patch("graphql_api.views.os.unlink")
     def test_bundle_analysis_sqlite_file_not_deleted(self, os_unlink_mock):
-        os.system("rm -rf /tmp/bundle_analysis_*")
+        tmpdir = tempfile.gettempdir()
+        os.system(f"rm -rf {tmpdir}/bundle_analysis_*")
         os_unlink_mock.side_effect = Exception("something went wrong")
 
         base_commit_report = CommitReportFactory(
@@ -1112,12 +1115,12 @@ class TestCommit(GraphQLTestHelper, TestCase):
         self.gql_request(query, variables=variables)
 
         found = False
-        for file in os.listdir("/tmp"):
+        for file in os.listdir(tmpdir):
             if file.startswith("bundle_analysis_"):
                 found = True
                 break
         assert found
-        os.system("rm -rf /tmp/bundle_analysis_*")
+        os.system(f"rm -rf {tmpdir}/bundle_analysis_*")
 
     def test_bundle_analysis_missing_report(self):
         query = (

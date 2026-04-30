@@ -1,3 +1,5 @@
+import os
+import tempfile
 from pathlib import Path
 from unittest import mock
 
@@ -23,7 +25,19 @@ def pytest_configure(config):
     """
     pytest_configure is the canonical way to configure test server for entire testing suite
     """
-    pass
+    # Isolate the system tempdir per xdist worker. Some tests (e.g. those
+    # exercising `BundleAnalysisReport`) scan and clean up `/tmp/bundle_analysis_*`
+    # to verify cleanup behavior; under xdist those operations would race
+    # against other workers' temp files. Pointing each worker at its own
+    # subdirectory keeps that scan/cleanup logic worker-local. Tests that
+    # check the system tempdir should use `tempfile.gettempdir()` rather than
+    # hard-coding `/tmp`.
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+    if worker_id:
+        worker_tmp = os.path.join(tempfile.gettempdir(), f"pytest_{worker_id}")
+        os.makedirs(worker_tmp, exist_ok=True)
+        os.environ["TMPDIR"] = worker_tmp
+        tempfile.tempdir = worker_tmp
 
 
 @pytest.fixture
