@@ -257,7 +257,8 @@ class BundleAnalysisReportService(BaseReportService):
                 # temporary_upload_file; in normal flow it's always a path.
                 # An empty file means the pre-download failed before the lock.
                 if (
-                    not os.path.exists(pre_downloaded_path)
+                    not pre_downloaded_path
+                    or not os.path.exists(pre_downloaded_path)
                     or os.path.getsize(pre_downloaded_path) == 0
                 ):
                     log.warning(
