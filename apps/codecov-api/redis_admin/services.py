@@ -558,11 +558,15 @@ def _streaming_celery_clear(
         # Stability check: stop when no matches or lset count plateaued.
         if matches_found == 0:
             break
-        if keep_one and matches_lset == 0:
-            # Pass 1 cleared all non-keeper matches; further passes
-            # would just rescan the queue to verify the keeper still
-            # survives. Skip the redundant work — at 500k depth that
-            # would otherwise cost 2× wasted LRANGE.
+        if keep_one and matches_drifted == 0:
+            # With keep_one we deliberately leave the first match in
+            # place, so the only reason to loop again is to retry
+            # drifted slots. When no drift occurred this pass, the
+            # queue has converged (non-keeper matches are cleared,
+            # keeper survives) — exit early to avoid an extra full
+            # LRANGE scan at 500k depth. If drift did occur, fall
+            # through to the plateau check so the next pass can
+            # retry.
             break
         if prev_lset is not None and matches_lset == prev_lset:
             break
