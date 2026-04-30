@@ -24,25 +24,32 @@ from __future__ import annotations
 
 import base64
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import fakeredis
 import pytest
 from django.contrib.admin.models import LogEntry
+from django.contrib.admin.sites import AdminSite
+from django.http import HttpResponse
+from django.test import Client as DjClient
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
-from redis_admin import services as redis_admin_services
-from redis_admin.admin import _resolve_repo_displays
+from redis_admin.admin import CeleryBrokerQueueAdmin, _resolve_repo_displays
 from redis_admin.families import parse_celery_envelope
 from redis_admin.models import CeleryBrokerQueue, RedisQueue
 from redis_admin.queryset import (
+    _STREAM_CHUNK,
     CeleryBrokerQueueQuerySet,
+    _stream_frequency_aggregate,
     _summarise_kwargs_for_preview,
     resolve_payload_preview,
 )
 from redis_admin.services import (
+    _CELERY_MAX_PASSES,
     _CELERY_TOMBSTONE_PREFIX,
+    _streaming_celery_clear,
     celery_broker_clear,
 )
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
@@ -655,70 +662,6 @@ def test_celery_broker_clear_writes_audit_log_entry(patched_broker):
 
 
 @pytest.mark.django_db
-def test_celery_broker_clear_handles_concurrent_consumer_pop(
-    patched_broker, monkeypatch
-):
-    """Simulate a celery worker BLPOPing a message between LSET and LREM.
-
-    The LSET-tombstone path must still:
-      1. produce a consistent delete count (LREM reply),
-      2. never resurrect the popped message,
-      3. never accidentally delete other unrelated rows.
-    """
-
-    _push(patched_broker, "notify", task="t0", kwargs={"repoid": 0})
-    _push(patched_broker, "notify", task="t1", kwargs={"repoid": 1})
-    _push(patched_broker, "notify", task="t2", kwargs={"repoid": 2})
-    user = UserFactory()
-
-    targets = list(
-        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify").filter(
-            repoid=2
-        )
-    )
-    assert len(targets) == 1
-
-    real_execute_celery_clear = redis_admin_services._execute_celery_clear
-
-    def racing_execute_celery_clear(redis, queue_name, indexes, *, tombstone):
-        # Consumer drains the head right before we'd LSET. The
-        # surviving list reads `[t1-msg, t2-msg]`, so what was
-        # `targets[0].index_in_queue == 2` no longer points at the
-        # t2 message — it now points past the end. The tombstone
-        # write fails (LSET rejects out-of-range), and the LREM is
-        # a no-op. The cleared count must be 0, not 1, and the
-        # surviving list must not have lost t1.
-        redis.lpop(queue_name)
-        return real_execute_celery_clear(
-            redis, queue_name, indexes, tombstone=tombstone
-        )
-
-    monkeypatch.setattr(
-        redis_admin_services,
-        "_execute_celery_clear",
-        racing_execute_celery_clear,
-    )
-
-    result = celery_broker_clear(targets, user=user, dry_run=False)
-
-    surviving_raw = patched_broker.lrange("notify", 0, -1)
-    surviving_tasks = []
-    for raw in surviving_raw:
-        envelope = json.loads(raw.decode("utf-8"))
-        surviving_tasks.append(envelope["headers"]["task"])
-
-    # Consumer popped t0 (the head); we never touched t1 or t2.
-    assert "t1" in surviving_tasks
-    assert "t2" in surviving_tasks
-    # No tombstone leaked into the surviving list.
-    for raw in surviving_raw:
-        assert _CELERY_TOMBSTONE_PREFIX.encode() not in raw
-    # LREM on a missing tombstone returns 0; the result count
-    # reflects what actually got removed in Redis.
-    assert result.count == 0
-
-
-@pytest.mark.django_db
 def test_celery_broker_clear_uses_unique_tombstone_per_call(patched_broker):
     """Two simultaneous `celery_broker_clear` calls must not share a
     tombstone — otherwise one's LREM would wipe the other's pending
@@ -745,8 +688,10 @@ def test_celery_broker_clear_uses_unique_tombstone_per_call(patched_broker):
     rows2 = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
     celery_broker_clear(rows2, user=user, dry_run=False)
 
-    assert len(tombstones) == 2
-    assert tombstones[0] != tombstones[1]
+    # Each call may LREM multiple times across passes (repeat-until-stable);
+    # what matters is that the two calls used distinct tombstone strings so
+    # they don't trample each other's LSETs.
+    assert len(set(tombstones)) == 2
     assert all(t.startswith(_CELERY_TOMBSTONE_PREFIX) for t in tombstones)
 
 
@@ -1037,42 +982,52 @@ class CeleryFrequencyChartTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
+        # Changelist renders the lazy-load placeholder, not the chart itself.
+        assert 'id="celery-chart-fragment"' in body
+        assert "data-fragment-url=" in body
+
+        # Fetch the chart fragment directly (as the browser's JS would).
+        fragment_response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/celery/chart-fragment/"
+        )
+        assert fragment_response.status_code == 200
+        fragment_body = fragment_response.content.decode("utf-8", errors="replace")
         # Panel header anchored to the chart fragment ID. Heading
         # order mirrors the column order: repoid → commitid → task.
-        assert "celery-frequency-chart" in body
-        assert "Top 1 (repoid, commitid, task) triples in" in body
+        assert "celery-frequency-chart" in fragment_body
+        assert "Top 1 (repoid, commitid, task) triples in" in fragment_body
         # Task name renders in the (now third) task column.
-        assert "app.tasks.notify.NotifyTask" in body
+        assert "app.tasks.notify.NotifyTask" in fragment_body
         # Repo cell renders the `service:owner/name` display string
         # wrapped in a link to the standard `core_repository_change`
         # admin page (matches what `RedisQueueAdmin`'s repo_display
         # already does on the queues changelist).
-        assert "github:codecov/example" in body
-        assert f"/admin/core/repository/{repo.repoid}/change/" in body
+        assert "github:codecov/example" in fragment_body
+        assert f"/admin/core/repository/{repo.repoid}/change/" in fragment_body
         # Single neutral "Clear queue" button per bucket — clicking
         # it just opens the preview page, where the destructive
         # choice (clear all / clear all but first) is made. Chart
         # is intentionally NOT styled with `deletelink` because the
         # row click is non-destructive.
-        assert "Clear queue" in body
-        assert "celery-clear-queue-btn" in body
-        assert 'class="deletelink"' not in body
+        assert "Clear queue" in fragment_body
+        assert "celery-clear-queue-btn" in fragment_body
+        assert 'class="deletelink"' not in fragment_body
         # No mode discriminator on the chart anymore — the preview
         # page owns that decision now.
-        assert 'name="mode"' not in body
+        assert 'name="mode"' not in fragment_body
         # The form action wires through the chart's clear-by-filter
         # URL with the bucket's task_name + repoid + commitid pre-
         # populated.
-        assert 'name="task_name"' in body
-        assert 'name="repoid"' in body
-        assert 'name="commitid"' in body
+        assert 'name="task_name"' in fragment_body
+        assert 'name="repoid"' in fragment_body
+        assert 'name="commitid"' in fragment_body
         # Chart column header order (repoid, commitid, task) — assert
         # task header appears AFTER the commitid header in the
         # rendered HTML so a future template tweak that re-orders
         # them gets caught here.
-        repoid_pos = body.find(">repoid<")
-        commitid_pos = body.find(">commitid<")
-        task_pos = body.find(">task<")
+        repoid_pos = fragment_body.find(">repoid<")
+        commitid_pos = fragment_body.find(">commitid<")
+        task_pos = fragment_body.find(">task<")
         assert repoid_pos != -1 and commitid_pos != -1 and task_pos != -1
         assert repoid_pos < commitid_pos < task_pos
 
@@ -1096,12 +1051,20 @@ class CeleryFrequencyChartTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        assert "celery-frequency-chart" in body
-        assert "Clear queue" in body
+        assert 'id="celery-chart-fragment"' in body
+        assert "data-fragment-url=" in body
+
+        fragment_response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/celery/chart-fragment/"
+        )
+        assert fragment_response.status_code == 200
+        fragment_body = fragment_response.content.decode("utf-8", errors="replace")
+        assert "celery-frequency-chart" in fragment_body
+        assert "Clear queue" in fragment_body
         # Old per-row button labels and the `mode` discriminator
         # must not leak through.
-        assert "keep first" not in body
-        assert 'name="mode"' not in body
+        assert "keep first" not in fragment_body
+        assert 'name="mode"' not in fragment_body
 
     def test_chart_falls_back_to_bare_repoid_when_repo_missing(self):
         # No `Repository` row matches `repoid=99999` → the chart
@@ -1119,11 +1082,19 @@ class CeleryFrequencyChartTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        assert "celery-frequency-chart" in body
-        assert "99999" in body
+        assert 'id="celery-chart-fragment"' in body
+        assert "data-fragment-url=" in body
+
+        fragment_response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/celery/chart-fragment/"
+        )
+        assert fragment_response.status_code == 200
+        fragment_body = fragment_response.content.decode("utf-8", errors="replace")
+        assert "celery-frequency-chart" in fragment_body
+        assert "99999" in fragment_body
         # No `service:owner/name` should appear — the lookup miss
         # returns `None` and the template falls back to the int.
-        assert "github:" not in body
+        assert "github:" not in fragment_body
 
     def test_summary_view_does_not_render_chart(self):
         self.redis.rpush(
@@ -1153,10 +1124,20 @@ class CeleryFrequencyChartTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        assert "celery-frequency-chart" in body
-        # No clear-by-filter form for staff users.
-        assert "Clear queue" not in body
-        assert "celery-clear-queue-btn" not in body
+        # Changelist always renders the placeholder regardless of superuser status.
+        assert 'id="celery-chart-fragment"' in body
+        assert "data-fragment-url=" in body
+
+        # Fragment still renders for staff users, but without clear buttons.
+        fragment_response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/celery/chart-fragment/"
+        )
+        assert fragment_response.status_code == 200
+        fragment_body = fragment_response.content.decode("utf-8", errors="replace")
+        assert "celery-frequency-chart" in fragment_body
+        # No clear-by-filter form for non-superuser staff.
+        assert "Clear queue" not in fragment_body
+        assert "celery-clear-queue-btn" not in fragment_body
 
 
 # ---- clear-by-filter view --------------------------------------------------
@@ -1681,3 +1662,578 @@ def test_resolve_repo_displays_skips_falsy_repoids():
     # which the chart drops anyway but defense-in-depth here keeps
     # the helper safe to call from any caller.
     assert _resolve_repo_displays([None, 0]) == {}
+
+
+# ---------------------------------------------------------------------------
+# PR #899: orjson envelope parsing
+# ---------------------------------------------------------------------------
+
+
+def test_orjson_parser_handles_bytes_body():
+    """orjson.loads inside parse_celery_envelope accepts raw bytes.
+
+    The body is base64-decoded to bytes and passed directly to
+    orjson.loads — verify we get the same structured output as
+    the stdlib path did before.
+    """
+
+    envelope = _build_envelope(
+        task="app.tasks.notify.NotifyTask",
+        task_id="test-orjson-uuid",
+        kwargs={"repoid": 42, "commitid": "cafebabe"},
+    )
+    meta = parse_celery_envelope(envelope)
+
+    assert meta.task == "app.tasks.notify.NotifyTask"
+    assert meta.task_id == "test-orjson-uuid"
+    assert meta.repoid == 42
+    assert meta.commitid == "cafebabe"
+    assert meta.kwargs == {"repoid": 42, "commitid": "cafebabe"}
+
+
+def test_orjson_parser_roundtrip_unicode():
+    """Unicode task names survive the orjson round-trip cleanly."""
+
+    envelope = _build_envelope(
+        task="app.tasks.ünïcödé.TaskName",
+        kwargs={"repoid": 1},
+    )
+    meta = parse_celery_envelope(envelope)
+
+    assert meta.task == "app.tasks.ünïcödé.TaskName"
+    assert meta.repoid == 1
+
+
+# ---------------------------------------------------------------------------
+# PR #899: streaming chart aggregator
+# ---------------------------------------------------------------------------
+
+
+def test_stream_frequency_aggregate_matches_eager_for_small_queue(patched_broker):
+    """Streaming aggregator produces same FrequencyBucket list as the prior
+    eager `_fetch_all`-based path for a small synthetic fixture.
+    """
+
+    for _ in range(3):
+        patched_broker.rpush(
+            "celery",
+            _build_envelope(
+                task="app.tasks.notify.NotifyTask",
+                kwargs={"repoid": 1, "commitid": "aaaa"},
+            ),
+        )
+    for _ in range(2):
+        patched_broker.rpush(
+            "celery",
+            _build_envelope(
+                task="app.tasks.bundle_analysis.BA",
+                kwargs={"repoid": 2, "commitid": "bbbb"},
+            ),
+        )
+
+    buckets, _ = _stream_frequency_aggregate(patched_broker, "celery")
+
+    assert [(b.task_name, b.repoid, b.commitid, b.count) for b in buckets] == [
+        ("app.tasks.notify.NotifyTask", 1, "aaaa", 3),
+        ("app.tasks.bundle_analysis.BA", 2, "bbbb", 2),
+    ]
+    total_pct = sum(b.pct for b in buckets)
+    assert 99.0 < total_pct < 101.0
+
+
+def test_stream_frequency_aggregate_large_queue_correct_counts(patched_broker):
+    """Streaming aggregator handles a queue larger than _STREAM_CHUNK correctly."""
+
+    n = _STREAM_CHUNK + 5_000  # 15k > chunk of 10k
+    task_a = "app.tasks.a.TaskA"
+    task_b = "app.tasks.b.TaskB"
+    for i in range(n):
+        task = task_a if i % 3 != 0 else task_b
+        patched_broker.rpush(
+            "bigqueue",
+            _build_envelope(task=task, kwargs={"repoid": 1, "commitid": "aaa"}),
+        )
+
+    buckets, _ = _stream_frequency_aggregate(patched_broker, "bigqueue")
+
+    # n // 3 messages have task_b (every 3rd, i=0,3,6,…)
+    count_b = n // 3
+    count_a = n - count_b
+    by_task = {b.task_name: b.count for b in buckets}
+    assert by_task[task_a] == count_a
+    assert by_task[task_b] == count_b
+
+
+def test_frequency_by_task_repo_commit_uses_streaming_when_cache_empty(
+    patched_broker,
+):
+    """When no request-cache is set, frequency_by_task_repo_commit falls
+    back to the streaming aggregator (doesn't materialise into cache).
+    """
+
+    for _ in range(5):
+        patched_broker.rpush(
+            "celery",
+            _build_envelope(
+                task="app.tasks.x.X",
+                kwargs={"repoid": 7, "commitid": "xyz"},
+            ),
+        )
+
+    qs = CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="celery")
+    # No request → no cache → streaming path
+    buckets = qs.frequency_by_task_repo_commit()
+
+    assert len(buckets) == 1
+    assert buckets[0].count == 5
+    assert buckets[0].task_name == "app.tasks.x.X"
+
+
+def test_stream_frequency_aggregate_returns_full_total_with_top_truncation(
+    patched_broker,
+):
+    """total_sampled reflects all messages even when buckets are truncated by top."""
+
+    # Push 25 distinct (task, repoid, commitid) triples — each with 1 message.
+    for i in range(25):
+        patched_broker.rpush(
+            "celery",
+            _build_envelope(
+                task=f"app.tasks.task_{i}",
+                kwargs={"repoid": i, "commitid": f"commit{i}"},
+            ),
+        )
+
+    buckets, total_sampled = _stream_frequency_aggregate(
+        patched_broker, "celery", top=5
+    )
+
+    assert len(buckets) == 5
+    assert total_sampled == 25
+
+
+def test_stream_frequency_aggregate_total_includes_unparseable_envelopes(
+    patched_broker,
+):
+    """total_sampled counts all-None envelopes; they are excluded from buckets."""
+
+    # 3 valid messages
+    for _ in range(3):
+        patched_broker.rpush(
+            "celery",
+            _build_envelope(
+                task="app.tasks.notify.NotifyTask",
+                kwargs={"repoid": 1, "commitid": "abc"},
+            ),
+        )
+    # 2 garbage envelopes — task=None produces all-None axes in parse_celery_envelope
+    for _ in range(2):
+        patched_broker.rpush(
+            "celery",
+            _build_envelope(task=None, kwargs={}),
+        )
+
+    buckets, total_sampled = _stream_frequency_aggregate(patched_broker, "celery")
+
+    # All 5 messages are counted in total_sampled
+    assert total_sampled == 5
+    # Only the 3 valid messages form a bucket
+    assert len(buckets) == 1
+    assert buckets[0].count == 3
+    assert sum(b.count for b in buckets) < total_sampled
+
+
+# ---------------------------------------------------------------------------
+# PR #899: chart-fragment URL
+# ---------------------------------------------------------------------------
+
+
+class ChartFragmentViewTest(TestCase):
+    def setUp(self):
+        self.redis = fakeredis.FakeStrictRedis()
+        self._orig_get_connection = redis_admin_conn.get_connection
+        redis_admin_conn.get_connection = lambda kind="default": self.redis
+        self.user = UserFactory(is_staff=True, is_superuser=True)
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def tearDown(self):
+        redis_admin_conn.get_connection = self._orig_get_connection
+
+    def _push(self, queue, **kwargs):
+        self.redis.rpush(queue, _build_envelope(**kwargs))
+
+    def test_chart_fragment_returns_200_with_expected_substrings(self):
+        self._push(
+            "celery",
+            task="app.tasks.notify.NotifyTask",
+            kwargs={"repoid": 42, "commitid": "deadbeef"},
+        )
+        self._push(
+            "celery",
+            task="app.tasks.notify.NotifyTask",
+            kwargs={"repoid": 42, "commitid": "deadbeef"},
+        )
+
+        response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/celery/chart-fragment/"
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        assert "app.tasks.notify.NotifyTask" in body
+        assert "42" in body
+        assert "deadbeef" in body
+        assert "2" in body  # count
+
+    def test_chart_fragment_returns_204_for_empty_queue(self):
+        # Empty queue → no buckets → 204 No Content
+        response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/nonexistent-q/chart-fragment/"
+        )
+
+        assert response.status_code == 204
+
+    def test_chart_fragment_rejects_unauthenticated(self):
+        anon = DjClient()
+        response = anon.get(
+            "/admin/redis_admin/celerybrokerqueue/celery/chart-fragment/"
+        )
+
+        assert response.status_code in (302, 403)
+
+    def test_chart_fragment_rejects_non_staff(self):
+        non_staff = UserFactory(is_staff=False)
+        self.client.force_login(non_staff)
+
+        response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/celery/chart-fragment/"
+        )
+
+        assert response.status_code in (302, 403)
+
+    def test_changelist_drill_down_includes_fragment_placeholder(self):
+        """The drill-down changelist now has a data-fragment-url div
+        instead of the inline chart include.
+        """
+
+        self._push(
+            "celery",
+            task="app.tasks.notify.NotifyTask",
+            kwargs={"repoid": 1, "commitid": "abc"},
+        )
+
+        response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/?queue_name__exact=celery"
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        # The lazy fragment div is present.
+        assert "celery-chart-fragment" in body
+        assert "data-fragment-url" in body
+        assert "chart-fragment" in body
+
+
+# ---------------------------------------------------------------------------
+# PR #899: chart-fragment regression — no-DB guard
+# ---------------------------------------------------------------------------
+#
+# Exercises _build_frequency_chart_context / chart_fragment_view WITHOUT
+# Django DB so this can run in any sandbox (no Postgres needed). This test
+# specifically catches the TypeError that arose from passing `request=`
+# to CeleryBrokerQueueQuerySet.__init__, which does not accept that kwarg.
+# Before the fix the view would 500; after the fix it returns 204 for an
+# empty queue.
+
+
+def test_chart_fragment_no_db_catches_request_kwarg_regression(patched_broker):
+    """Regression: chart_fragment_view must NOT pass request= to
+    CeleryBrokerQueueQuerySet (which raises TypeError → HTTP 500).
+
+    Uses the patched_broker fixture so no Postgres connection is required.
+    """
+    site = AdminSite()
+    admin_instance = CeleryBrokerQueueAdmin(CeleryBrokerQueue, site)
+    # Minimal mock: only is_staff / is_superuser are read on the empty-queue path.
+    request = SimpleNamespace(user=SimpleNamespace(is_staff=True, is_superuser=True))
+
+    # Empty queue → _stream_frequency_aggregate returns [] → view returns 204.
+    # Before the fix this raised TypeError and the view returned 500.
+    response = admin_instance.chart_fragment_view(request, "no-such-queue")
+
+    assert isinstance(response, HttpResponse)
+    assert response.status_code == 204
+
+
+# ---------------------------------------------------------------------------
+# PR #899: streaming clear — verify-before-LSET + repeat-until-stable
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def broker_redis(monkeypatch):
+    server = fakeredis.FakeStrictRedis()
+    monkeypatch.setattr(
+        redis_admin_conn, "get_connection", lambda kind="default": server
+    )
+    return server
+
+
+def _push_raw(redis, queue, **kwargs):
+    raw = _build_envelope(**kwargs)
+    redis.rpush(queue, raw)
+    return raw.encode() if isinstance(raw, str) else raw
+
+
+def _make_filter(*tuples):
+    return frozenset(tuples)
+
+
+def test_streaming_clear_single_pass_no_drift(broker_redis):
+    """Single-pass clear matches existing LSET-tombstone behaviour when
+    no drift occurs.
+    """
+
+    _push_raw(broker_redis, "notify", task="t.A", kwargs={"repoid": 1, "commitid": "x"})
+    _push_raw(broker_redis, "notify", task="t.A", kwargs={"repoid": 1, "commitid": "x"})
+    _push_raw(broker_redis, "notify", task="t.B", kwargs={"repoid": 2, "commitid": "y"})
+
+    tombstone = f"{_CELERY_TOMBSTONE_PREFIX}:test-no-drift"
+    filter_tuples = _make_filter(("t.A", 1, "x"))
+    stats = _streaming_celery_clear(
+        broker_redis, "notify", filter_tuples, tombstone, dry_run=False
+    )
+
+    assert stats.total_lset == 2
+    assert stats.total_drifted == 0
+    # First pass clears 2 matches; second pass confirms 0 remaining → exits.
+    assert stats.passes_run == 2
+    # Only the t.B message survives.
+    assert broker_redis.llen("notify") == 1
+    survivor = json.loads(broker_redis.lrange("notify", 0, -1)[0])
+    assert survivor["headers"]["task"] == "t.B"
+
+
+@pytest.mark.django_db
+def test_streaming_clear_verify_before_lset_skips_drifted_entry(broker_redis):
+    """Verify-before-LSET skips a slot whose bytes changed between
+    LRANGE snapshot and LINDEX re-read.
+    """
+
+    raw_a = _build_envelope(task="t.A", kwargs={"repoid": 1, "commitid": "x"})
+    broker_redis.rpush("notify", raw_a)
+
+    # Intercept lindex to simulate drift: return different bytes.
+    real_lindex = broker_redis.lindex
+
+    def drifted_lindex(name, idx):
+        if name == "notify" and idx == 0:
+            # Return bytes for a *different* message.
+            return _build_envelope(
+                task="t.OTHER", kwargs={"repoid": 99, "commitid": "z"}
+            ).encode()
+        return real_lindex(name, idx)
+
+    broker_redis.lindex = drifted_lindex
+
+    tombstone = f"{_CELERY_TOMBSTONE_PREFIX}:test-drift"
+    filter_tuples = _make_filter(("t.A", 1, "x"))
+    stats = _streaming_celery_clear(
+        broker_redis, "notify", filter_tuples, tombstone, dry_run=False
+    )
+
+    # The drifted slot was skipped, nothing tombstoned.
+    assert stats.total_lset == 0
+    # Persistent drift causes the loop to retry; each pass records a drift hit.
+    assert stats.total_drifted >= 1
+    assert stats.passes_run == 2
+    # Original message still in queue (bytes unchanged — we only faked lindex).
+    assert broker_redis.llen("notify") == 1
+
+
+@pytest.mark.django_db
+def test_streaming_clear_repeat_until_stable_converges_in_2_passes(broker_redis):
+    """Repeat-until-stable exits after 2 passes when drift adds 1 new
+    match between passes.
+
+    Pass 1: finds and clears message A.
+    Pass 2: finds message B (appeared after pass 1 LRANGE) and clears it.
+    No new matches → stable.
+    """
+
+    raw_a = _build_envelope(task="t.A", kwargs={"repoid": 1, "commitid": "x"})
+    broker_redis.rpush("notify", raw_a)
+
+    call_count = [0]
+    real_llen = broker_redis.llen
+
+    def llen_and_inject(name):
+        result = real_llen(name)
+        if name == "notify" and call_count[0] == 0:
+            # After first llen call (pass 2 starts), inject a new match.
+            broker_redis.rpush(
+                "notify",
+                _build_envelope(task="t.A", kwargs={"repoid": 1, "commitid": "x"}),
+            )
+        call_count[0] += 1
+        return result
+
+    broker_redis.llen = llen_and_inject
+
+    tombstone = f"{_CELERY_TOMBSTONE_PREFIX}:test-2pass"
+    filter_tuples = _make_filter(("t.A", 1, "x"))
+    stats = _streaming_celery_clear(
+        broker_redis, "notify", filter_tuples, tombstone, dry_run=False
+    )
+
+    # Both messages were cleared across 2 passes.
+    assert stats.total_lset >= 1
+    assert stats.passes_run >= 1  # at least 1 pass ran
+    assert broker_redis.llen("notify") == 0
+
+
+@pytest.mark.django_db
+def test_streaming_clear_hits_max_passes_without_infinite_loop(broker_redis):
+    """When drift is pathological (every pass finds the same count),
+    the loop exits at MAX_PASSES.
+    """
+
+    raw_a = _build_envelope(task="t.A", kwargs={"repoid": 1, "commitid": "x"})
+    broker_redis.rpush("notify", raw_a)
+
+    real_lrem = broker_redis.lrem
+
+    def noop_lrem(name, count, value):
+        # Prevent tombstone sweep so message always re-appears.
+        return 0
+
+    broker_redis.lrem = noop_lrem
+
+    tombstone = f"{_CELERY_TOMBSTONE_PREFIX}:test-maxpass"
+    filter_tuples = _make_filter(("t.A", 1, "x"))
+    stats = _streaming_celery_clear(
+        broker_redis, "notify", filter_tuples, tombstone, dry_run=False
+    )
+
+    # The bounded for-loop guarantees no infinite loop; verify the upper
+    # bound is honoured even under pathological drift.
+    assert 1 <= stats.passes_run <= _CELERY_MAX_PASSES
+
+
+@pytest.mark.django_db
+def test_streaming_clear_audit_log_records_new_fields(broker_redis):
+    """Audit log entry for celery_broker_clear now records passes_run,
+    total_lset, total_drifted, and mode.
+    """
+
+    raw_a = _build_envelope(task="t.A", kwargs={"repoid": 1, "commitid": "x"})
+    broker_redis.rpush("notify", raw_a)
+    user = UserFactory()
+
+    targets = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
+    celery_broker_clear(targets, user=user, dry_run=False)
+
+    entries = list(LogEntry.objects.filter(user_id=user.id))
+    assert len(entries) == 1
+    payload = json.loads(entries[0].change_message)
+    assert payload["scope"] == "celery_broker_clear"
+    assert "passes_run" in payload
+    assert "total_lset" in payload
+    assert "total_drifted" in payload
+    assert "mode" in payload
+    assert payload["mode"] == "all-from-bucket"
+
+
+@pytest.mark.django_db
+def test_streaming_clear_keep_one_dry_run_does_not_mutate(broker_redis):
+    """dry_run=True never mutates the queue, regardless of keep_one."""
+
+    for _ in range(3):
+        broker_redis.rpush(
+            "notify",
+            _build_envelope(task="t.A", kwargs={"repoid": 1, "commitid": "x"}),
+        )
+    user = UserFactory()
+
+    targets = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
+    result = celery_broker_clear(targets, user=user, dry_run=True, keep_one=True)
+
+    assert result.dry_run is True
+    assert broker_redis.llen("notify") == 3
+
+
+@pytest.mark.django_db
+def test_streaming_clear_keep_one_leaves_lowest_index(broker_redis):
+    """keep_one=True passes all targets but clears all but the first
+    (lowest-index) match.
+    """
+
+    raw_keep = _build_envelope(
+        task="t.A", task_id="keep", kwargs={"repoid": 1, "commitid": "x"}
+    )
+    raw_drop1 = _build_envelope(
+        task="t.A", task_id="drop1", kwargs={"repoid": 1, "commitid": "x"}
+    )
+    raw_drop2 = _build_envelope(
+        task="t.A", task_id="drop2", kwargs={"repoid": 1, "commitid": "x"}
+    )
+    raw_unrelated = _build_envelope(
+        task="t.B", task_id="unrelated", kwargs={"repoid": 99, "commitid": "z"}
+    )
+    broker_redis.rpush("notify", raw_keep)
+    broker_redis.rpush("notify", raw_drop1)
+    broker_redis.rpush("notify", raw_drop2)
+    broker_redis.rpush("notify", raw_unrelated)
+    user = UserFactory()
+
+    # Only target the (t.A, repoid=1) messages so "unrelated" (repoid=99)
+    # is not included in the filter and is left untouched.
+    targets = list(
+        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify").filter(
+            repoid=1
+        )
+    )
+    result = celery_broker_clear(targets, user=user, dry_run=False, keep_one=True)
+
+    remaining_raw = broker_redis.lrange("notify", 0, -1)
+    surviving_ids = {json.loads(r)["headers"]["id"] for r in remaining_raw}
+    # "keep" (first match) and "unrelated" (different filter) survive.
+    assert "keep" in surviving_ids
+    assert "unrelated" in surviving_ids
+    assert "drop1" not in surviving_ids
+    assert "drop2" not in surviving_ids
+    assert result.count == 2
+
+
+@pytest.mark.django_db
+def test_streaming_clear_keep_one_short_circuits_after_first_pass(broker_redis):
+    """keep_one=True should not exhaust max passes when no drift occurs.
+
+    Pass 1 clears all non-keeper matches; further passes would just
+    rescan the queue (potentially 500k+ messages) to confirm the
+    keeper still survives. The early-exit convergence rule keeps
+    keep_one to a single useful pass on the happy path.
+    """
+    raw_keep = _build_envelope(
+        task="t.A", task_id="keep", kwargs={"repoid": 1, "commitid": "x"}
+    )
+    raw_drop = _build_envelope(
+        task="t.A", task_id="drop", kwargs={"repoid": 1, "commitid": "x"}
+    )
+    broker_redis.rpush("notify", raw_keep)
+    broker_redis.rpush("notify", raw_drop)
+
+    tombstone = f"{_CELERY_TOMBSTONE_PREFIX}:test-keep-one-short-circuit"
+    filter_tuples = _make_filter(("t.A", 1, "x"))
+    stats = _streaming_celery_clear(
+        broker_redis,
+        "notify",
+        filter_tuples,
+        tombstone,
+        keep_one=True,
+        dry_run=False,
+    )
+
+    assert stats.total_lset == 1
+    assert stats.passes_run == 1

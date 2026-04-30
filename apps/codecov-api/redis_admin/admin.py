@@ -42,6 +42,7 @@ from .queryset import (
     CeleryBrokerQueueQuerySet,
     RedisItemQuerySet,
     _build_redis_queue,
+    _stream_frequency_aggregate,
     resolve_payload_preview,
 )
 from .services import celery_broker_clear, redis_delete
@@ -1570,40 +1571,41 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         # queue-discovery surface.
         ctx = dict(extra_context or {})
         if not self._is_summary_request(request):
-            chart_ctx = self._build_frequency_chart_context(request)
-            if chart_ctx is not None:
-                ctx["frequency_chart"] = chart_ctx
+            # Pass queue_name so the template can wire the lazy chart
+            # fragment fetch. The chart itself is rendered by
+            # `chart_fragment_view` via an AJAX call, keeping the
+            # changelist fast even for 500k-deep queues.
+            ctx["queue_name"] = request.GET.get("queue_name__exact", "")
         return super().changelist_view(request, ctx)
 
-    def _build_frequency_chart_context(self, request: HttpRequest) -> dict | None:
-        """Compute the frequency chart payload for the drill-down view.
+    def _build_frequency_chart_context(
+        self, request: HttpRequest, queue_name: str
+    ) -> dict | None:
+        """Compute the frequency chart payload for a given queue.
 
-        Returns `None` when the chart should not render (no queue
-        filter, no buckets, or `LRANGE` couldn't reach the broker).
-        Bound to the changelist's underlying queryset rather than a
-        fresh `_default_manager.all()` so the frequency totals stay
-        consistent with the visible row set.
+        Returns `None` when the chart should not render (no buckets
+        or `LRANGE` couldn't reach the broker). Used by both the
+        eager inline path (chart_fragment_view) and any future
+        callers. Separated from `changelist_view` so the fragment
+        endpoint can invoke it in isolation.
         """
 
-        queue_name = request.GET.get("queue_name__exact")
-        if not queue_name:
-            return None
-        queryset = self.get_queryset(request)
         try:
-            buckets = queryset.frequency_by_task_repo_commit()
+            broker_conn = _conn.get_connection(kind="broker")
+            buckets, total_sampled = _stream_frequency_aggregate(
+                broker_conn, queue_name
+            )
         except Exception:  # pragma: no cover - broker outage path
             return None
         if not buckets:
             return None
-        total_visible = len(queryset)
-        total_depth = total_visible
         try:
             client = _conn.get_connection(kind="broker")
             llen = client.llen(queue_name)
-            if isinstance(llen, int) and llen >= 0:
-                total_depth = llen
+            total_depth = int(llen) if isinstance(llen, int) and llen >= 0 else 0
         except Exception:  # pragma: no cover - defensive
-            pass
+            total_depth = sum(b.count for b in buckets)
+        total_visible = total_sampled
         try:
             clear_url = reverse("admin:redis_admin_celerybrokerqueue_clear_by_filter")
         except NoReverseMatch:  # pragma: no cover - URL is wired below
@@ -1644,6 +1646,36 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             "clear_by_filter_url": clear_url,
         }
 
+    def chart_fragment_view(
+        self, request: HttpRequest, queue_name: str
+    ) -> HttpResponse:
+        """Render the frequency chart HTML fragment for `queue_name`.
+
+        Fetched by the changelist's inline `<script>` on
+        `DOMContentLoaded`. Returns `text/html` with the rendered
+        `_frequency_chart.html` template (or an empty 204 when there
+        are no buckets). Same permission gates as the changelist.
+        """
+
+        if not (request.user and request.user.is_staff):
+            raise PermissionDenied(
+                "redis_admin chart-fragment is restricted to staff users"
+            )
+
+        chart_ctx = self._build_frequency_chart_context(request, queue_name)
+        if chart_ctx is None:
+            return HttpResponse(status=204)
+        ctx = {
+            **self.admin_site.each_context(request),
+            "chart": chart_ctx,
+        }
+        return render(
+            request,
+            "admin/redis_admin/celerybrokerqueue/_frequency_chart.html",
+            ctx,
+            content_type="text/html",
+        )
+
     def get_urls(self):
         urls = super().get_urls()
         opts = self.model._meta
@@ -1652,9 +1684,14 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             self.admin_site.admin_view(self.clear_by_filter_view),
             name=f"{opts.app_label}_{opts.model_name}_clear_by_filter",
         )
+        chart_fragment_url = path(
+            "<str:queue_name>/chart-fragment/",
+            self.admin_site.admin_view(self.chart_fragment_view),
+            name="celerybrokerqueue-chart-fragment",
+        )
         # Inserted before the catch-all `<path:object_id>/` patterns so
-        # `clear-by-filter/` doesn't get swallowed as an object_id.
-        return [clear_url, *urls]
+        # custom routes don't get swallowed as object_ids.
+        return [clear_url, chart_fragment_url, *urls]
 
     def clear_by_filter_view(self, request: HttpRequest) -> HttpResponse:
         """Targeted clear by `(queue_name, task_name?, repoid?, commitid?)`.
@@ -1801,18 +1838,16 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
                         f"them all in place.",
                     )
                     return HttpResponseRedirect(changelist_url)
-                targets = matches[1:]
-            elif action == "clear_all":
-                targets = list(matches)
-            else:  # dry_run
-                targets = list(matches)
+
+            targets = list(matches)
 
             if action in destructive_actions and typed_confirm != expected_confirm:
                 confirm_error = f"Typed confirmation must equal {expected_confirm!r}"
             else:
                 dry_run = action == "dry_run"
+                keep_one = action == "clear_keep_one"
                 result = celery_broker_clear(
-                    targets, user=request.user, dry_run=dry_run
+                    targets, user=request.user, dry_run=dry_run, keep_one=keep_one
                 )
                 if dry_run:
                     messages.info(

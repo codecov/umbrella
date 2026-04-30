@@ -2,17 +2,44 @@
 {% load admin_urls %}
 
 {% comment %}
-Inject the frequency chart panel above the result list on the
-per-message drill-down page. `extra_context.frequency_chart` is set
-by `CeleryBrokerQueueAdmin.changelist_view` only when (a) the URL
-carries `?queue_name__exact=<queue>` and (b) the materialised
-snapshot has at least one bucket with structured `(repoid,
-commitid)` data — empty queues / system queues without those
-kwargs render the page without a chart.
+On the per-message drill-down page (queue_name is set), inject a lazy
+frequency chart above the result list. The chart is fetched
+asynchronously from `chart_fragment_view` so the changelist renders
+immediately regardless of queue depth (200–500k messages).
+
+In summary mode (queue_name is absent) the block renders nothing extra.
 {% endcomment %}
 {% block content %}
-  {% if frequency_chart %}
-    {% include "admin/redis_admin/celerybrokerqueue/_frequency_chart.html" with chart=frequency_chart %}
+  {% if queue_name %}
+    <div id="celery-chart-fragment"
+         data-fragment-url="{% url 'admin:celerybrokerqueue-chart-fragment' queue_name=queue_name %}">
+      <p class="help">Loading frequency chart&hellip;</p>
+    </div>
+    <script>
+      (function () {
+        var el = document.getElementById('celery-chart-fragment');
+        if (!el) return;
+        var url = el.dataset.fragmentUrl;
+        if (!url) return;
+        fetch(url, { credentials: 'same-origin' })
+          .then(function (r) {
+            if (r.status === 204) {
+              el.innerHTML = '';
+              return;
+            }
+            if (!r.ok) {
+              el.innerHTML = '<p class="errornote">Could not load frequency chart (HTTP ' + r.status + ').</p>';
+              return;
+            }
+            return r.text().then(function (html) {
+              el.innerHTML = html;
+            });
+          })
+          .catch(function () {
+            el.innerHTML = '<p class="errornote">Could not load frequency chart.</p>';
+          });
+      })();
+    </script>
   {% endif %}
   {{ block.super }}
 {% endblock %}
