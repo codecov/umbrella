@@ -613,6 +613,12 @@ def _streaming_celery_clear(
         # Stability check: stop when no matches or lset count plateaued.
         if matches_found == 0:
             break
+        if keep_one and matches_lset == 0:
+            # Pass 1 cleared all non-keeper matches; further passes
+            # would just rescan the queue to verify the keeper still
+            # survives. Skip the redundant work — at 500k depth that
+            # would otherwise cost 2× wasted LRANGE.
+            break
         if prev_lset is not None and matches_lset == prev_lset:
             break
         prev_lset = matches_lset

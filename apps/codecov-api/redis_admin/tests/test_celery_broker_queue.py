@@ -2051,3 +2051,36 @@ def test_streaming_clear_keep_one_leaves_lowest_index(broker_redis):
     assert "drop1" not in surviving_ids
     assert "drop2" not in surviving_ids
     assert result.count == 2
+
+
+@pytest.mark.django_db
+def test_streaming_clear_keep_one_short_circuits_after_first_pass(broker_redis):
+    """keep_one=True should not exhaust max passes when no drift occurs.
+
+    Pass 1 clears all non-keeper matches; further passes would just
+    rescan the queue (potentially 500k+ messages) to confirm the
+    keeper still survives. The early-exit convergence rule keeps
+    keep_one to a single useful pass on the happy path.
+    """
+    raw_keep = _build_envelope(
+        task="t.A", task_id="keep", kwargs={"repoid": 1, "commitid": "x"}
+    )
+    raw_drop = _build_envelope(
+        task="t.A", task_id="drop", kwargs={"repoid": 1, "commitid": "x"}
+    )
+    broker_redis.rpush("notify", raw_keep)
+    broker_redis.rpush("notify", raw_drop)
+
+    tombstone = f"{_CELERY_TOMBSTONE_PREFIX}:test-keep-one-short-circuit"
+    filter_tuples = _make_filter(("t.A", 1, "x"))
+    stats = _streaming_celery_clear(
+        broker_redis,
+        "notify",
+        filter_tuples,
+        tombstone,
+        keep_one=True,
+        dry_run=False,
+    )
+
+    assert stats.total_lset == 1
+    assert stats.passes_run == 1
