@@ -1,7 +1,16 @@
 {% extends "admin/base_site.html" %}
-{% load i18n admin_urls %}
+{% load i18n admin_urls static %}
 
 {% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-list{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+{# Tier 1: lazy preview JS / CSS. Loaded via {% static %} + defer so #}
+{# the script doesn't block the skeleton render and the production CSP #}
+{# (which forbids inline <script>) doesn't reject it. #}
+<link rel="stylesheet" href="{% static 'redis_admin/css/celery_clear_by_filter_preview.css' %}">
+<script src="{% static 'redis_admin/js/celery_clear_by_filter_preview.js' %}" defer></script>
+{% endblock %}
 
 {% block breadcrumbs %}
 <div class="breadcrumbs">
@@ -13,6 +22,21 @@
 {% endblock %}
 
 {% block content %}
+{# Root container exposing filter params + preview / skip-count URLs #}
+{# to the lazy-preview JS via data attributes. The JS reads these on #}
+{# DOMContentLoaded; the page itself paints with skeleton placeholders #}
+{# in <200ms regardless of queue depth — the count + sample are #}
+{# fetched asynchronously from `clear_by_filter_preview_view`. #}
+<div id="celery-clear-by-filter-preview-root"
+     class="celery-clear-by-filter-preview"
+     data-preview-url="{{ preview_url }}"
+     data-skip-count-url="{{ skip_count_url }}"
+     data-queue-name="{{ queue_name }}"
+     data-task-name="{{ task_name }}"
+     data-repoid="{% if repoid is not None %}{{ repoid }}{% endif %}"
+     data-commitid="{{ commitid }}"
+     data-count-skipped="{% if count_skipped %}1{% else %}0{% endif %}">
+
 <div id="content-main">
 
   <p>
@@ -38,6 +62,7 @@
     {% if task_name %}<input type="hidden" name="task_name" value="{{ task_name }}">{% endif %}
     {% if repoid is not None %}<input type="hidden" name="repoid" value="{{ repoid }}">{% endif %}
     {% if commitid %}<input type="hidden" name="commitid" value="{{ commitid }}">{% endif %}
+    {% if count_skipped %}<input type="hidden" name="count_skipped" value="1">{% endif %}
 
     <fieldset class="module">
       <h2>Scope</h2>
@@ -51,49 +76,86 @@
         {% else %}
           <em>(any)</em>
         {% endif %}
-        {% if match_count >= 2 and kept_index is not None %}
+        <span id="celery-clear-preview-kept-index-row" class="celery-clear-preview-hidden">
           <br>"Clear all but first" would keep
-          <code>index={{ kept_index }}</code> (the lowest-index match,
-          i.e. the next message a Celery worker would pop) and clear
-          the remaining {{ match_count|add:"-1" }} of {{ match_count }}.
-        {% endif %}
+          <code>index=<span id="celery-clear-preview-kept-index">—</span></code>
+          (the lowest-index match, i.e. the next message a Celery
+          worker would pop) and clear the remaining
+          <span id="celery-clear-preview-keep-one-remaining">—</span>
+          of <span id="celery-clear-preview-keep-one-total">—</span>.
+        </span>
       </p>
     </fieldset>
 
-    <fieldset class="module">
-      <h2>Matched: {{ match_count }} message(s)</h2>
+    {# Tier 1: skeleton loader. Replaced by celery_clear_by_filter_preview.js #}
+    {# once the JSON preview endpoint comes back. Hidden when count_skipped=1 #}
+    {# (Tier 4 escape hatch). #}
+    {% if not count_skipped %}
+    <div id="celery-clear-preview-loader" class="celery-clear-preview-loader">
+      <div class="celery-clear-preview-loader__spinner" aria-hidden="true"></div>
+      <p class="celery-clear-preview-loader__label">Counting matches…</p>
+      <p class="celery-clear-preview-loader__hint">
+        Walking the queue to count messages matching the filter.
+        On deep queues this hands off to a background job and
+        polls for completion; either way the page itself is ready
+        and you can use the skip-count link below to proceed
+        without waiting.
+      </p>
+    </div>
+    {% endif %}
 
-      {% if match_count == 0 %}
+    {# Job-mode progress card: hidden until the preview JS detects #}
+    {# `mode=job` and switches into polling. #}
+    <div id="celery-clear-preview-job-card"
+         class="celery-clear-preview-job-card celery-clear-preview-hidden"
+         aria-live="polite">
+      <p>
+        Queue is large enough that we're computing the count in a
+        background dry-run job. You can wait for it to finish, or
+        skip the count entirely (the destructive action will get
+        the live count from its own progress page).
+      </p>
+      <progress id="celery-clear-preview-job-bar"
+                class="celery-clear-preview-job-bar"
+                value="0" max="1"></progress>
+      <p>
+        <strong>Status:</strong> <span id="celery-clear-preview-job-status">pending</span>
+        &middot;
+        Processed <span id="celery-clear-preview-job-processed">0</span>
+        of ~<span id="celery-clear-preview-job-total">0</span>
+      </p>
+    </div>
+
+    {# Resolved count card: shown once the synchronous-mode preview #}
+    {# returns or the job-mode poll terminates. The Tier 4 skip-count #}
+    {# render path also reaches the form region without ever showing #}
+    {# this card (the loader is suppressed by the {% if not count_skipped %} #}
+    {# above). #}
+    <fieldset id="celery-clear-preview-count-card"
+              class="module celery-clear-preview-count-card{% if not count_skipped %} celery-clear-preview-hidden{% endif %}">
+      <h2>
+        Matched:
+        <span id="celery-clear-preview-count" class="celery-clear-preview-count-large">
+          {% if count_skipped %}—{% else %}…{% endif %}
+        </span>
+        message(s)
+        <span id="celery-clear-preview-cached-note"
+              class="celery-clear-preview-cached-note celery-clear-preview-hidden"></span>
+      </h2>
+
+      <div id="celery-clear-preview-empty"
+           class="celery-clear-preview-hidden">
         <p><em>No celery_broker messages currently match this filter.</em></p>
-      {% else %}
-        <p>
-          The first {{ sample_targets|length }} matching message(s):
-        </p>
-        <table>
-          <thead>
-            <tr>
-              <th>Index</th>
-              <th>Task</th>
-              <th>repoid</th>
-              <th>commit</th>
-              <th>task id</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for t in sample_targets %}
-            <tr>
-              <td>{{ t.index_in_queue }}</td>
-              <td>{{ t.task_name|default:"—" }}</td>
-              <td>{{ t.repoid|default_if_none:"—" }}</td>
-              <td>{% if t.commitid %}<code>{{ t.commitid|slice:":7" }}</code>{% else %}—{% endif %}</td>
-              <td>{% if t.task_id %}<code>{{ t.task_id|slice:":8" }}</code>{% else %}—{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% if match_count > sample_targets|length %}
-          <p><em>Showing first {{ sample_targets|length }} of {{ match_count }} matching message(s).</em></p>
-        {% endif %}
+      </div>
+
+      <div id="celery-clear-preview-form-area"
+           class="{% if not count_skipped %}celery-clear-preview-hidden{% endif %}">
+        <p>The first 20 matching message(s):</p>
+        <div id="celery-clear-preview-sample">
+          {% if count_skipped %}
+            <p><em>Sample skipped (count was bypassed).</em></p>
+          {% endif %}
+        </div>
 
         <h3>Confirm and clear</h3>
         <div class="form-row{% if confirm_error %} errors{% endif %}">
@@ -109,42 +171,72 @@
         </div>
 
         {% comment %}
-        Three submit buttons share the form. Server-side dispatch on
-        the `action` value:
+        Three submit buttons share the form. They start disabled
+        and the JS unlocks them once the count comes back (Tier 1)
+        or once the count-skipped flag is set (Tier 4). Server-
+        side dispatch on the `action` value:
 
         * `dry_run` — neutral / `default` styling. Audited via
           `celery_broker_clear(dry_run=True)`; queue untouched.
-        * `clear_keep_one` — destructive (red text). Only rendered
-          when match_count >= 2. Clears every match EXCEPT the
-          lowest-index one; "drop duplicate retries but leave one
-          running."
+        * `clear_keep_one` — destructive (red text). Hidden when
+          match_count <= 1 (the JS toggles this once the count
+          comes back; Tier 4 leaves it visible since the count
+          isn't known).
         * `clear_all` — destructive (red text). Clears every match.
-
-        The two destructive buttons are stacked vertically and
-        anchored to the right edge so they read as a distinct "what
-        to do once you've confirmed" cluster, separated visually
-        both from the dry-run button on the left and from each
-        other.
         {% endcomment %}
         <div class="submit-row celery-clear-actions">
-          <button type="submit" name="action" value="dry_run" class="default">
+          <button type="submit" name="action" value="dry_run"
+                  class="default"
+                  {% if not count_skipped %}disabled{% endif %}>
             Dry-run (audit only, no mutations)
           </button>
           <div class="celery-destructive-actions">
-            {% if match_count >= 2 %}
-              <button type="submit" name="action" value="clear_keep_one"
-                      class="button celery-destructive-button celery-clear-keep-one">
-                Clear all but first ({{ match_count|add:"-1" }} of {{ match_count }} from {{ queue_name }})
-              </button>
-            {% endif %}
+            <button type="submit" name="action" value="clear_keep_one"
+                    id="celery-clear-preview-button-keep-one"
+                    class="button celery-destructive-button celery-clear-keep-one{% if not count_skipped %} celery-clear-preview-hidden{% endif %}"
+                    {% if not count_skipped %}disabled{% endif %}>
+              Clear all but first
+            </button>
             <button type="submit" name="action" value="clear_all"
-                    class="button celery-destructive-button celery-clear-all">
-              Clear all ({{ match_count }} from {{ queue_name }})
+                    id="celery-clear-preview-button-clear-all"
+                    class="button celery-destructive-button celery-clear-all"
+                    {% if not count_skipped %}disabled{% endif %}>
+              Clear all{% if count_skipped %} (count skipped){% endif %}
             </button>
           </div>
         </div>
-      {% endif %}
+
+        {% if count_skipped %}
+          <p class="help" style="margin-top: 0.5em;">
+            <em>Count was skipped — the destructive action's progress
+            page will show the live count once it starts.</em>
+          </p>
+        {% endif %}
+      </div>
     </fieldset>
+
+    {# Inline error pill, hidden by default; the JS toggles it on #}
+    {# fetch failure / job failure / cancel. The skip-count link #}
+    {# below stays visible from page-load so the operator always #}
+    {# has a way forward. #}
+    <div id="celery-clear-preview-error-card"
+         class="celery-clear-preview-error-card celery-clear-preview-hidden"
+         role="alert">
+      <p id="celery-clear-preview-error" class="celery-clear-preview-error"></p>
+      <p>
+        <a class="celery-clear-preview-skip-count" href="{{ skip_count_url }}">
+          Skip count and go straight to clear &rarr;
+        </a>
+      </p>
+    </div>
+
+    {% if not count_skipped %}
+    <p class="celery-clear-preview-skip-count-row">
+      <a class="celery-clear-preview-skip-count" href="{{ skip_count_url }}">
+        Trust the filter, skip the count &rarr;
+      </a>
+    </p>
+    {% endif %}
 
     <p>
       <a href="{{ changelist_url }}">&larr; back to {{ queue_name }} messages</a>
@@ -153,13 +245,15 @@
 
 </div>
 
+</div>
+{# Closes #celery-clear-by-filter-preview-root. #}
+
 <style>
-  /* Theme-safe styling: red TEXT (not red background) on the two
-     destructive buttons so they read as obviously dangerous while
-     staying readable on Django's light/dark admin themes. We
-     deliberately don't use Django admin's `deletelink` class here
-     because that swaps the background to red and the foreground to
-     white; the user spec for this surface is "red text". */
+  /* Theme-safe styling for the destructive submit buttons (red
+     text, not red background). Same colour shape as before
+     (PR #904) — kept in this template rather than moved to the
+     external CSS so the destructive-action styling lives next to
+     the markup that uses it. */
   .celery-clear-actions {
     display: flex;
     flex-wrap: wrap;
@@ -179,14 +273,15 @@
     color: var(--error-fg, #ba2121);
     font-weight: 600;
   }
-  .celery-destructive-button:hover,
-  .celery-destructive-button:focus {
+  .celery-destructive-button:hover:not(:disabled),
+  .celery-destructive-button:focus:not(:disabled) {
     color: var(--error-fg, #ba2121);
     text-decoration: underline;
   }
-  /* Vertical separator between the two destructive options so they
-     don't read as a single chunk; the gap+border combo keeps the
-     two visually distinct without needing extra DOM. */
+  .celery-destructive-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
   .celery-destructive-actions > .celery-clear-all {
     margin-top: 0.25em;
     border-top: 1px dashed var(--border-color, var(--hairline-color, #ccc));

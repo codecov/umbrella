@@ -55,3 +55,29 @@ CELERY_BROKER_SCAN_LIMIT: int = getattr(
 # from blocking Redis with a single oversized MULTI when an operator clears
 # thousands of keys at once.
 DELETE_BATCH_SIZE: int = getattr(settings, "REDIS_ADMIN_DELETE_BATCH_SIZE", 500)
+
+# `LLEN(queue)` threshold above which the lazy `clear-by-filter/preview/`
+# endpoint stops trying to compute the count synchronously and instead
+# spawns a `dry_run=True` chunked-clear background job (the existing
+# `start_celery_broker_clear_job` machinery). At 200_000 the synchronous
+# walk is still tens of seconds on fakeredis and would routinely outlive
+# nginx / gunicorn `proxy_read_timeout` defaults; below it the inline
+# count keeps the page responsive without a job-hash round-trip.
+#
+# Kept above `CELERY_BROKER_SCAN_LIMIT` (20_000) because the chart
+# already covers the typical "deep but not pathological" regime; the
+# preview only needs job-mode escalation when the queue is truly
+# painful to walk synchronously.
+CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT: int = getattr(
+    settings, "REDIS_ADMIN_CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT", 200_000
+)
+
+# TTL for the synchronous-mode preview count cache (cache Redis key:
+# `redis_admin:preview_count:<sha256(filter)>`). 60 seconds is short
+# enough that a refresh during an investigation reflects the current
+# queue depth (a cleared 1M-deep queue drops to zero in well under a
+# minute), and long enough that Back-Forward / refresh / hitting the
+# preview from two browser tabs feels instant.
+CLEAR_BY_FILTER_PREVIEW_CACHE_TTL_SECONDS: int = getattr(
+    settings, "REDIS_ADMIN_CLEAR_BY_FILTER_PREVIEW_CACHE_TTL_SECONDS", 60
+)
