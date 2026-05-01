@@ -29,7 +29,7 @@ In summary mode (queue_name is absent) the block renders nothing extra.
       <div class="celery-chart-loader" role="status" aria-live="polite">
         <div class="celery-chart-loader__spinner" aria-hidden="true"></div>
         <p class="celery-chart-loader__label">Loading frequency chart&hellip;</p>
-        <p class="celery-chart-loader__hint">Sampling up to {{ scan_limit_label|default:"100,000" }} messages from <code>{{ queue_name }}</code> &mdash; this can take a few seconds on deep queues.</p>
+        <p class="celery-chart-loader__hint">Sampling up to {{ scan_limit_label|default:"20,000" }} messages from <code>{{ queue_name }}</code> &mdash; this can take a few seconds on deep queues.</p>
       </div>
     </div>
     <script src="{% static 'redis_admin/js/celery_chart_fragment.js' %}" defer></script>
