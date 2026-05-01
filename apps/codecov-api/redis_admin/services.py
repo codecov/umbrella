@@ -453,6 +453,7 @@ class _StreamingClearStats:
 
     total_lset: int
     total_drifted: int
+    total_found: int
     passes_run: int
 
 
@@ -489,10 +490,22 @@ def _streaming_celery_clear(
     `keep_one=True` skips the first matching message encountered in
     the first pass and on all subsequent passes, implementing the
     "clear all but first (lowest-index match)" semantic.
+
+    On `dry_run=True` we walk the queue exactly once and accumulate
+    `total_found` without issuing any LSET/LREM. The dry-run preview
+    only needs the count, not race coverage, so multi-pass would
+    just re-scan a quiet queue for no benefit (and on a 500k-deep
+    queue that's a real cost).
+
+    Returns a `_StreamingClearStats` carrying `total_lset` (slots
+    tombstoned), `total_drifted` (slots skipped due to LRANGE/LINDEX
+    drift), `total_found` (every match observed across passes —
+    populated for the dry-run preview), and `passes_run`.
     """
 
     total_lset = 0
     total_drifted = 0
+    total_found = 0
     prev_lset: int | None = None
     passes_run = 0
 
@@ -568,7 +581,14 @@ def _streaming_celery_clear(
 
         total_lset += matches_lset
         total_drifted += matches_drifted
+        total_found += matches_found
 
+        # Dry-run only needs the count; one full scan is exact for a
+        # quiet queue and the streaming-clear semantics for the preview
+        # don't need the verify-before-LSET race coverage that justifies
+        # multi-pass on the executing path.
+        if dry_run:
+            break
         # Stability check: stop when no matches or lset count plateaued.
         if matches_found == 0:
             break
@@ -589,6 +609,7 @@ def _streaming_celery_clear(
     return _StreamingClearStats(
         total_lset=total_lset,
         total_drifted=total_drifted,
+        total_found=total_found,
         passes_run=passes_run,
     )
 
@@ -642,7 +663,6 @@ def _celery_broker_clear(
     # tokens for the audit log.
     by_queue_filters: dict[str, set] = {}
     sample_source: list[str] = []
-    pending_count = 0
 
     for target in targets:
         if not isinstance(target, CeleryBrokerQueue):
@@ -656,7 +676,6 @@ def _celery_broker_clear(
         key = (target.task_name, target.repoid, target.commitid)
         by_queue_filters.setdefault(target.queue_name, set()).add(key)
         sample_source.append(f"{target.queue_name}#{target.index_in_queue}")
-        pending_count += 1
 
     sample = tuple(sample_source[:_AUDIT_SAMPLE_SIZE])
     families = ("celery_broker",) if by_queue_filters else ()
@@ -665,8 +684,39 @@ def _celery_broker_clear(
     total_drifted = 0
     total_passes = 0
 
-    if dry_run or not by_queue_filters:
-        result_count = pending_count
+    if not by_queue_filters:
+        # No celery_broker targets at all (operator submitted an empty
+        # filter set, or all targets were the wrong polymorphic type).
+        result_count = 0
+    elif dry_run:
+        # Walk the full queue per filter triple so the preview count
+        # matches what the real clear would tombstone. Counts only —
+        # `_streaming_celery_clear(..., dry_run=True)` skips LSET/LREM.
+        # Without this, the preview was reporting `pending_count`
+        # (the materialised target list, capped by
+        # `CELERY_BROKER_DISPLAY_LIMIT`), so a 200k-deep queue with
+        # 190k matches would show ~1.9k in the preview while the
+        # actual clear then drained 190k.
+        redis = _conn.get_connection(kind="broker")
+        total_found = 0
+        for queue_name, filter_set in by_queue_filters.items():
+            tombstone = _celery_clear_tombstone()
+            stats = _streaming_celery_clear(
+                redis,
+                queue_name,
+                frozenset(filter_set),
+                tombstone,
+                keep_one=keep_one,
+                dry_run=True,
+            )
+            total_found += stats.total_found
+            total_passes += stats.passes_run
+        # `keep_one` semantics: the actual clear preserves one
+        # message per (queue, filter) tuple, so subtract one for
+        # the preview.
+        if keep_one and total_found > 0:
+            total_found = max(0, total_found - len(by_queue_filters))
+        result_count = total_found
     else:
         redis = _conn.get_connection(kind="broker")
         for queue_name, filter_set in by_queue_filters.items():

@@ -2298,3 +2298,58 @@ def test_streaming_clear_drains_queue_with_no_artificial_cap(broker_redis):
     assert broker_redis.llen("notify") == 1
     survivor = json.loads(broker_redis.lrange("notify", 0, -1)[0])
     assert survivor["headers"]["task"] == "t.B"
+
+
+def test_streaming_clear_dry_run_returns_full_queue_match_count(patched_broker):
+    """Dry-run preview must walk the full queue, not just the capped
+    target list. Regression for the case where a deep queue (e.g.
+    200k messages, 190k matching one filter triple) reported only
+    ~2k matches because `pending_count` was bounded by
+    `CELERY_BROKER_DISPLAY_LIMIT`.
+    """
+
+    queue = "bundle_analysis"
+    task = "app.tasks.bundle_analysis.BundleAnalysisProcessor"
+    repoid = 21222368
+    commitid = "0832c11a1f43c5e2a1b9f8a3e5d1c2b7e9a8d3f0"
+
+    n = 5_000
+    pipe = patched_broker.pipeline(transaction=False)
+    for _ in range(n):
+        pipe.rpush(
+            queue,
+            _build_envelope(task=task, kwargs={"repoid": repoid, "commitid": commitid}),
+        )
+    pipe.execute()
+    # SimpleNamespace user keeps this regression test free of the
+    # Django-DB fixture so it runs in any sandbox; `_record_audit`
+    # is best-effort and swallows DB failures.
+    user = SimpleNamespace(id=1, pk=1)
+
+    targets = list(
+        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name=queue).filter(
+            task_name=task,
+            repoid=repoid,
+            commitid=commitid,
+        )[:1]
+    )
+    assert len(targets) == 1
+
+    result = celery_broker_clear(
+        targets,
+        user=user,
+        dry_run=True,
+        keep_one=False,
+    )
+    assert result.dry_run is True
+    assert result.count == n
+
+    result_keep = celery_broker_clear(
+        targets,
+        user=user,
+        dry_run=True,
+        keep_one=True,
+    )
+    assert result_keep.count == n - 1
+
+    assert patched_broker.llen(queue) == n
