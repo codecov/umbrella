@@ -97,6 +97,7 @@ def _coerce_float(value: str | None) -> float | None:
     except (TypeError, ValueError):
         return None
 
+
 # ---- Inline items preview (rendered on the queue change page) --------------
 #
 # Showing the items "below" the readonly field block on the change page
@@ -2024,9 +2025,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         repo_change_url: str | None = None
         if repoid is not None:
             try:
-                repo_change_url = reverse(
-                    "admin:core_repository_change", args=[repoid]
-                )
+                repo_change_url = reverse("admin:core_repository_change", args=[repoid])
             except NoReverseMatch:  # pragma: no cover - admin always registered
                 repo_change_url = None
 
