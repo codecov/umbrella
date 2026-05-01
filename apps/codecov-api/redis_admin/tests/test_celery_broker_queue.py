@@ -52,6 +52,7 @@ from redis_admin.services import (
     _CELERY_TOMBSTONE_PREFIX,
     _FILTER_ANY,
     _streaming_celery_clear,
+    _substitute_filter_any,
     celery_broker_clear,
     streaming_celery_count,
 )
@@ -602,6 +603,93 @@ def test_queryset_ordering_by_repoid(patched_broker):
     )
 
     assert [r.repoid for r in rows] == [1, 2, 3]
+
+
+# ---- helper: _substitute_filter_any ----------------------------------------
+
+
+def test_substitute_filter_any_passes_through_set_slots():
+    """Set slots survive verbatim — no mangling, no `_FILTER_ANY`."""
+
+    triple = _substitute_filter_any(
+        "app.tasks.notify.NotifyTask",
+        21222368,
+        "0832c110a744ddb8185bfdf0524aad41d3c3d21a",
+    )
+
+    assert triple == (
+        "app.tasks.notify.NotifyTask",
+        21222368,
+        "0832c110a744ddb8185bfdf0524aad41d3c3d21a",
+    )
+
+
+def test_substitute_filter_any_substitutes_unset_slots_with_wildcard():
+    """All-`None` input becomes the all-wildcards triple — the
+    "unconstrained operator filter" shape that
+    `streaming_celery_count`, the chunked clear job, and the
+    `clear_by_filter_view` synthetic target all need to share so
+    they agree on which envelopes match.
+    """
+
+    triple = _substitute_filter_any(None, None, None)
+
+    assert triple == (_FILTER_ANY, _FILTER_ANY, _FILTER_ANY)
+
+
+def test_substitute_filter_any_treats_empty_string_as_unset_for_strings_only():
+    """`task_name` and `commitid` are strings whose empty value
+    means "unset" (the admin form coerces missing input to
+    `""`); `repoid` is an integer where `0` is checked via
+    `is not None` so a hypothetical literal `0` would pass
+    through verbatim rather than silently turning into
+    wildcard.
+    """
+
+    triple = _substitute_filter_any("", 0, "")
+
+    assert triple == (_FILTER_ANY, 0, _FILTER_ANY)
+
+
+def test_substitute_filter_any_keeps_streaming_count_and_clear_job_in_sync():
+    """Regression for Bugbot review on PR #904 (LOW severity):
+    the `_FILTER_ANY`-substitution rule is shared across
+    `streaming_celery_count`, `_run_celery_broker_clear_job_body`,
+    and the `clear_by_filter_view` filter target. All three must
+    produce the same triple for the same operator input or the
+    dry-run count would silently disagree with the chunked
+    clear's matched count — a data-loss vector.
+
+    Pin the contract here so a future helper-edit that breaks one
+    consumer breaks the test rather than letting the three call
+    sites drift.
+    """
+
+    inputs = [
+        (None, None, None),
+        ("app.tasks.notify.NotifyTask", None, None),
+        (None, 42, None),
+        (None, None, "abc" * 10),
+        ("app.tasks.upload.UploadTask", 7, "deadbeef" * 5),
+    ]
+
+    for task_name, repoid, commitid in inputs:
+        # Build the triple via the helper (the path the three
+        # production call sites now share) and via the literal
+        # inline expression that those sites used to repeat;
+        # they must agree element-by-element so refactoring one
+        # call site can never make it disagree with the others.
+        helper_triple = _substitute_filter_any(task_name, repoid, commitid)
+        inline_triple = (
+            task_name if task_name else _FILTER_ANY,
+            repoid if repoid is not None else _FILTER_ANY,
+            commitid if commitid else _FILTER_ANY,
+        )
+        assert helper_triple == inline_triple, (
+            f"helper diverged from inline contract for input "
+            f"{(task_name, repoid, commitid)!r}: "
+            f"{helper_triple!r} != {inline_triple!r}"
+        )
 
 
 # ---- service: celery_broker_clear ------------------------------------------

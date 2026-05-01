@@ -478,6 +478,45 @@ class _FilterWildcard:
 _FILTER_ANY = _FilterWildcard()
 
 
+def _substitute_filter_any(
+    task_name: str | None,
+    repoid: int | None,
+    commitid: str | None,
+) -> tuple:
+    """Substitute `_FILTER_ANY` for unset operator filter slots.
+
+    Operator-input clear paths (`streaming_celery_count`, the
+    chunked clear job in `_run_celery_broker_clear_job_body`,
+    and the `clear_by_filter_view` synthetic target) all need
+    to convert the form's per-slot `None` / empty-string into
+    the wildcard sentinel before handing the triple to
+    `_envelope_matches_any_filter` (or to a synthetic
+    `CeleryBrokerQueue` row carrying the same comparison
+    semantics). Centralising the substitution rule keeps the
+    dry-run count, the chunked clear, and the synchronous
+    `clear_by_filter_view` preview from drifting if the rule
+    later changes (e.g. a new filter field is added or a
+    slot's truthiness check is loosened) — a divergence here
+    would manifest as the dry-run count disagreeing with the
+    chunked clear's matched count, which is a data-loss
+    vector.
+
+    The truthiness-vs-`is None` asymmetry is intentional:
+    `repoid` is an integer where `0` could in principle be a
+    legitimate value, so we explicitly check `is not None` to
+    avoid silently treating it as wildcard. `task_name` and
+    `commitid` are strings where the empty string and `None`
+    should both mean "unset" because the admin form coerces
+    missing input to `""`.
+    """
+
+    return (
+        task_name if task_name else _FILTER_ANY,
+        repoid if repoid is not None else _FILTER_ANY,
+        commitid if commitid else _FILTER_ANY,
+    )
+
+
 def _envelope_matches_any_filter(meta, filter_tuples: frozenset) -> bool:
     """Return True if `meta` matches any tuple in `filter_tuples`.
 
@@ -835,15 +874,7 @@ def streaming_celery_count(
     # "match only envelopes whose corresponding field is literally
     # `None`" which would zero-out the count for any operator
     # input that didn't pin every slot of the triple.
-    filter_tuples = frozenset(
-        {
-            (
-                task_name if task_name else _FILTER_ANY,
-                repoid if repoid is not None else _FILTER_ANY,
-                commitid if commitid else _FILTER_ANY,
-            )
-        }
-    )
+    filter_tuples = frozenset({_substitute_filter_any(task_name, repoid, commitid)})
     tombstone = _celery_clear_tombstone()
     stats = _streaming_celery_clear(
         redis,
@@ -1322,15 +1353,7 @@ def _run_celery_broker_clear_job_body(
     # operator slot becomes a wildcard rather than an exact-`None`
     # match (which would zero-match for any envelope whose field
     # wasn't literally `None`).
-    filter_tuples = frozenset(
-        {
-            (
-                task_name if task_name else _FILTER_ANY,
-                repoid if repoid is not None else _FILTER_ANY,
-                commitid if commitid else _FILTER_ANY,
-            )
-        }
-    )
+    filter_tuples = frozenset({_substitute_filter_any(task_name, repoid, commitid)})
 
     def _progress_callback(snapshot: _ChunkProgress) -> bool:
         """Per-chunk hook: pump `processed/matched/drifted` into

@@ -54,7 +54,7 @@ from .queryset import (
 )
 from .services import (
     _CELERY_CLEAR_JOB_TERMINAL_STATES,
-    _FILTER_ANY,
+    _substitute_filter_any,
     celery_broker_clear,
     get_celery_broker_clear_job,
     redis_delete,
@@ -1981,13 +1981,16 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         # which the per-message paths legitimately rely on for
         # tasks like `sync_repos` whose envelope leaves repoid /
         # commitid as `None`.
+        task_any, repoid_any, commitid_any = _substitute_filter_any(
+            task_name, repoid, commitid
+        )
         filter_target = CeleryBrokerQueue(
             pk_token=f"{queue_name}#{kept_index if kept_index is not None else 'filter'}",
             queue_name=queue_name,
             index_in_queue=kept_index,
-            task_name=task_name if task_name else _FILTER_ANY,
-            repoid=repoid if repoid is not None else _FILTER_ANY,
-            commitid=commitid if commitid else _FILTER_ANY,
+            task_name=task_any,
+            repoid=repoid_any,
+            commitid=commitid_any,
         )
         matches = [filter_target]
 
