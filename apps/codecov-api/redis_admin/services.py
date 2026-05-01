@@ -454,6 +454,7 @@ class _StreamingClearStats:
     total_lset: int
     total_drifted: int
     total_found: int
+    first_match_index: int | None
     passes_run: int
 
 
@@ -506,6 +507,12 @@ def _streaming_celery_clear(
     total_lset = 0
     total_drifted = 0
     total_found = 0
+    # Tracks the lowest-index match seen across all passes. Pass 1
+    # walks the queue in ascending index order, so the first match
+    # we see IS the lowest. Used by the clear-by-filter preview to
+    # render the "Clear all but first" callout (`kept_index`)
+    # without a separate queryset materialisation.
+    first_match_index: int | None = None
     prev_lset: int | None = None
     passes_run = 0
 
@@ -552,6 +559,8 @@ def _streaming_celery_clear(
                 if key not in filter_tuples:
                     continue
                 matches_found += 1
+                if first_match_index is None:
+                    first_match_index = idx
 
                 # keep_one: skip the first match across all chunks
                 # (lowest index in current pass).
@@ -610,8 +619,49 @@ def _streaming_celery_clear(
         total_lset=total_lset,
         total_drifted=total_drifted,
         total_found=total_found,
+        first_match_index=first_match_index,
         passes_run=passes_run,
     )
+
+
+def streaming_celery_count(
+    queue_name: str,
+    *,
+    task_name: str | None = None,
+    repoid: int | None = None,
+    commitid: str | None = None,
+) -> tuple[int, int | None]:
+    """Streaming `(match_count, lowest_index_match)` for the
+    `(queue_name, task_name?, repoid?, commitid?)` filter.
+
+    Walks the full `LLEN(queue)` so the returned count agrees
+    with what `celery_broker_clear` would actually tombstone.
+    Used by `clear_by_filter_view` to render the preview page;
+    the queryset path is bounded by `CELERY_BROKER_DISPLAY_LIMIT`
+    and would underreport on deep queues.
+
+    The filter compares envelope tuples by exact equality. The
+    admin view passes `commitid` straight from the chart row
+    (full 40-char hash), so this matches the
+    `queryset.filter(commitid__startswith=...)` path the
+    changelist uses for full-length input. Partial-prefix
+    commits (rare; only reachable via manual URL editing) will
+    count as zero — that's a documented limitation; the user
+    can still browse via the changelist filters.
+    """
+
+    redis = _conn.get_connection(kind="broker")
+    filter_tuples = frozenset({(task_name or None, repoid, commitid or None)})
+    tombstone = _celery_clear_tombstone()
+    stats = _streaming_celery_clear(
+        redis,
+        queue_name,
+        filter_tuples,
+        tombstone,
+        keep_one=False,
+        dry_run=True,
+    )
+    return stats.total_found, stats.first_match_index
 
 
 def celery_broker_clear(

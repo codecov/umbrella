@@ -17,6 +17,7 @@ prefix-style tokens in addition to plain substrings:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Sequence
 from typing import Any
 from urllib.parse import urlencode
@@ -45,7 +46,19 @@ from .queryset import (
     _stream_frequency_aggregate,
     resolve_payload_preview,
 )
-from .services import celery_broker_clear, redis_delete
+from .services import (
+    celery_broker_clear,
+    redis_delete,
+    streaming_celery_count,
+)
+
+log = logging.getLogger(__name__)
+
+# Cap on the rows we render in the clear-by-filter preview
+# table. Decoupled from `CELERY_BROKER_DISPLAY_LIMIT` because
+# the preview page only needs a representative slice; the real
+# `match_count` comes from the streaming counter.
+_CLEAR_BY_FILTER_SAMPLE_SIZE: int = 20
 
 # ---- Inline items preview (rendered on the queue change page) --------------
 #
@@ -1795,13 +1808,44 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             queryset = queryset.filter(repoid=repoid)
         if commitid:
             queryset = queryset.filter(commitid__startswith=commitid)
-        # `_fetch_all` materialises in LRANGE order (ascending
-        # `index_in_queue`), so `matches[0]` is always the lowest-
-        # index match. We sort defensively in case a future ordering
-        # change perturbs that.
-        matches = sorted(queryset, key=lambda row: row.index_in_queue or 0)
-        match_count = len(matches)
-        kept_index: int | None = matches[0].index_in_queue if matches else None
+        # Cap-bounded sample for the preview table (cheap, in-memory).
+        # The queryset materialises the first `CELERY_BROKER_DISPLAY_LIMIT`
+        # messages, then filters; we trim further to keep the rendered
+        # table compact.
+        sample_targets = sorted(queryset, key=lambda row: row.index_in_queue or 0)[
+            :_CLEAR_BY_FILTER_SAMPLE_SIZE
+        ]
+
+        # `match_count` and `kept_index` come from a streaming pass
+        # over the full queue so the preview agrees with what the
+        # actual clear (also unbounded) would do. Going through the
+        # queryset would underreport whenever `LLEN(queue) >
+        # CELERY_BROKER_DISPLAY_LIMIT` (anything past the 2k materialise
+        # window).
+        try:
+            match_count, kept_index = streaming_celery_count(
+                queue_name,
+                task_name=task_name or None,
+                repoid=repoid,
+                commitid=commitid or None,
+            )
+        except Exception:
+            log.exception(
+                "redis_admin.clear_by_filter: streaming count failed for %r",
+                queue_name,
+            )
+            # Defensive fallback: degrade to the queryset count rather
+            # than render a 500. The operator at least sees something
+            # and can still hit "Clear all" — the streaming clear path
+            # has its own error handling.
+            match_count = len(sample_targets)
+            kept_index = sample_targets[0].index_in_queue if sample_targets else None
+        # Backwards-compat: existing callers below still reference
+        # `matches` for dispatching `celery_broker_clear`. The streaming
+        # clear only needs the filter tuples (which it derives from
+        # targets), not the full target list — passing the trimmed
+        # `sample_targets` is sufficient and cheap.
+        matches = sample_targets
 
         expected_confirm = queue_name
         typed_confirm = (request.POST.get("typed_confirm") or "").strip()
@@ -1815,7 +1859,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         # through to the render path without invoking the service or
         # writing a LogEntry.
         if request.method == "POST" and action in valid_actions:
-            if not matches:
+            if match_count == 0:
                 messages.info(
                     request,
                     "No messages match the filter — nothing to clear.",
@@ -1871,7 +1915,6 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
                         )
                     return HttpResponseRedirect(changelist_url)
 
-        sample_targets = matches[:25]
         ctx = {
             **self.admin_site.each_context(request),
             "title": f"Clear {queue_name} by filter",

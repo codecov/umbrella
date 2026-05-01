@@ -36,6 +36,7 @@ from django.test import Client as DjClient
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
+from redis_admin import settings as redis_admin_settings
 from redis_admin.admin import CeleryBrokerQueueAdmin, _resolve_repo_displays
 from redis_admin.families import parse_celery_envelope
 from redis_admin.models import CeleryBrokerQueue, RedisQueue
@@ -51,6 +52,7 @@ from redis_admin.services import (
     _CELERY_TOMBSTONE_PREFIX,
     _streaming_celery_clear,
     celery_broker_clear,
+    streaming_celery_count,
 )
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
@@ -991,6 +993,14 @@ class CeleryFrequencyChartTest(TestCase):
         # block it. See settings_base.py CSP_DEFAULT_SRC.
         assert "celery_chart_fragment.js" in body
         assert 'src="' in body  # confirms external script form, not inline
+        # Loader styles ship as an EXTERNAL stylesheet for the same CSP
+        # reason as the JS — inline <style> would be blocked. The
+        # bordered/centred loader card replaces the previous subtle
+        # "Loading frequency chart…" help line so the loading state is
+        # obvious while the fragment endpoint materialises the chart.
+        assert "celery_chart_fragment.css" in body
+        assert "celery-chart-loader" in body
+        assert 'role="status"' in body
 
         # Fetch the chart fragment directly (as the browser's JS would).
         fragment_response = self.client.get(
@@ -2352,4 +2362,51 @@ def test_streaming_clear_dry_run_returns_full_queue_match_count(patched_broker):
     )
     assert result_keep.count == n - 1
 
+    assert patched_broker.llen(queue) == n
+
+
+def test_streaming_celery_count_returns_full_queue_match_count(patched_broker):
+    """Regression for the case where the clear-by-filter preview page
+    reported only ~2k matches on a queue with ~190k matches. The
+    streaming counter must walk the full LLEN(queue), not the capped
+    queryset window — the queryset path materialises only the first
+    `CELERY_BROKER_DISPLAY_LIMIT` (default 2_000) messages before
+    filtering, so on a queue dominated by one filter triple the
+    preview's `match_count` would underreport while "Clear all"
+    (unbounded) drained the full set.
+
+    `clear_by_filter_view` is a thin wrapper around this helper, so
+    pinning the helper's behaviour here covers the view fix too
+    without requiring the Django test client / Postgres.
+    """
+
+    queue = "bundle_analysis"
+    task = "app.tasks.bundle_analysis.BundleAnalysisProcessor"
+    repoid = 21222368
+    commitid = "0832c11a1f43c5e2a1b9f8a3e5d1c2b7e9a8d3f0"
+
+    # > CELERY_BROKER_DISPLAY_LIMIT so the queryset-bounded window
+    # would have underreported by `n - DISPLAY_LIMIT`.
+    n = redis_admin_settings.CELERY_BROKER_DISPLAY_LIMIT + 1_000
+    pipe = patched_broker.pipeline(transaction=False)
+    for _ in range(n):
+        pipe.rpush(
+            queue,
+            _build_envelope(task=task, kwargs={"repoid": repoid, "commitid": commitid}),
+        )
+    pipe.execute()
+
+    match_count, first_index = streaming_celery_count(
+        queue,
+        task_name=task,
+        repoid=repoid,
+        commitid=commitid,
+    )
+
+    assert match_count == n
+    # First match is at index 0 (every message in the queue matches
+    # the filter, and pass 1 walks ascending).
+    assert first_index == 0
+    # No mutation — `streaming_celery_count` is built on the dry-run
+    # streaming clear path.
     assert patched_broker.llen(queue) == n
