@@ -749,6 +749,7 @@ def _celery_broker_clear(
         # actual clear then drained 190k.
         redis = _conn.get_connection(kind="broker")
         total_found = 0
+        queues_with_matches = 0
         for queue_name, filter_set in by_queue_filters.items():
             tombstone = _celery_clear_tombstone()
             stats = _streaming_celery_clear(
@@ -760,12 +761,20 @@ def _celery_broker_clear(
                 dry_run=True,
             )
             total_found += stats.total_found
+            if stats.total_found > 0:
+                queues_with_matches += 1
             total_passes += stats.passes_run
         # `keep_one` semantics: the actual clear preserves one
-        # message per (queue, filter) tuple, so subtract one for
-        # the preview.
-        if keep_one and total_found > 0:
-            total_found = max(0, total_found - len(by_queue_filters))
+        # message per queue *that has at least one match*. Subtract
+        # only for those queues, not for every queue in the filter
+        # set -- otherwise a queue that drained to zero matches
+        # between the changelist render and this preview (e.g. a
+        # consumer popped the last match) would shave one extra
+        # off the count, underreporting what the real clear will
+        # tombstone. Aligns the preview with the actual execution
+        # path of `_streaming_celery_clear`.
+        if keep_one and queues_with_matches > 0:
+            total_found = max(0, total_found - queues_with_matches)
         result_count = total_found
     else:
         redis = _conn.get_connection(kind="broker")

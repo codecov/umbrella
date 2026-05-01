@@ -2410,3 +2410,68 @@ def test_streaming_celery_count_returns_full_queue_match_count(patched_broker):
     # No mutation — `streaming_celery_count` is built on the dry-run
     # streaming clear path.
     assert patched_broker.llen(queue) == n
+
+
+def test_streaming_clear_dry_run_keep_one_skips_empty_queues(patched_broker):
+    """Regression for Bugbot review on PR #903: when the dry-run
+    preview spans multiple queues with `keep_one=True`, the
+    subtraction must only deduct for queues that actually have at
+    least one match, *not* for every queue in the filter set.
+
+    Otherwise a queue that drained to zero matches between the
+    changelist render and the preview (e.g. a consumer popped the
+    last match) shaves one extra off the count, so the preview
+    underreports vs the real `_streaming_celery_clear` path —
+    which only reserves a survivor in queues that have a match.
+    """
+
+    queue_with = "bundle_analysis"
+    queue_empty = "ingest"
+    task = "app.tasks.bundle_analysis.BundleAnalysisProcessor"
+    repoid = 21222368
+    commitid = "0832c11a1f43c5e2a1b9f8a3e5d1c2b7e9a8d3f0"
+
+    n = 100
+    pipe = patched_broker.pipeline(transaction=False)
+    for _ in range(n):
+        pipe.rpush(
+            queue_with,
+            _build_envelope(task=task, kwargs={"repoid": repoid, "commitid": commitid}),
+        )
+    pipe.execute()
+    # `queue_empty` is intentionally never seeded so the streaming
+    # counter returns total_found=0 for that queue.
+    user = SimpleNamespace(id=1, pk=1)
+
+    targets = [
+        CeleryBrokerQueue(
+            queue_name=queue_with,
+            task_name=task,
+            repoid=repoid,
+            commitid=commitid,
+            index_in_queue=0,
+        ),
+        CeleryBrokerQueue(
+            queue_name=queue_empty,
+            task_name=task,
+            repoid=repoid,
+            commitid=commitid,
+            index_in_queue=0,
+        ),
+    ]
+
+    result = celery_broker_clear(
+        targets,
+        user=user,
+        dry_run=True,
+        keep_one=True,
+    )
+    # n matches in queue_with, 0 in queue_empty. keep_one=True
+    # reserves exactly one survivor (in queue_with), so the
+    # preview must report `n - 1`. Pre-fix this returned `n - 2`
+    # because the subtraction was per-queue regardless of whether
+    # the queue had any matches.
+    assert result.dry_run is True
+    assert result.count == n - 1
+    assert patched_broker.llen(queue_with) == n
+    assert patched_broker.llen(queue_empty) == 0
