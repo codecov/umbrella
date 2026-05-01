@@ -442,8 +442,18 @@ _CELERY_TOMBSTONE_PREFIX = "__redis_admin_celery_tombstone__"
 # Chunk size for streaming LRANGE during clear.
 _CELERY_CLEAR_CHUNK: int = 10_000
 
-# Maximum passes in the repeat-until-stable loop.
-_CELERY_MAX_PASSES: int = 3
+# Maximum passes in the repeat-until-stable loop. Bumped from 3 to 10
+# alongside the pre-#899 pipeline-LSET restoration: with verify-before-
+# LSET gone the per-pass throughput is much higher (no LINDEX RTT per
+# match), but a saturated queue with active producers / retries can
+# still need several passes to converge. The plateau exit was
+# intentionally dropped at the same time -- on a busy queue the prior
+# `prev_lset == matches_lset` check fired against legitimate progress
+# (each pass cleared ~the same number of matches) and the operator saw
+# the queue stay full. Convergence is now bounded only by
+# `matches_found == 0` (queue drained of the filter triple) plus this
+# pass cap.
+_CELERY_MAX_PASSES: int = 10
 
 
 def _celery_clear_tombstone() -> str:
@@ -463,9 +473,9 @@ class _FilterWildcard:
     *every* `sync_repos` message in the queue rather than just
     the one the operator selected.
 
-    Operator-input paths (`streaming_celery_count` and the
-    `clear_by_filter_view` synthetic target) substitute this
-    sentinel for any unset filter slot before building the
+    Operator-input paths (the chunked clear job in
+    `_run_celery_broker_clear_job_body`) substitute this sentinel
+    for any unset filter slot before building the
     `(task, repoid, commitid)` tuple.
     """
 
@@ -485,21 +495,13 @@ def _substitute_filter_any(
 ) -> tuple:
     """Substitute `_FILTER_ANY` for unset operator filter slots.
 
-    Operator-input clear paths (`streaming_celery_count`, the
-    chunked clear job in `_run_celery_broker_clear_job_body`,
-    and the `clear_by_filter_view` synthetic target) all need
-    to convert the form's per-slot `None` / empty-string into
+    The chunked clear job (`_run_celery_broker_clear_job_body`)
+    converts the operator's per-slot `None` / empty-string into
     the wildcard sentinel before handing the triple to
-    `_envelope_matches_any_filter` (or to a synthetic
-    `CeleryBrokerQueue` row carrying the same comparison
-    semantics). Centralising the substitution rule keeps the
-    dry-run count, the chunked clear, and the synchronous
-    `clear_by_filter_view` preview from drifting if the rule
-    later changes (e.g. a new filter field is added or a
-    slot's truthiness check is loosened) — a divergence here
-    would manifest as the dry-run count disagreeing with the
-    chunked clear's matched count, which is a data-loss
-    vector.
+    `_envelope_matches_any_filter`. Centralising the substitution
+    rule means the dry-run and live chunked-clear counts can never
+    disagree about which envelopes match — a divergence there would
+    be a data-loss vector.
 
     The truthiness-vs-`is None` asymmetry is intentional:
     `repoid` is an integer where `0` could in principle be a
@@ -592,26 +594,31 @@ def _streaming_celery_clear(
     chunk_size: int | None = None,
     progress_callback: Callable[[_ChunkProgress], bool] | None = None,
 ) -> _StreamingClearStats:
-    """Streaming LRANGE+verify-before-LSET clear for `queue_name`.
+    """Streaming LRANGE+pipelined-LSET clear for `queue_name`.
 
     Walks the **entire** queue in `_CELERY_CLEAR_CHUNK`-row chunks,
     identifies messages whose parsed `(task_name, repoid, commitid)`
-    triple appears in `filter_tuples`, and for each match:
-
-    1. Issues `LINDEX key idx` to re-read the raw bytes at that
-       position.
-    2. Compares LINDEX bytes to the LRANGE snapshot bytes. If they
-       differ (drift — a consumer BLPOPed from the head, shifting
-       indexes), the slot is skipped.
-    3. Issues `LSET key idx tombstone` on a clean match.
+    triple appears in `filter_tuples`, collects those matches into a
+    per-chunk `(idx, raw)` list, then issues a single
+    `pipeline(transaction=False)` of `LSET key idx tombstone` ops for
+    every match in the chunk. Pipeline replies are consumed with
+    `raise_on_error=False`: each `Exception` reply (LSET out-of-range
+    because a consumer drained the slot mid-clear) increments
+    `matches_drifted` instead of taking the whole pipeline down.
 
     After each full pass, `LREM key 0 tombstone` sweeps all
-    tombstones in one shot.
+    tombstones written this pass and its return value (the number of
+    list elements actually removed) is logged so on-call can confirm
+    the LSET → LREM round-trip from the structured logs alone.
 
-    The loop repeats up to `_CELERY_MAX_PASSES` times, stopping
-    early when a pass finds zero matches (queue drained of matches)
-    OR two consecutive passes tombstone the same count (stable
-    point reached — pathological persistent-drift signal).
+    The loop repeats up to `_CELERY_MAX_PASSES` times (default 10),
+    stopping early when:
+
+    * `matches_found == 0` for the pass (queue drained of the filter
+      triple), OR
+    * `keep_one=True` and `matches_drifted == 0` for the pass (no
+      failed LSETs means the queue is converged for keep_one mode —
+      every match except the lowest-index keeper is tombstoned).
 
     `keep_one=True` skips the first matching message encountered in
     the first pass and on all subsequent passes, implementing the
@@ -619,14 +626,15 @@ def _streaming_celery_clear(
 
     On `dry_run=True` we walk the queue exactly once and accumulate
     `total_found` without issuing any LSET/LREM. The dry-run preview
-    only needs the count, not race coverage, so multi-pass would
-    just re-scan a quiet queue for no benefit (and on a 500k-deep
-    queue that's a real cost).
+    only needs the count; multi-pass would just re-scan a quiet
+    queue for no benefit (and on a 500k-deep queue that's a real
+    cost).
 
     Returns a `_StreamingClearStats` carrying `total_lset` (slots
-    tombstoned), `total_drifted` (slots skipped due to LRANGE/LINDEX
-    drift), `total_found` (every match observed across passes —
-    populated for the dry-run preview), and `passes_run`.
+    tombstoned), `total_drifted` (LSET pipeline replies that came
+    back as `Exception` — out-of-range, the consumer-drained-the-
+    slot signal), `total_found` (every match observed across passes
+    — populated for the dry-run preview), and `passes_run`.
 
     `chunk_size`, when set, overrides `_CELERY_CLEAR_CHUNK` for the
     LRANGE step. The chunked background-job worker
@@ -644,9 +652,51 @@ def _streaming_celery_clear(
     `_StreamingClearStats.cancelled` is set so the chunked worker
     can flip the job hash to `"cancelled"`. Returning `False` (or
     `None`) lets the loop continue. Cancel only ever lands at chunk
-    boundaries — never mid-LSET — so an LSET we already issued is
-    always paired with the corresponding LREM at the next pass-end
-    or cancel-drain.
+    boundaries — never mid-LSET pipeline — so an LSET we already
+    issued is always paired with the corresponding LREM at the next
+    pass-end or cancel-drain.
+
+    Trade-off (data-loss surface area)
+    ----------------------------------
+    PR #899 (`aa56fc351`) added a verify-before-LSET guard
+    (LINDEX-then-compare-then-LSET per match) on top of PR #895's
+    (`da3a7e071`) original pipelined-LSET clear. Intent: never
+    overwrite the wrong slot if a consumer popped K messages from
+    the head between our LRANGE snapshot and our LSET, shifting all
+    indexes down by K. In practice the guard turned a single LSET
+    into LINDEX + LSET RTTs *per match*, and on the user's busy
+    `bundles_analysis` broker (78k matches with consumers actively
+    BLPOPing) it dropped the LSET success rate to ~3% — the operator
+    saw `matched=2038, drift=77475` and a queue that didn't shrink.
+
+    The current implementation deliberately drops verify-before-LSET
+    and accepts the bounded data-loss risk per the operator's
+    explicit directive (issue thread on PR #904's followup): "I'm ok
+    if we lose a few tasks along the way and we make secondary
+    passes, but I do care that if I'm trying to remove 50% of the
+    queue, that there is a significant drop." Concretely, between
+    the chunk's `LRANGE` snapshot and the pipelined `LSET` of every
+    match in that chunk, K consumer BLPOPs shift all indexes down by
+    K. Our LSET at slot 50 then overwrites whatever's at slot 50
+    *now* (which used to be at slot 50+K — a different message).
+    That overwritten message is destroyed by the subsequent `LREM`.
+
+    Mitigation: chunked LRANGE → pipelined LSET keeps the shift
+    window short (sub-second per chunk on a typical queue). At
+    `chunk_size=1000` and a consumer popping ~25 messages/sec the
+    shift is bounded to a handful of slots per chunk, so the
+    upper bound on accidentally-destroyed unrelated messages is
+    `consumer_pops_per_chunk × chunks_per_pass`. The operator's
+    workflow ("clear retry storms for repo X commit Y") tolerates
+    this because the destroyed messages are statistically dominated
+    by the same retry storm we're trying to drain.
+
+    The keep_one semantic still survives this trade-off because
+    pass 1's keeper is the *lowest-index* match in pass 1's LRANGE
+    snapshot. Even if a consumer pops the keeper between our LRANGE
+    and our pipelined LSET, the new lowest-index match in pass 2
+    becomes the next keeper — the queue always retains at least one
+    matching message after a successful keep_one clear.
     """
 
     chunk = chunk_size if chunk_size is not None else _CELERY_CLEAR_CHUNK
@@ -661,7 +711,6 @@ def _streaming_celery_clear(
     # render the "Clear all but first" callout (`kept_index`)
     # without a separate queryset materialisation.
     first_match_index: int | None = None
-    prev_lset: int | None = None
     passes_run = 0
 
     # Track whether we've kept the "first" across all passes so that
@@ -690,6 +739,12 @@ def _streaming_celery_clear(
         # `prev_lset == matches_lset` plateau exit then declared
         # convergence with most of the queue still in place.
         depth = int(redis.llen(queue_name) or 0)
+        log.info(
+            "redis_admin.streaming_clear: queue=%s pass=%d depth=%d",
+            queue_name,
+            passes_run,
+            depth,
+        )
         # Track chunk index + count for the progress callback so the
         # progress page can render "pass 2 / 3, chunk 47 / 213". The
         # `chunks_total` is computed off the snapshot depth — fine
@@ -703,6 +758,12 @@ def _streaming_celery_clear(
             chunk_lset_before = matches_lset
             chunk_drifted_before = matches_drifted
             chunk_found_before = matches_found
+            # Collect every (idx, raw) match in this chunk so we can
+            # batch them into a single pipelined LSET below. The
+            # iteration order matches LRANGE order (ascending index)
+            # so `first_match_index` and the keep_one "skip lowest"
+            # semantics still hold against pass 1's LRANGE snapshot.
+            chunk_lset_targets: list[int] = []
             for offset, raw in enumerate(raw_chunk):
                 # Skip already-tombstoned slots from this or a
                 # concurrent clear.
@@ -728,19 +789,39 @@ def _streaming_celery_clear(
                 if dry_run:
                     continue
 
-                # Verify-before-LSET: re-read the slot via LINDEX
-                # and compare raw bytes to our LRANGE snapshot.
-                current_raw = redis.lindex(queue_name, idx)
-                if current_raw != raw:
-                    matches_drifted += 1
-                    continue
+                chunk_lset_targets.append(idx)
 
+            if chunk_lset_targets:
+                # Pipelined LSET (PR #895's pre-#899 pattern):
+                # tolerate per-op failures via `raise_on_error=False`
+                # so a single out-of-range slot (consumer drained the
+                # tail concurrently) doesn't fail the whole pipeline.
+                # Each `Exception` reply increments `matches_drifted`
+                # — the same counter the verify-before-LSET path used,
+                # but now bounded by genuine LSET failures rather than
+                # every LRANGE/LINDEX byte mismatch. See the docstring
+                # for the data-loss trade-off rationale.
+                pipe = redis.pipeline(transaction=False)
+                for idx in chunk_lset_targets:
+                    pipe.lset(queue_name, idx, tombstone)
                 try:
-                    redis.lset(queue_name, idx, tombstone)
-                    matches_lset += 1
-                except Exception:
-                    # Out-of-range: consumer drained this slot.
-                    matches_drifted += 1
+                    replies = pipe.execute(raise_on_error=False)
+                except TypeError:  # pragma: no cover - older clients
+                    # Some test doubles don't accept the kwarg; fall
+                    # back to default execute(). On full-pipeline
+                    # failure here mark every target as drifted so
+                    # the caller's stats still sum to the chunk size.
+                    try:
+                        replies = pipe.execute()
+                    except Exception:  # pragma: no cover - defensive
+                        replies = [Exception("pipeline failed")] * len(
+                            chunk_lset_targets
+                        )
+                for reply in replies:
+                    if isinstance(reply, Exception):
+                        matches_drifted += 1
+                    else:
+                        matches_lset += 1
 
             if progress_callback is not None:
                 # `chunk_index` is 0-based: the first chunk in a
@@ -802,35 +883,65 @@ def _streaming_celery_clear(
                     )
             chunk_index += 1
 
+        # Per-pass diagnostic line so on-call investigations don't
+        # have to drive the streaming clear from the progress page to
+        # see what each pass did. Emitted pre-LREM so the values match
+        # what was just LSET (LREM removes them right after).
+        log.info(
+            "redis_admin.streaming_clear: queue=%s pass=%d "
+            "found=%d lset=%d drifted=%d pass_first_kept=%s",
+            queue_name,
+            passes_run,
+            matches_found,
+            matches_lset,
+            matches_drifted,
+            pass_first_kept,
+        )
         if not dry_run:
-            redis.lrem(queue_name, 0, tombstone)
+            removed = redis.lrem(queue_name, 0, tombstone)
+            try:
+                removed_count = int(removed or 0)
+            except (TypeError, ValueError):
+                removed_count = 0
+            # The "queue dropped by N" line operators rely on. Pinned
+            # alongside the pass-end counts above so a single grep for
+            # `redis_admin.streaming_clear` per queue + job ties the
+            # found / lset / drifted counts to the actual LLEN delta.
+            log.info(
+                "redis_admin.streaming_clear: queue=%s pass=%d lrem_removed=%d",
+                queue_name,
+                passes_run,
+                removed_count,
+            )
 
         total_lset += matches_lset
         total_drifted += matches_drifted
         total_found += matches_found
 
         # Dry-run only needs the count; one full scan is exact for a
-        # quiet queue and the streaming-clear semantics for the preview
-        # don't need the verify-before-LSET race coverage that justifies
-        # multi-pass on the executing path.
+        # quiet queue.
         if dry_run:
             break
-        # Stability check: stop when no matches or lset count plateaued.
+        # Convergence: stop when the queue is drained of the filter
+        # triple. With verify-before-LSET gone (PR #895 → #899 → this
+        # PR) the only legitimate reason to loop again is to pick up
+        # matches that shifted into our window between passes — the
+        # `prev_lset == matches_lset` plateau exit was deleted because
+        # on a busy queue it fired against legitimate per-pass progress
+        # (each pass clearing ~the same number of matches) and the
+        # operator saw the queue stay full.
         if matches_found == 0:
             break
         if keep_one and matches_drifted == 0:
             # With keep_one we deliberately leave the first match in
-            # place, so the only reason to loop again is to retry
-            # drifted slots. When no drift occurred this pass, the
-            # queue has converged (non-keeper matches are cleared,
-            # keeper survives) — exit early to avoid an extra full
-            # LRANGE scan at 500k depth. If drift did occur, fall
-            # through to the plateau check so the next pass can
-            # retry.
+            # place. Without verify-before-LSET, `matches_drifted` only
+            # increments when an LSET reply came back as Exception
+            # (out-of-range — consumer drained the tail). Zero drift
+            # means every non-keeper match this pass was successfully
+            # tombstoned, so the queue has converged for keep_one mode
+            # — exit early to avoid an extra full LRANGE scan at 500k
+            # depth.
             break
-        if prev_lset is not None and matches_lset == prev_lset:
-            break
-        prev_lset = matches_lset
 
     return _StreamingClearStats(
         total_lset=total_lset,
@@ -1348,11 +1459,10 @@ def _run_celery_broker_clear_job_body(
     cache.hset(key, "status", "running")
     cache.hset(key, "updated_at", _utc_now_iso())
 
-    # Build the same `_FILTER_ANY`-substituted filter the
-    # synchronous `streaming_celery_count` uses, so an unset
-    # operator slot becomes a wildcard rather than an exact-`None`
-    # match (which would zero-match for any envelope whose field
-    # wasn't literally `None`).
+    # Substitute `_FILTER_ANY` for unset operator slots so an
+    # empty form field acts as a wildcard rather than an exact-
+    # `None` match (which would zero-match for any envelope
+    # whose field wasn't literally `None`).
     filter_tuples = frozenset({_substitute_filter_any(task_name, repoid, commitid)})
 
     def _progress_callback(snapshot: _ChunkProgress) -> bool:

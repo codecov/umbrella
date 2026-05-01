@@ -452,6 +452,150 @@ def test_clear_job_failure_records_status_failed_and_swallows_exception(
     assert True
 
 
+# ---- Regression: pipeline-LSET drain (drop verify-before-LSET) ------------
+#
+# Pinned by this PR's followup directive after PR #899's verify-before-
+# LSET guard regressed the operator's `bundles_analysis` clear (queue
+# stayed full because 97% of matches were skipped as "drift"). The
+# tests below assert the post-fix behaviour:
+#
+# * the LSET → LREM round-trip actually shrinks `LLEN(queue)` by the
+#   number of matches we tombstone (the operator's "if I'm trying to
+#   remove 50% of the queue, that there is a significant drop" check),
+# * concurrent drift no longer collapses the per-pass LSET count: the
+#   pipelined pattern issues every LSET unconditionally and only
+#   counts an Exception reply (LSET out-of-range) as drift.
+
+
+def test_streaming_clear_drops_50pct_of_queue_in_first_pass(patched_broker, superuser):
+    """Seeds 100 envelopes (50 matching the filter, 50 not), runs the
+    chunked clear job with no concurrency, and asserts the queue
+    drops by ~50 messages in a single pass — the explicit user
+    invariant from the PR directive.
+
+    Two sub-asserts back the headline:
+
+    * `LLEN(queue)` after the worker exits is `100 - 50 = 50`
+      (no `keep_one`, no concurrent consumers / producers).
+    * The audit-log job hash records `matched=50` and the surviving
+      messages all parse as the *non-matching* envelope shape, so
+      we know the LSET → LREM pipeline didn't tombstone the wrong
+      slots.
+    """
+
+    queue = "bundle_analysis"
+    matching_repoid = 21222368
+    matching_commitid = "0832c11a1f43c5e2a1b9f8a3e5d1c2b7e9a8d3f0"
+    other_repoid = 99999
+    other_commitid = "f" * 40
+
+    pipe = patched_broker.pipeline(transaction=False)
+    matching_envelope = _build_envelope(
+        task="app.tasks.bundle_analysis.BundleAnalysisProcessor",
+        kwargs={"repoid": matching_repoid, "commitid": matching_commitid},
+    )
+    other_envelope = _build_envelope(
+        task="app.tasks.notify.NotifyTask",
+        kwargs={"repoid": other_repoid, "commitid": other_commitid},
+    )
+    # Interleave 50 matching + 50 non-matching so the chunked clear's
+    # pipelined LSET has to skip-and-pick across slot indexes rather
+    # than blindly LSET a contiguous head-of-queue run.
+    for _ in range(50):
+        pipe.rpush(queue, matching_envelope)
+        pipe.rpush(queue, other_envelope)
+    pipe.execute()
+    initial_depth = patched_broker.llen(queue)
+    assert initial_depth == 100
+
+    job_id = start_celery_broker_clear_job(
+        queue,
+        user=superuser,
+        task_name="app.tasks.bundle_analysis.BundleAnalysisProcessor",
+        repoid=matching_repoid,
+        commitid=matching_commitid,
+        keep_one=False,
+        dry_run=False,
+    )
+    _wait_for_job(job_id, timeout=15.0)
+
+    job = get_celery_broker_clear_job(job_id)
+    assert job is not None
+    assert job["status"] == "completed"
+    assert int(job["matched"]) == 50
+    # Headline assertion: the queue dropped by 50 (significant drop
+    # the operator wanted to see).
+    assert patched_broker.llen(queue) == 50
+    # Positive walk: every survivor is a non-matching envelope.
+    survivors = patched_broker.lrange(queue, 0, -1)
+    for raw in survivors:
+        meta = redis_admin_services.parse_celery_envelope(
+            raw if isinstance(raw, bytes) else raw.encode()
+        )
+        assert meta.repoid == other_repoid
+
+
+def test_streaming_clear_makes_progress_under_concurrent_drift(patched_broker):
+    """Confirms `total_lset > 0` under simulated drift: even when
+    the LRANGE-snapshot bytes do not match the slot's *current*
+    bytes (consumer-pop scenario), the pipelined unconditional LSET
+    still tombstones every match in the chunk and the LREM sweep
+    still removes them.
+
+    Patches `LINDEX` on `patched_broker` to always return a
+    non-matching envelope. With the old verify-before-LSET path
+    this monkey-patch caused `matches_drifted` to absorb every
+    match and `total_lset` to go to zero (the regression PR #899
+    introduced). With the pipelined path we never call LINDEX in
+    the clear loop, so the patch should have zero effect on the
+    outcome — `total_lset == matches`.
+    """
+
+    queue = "bundle_analysis"
+    matches = 200
+    repoid = 1
+    commitid = "x" * 40
+    _push_envelopes(patched_broker, queue, n=matches, repoid=repoid, commitid=commitid)
+
+    # Patch LINDEX to always return a different envelope, simulating
+    # the worst-case drift scenario the verify-before-LSET path was
+    # designed to catch. The pipelined clear should ignore LINDEX
+    # entirely.
+    real_lindex = patched_broker.lindex
+
+    def drifted_lindex(name, idx):
+        if name == queue:
+            return _build_envelope(
+                task="t.OTHER",
+                kwargs={"repoid": 99, "commitid": "z" * 40},
+            ).encode()
+        return real_lindex(name, idx)
+
+    patched_broker.lindex = drifted_lindex
+
+    tombstone = "__redis_admin_celery_tombstone__:test-no-verify-pipeline"
+    filter_tuples = frozenset(
+        {("app.tasks.bundle_analysis.BundleAnalysisProcessor", repoid, commitid)}
+    )
+    stats = _streaming_celery_clear(
+        patched_broker,
+        queue,
+        filter_tuples,
+        tombstone,
+        keep_one=False,
+        dry_run=False,
+    )
+
+    # Every match was LSET unconditionally; LINDEX drift is no longer
+    # observed by the clear loop so total_drifted is 0 on a quiet
+    # fakeredis (no genuine LSET out-of-range failures).
+    assert stats.total_lset == matches
+    assert stats.total_drifted == 0
+    # And the queue actually drained — the explicit invariant the
+    # operator's directive demanded.
+    assert patched_broker.llen(queue) == 0
+
+
 # ---- View layer ------------------------------------------------------------
 
 
