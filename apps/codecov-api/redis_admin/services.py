@@ -1017,17 +1017,14 @@ def _celery_broker_clear(
 
 # ---- Chunked celery_broker clear jobs (background-thread variant) ----------
 #
-# Synchronous `celery_broker_clear` is fine for changelist actions and
-# the dry-run preview because operators expect the action handler to
-# block; but the "Clear all" path on a 200-500k-deep queue can run
-# well past the gunicorn worker `--timeout` (api.sh's 600s default
-# is comfortably above that, but upstream proxies may impose lower
-# ceilings — Cloudflare's free-tier is 100s, GCP HTTPS LB defaults
-# to 30s). The chunked variant here decouples the clear's wall-clock
-# from the HTTP request lifetime: `start_celery_broker_clear_job`
-# returns a `job_id` immediately, the actual clear runs in a daemon
-# thread, and the operator polls a status hash for progress + drives
-# cancellation through it.
+# Synchronous `celery_broker_clear` is fine for changelist actions
+# and the dry-run preview because operators expect the action
+# handler to block; but the "Clear all" path on a 200-500k-deep
+# queue can run for many minutes. The chunked variant here
+# decouples the clear's wall-clock from the HTTP request lifetime:
+# `start_celery_broker_clear_job` returns a `job_id` immediately,
+# the actual clear runs in a daemon thread, and the operator polls
+# a status hash for progress + drives cancellation through it.
 #
 # Why threading and not Celery: the queue we're clearing is the
 # Celery broker. Submitting a control task to a broker we're

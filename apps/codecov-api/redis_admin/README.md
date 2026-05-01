@@ -315,14 +315,9 @@ spawns a background daemon thread, then 302s the operator to a
 progress page that polls a status JSON view every ~1s.
 
 **Why this exists.** A 200–500k-deep queue clear can run for
-many minutes, well past common upstream timeouts. The api pod's
-own gunicorn `--timeout` defaults to 600s
-(`apps/codecov-api/api.sh:118`, configurable via
-`GUNICORN_TIMEOUT`), but the user-observed 120s ceiling
-originates from an upstream proxy (Cloudflare's free-tier or
-the GCP HTTPS LB backend timeout) outside this repo. Decoupling
-the clear's wall-clock from the HTTP request lifetime means the
-operator-facing surface is sub-second regardless of queue depth.
+many minutes. Decoupling the clear's wall-clock from the HTTP
+request lifetime means the operator-facing surface is sub-second
+regardless of queue depth.
 
 **Job state hash.** Each chunked job lives in the
 **cache** Redis (`_conn.get_connection(kind="default")`) under
@@ -396,68 +391,6 @@ JSON has `mode` ∈ `chunked-dry-run` /
 synchronous `dry-run` / `all-from-bucket` / `all-but-first` so
 queries can distinguish the two paths) and an `extra` payload
 with `job_id`, `passes_run`, `total_drifted`, `cancelled`.
-
-### Request timeouts — short-term and long-term knobs
-
-The user-observed 120s timeout on big-queue clears + chart
-loads has both a known short-term operational lever and a
-long-term durable fix.
-
-**Short-term (operational).** The api pod's gunicorn
-`--timeout` is set in `apps/codecov-api/api.sh:118`:
-
-```
---timeout "${GUNICORN_TIMEOUT:-600}"
-```
-
-The default is **600s**, configurable via the `GUNICORN_TIMEOUT`
-env var. **Do not change this in this PR** — that's a deploy-
-tuning decision; document only. Memory + concurrency
-implications: a longer worker timeout means a stuck request
-holds its worker slot for that long, so raising it without
-also bumping `GUNICORN_WORKERS` reduces the pod's effective
-concurrency proportionally.
-
-The user-reported 120s ceiling does **not** originate from
-this in-repo file. The most likely sources, in order of
-likelihood, are external to this repo and need to be
-investigated by an infra-side operator:
-
-1. **Cloudflare's per-request timeout.** Free-tier is 100s,
-   paid is configurable up to several minutes (see
-   Cloudflare's "request_timeout" setting and the
-   `proxy_read_timeout`-equivalent for orange-cloud
-   proxying).
-2. **GCP HTTPS LB backend timeout.** The default is 30s
-   on a Backend Service, often raised to 120s. Lives in
-   the cluster's Terraform / Helm chart.
-3. **Kubernetes ingress / `terminationGracePeriodSeconds`**
-   — usually 30s by default; less likely to be the source
-   of a 120s ceiling but worth checking for any
-   `nginx.ingress.kubernetes.io/proxy-read-timeout` or
-   similar annotations on the api Service.
-
-The Helm chart and the GCP infra config are NOT in
-`codecov/umbrella` — they live in the deploy repo. Search
-there for `GUNICORN_TIMEOUT`, `proxy_read_timeout`,
-`timeoutSeconds`, and the api Backend Service config.
-
-**Long-term (durable, this PR's contribution).** The chunked
-clear job decouples the clear's wall-clock from the HTTP
-request lifetime entirely. The POST that starts the clear
-spawns a thread + 302s in well under a second; each subsequent
-poll request reads a single hash from the cache redis (sub-
-millisecond on real Redis). No HTTP request ever sits on the
-actual clearing work, so no upstream timeout — Cloudflare,
-LB, gunicorn, ingress — can interrupt it.
-
-**Gap.** The changelist load itself (the page, not the chart)
-can still be slow on big queues because a `count()` /
-`LLEN` per visible queue runs synchronously in the request.
-PR #902 already moved the chart fragment to a lazy-loaded
-`{% static %}` JS path — the analogous follow-up would be to
-async-load the changelist's depth column the same way. **Not
-in scope for this PR**; see follow-up tracking.
 
 ### Per-message clear (LSET-tombstone)
 
