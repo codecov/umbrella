@@ -2540,3 +2540,122 @@ def test_celery_broker_clear_with_synthetic_filter_target_clears_full_queue(
     # `_streaming_celery_clear` LREMs tombstones at the end of each
     # pass, so the queue should be fully drained.
     assert patched_broker.llen(queue) == 0
+
+
+def test_streaming_celery_count_wildcard_task_name_matches_any_task(patched_broker):
+    """Regression for the pre-existing wildcard bug surfaced by the
+    synthetic-target fix on PR #903: `streaming_celery_count` (and
+    the underlying `_streaming_celery_clear` filter) used exact-
+    tuple equality on `(task, repoid, commit)`. When the operator
+    left `task_name` unset (None), the filter tuple
+    `(None, 1, "aaaa")` could never match a real envelope (whose
+    `meta.task` is always populated), so the preview reported zero
+    matches even when the queryset's
+    `filter(repoid=1, commitid__startswith="aaaa")` would surface
+    rows.
+
+    With the wildcard fix, `None` slots in a filter tuple act as
+    "don't constrain on this field" -- mirroring the queryset's
+    "filter by what's set" semantic -- so the streaming counter
+    and the streaming clear agree with the queryset's match set.
+    """
+
+    queue = "celery"
+    repoid = 7
+    commitid = "deadbeefcafebabe1111222233334444aaaaaaaa"
+    task_a = "app.tasks.notify.NotifyTask"
+    task_b = "app.tasks.upload.UploadTask"
+
+    pipe = patched_broker.pipeline(transaction=False)
+    for _ in range(3):
+        pipe.rpush(
+            queue,
+            _build_envelope(
+                task=task_a, kwargs={"repoid": repoid, "commitid": commitid}
+            ),
+        )
+    for _ in range(2):
+        pipe.rpush(
+            queue,
+            _build_envelope(
+                task=task_b, kwargs={"repoid": repoid, "commitid": commitid}
+            ),
+        )
+    pipe.rpush(
+        queue,
+        _build_envelope(
+            task=task_a, kwargs={"repoid": repoid + 1, "commitid": commitid}
+        ),
+    )
+    pipe.execute()
+
+    match_count, first_index = streaming_celery_count(
+        queue,
+        task_name=None,
+        repoid=repoid,
+        commitid=commitid,
+    )
+    assert match_count == 5
+    assert first_index == 0
+    assert patched_broker.llen(queue) == 6
+
+
+def test_celery_broker_clear_synthetic_target_with_wildcard_task_name_drains_all_matches(
+    patched_broker,
+):
+    """Companion for the wildcard fix: the synthetic-target path
+    constructed by `clear_by_filter_view` carries `task_name=None`
+    when the operator filtered by repoid/commit only, so the
+    clear path must honour the same wildcard semantic the
+    streaming counter uses -- otherwise the preview reports N
+    matches but "Clear all" silently no-ops.
+    """
+
+    queue = "celery"
+    repoid = 7
+    commitid = "deadbeefcafebabe1111222233334444aaaaaaaa"
+
+    pipe = patched_broker.pipeline(transaction=False)
+    for _ in range(3):
+        pipe.rpush(
+            queue,
+            _build_envelope(
+                task="app.tasks.notify.NotifyTask",
+                kwargs={"repoid": repoid, "commitid": commitid},
+            ),
+        )
+    for _ in range(2):
+        pipe.rpush(
+            queue,
+            _build_envelope(
+                task="app.tasks.upload.UploadTask",
+                kwargs={"repoid": repoid, "commitid": commitid},
+            ),
+        )
+    pipe.rpush(
+        queue,
+        _build_envelope(
+            task="app.tasks.notify.NotifyTask",
+            kwargs={"repoid": repoid + 1, "commitid": commitid},
+        ),
+    )
+    pipe.execute()
+    user = SimpleNamespace(id=1, pk=1)
+
+    synthetic = CeleryBrokerQueue(
+        queue_name=queue,
+        task_name=None,
+        repoid=repoid,
+        commitid=commitid,
+        index_in_queue=None,
+    )
+
+    result = celery_broker_clear(
+        [synthetic],
+        user=user,
+        dry_run=False,
+        keep_one=False,
+    )
+
+    assert result.count == 5
+    assert patched_broker.llen(queue) == 1

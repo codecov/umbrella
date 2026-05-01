@@ -447,6 +447,37 @@ def _celery_clear_tombstone() -> str:
     return f"{_CELERY_TOMBSTONE_PREFIX}:{uuid.uuid4().hex}"
 
 
+def _envelope_matches_any_filter(meta, filter_tuples: frozenset) -> bool:
+    """Return True if `meta` matches any tuple in `filter_tuples`.
+
+    Each filter tuple is `(task_name, repoid, commitid)` where any
+    slot may be `None` to mean "wildcard / don't constrain on this
+    field". Mirrors the queryset's "filter by what's set" semantic
+    (`queryset.filter(repoid=repoid)` doesn't constrain `task_name`),
+    so callers like `streaming_celery_count` and the clear-by-filter
+    path can reuse the same triple-shaped frozenset they would build
+    for an exact-tuple match without silently undercounting when the
+    operator left a slot unset.
+
+    Without the wildcard semantics, a filter built from operator
+    input (e.g. `(None, 1, "abc")` for "repoid=1 AND commitid=abc",
+    no task constraint) would never match a real envelope (whose
+    `meta.task` is always populated), so both the streaming counter
+    and the streaming clear would silently report zero matches even
+    when the queryset path would have surfaced rows.
+    """
+
+    for ft_task, ft_repoid, ft_commitid in filter_tuples:
+        if ft_task is not None and ft_task != meta.task:
+            continue
+        if ft_repoid is not None and ft_repoid != meta.repoid:
+            continue
+        if ft_commitid is not None and ft_commitid != meta.commitid:
+            continue
+        return True
+    return False
+
+
 @dataclass(frozen=True)
 class _StreamingClearStats:
     """Per-run stats from `_streaming_celery_clear`."""
@@ -555,8 +586,7 @@ def _streaming_celery_clear(
                 idx = chunk_start + offset
                 decoded = _decode_value(raw)
                 meta = parse_celery_envelope(decoded)
-                key = (meta.task, meta.repoid, meta.commitid)
-                if key not in filter_tuples:
+                if not _envelope_matches_any_filter(meta, filter_tuples):
                     continue
                 matches_found += 1
                 if first_match_index is None:
