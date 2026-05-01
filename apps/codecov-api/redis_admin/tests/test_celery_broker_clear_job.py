@@ -655,7 +655,7 @@ def test_clear_by_filter_view_dry_run_preview_unchanged(patched_broker, superuse
 # ---- Audit log (django_db) -------------------------------------------------
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_clear_job_writes_audit_row_on_completion_with_chunked_mode(
     patched_broker,
 ):

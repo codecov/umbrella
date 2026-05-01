@@ -33,6 +33,7 @@ from typing import Any
 import sentry_sdk
 from django.contrib.admin.models import DELETION, LogEntry
 from django.contrib.contenttypes.models import ContentType
+from django.db import close_old_connections
 
 from . import conn as _conn
 from . import settings as redis_admin_settings
@@ -1283,6 +1284,15 @@ def _run_celery_broker_clear_job(
         # entry, which only matters for tests, not production.
         with _clear_job_threads_lock:
             _clear_job_threads.pop(job_id, None)
+        # Close DB connections opened by this worker thread (the
+        # audit-log write goes through the ORM, which lazily opens
+        # one per thread). Without this, a long-lived gunicorn
+        # process would slowly leak connections, and Django's
+        # `TransactionTestCase` truncate-on-teardown would block
+        # waiting for our idle connection to drain. `close_old_
+        # connections` is the documented helper for this exact
+        # background-thread cleanup case.
+        close_old_connections()
 
 
 def _run_celery_broker_clear_job_body(
