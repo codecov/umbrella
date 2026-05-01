@@ -2475,3 +2475,68 @@ def test_streaming_clear_dry_run_keep_one_skips_empty_queues(patched_broker):
     assert result.count == n - 1
     assert patched_broker.llen(queue_with) == n
     assert patched_broker.llen(queue_empty) == 0
+
+
+def test_celery_broker_clear_with_synthetic_filter_target_clears_full_queue(
+    patched_broker,
+):
+    """Regression for Bugbot review on PR #903 (HIGH severity):
+    `clear_by_filter_view` previously passed `sample_targets` (the
+    materialised window capped at `CELERY_BROKER_DISPLAY_LIMIT`) as
+    the `targets` arg to `celery_broker_clear`. When every match
+    sat *beyond* that window -- e.g. a recent burst that filled the
+    tail of a queue with `LLEN > CELERY_BROKER_DISPLAY_LIMIT` --
+    `sample_targets` was empty, `_celery_broker_clear` derived
+    `by_queue_filters = {}`, the streaming-clear loop never
+    executed, and the operator saw "Cleared 0 of N matching
+    message(s)" while the queue stayed full.
+
+    The view now synthesises a single `CeleryBrokerQueue` directly
+    from the operator's filter inputs (queue + task_name? +
+    repoid? + commitid?). This test pins that contract: a single
+    synthetic target carrying just the filter triple must fan out
+    to *every* matching envelope across the full `LLEN`, not just
+    the first `CELERY_BROKER_DISPLAY_LIMIT` rows.
+    """
+
+    queue = "bundle_analysis"
+    task = "app.tasks.bundle_analysis.BundleAnalysisProcessor"
+    repoid = 21222368
+    commitid = "0832c11a1f43c5e2a1b9f8a3e5d1c2b7e9a8d3f0"
+
+    # > CELERY_BROKER_DISPLAY_LIMIT so the queryset-bounded window
+    # would have been empty for any caller that filtered on the
+    # tail end of the queue.
+    n = redis_admin_settings.CELERY_BROKER_DISPLAY_LIMIT + 1_000
+    pipe = patched_broker.pipeline(transaction=False)
+    for _ in range(n):
+        pipe.rpush(
+            queue,
+            _build_envelope(task=task, kwargs={"repoid": repoid, "commitid": commitid}),
+        )
+    pipe.execute()
+    user = SimpleNamespace(id=1, pk=1)
+
+    # The single synthetic target the view now constructs:
+    # one row carrying the operator's filter triple, no
+    # `index_in_queue` requirement (the streaming clear walks
+    # every position in the queue).
+    synthetic_target = CeleryBrokerQueue(
+        queue_name=queue,
+        task_name=task,
+        repoid=repoid,
+        commitid=commitid,
+        index_in_queue=None,
+    )
+
+    result = celery_broker_clear(
+        [synthetic_target],
+        user=user,
+        dry_run=False,
+        keep_one=False,
+    )
+
+    assert result.count == n
+    # `_streaming_celery_clear` LREMs tombstones at the end of each
+    # pass, so the queue should be fully drained.
+    assert patched_broker.llen(queue) == 0

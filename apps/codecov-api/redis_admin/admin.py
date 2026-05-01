@@ -1589,6 +1589,18 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             # `chart_fragment_view` via an AJAX call, keeping the
             # changelist fast even for 500k-deep queues.
             ctx["queue_name"] = request.GET.get("queue_name__exact", "")
+            # Surface the actual `CELERY_BROKER_SCAN_LIMIT` so the
+            # loader hint reflects whatever the deployment overrode it
+            # to (50_000 / 200_000 / etc.), instead of the hardcoded
+            # default. Keeps the user-facing message honest in
+            # environments where the scan window has been tuned.
+            # Pre-formatted with thousands separators since
+            # `django.contrib.humanize` is not installed in this
+            # service's INSTALLED_APPS, so `intcomma` is unavailable
+            # in the template.
+            ctx["scan_limit_label"] = (
+                f"{redis_admin_settings.CELERY_BROKER_SCAN_LIMIT:,}"
+            )
         return super().changelist_view(request, ctx)
 
     def _build_frequency_chart_context(
@@ -1840,12 +1852,44 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             # has its own error handling.
             match_count = len(sample_targets)
             kept_index = sample_targets[0].index_in_queue if sample_targets else None
-        # Backwards-compat: existing callers below still reference
-        # `matches` for dispatching `celery_broker_clear`. The streaming
-        # clear only needs the filter tuples (which it derives from
-        # targets), not the full target list — passing the trimmed
-        # `sample_targets` is sufficient and cheap.
-        matches = sample_targets
+        # Build a single synthetic target carrying the operator's
+        # *exact* filter (queue + task_name? + repoid? + commitid?)
+        # so `_celery_broker_clear` always derives the same
+        # `frozenset({(task_name or None, repoid, commitid or None)})`
+        # that `streaming_celery_count` walked the full queue with.
+        #
+        # Without this, the clear path inferred its filter set from
+        # `sample_targets` — the materialised window capped by
+        # `CELERY_BROKER_DISPLAY_LIMIT` (default 2_000). That had two
+        # silent-no-op modes:
+        #
+        # 1. All matches sit beyond the display window (e.g. a recent
+        #    burst on a queue with `LLEN > 2_000`): `sample_targets`
+        #    is empty, `by_queue_filters` becomes `{}`, the streaming
+        #    clear loop doesn't iterate, and the queue is never
+        #    touched even though `match_count > 0` from streaming.
+        # 2. Operator filtered by `repoid` only: each `sample_target`
+        #    contributes a *specific* `(task_name, repoid, commitid)`
+        #    triple, so the filter set excludes any task name not
+        #    represented in the first 2_000 messages — those messages
+        #    survive the clear.
+        #
+        # The synthetic target restores the streaming-clear semantic
+        # of "match every envelope whose `(task, repoid, commitid)`
+        # equals the operator's input." Per-message and bulk-select
+        # paths (`delete_model`, `clear_selected`, `delete_queryset`,
+        # `clear_dry_run`) still pass real materialised rows — those
+        # are intentionally index-driven, not filter-driven, so they
+        # don't go through this code path.
+        filter_target = CeleryBrokerQueue(
+            pk_token=f"{queue_name}#{kept_index if kept_index is not None else 'filter'}",
+            queue_name=queue_name,
+            index_in_queue=kept_index,
+            task_name=task_name or None,
+            repoid=repoid,
+            commitid=commitid or None,
+        )
+        matches = [filter_target]
 
         expected_confirm = queue_name
         typed_confirm = (request.POST.get("typed_confirm") or "").strip()
