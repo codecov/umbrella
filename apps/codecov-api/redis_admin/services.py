@@ -21,10 +21,12 @@ single chokepoint for:
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import logging
+import threading
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -511,6 +513,32 @@ class _StreamingClearStats:
     total_found: int
     first_match_index: int | None
     passes_run: int
+    # Set by `_streaming_celery_clear` when a `progress_callback`
+    # returned `True` to abort. The chunked background-job worker
+    # uses this to flip the job hash's `status` to `"cancelled"`.
+    # Synchronous callers (`celery_broker_clear`) never pass a
+    # callback, so they always see `cancelled=False`.
+    cancelled: bool = False
+
+
+# Per-chunk progress payload handed to the optional
+# `progress_callback` in `_streaming_celery_clear`. Kept as a small
+# frozen dataclass (rather than a bare dict) so the callback signature
+# is self-documenting and stable across the in-flight chunked-clear
+# worker, future chunked callers, and any progress-snapshot test
+# fixtures.
+@dataclass(frozen=True)
+class _ChunkProgress:
+    pass_num: int  # 1-based pass index
+    chunk_index: int  # 0-based chunk index within the current pass
+    chunks_total: int  # number of chunks in the current pass
+    processed_delta: int  # messages walked in this chunk (LRANGE size)
+    matched_delta: int  # matches LSET-tombstoned in this chunk
+    drifted_delta: int  # LRANGE/LINDEX drifts skipped in this chunk
+    found_delta: int  # all matches observed in this chunk (incl. drift)
+    total_lset: int  # cumulative across all passes/chunks so far
+    total_drifted: int
+    total_found: int
 
 
 def _streaming_celery_clear(
@@ -521,6 +549,8 @@ def _streaming_celery_clear(
     *,
     keep_one: bool = False,
     dry_run: bool = False,
+    chunk_size: int | None = None,
+    progress_callback: Callable[[_ChunkProgress], bool] | None = None,
 ) -> _StreamingClearStats:
     """Streaming LRANGE+verify-before-LSET clear for `queue_name`.
 
@@ -557,11 +587,34 @@ def _streaming_celery_clear(
     tombstoned), `total_drifted` (slots skipped due to LRANGE/LINDEX
     drift), `total_found` (every match observed across passes —
     populated for the dry-run preview), and `passes_run`.
+
+    `chunk_size`, when set, overrides `_CELERY_CLEAR_CHUNK` for the
+    LRANGE step. The chunked background-job worker
+    (`start_celery_broker_clear_job`) drops it to
+    `_CELERY_CLEAR_CHUNK_JOB` (1k) so the progress bar updates and
+    cancel checks happen at sub-second granularity even on multi-
+    hundred-thousand-deep queues; synchronous callers leave it at
+    the default 10k for fewer LRANGE round-trips.
+
+    `progress_callback`, when supplied, is invoked at each chunk
+    boundary with a `_ChunkProgress` snapshot (per-chunk deltas and
+    running totals). Returning `True` from the callback aborts the
+    clear: the in-flight tombstones for the current pass are
+    LREMmed (so we leave a clean queue, not a partial graveyard) and
+    `_StreamingClearStats.cancelled` is set so the chunked worker
+    can flip the job hash to `"cancelled"`. Returning `False` (or
+    `None`) lets the loop continue. Cancel only ever lands at chunk
+    boundaries — never mid-LSET — so an LSET we already issued is
+    always paired with the corresponding LREM at the next pass-end
+    or cancel-drain.
     """
+
+    chunk = chunk_size if chunk_size is not None else _CELERY_CLEAR_CHUNK
 
     total_lset = 0
     total_drifted = 0
     total_found = 0
+    cancelled = False
     # Tracks the lowest-index match seen across all passes. Pass 1
     # walks the queue in ascending index order, so the first match
     # we see IS the lowest. Used by the clear-by-filter preview to
@@ -597,9 +650,19 @@ def _streaming_celery_clear(
         # `prev_lset == matches_lset` plateau exit then declared
         # convergence with most of the queue still in place.
         depth = int(redis.llen(queue_name) or 0)
-        for chunk_start in range(0, depth, _CELERY_CLEAR_CHUNK):
-            chunk_end = chunk_start + _CELERY_CLEAR_CHUNK - 1
+        # Track chunk index + count for the progress callback so the
+        # progress page can render "pass 2 / 3, chunk 47 / 213". The
+        # `chunks_total` is computed off the snapshot depth — fine
+        # for the progress UI; the loop itself walks the same range.
+        chunks_total = (depth + chunk - 1) // chunk if chunk > 0 else 0
+        chunk_index = 0
+        for chunk_start in range(0, depth, chunk):
+            chunk_end = chunk_start + chunk - 1
             raw_chunk = redis.lrange(queue_name, chunk_start, chunk_end)
+            chunk_processed = len(raw_chunk)
+            chunk_lset_before = matches_lset
+            chunk_drifted_before = matches_drifted
+            chunk_found_before = matches_found
             for offset, raw in enumerate(raw_chunk):
                 # Skip already-tombstoned slots from this or a
                 # concurrent clear.
@@ -639,6 +702,61 @@ def _streaming_celery_clear(
                     # Out-of-range: consumer drained this slot.
                     matches_drifted += 1
 
+            chunk_index += 1
+            if progress_callback is not None:
+                snapshot = _ChunkProgress(
+                    pass_num=passes_run,
+                    chunk_index=chunk_index,
+                    chunks_total=chunks_total,
+                    processed_delta=chunk_processed,
+                    matched_delta=matches_lset - chunk_lset_before,
+                    drifted_delta=matches_drifted - chunk_drifted_before,
+                    found_delta=matches_found - chunk_found_before,
+                    total_lset=total_lset + matches_lset,
+                    total_drifted=total_drifted + matches_drifted,
+                    total_found=total_found + matches_found,
+                )
+                # Defensive: a misbehaving callback that itself
+                # raises must not strand in-flight tombstones nor
+                # crash the streaming clear. Treat it the same as
+                # "no cancel requested" and keep going. The chunked-
+                # job worker traps and reports its own callback
+                # failures via the job hash's `error` field.
+                try:
+                    cancel_now = bool(progress_callback(snapshot))
+                except Exception:  # pragma: no cover - defensive
+                    log.exception(
+                        "redis_admin._streaming_celery_clear: "
+                        "progress_callback raised; treating as no-cancel"
+                    )
+                    cancel_now = False
+                if cancel_now:
+                    cancelled = True
+                    if not dry_run:
+                        # Drain in-flight tombstones for this pass
+                        # so the queue is left in a clean state
+                        # rather than a partial-graveyard. Mirrors
+                        # the pass-end LREM below.
+                        try:
+                            redis.lrem(queue_name, 0, tombstone)
+                        except Exception:  # pragma: no cover - best-effort
+                            log.exception(
+                                "redis_admin._streaming_celery_clear: "
+                                "cancel-drain LREM failed for %r",
+                                queue_name,
+                            )
+                    total_lset += matches_lset
+                    total_drifted += matches_drifted
+                    total_found += matches_found
+                    return _StreamingClearStats(
+                        total_lset=total_lset,
+                        total_drifted=total_drifted,
+                        total_found=total_found,
+                        first_match_index=first_match_index,
+                        passes_run=passes_run,
+                        cancelled=True,
+                    )
+
         if not dry_run:
             redis.lrem(queue_name, 0, tombstone)
 
@@ -675,6 +793,7 @@ def _streaming_celery_clear(
         total_found=total_found,
         first_match_index=first_match_index,
         passes_run=passes_run,
+        cancelled=cancelled,
     )
 
 
@@ -894,3 +1013,429 @@ def _celery_broker_clear(
     except AttributeError:  # pragma: no cover - older sdks
         pass
     return result
+
+
+# ---- Chunked celery_broker clear jobs (background-thread variant) ----------
+#
+# Synchronous `celery_broker_clear` is fine for changelist actions and
+# the dry-run preview because operators expect the action handler to
+# block; but the "Clear all" path on a 200-500k-deep queue can run
+# well past the gunicorn worker `--timeout` (api.sh's 600s default
+# is comfortably above that, but upstream proxies may impose lower
+# ceilings — Cloudflare's free-tier is 100s, GCP HTTPS LB defaults
+# to 30s). The chunked variant here decouples the clear's wall-clock
+# from the HTTP request lifetime: `start_celery_broker_clear_job`
+# returns a `job_id` immediately, the actual clear runs in a daemon
+# thread, and the operator polls a status hash for progress + drives
+# cancellation through it.
+#
+# Why threading and not Celery: the queue we're clearing is the
+# Celery broker. Submitting a control task to a broker we're
+# emptying creates a circular dependency (the control task may sit
+# behind the messages we're about to tombstone); the operator pod
+# would also need to be in the worker fleet to pick the task up.
+# Threading keeps the entire job within the api pod's process, so
+# the lifecycle is "as long as gunicorn keeps the worker alive".
+# That's a documented restart-safety trade-off (see README): a
+# gunicorn worker killed mid-job leaves any in-flight tombstones
+# (`__redis_admin_celery_tombstone__:<uuid>`) parked in the queue.
+# Operator can re-run the clear (the new pass skips them) or sweep
+# manually.
+
+# Job state lives in the cache redis (`_conn.get_connection(kind=
+# "default")`), NOT the broker — keeping the operator's job
+# bookkeeping off the same Redis instance we're clearing means a
+# clear that drains the broker doesn't accidentally also evict its
+# own progress hash.
+_CELERY_CLEAR_JOB_KEY_PREFIX: str = "redis_admin:celery_clear_job"
+
+# Smaller LRANGE chunk for the chunked worker — finer-grained
+# progress updates and sub-second cancel landings on multi-hundred-
+# thousand-deep queues. The synchronous path keeps
+# `_CELERY_CLEAR_CHUNK` (10k) so existing tests + call sites don't
+# change behaviour.
+_CELERY_CLEAR_CHUNK_JOB: int = 1_000
+
+# Auto-expire abandoned job hashes so the cache redis doesn't
+# accumulate zombie state (gunicorn reload, container restart,
+# operator closed the tab and forgot). 24h gives the on-call
+# enough headroom to come back the next morning and inspect a
+# completed run via the status URL before it disappears.
+_CELERY_CLEAR_JOB_TTL_SECONDS: int = 24 * 60 * 60
+
+
+# Terminal states that release the polling client.
+_CELERY_CLEAR_JOB_TERMINAL_STATES: frozenset[str] = frozenset(
+    {"completed", "cancelled", "failed"}
+)
+
+# Test-only handle to the worker thread per job_id so tests can
+# `.join(timeout=...)` deterministically. Cleared by the worker on
+# exit. NEVER rely on this in production paths; production polls
+# via the JSON status endpoint. Module-private with the leading
+# underscore convention so it's clearly off-limits to callers.
+_clear_job_threads: dict[str, threading.Thread] = {}
+# A lock around the dict because the worker thread itself mutates
+# it (clears its entry on exit) and production paths read it from
+# the gunicorn HTTP thread. The dict is small (one entry per
+# in-flight job per worker process) and contention is rare.
+_clear_job_threads_lock = threading.Lock()
+
+
+def _job_key(job_id: str) -> str:
+    return f"{_CELERY_CLEAR_JOB_KEY_PREFIX}:{job_id}"
+
+
+def _utc_now_iso() -> str:
+    """Timestamp for job hash fields. Uses timezone-aware UTC ISO 8601
+    (seconds resolution) so the progress page can render durations
+    and the audit trail has a stable cross-deploy ordering.
+    """
+    return _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds")
+
+
+def _decode_job_hash(raw: dict[bytes | str, bytes | str]) -> dict[str, str]:
+    """Decode a fakeredis / redis-py HGETALL result into a flat
+    `{str: str}` mapping. Bytes get decoded as UTF-8; non-bytes pass
+    through unchanged. Used by both `get_celery_broker_clear_job`
+    and the worker's cancel-poll path so the JSON status view sees
+    a consistent shape regardless of which Redis client was used.
+    """
+    decoded: dict[str, str] = {}
+    for k, v in raw.items():
+        kk = k.decode() if isinstance(k, bytes) else str(k)
+        vv = v.decode() if isinstance(v, bytes) else str(v)
+        decoded[kk] = vv
+    return decoded
+
+
+def start_celery_broker_clear_job(
+    queue_name: str,
+    *,
+    user,
+    task_name: str | None = None,
+    repoid: int | None = None,
+    commitid: str | None = None,
+    keep_one: bool = False,
+    dry_run: bool = False,
+) -> str:
+    """Spawn a background `celery_broker_clear` job; return its `job_id`.
+
+    Initialises a hash at `redis_admin:celery_clear_job:<job_id>` in
+    the cache redis with the operator's filter shape, snapshots the
+    current `LLEN(queue)` as `total_estimated`, then launches a
+    daemon thread that walks the queue in
+    `_CELERY_CLEAR_CHUNK_JOB`-message chunks. The HTTP request that
+    triggers this returns immediately so the gunicorn worker never
+    sits on the actual clear; the operator polls a status JSON view
+    for progress and can request cancellation (lands at the next
+    chunk boundary).
+    """
+
+    # Hyphenated canonical form (8-4-4-4-12) so the value round-
+    # trips through Django's `<uuid:>` URL converter — which only
+    # accepts the canonical regex — without a separate normalising
+    # layer in the view.
+    job_id = str(uuid.uuid4())
+    cache = _conn.get_connection(kind="default")
+    # Snapshot LLEN once at submission so the progress bar has a
+    # stable denominator for the operator's benefit. The actual
+    # streaming clear re-LLENs on every pass (the queue may shift
+    # during a long clear), but the "estimated total" rendered in
+    # the UI is best-effort.
+    try:
+        broker = _conn.get_connection(kind="broker")
+        total_estimated = int(broker.llen(queue_name) or 0)
+    except Exception:  # pragma: no cover - broker outage path
+        total_estimated = 0
+
+    user_id = getattr(user, "id", None) or getattr(user, "pk", None) or 0
+    now = _utc_now_iso()
+    initial = {
+        "status": "pending",
+        "queue": queue_name,
+        "filter_task": task_name or "",
+        "filter_repoid": "" if repoid is None else str(repoid),
+        "filter_commitid": commitid or "",
+        "dry_run": "1" if dry_run else "0",
+        "keep_one": "1" if keep_one else "0",
+        "user_id": str(user_id),
+        "started_at": now,
+        "updated_at": now,
+        "completed_at": "",
+        "total_estimated": str(total_estimated),
+        "processed": "0",
+        "matched": "0",
+        "drifted": "0",
+        "passes_run": "0",
+        "error": "",
+        "cancel_requested": "0",
+    }
+    key = _job_key(job_id)
+    pipe = cache.pipeline(transaction=False)
+    pipe.hset(key, mapping=initial)
+    pipe.expire(key, _CELERY_CLEAR_JOB_TTL_SECONDS)
+    pipe.execute()
+
+    thread = threading.Thread(
+        target=_run_celery_broker_clear_job,
+        kwargs={
+            "job_id": job_id,
+            "queue_name": queue_name,
+            "task_name": task_name,
+            "repoid": repoid,
+            "commitid": commitid,
+            "keep_one": keep_one,
+            "dry_run": dry_run,
+            "user": user,
+        },
+        # Truncated UUID so threadnames are easy to grep in pstacks
+        # without becoming unreadable.
+        name=f"redis_admin.clear_job.{job_id[:8]}",
+        daemon=True,
+    )
+    with _clear_job_threads_lock:
+        _clear_job_threads[job_id] = thread
+    thread.start()
+    return job_id
+
+
+def get_celery_broker_clear_job(job_id: str) -> dict[str, str] | None:
+    """Read the job's state hash from cache redis. Returns `None`
+    when the hash is absent (unknown id, or the 24h TTL elapsed).
+    Values are returned as strings — the JSON status view casts
+    `processed` / `matched` / `total_estimated` to int before
+    serialising.
+    """
+
+    cache = _conn.get_connection(kind="default")
+    raw = cache.hgetall(_job_key(job_id))
+    if not raw:
+        return None
+    return _decode_job_hash(raw)
+
+
+def request_cancel_celery_broker_clear_job(job_id: str) -> bool:
+    """Set `cancel_requested=1` on the job hash. Returns `True`
+    when the hash existed (cancel will land at the next chunk
+    boundary), `False` when the id is unknown or the hash already
+    expired. Idempotent: re-cancelling a cancelled or terminal
+    job is a no-op.
+    """
+
+    cache = _conn.get_connection(kind="default")
+    key = _job_key(job_id)
+    if not cache.exists(key):
+        return False
+    cache.hset(
+        key,
+        mapping={
+            "cancel_requested": "1",
+            "updated_at": _utc_now_iso(),
+        },
+    )
+    return True
+
+
+def _run_celery_broker_clear_job(
+    *,
+    job_id: str,
+    queue_name: str,
+    task_name: str | None,
+    repoid: int | None,
+    commitid: str | None,
+    keep_one: bool,
+    dry_run: bool,
+    user,
+) -> None:
+    """Daemon-thread worker for `start_celery_broker_clear_job`.
+
+    Owns the lifecycle of one chunked clear: it flips `status` to
+    `running`, calls `_streaming_celery_clear` with a callback that
+    updates the progress hash and polls `cancel_requested`, and on
+    completion writes a final `status` (`completed` / `cancelled` /
+    `failed`) plus the `_record_audit` row so the operator audit
+    trail captures chunked-mode clears alongside synchronous ones.
+
+    Exceptions are swallowed: a misbehaving streaming clear must
+    not crash the gunicorn worker. We log to Sentry via
+    `log.exception(...)` and surface the error string to the
+    operator through the job hash's `error` field instead.
+    """
+
+    try:
+        _run_celery_broker_clear_job_body(
+            job_id=job_id,
+            queue_name=queue_name,
+            task_name=task_name,
+            repoid=repoid,
+            commitid=commitid,
+            keep_one=keep_one,
+            dry_run=dry_run,
+            user=user,
+        )
+    finally:
+        # Drop the test-handle on exit so a re-run with the same
+        # job_id (operator clicked twice through some flake) starts
+        # cleanly. Best-effort: a failure to remove leaves a stale
+        # entry, which only matters for tests, not production.
+        with _clear_job_threads_lock:
+            _clear_job_threads.pop(job_id, None)
+
+
+def _run_celery_broker_clear_job_body(
+    *,
+    job_id: str,
+    queue_name: str,
+    task_name: str | None,
+    repoid: int | None,
+    commitid: str | None,
+    keep_one: bool,
+    dry_run: bool,
+    user,
+) -> None:
+    """Inner body of the worker, separated from `_run_celery_broker_clear_job`
+    so the wrapper can own the test-handle cleanup in a `finally`
+    block. The split keeps the cleanup correct even if a future
+    refactor introduces a new early-return path inside the body.
+    """
+
+    cache = _conn.get_connection(kind="default")
+    key = _job_key(job_id)
+    cache.hset(key, "status", "running")
+    cache.hset(key, "updated_at", _utc_now_iso())
+
+    # Build the same `_FILTER_ANY`-substituted filter the
+    # synchronous `streaming_celery_count` uses, so an unset
+    # operator slot becomes a wildcard rather than an exact-`None`
+    # match (which would zero-match for any envelope whose field
+    # wasn't literally `None`).
+    filter_tuples = frozenset(
+        {
+            (
+                task_name if task_name else _FILTER_ANY,
+                repoid if repoid is not None else _FILTER_ANY,
+                commitid if commitid else _FILTER_ANY,
+            )
+        }
+    )
+
+    def _progress_callback(snapshot: _ChunkProgress) -> bool:
+        """Per-chunk hook: pump `processed/matched/drifted` into
+        the job hash via HINCRBY, refresh `passes_run` /
+        `updated_at`, then check `cancel_requested`. Returning
+        `True` aborts the loop in `_streaming_celery_clear` and
+        triggers an in-flight tombstone drain.
+        """
+
+        try:
+            pipe = cache.pipeline(transaction=False)
+            if snapshot.processed_delta:
+                pipe.hincrby(key, "processed", snapshot.processed_delta)
+            if snapshot.matched_delta:
+                pipe.hincrby(key, "matched", snapshot.matched_delta)
+            if snapshot.drifted_delta:
+                pipe.hincrby(key, "drifted", snapshot.drifted_delta)
+            pipe.hset(
+                key,
+                mapping={
+                    "passes_run": str(snapshot.pass_num),
+                    "updated_at": _utc_now_iso(),
+                },
+            )
+            pipe.execute()
+        except Exception:  # pragma: no cover - cache outage shouldn't kill clear
+            log.exception(
+                "redis_admin.clear_job(%s): failed to write progress",
+                job_id,
+            )
+        try:
+            cancel_raw = cache.hget(key, "cancel_requested")
+        except Exception:  # pragma: no cover - cache outage
+            return False
+        if cancel_raw is None:
+            return False
+        if isinstance(cancel_raw, bytes):
+            return cancel_raw == b"1"
+        return cancel_raw == "1"
+
+    error_str: str | None = None
+    stats: _StreamingClearStats | None = None
+    try:
+        broker = _conn.get_connection(kind="broker")
+        tombstone = _celery_clear_tombstone()
+        stats = _streaming_celery_clear(
+            broker,
+            queue_name,
+            filter_tuples,
+            tombstone,
+            keep_one=keep_one,
+            dry_run=dry_run,
+            chunk_size=_CELERY_CLEAR_CHUNK_JOB,
+            progress_callback=_progress_callback,
+        )
+    except Exception as exc:
+        log.exception("redis_admin.clear_job(%s): worker failed", job_id)
+        error_str = str(exc)
+
+    finalise: dict[str, str] = {
+        "completed_at": _utc_now_iso(),
+        "updated_at": _utc_now_iso(),
+    }
+    if error_str is not None:
+        finalise["status"] = "failed"
+        finalise["error"] = error_str
+    elif stats is not None and stats.cancelled:
+        finalise["status"] = "cancelled"
+    else:
+        finalise["status"] = "completed"
+    try:
+        cache.hset(key, mapping=finalise)
+    except Exception:  # pragma: no cover - cache outage at finalise
+        log.exception(
+            "redis_admin.clear_job(%s): failed to write terminal state",
+            job_id,
+        )
+
+    # Audit at job-completion (not job-start). `result.count` here
+    # mirrors the synchronous path: total tombstoned for live runs,
+    # total_found for dry-run previews. Extra fields capture the
+    # chunked-mode shape so log queries can distinguish chunked from
+    # synchronous clears.
+    if dry_run:
+        mode = "chunked-dry-run"
+    elif keep_one:
+        mode = "chunked-all-but-first"
+    else:
+        mode = "chunked-all-from-bucket"
+    sample = (f"{queue_name}#filter",)
+    families = ("celery_broker",)
+    extra: dict[str, Any] = {
+        "mode": mode,
+        "job_id": job_id,
+        "cancelled": bool(stats and stats.cancelled),
+    }
+    if stats is not None:
+        extra.update(
+            {
+                "passes_run": stats.passes_run,
+                "total_lset": stats.total_lset,
+                "total_drifted": stats.total_drifted,
+                "total_found": stats.total_found,
+            }
+        )
+        count = stats.total_found if dry_run else stats.total_lset
+    else:
+        count = 0
+    if error_str is not None:
+        extra["error"] = error_str
+    _record_audit(
+        user=user,
+        scope="celery_broker_clear",
+        count=count,
+        refused=(),
+        sample=sample,
+        families=families,
+        dry_run=dry_run,
+        extra=extra,
+    )

@@ -25,7 +25,13 @@ from urllib.parse import urlencode
 from django.contrib import admin, messages
 from django.contrib.admin.utils import quote, unquote
 from django.core.exceptions import PermissionDenied
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import (
+    HttpRequest,
+    HttpResponse,
+    HttpResponseNotAllowed,
+    HttpResponseRedirect,
+    JsonResponse,
+)
 from django.shortcuts import render
 from django.urls import NoReverseMatch, path, reverse
 from django.utils.html import format_html, format_html_join
@@ -47,9 +53,13 @@ from .queryset import (
     resolve_payload_preview,
 )
 from .services import (
+    _CELERY_CLEAR_JOB_TERMINAL_STATES,
     _FILTER_ANY,
     celery_broker_clear,
+    get_celery_broker_clear_job,
     redis_delete,
+    request_cancel_celery_broker_clear_job,
+    start_celery_broker_clear_job,
     streaming_celery_count,
 )
 
@@ -1764,6 +1774,27 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             self.admin_site.admin_view(self.clear_by_filter_view),
             name=f"{opts.app_label}_{opts.model_name}_clear_by_filter",
         )
+        # Three new URLs for the chunked-clear background job: a
+        # progress page (HTML), a status JSON endpoint that the
+        # progress page polls, and a cancel POST endpoint. All three
+        # are routed under `clear-by-filter/job/<uuid:job_id>/...`
+        # so they share the per-instance superuser gate and live
+        # alongside the existing preview page in the URL tree.
+        clear_progress_url = path(
+            "clear-by-filter/job/<uuid:job_id>/",
+            self.admin_site.admin_view(self.clear_by_filter_progress_view),
+            name=(f"{opts.app_label}_{opts.model_name}_clear_by_filter_progress"),
+        )
+        clear_status_url = path(
+            "clear-by-filter/job/<uuid:job_id>/status/",
+            self.admin_site.admin_view(self.clear_by_filter_status_view),
+            name=(f"{opts.app_label}_{opts.model_name}_clear_by_filter_status"),
+        )
+        clear_cancel_url = path(
+            "clear-by-filter/job/<uuid:job_id>/cancel/",
+            self.admin_site.admin_view(self.clear_by_filter_cancel_view),
+            name=(f"{opts.app_label}_{opts.model_name}_clear_by_filter_cancel"),
+        )
         chart_fragment_url = path(
             "<str:queue_name>/chart-fragment/",
             self.admin_site.admin_view(self.chart_fragment_view),
@@ -1771,7 +1802,14 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         )
         # Inserted before the catch-all `<path:object_id>/` patterns so
         # custom routes don't get swallowed as object_ids.
-        return [clear_url, chart_fragment_url, *urls]
+        return [
+            clear_url,
+            clear_progress_url,
+            clear_status_url,
+            clear_cancel_url,
+            chart_fragment_url,
+            *urls,
+        ]
 
     def clear_by_filter_view(self, request: HttpRequest) -> HttpResponse:
         """Targeted clear by `(queue_name, task_name?, repoid?, commitid?)`.
@@ -1996,10 +2034,21 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             else:
                 dry_run = action == "dry_run"
                 keep_one = action == "clear_keep_one"
-                result = celery_broker_clear(
-                    targets, user=request.user, dry_run=dry_run, keep_one=keep_one
-                )
+                # Dry-run keeps the synchronous shape: the request
+                # already does the streaming-count walk above, so
+                # the dry-run service call is fast (no LSET/LREM)
+                # and the operator gets the audit-log entry +
+                # re-rendered preview in one shot. The destructive
+                # actions, by contrast, fan out to a background
+                # thread so a 500k-deep queue clear never sits on
+                # the gunicorn worker.
                 if dry_run:
+                    result = celery_broker_clear(
+                        targets,
+                        user=request.user,
+                        dry_run=True,
+                        keep_one=keep_one,
+                    )
                     messages.info(
                         request,
                         f"Dry-run: would clear {result.count} of {match_count} "
@@ -2007,19 +2056,21 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
                         f"entry written; queue untouched).",
                     )
                 else:
-                    if action == "clear_keep_one":
-                        messages.success(
-                            request,
-                            f"Cleared {result.count} of {match_count} matching "
-                            f"message(s) from {queue_name} "
-                            f"(kept index={kept_index}).",
-                        )
-                    else:
-                        messages.success(
-                            request,
-                            f"Cleared {result.count} message(s) from {queue_name}",
-                        )
-                    return HttpResponseRedirect(changelist_url)
+                    job_id = start_celery_broker_clear_job(
+                        queue_name,
+                        user=request.user,
+                        task_name=task_name or None,
+                        repoid=repoid,
+                        commitid=commitid or None,
+                        keep_one=keep_one,
+                        dry_run=False,
+                    )
+                    progress_url = reverse(
+                        f"admin:{opts.app_label}_{opts.model_name}"
+                        "_clear_by_filter_progress",
+                        kwargs={"job_id": job_id},
+                    )
+                    return HttpResponseRedirect(progress_url)
 
         ctx = {
             **self.admin_site.each_context(request),
@@ -2039,6 +2090,223 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         }
         return render(
             request, "admin/redis_admin/celerybrokerqueue/clear_by_filter.html", ctx
+        )
+
+    # ---- Chunked-clear background-job views ------------------------------
+    #
+    # Three superuser-only views back the chunked clear's progress page:
+    #
+    # * `clear_by_filter_progress_view` — renders the HTML page with an
+    #   initial server-side snapshot, a `<progress>` bar, status pill,
+    #   matched/total counters, and a Cancel button. Loads
+    #   `celery_clear_progress.{js,css}` from `{% static %}` so the page
+    #   stays CSP-compliant (the production admin only allows
+    #   `'self'` + a single fixed sha256 hash for inline scripts).
+    # * `clear_by_filter_status_view` — JSON endpoint polled every ~1s
+    #   by the JS for progress updates. Pinned shape (see test
+    #   `test_clear_job_status_view_returns_json_for_running_job`):
+    #   `{job_id, status, processed, matched, drifted, ...}`.
+    # * `clear_by_filter_cancel_view` — POST-only. Sets
+    #   `cancel_requested=1` on the job hash; the worker thread polls
+    #   it at the next chunk boundary, drains in-flight tombstones,
+    #   and exits with `status=cancelled`.
+    #
+    # All three reuse the existing per-instance `is_superuser` gate
+    # (`clear_by_filter_view` already requires it; the same staff /
+    # superuser guard the rest of `CeleryBrokerQueueAdmin` uses).
+
+    def _job_progress_context(
+        self, *, job_id: str, job: dict[str, str]
+    ) -> dict[str, Any]:
+        """Shape the job hash + URL set for the progress template.
+
+        Cast numeric fields to int so the template can do arithmetic
+        without a `|add:0` dance. Empty strings remain empty so the
+        template's `{% if commitid %}` checks behave as expected.
+        Resolves both the status JSON URL and the cancel URL up
+        front so the template (and the JS data attributes) doesn't
+        have to know URL names.
+        """
+
+        def _int(field: str, default: int = 0) -> int:
+            try:
+                return int(job.get(field) or default)
+            except (TypeError, ValueError):
+                return default
+
+        opts = self.model._meta
+        status_url = reverse(
+            f"admin:{opts.app_label}_{opts.model_name}_clear_by_filter_status",
+            kwargs={"job_id": job_id},
+        )
+        cancel_url = reverse(
+            f"admin:{opts.app_label}_{opts.model_name}_clear_by_filter_cancel",
+            kwargs={"job_id": job_id},
+        )
+        changelist_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist")
+        queue_name = job.get("queue", "")
+        if queue_name:
+            changelist_url = (
+                f"{changelist_url}?{urlencode({'queue_name__exact': queue_name})}"
+            )
+
+        status = job.get("status", "pending")
+        return {
+            "job_id": job_id,
+            "job": job,
+            "status": status,
+            "is_terminal": status in _CELERY_CLEAR_JOB_TERMINAL_STATES,
+            "queue_name": queue_name,
+            "filter_task": job.get("filter_task", ""),
+            "filter_repoid": job.get("filter_repoid", ""),
+            "filter_commitid": job.get("filter_commitid", ""),
+            "dry_run": job.get("dry_run") == "1",
+            "keep_one": job.get("keep_one") == "1",
+            "started_at": job.get("started_at", ""),
+            "updated_at": job.get("updated_at", ""),
+            "completed_at": job.get("completed_at", ""),
+            "total_estimated": _int("total_estimated"),
+            "processed": _int("processed"),
+            "matched": _int("matched"),
+            "drifted": _int("drifted"),
+            "passes_run": _int("passes_run"),
+            "error": job.get("error", ""),
+            "cancel_requested": job.get("cancel_requested") == "1",
+            "status_url": status_url,
+            "cancel_url": cancel_url,
+            "changelist_url": changelist_url,
+        }
+
+    def clear_by_filter_progress_view(
+        self, request: HttpRequest, job_id
+    ) -> HttpResponse:
+        """Render the progress page for a chunked clear job.
+
+        The Django URL converter passes `job_id` as a `uuid.UUID`
+        because the route uses `<uuid:job_id>`. We coerce to its
+        hex form so it matches `start_celery_broker_clear_job`'s
+        `uuid.uuid4().hex` storage key. Unknown / expired ids land
+        on the changelist with an error message instead of a bare
+        404 — the operator just clicked a stale link / refreshed
+        past the 24h TTL, and the changelist is the most useful
+        next step.
+        """
+
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "redis_admin clear-by-filter is restricted to superusers"
+            )
+
+        opts = self.model._meta
+        changelist_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist")
+        # Django's `<uuid:>` converter hands us a `uuid.UUID`; cast
+        # to canonical hyphenated string so the storage key matches
+        # what `start_celery_broker_clear_job` wrote.
+        job_id_str = str(job_id)
+        job = get_celery_broker_clear_job(job_id_str)
+        if job is None:
+            messages.error(
+                request,
+                f"Clear job {job_id_str} not found (may have expired or "
+                f"been submitted on a different deployment).",
+            )
+            return HttpResponseRedirect(changelist_url)
+
+        progress_ctx = self._job_progress_context(job_id=job_id_str, job=job)
+        ctx = {
+            **self.admin_site.each_context(request),
+            "title": f"Clearing {progress_ctx['queue_name']} (job {job_id_str[:8]})",
+            "opts": opts,
+            **progress_ctx,
+        }
+        return render(
+            request,
+            "admin/redis_admin/celerybrokerqueue/clear_by_filter_progress.html",
+            ctx,
+        )
+
+    def clear_by_filter_status_view(self, request: HttpRequest, job_id) -> HttpResponse:
+        """JSON endpoint for the progress page's polling loop.
+
+        Returns a stable shape regardless of state. Pinned by
+        `test_clear_job_status_view_returns_json_for_running_job` so
+        the JS poll handler can rely on the field set even as the
+        underlying job hash grows / shrinks across deploys.
+        """
+
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "redis_admin clear-by-filter is restricted to superusers"
+            )
+
+        job_id_str = str(job_id)
+        job = get_celery_broker_clear_job(job_id_str)
+        if job is None:
+            return JsonResponse(
+                {"error": "not_found", "job_id": job_id_str}, status=404
+            )
+
+        progress_ctx = self._job_progress_context(job_id=job_id_str, job=job)
+        # Trim the rendered context for the JSON wire shape: drop
+        # the `job` raw blob (the polling client only needs decoded
+        # fields) and the URLs (the page already has them).
+        return JsonResponse(
+            {
+                "job_id": job_id_str,
+                "status": progress_ctx["status"],
+                "is_terminal": progress_ctx["is_terminal"],
+                "queue_name": progress_ctx["queue_name"],
+                "filter_task": progress_ctx["filter_task"],
+                "filter_repoid": progress_ctx["filter_repoid"],
+                "filter_commitid": progress_ctx["filter_commitid"],
+                "dry_run": progress_ctx["dry_run"],
+                "keep_one": progress_ctx["keep_one"],
+                "started_at": progress_ctx["started_at"],
+                "updated_at": progress_ctx["updated_at"],
+                "completed_at": progress_ctx["completed_at"],
+                "total_estimated": progress_ctx["total_estimated"],
+                "processed": progress_ctx["processed"],
+                "matched": progress_ctx["matched"],
+                "drifted": progress_ctx["drifted"],
+                "passes_run": progress_ctx["passes_run"],
+                "error": progress_ctx["error"],
+                "cancel_requested": progress_ctx["cancel_requested"],
+            }
+        )
+
+    def clear_by_filter_cancel_view(self, request: HttpRequest, job_id) -> HttpResponse:
+        """POST-only endpoint that flags the job for cancellation.
+
+        Returns 202 (request accepted; effect lands at the next
+        chunk boundary in the worker thread) with the latest job
+        snapshot so the UI can update without waiting for the next
+        poll cycle. Idempotent: re-cancelling a cancelled job is a
+        no-op.
+        """
+
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "redis_admin clear-by-filter is restricted to superusers"
+            )
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+
+        job_id_str = str(job_id)
+        ok = request_cancel_celery_broker_clear_job(job_id_str)
+        if not ok:
+            return JsonResponse(
+                {"error": "not_found", "job_id": job_id_str}, status=404
+            )
+        # Re-fetch so the response carries `cancel_requested=1`
+        # without the client needing a follow-up poll.
+        job = get_celery_broker_clear_job(job_id_str) or {}
+        return JsonResponse(
+            {
+                "job_id": job_id_str,
+                "cancel_requested": job.get("cancel_requested") == "1",
+                "status": job.get("status", ""),
+            },
+            status=202,
         )
 
     def get_search_results(self, request, queryset, search_term):

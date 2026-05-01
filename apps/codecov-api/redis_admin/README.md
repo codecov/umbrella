@@ -40,7 +40,10 @@ accidentally surfaces them under `RedisQueue`.
 | `/admin/redis_admin/redisqueueitem/<token>/change/` | Inspect a single item |
 | `/admin/redis_admin/celerybrokerqueue/` | **Celery summary** — one row per known celery_broker queue with current `LLEN` and a drill-in link |
 | `/admin/redis_admin/celerybrokerqueue/?queue_name__exact=<queue>` | **Celery drill-down** — messages inside a celery broker queue with structured task / repoid / commitid columns, a `(repoid, commitid)` frequency chart, and per-message clear |
-| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/` | Preview + clear messages in `<queue>` matching a `(task_name?, repoid?, commitid?)` filter (POST-only, superuser-only). Wired up by the frequency chart's per-row "Clear queue" button; the preview page exposes three explicit actions (dry-run, clear all but first, clear all). |
+| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/` | Preview + clear messages in `<queue>` matching a `(task_name?, repoid?, commitid?)` filter (POST-only, superuser-only). Wired up by the frequency chart's per-row "Clear queue" button; the preview page exposes three explicit actions (dry-run, clear all but first, clear all). Destructive actions spawn a chunked background job and 302 to the progress page. |
+| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/job/<uuid>/` | Progress page for a chunked clear job (HTML, superuser-only). Polls the status JSON view every ~1s; renders a `<progress>` bar, matched / total / drift / pass counters, and a Cancel button. |
+| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/job/<uuid>/status/` | JSON snapshot of a chunked clear job (superuser-only); 404s on unknown / expired ids. |
+| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/job/<uuid>/cancel/` | POST-only cancel endpoint (superuser-only); flags `cancel_requested=1` and returns 202 with the latest snapshot. Cancel lands at the next chunk boundary. |
 | `/admin/redis_admin/redislock/` | Browse Redis locks (read-only) |
 | `/admin/redis_admin/redisqueue/clear-by-scope/` | M6 — cross-family clear-by-scope (superuser only) |
 
@@ -303,6 +306,158 @@ and the audit log captures the operation under
 For backward compatibility, the older `action=confirm` form
 shape (paired with `mode=all` / `mode=keep_one`) is aliased to
 the new actions so stale tabs and scripts keep working.
+
+### Chunked clear jobs (background-thread variant)
+
+The destructive actions on `clear-by-filter/` no longer block the
+HTTP request: a confirmed `clear_all` / `clear_keep_one` submit
+spawns a background daemon thread, then 302s the operator to a
+progress page that polls a status JSON view every ~1s.
+
+**Why this exists.** A 200–500k-deep queue clear can run for
+many minutes, well past common upstream timeouts. The api pod's
+own gunicorn `--timeout` defaults to 600s
+(`apps/codecov-api/api.sh:118`, configurable via
+`GUNICORN_TIMEOUT`), but the user-observed 120s ceiling
+originates from an upstream proxy (Cloudflare's free-tier or
+the GCP HTTPS LB backend timeout) outside this repo. Decoupling
+the clear's wall-clock from the HTTP request lifetime means the
+operator-facing surface is sub-second regardless of queue depth.
+
+**Job state hash.** Each chunked job lives in the
+**cache** Redis (`_conn.get_connection(kind="default")`) under
+`redis_admin:celery_clear_job:<uuid>`. Keeping it off the broker
+Redis means a clear that drains the broker can't accidentally
+evict its own progress hash. Fields:
+
+| Field | Purpose |
+|---|---|
+| `status` | `pending` / `running` / `completed` / `cancelled` / `failed` |
+| `queue` | queue name |
+| `filter_task`, `filter_repoid`, `filter_commitid` | operator filter (empty string = unconstrained) |
+| `dry_run`, `keep_one` | `0` / `1` |
+| `user_id` | initiator (audit-log attribution) |
+| `started_at`, `updated_at`, `completed_at` | ISO-8601 UTC |
+| `total_estimated` | `LLEN(queue)` snapshot at submission |
+| `processed`, `matched`, `drifted` | running counters, HINCRBY-ed per chunk |
+| `passes_run` | repeat-until-stable pass index |
+| `error` | empty unless `status=failed` |
+| `cancel_requested` | `0` / `1`; polled by the worker between chunks |
+
+Hashes get a 24h TTL on creation so abandoned jobs auto-expire —
+gunicorn reload, container restart, or operator-closed-the-tab
+won't accumulate zombie state in the cache redis.
+
+**Cancel semantics.** The Cancel button POSTs to
+`…/clear-by-filter/job/<uuid>/cancel/`, which sets
+`cancel_requested=1`. The worker thread polls this between
+LRANGE chunks. On the next chunk boundary (default 1000
+messages → sub-second on real Redis) it `LREM`s any in-flight
+tombstones for the current pass, sets `status=cancelled`, and
+exits. **Cancel only ever lands at chunk boundaries**, never
+mid-`LSET`, so a tombstone we already wrote is always paired
+with the matching `LREM` — the queue is left in a clean state,
+not a partial graveyard.
+
+**Restart safety.** The clear runs on a daemon thread on the
+api pod's gunicorn worker. If the worker is killed mid-job
+(rolling deploy, OOM, `terminationGracePeriodSeconds` exceeded),
+the in-flight tombstones (`__redis_admin_celery_tombstone__:<uuid>`)
+stay parked in the queue. Operator can either re-run the clear
+(the new pass walks the full queue and skips them — they're
+recognised as garbage at task-decode time and at LRANGE-snapshot
+time both) or `LREM 0 __redis_admin_celery_tombstone__:*` by
+hand. The job hash flips to `failed` only on raised exceptions,
+not on worker death — a killed worker leaves the hash in
+`running` until the 24h TTL elapses.
+
+**Why threading and not Celery.** The queue we're clearing is
+the Celery broker. Submitting a control task to a broker we're
+emptying creates a circular dependency (the control task may
+sit behind the messages we're about to tombstone), and the
+operator pod isn't part of the worker fleet so even if we
+queued the task it wouldn't get picked up. Threading keeps
+everything inside the api pod's process; the trade-off is the
+restart-safety caveat above.
+
+**URLs:**
+
+| Path | Purpose |
+|---|---|
+| `…/clear-by-filter/job/<uuid>/` | Progress page (HTML, polls status JSON) |
+| `…/clear-by-filter/job/<uuid>/status/` | JSON snapshot of the job hash (200 / 404) |
+| `…/clear-by-filter/job/<uuid>/cancel/` | POST-only; flags `cancel_requested=1` (202) |
+
+**Audit log.** A `LogEntry` row is written **at job
+completion** (not job-start), so a clear that's still running
+isn't yet attributed in the audit feed. The `change_message`
+JSON has `mode` ∈ `chunked-dry-run` /
+`chunked-all-from-bucket` / `chunked-all-but-first` (vs the
+synchronous `dry-run` / `all-from-bucket` / `all-but-first` so
+queries can distinguish the two paths) and an `extra` payload
+with `job_id`, `passes_run`, `total_drifted`, `cancelled`.
+
+### Request timeouts — short-term and long-term knobs
+
+The user-observed 120s timeout on big-queue clears + chart
+loads has both a known short-term operational lever and a
+long-term durable fix.
+
+**Short-term (operational).** The api pod's gunicorn
+`--timeout` is set in `apps/codecov-api/api.sh:118`:
+
+```
+--timeout "${GUNICORN_TIMEOUT:-600}"
+```
+
+The default is **600s**, configurable via the `GUNICORN_TIMEOUT`
+env var. **Do not change this in this PR** — that's a deploy-
+tuning decision; document only. Memory + concurrency
+implications: a longer worker timeout means a stuck request
+holds its worker slot for that long, so raising it without
+also bumping `GUNICORN_WORKERS` reduces the pod's effective
+concurrency proportionally.
+
+The user-reported 120s ceiling does **not** originate from
+this in-repo file. The most likely sources, in order of
+likelihood, are external to this repo and need to be
+investigated by an infra-side operator:
+
+1. **Cloudflare's per-request timeout.** Free-tier is 100s,
+   paid is configurable up to several minutes (see
+   Cloudflare's "request_timeout" setting and the
+   `proxy_read_timeout`-equivalent for orange-cloud
+   proxying).
+2. **GCP HTTPS LB backend timeout.** The default is 30s
+   on a Backend Service, often raised to 120s. Lives in
+   the cluster's Terraform / Helm chart.
+3. **Kubernetes ingress / `terminationGracePeriodSeconds`**
+   — usually 30s by default; less likely to be the source
+   of a 120s ceiling but worth checking for any
+   `nginx.ingress.kubernetes.io/proxy-read-timeout` or
+   similar annotations on the api Service.
+
+The Helm chart and the GCP infra config are NOT in
+`codecov/umbrella` — they live in the deploy repo. Search
+there for `GUNICORN_TIMEOUT`, `proxy_read_timeout`,
+`timeoutSeconds`, and the api Backend Service config.
+
+**Long-term (durable, this PR's contribution).** The chunked
+clear job decouples the clear's wall-clock from the HTTP
+request lifetime entirely. The POST that starts the clear
+spawns a thread + 302s in well under a second; each subsequent
+poll request reads a single hash from the cache redis (sub-
+millisecond on real Redis). No HTTP request ever sits on the
+actual clearing work, so no upstream timeout — Cloudflare,
+LB, gunicorn, ingress — can interrupt it.
+
+**Gap.** The changelist load itself (the page, not the chart)
+can still be slow on big queues because a `count()` /
+`LLEN` per visible queue runs synchronously in the request.
+PR #902 already moved the chart fragment to a lazy-loaded
+`{% static %}` JS path — the analogous follow-up would be to
+async-load the changelist's depth column the same way. **Not
+in scope for this PR**; see follow-up tracking.
 
 ### Per-message clear (LSET-tombstone)
 
