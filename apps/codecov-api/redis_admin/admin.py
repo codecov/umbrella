@@ -54,22 +54,48 @@ from .queryset import (
 )
 from .services import (
     _CELERY_CLEAR_JOB_TERMINAL_STATES,
-    _substitute_filter_any,
     celery_broker_clear,
     get_celery_broker_clear_job,
     redis_delete,
     request_cancel_celery_broker_clear_job,
     start_celery_broker_clear_job,
-    streaming_celery_count,
 )
 
 log = logging.getLogger(__name__)
 
-# Cap on the rows we render in the clear-by-filter preview
-# table. Decoupled from `CELERY_BROKER_DISPLAY_LIMIT` because
-# the preview page only needs a representative slice; the real
-# `match_count` comes from the streaming counter.
-_CLEAR_BY_FILTER_SAMPLE_SIZE: int = 20
+
+def _coerce_int(value: str | None) -> int | None:
+    """Best-effort `int(value)` for query-string display hints.
+
+    Returns `None` when `value` is `None` / empty / non-numeric. Used by
+    `clear_by_filter_view` to ingest the chart-supplied count hints
+    (`bucket_count`, `total_visible`, `total_depth`) without ever
+    raising on a hand-edited URL — the GET path falls back to
+    "Approximate count not available" when any hint is missing or
+    malformed, never a 500.
+    """
+
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_float(value: str | None) -> float | None:
+    """Best-effort `float(value)` for query-string display hints.
+
+    Mirrors `_coerce_int` for `bucket_pct` (the chart serialises it
+    as a fractional percentage like `36.4`); same fallback semantics.
+    """
+
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 # ---- Inline items preview (rendered on the queue change page) --------------
 #
@@ -1815,27 +1841,25 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         """Targeted clear by `(queue_name, task_name?, repoid?, commitid?)`.
 
         Reached from the frequency chart's per-row "Clear queue"
-        button (see `_frequency_chart.html`). The chart submits the
-        bucket's `task_name` / `repoid` / `commitid` and lands on a
+        button (see `_frequency_chart.html`). The chart GETs this
+        URL with the bucket's `task_name` / `repoid` / `commitid`
+        plus four display-only count hints (`bucket_count`,
+        `bucket_pct`, `total_visible`, `total_depth`) and lands on a
         preview page; the operator then picks one of three explicit
         actions:
 
-        * `action=dry_run` — audited dry-run via
-          `services.celery_broker_clear(dry_run=True)`. Leaves the
-          queue untouched but writes a `LogEntry` so we have a paper
-          trail for "what would have happened?". Re-renders the
-          preview with an info banner.
+        * `action=dry_run` — counts matches without mutating. Spawns
+          a chunked background-job worker (`dry_run=True`) and 302s
+          to the progress page; the worker writes a `LogEntry` on
+          completion so we have a paper trail for "what would have
+          happened?".
         * `action=clear_keep_one` — clear every match EXCEPT the one
-          with the lowest `index_in_queue`. The queryset materialises
-          via `LRANGE 0 N-1` so `matches[0]` is the head-of-queue (the
-          next message a Celery worker would pop); dropping it from
-          the deletion set leaves a single representative in flight.
-          Typical workflow: "drop the duplicate retries but leave one
-          running so something still completes." Refused for
-          single-match buckets where it would have to clear nothing.
+          with the lowest `index_in_queue` (the next message a
+          Celery worker would pop). Leaves a single representative
+          in flight. Typical workflow: "drop the duplicate retries
+          but leave one running so something still completes."
         * `action=clear_all` — clear every matching message. The
-          broadest of the three; equivalent to the old
-          `mode=all` semantic.
+          broadest of the three.
 
         The two destructive actions both gate on a typed-confirmation
         check (operator must re-type the queue name). Filtering by
@@ -1844,10 +1868,36 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         messages for repo X commit Y" would silently drop unrelated
         tasks routed through the same queue.
 
-        Both POSTs ultimately funnel through
-        `services.celery_broker_clear`, which runs the LSET-tombstone
-        path and writes the audit log entry under
-        `scope="celery_broker_clear"`.
+        ## Zero-Redis-I/O GET render
+
+        The GET render is intentionally Redis-free: no `LLEN`, no
+        `LRANGE`, no streaming-count walk, no queryset materialise.
+        The chart already knows the bucket count and queue depth
+        from its `LRANGE 0 CELERY_BROKER_SCAN_LIMIT-1` snapshot, so
+        we reuse those four hints to compute an approximate
+        "will tombstone ~X messages (~Y% of the queue at depth Z)"
+        callout in pure Python:
+
+            count ≈ bucket_count / total_visible * total_depth
+
+        Operators confirm based on the (queue, task, repoid, commit)
+        filter — which is identity-defining — not on a precise
+        count, so the approximate is sufficient. The previous
+        implementation called a streaming counter here, which held
+        the gunicorn worker for many seconds on a 200–500k-deep
+        queue; the chunked background-job worker still computes the
+        exact count as it scans, so the audit log stays precise.
+
+        When any of the four hints is missing (operator hand-crafted
+        the URL, or arrived via a non-chart link), the callout falls
+        back to "Approximate count not available" and the destructive
+        actions still work — the chunked worker reports the exact
+        match count from its own walk.
+
+        Both destructive POSTs and the dry-run POST funnel through
+        `services.start_celery_broker_clear_job`, which spawns a
+        chunked worker and returns immediately; the audit log entry
+        lands at job completion under `scope="celery_broker_clear"`.
         """
 
         if not request.user.is_superuser:
@@ -1904,96 +1954,6 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             )
             return HttpResponseRedirect(changelist_url)
 
-        queryset = self.model._default_manager.all().filter(
-            queue_name__exact=queue_name
-        )
-        if task_name:
-            queryset = queryset.filter(task_name__exact=task_name)
-        if repoid is not None:
-            queryset = queryset.filter(repoid=repoid)
-        if commitid:
-            queryset = queryset.filter(commitid__startswith=commitid)
-        # Cap-bounded sample for the preview table (cheap, in-memory).
-        # The queryset materialises the first `CELERY_BROKER_DISPLAY_LIMIT`
-        # messages, then filters; we trim further to keep the rendered
-        # table compact.
-        sample_targets = sorted(queryset, key=lambda row: row.index_in_queue or 0)[
-            :_CLEAR_BY_FILTER_SAMPLE_SIZE
-        ]
-
-        # `match_count` and `kept_index` come from a streaming pass
-        # over the full queue so the preview agrees with what the
-        # actual clear (also unbounded) would do. Going through the
-        # queryset would underreport whenever `LLEN(queue) >
-        # CELERY_BROKER_DISPLAY_LIMIT` (anything past the 2k materialise
-        # window).
-        try:
-            match_count, kept_index = streaming_celery_count(
-                queue_name,
-                task_name=task_name or None,
-                repoid=repoid,
-                commitid=commitid or None,
-            )
-        except Exception:
-            log.exception(
-                "redis_admin.clear_by_filter: streaming count failed for %r",
-                queue_name,
-            )
-            # Defensive fallback: degrade to the queryset count rather
-            # than render a 500. The operator at least sees something
-            # and can still hit "Clear all" — the streaming clear path
-            # has its own error handling.
-            match_count = len(sample_targets)
-            kept_index = sample_targets[0].index_in_queue if sample_targets else None
-        # Build a single synthetic target carrying the operator's
-        # *exact* filter (queue + task_name? + repoid? + commitid?)
-        # so `_celery_broker_clear` always derives the same
-        # `frozenset({(task_name or None, repoid, commitid or None)})`
-        # that `streaming_celery_count` walked the full queue with.
-        #
-        # Without this, the clear path inferred its filter set from
-        # `sample_targets` — the materialised window capped by
-        # `CELERY_BROKER_DISPLAY_LIMIT` (default 2_000). That had two
-        # silent-no-op modes:
-        #
-        # 1. All matches sit beyond the display window (e.g. a recent
-        #    burst on a queue with `LLEN > 2_000`): `sample_targets`
-        #    is empty, `by_queue_filters` becomes `{}`, the streaming
-        #    clear loop doesn't iterate, and the queue is never
-        #    touched even though `match_count > 0` from streaming.
-        # 2. Operator filtered by `repoid` only: each `sample_target`
-        #    contributes a *specific* `(task_name, repoid, commitid)`
-        #    triple, so the filter set excludes any task name not
-        #    represented in the first 2_000 messages — those messages
-        #    survive the clear.
-        #
-        # The synthetic target restores the streaming-clear semantic
-        # of "match every envelope whose `(task, repoid, commitid)`
-        # equals the operator's input." Per-message and bulk-select
-        # paths (`delete_model`, `clear_selected`, `delete_queryset`,
-        # `clear_dry_run`) still pass real materialised rows — those
-        # are intentionally index-driven, not filter-driven, so they
-        # don't go through this code path.
-        # `_FILTER_ANY` (not `None`) for unset slots so the
-        # streaming match treats them as wildcards. `None` would
-        # require an exact-equality match against `meta.task is
-        # None` / `meta.repoid is None` / `meta.commitid is None`,
-        # which the per-message paths legitimately rely on for
-        # tasks like `sync_repos` whose envelope leaves repoid /
-        # commitid as `None`.
-        task_any, repoid_any, commitid_any = _substitute_filter_any(
-            task_name, repoid, commitid
-        )
-        filter_target = CeleryBrokerQueue(
-            pk_token=f"{queue_name}#{kept_index if kept_index is not None else 'filter'}",
-            queue_name=queue_name,
-            index_in_queue=kept_index,
-            task_name=task_any,
-            repoid=repoid_any,
-            commitid=commitid_any,
-        )
-        matches = [filter_target]
-
         expected_confirm = queue_name
         typed_confirm = (request.POST.get("typed_confirm") or "").strip()
         confirm_error: str | None = None
@@ -2001,79 +1961,74 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         destructive_actions = {"clear_keep_one", "clear_all"}
         valid_actions = destructive_actions | {"dry_run"}
 
-        # The chart-driven submit lands here with no `action` set
-        # (the chart's button just opens the preview page); fall
-        # through to the render path without invoking the service or
-        # writing a LogEntry.
+        # POST handler: all three actions fan out to the chunked
+        # background-job worker. Dry-run shares the same path so the
+        # request thread never has to count matches up front — the
+        # worker counts as it walks and writes the LogEntry on
+        # completion. The chart-driven submit is a GET (no `action`
+        # set) and falls through to the render path below.
         if request.method == "POST" and action in valid_actions:
-            if match_count == 0:
-                messages.info(
-                    request,
-                    "No messages match the filter — nothing to clear.",
-                )
-                return HttpResponseRedirect(changelist_url)
-
-            if action == "clear_keep_one":
-                if match_count <= 1:
-                    # Single-message bucket: there's nothing to clear
-                    # without removing the only in-flight message,
-                    # which defeats the "keep first" semantic. The
-                    # preview page only renders this button for
-                    # buckets with match_count >= 2, but a hand-
-                    # crafted POST or a count change between render
-                    # and submit could still land here.
-                    messages.info(
-                        request,
-                        f"Nothing to clear: only {match_count} message(s) "
-                        f"match and 'clear all but first' would leave "
-                        f"them all in place.",
-                    )
-                    return HttpResponseRedirect(changelist_url)
-
-            targets = list(matches)
-
             if action in destructive_actions and typed_confirm != expected_confirm:
                 confirm_error = f"Typed confirmation must equal {expected_confirm!r}"
             else:
                 dry_run = action == "dry_run"
                 keep_one = action == "clear_keep_one"
-                # Dry-run keeps the synchronous shape: the request
-                # already does the streaming-count walk above, so
-                # the dry-run service call is fast (no LSET/LREM)
-                # and the operator gets the audit-log entry +
-                # re-rendered preview in one shot. The destructive
-                # actions, by contrast, fan out to a background
-                # thread so a 500k-deep queue clear never sits on
-                # the gunicorn worker.
-                if dry_run:
-                    result = celery_broker_clear(
-                        targets,
-                        user=request.user,
-                        dry_run=True,
-                        keep_one=keep_one,
-                    )
-                    messages.info(
-                        request,
-                        f"Dry-run: would clear {result.count} of {match_count} "
-                        f"matching message(s) from {queue_name} (audit log "
-                        f"entry written; queue untouched).",
-                    )
-                else:
-                    job_id = start_celery_broker_clear_job(
-                        queue_name,
-                        user=request.user,
-                        task_name=task_name or None,
-                        repoid=repoid,
-                        commitid=commitid or None,
-                        keep_one=keep_one,
-                        dry_run=False,
-                    )
-                    progress_url = reverse(
-                        f"admin:{opts.app_label}_{opts.model_name}"
-                        "_clear_by_filter_progress",
-                        kwargs={"job_id": job_id},
-                    )
-                    return HttpResponseRedirect(progress_url)
+                job_id = start_celery_broker_clear_job(
+                    queue_name,
+                    user=request.user,
+                    task_name=task_name or None,
+                    repoid=repoid,
+                    commitid=commitid or None,
+                    keep_one=keep_one,
+                    dry_run=dry_run,
+                )
+                progress_url = reverse(
+                    f"admin:{opts.app_label}_{opts.model_name}"
+                    "_clear_by_filter_progress",
+                    kwargs={"job_id": job_id},
+                )
+                return HttpResponseRedirect(progress_url)
+
+        # GET (or POST with bad confirm): render synchronously from the
+        # chart-supplied display hints. ZERO Redis calls in this path —
+        # every value below comes from URL params, the request, or the
+        # opts model meta.
+        bucket_count = _coerce_int(params.get("bucket_count"))
+        total_visible = _coerce_int(params.get("total_visible"))
+        total_depth = _coerce_int(params.get("total_depth"))
+        bucket_pct = _coerce_float(params.get("bucket_pct"))
+        approx: dict[str, Any] | None = None
+        # Truthiness on `total_visible > 0` and `total_depth` doubles
+        # as a divide-by-zero guard: an empty / depth-zero queue
+        # couldn't have produced a chart bucket in the first place,
+        # so missing or zero values imply the URL was hand-crafted
+        # and the operator should see the "not available" fallback
+        # rather than a 500.
+        if (
+            bucket_count is not None
+            and total_visible is not None
+            and total_visible > 0
+            and total_depth
+        ):
+            approx = {
+                "count": round(bucket_count / total_visible * total_depth),
+                "pct": bucket_pct,
+                "depth": total_depth,
+            }
+
+        # Resolve a Repository-admin link for `repoid` so the filter
+        # row matches the chart's repo cell (which renders the same
+        # link via `_resolve_repo_displays`). Best-effort: if the
+        # repo isn't in the DB or the admin URL is unreachable, the
+        # template falls back to the bare integer.
+        repo_change_url: str | None = None
+        if repoid is not None:
+            try:
+                repo_change_url = reverse(
+                    "admin:core_repository_change", args=[repoid]
+                )
+            except NoReverseMatch:  # pragma: no cover - admin always registered
+                repo_change_url = None
 
         ctx = {
             **self.admin_site.each_context(request),
@@ -2082,10 +2037,9 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             "queue_name": queue_name,
             "task_name": task_name,
             "repoid": repoid,
+            "repo_change_url": repo_change_url,
             "commitid": commitid,
-            "match_count": match_count,
-            "kept_index": kept_index,
-            "sample_targets": sample_targets,
+            "approx": approx,
             "expected_confirm": expected_confirm,
             "typed_confirm": typed_confirm,
             "confirm_error": confirm_error,
