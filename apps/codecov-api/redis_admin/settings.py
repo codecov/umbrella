@@ -38,13 +38,15 @@ CELERY_BROKER_DISPLAY_LIMIT: int = getattr(
     settings, "REDIS_ADMIN_CELERY_BROKER_DISPLAY_LIMIT", 2_000
 )
 
-# Sample window used by deep scans of a celery_broker queue: the streaming
-# frequency chart aggregator (`_stream_frequency_aggregate`) and the
-# streaming clear (`services._streaming_celery_clear`). Both walk the queue
-# in bounded chunks and discard payloads, so memory stays flat regardless
-# of this cap; raising it just trades latency for accuracy. Keeping the
-# chart and clear on the same window guarantees that anything the chart
-# surfaces is reachable by the "Clear queue" button.
+# Sample window for the streaming frequency chart aggregator
+# (`_stream_frequency_aggregate`). Walks the queue in bounded chunks and
+# discards payloads, so memory stays flat regardless of this cap; raising
+# it just trades latency for accuracy.
+#
+# The streaming clear (`services._streaming_celery_clear`) is intentionally
+# *not* bounded by this — it walks `LLEN(queue)` so a "Clear all" action
+# always drains the entire queue, even if the user is targeting matches
+# beyond the chart's sample window.
 CELERY_BROKER_SCAN_LIMIT: int = getattr(
     settings, "REDIS_ADMIN_CELERY_BROKER_SCAN_LIMIT", 100_000
 )

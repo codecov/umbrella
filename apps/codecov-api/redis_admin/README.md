@@ -153,7 +153,7 @@ All configurable via `REDIS_ADMIN_*` Django settings; defaults shown.
 | `REDIS_ADMIN_ITEM_PAGE_SIZE` | `100` | Page size for the items-in-a-queue view. |
 | `REDIS_ADMIN_MAX_ITEMS_PER_KEY` | `20_000` | Hard cap on members materialised from a single SET/HASH for admin browsing (M4). LIST keys use bounded LRANGE windows so they aren't constrained here. |
 | `REDIS_ADMIN_CELERY_BROKER_DISPLAY_LIMIT` | `2_000` | Number of per-message rows materialised on the `celery_broker` changelist drill-down. Smaller than the scan limit because each row keeps a parsed envelope in the per-request cache. |
-| `REDIS_ADMIN_CELERY_BROKER_SCAN_LIMIT` | `100_000` | Sample window used by deep scans of a `celery_broker` queue (frequency chart + streaming clear). Both walk the queue in chunks and discard payloads, so memory stays flat regardless of this cap. |
+| `REDIS_ADMIN_CELERY_BROKER_SCAN_LIMIT` | `100_000` | Sample window used by the `celery_broker` frequency chart aggregator. The streaming clear (Clear queue → Clear all) intentionally is *not* bounded by this — it walks the full `LLEN(queue)` so a clear action always drains the entire queue regardless of the chart's sample size. |
 | `REDIS_ADMIN_MAX_DECODE_BYTES` | `4_096` | Per-value display truncation. |
 | `REDIS_ADMIN_DELETE_BATCH_SIZE` | `500` | Pipeline batch size for `DEL` / `LREM` / `SREM` / `HDEL`. |
 | `REDIS_ADMIN_CONNECTION_FACTORY` | unset | Dotted path to a callable returning a `redis.Redis`. Defaults to `shared.helpers.redis.get_redis_connection`. |

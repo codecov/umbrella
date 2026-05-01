@@ -2243,3 +2243,58 @@ def test_streaming_clear_keep_one_short_circuits_after_first_pass(broker_redis):
 
     assert stats.total_lset == 1
     assert stats.passes_run == 1
+
+
+def test_streaming_clear_drains_queue_with_no_artificial_cap(broker_redis):
+    """Regression for PR #899: a queue saturated with matching messages
+    deeper than what the per-pass cap *used* to be was not fully drained.
+
+    The previous implementation capped each pass at the first
+    `cap` positions (`min(depth, cap)`), so on a queue dominated by a
+    single `(task, repoid, commitid)` triple:
+
+    * pass 1 tombstoned the first `cap` matches and `LREM` swept them,
+    * pass 2 tombstoned another `cap` matches that shifted in from
+      beyond cap (now occupying positions 0..cap-1),
+    * the `prev_lset == matches_lset` plateau check (both `cap`)
+      then declared convergence and exited.
+
+    Net effect: a saturated queue dropped by ~2 * cap per "Clear all"
+    click instead of draining fully — what the user perceived as
+    "queue does not shrink".
+
+    The clear is now intentionally unbounded (walks the full
+    `LLEN(queue)` every pass), so a single click drains every match
+    regardless of depth. This test pushes 41_000 matching messages
+    (just over 2× what the old 20k cap was) so the buggy code path
+    would have tombstoned exactly 40_000 across two passes, hit the
+    plateau exit, and left 1_000 messages behind. The fix walks the
+    entire queue every pass, so a single click drains all 41_000
+    matches.
+    """
+
+    matching_count = 41_000
+    raw_match = _build_envelope(task="t.A", kwargs={"repoid": 1, "commitid": "x"})
+    raw_other = _build_envelope(task="t.B", kwargs={"repoid": 999, "commitid": "y"})
+    pipe = broker_redis.pipeline(transaction=False)
+    for _ in range(matching_count):
+        pipe.rpush("notify", raw_match)
+    pipe.rpush("notify", raw_other)
+    pipe.execute()
+
+    initial_depth = broker_redis.llen("notify")
+    assert initial_depth == matching_count + 1
+
+    tombstone = f"{_CELERY_TOMBSTONE_PREFIX}:test-deep-saturation"
+    filter_tuples = _make_filter(("t.A", 1, "x"))
+    stats = _streaming_celery_clear(
+        broker_redis, "notify", filter_tuples, tombstone, dry_run=False
+    )
+
+    # Every matching message is cleared in a single click; only the
+    # one unrelated message survives.
+    assert stats.total_lset == matching_count
+    assert stats.total_drifted == 0
+    assert broker_redis.llen("notify") == 1
+    survivor = json.loads(broker_redis.lrange("notify", 0, -1)[0])
+    assert survivor["headers"]["task"] == "t.B"

@@ -414,16 +414,19 @@ def _redis_delete(
 # For 200–500k-deep queues the old eager-materialise-then-LSET path
 # had two problems:
 #
-#   1. Memory: materialising up to `CELERY_BROKER_SCAN_LIMIT` rows into
-#      Python before clearing was O(N) in memory.
+#   1. Memory: materialising the entire queue into Python before
+#      clearing was O(N) in memory.
 #   2. Race drift: the index a Celery consumer sees between our
 #      `LRANGE` snapshot and our `LSET` call can shift if another
 #      consumer BLPOPs from the head. The old code had no verify step.
 #
-# The new path (see `_streaming_celery_clear`) walks the queue in
-# 10k-row LRANGE chunks.  For each candidate position it does a
-# verify-before-LSET (LINDEX to confirm the raw bytes still match the
-# snapshot row before writing the tombstone) and a
+# The new path (see `_streaming_celery_clear`) walks the **entire**
+# queue in 10k-row LRANGE chunks every pass — the clear has no
+# artificial cap because "Clear all" needs to drain whatever depth
+# the queue happens to be at, even past the chart sampler's window
+# (`CELERY_BROKER_SCAN_LIMIT`). For each candidate position it does
+# a verify-before-LSET (LINDEX to confirm the raw bytes still match
+# the snapshot row before writing the tombstone) and a
 # repeat-until-stable loop (max 3 passes) to catch messages that
 # drifted into our filter window between passes.
 
@@ -464,9 +467,9 @@ def _streaming_celery_clear(
 ) -> _StreamingClearStats:
     """Streaming LRANGE+verify-before-LSET clear for `queue_name`.
 
-    Walks the queue in `_CELERY_CLEAR_CHUNK`-row chunks, identifies
-    messages whose parsed `(task_name, repoid, commitid)` triple
-    appears in `filter_tuples`, and for each match:
+    Walks the **entire** queue in `_CELERY_CLEAR_CHUNK`-row chunks,
+    identifies messages whose parsed `(task_name, repoid, commitid)`
+    triple appears in `filter_tuples`, and for each match:
 
     1. Issues `LINDEX key idx` to re-read the raw bytes at that
        position.
@@ -479,8 +482,9 @@ def _streaming_celery_clear(
     tombstones in one shot.
 
     The loop repeats up to `_CELERY_MAX_PASSES` times, stopping
-    early when a pass finds zero matches OR two consecutive passes
-    tombstone the same count (stable point reached).
+    early when a pass finds zero matches (queue drained of matches)
+    OR two consecutive passes tombstone the same count (stable
+    point reached — pathological persistent-drift signal).
 
     `keep_one=True` skips the first matching message encountered in
     the first pass and on all subsequent passes, implementing the
@@ -491,7 +495,6 @@ def _streaming_celery_clear(
     total_drifted = 0
     prev_lset: int | None = None
     passes_run = 0
-    cap = redis_admin_settings.CELERY_BROKER_SCAN_LIMIT
 
     # Track whether we've kept the "first" across all passes so that
     # repeat passes honour the same semantic (first by queue index).
@@ -507,8 +510,19 @@ def _streaming_celery_clear(
         # surviving message is always kept, even as the queue shifts.
         pass_first_kept = first_kept
 
+        # Walk the entire queue every pass: clearing has to traverse
+        # the full depth so a "Clear all" on a 200k+ saturated queue
+        # actually drains it. The chart's `_stream_frequency_aggregate`
+        # caps at `CELERY_BROKER_SCAN_LIMIT` because it only needs a
+        # representative sample to compute bucket proportions; the
+        # clear path has no analogous bound — capping it meant that on
+        # a queue dominated by one `(task, repoid, commitid)` triple,
+        # pass 1 cleared the first `cap` positions, pass 2 cleared
+        # another `cap` that shifted in from beyond, and the
+        # `prev_lset == matches_lset` plateau exit then declared
+        # convergence with most of the queue still in place.
         depth = int(redis.llen(queue_name) or 0)
-        for chunk_start in range(0, min(depth, cap), _CELERY_CLEAR_CHUNK):
+        for chunk_start in range(0, depth, _CELERY_CLEAR_CHUNK):
             chunk_end = chunk_start + _CELERY_CLEAR_CHUNK - 1
             raw_chunk = redis.lrange(queue_name, chunk_start, chunk_end)
             for offset, raw in enumerate(raw_chunk):
