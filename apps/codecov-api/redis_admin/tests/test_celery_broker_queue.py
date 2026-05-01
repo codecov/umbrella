@@ -50,7 +50,9 @@ from redis_admin.queryset import (
 from redis_admin.services import (
     _CELERY_MAX_PASSES,
     _CELERY_TOMBSTONE_PREFIX,
+    _FILTER_ANY,
     _streaming_celery_clear,
+    _substitute_filter_any,
     celery_broker_clear,
     streaming_celery_count,
 )
@@ -601,6 +603,93 @@ def test_queryset_ordering_by_repoid(patched_broker):
     )
 
     assert [r.repoid for r in rows] == [1, 2, 3]
+
+
+# ---- helper: _substitute_filter_any ----------------------------------------
+
+
+def test_substitute_filter_any_passes_through_set_slots():
+    """Set slots survive verbatim — no mangling, no `_FILTER_ANY`."""
+
+    triple = _substitute_filter_any(
+        "app.tasks.notify.NotifyTask",
+        21222368,
+        "0832c110a744ddb8185bfdf0524aad41d3c3d21a",
+    )
+
+    assert triple == (
+        "app.tasks.notify.NotifyTask",
+        21222368,
+        "0832c110a744ddb8185bfdf0524aad41d3c3d21a",
+    )
+
+
+def test_substitute_filter_any_substitutes_unset_slots_with_wildcard():
+    """All-`None` input becomes the all-wildcards triple — the
+    "unconstrained operator filter" shape that
+    `streaming_celery_count`, the chunked clear job, and the
+    `clear_by_filter_view` synthetic target all need to share so
+    they agree on which envelopes match.
+    """
+
+    triple = _substitute_filter_any(None, None, None)
+
+    assert triple == (_FILTER_ANY, _FILTER_ANY, _FILTER_ANY)
+
+
+def test_substitute_filter_any_treats_empty_string_as_unset_for_strings_only():
+    """`task_name` and `commitid` are strings whose empty value
+    means "unset" (the admin form coerces missing input to
+    `""`); `repoid` is an integer where `0` is checked via
+    `is not None` so a hypothetical literal `0` would pass
+    through verbatim rather than silently turning into
+    wildcard.
+    """
+
+    triple = _substitute_filter_any("", 0, "")
+
+    assert triple == (_FILTER_ANY, 0, _FILTER_ANY)
+
+
+def test_substitute_filter_any_keeps_streaming_count_and_clear_job_in_sync():
+    """Regression for Bugbot review on PR #904 (LOW severity):
+    the `_FILTER_ANY`-substitution rule is shared across
+    `streaming_celery_count`, `_run_celery_broker_clear_job_body`,
+    and the `clear_by_filter_view` filter target. All three must
+    produce the same triple for the same operator input or the
+    dry-run count would silently disagree with the chunked
+    clear's matched count — a data-loss vector.
+
+    Pin the contract here so a future helper-edit that breaks one
+    consumer breaks the test rather than letting the three call
+    sites drift.
+    """
+
+    inputs = [
+        (None, None, None),
+        ("app.tasks.notify.NotifyTask", None, None),
+        (None, 42, None),
+        (None, None, "abc" * 10),
+        ("app.tasks.upload.UploadTask", 7, "deadbeef" * 5),
+    ]
+
+    for task_name, repoid, commitid in inputs:
+        # Build the triple via the helper (the path the three
+        # production call sites now share) and via the literal
+        # inline expression that those sites used to repeat;
+        # they must agree element-by-element so refactoring one
+        # call site can never make it disagree with the others.
+        helper_triple = _substitute_filter_any(task_name, repoid, commitid)
+        inline_triple = (
+            task_name if task_name else _FILTER_ANY,
+            repoid if repoid is not None else _FILTER_ANY,
+            commitid if commitid else _FILTER_ANY,
+        )
+        assert helper_triple == inline_triple, (
+            f"helper diverged from inline contract for input "
+            f"{(task_name, repoid, commitid)!r}: "
+            f"{helper_triple!r} != {inline_triple!r}"
+        )
 
 
 # ---- service: celery_broker_clear ------------------------------------------
@@ -2724,7 +2813,7 @@ def test_celery_broker_clear_synthetic_target_with_wildcard_task_name_drains_all
 
     synthetic = CeleryBrokerQueue(
         queue_name=queue,
-        task_name=None,
+        task_name=_FILTER_ANY,
         repoid=repoid,
         commitid=commitid,
         index_in_queue=None,
@@ -2739,3 +2828,70 @@ def test_celery_broker_clear_synthetic_target_with_wildcard_task_name_drains_all
 
     assert result.count == 5
     assert patched_broker.llen(queue) == 1
+
+
+def test_celery_broker_clear_per_message_target_does_not_overmatch_on_none_slots(
+    patched_broker,
+):
+    """Regression for Bugbot review on PR #903 (HIGH severity): the
+    wildcard semantic must NOT bleed into the per-message clear
+    paths (`clear_selected`, `clear_dry_run`, `delete_model`,
+    `delete_queryset`). Those paths build filter tuples from
+    materialised rows whose envelope legitimately carries `None`
+    in a slot (e.g. a `sync_repos` task with `repoid=None` and
+    `commitid=None`); if `None` doubled as the wildcard value, a
+    single-row clear of one such envelope would tombstone EVERY
+    message with that task name across the queue.
+
+    The fix uses a dedicated `_FILTER_ANY` sentinel for "do not
+    constrain on this slot", so materialised targets carrying
+    real `None` values keep exact-tuple-membership semantics:
+    they match only envelopes with the same `(task, None, None)`
+    triple, not any envelope sharing the task name.
+    """
+
+    queue = "celery"
+    task = "app.tasks.sync_repos.SyncReposTask"
+
+    pipe = patched_broker.pipeline(transaction=False)
+    # Two `sync_repos` envelopes that legitimately carry no
+    # repoid / commitid (the SyncReposTask doesn't ship those).
+    for _ in range(2):
+        pipe.rpush(queue, _build_envelope(task=task, kwargs={}))
+    # Three `sync_repos` envelopes carrying a real `(repoid, commitid)`
+    # -- a hypothetical future call shape, but the test only needs
+    # them to be distinguishable from the `(None, None)` shape so
+    # the no-overmatch assertion has bite.
+    for repoid in (1, 2, 3):
+        pipe.rpush(
+            queue,
+            _build_envelope(
+                task=task, kwargs={"repoid": repoid, "commitid": "abc" * 10}
+            ),
+        )
+    pipe.execute()
+    user = SimpleNamespace(id=1, pk=1)
+
+    # Per-message target shape: materialised row carrying the
+    # envelope's actual `(None, None)` slots.
+    materialised_target = CeleryBrokerQueue(
+        queue_name=queue,
+        task_name=task,
+        repoid=None,
+        commitid=None,
+        index_in_queue=0,
+    )
+
+    result = celery_broker_clear(
+        [materialised_target],
+        user=user,
+        dry_run=False,
+        keep_one=False,
+    )
+
+    # Only the two `(task, None, None)` envelopes get tombstoned;
+    # the three task-matching envelopes with real (repoid, commit)
+    # slots survive because exact-tuple-membership distinguishes
+    # `None` from "unconstrained."
+    assert result.count == 2
+    assert patched_broker.llen(queue) == 3

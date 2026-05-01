@@ -1,0 +1,157 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% comment %}
+Progress page for a chunked celery_broker clear job. Spawned by
+`clear_by_filter_view` for any destructive action (clear_all /
+clear_keep_one). The HTTP request that submitted the clear has
+already returned with a 302 to this URL — the actual clearing is
+running in a daemon thread on the api pod's gunicorn worker, and
+this page polls a status JSON view every ~1s to render progress.
+
+CSP-compliant: all JS / CSS loads via {% static %} from
+`redis_admin/static/redis_admin/...`. Production
+(api-admin.codecov.io) only allows `'self'` + a single fixed
+sha256 for inline scripts. No inline <script>/<style> tags here.
+
+The initial server-side render is informative even before JS
+loads: it surfaces the job's status, filter shape, and current
+counters so an operator on a flaky network or with JS disabled
+still sees the run is happening.
+{% endcomment %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-list celery-clear-progress{% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'redis_admin/css/celery_clear_progress.css' %}">
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{{ changelist_url }}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; Clear progress
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <div id="celery-clear-progress-root"
+       class="celery-clear-progress-root"
+       data-job-id="{{ job_id }}"
+       data-status-url="{{ status_url }}"
+       data-cancel-url="{{ cancel_url }}"
+       data-changelist-url="{{ changelist_url }}"
+       data-initial-status="{{ status }}"
+       data-is-terminal="{{ is_terminal|yesno:'1,0' }}">
+
+    <fieldset class="module">
+      <h2>
+        Clearing <code>{{ queue_name }}</code>
+        <span class="celery-clear-job-id" title="{{ job_id }}">{{ job_id|slice:":8" }}…</span>
+      </h2>
+      <p class="celery-clear-summary">
+        Status:
+        <span id="celery-clear-status-pill"
+              class="celery-clear-status-pill celery-clear-status-{{ status }}"
+              data-status="{{ status }}">{{ status }}</span>
+        {% if dry_run %}<span class="celery-clear-dry-run-tag">dry-run</span>{% endif %}
+        {% if keep_one %}<span class="celery-clear-keep-one-tag">keep-one</span>{% endif %}
+      </p>
+
+      <p>
+        Filter:
+        Task: {% if filter_task %}<code>{{ filter_task }}</code>{% else %}<em>(any)</em>{% endif %} ·
+        Repo: {% if filter_repoid %}<code>{{ filter_repoid }}</code>{% else %}<em>(any)</em>{% endif %} ·
+        Commit: {% if filter_commitid %}<code title="{{ filter_commitid }}">{{ filter_commitid|slice:":7" }}</code>{% else %}<em>(any)</em>{% endif %}
+      </p>
+    </fieldset>
+
+    <fieldset class="module celery-clear-progress-card">
+      <h2>Progress</h2>
+
+      <div class="celery-clear-progress-bar-wrap">
+        <progress id="celery-clear-progress-bar"
+                  class="celery-clear-progress-bar"
+                  value="{{ processed }}"
+                  max="{{ total_estimated|default:1 }}"></progress>
+        <span id="celery-clear-progress-pct" class="celery-clear-progress-pct">
+          {% if total_estimated > 0 %}
+            {% widthratio processed total_estimated 100 %}%
+          {% else %}
+            —
+          {% endif %}
+        </span>
+      </div>
+
+      <dl class="celery-clear-counters">
+        <div class="celery-clear-counter">
+          <dt>Matched</dt>
+          <dd id="celery-clear-matched">{{ matched }}</dd>
+        </div>
+        <div class="celery-clear-counter">
+          <dt>Processed</dt>
+          <dd>
+            <span id="celery-clear-processed">{{ processed }}</span>
+            <span class="celery-clear-counter-denom">
+              / <span id="celery-clear-total-estimated">{{ total_estimated }}</span>
+            </span>
+          </dd>
+        </div>
+        <div class="celery-clear-counter">
+          <dt>Drift</dt>
+          <dd id="celery-clear-drifted">{{ drifted }}</dd>
+        </div>
+        <div class="celery-clear-counter">
+          <dt>Pass</dt>
+          <dd id="celery-clear-passes">{{ passes_run }}</dd>
+        </div>
+      </dl>
+
+      <p class="celery-clear-timestamps">
+        Started: <code id="celery-clear-started-at">{{ started_at|default:"—" }}</code>
+        · Updated: <code id="celery-clear-updated-at">{{ updated_at|default:"—" }}</code>
+        · Completed: <code id="celery-clear-completed-at">{{ completed_at|default:"—" }}</code>
+      </p>
+
+      <p id="celery-clear-error-row"
+         class="celery-clear-error{% if not error %} celery-clear-hidden{% endif %}">
+        Error: <code id="celery-clear-error">{{ error }}</code>
+      </p>
+    </fieldset>
+
+    <fieldset class="module">
+      <div class="submit-row celery-clear-actions">
+        {# Cancel form is a real <form>; the JS hijacks submit and #}
+        {# fires fetch() with the CSRF token. If JS fails to load,  #}
+        {# the form still submits and the server still cancels —  #}
+        {# graceful degradation. #}
+        <form id="celery-clear-cancel-form"
+              method="post"
+              action="{{ cancel_url }}"
+              class="celery-clear-cancel-form">
+          {% csrf_token %}
+          <button type="submit"
+                  id="celery-clear-cancel-button"
+                  class="celery-clear-cancel-button"
+                  {% if is_terminal %}disabled{% endif %}>
+            {% if cancel_requested and not is_terminal %}Cancelling…{% else %}Cancel clear{% endif %}
+          </button>
+        </form>
+        <a id="celery-clear-back-link"
+           class="celery-clear-back-link{% if not is_terminal %} celery-clear-disabled-link{% endif %}"
+           href="{{ changelist_url }}">
+          &larr; back to {{ queue_name|default:"changelist" }}
+        </a>
+      </div>
+    </fieldset>
+
+  </div>
+
+  <script src="{% static 'redis_admin/js/celery_clear_progress.js' %}" defer></script>
+
+</div>
+{% endblock %}
