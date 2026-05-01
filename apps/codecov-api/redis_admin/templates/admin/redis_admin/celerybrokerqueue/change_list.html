@@ -8,18 +8,29 @@ frequency chart above the result list. The chart is fetched
 asynchronously from `chart_fragment_view` so the changelist renders
 immediately regardless of queue depth (200–500k messages).
 
-The fetch helper lives in an external static file rather than an
-inline <script> so it survives the strict CSP on production
-(api-admin.codecov.io), which only allows `'self'` and one fixed
-sha256 for inline scripts. See settings_base.py CSP_DEFAULT_SRC.
+The fetch helper + loader styles live in external static files rather
+than inline <script>/<style> tags so they survive the strict CSP on
+production (api-admin.codecov.io), which only allows `'self'` and one
+fixed sha256 for inline scripts. See settings_base.py CSP_DEFAULT_SRC.
 
 In summary mode (queue_name is absent) the block renders nothing extra.
 {% endcomment %}
+{% block extrastyle %}
+  {{ block.super }}
+  {% if queue_name %}
+    <link rel="stylesheet" href="{% static 'redis_admin/css/celery_chart_fragment.css' %}">
+  {% endif %}
+{% endblock %}
+
 {% block content %}
   {% if queue_name %}
     <div id="celery-chart-fragment"
          data-fragment-url="{% url 'admin:celerybrokerqueue-chart-fragment' queue_name=queue_name %}">
-      <p class="help">Loading frequency chart&hellip;</p>
+      <div class="celery-chart-loader" role="status" aria-live="polite">
+        <div class="celery-chart-loader__spinner" aria-hidden="true"></div>
+        <p class="celery-chart-loader__label">Loading frequency chart&hellip;</p>
+        <p class="celery-chart-loader__hint">Sampling up to {{ scan_limit_label|default:"100,000" }} messages from <code>{{ queue_name }}</code> &mdash; this can take a few seconds on deep queues.</p>
+      </div>
     </div>
     <script src="{% static 'redis_admin/js/celery_chart_fragment.js' %}" defer></script>
   {% endif %}

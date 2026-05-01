@@ -18,12 +18,89 @@ from django.contrib.admin.models import LogEntry
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
+from redis_admin.admin import FamilyFilter, LockFamilyFilter, QueueFamilyFilter
 from redis_admin.families import (
     _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701
 )
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from utils.test_utils import Client
+
+# ---- Family filter lookups (does not require django_db / TestCase) --------
+
+
+def _family_filter_choices(filter_cls):
+    """Return `lookups()` output for `filter_cls` without running the
+    Django `SimpleListFilter.__init__` (which wants a real request,
+    params, model, and model_admin). `lookups` only reads class-level
+    `category` / `excluded_names`, so bypassing __init__ keeps the
+    test a pure unit test that never touches the DB or the HTTP
+    stack.
+    """
+
+    instance = filter_cls.__new__(filter_cls)
+    return dict(instance.lookups(request=None, model_admin=None))
+
+
+def test_queue_family_filter_lookups_omit_celery_broker():
+    """The RedisQueue changelist hides `celery_broker` rows via
+    `family_exclude`, so its sidebar filter must not offer
+    `celery_broker` as a clickable choice — that would be a dead
+    option that filters the page to zero rows.
+    """
+
+    choices = _family_filter_choices(QueueFamilyFilter)
+
+    assert "celery_broker" not in choices
+
+
+def test_queue_family_filter_lookups_keep_other_queue_families():
+    """Safety rail: the exclusion above must leave the *other*
+    queue-category families in the dropdown, so the filter still
+    works as a filter.
+    """
+
+    choices = _family_filter_choices(QueueFamilyFilter)
+
+    assert "uploads" in choices
+    assert "ta_flake_key" in choices
+    assert "latest_upload" in choices
+
+
+def test_queue_family_filter_rejects_lock_family_choices():
+    """`category='queue'` must not leak lock-category families
+    (coordination_lock, ta_flake_lock, etc.) into the queue filter
+    dropdown; those live on the RedisLock admin instead.
+    """
+
+    choices = _family_filter_choices(QueueFamilyFilter)
+
+    assert "coordination_lock" not in choices
+    assert "ta_flake_lock" not in choices
+
+
+def test_base_family_filter_still_exposes_celery_broker_for_non_queue_callers():
+    """`FamilyFilter` itself (no exclusion) still returns
+    `celery_broker` so other non-queue-admin callers — or a future
+    admin that intentionally *wants* the family visible — aren't
+    silently stripped of it.
+    """
+
+    choices = _family_filter_choices(FamilyFilter)
+
+    assert "celery_broker" in choices
+
+
+def test_lock_family_filter_unaffected_by_celery_exclusion():
+    """Sanity check: the locks filter is on a separate category and
+    has no overlap with celery_broker either way; make sure we
+    didn't bleed the exclusion into a different subclass by mistake.
+    """
+
+    choices = _family_filter_choices(LockFamilyFilter)
+
+    assert "celery_broker" not in choices
+    assert "coordination_lock" in choices
 
 
 class RedisAdminSmokeTest(TestCase):

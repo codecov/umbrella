@@ -36,6 +36,7 @@ from django.test import Client as DjClient
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
+from redis_admin import settings as redis_admin_settings
 from redis_admin.admin import CeleryBrokerQueueAdmin, _resolve_repo_displays
 from redis_admin.families import parse_celery_envelope
 from redis_admin.models import CeleryBrokerQueue, RedisQueue
@@ -51,6 +52,7 @@ from redis_admin.services import (
     _CELERY_TOMBSTONE_PREFIX,
     _streaming_celery_clear,
     celery_broker_clear,
+    streaming_celery_count,
 )
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
@@ -991,6 +993,14 @@ class CeleryFrequencyChartTest(TestCase):
         # block it. See settings_base.py CSP_DEFAULT_SRC.
         assert "celery_chart_fragment.js" in body
         assert 'src="' in body  # confirms external script form, not inline
+        # Loader styles ship as an EXTERNAL stylesheet for the same CSP
+        # reason as the JS — inline <style> would be blocked. The
+        # bordered/centred loader card replaces the previous subtle
+        # "Loading frequency chart…" help line so the loading state is
+        # obvious while the fragment endpoint materialises the chart.
+        assert "celery_chart_fragment.css" in body
+        assert "celery-chart-loader" in body
+        assert 'role="status"' in body
 
         # Fetch the chart fragment directly (as the browser's JS would).
         fragment_response = self.client.get(
@@ -1612,6 +1622,86 @@ def test_queryset_summary_mode_lists_known_queues_with_depth(patched_broker):
     # `<queue>#summary` pk_token; message-shaped fields are unset.
     assert by_name["celery"].index_in_queue is None
     assert by_name["celery"].pk_token == "celery#summary"
+
+
+# ---- Summary-mode default ordering ----------------------------------------
+
+
+def test_queryset_summary_mode_default_sort_is_depth_desc_then_name_asc(
+    patched_broker, monkeypatch
+):
+    """Summary mode must surface the deepest queues first, with
+    ties broken alphabetically by queue name.
+
+    The admin landing page is an on-call surface: an operator
+    arriving from a Grafana alert scans the top of the page looking
+    for the hot spot. Alphabetical-by-name (the pre-change default)
+    would bury a 100-deep `ingest` below a 0-deep `bundle_analysis`
+    simply because of its name. Depth-DESC fixes that; name-ASC
+    ties-break keeps the list stable so refreshing doesn't reshuffle
+    queues at equal depth.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset  # noqa: PLC0415
+
+    # Pin the enumerated queue set — the test env's
+    # `_resolve_celery_queue_names` only returns `("celery",
+    # "healthcheck")`, which isn't enough to exercise both the
+    # tie-break and the distinct-depth sort dimensions.
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_celery_queue_names",
+        lambda: ("bundle_analysis", "ingest", "notifications", "process_pulls"),
+    )
+
+    # bundle_analysis: 5  |  ingest: 100  |  notifications: 100  |  process_pulls: 0
+    for _ in range(5):
+        patched_broker.rpush("bundle_analysis", _build_envelope(kwargs={}))
+    for _ in range(100):
+        patched_broker.rpush("ingest", _build_envelope(kwargs={}))
+    for _ in range(100):
+        patched_broker.rpush("notifications", _build_envelope(kwargs={}))
+    # process_pulls intentionally left empty (LLEN==0).
+
+    qs = CeleryBrokerQueueQuerySet(CeleryBrokerQueue).order_by(
+        *CeleryBrokerQueueAdmin.summary_ordering
+    )
+    rows = list(qs)
+
+    assert [(r.queue_name, r.depth) for r in rows] == [
+        ("ingest", 100),
+        ("notifications", 100),
+        ("bundle_analysis", 5),
+        ("process_pulls", 0),
+    ]
+
+
+def test_admin_get_ordering_returns_summary_sort_when_no_queue_filter():
+    """`CeleryBrokerQueueAdmin.get_ordering` must flip to
+    `(-depth, queue_name)` on the summary URL so Django's ChangeList
+    applies the right default `.order_by(...)` before paginating.
+    Operators can still click column headers to override (Django's
+    `?o=` handling sits on top of this value).
+    """
+
+    admin_instance = CeleryBrokerQueueAdmin(CeleryBrokerQueue, AdminSite())
+    request = SimpleNamespace(GET={})
+
+    assert admin_instance.get_ordering(request) == ("-depth", "queue_name")
+
+
+def test_admin_get_ordering_falls_back_to_index_order_in_drill_down():
+    """Drill-down mode (per-message view) preserves `index_in_queue`
+    order so `matches[0]` is always the next message a Celery
+    consumer would pop. The streaming clear + keep-one-survivor
+    paths rely on that invariant; the summary-mode sort must not
+    leak into it.
+    """
+
+    admin_instance = CeleryBrokerQueueAdmin(CeleryBrokerQueue, AdminSite())
+    request = SimpleNamespace(GET={"queue_name__exact": "notify"})
+
+    assert admin_instance.get_ordering(request) == ("index_in_queue",)
 
 
 # ---- family_exclude --------------------------------------------------------
@@ -2243,3 +2333,409 @@ def test_streaming_clear_keep_one_short_circuits_after_first_pass(broker_redis):
 
     assert stats.total_lset == 1
     assert stats.passes_run == 1
+
+
+def test_streaming_clear_drains_queue_with_no_artificial_cap(broker_redis):
+    """Regression for PR #899: a queue saturated with matching messages
+    deeper than what the per-pass cap *used* to be was not fully drained.
+
+    The previous implementation capped each pass at the first
+    `cap` positions (`min(depth, cap)`), so on a queue dominated by a
+    single `(task, repoid, commitid)` triple:
+
+    * pass 1 tombstoned the first `cap` matches and `LREM` swept them,
+    * pass 2 tombstoned another `cap` matches that shifted in from
+      beyond cap (now occupying positions 0..cap-1),
+    * the `prev_lset == matches_lset` plateau check (both `cap`)
+      then declared convergence and exited.
+
+    Net effect: a saturated queue dropped by ~2 * cap per "Clear all"
+    click instead of draining fully — what the user perceived as
+    "queue does not shrink".
+
+    The clear is now intentionally unbounded (walks the full
+    `LLEN(queue)` every pass), so a single click drains every match
+    regardless of depth. This test pushes 41_000 matching messages
+    (just over 2× what the old 20k cap was) so the buggy code path
+    would have tombstoned exactly 40_000 across two passes, hit the
+    plateau exit, and left 1_000 messages behind. The fix walks the
+    entire queue every pass, so a single click drains all 41_000
+    matches.
+    """
+
+    matching_count = 41_000
+    raw_match = _build_envelope(task="t.A", kwargs={"repoid": 1, "commitid": "x"})
+    raw_other = _build_envelope(task="t.B", kwargs={"repoid": 999, "commitid": "y"})
+    pipe = broker_redis.pipeline(transaction=False)
+    for _ in range(matching_count):
+        pipe.rpush("notify", raw_match)
+    pipe.rpush("notify", raw_other)
+    pipe.execute()
+
+    initial_depth = broker_redis.llen("notify")
+    assert initial_depth == matching_count + 1
+
+    tombstone = f"{_CELERY_TOMBSTONE_PREFIX}:test-deep-saturation"
+    filter_tuples = _make_filter(("t.A", 1, "x"))
+    stats = _streaming_celery_clear(
+        broker_redis, "notify", filter_tuples, tombstone, dry_run=False
+    )
+
+    # Every matching message is cleared in a single click; only the
+    # one unrelated message survives.
+    assert stats.total_lset == matching_count
+    assert stats.total_drifted == 0
+    assert broker_redis.llen("notify") == 1
+    survivor = json.loads(broker_redis.lrange("notify", 0, -1)[0])
+    assert survivor["headers"]["task"] == "t.B"
+
+
+def test_streaming_clear_dry_run_returns_full_queue_match_count(patched_broker):
+    """Dry-run preview must walk the full queue, not just the capped
+    target list. Regression for the case where a deep queue (e.g.
+    200k messages, 190k matching one filter triple) reported only
+    ~2k matches because `pending_count` was bounded by
+    `CELERY_BROKER_DISPLAY_LIMIT`.
+    """
+
+    queue = "bundle_analysis"
+    task = "app.tasks.bundle_analysis.BundleAnalysisProcessor"
+    repoid = 21222368
+    commitid = "0832c11a1f43c5e2a1b9f8a3e5d1c2b7e9a8d3f0"
+
+    n = 5_000
+    pipe = patched_broker.pipeline(transaction=False)
+    for _ in range(n):
+        pipe.rpush(
+            queue,
+            _build_envelope(task=task, kwargs={"repoid": repoid, "commitid": commitid}),
+        )
+    pipe.execute()
+    # SimpleNamespace user keeps this regression test free of the
+    # Django-DB fixture so it runs in any sandbox; `_record_audit`
+    # is best-effort and swallows DB failures.
+    user = SimpleNamespace(id=1, pk=1)
+
+    targets = list(
+        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name=queue).filter(
+            task_name=task,
+            repoid=repoid,
+            commitid=commitid,
+        )[:1]
+    )
+    assert len(targets) == 1
+
+    result = celery_broker_clear(
+        targets,
+        user=user,
+        dry_run=True,
+        keep_one=False,
+    )
+    assert result.dry_run is True
+    assert result.count == n
+
+    result_keep = celery_broker_clear(
+        targets,
+        user=user,
+        dry_run=True,
+        keep_one=True,
+    )
+    assert result_keep.count == n - 1
+
+    assert patched_broker.llen(queue) == n
+
+
+def test_streaming_celery_count_returns_full_queue_match_count(patched_broker):
+    """Regression for the case where the clear-by-filter preview page
+    reported only ~2k matches on a queue with ~190k matches. The
+    streaming counter must walk the full LLEN(queue), not the capped
+    queryset window — the queryset path materialises only the first
+    `CELERY_BROKER_DISPLAY_LIMIT` (default 2_000) messages before
+    filtering, so on a queue dominated by one filter triple the
+    preview's `match_count` would underreport while "Clear all"
+    (unbounded) drained the full set.
+
+    `clear_by_filter_view` is a thin wrapper around this helper, so
+    pinning the helper's behaviour here covers the view fix too
+    without requiring the Django test client / Postgres.
+    """
+
+    queue = "bundle_analysis"
+    task = "app.tasks.bundle_analysis.BundleAnalysisProcessor"
+    repoid = 21222368
+    commitid = "0832c11a1f43c5e2a1b9f8a3e5d1c2b7e9a8d3f0"
+
+    # > CELERY_BROKER_DISPLAY_LIMIT so the queryset-bounded window
+    # would have underreported by `n - DISPLAY_LIMIT`.
+    n = redis_admin_settings.CELERY_BROKER_DISPLAY_LIMIT + 1_000
+    pipe = patched_broker.pipeline(transaction=False)
+    for _ in range(n):
+        pipe.rpush(
+            queue,
+            _build_envelope(task=task, kwargs={"repoid": repoid, "commitid": commitid}),
+        )
+    pipe.execute()
+
+    match_count, first_index = streaming_celery_count(
+        queue,
+        task_name=task,
+        repoid=repoid,
+        commitid=commitid,
+    )
+
+    assert match_count == n
+    # First match is at index 0 (every message in the queue matches
+    # the filter, and pass 1 walks ascending).
+    assert first_index == 0
+    # No mutation — `streaming_celery_count` is built on the dry-run
+    # streaming clear path.
+    assert patched_broker.llen(queue) == n
+
+
+def test_streaming_clear_dry_run_keep_one_skips_empty_queues(patched_broker):
+    """Regression for Bugbot review on PR #903: when the dry-run
+    preview spans multiple queues with `keep_one=True`, the
+    subtraction must only deduct for queues that actually have at
+    least one match, *not* for every queue in the filter set.
+
+    Otherwise a queue that drained to zero matches between the
+    changelist render and the preview (e.g. a consumer popped the
+    last match) shaves one extra off the count, so the preview
+    underreports vs the real `_streaming_celery_clear` path —
+    which only reserves a survivor in queues that have a match.
+    """
+
+    queue_with = "bundle_analysis"
+    queue_empty = "ingest"
+    task = "app.tasks.bundle_analysis.BundleAnalysisProcessor"
+    repoid = 21222368
+    commitid = "0832c11a1f43c5e2a1b9f8a3e5d1c2b7e9a8d3f0"
+
+    n = 100
+    pipe = patched_broker.pipeline(transaction=False)
+    for _ in range(n):
+        pipe.rpush(
+            queue_with,
+            _build_envelope(task=task, kwargs={"repoid": repoid, "commitid": commitid}),
+        )
+    pipe.execute()
+    # `queue_empty` is intentionally never seeded so the streaming
+    # counter returns total_found=0 for that queue.
+    user = SimpleNamespace(id=1, pk=1)
+
+    targets = [
+        CeleryBrokerQueue(
+            queue_name=queue_with,
+            task_name=task,
+            repoid=repoid,
+            commitid=commitid,
+            index_in_queue=0,
+        ),
+        CeleryBrokerQueue(
+            queue_name=queue_empty,
+            task_name=task,
+            repoid=repoid,
+            commitid=commitid,
+            index_in_queue=0,
+        ),
+    ]
+
+    result = celery_broker_clear(
+        targets,
+        user=user,
+        dry_run=True,
+        keep_one=True,
+    )
+    # n matches in queue_with, 0 in queue_empty. keep_one=True
+    # reserves exactly one survivor (in queue_with), so the
+    # preview must report `n - 1`. Pre-fix this returned `n - 2`
+    # because the subtraction was per-queue regardless of whether
+    # the queue had any matches.
+    assert result.dry_run is True
+    assert result.count == n - 1
+    assert patched_broker.llen(queue_with) == n
+    assert patched_broker.llen(queue_empty) == 0
+
+
+def test_celery_broker_clear_with_synthetic_filter_target_clears_full_queue(
+    patched_broker,
+):
+    """Regression for Bugbot review on PR #903 (HIGH severity):
+    `clear_by_filter_view` previously passed `sample_targets` (the
+    materialised window capped at `CELERY_BROKER_DISPLAY_LIMIT`) as
+    the `targets` arg to `celery_broker_clear`. When every match
+    sat *beyond* that window -- e.g. a recent burst that filled the
+    tail of a queue with `LLEN > CELERY_BROKER_DISPLAY_LIMIT` --
+    `sample_targets` was empty, `_celery_broker_clear` derived
+    `by_queue_filters = {}`, the streaming-clear loop never
+    executed, and the operator saw "Cleared 0 of N matching
+    message(s)" while the queue stayed full.
+
+    The view now synthesises a single `CeleryBrokerQueue` directly
+    from the operator's filter inputs (queue + task_name? +
+    repoid? + commitid?). This test pins that contract: a single
+    synthetic target carrying just the filter triple must fan out
+    to *every* matching envelope across the full `LLEN`, not just
+    the first `CELERY_BROKER_DISPLAY_LIMIT` rows.
+    """
+
+    queue = "bundle_analysis"
+    task = "app.tasks.bundle_analysis.BundleAnalysisProcessor"
+    repoid = 21222368
+    commitid = "0832c11a1f43c5e2a1b9f8a3e5d1c2b7e9a8d3f0"
+
+    # > CELERY_BROKER_DISPLAY_LIMIT so the queryset-bounded window
+    # would have been empty for any caller that filtered on the
+    # tail end of the queue.
+    n = redis_admin_settings.CELERY_BROKER_DISPLAY_LIMIT + 1_000
+    pipe = patched_broker.pipeline(transaction=False)
+    for _ in range(n):
+        pipe.rpush(
+            queue,
+            _build_envelope(task=task, kwargs={"repoid": repoid, "commitid": commitid}),
+        )
+    pipe.execute()
+    user = SimpleNamespace(id=1, pk=1)
+
+    # The single synthetic target the view now constructs:
+    # one row carrying the operator's filter triple, no
+    # `index_in_queue` requirement (the streaming clear walks
+    # every position in the queue).
+    synthetic_target = CeleryBrokerQueue(
+        queue_name=queue,
+        task_name=task,
+        repoid=repoid,
+        commitid=commitid,
+        index_in_queue=None,
+    )
+
+    result = celery_broker_clear(
+        [synthetic_target],
+        user=user,
+        dry_run=False,
+        keep_one=False,
+    )
+
+    assert result.count == n
+    # `_streaming_celery_clear` LREMs tombstones at the end of each
+    # pass, so the queue should be fully drained.
+    assert patched_broker.llen(queue) == 0
+
+
+def test_streaming_celery_count_wildcard_task_name_matches_any_task(patched_broker):
+    """Regression for the pre-existing wildcard bug surfaced by the
+    synthetic-target fix on PR #903: `streaming_celery_count` (and
+    the underlying `_streaming_celery_clear` filter) used exact-
+    tuple equality on `(task, repoid, commit)`. When the operator
+    left `task_name` unset (None), the filter tuple
+    `(None, 1, "aaaa")` could never match a real envelope (whose
+    `meta.task` is always populated), so the preview reported zero
+    matches even when the queryset's
+    `filter(repoid=1, commitid__startswith="aaaa")` would surface
+    rows.
+
+    With the wildcard fix, `None` slots in a filter tuple act as
+    "don't constrain on this field" -- mirroring the queryset's
+    "filter by what's set" semantic -- so the streaming counter
+    and the streaming clear agree with the queryset's match set.
+    """
+
+    queue = "celery"
+    repoid = 7
+    commitid = "deadbeefcafebabe1111222233334444aaaaaaaa"
+    task_a = "app.tasks.notify.NotifyTask"
+    task_b = "app.tasks.upload.UploadTask"
+
+    pipe = patched_broker.pipeline(transaction=False)
+    for _ in range(3):
+        pipe.rpush(
+            queue,
+            _build_envelope(
+                task=task_a, kwargs={"repoid": repoid, "commitid": commitid}
+            ),
+        )
+    for _ in range(2):
+        pipe.rpush(
+            queue,
+            _build_envelope(
+                task=task_b, kwargs={"repoid": repoid, "commitid": commitid}
+            ),
+        )
+    pipe.rpush(
+        queue,
+        _build_envelope(
+            task=task_a, kwargs={"repoid": repoid + 1, "commitid": commitid}
+        ),
+    )
+    pipe.execute()
+
+    match_count, first_index = streaming_celery_count(
+        queue,
+        task_name=None,
+        repoid=repoid,
+        commitid=commitid,
+    )
+    assert match_count == 5
+    assert first_index == 0
+    assert patched_broker.llen(queue) == 6
+
+
+def test_celery_broker_clear_synthetic_target_with_wildcard_task_name_drains_all_matches(
+    patched_broker,
+):
+    """Companion for the wildcard fix: the synthetic-target path
+    constructed by `clear_by_filter_view` carries `task_name=None`
+    when the operator filtered by repoid/commit only, so the
+    clear path must honour the same wildcard semantic the
+    streaming counter uses -- otherwise the preview reports N
+    matches but "Clear all" silently no-ops.
+    """
+
+    queue = "celery"
+    repoid = 7
+    commitid = "deadbeefcafebabe1111222233334444aaaaaaaa"
+
+    pipe = patched_broker.pipeline(transaction=False)
+    for _ in range(3):
+        pipe.rpush(
+            queue,
+            _build_envelope(
+                task="app.tasks.notify.NotifyTask",
+                kwargs={"repoid": repoid, "commitid": commitid},
+            ),
+        )
+    for _ in range(2):
+        pipe.rpush(
+            queue,
+            _build_envelope(
+                task="app.tasks.upload.UploadTask",
+                kwargs={"repoid": repoid, "commitid": commitid},
+            ),
+        )
+    pipe.rpush(
+        queue,
+        _build_envelope(
+            task="app.tasks.notify.NotifyTask",
+            kwargs={"repoid": repoid + 1, "commitid": commitid},
+        ),
+    )
+    pipe.execute()
+    user = SimpleNamespace(id=1, pk=1)
+
+    synthetic = CeleryBrokerQueue(
+        queue_name=queue,
+        task_name=None,
+        repoid=repoid,
+        commitid=commitid,
+        index_in_queue=None,
+    )
+
+    result = celery_broker_clear(
+        [synthetic],
+        user=user,
+        dry_run=False,
+        keep_one=False,
+    )
+
+    assert result.count == 5
+    assert patched_broker.llen(queue) == 1

@@ -33,6 +33,7 @@ from redis_admin.families import (
     _ta_flake_pattern,
     _uploads_pattern,
     find_family,
+    iter_families,
     iter_keys,
 )
 
@@ -638,3 +639,48 @@ def test_iter_keys_finds_ta_notifier_fence_filtered_by_repoid_and_commit(
     }
 
     assert rows == {"ta_notifier_fence:42_abcdef"}
+
+
+# ---- iter_families ---------------------------------------------------------
+
+
+def test_iter_families_unfiltered_matches_full_registry():
+    """Without a category or exclude filter `iter_families` must yield
+    every registered family in order — it's the single entry point
+    the admin filter UIs call, so a drift here would silently drop
+    families from every list filter at once.
+    """
+
+    assert tuple(iter_families()) == FAMILIES
+
+
+def test_iter_families_narrows_by_category():
+    """`category='queue'` / `category='lock'` partitions the registry
+    so the admin UI can render the right subset per surface.
+    """
+
+    queue_families = {f.name for f in iter_families(category="queue")}
+    lock_families = {f.name for f in iter_families(category="lock")}
+
+    assert "uploads" in queue_families
+    assert "celery_broker" in queue_families
+    assert queue_families.isdisjoint(lock_families)
+    assert "coordination_lock" in lock_families
+
+
+def test_iter_families_drops_excluded_names():
+    """`exclude` lets the queue filter hide families served by a
+    dedicated admin (today: `celery_broker`) so operators don't see
+    a clickable option that returns zero rows on the generic queue
+    changelist.
+    """
+
+    queue_families = {
+        f.name for f in iter_families(category="queue", exclude=["celery_broker"])
+    }
+
+    assert "celery_broker" not in queue_families
+    # Sanity: unrelated queue families are still present so we
+    # didn't accidentally drop the whole category.
+    assert "uploads" in queue_families
+    assert "ta_flake_key" in queue_families

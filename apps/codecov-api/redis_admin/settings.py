@@ -29,6 +29,28 @@ MAX_DECODE_BYTES: int = getattr(settings, "REDIS_ADMIN_MAX_DECODE_BYTES", 4_096)
 # so a runaway 10M-element SET can't OOM the api process.
 MAX_ITEMS_PER_KEY: int = getattr(settings, "REDIS_ADMIN_MAX_ITEMS_PER_KEY", 20_000)
 
+# Per-message rows materialised on the celery_broker changelist drill-down.
+# Tighter than `MAX_ITEMS_PER_KEY` because each row holds a parsed envelope
+# in memory (kept in the per-request LRANGE cache) and is rendered as a
+# table cell — the operator only needs a representative slice, not the
+# entire 100k-deep queue.
+CELERY_BROKER_DISPLAY_LIMIT: int = getattr(
+    settings, "REDIS_ADMIN_CELERY_BROKER_DISPLAY_LIMIT", 2_000
+)
+
+# Sample window for the streaming frequency chart aggregator
+# (`_stream_frequency_aggregate`). Walks the queue in bounded chunks and
+# discards payloads, so memory stays flat regardless of this cap; raising
+# it just trades latency for accuracy.
+#
+# The streaming clear (`services._streaming_celery_clear`) is intentionally
+# *not* bounded by this — it walks `LLEN(queue)` so a "Clear all" action
+# always drains the entire queue, even if the user is targeting matches
+# beyond the chart's sample window.
+CELERY_BROKER_SCAN_LIMIT: int = getattr(
+    settings, "REDIS_ADMIN_CELERY_BROKER_SCAN_LIMIT", 100_000
+)
+
 # Pipeline batch size for delete operations (M5). Keeps a single delete action
 # from blocking Redis with a single oversized MULTI when an operator clears
 # thousands of keys at once.

@@ -17,6 +17,7 @@ prefix-style tokens in addition to plain substrings:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Sequence
 from typing import Any
 from urllib.parse import urlencode
@@ -33,7 +34,7 @@ from core.models import Repository
 
 from . import conn as _conn
 from . import settings as redis_admin_settings
-from .families import FAMILIES, iter_keys
+from .families import FAMILIES, iter_families, iter_keys
 from .families import (
     _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701 - reused for filter lookups
 )
@@ -45,7 +46,19 @@ from .queryset import (
     _stream_frequency_aggregate,
     resolve_payload_preview,
 )
-from .services import celery_broker_clear, redis_delete
+from .services import (
+    celery_broker_clear,
+    redis_delete,
+    streaming_celery_count,
+)
+
+log = logging.getLogger(__name__)
+
+# Cap on the rows we render in the clear-by-filter preview
+# table. Decoupled from `CELERY_BROKER_DISPLAY_LIMIT` because
+# the preview page only needs a representative slice; the real
+# `match_count` comes from the streaming counter.
+_CLEAR_BY_FILTER_SAMPLE_SIZE: int = 20
 
 # ---- Inline items preview (rendered on the queue change page) --------------
 #
@@ -303,15 +316,40 @@ class FamilyFilter(admin.SimpleListFilter):
     # `RedisQueueAdmin` and `RedisLockAdmin` override this on their
     # subclass so each admin only lists families it actually surfaces.
     category: str = "queue"
+    # Families that are categorically excluded from the dropdown even
+    # though they match `category`. Subclasses use this to hide a
+    # family that has its own dedicated admin (e.g. `celery_broker`
+    # is surfaced by `CeleryBrokerQueueAdmin`; leaving it selectable
+    # on the generic queue filter would be a dead option that
+    # returns zero rows because `RedisQueueAdmin.get_queryset` runs
+    # `.family_exclude("celery_broker")`).
+    excluded_names: frozenset[str] = frozenset()
 
     def lookups(self, request, model_admin):
-        return tuple((f.name, f.name) for f in FAMILIES if f.category == self.category)
+        return tuple(
+            (f.name, f.name)
+            for f in iter_families(category=self.category, exclude=self.excluded_names)
+        )
 
     def queryset(self, request, queryset):
         value = self.value()
         if value:
             return queryset.filter(family__exact=value)
         return queryset
+
+
+class QueueFamilyFilter(FamilyFilter):
+    """`FamilyFilter` for `RedisQueueAdmin` — omits `celery_broker`.
+
+    The queue changelist hides `celery_broker` rows entirely
+    (`get_queryset` calls `.family_exclude("celery_broker")`) so
+    leaving the value in the dropdown surfaces a clickable option
+    that filters the page to zero rows. Dropping it from the
+    choice list keeps the sidebar in sync with what the admin can
+    actually display.
+    """
+
+    excluded_names = frozenset({"celery_broker"})
 
 
 class LockFamilyFilter(FamilyFilter):
@@ -475,7 +513,7 @@ class RedisQueueAdmin(admin.ModelAdmin):
     # queue list to a specific celery queue — is removed for the
     # same reason; the new admin's landing page is the discovery
     # surface for celery queues.
-    list_filter = (FamilyFilter, MinDepthFilter, ReportTypeFilter)
+    list_filter = (QueueFamilyFilter, MinDepthFilter, ReportTypeFilter)
     list_per_page = 50
     show_full_result_count = False
     ordering = ("-depth", "name")
@@ -1447,7 +1485,15 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
     )
     list_per_page = redis_admin_settings.ITEM_PAGE_SIZE
     show_full_result_count = False
+    # Default ordering for the per-message drill-down (one row per
+    # kombu envelope). `get_ordering` below flips this to
+    # `(-depth, queue_name)` in summary mode so the landing page
+    # surfaces the hottest queues first.
     ordering = ("index_in_queue",)
+    # Summary mode ordering: depth DESC, then queue_name ASC. Kept
+    # as a class attribute so tests / subclasses can pin the
+    # expected sort without reaching into `get_ordering`.
+    summary_ordering: tuple[str, ...] = ("-depth", "queue_name")
     search_fields = ("task_name",)
     search_help_text = (
         "search by 'repoid:1234', 'commit:abc', 'task:BundleAnalysisProcessor', "
@@ -1513,6 +1559,27 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
 
         return not request.GET.get("queue_name__exact")
 
+    def get_ordering(self, request: HttpRequest):
+        """Default sort depends on mode.
+
+        * Summary (landing page, no `queue_name__exact`): deepest
+          queues first, ties broken alphabetically by queue name —
+          an on-call engineer scanning the top of the page sees the
+          hottest queues up top.
+        * Drill-down (per-message view, `?queue_name__exact=<q>`):
+          index-order is preserved so `matches[0]` is the next
+          message a Celery consumer would pop. The clear-by-filter
+          and keep-one-survivor paths rely on that invariant.
+
+        Django's `ChangeList` still layers explicit `?o=` column-
+        header clicks on top of this default, so operators can
+        re-sort at will.
+        """
+
+        if self._is_summary_request(request):
+            return self.summary_ordering
+        return self.ordering
+
     def get_list_display(self, request: HttpRequest):
         if self._is_summary_request(request):
             return self.summary_list_display
@@ -1576,6 +1643,18 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             # `chart_fragment_view` via an AJAX call, keeping the
             # changelist fast even for 500k-deep queues.
             ctx["queue_name"] = request.GET.get("queue_name__exact", "")
+            # Surface the actual `CELERY_BROKER_SCAN_LIMIT` so the
+            # loader hint reflects whatever the deployment overrode it
+            # to (50_000 / 200_000 / etc.), instead of the hardcoded
+            # default. Keeps the user-facing message honest in
+            # environments where the scan window has been tuned.
+            # Pre-formatted with thousands separators since
+            # `django.contrib.humanize` is not installed in this
+            # service's INSTALLED_APPS, so `intcomma` is unavailable
+            # in the template.
+            ctx["scan_limit_label"] = (
+                f"{redis_admin_settings.CELERY_BROKER_SCAN_LIMIT:,}"
+            )
         return super().changelist_view(request, ctx)
 
     def _build_frequency_chart_context(
@@ -1795,13 +1874,76 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             queryset = queryset.filter(repoid=repoid)
         if commitid:
             queryset = queryset.filter(commitid__startswith=commitid)
-        # `_fetch_all` materialises in LRANGE order (ascending
-        # `index_in_queue`), so `matches[0]` is always the lowest-
-        # index match. We sort defensively in case a future ordering
-        # change perturbs that.
-        matches = sorted(queryset, key=lambda row: row.index_in_queue or 0)
-        match_count = len(matches)
-        kept_index: int | None = matches[0].index_in_queue if matches else None
+        # Cap-bounded sample for the preview table (cheap, in-memory).
+        # The queryset materialises the first `CELERY_BROKER_DISPLAY_LIMIT`
+        # messages, then filters; we trim further to keep the rendered
+        # table compact.
+        sample_targets = sorted(queryset, key=lambda row: row.index_in_queue or 0)[
+            :_CLEAR_BY_FILTER_SAMPLE_SIZE
+        ]
+
+        # `match_count` and `kept_index` come from a streaming pass
+        # over the full queue so the preview agrees with what the
+        # actual clear (also unbounded) would do. Going through the
+        # queryset would underreport whenever `LLEN(queue) >
+        # CELERY_BROKER_DISPLAY_LIMIT` (anything past the 2k materialise
+        # window).
+        try:
+            match_count, kept_index = streaming_celery_count(
+                queue_name,
+                task_name=task_name or None,
+                repoid=repoid,
+                commitid=commitid or None,
+            )
+        except Exception:
+            log.exception(
+                "redis_admin.clear_by_filter: streaming count failed for %r",
+                queue_name,
+            )
+            # Defensive fallback: degrade to the queryset count rather
+            # than render a 500. The operator at least sees something
+            # and can still hit "Clear all" — the streaming clear path
+            # has its own error handling.
+            match_count = len(sample_targets)
+            kept_index = sample_targets[0].index_in_queue if sample_targets else None
+        # Build a single synthetic target carrying the operator's
+        # *exact* filter (queue + task_name? + repoid? + commitid?)
+        # so `_celery_broker_clear` always derives the same
+        # `frozenset({(task_name or None, repoid, commitid or None)})`
+        # that `streaming_celery_count` walked the full queue with.
+        #
+        # Without this, the clear path inferred its filter set from
+        # `sample_targets` — the materialised window capped by
+        # `CELERY_BROKER_DISPLAY_LIMIT` (default 2_000). That had two
+        # silent-no-op modes:
+        #
+        # 1. All matches sit beyond the display window (e.g. a recent
+        #    burst on a queue with `LLEN > 2_000`): `sample_targets`
+        #    is empty, `by_queue_filters` becomes `{}`, the streaming
+        #    clear loop doesn't iterate, and the queue is never
+        #    touched even though `match_count > 0` from streaming.
+        # 2. Operator filtered by `repoid` only: each `sample_target`
+        #    contributes a *specific* `(task_name, repoid, commitid)`
+        #    triple, so the filter set excludes any task name not
+        #    represented in the first 2_000 messages — those messages
+        #    survive the clear.
+        #
+        # The synthetic target restores the streaming-clear semantic
+        # of "match every envelope whose `(task, repoid, commitid)`
+        # equals the operator's input." Per-message and bulk-select
+        # paths (`delete_model`, `clear_selected`, `delete_queryset`,
+        # `clear_dry_run`) still pass real materialised rows — those
+        # are intentionally index-driven, not filter-driven, so they
+        # don't go through this code path.
+        filter_target = CeleryBrokerQueue(
+            pk_token=f"{queue_name}#{kept_index if kept_index is not None else 'filter'}",
+            queue_name=queue_name,
+            index_in_queue=kept_index,
+            task_name=task_name or None,
+            repoid=repoid,
+            commitid=commitid or None,
+        )
+        matches = [filter_target]
 
         expected_confirm = queue_name
         typed_confirm = (request.POST.get("typed_confirm") or "").strip()
@@ -1815,7 +1957,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         # through to the render path without invoking the service or
         # writing a LogEntry.
         if request.method == "POST" and action in valid_actions:
-            if not matches:
+            if match_count == 0:
                 messages.info(
                     request,
                     "No messages match the filter — nothing to clear.",
@@ -1871,7 +2013,6 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
                         )
                     return HttpResponseRedirect(changelist_url)
 
-        sample_targets = matches[:25]
         ctx = {
             **self.admin_site.each_context(request),
             "title": f"Clear {queue_name} by filter",

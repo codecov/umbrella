@@ -414,16 +414,19 @@ def _redis_delete(
 # For 200–500k-deep queues the old eager-materialise-then-LSET path
 # had two problems:
 #
-#   1. Memory: materialising up to `MAX_ITEMS_PER_KEY` rows into
-#      Python before clearing was O(N) in memory.
+#   1. Memory: materialising the entire queue into Python before
+#      clearing was O(N) in memory.
 #   2. Race drift: the index a Celery consumer sees between our
 #      `LRANGE` snapshot and our `LSET` call can shift if another
 #      consumer BLPOPs from the head. The old code had no verify step.
 #
-# The new path (see `_streaming_celery_clear`) walks the queue in
-# 10k-row LRANGE chunks.  For each candidate position it does a
-# verify-before-LSET (LINDEX to confirm the raw bytes still match the
-# snapshot row before writing the tombstone) and a
+# The new path (see `_streaming_celery_clear`) walks the **entire**
+# queue in 10k-row LRANGE chunks every pass — the clear has no
+# artificial cap because "Clear all" needs to drain whatever depth
+# the queue happens to be at, even past the chart sampler's window
+# (`CELERY_BROKER_SCAN_LIMIT`). For each candidate position it does
+# a verify-before-LSET (LINDEX to confirm the raw bytes still match
+# the snapshot row before writing the tombstone) and a
 # repeat-until-stable loop (max 3 passes) to catch messages that
 # drifted into our filter window between passes.
 
@@ -444,12 +447,45 @@ def _celery_clear_tombstone() -> str:
     return f"{_CELERY_TOMBSTONE_PREFIX}:{uuid.uuid4().hex}"
 
 
+def _envelope_matches_any_filter(meta, filter_tuples: frozenset) -> bool:
+    """Return True if `meta` matches any tuple in `filter_tuples`.
+
+    Each filter tuple is `(task_name, repoid, commitid)` where any
+    slot may be `None` to mean "wildcard / don't constrain on this
+    field". Mirrors the queryset's "filter by what's set" semantic
+    (`queryset.filter(repoid=repoid)` doesn't constrain `task_name`),
+    so callers like `streaming_celery_count` and the clear-by-filter
+    path can reuse the same triple-shaped frozenset they would build
+    for an exact-tuple match without silently undercounting when the
+    operator left a slot unset.
+
+    Without the wildcard semantics, a filter built from operator
+    input (e.g. `(None, 1, "abc")` for "repoid=1 AND commitid=abc",
+    no task constraint) would never match a real envelope (whose
+    `meta.task` is always populated), so both the streaming counter
+    and the streaming clear would silently report zero matches even
+    when the queryset path would have surfaced rows.
+    """
+
+    for ft_task, ft_repoid, ft_commitid in filter_tuples:
+        if ft_task is not None and ft_task != meta.task:
+            continue
+        if ft_repoid is not None and ft_repoid != meta.repoid:
+            continue
+        if ft_commitid is not None and ft_commitid != meta.commitid:
+            continue
+        return True
+    return False
+
+
 @dataclass(frozen=True)
 class _StreamingClearStats:
     """Per-run stats from `_streaming_celery_clear`."""
 
     total_lset: int
     total_drifted: int
+    total_found: int
+    first_match_index: int | None
     passes_run: int
 
 
@@ -464,9 +500,9 @@ def _streaming_celery_clear(
 ) -> _StreamingClearStats:
     """Streaming LRANGE+verify-before-LSET clear for `queue_name`.
 
-    Walks the queue in `_CELERY_CLEAR_CHUNK`-row chunks, identifies
-    messages whose parsed `(task_name, repoid, commitid)` triple
-    appears in `filter_tuples`, and for each match:
+    Walks the **entire** queue in `_CELERY_CLEAR_CHUNK`-row chunks,
+    identifies messages whose parsed `(task_name, repoid, commitid)`
+    triple appears in `filter_tuples`, and for each match:
 
     1. Issues `LINDEX key idx` to re-read the raw bytes at that
        position.
@@ -479,19 +515,37 @@ def _streaming_celery_clear(
     tombstones in one shot.
 
     The loop repeats up to `_CELERY_MAX_PASSES` times, stopping
-    early when a pass finds zero matches OR two consecutive passes
-    tombstone the same count (stable point reached).
+    early when a pass finds zero matches (queue drained of matches)
+    OR two consecutive passes tombstone the same count (stable
+    point reached — pathological persistent-drift signal).
 
     `keep_one=True` skips the first matching message encountered in
     the first pass and on all subsequent passes, implementing the
     "clear all but first (lowest-index match)" semantic.
+
+    On `dry_run=True` we walk the queue exactly once and accumulate
+    `total_found` without issuing any LSET/LREM. The dry-run preview
+    only needs the count, not race coverage, so multi-pass would
+    just re-scan a quiet queue for no benefit (and on a 500k-deep
+    queue that's a real cost).
+
+    Returns a `_StreamingClearStats` carrying `total_lset` (slots
+    tombstoned), `total_drifted` (slots skipped due to LRANGE/LINDEX
+    drift), `total_found` (every match observed across passes —
+    populated for the dry-run preview), and `passes_run`.
     """
 
     total_lset = 0
     total_drifted = 0
+    total_found = 0
+    # Tracks the lowest-index match seen across all passes. Pass 1
+    # walks the queue in ascending index order, so the first match
+    # we see IS the lowest. Used by the clear-by-filter preview to
+    # render the "Clear all but first" callout (`kept_index`)
+    # without a separate queryset materialisation.
+    first_match_index: int | None = None
     prev_lset: int | None = None
     passes_run = 0
-    cap = redis_admin_settings.MAX_ITEMS_PER_KEY
 
     # Track whether we've kept the "first" across all passes so that
     # repeat passes honour the same semantic (first by queue index).
@@ -507,8 +561,19 @@ def _streaming_celery_clear(
         # surviving message is always kept, even as the queue shifts.
         pass_first_kept = first_kept
 
+        # Walk the entire queue every pass: clearing has to traverse
+        # the full depth so a "Clear all" on a 200k+ saturated queue
+        # actually drains it. The chart's `_stream_frequency_aggregate`
+        # caps at `CELERY_BROKER_SCAN_LIMIT` because it only needs a
+        # representative sample to compute bucket proportions; the
+        # clear path has no analogous bound — capping it meant that on
+        # a queue dominated by one `(task, repoid, commitid)` triple,
+        # pass 1 cleared the first `cap` positions, pass 2 cleared
+        # another `cap` that shifted in from beyond, and the
+        # `prev_lset == matches_lset` plateau exit then declared
+        # convergence with most of the queue still in place.
         depth = int(redis.llen(queue_name) or 0)
-        for chunk_start in range(0, min(depth, cap), _CELERY_CLEAR_CHUNK):
+        for chunk_start in range(0, depth, _CELERY_CLEAR_CHUNK):
             chunk_end = chunk_start + _CELERY_CLEAR_CHUNK - 1
             raw_chunk = redis.lrange(queue_name, chunk_start, chunk_end)
             for offset, raw in enumerate(raw_chunk):
@@ -521,10 +586,11 @@ def _streaming_celery_clear(
                 idx = chunk_start + offset
                 decoded = _decode_value(raw)
                 meta = parse_celery_envelope(decoded)
-                key = (meta.task, meta.repoid, meta.commitid)
-                if key not in filter_tuples:
+                if not _envelope_matches_any_filter(meta, filter_tuples):
                     continue
                 matches_found += 1
+                if first_match_index is None:
+                    first_match_index = idx
 
                 # keep_one: skip the first match across all chunks
                 # (lowest index in current pass).
@@ -554,7 +620,14 @@ def _streaming_celery_clear(
 
         total_lset += matches_lset
         total_drifted += matches_drifted
+        total_found += matches_found
 
+        # Dry-run only needs the count; one full scan is exact for a
+        # quiet queue and the streaming-clear semantics for the preview
+        # don't need the verify-before-LSET race coverage that justifies
+        # multi-pass on the executing path.
+        if dry_run:
+            break
         # Stability check: stop when no matches or lset count plateaued.
         if matches_found == 0:
             break
@@ -575,8 +648,50 @@ def _streaming_celery_clear(
     return _StreamingClearStats(
         total_lset=total_lset,
         total_drifted=total_drifted,
+        total_found=total_found,
+        first_match_index=first_match_index,
         passes_run=passes_run,
     )
+
+
+def streaming_celery_count(
+    queue_name: str,
+    *,
+    task_name: str | None = None,
+    repoid: int | None = None,
+    commitid: str | None = None,
+) -> tuple[int, int | None]:
+    """Streaming `(match_count, lowest_index_match)` for the
+    `(queue_name, task_name?, repoid?, commitid?)` filter.
+
+    Walks the full `LLEN(queue)` so the returned count agrees
+    with what `celery_broker_clear` would actually tombstone.
+    Used by `clear_by_filter_view` to render the preview page;
+    the queryset path is bounded by `CELERY_BROKER_DISPLAY_LIMIT`
+    and would underreport on deep queues.
+
+    The filter compares envelope tuples by exact equality. The
+    admin view passes `commitid` straight from the chart row
+    (full 40-char hash), so this matches the
+    `queryset.filter(commitid__startswith=...)` path the
+    changelist uses for full-length input. Partial-prefix
+    commits (rare; only reachable via manual URL editing) will
+    count as zero — that's a documented limitation; the user
+    can still browse via the changelist filters.
+    """
+
+    redis = _conn.get_connection(kind="broker")
+    filter_tuples = frozenset({(task_name or None, repoid, commitid or None)})
+    tombstone = _celery_clear_tombstone()
+    stats = _streaming_celery_clear(
+        redis,
+        queue_name,
+        filter_tuples,
+        tombstone,
+        keep_one=False,
+        dry_run=True,
+    )
+    return stats.total_found, stats.first_match_index
 
 
 def celery_broker_clear(
@@ -628,7 +743,6 @@ def _celery_broker_clear(
     # tokens for the audit log.
     by_queue_filters: dict[str, set] = {}
     sample_source: list[str] = []
-    pending_count = 0
 
     for target in targets:
         if not isinstance(target, CeleryBrokerQueue):
@@ -642,7 +756,6 @@ def _celery_broker_clear(
         key = (target.task_name, target.repoid, target.commitid)
         by_queue_filters.setdefault(target.queue_name, set()).add(key)
         sample_source.append(f"{target.queue_name}#{target.index_in_queue}")
-        pending_count += 1
 
     sample = tuple(sample_source[:_AUDIT_SAMPLE_SIZE])
     families = ("celery_broker",) if by_queue_filters else ()
@@ -651,8 +764,48 @@ def _celery_broker_clear(
     total_drifted = 0
     total_passes = 0
 
-    if dry_run or not by_queue_filters:
-        result_count = pending_count
+    if not by_queue_filters:
+        # No celery_broker targets at all (operator submitted an empty
+        # filter set, or all targets were the wrong polymorphic type).
+        result_count = 0
+    elif dry_run:
+        # Walk the full queue per filter triple so the preview count
+        # matches what the real clear would tombstone. Counts only —
+        # `_streaming_celery_clear(..., dry_run=True)` skips LSET/LREM.
+        # Without this, the preview was reporting `pending_count`
+        # (the materialised target list, capped by
+        # `CELERY_BROKER_DISPLAY_LIMIT`), so a 200k-deep queue with
+        # 190k matches would show ~1.9k in the preview while the
+        # actual clear then drained 190k.
+        redis = _conn.get_connection(kind="broker")
+        total_found = 0
+        queues_with_matches = 0
+        for queue_name, filter_set in by_queue_filters.items():
+            tombstone = _celery_clear_tombstone()
+            stats = _streaming_celery_clear(
+                redis,
+                queue_name,
+                frozenset(filter_set),
+                tombstone,
+                keep_one=keep_one,
+                dry_run=True,
+            )
+            total_found += stats.total_found
+            if stats.total_found > 0:
+                queues_with_matches += 1
+            total_passes += stats.passes_run
+        # `keep_one` semantics: the actual clear preserves one
+        # message per queue *that has at least one match*. Subtract
+        # only for those queues, not for every queue in the filter
+        # set -- otherwise a queue that drained to zero matches
+        # between the changelist render and this preview (e.g. a
+        # consumer popped the last match) would shave one extra
+        # off the count, underreporting what the real clear will
+        # tombstone. Aligns the preview with the actual execution
+        # path of `_streaming_celery_clear`.
+        if keep_one and queues_with_matches > 0:
+            total_found = max(0, total_found - queues_with_matches)
+        result_count = total_found
     else:
         redis = _conn.get_connection(kind="broker")
         for queue_name, filter_set in by_queue_filters.items():
