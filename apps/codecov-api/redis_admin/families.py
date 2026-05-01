@@ -823,6 +823,31 @@ def find_family(key: str) -> Family | None:
     return None
 
 
+def iter_families(
+    *,
+    category: Literal["queue", "lock"] | None = None,
+    exclude: Iterable[str] = (),
+) -> Iterator[Family]:
+    """Yield registered families, optionally narrowed by category / name.
+
+    Single entry point for admin UI surfaces (`FamilyFilter.lookups`,
+    the clear-by-scope family picker) that need to enumerate the
+    family registry with a consistent exclusion list. Keeping the
+    filtering here means a family that's served by its own dedicated
+    admin (today: `celery_broker`, surfaced by
+    `CeleryBrokerQueueAdmin`) can be dropped from generic enumerators
+    without each caller re-implementing the same skip list.
+    """
+
+    exclude_set = frozenset(exclude)
+    for family in FAMILIES:
+        if category is not None and family.category != category:
+            continue
+        if family.name in exclude_set:
+            continue
+        yield family
+
+
 def iter_keys(
     redis=None,
     *,

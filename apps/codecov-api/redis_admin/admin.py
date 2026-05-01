@@ -34,7 +34,7 @@ from core.models import Repository
 
 from . import conn as _conn
 from . import settings as redis_admin_settings
-from .families import FAMILIES, iter_keys
+from .families import FAMILIES, iter_families, iter_keys
 from .families import (
     _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701 - reused for filter lookups
 )
@@ -316,15 +316,40 @@ class FamilyFilter(admin.SimpleListFilter):
     # `RedisQueueAdmin` and `RedisLockAdmin` override this on their
     # subclass so each admin only lists families it actually surfaces.
     category: str = "queue"
+    # Families that are categorically excluded from the dropdown even
+    # though they match `category`. Subclasses use this to hide a
+    # family that has its own dedicated admin (e.g. `celery_broker`
+    # is surfaced by `CeleryBrokerQueueAdmin`; leaving it selectable
+    # on the generic queue filter would be a dead option that
+    # returns zero rows because `RedisQueueAdmin.get_queryset` runs
+    # `.family_exclude("celery_broker")`).
+    excluded_names: frozenset[str] = frozenset()
 
     def lookups(self, request, model_admin):
-        return tuple((f.name, f.name) for f in FAMILIES if f.category == self.category)
+        return tuple(
+            (f.name, f.name)
+            for f in iter_families(category=self.category, exclude=self.excluded_names)
+        )
 
     def queryset(self, request, queryset):
         value = self.value()
         if value:
             return queryset.filter(family__exact=value)
         return queryset
+
+
+class QueueFamilyFilter(FamilyFilter):
+    """`FamilyFilter` for `RedisQueueAdmin` — omits `celery_broker`.
+
+    The queue changelist hides `celery_broker` rows entirely
+    (`get_queryset` calls `.family_exclude("celery_broker")`) so
+    leaving the value in the dropdown surfaces a clickable option
+    that filters the page to zero rows. Dropping it from the
+    choice list keeps the sidebar in sync with what the admin can
+    actually display.
+    """
+
+    excluded_names = frozenset({"celery_broker"})
 
 
 class LockFamilyFilter(FamilyFilter):
@@ -488,7 +513,7 @@ class RedisQueueAdmin(admin.ModelAdmin):
     # queue list to a specific celery queue — is removed for the
     # same reason; the new admin's landing page is the discovery
     # surface for celery queues.
-    list_filter = (FamilyFilter, MinDepthFilter, ReportTypeFilter)
+    list_filter = (QueueFamilyFilter, MinDepthFilter, ReportTypeFilter)
     list_per_page = 50
     show_full_result_count = False
     ordering = ("-depth", "name")
@@ -1460,7 +1485,15 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
     )
     list_per_page = redis_admin_settings.ITEM_PAGE_SIZE
     show_full_result_count = False
+    # Default ordering for the per-message drill-down (one row per
+    # kombu envelope). `get_ordering` below flips this to
+    # `(-depth, queue_name)` in summary mode so the landing page
+    # surfaces the hottest queues first.
     ordering = ("index_in_queue",)
+    # Summary mode ordering: depth DESC, then queue_name ASC. Kept
+    # as a class attribute so tests / subclasses can pin the
+    # expected sort without reaching into `get_ordering`.
+    summary_ordering: tuple[str, ...] = ("-depth", "queue_name")
     search_fields = ("task_name",)
     search_help_text = (
         "search by 'repoid:1234', 'commit:abc', 'task:BundleAnalysisProcessor', "
@@ -1525,6 +1558,27 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         """Summary mode = no `queue_name__exact` filter on the URL."""
 
         return not request.GET.get("queue_name__exact")
+
+    def get_ordering(self, request: HttpRequest):
+        """Default sort depends on mode.
+
+        * Summary (landing page, no `queue_name__exact`): deepest
+          queues first, ties broken alphabetically by queue name —
+          an on-call engineer scanning the top of the page sees the
+          hottest queues up top.
+        * Drill-down (per-message view, `?queue_name__exact=<q>`):
+          index-order is preserved so `matches[0]` is the next
+          message a Celery consumer would pop. The clear-by-filter
+          and keep-one-survivor paths rely on that invariant.
+
+        Django's `ChangeList` still layers explicit `?o=` column-
+        header clicks on top of this default, so operators can
+        re-sort at will.
+        """
+
+        if self._is_summary_request(request):
+            return self.summary_ordering
+        return self.ordering
 
     def get_list_display(self, request: HttpRequest):
         if self._is_summary_request(request):

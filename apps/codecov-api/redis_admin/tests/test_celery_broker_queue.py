@@ -1624,6 +1624,86 @@ def test_queryset_summary_mode_lists_known_queues_with_depth(patched_broker):
     assert by_name["celery"].pk_token == "celery#summary"
 
 
+# ---- Summary-mode default ordering ----------------------------------------
+
+
+def test_queryset_summary_mode_default_sort_is_depth_desc_then_name_asc(
+    patched_broker, monkeypatch
+):
+    """Summary mode must surface the deepest queues first, with
+    ties broken alphabetically by queue name.
+
+    The admin landing page is an on-call surface: an operator
+    arriving from a Grafana alert scans the top of the page looking
+    for the hot spot. Alphabetical-by-name (the pre-change default)
+    would bury a 100-deep `ingest` below a 0-deep `bundle_analysis`
+    simply because of its name. Depth-DESC fixes that; name-ASC
+    ties-break keeps the list stable so refreshing doesn't reshuffle
+    queues at equal depth.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset  # noqa: PLC0415
+
+    # Pin the enumerated queue set — the test env's
+    # `_resolve_celery_queue_names` only returns `("celery",
+    # "healthcheck")`, which isn't enough to exercise both the
+    # tie-break and the distinct-depth sort dimensions.
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_celery_queue_names",
+        lambda: ("bundle_analysis", "ingest", "notifications", "process_pulls"),
+    )
+
+    # bundle_analysis: 5  |  ingest: 100  |  notifications: 100  |  process_pulls: 0
+    for _ in range(5):
+        patched_broker.rpush("bundle_analysis", _build_envelope(kwargs={}))
+    for _ in range(100):
+        patched_broker.rpush("ingest", _build_envelope(kwargs={}))
+    for _ in range(100):
+        patched_broker.rpush("notifications", _build_envelope(kwargs={}))
+    # process_pulls intentionally left empty (LLEN==0).
+
+    qs = CeleryBrokerQueueQuerySet(CeleryBrokerQueue).order_by(
+        *CeleryBrokerQueueAdmin.summary_ordering
+    )
+    rows = list(qs)
+
+    assert [(r.queue_name, r.depth) for r in rows] == [
+        ("ingest", 100),
+        ("notifications", 100),
+        ("bundle_analysis", 5),
+        ("process_pulls", 0),
+    ]
+
+
+def test_admin_get_ordering_returns_summary_sort_when_no_queue_filter():
+    """`CeleryBrokerQueueAdmin.get_ordering` must flip to
+    `(-depth, queue_name)` on the summary URL so Django's ChangeList
+    applies the right default `.order_by(...)` before paginating.
+    Operators can still click column headers to override (Django's
+    `?o=` handling sits on top of this value).
+    """
+
+    admin_instance = CeleryBrokerQueueAdmin(CeleryBrokerQueue, AdminSite())
+    request = SimpleNamespace(GET={})
+
+    assert admin_instance.get_ordering(request) == ("-depth", "queue_name")
+
+
+def test_admin_get_ordering_falls_back_to_index_order_in_drill_down():
+    """Drill-down mode (per-message view) preserves `index_in_queue`
+    order so `matches[0]` is always the next message a Celery
+    consumer would pop. The streaming clear + keep-one-survivor
+    paths rely on that invariant; the summary-mode sort must not
+    leak into it.
+    """
+
+    admin_instance = CeleryBrokerQueueAdmin(CeleryBrokerQueue, AdminSite())
+    request = SimpleNamespace(GET={"queue_name__exact": "notify"})
+
+    assert admin_instance.get_ordering(request) == ("index_in_queue",)
+
+
 # ---- family_exclude --------------------------------------------------------
 
 
