@@ -47,7 +47,16 @@ jobs:
       flag_prefix: worker
       pytest_rootdir: /app
       make_target_prefix: worker.
+      # NOTE: worker tests intentionally run serially. The SQLAlchemy DB setup
+      # in apps/worker/conftest.py expects the deprecated xdist `slaveinput`
+      # API and mutates an immutable `engine.url`; enabling xdist here without
+      # fixing those would race on `test_postgres_sqlalchemy`.
+      pytest_xdist: ""
 
+  # Builds the self-hosted image on every run and pushes the rolling tag only
+  # on push-to-main. Previously a separate `worker-self-hosted` job re-built the
+  # same image on push-to-main just to push it; this consolidates them so we
+  # only build the self-hosted image once per workflow run.
   worker-build-self-hosted:
     name: Build Self Hosted (Worker)
     if: ${{ inputs.skip == false }}
@@ -55,6 +64,7 @@ jobs:
     uses: ./.github/workflows/_self-hosted.yml
     secrets: inherit
     with:
+      push_rolling: ${{ github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
       output_directory: apps/worker
       make_target_prefix: worker.
@@ -70,18 +80,6 @@ jobs:
       repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
       output_directory: apps/worker
       sentry_project: worker
-      make_target_prefix: worker.
-
-  worker-self-hosted:
-    name: Push Self Hosted Image (Worker)
-    needs: [worker-build-self-hosted, worker-test]
-    secrets: inherit
-    if: ${{ inputs.skip == false && github.event_name == 'push' && github.event.ref == 'refs/heads/main' && github.repository_owner == 'codecov' }}
-    uses: ./.github/workflows/_self-hosted.yml
-    with:
-      push_rolling: true
-      repo: ${{ vars.CODECOV_WORKER_IMAGE_V2 || vars.CODECOV_WORKER_IMAGE_V2_SELF_HOSTED || 'codecov/self-hosted-worker' }}
-      output_directory: apps/worker
       make_target_prefix: worker.
 
   # This job works around a strange interaction between reusable workflows and

@@ -39,6 +39,11 @@ jobs:
       flag_prefix: shared
       pytest_rootdir: /app
       make_target_prefix: shared.
+      # NOTE: shared tests intentionally run serially. Enabling xdist exposed
+      # races on the per-worker postgres test DB (`test_postgres_gw0` "already
+      # exists" / "is being accessed by other users") inside shared's custom
+      # `django_setup_test_db`. Re-enable once that path is xdist-safe.
+      pytest_xdist: ""
 
   shared-benchmark:
     name: Benchmarks (Shared)

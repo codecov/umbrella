@@ -1,4 +1,5 @@
 import os
+import tempfile
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
@@ -281,7 +282,8 @@ class TestPullRequestList(GraphQLTestHelper, TestCase):
         mock_task_service.return_value.pulls_sync.assert_not_called()
 
     def test_when_repository_has_null_head_has_parent_report(self):
-        os.system("rm -rf /tmp/bundle_analysis_*")
+        tmpdir = tempfile.gettempdir()
+        os.system(f"rm -rf {tmpdir}/bundle_analysis_*")
 
         parent_commit = CommitFactory(repository=self.repository)
 
@@ -343,10 +345,10 @@ class TestPullRequestList(GraphQLTestHelper, TestCase):
             }
         }
 
-        for file in os.listdir("/tmp"):
+        for file in os.listdir(tmpdir):
             assert not file.startswith("bundle_analysis_")
 
-        os.system("rm -rf /tmp/bundle_analysis_*")
+        os.system(f"rm -rf {tmpdir}/bundle_analysis_*")
 
     @freeze_time("2021-02-02")
     def test_when_pr_is_first_pr_in_repo(self):
@@ -496,7 +498,8 @@ class TestPullRequestList(GraphQLTestHelper, TestCase):
         }
 
     def test_bundle_analysis_sqlite_file_deleted(self):
-        os.system("rm -rf /tmp/bundle_analysis_*")
+        tmpdir = tempfile.gettempdir()
+        os.system(f"rm -rf {tmpdir}/bundle_analysis_*")
 
         parent_commit = CommitFactory(repository=self.repository)
         commit = CommitFactory(
@@ -563,10 +566,10 @@ class TestPullRequestList(GraphQLTestHelper, TestCase):
             }
         }
 
-        for file in os.listdir("/tmp"):
+        for file in os.listdir(tmpdir):
             assert not file.startswith("bundle_analysis_")
 
-        os.system("rm -rf /tmp/bundle_analysis_*")
+        os.system(f"rm -rf {tmpdir}/bundle_analysis_*")
 
     @freeze_time("2021-02-02")
     def test_pull_no_patch_totals(self):
