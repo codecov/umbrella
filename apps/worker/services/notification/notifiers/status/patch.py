@@ -1,7 +1,7 @@
-from database.enums import Notification
 from services.comparison import ComparisonProxy, FilteredComparison
 from services.notification.notifiers.mixins.status import StatusPatchMixin, StatusResult
 from services.notification.notifiers.status.base import StatusNotifier
+from shared.django_apps.enums import Notification
 
 
 class PatchStatusNotifier(StatusPatchMixin, StatusNotifier):

@@ -3,7 +3,6 @@ import logging
 from sqlalchemy.orm import joinedload
 
 from app import celery_app
-from database.enums import CommitErrorTypes
 from database.models import Commit
 from database.models.core import Owner, Repository
 from helpers.exceptions import RepositoryWithoutValidBotError
@@ -21,6 +20,7 @@ from shared.celery_config import (
     PREPROCESS_UPLOAD_MAX_RETRIES,
     pre_process_upload_task_name,
 )
+from shared.django_apps.enums import CommitErrorTypes
 from shared.django_apps.upload_breadcrumbs.models import Errors, Milestones
 from shared.helpers.redis import get_redis_connection
 from shared.torngit.base import TorngitBaseAdapter

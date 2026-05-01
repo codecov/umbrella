@@ -10,12 +10,12 @@ from redis.exceptions import ConnectionError as RedisConnectionError  # type: ig
 from redis.exceptions import LockError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
-from database.enums import ReportType
 from shared.celery_config import (
     DEFAULT_BLOCKING_TIMEOUT_SECONDS,
     DEFAULT_LOCK_TIMEOUT_SECONDS,
 )
 from shared.config import get_config
+from shared.django_apps.enums import ReportType
 from shared.helpers.redis import get_redis_connection  # type: ignore
 
 log = logging.getLogger(__name__)
