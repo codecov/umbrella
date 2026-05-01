@@ -48,7 +48,7 @@ CELERY_BROKER_DISPLAY_LIMIT: int = getattr(
 # always drains the entire queue, even if the user is targeting matches
 # beyond the chart's sample window.
 CELERY_BROKER_SCAN_LIMIT: int = getattr(
-    settings, "REDIS_ADMIN_CELERY_BROKER_SCAN_LIMIT", 100_000
+    settings, "REDIS_ADMIN_CELERY_BROKER_SCAN_LIMIT", 20_000
 )
 
 # Pipeline batch size for delete operations (M5). Keeps a single delete action
