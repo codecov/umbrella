@@ -702,8 +702,12 @@ def _streaming_celery_clear(
                     # Out-of-range: consumer drained this slot.
                     matches_drifted += 1
 
-            chunk_index += 1
             if progress_callback is not None:
+                # `chunk_index` is 0-based: the first chunk in a
+                # pass reports 0, the last reports `chunks_total - 1`.
+                # `chunk_index += 1` lives AFTER the callback so the
+                # snapshot describes the chunk that just finished,
+                # not the one about to start.
                 snapshot = _ChunkProgress(
                     pass_num=passes_run,
                     chunk_index=chunk_index,
@@ -756,6 +760,7 @@ def _streaming_celery_clear(
                         passes_run=passes_run,
                         cancelled=True,
                     )
+            chunk_index += 1
 
         if not dry_run:
             redis.lrem(queue_name, 0, tombstone)

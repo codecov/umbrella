@@ -262,6 +262,13 @@ def test_clear_job_processes_in_chunks_and_updates_progress_monotonically(
     # Per-chunk processed delta is at most `chunk_size`.
     for snap in snapshots:
         assert snap.processed_delta <= _CELERY_CLEAR_CHUNK_JOB
+    # `_ChunkProgress.chunk_index` is documented as 0-based: the
+    # first snapshot reports 0, the last reports `chunks_total - 1`,
+    # and the values strictly ascend by 1 across snapshots in a pass.
+    expected_chunk_indices = list(range(len(snapshots)))
+    assert [snap.chunk_index for snap in snapshots] == expected_chunk_indices
+    assert snapshots[0].chunk_index == 0
+    assert snapshots[-1].chunk_index == snapshots[-1].chunks_total - 1
 
 
 def test_clear_job_drains_deep_queue_end_to_end(patched_broker, superuser):

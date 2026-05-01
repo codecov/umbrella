@@ -26,6 +26,18 @@
   var POLL_INTERVAL_OK_MS = 1000;
   var POLL_BACKOFF_STEPS_MS = [1000, 2000, 5000];
   var POLL_BACKOFF_MAX_MS = 5000;
+  // Enumerated rather than stripped by prefix because the pill's
+  // base class (`celery-clear-status-pill`) shares the same prefix
+  // as the state-specific classes; a prefix-strip would drop the
+  // base styling (display, padding, border-radius, etc.) on the
+  // first poll update and leave only the colour overrides.
+  var STATE_CLASSES = [
+    'celery-clear-status-pending',
+    'celery-clear-status-running',
+    'celery-clear-status-completed',
+    'celery-clear-status-cancelled',
+    'celery-clear-status-failed'
+  ];
 
   function $(id) { return document.getElementById(id); }
 
@@ -45,13 +57,14 @@
     if (!pill) return;
     pill.textContent = status;
     pill.dataset.status = status;
-    // Strip any prior celery-clear-status-* class then re-add the
-    // current one so the CSS pill colour follows state changes.
-    var classes = pill.className.split(/\s+/).filter(function (c) {
-      return c && c.indexOf('celery-clear-status-') !== 0;
-    });
-    classes.push('celery-clear-status-' + status);
-    pill.className = classes.join(' ');
+    // Strip any prior state class then add the current one. We
+    // explicitly enumerate STATE_CLASSES rather than filtering by
+    // prefix so the base `celery-clear-status-pill` class survives
+    // and the pill keeps its layout / typography styling.
+    for (var i = 0; i < STATE_CLASSES.length; i += 1) {
+      pill.classList.remove(STATE_CLASSES[i]);
+    }
+    pill.classList.add('celery-clear-status-' + status);
   }
 
   function updateProgress(snapshot) {
