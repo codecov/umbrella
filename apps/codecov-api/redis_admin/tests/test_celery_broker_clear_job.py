@@ -616,19 +616,25 @@ def test_clear_by_filter_view_redirects_to_progress_page_on_confirmed_submit(
     start_mock.assert_not_called()  # patched at module-level, not used
 
 
-def test_clear_by_filter_view_dry_run_preview_unchanged(patched_broker, superuser):
-    """The dry-run action keeps the synchronous shape: it calls
-    `celery_broker_clear(dry_run=True)`, re-renders the preview
-    page, and never spawns a chunked job. Pin so a future refactor
-    that fans dry-run out to a chunked job has to update this
-    test deliberately.
+def test_clear_by_filter_view_dry_run_redirects_to_progress_page(
+    patched_broker, superuser
+):
+    """Dry-run no longer keeps a synchronous shape; it now fans out
+    to the chunked-job worker (with `dry_run=True`) and 302s to the
+    progress page, exactly like the destructive actions. The audit
+    log entry still lands at job-completion under
+    `scope="celery_broker_clear"` with `mode=chunked-dry-run`.
     """
 
     queue = "notify"
     _push_envelopes(patched_broker, queue, n=2, repoid=1)
     rf = RequestFactory()
 
-    with mock.patch("redis_admin.admin.start_celery_broker_clear_job") as start_mock:
+    fake_job_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    with mock.patch(
+        "redis_admin.admin.start_celery_broker_clear_job",
+        return_value=fake_job_id,
+    ) as start_mock:
         request = rf.post(
             "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
             data={
@@ -640,16 +646,23 @@ def test_clear_by_filter_view_dry_run_preview_unchanged(patched_broker, superuse
         request.user = superuser
         admin_instance = _admin_instance()
         # `messages` middleware isn't installed on the bare
-        # RequestFactory; the view calls `messages.info(...)`. We
-        # use a stand-in storage so the call doesn't raise.
+        # RequestFactory; the view code path may call
+        # `messages.error(...)` on validation failures. Stand-in
+        # storage prevents an uncaught exception.
         request.session = {}
         request._messages = FallbackStorage(request)
         response = admin_instance.clear_by_filter_view(request)
 
-    # Dry-run re-renders the preview (200 OK, not 302) and never
-    # touches the chunked-job code path.
-    assert response.status_code == 200
-    start_mock.assert_not_called()
+    # Dry-run now spawns a chunked job and redirects, same shape as
+    # `clear_all` / `clear_keep_one`.
+    assert response.status_code == 302
+    assert response["Location"].endswith(f"/clear-by-filter/job/{fake_job_id}/"), (
+        response["Location"]
+    )
+    # And the chunked-job worker is invoked with `dry_run=True`.
+    start_mock.assert_called_once()
+    _, kwargs = start_mock.call_args
+    assert kwargs.get("dry_run") is True
 
 
 # ---- Audit log (django_db) -------------------------------------------------

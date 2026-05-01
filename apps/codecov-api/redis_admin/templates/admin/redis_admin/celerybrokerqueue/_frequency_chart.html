@@ -20,10 +20,14 @@ Shape:
   column on `RedisQueueAdmin`, so the chart's repo cell matches
   what operators see elsewhere.
 * `chart.clear_by_filter_url` — base URL for the row-level
-  "Clear queue" form action; we POST to it with `task_name` /
-  `repoid` / `commitid` / `csrfmiddlewaretoken`. The POST opens
-  the preview page where the operator picks dry-run, clear-all-
-  but-first, or clear-all.
+  "Clear queue" form action; we GET it with `task_name` /
+  `repoid` / `commitid` plus four display-only count hints
+  (`bucket_count` / `bucket_pct` / `total_visible` /
+  `total_depth`) so the preview page can render an approximate
+  "will tombstone ~X messages (~Y%)" callout without any Redis
+  call. The preview page itself exposes dry-run / clear-all-
+  but-first / clear-all as POST submits; those fan out to the
+  chunked background-job worker which does its own counting.
 * `chart.can_clear` — boolean toggling the visibility of the
   "Clear queue" buttons (superuser-only; staff users see read-
   only percentages).
@@ -96,21 +100,30 @@ Shape:
           {% if chart.can_clear %}
             <td class="celery-actions">
               {% comment %}
-              Single "Clear queue" button per row. POSTing the bucket's
-              hidden scope fields (queue/task/repoid/commitid) opens
-              the `clear_by_filter` preview page, where the operator
-              picks one of three explicit actions:
+              Single "Clear queue" button per row. The form GETs the
+              `clear_by_filter` preview page rather than POSTing,
+              because the four `bucket_*` / `total_*` hints below are
+              display-only (non-secret, idempotent, bookmarkable) and
+              the preview page itself does ZERO Redis I/O on the GET
+              render. It reuses the chart's already-computed bucket
+              count and queue depth to render an approximate "will
+              tombstone ~X messages (~Y% of the queue at depth Z)"
+              callout instantly, instead of firing a multi-second
+              streaming-count walk per click. Operators confirm
+              based on the (queue, task, repoid, commitid) filter —
+              which is identity-defining — not on a precise count,
+              so the approximate is sufficient.
 
-              1. dry-run (audited, leaves the queue untouched)
-              2. clear all but first (red text, destructive)
-              3. clear all (red text, destructive)
+              On the preview page, the operator picks one of three
+              explicit actions (dry-run / clear all but first / clear
+              all); all three are POSTs that fan out to the chunked
+              background-job worker.
 
-              Keeping the chart row neutral — neither `deletelink` nor
-              a count in the label — communicates "this opens a page",
-              not "this clears N messages right now".
+              Keeping the chart row neutral — neither `deletelink`
+              nor a count in the label — communicates "this opens a
+              page", not "this clears N messages right now".
               {% endcomment %}
-              <form method="post" action="{{ chart.clear_by_filter_url }}" class="celery-action-form">
-                {% csrf_token %}
+              <form method="get" action="{{ chart.clear_by_filter_url }}" class="celery-action-form">
                 <input type="hidden" name="queue_name" value="{{ chart.queue_name }}">
                 {% if bucket.task_name %}
                   <input type="hidden" name="task_name" value="{{ bucket.task_name }}">
@@ -121,6 +134,10 @@ Shape:
                 {% if bucket.commitid %}
                   <input type="hidden" name="commitid" value="{{ bucket.commitid }}">
                 {% endif %}
+                <input type="hidden" name="bucket_count" value="{{ bucket.count }}">
+                <input type="hidden" name="bucket_pct" value="{{ bucket.pct }}">
+                <input type="hidden" name="total_depth" value="{{ chart.total_depth }}">
+                <input type="hidden" name="total_visible" value="{{ chart.total_visible }}">
                 <button type="submit" class="button celery-clear-queue-btn">
                   Clear queue&hellip;
                 </button>
