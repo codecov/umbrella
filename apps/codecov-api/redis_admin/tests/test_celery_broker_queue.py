@@ -36,6 +36,7 @@ from django.test import Client as DjClient
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
+from redis_admin import services as redis_admin_services
 from redis_admin import settings as redis_admin_settings
 from redis_admin.admin import CeleryBrokerQueueAdmin, _resolve_repo_displays
 from redis_admin.families import parse_celery_envelope
@@ -1263,6 +1264,52 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
     def _push(self, **kwargs):
         self.redis.rpush("celery", _build_envelope(**kwargs))
 
+    def _post_clear(self, **post_data):
+        """Submit a clear-by-filter POST and join the chunked clear
+        worker thread before returning so tests asserting on queue
+        state don't race the LSET / LREM background work.
+
+        The clear-by-filter view spawns a daemon worker (see
+        `start_celery_broker_clear_job`) and 302s immediately. With
+        the streaming-clear path running pipelined LSETs (per the
+        pre-#899 restoration in this PR), the worker can take a few
+        ms longer than before; CI runners with noisy neighbours have
+        observed the test asserting before the LREM lands. Parses
+        the redirect's `<job_id>` segment and `thread.join`s the
+        matching worker thread (with a generous timeout). Falls back
+        to joining every live worker thread if the redirect target
+        isn't a progress page (e.g. typed-confirm validation failed
+        and the view 200-rendered the form).
+        """
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            post_data,
+            follow=False,
+        )
+        location = response.get("Location") or ""
+        job_id: str | None = None
+        if "/clear-by-filter/job/" in location:
+            tail = location.rstrip("/").rsplit("/", 1)[-1]
+            if len(tail) == 36 and tail.count("-") == 4:
+                job_id = tail
+        threads_to_join: list = []
+        with redis_admin_services._clear_job_threads_lock:
+            if job_id is not None:
+                t = redis_admin_services._clear_job_threads.get(job_id)
+                if t is not None:
+                    threads_to_join.append(t)
+            else:
+                threads_to_join.extend(
+                    list(redis_admin_services._clear_job_threads.values())
+                )
+        for t in threads_to_join:
+            t.join(timeout=10.0)
+            assert not t.is_alive(), (
+                f"clear-job worker thread {t.name} did not exit within 10s"
+            )
+        return response
+
     def test_chart_open_renders_preview_with_three_actions(self):
         # The chart's "Clear queue" button POSTs the bucket's scope
         # without an `action` value; the view should land on the
@@ -1323,16 +1370,12 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
         self._push(kwargs={"repoid": 2, "commitid": "bbbb"})
 
-        response = self.client.post(
-            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
-            {
-                "queue_name": "celery",
-                "repoid": "1",
-                "commitid": "aaaa",
-                "action": "clear_all",
-                "typed_confirm": "celery",
-            },
-            follow=False,
+        response = self._post_clear(
+            queue_name="celery",
+            repoid="1",
+            commitid="aaaa",
+            action="clear_all",
+            typed_confirm="celery",
         )
 
         assert response.status_code in (302, 303)
@@ -1404,17 +1447,13 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
             kwargs={"repoid": 1, "commitid": "aaaa"},
         )
 
-        response = self.client.post(
-            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
-            {
-                "queue_name": "celery",
-                "task_name": "app.tasks.bundle_analysis.BundleAnalysisProcessor",
-                "repoid": "1",
-                "commitid": "aaaa",
-                "action": "clear_all",
-                "typed_confirm": "celery",
-            },
-            follow=False,
+        response = self._post_clear(
+            queue_name="celery",
+            task_name="app.tasks.bundle_analysis.BundleAnalysisProcessor",
+            repoid="1",
+            commitid="aaaa",
+            action="clear_all",
+            typed_confirm="celery",
         )
 
         assert response.status_code in (302, 303)
@@ -1438,15 +1477,11 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
             kwargs={"repoid": 1, "commitid": "aaaa"},
         )
 
-        response = self.client.post(
-            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
-            {
-                "queue_name": "celery",
-                "task_name": "app.tasks.notify.NotifyTask",
-                "action": "clear_all",
-                "typed_confirm": "celery",
-            },
-            follow=False,
+        response = self._post_clear(
+            queue_name="celery",
+            task_name="app.tasks.notify.NotifyTask",
+            action="clear_all",
+            typed_confirm="celery",
         )
 
         assert response.status_code in (302, 303)
@@ -1485,17 +1520,13 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
             kwargs={"repoid": 99, "commitid": "zzzz"},
         )
 
-        response = self.client.post(
-            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
-            {
-                "queue_name": "celery",
-                "task_name": "app.tasks.notify.NotifyTask",
-                "repoid": "1",
-                "commitid": "aaaa",
-                "action": "clear_keep_one",
-                "typed_confirm": "celery",
-            },
-            follow=False,
+        response = self._post_clear(
+            queue_name="celery",
+            task_name="app.tasks.notify.NotifyTask",
+            repoid="1",
+            commitid="aaaa",
+            action="clear_keep_one",
+            typed_confirm="celery",
         )
 
         assert response.status_code in (302, 303)
@@ -1601,16 +1632,12 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
 
-        response = self.client.post(
-            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
-            {
-                "queue_name": "celery",
-                "repoid": "1",
-                "commitid": "aaaa",
-                "action": "confirm",
-                "typed_confirm": "celery",
-            },
-            follow=False,
+        response = self._post_clear(
+            queue_name="celery",
+            repoid="1",
+            commitid="aaaa",
+            action="confirm",
+            typed_confirm="celery",
         )
 
         assert response.status_code in (302, 303)
@@ -1632,18 +1659,14 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
             kwargs={"repoid": 1, "commitid": "aaaa"},
         )
 
-        response = self.client.post(
-            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
-            {
-                "queue_name": "celery",
-                "task_name": "t.K",
-                "repoid": "1",
-                "commitid": "aaaa",
-                "mode": "keep_one",
-                "action": "confirm",
-                "typed_confirm": "celery",
-            },
-            follow=False,
+        response = self._post_clear(
+            queue_name="celery",
+            task_name="t.K",
+            repoid="1",
+            commitid="aaaa",
+            mode="keep_one",
+            action="confirm",
+            typed_confirm="celery",
         )
 
         assert response.status_code in (302, 303)
