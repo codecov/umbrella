@@ -447,32 +447,56 @@ def _celery_clear_tombstone() -> str:
     return f"{_CELERY_TOMBSTONE_PREFIX}:{uuid.uuid4().hex}"
 
 
+class _FilterWildcard:
+    """Sentinel for "this filter slot is unconstrained".
+
+    Distinct from `None` so the per-message clear paths
+    (`clear_selected`, `clear_dry_run`, `delete_model`,
+    `delete_queryset`) keep exact-tuple-membership semantics for
+    materialised rows whose envelope legitimately carries `None`
+    in a slot (e.g. a `sync_repos` task with `repoid=None` and
+    `commitid=None`). If `None` doubled as the wildcard value, a
+    single-row clear of a `sync_repos` envelope would tombstone
+    *every* `sync_repos` message in the queue rather than just
+    the one the operator selected.
+
+    Operator-input paths (`streaming_celery_count` and the
+    `clear_by_filter_view` synthetic target) substitute this
+    sentinel for any unset filter slot before building the
+    `(task, repoid, commitid)` tuple.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - cosmetic
+        return "FILTER_ANY"
+
+
+_FILTER_ANY = _FilterWildcard()
+
+
 def _envelope_matches_any_filter(meta, filter_tuples: frozenset) -> bool:
     """Return True if `meta` matches any tuple in `filter_tuples`.
 
     Each filter tuple is `(task_name, repoid, commitid)` where any
-    slot may be `None` to mean "wildcard / don't constrain on this
-    field". Mirrors the queryset's "filter by what's set" semantic
-    (`queryset.filter(repoid=repoid)` doesn't constrain `task_name`),
-    so callers like `streaming_celery_count` and the clear-by-filter
-    path can reuse the same triple-shaped frozenset they would build
-    for an exact-tuple match without silently undercounting when the
-    operator left a slot unset.
+    slot may be the `_FILTER_ANY` sentinel to mean "wildcard / do
+    not constrain on this field". `None` in a slot means "match
+    only envelopes whose corresponding parsed field is `None`",
+    which is what materialised per-message targets need so they
+    never over-match envelopes whose envelope happens to carry the
+    same task name but a different `(repoid, commitid)` shape.
 
-    Without the wildcard semantics, a filter built from operator
-    input (e.g. `(None, 1, "abc")` for "repoid=1 AND commitid=abc",
-    no task constraint) would never match a real envelope (whose
-    `meta.task` is always populated), so both the streaming counter
-    and the streaming clear would silently report zero matches even
-    when the queryset path would have surfaced rows.
+    Mirrors the queryset's "filter by what's set" semantic only
+    for callers that opt in by substituting `_FILTER_ANY` for
+    unset slots before building the frozenset.
     """
 
     for ft_task, ft_repoid, ft_commitid in filter_tuples:
-        if ft_task is not None and ft_task != meta.task:
+        if ft_task is not _FILTER_ANY and ft_task != meta.task:
             continue
-        if ft_repoid is not None and ft_repoid != meta.repoid:
+        if ft_repoid is not _FILTER_ANY and ft_repoid != meta.repoid:
             continue
-        if ft_commitid is not None and ft_commitid != meta.commitid:
+        if ft_commitid is not _FILTER_ANY and ft_commitid != meta.commitid:
             continue
         return True
     return False
@@ -681,7 +705,20 @@ def streaming_celery_count(
     """
 
     redis = _conn.get_connection(kind="broker")
-    filter_tuples = frozenset({(task_name or None, repoid, commitid or None)})
+    # Substitute `_FILTER_ANY` (not `None`) for unset slots so the
+    # streaming match treats them as wildcards. `None` would mean
+    # "match only envelopes whose corresponding field is literally
+    # `None`" which would zero-out the count for any operator
+    # input that didn't pin every slot of the triple.
+    filter_tuples = frozenset(
+        {
+            (
+                task_name if task_name else _FILTER_ANY,
+                repoid if repoid is not None else _FILTER_ANY,
+                commitid if commitid else _FILTER_ANY,
+            )
+        }
+    )
     tombstone = _celery_clear_tombstone()
     stats = _streaming_celery_clear(
         redis,
