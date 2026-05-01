@@ -47,6 +47,7 @@ from .queryset import (
     resolve_payload_preview,
 )
 from .services import (
+    _FILTER_ANY,
     celery_broker_clear,
     redis_delete,
     streaming_celery_count,
@@ -1935,13 +1936,20 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         # `clear_dry_run`) still pass real materialised rows — those
         # are intentionally index-driven, not filter-driven, so they
         # don't go through this code path.
+        # `_FILTER_ANY` (not `None`) for unset slots so the
+        # streaming match treats them as wildcards. `None` would
+        # require an exact-equality match against `meta.task is
+        # None` / `meta.repoid is None` / `meta.commitid is None`,
+        # which the per-message paths legitimately rely on for
+        # tasks like `sync_repos` whose envelope leaves repoid /
+        # commitid as `None`.
         filter_target = CeleryBrokerQueue(
             pk_token=f"{queue_name}#{kept_index if kept_index is not None else 'filter'}",
             queue_name=queue_name,
             index_in_queue=kept_index,
-            task_name=task_name or None,
-            repoid=repoid,
-            commitid=commitid or None,
+            task_name=task_name if task_name else _FILTER_ANY,
+            repoid=repoid if repoid is not None else _FILTER_ANY,
+            commitid=commitid if commitid else _FILTER_ANY,
         )
         matches = [filter_target]
 

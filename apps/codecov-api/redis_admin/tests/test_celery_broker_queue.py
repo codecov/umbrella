@@ -50,6 +50,7 @@ from redis_admin.queryset import (
 from redis_admin.services import (
     _CELERY_MAX_PASSES,
     _CELERY_TOMBSTONE_PREFIX,
+    _FILTER_ANY,
     _streaming_celery_clear,
     celery_broker_clear,
     streaming_celery_count,
@@ -2724,7 +2725,7 @@ def test_celery_broker_clear_synthetic_target_with_wildcard_task_name_drains_all
 
     synthetic = CeleryBrokerQueue(
         queue_name=queue,
-        task_name=None,
+        task_name=_FILTER_ANY,
         repoid=repoid,
         commitid=commitid,
         index_in_queue=None,
@@ -2739,3 +2740,70 @@ def test_celery_broker_clear_synthetic_target_with_wildcard_task_name_drains_all
 
     assert result.count == 5
     assert patched_broker.llen(queue) == 1
+
+
+def test_celery_broker_clear_per_message_target_does_not_overmatch_on_none_slots(
+    patched_broker,
+):
+    """Regression for Bugbot review on PR #903 (HIGH severity): the
+    wildcard semantic must NOT bleed into the per-message clear
+    paths (`clear_selected`, `clear_dry_run`, `delete_model`,
+    `delete_queryset`). Those paths build filter tuples from
+    materialised rows whose envelope legitimately carries `None`
+    in a slot (e.g. a `sync_repos` task with `repoid=None` and
+    `commitid=None`); if `None` doubled as the wildcard value, a
+    single-row clear of one such envelope would tombstone EVERY
+    message with that task name across the queue.
+
+    The fix uses a dedicated `_FILTER_ANY` sentinel for "do not
+    constrain on this slot", so materialised targets carrying
+    real `None` values keep exact-tuple-membership semantics:
+    they match only envelopes with the same `(task, None, None)`
+    triple, not any envelope sharing the task name.
+    """
+
+    queue = "celery"
+    task = "app.tasks.sync_repos.SyncReposTask"
+
+    pipe = patched_broker.pipeline(transaction=False)
+    # Two `sync_repos` envelopes that legitimately carry no
+    # repoid / commitid (the SyncReposTask doesn't ship those).
+    for _ in range(2):
+        pipe.rpush(queue, _build_envelope(task=task, kwargs={}))
+    # Three `sync_repos` envelopes carrying a real `(repoid, commitid)`
+    # -- a hypothetical future call shape, but the test only needs
+    # them to be distinguishable from the `(None, None)` shape so
+    # the no-overmatch assertion has bite.
+    for repoid in (1, 2, 3):
+        pipe.rpush(
+            queue,
+            _build_envelope(
+                task=task, kwargs={"repoid": repoid, "commitid": "abc" * 10}
+            ),
+        )
+    pipe.execute()
+    user = SimpleNamespace(id=1, pk=1)
+
+    # Per-message target shape: materialised row carrying the
+    # envelope's actual `(None, None)` slots.
+    materialised_target = CeleryBrokerQueue(
+        queue_name=queue,
+        task_name=task,
+        repoid=None,
+        commitid=None,
+        index_in_queue=0,
+    )
+
+    result = celery_broker_clear(
+        [materialised_target],
+        user=user,
+        dry_run=False,
+        keep_one=False,
+    )
+
+    # Only the two `(task, None, None)` envelopes get tombstoned;
+    # the three task-matching envelopes with real (repoid, commit)
+    # slots survive because exact-tuple-membership distinguishes
+    # `None` from "unconstrained."
+    assert result.count == 2
+    assert patched_broker.llen(queue) == 3
