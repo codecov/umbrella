@@ -80,6 +80,14 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
     ):
         milestone = Milestones.NOTIFICATIONS_SENT
         redis_connection = get_redis_connection()
+
+        bc_kwargs = {
+            "commit_sha": commitid,
+            "repo_id": repoid,
+            "task_name": self.name,
+            "parent_task_id": self.request.parent_id,
+        }
+
         if self.has_upcoming_notifies_according_to_redis(
             redis_connection, repoid, commitid
         ):
@@ -89,10 +97,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             )
             self.log_checkpoint(UploadFlow.SKIPPING_NOTIFICATION)
             self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                error=Errors.INTERNAL_OTHER_JOB,
+                milestone=milestone, error=Errors.INTERNAL_OTHER_JOB, **bc_kwargs
             )
             return {
                 "notified": False,
@@ -107,6 +112,10 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             lock_timeout=max(80, self.hard_time_limit_task),
         )
 
+        self._call_upload_breadcrumb_task(
+            milestone=Milestones.LOCK_ACQUIRING, **bc_kwargs
+        )
+
         try:
             lock_acquired = False
             with lock_manager.locked(
@@ -114,7 +123,10 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 retry_num=self.attempts,
             ):
                 lock_acquired = True
-                return self.run_impl_within_lock(
+                self._call_upload_breadcrumb_task(
+                    milestone=Milestones.LOCK_ACQUIRED, **bc_kwargs
+                )
+                result = self.run_impl_within_lock(
                     db_session,
                     repoid=repoid,
                     commitid=commitid,
@@ -122,6 +134,10 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     empty_upload=empty_upload,
                     **kwargs,
                 )
+            self._call_upload_breadcrumb_task(
+                milestone=Milestones.LOCK_RELEASED, **bc_kwargs
+            )
+            return result
         except LockRetry as err:
             (
                 log.info(
@@ -136,16 +152,10 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             )
             self.log_checkpoint(UploadFlow.NOTIF_LOCK_ERROR)
             self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                error=Errors.INTERNAL_LOCK_ERROR,
+                milestone=milestone, error=Errors.INTERNAL_LOCK_ERROR, **bc_kwargs
             )
             self._call_upload_breadcrumb_task(
-                commit_sha=commitid,
-                repo_id=repoid,
-                milestone=milestone,
-                error=Errors.INTERNAL_OTHER_JOB,
+                milestone=milestone, error=Errors.INTERNAL_OTHER_JOB, **bc_kwargs
             )
             return {
                 "notified": False,
@@ -175,12 +185,17 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         *args,
         **kwargs,
     ):
+        bc_kwargs = {
+            "commit_sha": commit.commitid,
+            "repo_id": commit.repoid,
+            "task_name": self.name,
+            "parent_task_id": self.request.parent_id,
+        }
         try:
             self._call_upload_breadcrumb_task(
-                commit_sha=commit.commitid,
-                repo_id=commit.repoid,
                 milestone=Milestones.NOTIFICATIONS_SENT,
                 error=Errors.INTERNAL_RETRYING,
+                **bc_kwargs,
             )
             self.retry(max_retries=max_retries, countdown=countdown)
         except MaxRetriesExceededError:
@@ -196,10 +211,9 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
             )
             self.log_checkpoint(UploadFlow.NOTIF_TOO_MANY_RETRIES)
             self._call_upload_breadcrumb_task(
-                commit_sha=commit.commitid,
-                repo_id=commit.repoid,
                 milestone=Milestones.NOTIFICATIONS_SENT,
                 error=Errors.INTERNAL_OUT_OF_RETRIES,
+                **bc_kwargs,
             )
             return {
                 "notified": False,
@@ -218,6 +232,10 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
         **kwargs,
     ):
         milestone = Milestones.NOTIFICATIONS_SENT
+        bc_kwargs = {
+            "task_name": self.name,
+            "parent_task_id": self.request.parent_id,
+        }
 
         log.info("Starting notifications", extra={"commit": commitid, "repoid": repoid})
         commits_query = db_session.query(Commit).filter(
@@ -239,6 +257,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 repo_id=commit.repoid,
                 milestone=Milestones.NOTIFICATIONS_SENT,
                 error=Errors.SKIPPED_NOTIFICATIONS,
+                **bc_kwargs,
             )
             return {
                 "notify_attempted": False,
@@ -268,6 +287,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 repo_id=repoid,
                 milestone=milestone,
                 error=Errors.REPO_MISSING_VALID_BOT,
+                **bc_kwargs,
             )
             return {"notified": False, "notifications": None, "reason": "no_valid_bot"}
         except NoConfiguredAppsAvailable as exp:
@@ -292,6 +312,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     repo_id=repoid,
                     milestone=milestone,
                     error=Errors.INTERNAL_APP_RATE_LIMITED,
+                    **bc_kwargs,
                 )
                 return self._attempt_retry(
                     max_retries=10,
@@ -341,6 +362,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 repo_id=commit.repoid,
                 milestone=milestone,
                 error=Errors.GIT_CLIENT_ERROR,
+                **bc_kwargs,
             )
             return {
                 "notified": False,
@@ -358,6 +380,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 repo_id=commit.repoid,
                 milestone=milestone,
                 error=Errors.GIT_CLIENT_ERROR,
+                **bc_kwargs,
             )
             return {
                 "notified": False,
@@ -441,6 +464,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     repo_id=commit.repoid,
                     milestone=milestone,
                     error=Errors.SKIPPED_NOTIFICATIONS,
+                    **bc_kwargs,
                 )
                 return {
                     "notified": False,
@@ -461,6 +485,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                     repo_id=commit.repoid,
                     milestone=milestone,
                     error=Errors.REPORT_NOT_FOUND,
+                    **bc_kwargs,
                 )
                 return {
                     "notified": False,
@@ -506,6 +531,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 commit_sha=commit.commitid,
                 repo_id=commit.repoid,
                 milestone=milestone,
+                **bc_kwargs,
             )
             log.info(
                 "Notifications done",
@@ -530,6 +556,7 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 repo_id=commit.repoid,
                 milestone=milestone,
                 error=Errors.SKIPPED_NOTIFICATIONS,
+                **bc_kwargs,
             )
             return {"notified": False, "notifications": None}
 
@@ -744,6 +771,8 @@ class NotifyTask(BaseCodecovTask, name=notify_task_name):
                 milestone=Milestones.NOTIFICATIONS_SENT,
                 error=Errors.UNKNOWN,
                 error_text=repr(e),
+                task_name=self.name,
+                parent_task_id=self.request.parent_id,
             )
             raise
 
