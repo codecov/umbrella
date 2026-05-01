@@ -901,7 +901,9 @@ def _streaming_celery_clear(
             removed = redis.lrem(queue_name, 0, tombstone)
             try:
                 removed_count = int(removed or 0)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError):  # pragma: no cover - defensive
+                # Real `LREM` always returns int; this branch only
+                # fires for misbehaving test doubles.
                 removed_count = 0
             # The "queue dropped by N" line operators rely on. Pinned
             # alongside the pass-end counts above so a single grep for

@@ -596,6 +596,61 @@ def test_streaming_clear_makes_progress_under_concurrent_drift(patched_broker):
     assert patched_broker.llen(queue) == 0
 
 
+def test_streaming_clear_counts_pipelined_lset_out_of_range_as_drift(patched_broker):
+    """When the pipelined `LSET` reply for a slot comes back as an
+    `Exception` (out-of-range — a consumer drained the tail between
+    our LRANGE snapshot and the pipeline's flush), the corresponding
+    match increments `total_drifted` instead of `total_lset`.
+
+    Exercises the `isinstance(reply, Exception)` branch in the
+    pipelined LSET reply loop. Simulates real consumer-drain by
+    wrapping `redis.pipeline(...)` and chopping the queue down to a
+    smaller depth between match-collection and pipeline flush, so
+    LSETs against slots past the new tail come back as out-of-range
+    errors.
+    """
+
+    queue = "bundle_analysis"
+    matches = 50
+    repoid = 1
+    commitid = "y" * 40
+    _push_envelopes(patched_broker, queue, n=matches, repoid=repoid, commitid=commitid)
+
+    real_pipeline = patched_broker.pipeline
+
+    def chopping_pipeline(*args, **kwargs):
+        # Drop the back half of the queue right before the LSET
+        # pipeline flushes — every LSET against an index >= 25 will
+        # come back as an out-of-range Exception reply, exactly the
+        # signal `matches_drifted` is meant to capture.
+        patched_broker.ltrim(queue, 0, 24)
+        return real_pipeline(*args, **kwargs)
+
+    patched_broker.pipeline = chopping_pipeline
+
+    tombstone = "__redis_admin_celery_tombstone__:test-pipeline-out-of-range"
+    filter_tuples = frozenset(
+        {("app.tasks.bundle_analysis.BundleAnalysisProcessor", repoid, commitid)}
+    )
+    stats = _streaming_celery_clear(
+        patched_broker,
+        queue,
+        filter_tuples,
+        tombstone,
+        keep_one=False,
+        dry_run=False,
+    )
+
+    # Half the matches lived past the chop, so their pipelined LSET
+    # came back as an out-of-range Exception reply -> drift. The other
+    # half landed inside the trimmed range and were tombstoned.
+    assert stats.total_lset == 25
+    assert stats.total_drifted == 25
+    # The tombstones in the trimmed range were swept by the end-of-pass
+    # LREM, leaving the queue completely drained.
+    assert patched_broker.llen(queue) == 0
+
+
 # ---- View layer ------------------------------------------------------------
 
 
