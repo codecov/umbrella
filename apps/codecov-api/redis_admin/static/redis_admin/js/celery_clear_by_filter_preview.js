@@ -82,9 +82,37 @@
     }
   }
 
-  function renderSampleTable(rootEl, sample) {
+  function renderSampleHeader(sampleLength, matchCount) {
+    // Mirror the pre-PR-907 dynamic heading: when the sample
+    // window is narrower than the full match set we surface
+    // "Showing first N of M matching message(s)" so the operator
+    // doesn't mistake the sample table for the complete match
+    // list. When the sample equals the count, drop the "of M" so
+    // the heading isn't redundant.
+    var headerEl = $('celery-clear-preview-sample-header');
+    if (!headerEl) return;
+    var resolvedCount = (typeof matchCount === 'number' ? matchCount : sampleLength) || 0;
+    if (sampleLength === 0) {
+      headerEl.textContent = 'Matching messages:';
+      return;
+    }
+    if (resolvedCount > sampleLength) {
+      headerEl.textContent = (
+        'Showing first ' + formatNumber(sampleLength) +
+        ' of ' + formatNumber(resolvedCount) +
+        ' matching message(s):'
+      );
+    } else {
+      headerEl.textContent = (
+        'The first ' + formatNumber(sampleLength) + ' matching message(s):'
+      );
+    }
+  }
+
+  function renderSampleTable(rootEl, sample, matchCount) {
     var tableContainer = $('celery-clear-preview-sample');
     if (!tableContainer) return;
+    renderSampleHeader((sample || []).length, matchCount);
     if (!sample || sample.length === 0) {
       tableContainer.innerHTML = '<p><em>No matching messages in the sample window.</em></p>';
       return;
@@ -189,7 +217,7 @@
     }
 
     show($('celery-clear-preview-form-area'));
-    renderSampleTable(rootEl, payload.sample || []);
+    renderSampleTable(rootEl, payload.sample || [], payload.match_count || 0);
     setSubmitButtonsEnabled(true);
   }
 

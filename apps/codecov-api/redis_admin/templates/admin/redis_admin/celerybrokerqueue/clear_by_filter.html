@@ -150,7 +150,16 @@
 
       <div id="celery-clear-preview-form-area"
            class="{% if not count_skipped %}celery-clear-preview-hidden{% endif %}">
-        <p>The first 20 matching message(s):</p>
+        {# Heading text is JS-rewritten on the synchronous-mode #}
+        {# preview response so the rendered count tracks the   #}
+        {# actual sample length and the operator sees "Showing #}
+        {# first N of M matching message(s)" when the sample   #}
+        {# window is narrower than the match set. The fallback #}
+        {# "Matching messages" copy stays harmless if the JS   #}
+        {# preview never lands (e.g. the Tier 4 skip-count     #}
+        {# render path, where the sample is intentionally      #}
+        {# blank). #}
+        <p id="celery-clear-preview-sample-header">Matching messages:</p>
         <div id="celery-clear-preview-sample">
           {% if count_skipped %}
             <p><em>Sample skipped (count was bypassed).</em></p>

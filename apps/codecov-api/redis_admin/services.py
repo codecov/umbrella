@@ -1491,14 +1491,21 @@ def _run_celery_broker_clear_job_body(
 _CLEAR_BY_FILTER_PREVIEW_CACHE_PREFIX: str = "redis_admin:preview_count"
 
 
-def _clear_by_filter_preview_cache_key(
+def _clear_by_filter_filter_digest(
     queue_name: str,
     *,
     task_name: str | None,
     repoid: int | None,
     commitid: str | None,
 ) -> str:
-    """SHA-256 over a canonical `queue|task|repoid|commitid` tuple.
+    """Stable SHA-256 hex digest of the canonical filter tuple.
+
+    Single chokepoint shared by the synchronous-mode count cache
+    (`_clear_by_filter_preview_cache_key`) and the deep-queue job
+    lock (`_clear_by_filter_preview_job_lock_key`) so the two key
+    families can never accidentally diverge in their hashing
+    logic — same filter tuple → same digest → either cached count
+    or shared in-flight job, never both at once.
 
     Hashing has two purposes:
 
@@ -1529,7 +1536,27 @@ def _clear_by_filter_preview_cache_key(
             commitid or "",
         ]
     )
-    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _clear_by_filter_preview_cache_key(
+    queue_name: str,
+    *,
+    task_name: str | None,
+    repoid: int | None,
+    commitid: str | None,
+) -> str:
+    """Cache key for the synchronous-mode count cache. Body is the
+    shared `_clear_by_filter_filter_digest` so a future tweak to
+    the canonical-tuple shape lands in both key families at once.
+    """
+
+    digest = _clear_by_filter_filter_digest(
+        queue_name,
+        task_name=task_name,
+        repoid=repoid,
+        commitid=commitid,
+    )
     return f"{_CLEAR_BY_FILTER_PREVIEW_CACHE_PREFIX}:{digest}"
 
 
@@ -1706,24 +1733,17 @@ def _clear_by_filter_preview_job_lock_key(
     repoid: int | None,
     commitid: str | None,
 ) -> str:
-    """SHA-256 over the same canonical tuple as the count cache.
-
-    Hashing for the same two reasons as `_clear_by_filter_preview_cache_key`
-    (bounded length + multi-tenant isolation). Sharing the canonical
-    tuple shape with the count cache keeps the operator mental model
-    simple — same filter → same hash → either cached count or shared
-    in-flight job, never both at once.
+    """Cache key for the deep-queue dry-run job lock. Body is the
+    shared `_clear_by_filter_filter_digest` so the lock + count
+    cache index the same canonical tuple.
     """
 
-    canonical = "|".join(
-        [
-            queue_name,
-            task_name or "",
-            "" if repoid is None else str(repoid),
-            commitid or "",
-        ]
+    digest = _clear_by_filter_filter_digest(
+        queue_name,
+        task_name=task_name,
+        repoid=repoid,
+        commitid=commitid,
     )
-    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return f"{_CLEAR_BY_FILTER_PREVIEW_JOB_LOCK_PREFIX}:{digest}"
 
 
