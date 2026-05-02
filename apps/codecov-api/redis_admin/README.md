@@ -40,7 +40,7 @@ accidentally surfaces them under `RedisQueue`.
 | `/admin/redis_admin/redisqueueitem/<token>/change/` | Inspect a single item |
 | `/admin/redis_admin/celerybrokerqueue/` | **Celery summary** — one row per known celery_broker queue with current `LLEN` and a drill-in link |
 | `/admin/redis_admin/celerybrokerqueue/?queue_name__exact=<queue>` | **Celery drill-down** — messages inside a celery broker queue with structured task / repoid / commitid columns, a `(repoid, commitid)` frequency chart, and per-message clear |
-| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/` | Preview + clear messages in `<queue>` matching a `(task_name?, repoid?, commitid?)` filter (POST-only, superuser-only). Wired up by the frequency chart's per-row "Clear queue" button; the preview page exposes three explicit actions (dry-run, clear all but first, clear all). Destructive actions spawn a chunked background job and 302 to the progress page. |
+| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/` | Confirmation page for clearing messages in `<queue>` matching a `(task_name?, repoid?, commitid?)` filter (superuser-only). GET renders the form synchronously with **no Redis I/O** — the per-row "Clear queue" form on the frequency chart passes the bucket count + queue depth as URL params (`bucket_count`, `bucket_pct`, `total_visible`, `total_depth`) so the page can show an "approximately N messages" callout without a count-walk. POST exposes three explicit actions (dry-run, clear all but first, clear all); each spawns a chunked background job and 302s to the progress page below. |
 | `/admin/redis_admin/celerybrokerqueue/clear-by-filter/job/<uuid>/` | Progress page for a chunked clear job (HTML, superuser-only). Polls the status JSON view every ~1s; renders a `<progress>` bar, matched / total / drift / pass counters, and a Cancel button. |
 | `/admin/redis_admin/celerybrokerqueue/clear-by-filter/job/<uuid>/status/` | JSON snapshot of a chunked clear job (superuser-only); 404s on unknown / expired ids. |
 | `/admin/redis_admin/celerybrokerqueue/clear-by-filter/job/<uuid>/cancel/` | POST-only cancel endpoint (superuser-only); flags `cancel_requested=1` and returns 202 with the latest snapshot. Cancel lands at the next chunk boundary. |
@@ -249,13 +249,16 @@ commitid asc)` for a stable order across reloads. Each row shows
   hover)
 - the bucket's `count` and percentage share of the visible window
 - a single per-bucket **Clear queue…** button (superuser-only).
-  Clicking it POSTs the bucket's
+  Clicking it submits the bucket's
   `(queue, task_name, repoid, commitid)` to `clear-by-filter/`
-  and lands on the preview page, where the operator picks one of
-  three explicit actions (dry-run / clear all but first / clear
-  all). The chart row itself is intentionally non-destructive —
-  no count in the label, no `deletelink` styling — because the
-  click only opens a page; the destructive choice is made there.
+  along with the bucket's count + the chart's queue depth as
+  hidden hints, and lands on the confirmation page, where the
+  operator picks one of three explicit actions (dry-run / clear
+  all but first / clear all). The confirmation page renders
+  synchronously from those hints with no Redis I/O. The chart
+  row itself is intentionally non-destructive — no count in the
+  label, no `deletelink` styling — because the click only opens
+  a page; the destructive choice is made there.
 
 Grouping by `task_name` matters on shared queues like the default
 `celery` queue where multiple task classes coexist — without it,
@@ -270,37 +273,64 @@ operators know the share is over the visible window.
 
 ### `clear-by-filter/` (chart-driven targeted clear)
 
-`POST /admin/redis_admin/celerybrokerqueue/clear-by-filter/` —
+`/admin/redis_admin/celerybrokerqueue/clear-by-filter/` —
 superuser-only. Required form fields: `queue_name`, plus at
 least one of `task_name` / `repoid` / `commitid` (refusing the
 empty-narrowing case keeps the surface from overlapping
 `clear-by-scope/`).
 
-The chart's per-row button POSTs without an `action`, which
-lands on a preview page listing the matched messages. The
-preview page then exposes three explicit submit buttons; the
-view dispatches on the form's `action` value:
+**GET (confirmation page) is fully synchronous and makes zero
+Redis calls.** Earlier iterations rendered a count + sample
+preview by streaming the queue at request time, which made the
+page take seconds to first byte on deep queues. The chart
+already knows the bucket count and the queue depth (it computed
+both to render its own row), so the per-row "Clear queue" form
+on the frequency chart now carries those numbers forward as
+URL params:
 
-- `action=dry_run` — neutral / `default`-styled button. Audited
-  via `celery_broker_clear(dry_run=True)`; queue untouched.
-  Re-renders the preview with an info banner. No
-  typed-confirmation required.
-- `action=clear_keep_one` — destructive (red text). Only
-  rendered when `match_count >= 2`. Clears every match EXCEPT
-  the one with the lowest `index_in_queue` (the next message a
-  Celery worker would pop), so a single representative stays in
-  flight. Intent: "drop the duplicate retries but leave one
-  running."
-- `action=clear_all` — destructive (red text). Clears every
-  matching message; the broadest of the three.
+| Hidden field | Value |
+|---|---|
+| `bucket_count` | `bucket.count` (matches inside the chart's `LRANGE` window) |
+| `bucket_pct` | `bucket.pct` (already pre-computed) |
+| `total_visible` | `chart.total_visible` (effective `CELERY_BROKER_SCAN_LIMIT`) |
+| `total_depth` | `chart.total_depth` (real `LLEN(queue)` at chart-render time) |
+
+The view extrapolates via `count ≈ bucket_count / total_visible
+* total_depth` and renders an "approximately N messages (~Y% of
+queue at depth Z)" callout. When any param is missing or
+malformed (operator hand-crafted the URL, or arrived via a
+non-chart link), the callout falls back to "Approximate count
+not available — the chunked clear will compute the exact match
+count as it scans." The form's three submit buttons remain
+unchanged either way; the chunked worker does its own counting
+during the scan so the approximate display is never a
+load-bearing input to the destructive operation.
+
+POST dispatches on the form's `action` value; **all three
+actions** spawn a chunked background job and 302 to the
+progress page (no synchronous destructive path):
+
+- `action=dry_run` — neutral / `default`-styled button. Spawns
+  the chunked worker with `dry_run=True`; queue untouched. The
+  audit `LogEntry` lands under `mode=chunked-dry-run` at job
+  completion. No typed-confirmation required.
+- `action=clear_keep_one` — destructive (red text). Spawns the
+  chunked worker with `dry_run=False`, `keep_one=True`. Clears
+  every match EXCEPT the one with the lowest `index_in_queue`
+  (the next message a Celery worker would pop), so a single
+  representative stays in flight. Intent: "drop the duplicate
+  retries but leave one running." Typed-confirmation required.
+- `action=clear_all` — destructive (red text). Spawns the
+  chunked worker with `dry_run=False`, `keep_one=False`; clears
+  every matching message. Typed-confirmation required.
 
 Both destructive buttons gate on the same typed-confirmation
 field (re-type the queue name); they share a common
 `celery-destructive-button` class that paints the text red and
 keeps them visually distinct from the dry-run button on the
-left. Server-side, both ultimately funnel through
-`services.celery_broker_clear`, so the LSET-tombstone path runs
-and the audit log captures the operation under
+left. The chunked worker funnels through
+`services._streaming_celery_clear`, so the LSET-tombstone path
+runs and the audit log captures the operation under
 `scope="celery_broker_clear"`.
 
 For backward compatibility, the older `action=confirm` form

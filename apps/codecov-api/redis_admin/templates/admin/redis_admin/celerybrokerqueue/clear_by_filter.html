@@ -25,12 +25,93 @@
   </p>
   <p>
     Three actions are available below. <strong>Dry-run</strong> is the
-    safe first move — it writes a <code>LogEntry</code> under
+    safe first move &mdash; it writes a <code>LogEntry</code> under
     <code>scope=&quot;celery_broker_clear&quot;</code> but leaves the
     queue untouched. The two destructive actions both gate on the
     typed-confirmation field; both also write the same audit log
-    entry on success.
+    entry on success. All three fan out to a chunked background-job
+    worker that streams the queue and reports exact match counts as
+    it scans &mdash; this preview page itself does no Redis I/O.
   </p>
+
+  {# ---- Filter rows: queue, task, repoid (linked), commit (truncated) ---- #}
+  <fieldset class="module">
+    <h2>Filter</h2>
+    <table class="celery-clear-filter">
+      <tr>
+        <th scope="row">Queue</th>
+        <td><code>{{ queue_name }}</code></td>
+      </tr>
+      <tr>
+        <th scope="row">Task</th>
+        <td>
+          {% if task_name %}<code>{{ task_name }}</code>{% else %}<em>(any)</em>{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th scope="row">Repo</th>
+        <td>
+          {% if repoid is not None %}
+            {% if repo_change_url %}
+              <a href="{{ repo_change_url }}" title="repoid={{ repoid }}"><code>{{ repoid }}</code></a>
+            {% else %}
+              <code>{{ repoid }}</code>
+            {% endif %}
+          {% else %}
+            <em>(any)</em>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th scope="row">Commit</th>
+        <td>
+          {% if commitid %}
+            <code title="{{ commitid }}">{{ commitid|slice:":7" }}</code>
+          {% else %}
+            <em>(any)</em>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+  </fieldset>
+
+  {# ---- Approximate-count callout (no Redis call; values come from the chart) ---- #}
+  {#
+    The chart already has the bucket count and queue depth from its
+    LRANGE snapshot, so the approximate "will tombstone ~X" string is
+    derived in pure Python in the view (`approx` dict). When the
+    operator hand-edits the URL or arrives via a non-chart link any
+    of the four hints may be missing; we render the "not available"
+    fallback instead of computing a misleading number. The chunked
+    background-job worker computes the exact match count as it walks
+    so the audit log stays precise.
+  #}
+  <fieldset class="module">
+    <h2>Approximate impact</h2>
+    {% if approx %}
+      <p class="celery-approx-callout">
+        Will tombstone approximately
+        <strong>{{ approx.count|default_if_none:"&mdash;" }}</strong>
+        message(s)
+        {% if approx.pct is not None %}
+          (<strong>~{{ approx.pct|floatformat:1 }}%</strong> of the
+          queue at depth ~{{ approx.depth }}).
+        {% else %}
+          (queue depth ~{{ approx.depth }}).
+        {% endif %}
+      </p>
+      <p class="help">
+        Approximation derived from the chart's sampled-window bucket
+        size projected onto the live queue depth; the chunked clear
+        will compute the exact match count as it scans.
+      </p>
+    {% else %}
+      <p class="celery-approx-callout celery-approx-unknown">
+        <em>Approximate count not available</em> &mdash; the chunked
+        clear will compute the exact match count as it scans.
+      </p>
+    {% endif %}
+  </fieldset>
 
   <form method="post" novalidate>
     {% csrf_token %}
@@ -38,112 +119,64 @@
     {% if task_name %}<input type="hidden" name="task_name" value="{{ task_name }}">{% endif %}
     {% if repoid is not None %}<input type="hidden" name="repoid" value="{{ repoid }}">{% endif %}
     {% if commitid %}<input type="hidden" name="commitid" value="{{ commitid }}">{% endif %}
+    {# Round-trip the chart's display hints so a typed-confirm failure
+       doesn't drop the approximate-count callout. The hints originate
+       on the chart's GET form; without these mirrors the re-render
+       after a bad confirm would fall through to "Approximate count
+       not available" because `request.POST` doesn't carry them. #}
+    {% if bucket_count_hint %}<input type="hidden" name="bucket_count" value="{{ bucket_count_hint }}">{% endif %}
+    {% if bucket_pct_hint %}<input type="hidden" name="bucket_pct" value="{{ bucket_pct_hint }}">{% endif %}
+    {% if total_visible_hint %}<input type="hidden" name="total_visible" value="{{ total_visible_hint }}">{% endif %}
+    {% if total_depth_hint %}<input type="hidden" name="total_depth" value="{{ total_depth_hint }}">{% endif %}
 
     <fieldset class="module">
-      <h2>Scope</h2>
-      <p>
-        Queue: <code>{{ queue_name }}</code><br>
-        Task:  {% if task_name %}<code>{{ task_name }}</code>{% else %}<em>(any)</em>{% endif %}<br>
-        Repo:  {% if repoid is not None %}<code>{{ repoid }}</code>{% else %}<em>(any)</em>{% endif %}<br>
-        Commit:
-        {% if commitid %}
-          <code title="{{ commitid }}">{{ commitid|slice:":7" }}</code>
-        {% else %}
-          <em>(any)</em>
-        {% endif %}
-        {% if match_count >= 2 and kept_index is not None %}
-          <br>"Clear all but first" would keep
-          <code>index={{ kept_index }}</code> (the lowest-index match,
-          i.e. the next message a Celery worker would pop) and clear
-          the remaining {{ match_count|add:"-1" }} of {{ match_count }}.
-        {% endif %}
-      </p>
-    </fieldset>
-
-    <fieldset class="module">
-      <h2>Matched: {{ match_count }} message(s)</h2>
-
-      {% if match_count == 0 %}
-        <p><em>No celery_broker messages currently match this filter.</em></p>
-      {% else %}
-        <p>
-          The first {{ sample_targets|length }} matching message(s):
-        </p>
-        <table>
-          <thead>
-            <tr>
-              <th>Index</th>
-              <th>Task</th>
-              <th>repoid</th>
-              <th>commit</th>
-              <th>task id</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for t in sample_targets %}
-            <tr>
-              <td>{{ t.index_in_queue }}</td>
-              <td>{{ t.task_name|default:"—" }}</td>
-              <td>{{ t.repoid|default_if_none:"—" }}</td>
-              <td>{% if t.commitid %}<code>{{ t.commitid|slice:":7" }}</code>{% else %}—{% endif %}</td>
-              <td>{% if t.task_id %}<code>{{ t.task_id|slice:":8" }}</code>{% else %}—{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% if match_count > sample_targets|length %}
-          <p><em>Showing first {{ sample_targets|length }} of {{ match_count }} matching message(s).</em></p>
-        {% endif %}
-
-        <h3>Confirm and clear</h3>
-        <div class="form-row{% if confirm_error %} errors{% endif %}">
-          <div>
-            {% if confirm_error %}<ul class="errorlist"><li>{{ confirm_error }}</li></ul>{% endif %}
-            <label for="id_typed_confirm">Type <code>{{ expected_confirm }}</code> to confirm:</label>
-            <input type="text" name="typed_confirm" id="id_typed_confirm" value="{{ typed_confirm }}" autocomplete="off">
-            <div class="help">
-              Re-type the queue name above to enable the destructive
-              actions on the right. Dry-run does not require it.
-            </div>
+      <h2>Confirm and clear</h2>
+      <div class="form-row{% if confirm_error %} errors{% endif %}">
+        <div>
+          {% if confirm_error %}<ul class="errorlist"><li>{{ confirm_error }}</li></ul>{% endif %}
+          <label for="id_typed_confirm">Type <code>{{ expected_confirm }}</code> to confirm:</label>
+          <input type="text" name="typed_confirm" id="id_typed_confirm" value="{{ typed_confirm }}" autocomplete="off">
+          <div class="help">
+            Re-type the queue name above to enable the destructive
+            actions on the right. Dry-run does not require it.
           </div>
         </div>
+      </div>
 
-        {% comment %}
-        Three submit buttons share the form. Server-side dispatch on
-        the `action` value:
+      {% comment %}
+      Three submit buttons share the form. Server-side dispatch on
+      the `action` value:
 
-        * `dry_run` — neutral / `default` styling. Audited via
-          `celery_broker_clear(dry_run=True)`; queue untouched.
-        * `clear_keep_one` — destructive (red text). Only rendered
-          when match_count >= 2. Clears every match EXCEPT the
-          lowest-index one; "drop duplicate retries but leave one
-          running."
-        * `clear_all` — destructive (red text). Clears every match.
+      * `dry_run` &mdash; neutral / `default` styling. Spawns the
+        chunked background-job worker with `dry_run=True`; queue
+        untouched. Writes a `LogEntry` on completion.
+      * `clear_keep_one` &mdash; destructive (red text). Clears
+        every match EXCEPT the lowest-index one; "drop duplicate
+        retries but leave one running."
+      * `clear_all` &mdash; destructive (red text). Clears every
+        match.
 
-        The two destructive buttons are stacked vertically and
-        anchored to the right edge so they read as a distinct "what
-        to do once you've confirmed" cluster, separated visually
-        both from the dry-run button on the left and from each
-        other.
-        {% endcomment %}
-        <div class="submit-row celery-clear-actions">
-          <button type="submit" name="action" value="dry_run" class="default">
-            Dry-run (audit only, no mutations)
+      The two destructive buttons are stacked vertically and
+      anchored to the right edge so they read as a distinct "what
+      to do once you've confirmed" cluster, separated visually
+      both from the dry-run button on the left and from each
+      other.
+      {% endcomment %}
+      <div class="submit-row celery-clear-actions">
+        <button type="submit" name="action" value="dry_run" class="default">
+          Dry-run (audit only, no mutations)
+        </button>
+        <div class="celery-destructive-actions">
+          <button type="submit" name="action" value="clear_keep_one"
+                  class="button celery-destructive-button celery-clear-keep-one">
+            Clear all but first
           </button>
-          <div class="celery-destructive-actions">
-            {% if match_count >= 2 %}
-              <button type="submit" name="action" value="clear_keep_one"
-                      class="button celery-destructive-button celery-clear-keep-one">
-                Clear all but first ({{ match_count|add:"-1" }} of {{ match_count }} from {{ queue_name }})
-              </button>
-            {% endif %}
-            <button type="submit" name="action" value="clear_all"
-                    class="button celery-destructive-button celery-clear-all">
-              Clear all ({{ match_count }} from {{ queue_name }})
-            </button>
-          </div>
+          <button type="submit" name="action" value="clear_all"
+                  class="button celery-destructive-button celery-clear-all">
+            Clear all from {{ queue_name }}
+          </button>
         </div>
-      {% endif %}
+      </div>
     </fieldset>
 
     <p>
@@ -160,6 +193,27 @@
      deliberately don't use Django admin's `deletelink` class here
      because that swaps the background to red and the foreground to
      white; the user spec for this surface is "red text". */
+  .celery-clear-filter {
+    border-collapse: collapse;
+  }
+  .celery-clear-filter th,
+  .celery-clear-filter td {
+    padding: 4px 12px 4px 0;
+    text-align: left;
+    vertical-align: top;
+  }
+  .celery-clear-filter th {
+    width: 6em;
+    font-weight: 600;
+    color: var(--body-quiet-color, inherit);
+  }
+  .celery-approx-callout {
+    font-size: 1.05em;
+    margin: 0.25em 0;
+  }
+  .celery-approx-unknown {
+    color: var(--body-quiet-color, inherit);
+  }
   .celery-clear-actions {
     display: flex;
     flex-wrap: wrap;
