@@ -195,11 +195,16 @@
       );
     }
 
-    // Hide the loader card, reveal the resolved count card, and
-    // render the sample. Empty match_count → don't unlock submits;
-    // the operator's only legitimate next action is to widen the
-    // filter or back out.
+    // Hide the loader + (if we came from job mode) the job card,
+    // reveal the resolved count card, and render the sample. Empty
+    // match_count → don't unlock submits; the operator's only
+    // legitimate next action is to widen the filter or back out.
+    // Tier 2 deep-queue path enters job mode by showing the job
+    // card; on terminal `completed` it now hands off to this
+    // function, so hide the now-stale progress card to avoid two
+    // overlapping result sections being visible at once.
     hide($('celery-clear-preview-loader'));
+    hide($('celery-clear-preview-job-card'));
     show($('celery-clear-preview-count-card'));
 
     if (payload.cached_at) {
@@ -222,7 +227,14 @@
   }
 
   function showError(message) {
+    // Hide the loader + (if we came from job mode) the job card so
+    // the error card replaces them rather than stacking alongside.
+    // Tier 2 deep-queue path's `cancelled` / `failed` terminal
+    // states funnel through here; without hiding the job card the
+    // operator would see the in-progress card and the error card
+    // at the same time.
     hide($('celery-clear-preview-loader'));
+    hide($('celery-clear-preview-job-card'));
     var errBox = $('celery-clear-preview-error');
     if (errBox) {
       errBox.textContent = message;
