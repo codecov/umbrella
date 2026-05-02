@@ -1997,6 +1997,7 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         # so the GET handler stays Redis-free.
         match_count: int | None = None
         kept_index: int | None = None
+        count_failed = False
         if request.method == "POST" and action in valid_actions:
             try:
                 match_count, kept_index = streaming_celery_count(
@@ -2011,22 +2012,32 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
                     queue_name,
                 )
                 # Defensive fallback: skip the count-based safety
-                # checks rather than render a 500. The destructive
-                # paths still gate on the typed-confirmation, and
-                # `start_celery_broker_clear_job` re-snapshots
-                # `LLEN(queue)` itself so the progress page total
-                # is accurate.
-                match_count = 0
+                # checks rather than render a 500 *or* a misleading
+                # "nothing to clear" no-op redirect. A transient
+                # Redis blip during the count must not silently
+                # convert a legitimate destructive action into a
+                # neutral redirect — the operator typed-confirmed
+                # the queue name, that's the real safety gate. The
+                # destructive paths still re-snapshot the queue
+                # depth from `start_celery_broker_clear_job` so the
+                # progress page total is accurate.
+                count_failed = True
+                match_count = None
                 kept_index = None
 
-            if match_count == 0:
+            if not count_failed and match_count == 0:
                 messages.info(
                     request,
                     "No messages match the filter — nothing to clear.",
                 )
                 return HttpResponseRedirect(changelist_url)
 
-            if action == "clear_keep_one" and match_count <= 1:
+            if (
+                not count_failed
+                and action == "clear_keep_one"
+                and match_count is not None
+                and match_count <= 1
+            ):
                 # Single-message bucket: there's nothing to clear
                 # without removing the only in-flight message,
                 # which defeats the "keep first" semantic. The
@@ -2077,12 +2088,25 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
                         dry_run=True,
                         keep_one=keep_one,
                     )
-                    messages.info(
-                        request,
-                        f"Dry-run: would clear {result.count} of {match_count} "
-                        f"matching message(s) from {queue_name} (audit log "
-                        f"entry written; queue untouched).",
-                    )
+                    if match_count is None:
+                        # Count probe failed earlier; surface that
+                        # in the banner so the operator knows the
+                        # "of N" denominator is missing on purpose.
+                        messages.info(
+                            request,
+                            f"Dry-run: would clear {result.count} matching "
+                            f"message(s) from {queue_name} (count probe "
+                            f"failed; audit log entry written; queue "
+                            f"untouched).",
+                        )
+                    else:
+                        messages.info(
+                            request,
+                            f"Dry-run: would clear {result.count} of "
+                            f"{match_count} matching message(s) from "
+                            f"{queue_name} (audit log entry written; "
+                            f"queue untouched).",
+                        )
                 else:
                     # Destructive: fan out to a background thread so a
                     # 500k-deep queue clear never sits on the gunicorn

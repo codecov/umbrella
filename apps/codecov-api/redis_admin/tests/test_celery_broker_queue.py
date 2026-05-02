@@ -26,6 +26,7 @@ import base64
 import json
 from types import SimpleNamespace
 from typing import Any
+from unittest import mock
 
 import fakeredis
 import pytest
@@ -1620,6 +1621,81 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         assert len(remaining) == 1
         envelope = json.loads(remaining[0])
         assert envelope["headers"]["id"] == "only-one"
+
+    def test_clear_all_proceeds_when_count_probe_raises(self):
+        # Bugbot caught: when `streaming_celery_count` raised, the
+        # original lazy-preview commit fell back to `match_count =
+        # 0`, which then triggered the very next `match_count == 0`
+        # safety check and silently 302'd to "nothing to clear" —
+        # converting a typed-confirmed destructive action into a
+        # misleading no-op redirect on a transient Redis blip.
+        # The fix: skip the count-based safety checks entirely when
+        # the count probe fails, since the typed-confirmation is
+        # the real safety gate (and the background job re-snapshots
+        # `LLEN(queue)` itself).
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+
+        with mock.patch(
+            "redis_admin.admin.streaming_celery_count",
+            side_effect=RuntimeError("simulated redis blip"),
+        ):
+            response = self.client.post(
+                "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+                {
+                    "queue_name": "celery",
+                    "repoid": "1",
+                    "commitid": "aaaa",
+                    "action": "clear_all",
+                    "typed_confirm": "celery",
+                },
+                follow=False,
+            )
+
+        # Must NOT bounce back to the changelist with a "nothing to
+        # clear" flash. The destructive path is allowed to proceed
+        # (the background job page does the real depth snapshot).
+        assert response.status_code in (302, 303)
+        location = response["Location"]
+        assert "/clear-by-filter/progress/" in location, (
+            f"expected redirect to the progress page after a typed-"
+            f"confirmed clear_all even when the count probe failed; "
+            f"got Location={location!r}"
+        )
+
+    def test_dry_run_surfaces_count_failed_banner_when_count_raises(self):
+        # When the count probe raises, the dry-run path still runs
+        # (the dry-run itself walks the queue with the real filter
+        # and is the source of truth for `result.count`). The
+        # banner just drops the misleading "of N" denominator and
+        # surfaces that the count probe failed so the operator
+        # knows why the matched-total is missing.
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+
+        with mock.patch(
+            "redis_admin.admin.streaming_celery_count",
+            side_effect=RuntimeError("simulated redis blip"),
+        ):
+            response = self.client.post(
+                "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+                {
+                    "queue_name": "celery",
+                    "repoid": "1",
+                    "commitid": "aaaa",
+                    "action": "dry_run",
+                },
+                follow=False,
+            )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        # The "of {match_count}" denominator is suppressed and the
+        # banner explicitly says the count probe failed.
+        assert "would clear 2 matching message(s)" in body
+        assert "count probe failed" in body
+        # Dry-run still doesn't mutate the queue.
+        assert self.redis.llen("celery") == 2
 
     def test_legacy_confirm_action_still_clears_all(self):
         # Backward-compat shim: the previous version of this view
