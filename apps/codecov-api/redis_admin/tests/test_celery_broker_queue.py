@@ -1561,8 +1561,8 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         assert "Typed confirmation must equal" in body
         # The approximate-count callout is preserved end-to-end
         # because the four hidden inputs round-tripped through the
-        # POST body. round(78500 / 20000 * 211052) == 828381.
-        assert "828381" in body
+        # POST body. round(78500 / 20000 * 211052) == 828379.
+        assert "828379" in body
         assert "Will tombstone approximately" in body
         # The fallback string from the missing-hints branch must not
         # leak into this code path.
@@ -2186,41 +2186,11 @@ def test_streaming_clear_single_pass_no_drift(broker_redis):
     assert survivor["headers"]["task"] == "t.B"
 
 
-@pytest.mark.django_db
-def test_streaming_clear_verify_before_lset_skips_drifted_entry(broker_redis):
-    """Verify-before-LSET skips a slot whose bytes changed between
-    LRANGE snapshot and LINDEX re-read.
-    """
-
-    raw_a = _build_envelope(task="t.A", kwargs={"repoid": 1, "commitid": "x"})
-    broker_redis.rpush("notify", raw_a)
-
-    # Intercept lindex to simulate drift: return different bytes.
-    real_lindex = broker_redis.lindex
-
-    def drifted_lindex(name, idx):
-        if name == "notify" and idx == 0:
-            # Return bytes for a *different* message.
-            return _build_envelope(
-                task="t.OTHER", kwargs={"repoid": 99, "commitid": "z"}
-            ).encode()
-        return real_lindex(name, idx)
-
-    broker_redis.lindex = drifted_lindex
-
-    tombstone = f"{_CELERY_TOMBSTONE_PREFIX}:test-drift"
-    filter_tuples = _make_filter(("t.A", 1, "x"))
-    stats = _streaming_celery_clear(
-        broker_redis, "notify", filter_tuples, tombstone, dry_run=False
-    )
-
-    # The drifted slot was skipped, nothing tombstoned.
-    assert stats.total_lset == 0
-    # Persistent drift causes the loop to retry; each pass records a drift hit.
-    assert stats.total_drifted >= 1
-    assert stats.passes_run == 2
-    # Original message still in queue (bytes unchanged — we only faked lindex).
-    assert broker_redis.llen("notify") == 1
+# Removed `test_streaming_clear_verify_before_lset_skips_drifted_entry`
+# alongside dropping the verify-before-LSET guard. The streaming clear
+# now runs pipelined unconditional LSETs (PR #895's pre-#899 pattern),
+# trading the "skip drifted slots" guarantee for actually draining busy
+# queues. See `_streaming_celery_clear` docstring for the rationale.
 
 
 @pytest.mark.django_db
