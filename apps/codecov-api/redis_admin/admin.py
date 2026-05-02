@@ -2029,6 +2029,20 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             except NoReverseMatch:  # pragma: no cover - admin always registered
                 repo_change_url = None
 
+        # Round-trip the four chart hints through the destructive POST
+        # form as hidden inputs so a typed-confirm failure doesn't drop
+        # them. Without this, the re-rendered preview would lose the
+        # approximate-count callout the operator just saw on the GET
+        # because `params = request.POST` and the form body wouldn't
+        # carry the chart's bucket count / queue depth (they only ride
+        # in the URL query string on the original GET). We render the
+        # coerced numeric values back out as strings so the template
+        # can use a single uniform `{% if %}`-and-emit shape.
+        bucket_count_hint = "" if bucket_count is None else str(bucket_count)
+        bucket_pct_hint = "" if bucket_pct is None else str(bucket_pct)
+        total_visible_hint = "" if total_visible is None else str(total_visible)
+        total_depth_hint = "" if total_depth is None else str(total_depth)
+
         ctx = {
             **self.admin_site.each_context(request),
             "title": f"Clear {queue_name} by filter",
@@ -2039,6 +2053,10 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             "repo_change_url": repo_change_url,
             "commitid": commitid,
             "approx": approx,
+            "bucket_count_hint": bucket_count_hint,
+            "bucket_pct_hint": bucket_pct_hint,
+            "total_visible_hint": total_visible_hint,
+            "total_depth_hint": total_depth_hint,
             "expected_confirm": expected_confirm,
             "typed_confirm": typed_confirm,
             "confirm_error": confirm_error,

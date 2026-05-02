@@ -119,6 +119,15 @@
     {% if task_name %}<input type="hidden" name="task_name" value="{{ task_name }}">{% endif %}
     {% if repoid is not None %}<input type="hidden" name="repoid" value="{{ repoid }}">{% endif %}
     {% if commitid %}<input type="hidden" name="commitid" value="{{ commitid }}">{% endif %}
+    {# Round-trip the chart's display hints so a typed-confirm failure
+       doesn't drop the approximate-count callout. The hints originate
+       on the chart's GET form; without these mirrors the re-render
+       after a bad confirm would fall through to "Approximate count
+       not available" because `request.POST` doesn't carry them. #}
+    {% if bucket_count_hint %}<input type="hidden" name="bucket_count" value="{{ bucket_count_hint }}">{% endif %}
+    {% if bucket_pct_hint %}<input type="hidden" name="bucket_pct" value="{{ bucket_pct_hint }}">{% endif %}
+    {% if total_visible_hint %}<input type="hidden" name="total_visible" value="{{ total_visible_hint }}">{% endif %}
+    {% if total_depth_hint %}<input type="hidden" name="total_depth" value="{{ total_depth_hint }}">{% endif %}
 
     <fieldset class="module">
       <h2>Confirm and clear</h2>

@@ -1524,6 +1524,58 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         assert "Typed confirmation must equal" in body
         assert self.redis.llen("celery") == 2
 
+    def test_typed_confirm_failure_preserves_chart_hint_callout(self):
+        # Regression for an early shape where the destructive POST
+        # form omitted the four chart-hint hidden inputs. On a typed-
+        # confirm failure the view falls through to the render path
+        # using `params = request.POST`, which would lack the hints
+        # entirely and silently drop the operator back to the
+        # "Approximate count not available" fallback even though
+        # they just saw a precise approximate count on the GET.
+        # The fix mirrors the hints into the POST form, so a failed
+        # destructive POST that carries them in `request.POST` must
+        # still render the same approximate-count callout.
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "repoid": "1",
+                "commitid": "aaaa",
+                "action": "clear_all",
+                "typed_confirm": "wrong-queue",
+                # Mirror the chart-form hints that the template's
+                # hidden inputs carry forward across submits.
+                "bucket_count": "78500",
+                "bucket_pct": "37.0",
+                "total_visible": "20000",
+                "total_depth": "211052",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        # Confirm we landed on the re-render path with the typed-
+        # confirm error, not on the redirect-to-progress path.
+        assert "Typed confirmation must equal" in body
+        # The approximate-count callout is preserved end-to-end
+        # because the four hidden inputs round-tripped through the
+        # POST body. round(78500 / 20000 * 211052) == 828381.
+        assert "828381" in body
+        assert "Will tombstone approximately" in body
+        # The fallback string from the missing-hints branch must not
+        # leak into this code path.
+        assert "Approximate count not available" not in body
+        # And the form re-emits the hidden inputs so a second submit
+        # still carries the hints — pin the value markers on the
+        # actual hidden inputs, not just somewhere in the body.
+        assert 'name="bucket_count" value="78500"' in body
+        assert 'name="bucket_pct" value="37.0"' in body
+        assert 'name="total_visible" value="20000"' in body
+        assert 'name="total_depth" value="211052"' in body
+        assert self.redis.llen("celery") == 1
+
     # ---- POST: legacy `action=confirm` shim ------------------------
     #
     # End-to-end exercise of the chunked worker (queue actually
