@@ -78,6 +78,9 @@ class BitbucketServerWebhookHandler(APIView):
         elif self.event == BitbucketServerWebhookEvents.REPO_REFS_CHANGED:
             self._inc_recv()
             return self._handle_repo_refs_change(repo)
+        elif self.event == BitbucketServerWebhookEvents.REPO_MODIFIED:
+            self._inc_recv()
+            return self._handle_repo_modified_event(repo)
 
         self._inc_err("unhandled_event")
         return Response()
@@ -100,6 +103,16 @@ class BitbucketServerWebhookHandler(APIView):
             pullid=self.request.data["pullRequest"]["id"],
         ).update(state=state)
 
+        return Response()
+
+    def _handle_repo_modified_event(self, repo):
+        TaskService().refresh(
+            ownerid=repo.author.ownerid,
+            username=repo.author.username,
+            sync_teams=False,
+            sync_repos=True,
+            using_integration=True,
+        )
         return Response()
 
     def _handle_repo_refs_change(self, repo):

@@ -39,6 +39,7 @@ class BitbucketWebhookEvents:
     PULL_REQUEST_REJECTED = "pullrequest:rejected"
     PULL_REQUEST_FULFILLED = "pullrequest:fulfilled"
     REPO_PUSH = "repo:push"
+    REPO_UPDATED = "repo:updated"
     REPO_COMMIT_STATUS_CREATED = "repo:commit_status_created"
     REPO_COMMIT_STATUS_UPDATED = "repo:commit_status_updated"
 

@@ -241,3 +241,48 @@ class TestBitbucketServerWebhookHandler(APITestCase):
         )
         assert response.status_code == status.HTTP_200_OK
         assert response.data == "Synchronize codecov.yml skipped"
+
+    @patch("webhook_handlers.views.bitbucket_server.TaskService.refresh")
+    def test_repo_modified_triggers_sync(self, mock_refresh):
+        response = self._post_event_data(
+            event=BitbucketServerWebhookEvents.REPO_MODIFIED,
+            data={
+                "repository": {"id": "673a6070-3421-46c9-9d48-90745f7bfe8e"},
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_refresh.assert_called_once_with(
+            ownerid=self.repo.author.ownerid,
+            username=self.repo.author.username,
+            sync_teams=False,
+            sync_repos=True,
+            using_integration=True,
+        )
+
+    @patch("webhook_handlers.views.bitbucket_server.TaskService.refresh")
+    def test_repo_modified_lookup_by_service_id_not_slug(self, mock_refresh):
+        # Slug hijack scenario: a different workspace registers a repo with the
+        # old name. Lookup must use service_id so the renamed repo is still
+        # correctly identified and synced, not the hijacker.
+        RepositoryFactory(
+            author=OwnerFactory(service="bitbucket_server"),
+            name=self.repo.name,
+            active=True,
+        )
+
+        response = self._post_event_data(
+            event=BitbucketServerWebhookEvents.REPO_MODIFIED,
+            data={
+                "repository": {"id": "673a6070-3421-46c9-9d48-90745f7bfe8e"},
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_refresh.assert_called_once_with(
+            ownerid=self.repo.author.ownerid,
+            username=self.repo.author.username,
+            sync_teams=False,
+            sync_repos=True,
+            using_integration=True,
+        )

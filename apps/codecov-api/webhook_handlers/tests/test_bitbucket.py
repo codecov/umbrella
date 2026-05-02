@@ -347,3 +347,48 @@ class TestBitbucketWebhookHandler(APITestCase):
         assert response.status_code == status.HTTP_200_OK
         assert response.data == "Notify queued"
         notify_mock.assert_called_once_with(repoid=self.repo.repoid, commitid=commitid)
+
+    @patch("webhook_handlers.views.bitbucket.TaskService.refresh")
+    def test_repo_updated_triggers_sync(self, mock_refresh):
+        response = self._post_event_data(
+            event=BitbucketWebhookEvents.REPO_UPDATED,
+            data={
+                "repository": {"uuid": "{673a6070-3421-46c9-9d48-90745f7bfe8e}"},
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_refresh.assert_called_once_with(
+            ownerid=self.repo.author.ownerid,
+            username=self.repo.author.username,
+            sync_teams=False,
+            sync_repos=True,
+            using_integration=True,
+        )
+
+    @patch("webhook_handlers.views.bitbucket.TaskService.refresh")
+    def test_repo_updated_lookup_by_uuid_not_slug(self, mock_refresh):
+        # Slug hijack scenario: a different workspace registers a repo with the
+        # old name. Lookup must use UUID so the renamed repo is still correctly
+        # identified and synced, not the hijacker.
+        RepositoryFactory(
+            author=OwnerFactory(service="bitbucket"),
+            name=self.repo.name,
+            active=True,
+        )
+
+        response = self._post_event_data(
+            event=BitbucketWebhookEvents.REPO_UPDATED,
+            data={
+                "repository": {"uuid": "{673a6070-3421-46c9-9d48-90745f7bfe8e}"},
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_refresh.assert_called_once_with(
+            ownerid=self.repo.author.ownerid,
+            username=self.repo.author.username,
+            sync_teams=False,
+            sync_repos=True,
+            using_integration=True,
+        )

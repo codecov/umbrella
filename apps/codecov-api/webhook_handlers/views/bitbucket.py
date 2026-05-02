@@ -80,6 +80,9 @@ class BitbucketWebhookHandler(APIView):
         ):
             self._inc_recv()
             return self._handle_repo_commit_status_change(repo)
+        elif self.event == BitbucketWebhookEvents.REPO_UPDATED:
+            self._inc_recv()
+            return self._handle_repo_updated_event(repo)
 
         self._inc_err("unhandled_event")
         return Response()
@@ -114,6 +117,16 @@ class BitbucketWebhookHandler(APIView):
             if change["new"]:
                 return Response(data="Synchronize codecov.yml skipped")
 
+        return Response()
+
+    def _handle_repo_updated_event(self, repo):
+        TaskService().refresh(
+            ownerid=repo.author.ownerid,
+            username=repo.author.username,
+            sync_teams=False,
+            sync_repos=True,
+            using_integration=True,
+        )
         return Response()
 
     def _handle_repo_commit_status_change(self, repo):
