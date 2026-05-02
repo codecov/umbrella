@@ -130,20 +130,40 @@ class ComparisonProxy:
             if bases_match and self._adjusted_base_diff is not NOT_RESOLVED:
                 self._original_base_diff = self._adjusted_base_diff
             elif patch_coverage_base_commitid is not None:
-                pull_diff = async_to_sync(self.repository_service.get_compare)(
-                    patch_coverage_base_commitid, head.commitid, with_commits=False
-                )
-                self._original_base_diff = pull_diff["diff"]
+                try:
+                    pull_diff = async_to_sync(self.repository_service.get_compare)(
+                        patch_coverage_base_commitid, head.commitid, with_commits=False
+                    )
+                    self._original_base_diff = pull_diff["diff"]
+                except TorngitClientGeneralError:
+                    log.warning(
+                        "Unable to fetch original base diff from Git provider",
+                        extra={
+                            "patch_coverage_base_commitid": patch_coverage_base_commitid,
+                            "head_commitid": head.commitid,
+                        },
+                    )
+                    self._original_base_diff = None
             else:
                 return None
         elif populate_adjusted_base_diff:
             if bases_match and self._original_base_diff is not NOT_RESOLVED:
                 self._adjusted_base_diff = self._original_base_diff
             elif base is not None:
-                pull_diff = async_to_sync(self.repository_service.get_compare)(
-                    base.commitid, head.commitid, with_commits=False
-                )
-                self._adjusted_base_diff = pull_diff["diff"]
+                try:
+                    pull_diff = async_to_sync(self.repository_service.get_compare)(
+                        base.commitid, head.commitid, with_commits=False
+                    )
+                    self._adjusted_base_diff = pull_diff["diff"]
+                except TorngitClientGeneralError:
+                    log.warning(
+                        "Unable to fetch adjusted base diff from Git provider",
+                        extra={
+                            "base_commitid": base.commitid,
+                            "head_commitid": head.commitid,
+                        },
+                    )
+                    self._adjusted_base_diff = None
             else:
                 return None
 
