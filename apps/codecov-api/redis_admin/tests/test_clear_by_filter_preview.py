@@ -39,6 +39,7 @@ from redis_admin import services as redis_admin_services
 from redis_admin import settings as redis_admin_settings
 from redis_admin.admin import CeleryBrokerQueueAdmin
 from redis_admin.models import CeleryBrokerQueue
+from redis_admin.services import _job_key
 from redis_admin.tests.test_celery_broker_clear_job import (
     _push_envelopes,
     _wait_for_job,
@@ -312,6 +313,173 @@ def test_preview_endpoint_inline_limit_setting_overrides_threshold(
     payload = json.loads(response.content)
     assert payload["mode"] == "job"
     _wait_for_job(payload["job_id"], timeout=10.0)
+
+
+def test_preview_endpoint_dedups_job_for_same_filter_within_lock_ttl(
+    patched_broker, superuser, monkeypatch
+):
+    """Bugbot caught: the deep-queue path used to call
+    `start_celery_broker_clear_job` unconditionally on every preview
+    request, so a page refresh / second tab / JS retry kicked off N
+    parallel full-queue scans for the same filter. The dedup helper
+    caches the in-flight `job_id` under a short TTL keyed by the
+    filter hash; subsequent calls within the window must reuse it.
+    """
+
+    queue = "notify"
+    _push_envelopes(patched_broker, queue, n=50, repoid=1)
+    monkeypatch.setattr(
+        redis_admin_settings, "CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT", 10
+    )
+
+    rf = RequestFactory()
+    admin_instance = _admin_instance()
+
+    spawn_calls = {"n": 0}
+    real_start = redis_admin_services.start_celery_broker_clear_job
+
+    def _counting_start(*args, **kwargs):
+        spawn_calls["n"] += 1
+        return real_start(*args, **kwargs)
+
+    monkeypatch.setattr(
+        redis_admin_services, "start_celery_broker_clear_job", _counting_start
+    )
+
+    def _make_request():
+        request = rf.get(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/preview/",
+            data={"queue_name": queue, "repoid": "1"},
+        )
+        request.user = superuser
+        return request
+
+    first = admin_instance.clear_by_filter_preview_view(_make_request())
+    assert first.status_code == 200
+    first_payload = json.loads(first.content)
+    assert first_payload["mode"] == "job"
+    first_job_id = first_payload["job_id"]
+    uuid.UUID(first_job_id)  # well-formed
+    assert spawn_calls["n"] == 1
+
+    # Second call for the same filter — must reuse the in-flight
+    # job rather than spawn a new one.
+    second = admin_instance.clear_by_filter_preview_view(_make_request())
+    assert second.status_code == 200
+    second_payload = json.loads(second.content)
+    assert second_payload["mode"] == "job"
+    assert second_payload["job_id"] == first_job_id, (
+        f"expected dedup helper to return the in-flight job_id "
+        f"({first_job_id}); got a new job_id ({second_payload['job_id']})"
+    )
+    assert spawn_calls["n"] == 1, (
+        f"expected `start_celery_broker_clear_job` to be called exactly once "
+        f"across two preview requests for the same filter; got {spawn_calls['n']}"
+    )
+
+    # Different filter → fresh spawn (the lock is keyed on the
+    # full filter tuple, not just the queue name).
+    request = rf.get(
+        "/admin/redis_admin/celerybrokerqueue/clear-by-filter/preview/",
+        data={"queue_name": queue, "repoid": "999"},
+    )
+    request.user = superuser
+    third = admin_instance.clear_by_filter_preview_view(request)
+    assert third.status_code == 200
+    third_payload = json.loads(third.content)
+    assert third_payload["mode"] == "job"
+    assert third_payload["job_id"] != first_job_id
+    assert spawn_calls["n"] == 2
+
+    _wait_for_job(first_job_id, timeout=10.0)
+    _wait_for_job(third_payload["job_id"], timeout=10.0)
+
+
+def test_preview_endpoint_dedup_falls_through_when_cached_job_is_stale(
+    patched_broker, superuser, monkeypatch
+):
+    """Stale-id guard: if the cached `job_id` no longer resolves to
+    a live job hash (its 24h TTL elapsed, or a redis-cli operator
+    nuked the hash) the helper must spawn a fresh job rather than
+    hand the JS a dead `job_id`.
+    """
+
+    queue = "notify"
+    _push_envelopes(patched_broker, queue, n=50, repoid=1)
+    monkeypatch.setattr(
+        redis_admin_settings, "CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT", 10
+    )
+
+    rf = RequestFactory()
+    admin_instance = _admin_instance()
+
+    request = rf.get(
+        "/admin/redis_admin/celerybrokerqueue/clear-by-filter/preview/",
+        data={"queue_name": queue, "repoid": "1"},
+    )
+    request.user = superuser
+    first = admin_instance.clear_by_filter_preview_view(request)
+    first_job_id = json.loads(first.content)["job_id"]
+    _wait_for_job(first_job_id, timeout=10.0)
+
+    # Simulate the job-hash TTL elapsing (or an operator deleting
+    # it via redis-cli) while the dedup lock entry survives —
+    # second call must see the stale lock, fall through, and
+    # spawn a fresh job.
+    patched_broker.delete(_job_key(first_job_id))
+
+    request = rf.get(
+        "/admin/redis_admin/celerybrokerqueue/clear-by-filter/preview/",
+        data={"queue_name": queue, "repoid": "1"},
+    )
+    request.user = superuser
+    second = admin_instance.clear_by_filter_preview_view(request)
+    second_payload = json.loads(second.content)
+    assert second_payload["job_id"] != first_job_id, (
+        f"expected stale-job-hash detection to spawn a fresh job_id; "
+        f"got the dead first_job_id={first_job_id}"
+    )
+    _wait_for_job(second_payload["job_id"], timeout=10.0)
+
+
+def test_preview_endpoint_returns_empty_sample_when_materialise_raises(
+    patched_broker, superuser
+):
+    """Bugbot caught: `_materialise_sample_targets` was unwrapped,
+    so a broker outage during sample lookup raised through to
+    Django's HTML 500 page from a JSON endpoint. The fix wraps it
+    in try/except so a flaky sample lookup degrades to an empty
+    sample table while the count payload still ships.
+    """
+
+    queue = "notify"
+    _push_envelopes(patched_broker, queue, n=5, repoid=1)
+
+    rf = RequestFactory()
+    admin_instance = _admin_instance()
+
+    request = rf.get(
+        "/admin/redis_admin/celerybrokerqueue/clear-by-filter/preview/",
+        data={"queue_name": queue, "repoid": "1"},
+    )
+    request.user = superuser
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("simulated broker outage during LRANGE")
+
+    with mock.patch.object(
+        CeleryBrokerQueueAdmin, "_materialise_sample_targets", _boom
+    ):
+        response = admin_instance.clear_by_filter_preview_view(request)
+
+    assert response.status_code == 200
+    payload = json.loads(response.content)
+    # JSON endpoint contract preserved — no HTML 500 leak.
+    assert response["Content-Type"].startswith("application/json")
+    # Count still computed; sample degrades to empty list.
+    assert payload["mode"] == "synchronous"
+    assert payload["match_count"] == 5
+    assert payload["sample"] == []
 
 
 def test_preview_endpoint_validates_required_filters(patched_broker, superuser):

@@ -1681,3 +1681,130 @@ def resolve_clear_by_filter_preview_count(
         "match_count": int(match_count),
         "kept_index": kept_index,
     }
+
+
+# ---- Preview-mode dry-run job dedup ------------------------------------
+#
+# When `clear_by_filter_preview_view` escalates a deep-queue count to a
+# chunked background job (`queue_depth > CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT`)
+# it spawns a `start_celery_broker_clear_job(dry_run=True)` thread that
+# walks the entire queue. Without dedup, a page refresh / second tab /
+# JS retry kicks off another full-queue scan in parallel: O(N) Redis
+# reads multiplied by the number of accidental refreshes.
+#
+# Best-effort fix: cache the `job_id` under a short TTL keyed by the
+# filter hash. Subsequent calls within the window reuse the in-flight
+# id; cache outage falls through to always-spawn (no regression vs the
+# pre-PR behaviour).
+_CLEAR_BY_FILTER_PREVIEW_JOB_LOCK_PREFIX: str = "redis_admin:preview_job_lock"
+
+
+def _clear_by_filter_preview_job_lock_key(
+    queue_name: str,
+    *,
+    task_name: str | None,
+    repoid: int | None,
+    commitid: str | None,
+) -> str:
+    """SHA-256 over the same canonical tuple as the count cache.
+
+    Hashing for the same two reasons as `_clear_by_filter_preview_cache_key`
+    (bounded length + multi-tenant isolation). Sharing the canonical
+    tuple shape with the count cache keeps the operator mental model
+    simple — same filter → same hash → either cached count or shared
+    in-flight job, never both at once.
+    """
+
+    canonical = "|".join(
+        [
+            queue_name,
+            task_name or "",
+            "" if repoid is None else str(repoid),
+            commitid or "",
+        ]
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return f"{_CLEAR_BY_FILTER_PREVIEW_JOB_LOCK_PREFIX}:{digest}"
+
+
+def get_or_start_clear_by_filter_preview_job(
+    queue_name: str,
+    *,
+    user,
+    task_name: str | None,
+    repoid: int | None,
+    commitid: str | None,
+) -> str:
+    """Return an in-flight preview-mode `job_id` for this filter, or
+    spawn a new one and cache its id under a short TTL.
+
+    Best-effort dedup. Catches the common waste path — refresh /
+    multi-tab / JS retry kicking off N parallel full-queue scans
+    while the first is still walking — without becoming a strict
+    mutex (two simultaneous first-time requests can still race past
+    the cache miss and both spawn a job). Cache outage falls through
+    to the always-spawn path so the preview never returns a 500
+    because of a flaky lock.
+
+    Stale-id guard: if the cached `job_id` no longer resolves to a
+    live job hash (its 24h TTL elapsed, or a redis-cli operator
+    nuked the hash), we fall through to spawn a fresh job rather
+    than handing the JS a dead job_id.
+    """
+
+    cache_key = _clear_by_filter_preview_job_lock_key(
+        queue_name,
+        task_name=task_name,
+        repoid=repoid,
+        commitid=commitid,
+    )
+
+    cache: Any = None
+    try:
+        cache = _conn.get_connection(kind="default")
+    except Exception:  # pragma: no cover - cache outage at lookup
+        log.exception("redis_admin.preview_job_lock: connection failed; skipping dedup")
+
+    if cache is not None:
+        try:
+            existing = cache.get(cache_key)
+        except Exception:  # pragma: no cover - cache outage at GET
+            log.exception("redis_admin.preview_job_lock: GET failed; skipping dedup")
+            existing = None
+        if existing is not None:
+            cached_job_id = (
+                existing.decode("utf-8")
+                if isinstance(existing, bytes)
+                else str(existing)
+            )
+            if get_celery_broker_clear_job(cached_job_id) is not None:
+                return cached_job_id
+            # Stale cache entry — the job hash expired or was purged.
+            # Drop it so the next caller doesn't re-check repeatedly.
+            try:
+                cache.delete(cache_key)
+            except Exception:  # pragma: no cover - cache outage at DEL
+                log.exception(
+                    "redis_admin.preview_job_lock: DEL failed; skipping cleanup"
+                )
+
+    job_id = start_celery_broker_clear_job(
+        queue_name,
+        user=user,
+        task_name=task_name,
+        repoid=repoid,
+        commitid=commitid,
+        keep_one=False,
+        dry_run=True,
+    )
+
+    if cache is not None:
+        ttl = redis_admin_settings.CLEAR_BY_FILTER_PREVIEW_JOB_LOCK_TTL_SECONDS
+        if ttl > 0:
+            try:
+                cache.set(cache_key, job_id, ex=ttl)
+            except Exception:  # pragma: no cover - cache outage at SET
+                log.exception(
+                    "redis_admin.preview_job_lock: SET failed; skipping dedup"
+                )
+    return job_id

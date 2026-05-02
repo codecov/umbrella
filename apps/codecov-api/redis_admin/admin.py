@@ -57,6 +57,7 @@ from .services import (
     _substitute_filter_any,
     celery_broker_clear,
     get_celery_broker_clear_job,
+    get_or_start_clear_by_filter_preview_job,
     redis_delete,
     request_cancel_celery_broker_clear_job,
     resolve_clear_by_filter_preview_count,
@@ -1830,6 +1831,40 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             *urls,
         ]
 
+    @staticmethod
+    def _build_clear_by_filter_querystring(
+        *,
+        queue_name: str,
+        task_name: str | None,
+        repoid: int | None,
+        commitid: str | None,
+        extras: dict[str, str] | None = None,
+    ) -> str:
+        """Single source of truth for the filter querystring the
+        clear-by-filter views hand each other.
+
+        `clear_by_filter_view` uses it twice (preview-endpoint URL
+        and skip-count URL); `clear_by_filter_skip_count_view` uses
+        it again with `extras={"count_skipped": "1"}`. The dict-
+        comprehension `if v != ""` filter is preserved so an unset
+        `task_name` doesn't bloat the URL with an empty key.
+
+        Centralising it prevents the four call sites from drifting
+        apart when the filter shape evolves (a future commit
+        tightening `commitid` length or adding a new narrower
+        would otherwise need touching every callsite).
+        """
+
+        items: dict[str, str] = {
+            "queue_name": queue_name,
+            "task_name": task_name or "",
+            "repoid": "" if repoid is None else str(repoid),
+            "commitid": commitid or "",
+        }
+        if extras:
+            items.update(extras)
+        return urlencode({k: v for k, v in items.items() if v != ""})
+
     def _parse_clear_by_filter_params(
         self, request: HttpRequest
     ) -> tuple[dict[str, Any], HttpResponseRedirect | None]:
@@ -2135,17 +2170,11 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         preview_url = reverse(
             f"admin:{opts.app_label}_{opts.model_name}_clear_by_filter_preview"
         )
-        preview_query = urlencode(
-            {
-                k: v
-                for k, v in {
-                    "queue_name": queue_name,
-                    "task_name": task_name,
-                    "repoid": "" if repoid is None else str(repoid),
-                    "commitid": commitid,
-                }.items()
-                if v != ""
-            }
+        preview_query = self._build_clear_by_filter_querystring(
+            queue_name=queue_name,
+            task_name=task_name,
+            repoid=repoid,
+            commitid=commitid,
         )
         preview_full_url = (
             f"{preview_url}?{preview_query}" if preview_query else preview_url
@@ -2158,17 +2187,11 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         skip_count_url = reverse(
             f"admin:{opts.app_label}_{opts.model_name}_clear_by_filter_skip_count"
         )
-        skip_count_query = urlencode(
-            {
-                k: v
-                for k, v in {
-                    "queue_name": queue_name,
-                    "task_name": task_name,
-                    "repoid": "" if repoid is None else str(repoid),
-                    "commitid": commitid,
-                }.items()
-                if v != ""
-            }
+        skip_count_query = self._build_clear_by_filter_querystring(
+            queue_name=queue_name,
+            task_name=task_name,
+            repoid=repoid,
+            commitid=commitid,
         )
         skip_count_full_url = (
             f"{skip_count_url}?{skip_count_query}"
@@ -2257,12 +2280,24 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
 
         bust_cache = (request.GET.get("bust") or "").strip() == "1"
 
-        sample_targets = self._materialise_sample_targets(
-            queue_name=queue_name,
-            task_name=task_name or None,
-            repoid=repoid,
-            commitid=commitid or None,
-        )
+        # Sample materialise is wrapped in try/except so a broker
+        # outage degrades to an empty sample table instead of
+        # bubbling Django's HTML 500 page out of a JSON endpoint.
+        # Mirrors the LLEN fallback below — both are best-effort
+        # decorations on the count payload, not the count itself.
+        try:
+            sample_targets = self._materialise_sample_targets(
+                queue_name=queue_name,
+                task_name=task_name or None,
+                repoid=repoid,
+                commitid=commitid or None,
+            )
+        except Exception:
+            log.exception(
+                "redis_admin.clear_by_filter_preview: sample materialise failed for %r",
+                queue_name,
+            )
+            sample_targets = []
         sample_payload = [
             {
                 "index_in_queue": t.index_in_queue,
@@ -2291,14 +2326,17 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         inline_limit = redis_admin_settings.CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT
         if queue_depth > inline_limit:
             opts = self.model._meta
-            job_id = start_celery_broker_clear_job(
+            # Dedup: refresh / multi-tab / JS retry must not spawn N
+            # parallel full-queue scans for the same filter. The
+            # helper returns the in-flight job_id when one is still
+            # running for this filter hash, else spawns a fresh
+            # `dry_run=True` job and caches its id under a short TTL.
+            job_id = get_or_start_clear_by_filter_preview_job(
                 queue_name,
                 user=request.user,
                 task_name=task_name or None,
                 repoid=repoid,
                 commitid=commitid or None,
-                keep_one=False,
-                dry_run=True,
             )
             status_url = reverse(
                 f"admin:{opts.app_label}_{opts.model_name}_clear_by_filter_status",
@@ -2402,20 +2440,12 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         preview_url = reverse(
             f"admin:{opts.app_label}_{opts.model_name}_clear_by_filter"
         )
-        query = urlencode(
-            {
-                k: v
-                for k, v in {
-                    "queue_name": parsed["queue_name"],
-                    "task_name": parsed["task_name"],
-                    "repoid": (
-                        "" if parsed["repoid"] is None else str(parsed["repoid"])
-                    ),
-                    "commitid": parsed["commitid"],
-                    "count_skipped": "1",
-                }.items()
-                if v != ""
-            }
+        query = self._build_clear_by_filter_querystring(
+            queue_name=parsed["queue_name"],
+            task_name=parsed["task_name"],
+            repoid=parsed["repoid"],
+            commitid=parsed["commitid"],
+            extras={"count_skipped": "1"},
         )
         return HttpResponseRedirect(f"{preview_url}?{query}")
 

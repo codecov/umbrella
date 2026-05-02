@@ -81,3 +81,16 @@ CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT: int = getattr(
 CLEAR_BY_FILTER_PREVIEW_CACHE_TTL_SECONDS: int = getattr(
     settings, "REDIS_ADMIN_CLEAR_BY_FILTER_PREVIEW_CACHE_TTL_SECONDS", 60
 )
+
+# TTL for the preview-mode dry-run job lock (cache Redis key:
+# `redis_admin:preview_job_lock:<sha256(filter)>`). When the
+# preview endpoint escalates a deep-queue count to a chunked
+# background job (queue_depth > `CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT`),
+# subsequent calls within this window reuse the in-flight `job_id`
+# instead of spawning a duplicate full-queue scan. 5 minutes is
+# long enough that a refresh / multi-tab open during the same
+# investigation re-uses the job; short enough that a stale job
+# lock can't outlive a worker crash by more than a coffee break.
+CLEAR_BY_FILTER_PREVIEW_JOB_LOCK_TTL_SECONDS: int = getattr(
+    settings, "REDIS_ADMIN_CLEAR_BY_FILTER_PREVIEW_JOB_LOCK_TTL_SECONDS", 300
+)
