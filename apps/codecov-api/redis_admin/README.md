@@ -40,7 +40,9 @@ accidentally surfaces them under `RedisQueue`.
 | `/admin/redis_admin/redisqueueitem/<token>/change/` | Inspect a single item |
 | `/admin/redis_admin/celerybrokerqueue/` | **Celery summary** — one row per known celery_broker queue with current `LLEN` and a drill-in link |
 | `/admin/redis_admin/celerybrokerqueue/?queue_name__exact=<queue>` | **Celery drill-down** — messages inside a celery broker queue with structured task / repoid / commitid columns, a `(repoid, commitid)` frequency chart, and per-message clear |
-| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/` | Preview + clear messages in `<queue>` matching a `(task_name?, repoid?, commitid?)` filter (POST-only, superuser-only). Wired up by the frequency chart's per-row "Clear queue" button; the preview page exposes three explicit actions (dry-run, clear all but first, clear all). Destructive actions spawn a chunked background job and 302 to the progress page. |
+| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/` | Preview + clear messages in `<queue>` matching a `(task_name?, repoid?, commitid?)` filter (POST-only, superuser-only). Wired up by the frequency chart's per-row "Clear queue" button; the preview page exposes three explicit actions (dry-run, clear all but first, clear all). Destructive actions spawn a chunked background job and 302 to the progress page. The GET handler renders only the form + skeleton placeholders; the count + sample are fetched asynchronously by the lazy-preview JS (see below). |
+| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/preview/` | JSON preview endpoint hit by the page's JS (superuser-only). Returns `{mode: "synchronous", match_count, kept_index, sample, cached_at?}` for queues below `REDIS_ADMIN_CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT`, or `{mode: "job", job_id, status_url, sample}` for deeper queues (the JS then polls the existing clear-job status endpoint). `?bust=1` skips the cache. |
+| `/admin/redis_admin/celerybrokerqueue/clear-by-filter/skip-count/` | Tier 4 escape hatch (superuser-only). 302s back to `clear-by-filter/?count_skipped=1` so the operator can type the queue name + clear without waiting for the count to compute. |
 | `/admin/redis_admin/celerybrokerqueue/clear-by-filter/job/<uuid>/` | Progress page for a chunked clear job (HTML, superuser-only). Polls the status JSON view every ~1s; renders a `<progress>` bar, matched / total / drift / pass counters, and a Cancel button. |
 | `/admin/redis_admin/celerybrokerqueue/clear-by-filter/job/<uuid>/status/` | JSON snapshot of a chunked clear job (superuser-only); 404s on unknown / expired ids. |
 | `/admin/redis_admin/celerybrokerqueue/clear-by-filter/job/<uuid>/cancel/` | POST-only cancel endpoint (superuser-only); flags `cancel_requested=1` and returns 202 with the latest snapshot. Cancel lands at the next chunk boundary. |
@@ -159,6 +161,8 @@ All configurable via `REDIS_ADMIN_*` Django settings; defaults shown.
 | `REDIS_ADMIN_CELERY_BROKER_SCAN_LIMIT` | `20_000` | Sample window used by the `celery_broker` frequency chart aggregator. The streaming clear (Clear queue → Clear all) intentionally is *not* bounded by this — it walks the full `LLEN(queue)` so a clear action always drains the entire queue regardless of the chart's sample size. |
 | `REDIS_ADMIN_MAX_DECODE_BYTES` | `4_096` | Per-value display truncation. |
 | `REDIS_ADMIN_DELETE_BATCH_SIZE` | `500` | Pipeline batch size for `DEL` / `LREM` / `SREM` / `HDEL`. |
+| `REDIS_ADMIN_CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT` | `200_000` | `LLEN(queue)` threshold above which the lazy `clear-by-filter/preview/` JSON endpoint stops trying to compute the count synchronously and instead spawns a `dry_run=True` chunked-clear background job. Below the threshold the synchronous walk + 60s cache keep the endpoint sub-second; above it the JS switches into polling the existing job-status hash. |
+| `REDIS_ADMIN_CLEAR_BY_FILTER_PREVIEW_CACHE_TTL_SECONDS` | `60` | TTL for the synchronous-mode preview count cache (cache Redis key `redis_admin:preview_count:<sha256(queue\|task\|repoid\|commitid)>`). Refresh / Back-Forward / multiple browser tabs return the cached count instantly; `?bust=1` on the preview endpoint skips the cache. |
 | `REDIS_ADMIN_CONNECTION_FACTORY` | unset | Dotted path to a callable returning a `redis.Redis`. Defaults to `shared.helpers.redis.get_redis_connection`. |
 | `REDIS_ADMIN_BROKER_CONNECTION_FACTORY` | unset | Dotted path for the Celery broker connection. Defaults to building a client from `services.celery_broker` (falls back to `services.redis_url` for single-Redis dev/enterprise). |
 
@@ -306,6 +310,70 @@ and the audit log captures the operation under
 For backward compatibility, the older `action=confirm` form
 shape (paired with `mode=all` / `mode=keep_one`) is aliased to
 the new actions so stale tabs and scripts keep working.
+
+### Lazy clear-by-filter preview
+
+The preview page used to call `streaming_celery_count` +
+materialise up to `CELERY_BROKER_DISPLAY_LIMIT` rows in the GET
+handler before painting anything. On a 1M-deep queue that's tens
+of seconds of blocking work in the gunicorn request thread before
+the operator sees a single byte. The preview now lays out in four
+tiers, each one taking a chunk out of the perceived render time:
+
+**Tier 1 — lazy preview load.** The GET handler renders the
+filter summary, typed-confirm form, and skeleton placeholders for
+the count + sample table in `< 200ms`, with no Redis scans. The
+submit buttons (`Dry-run` / `Clear all but first` / `Clear all`)
+start disabled. A separate JSON endpoint
+(`clear-by-filter/preview/`) computes the count + sample on
+demand; `celery_clear_by_filter_preview.js` fetches it on
+`DOMContentLoaded`, fills the count card, renders the sample, and
+unlocks the submit buttons.
+
+**Tier 2 — background count job for huge queues.** Above
+`REDIS_ADMIN_CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT` (default
+200_000) the preview endpoint returns
+`{mode: "job", job_id, status_url}` and kicks off a `dry_run=True`
+chunked-clear job (the existing
+`start_celery_broker_clear_job` machinery — no new infrastructure).
+The JS then polls the status endpoint every ~1s; on
+`status=completed` it reads `matched` off the job hash as the
+match count and unlocks the buttons. The dry-run job's audit
+entry uses `mode="chunked-dry-run"`, so it slots into the same
+audit feed as a manual dry-run from the preview page itself. The
+sample table stays synchronous in both modes (LRANGE 0 N + parse
+is fast even on a 1M queue).
+
+**Tier 3 — short-lived count cache.** Synchronous-mode counts
+get stashed in cache Redis under
+`redis_admin:preview_count:<sha256(queue|task|repoid|commitid)>`
+with a `REDIS_ADMIN_CLEAR_BY_FILTER_PREVIEW_CACHE_TTL_SECONDS`
+TTL (default 60). Refresh / Back-Forward / opening the preview
+in a second tab hit the cache and return instantly with a
+`cached_at` field so the JS can render "Cached at …". The
+endpoint accepts `?bust=1` to skip the cache (a manual refresh-
+count button can use this; the orchestrator
+`resolve_clear_by_filter_preview_count` honours it). Cache writes
+are best-effort: a cache outage degrades to recomputing on every
+call, but never raises.
+
+**Tier 4 — skip-count escape hatch.** A muted-italic
+"Trust the filter, skip the count →" link sits next to the
+destructive submit buttons, visible from page-load. Clicking it
+hits `clear-by-filter/skip-count/?…`, which 302s back to
+`clear-by-filter/?…&count_skipped=1`. The GET handler reads the
+flag, suppresses the loader / count card, and renders the form
+with the destructive buttons unlocked from the start. The
+operator types the queue name → submits → the destructive POST
+spawns the same chunked-clear job as before, and the progress
+page surfaces the live count + matched counter as the clear runs.
+
+The four tiers stack: a deep queue with a warm cache hits Tier 3
+first, returning the cached count without re-walking; a deep
+queue with a cold cache and an inline-limit-busting depth hits
+Tier 2 and polls the job; a typical queue with a typical depth
+hits Tier 1 inline; and at any point the operator can fall back
+to Tier 4 if the count surface is broken or just too slow.
 
 ### Chunked clear jobs (background-thread variant)
 

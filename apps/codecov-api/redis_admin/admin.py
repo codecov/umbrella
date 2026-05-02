@@ -57,8 +57,10 @@ from .services import (
     _substitute_filter_any,
     celery_broker_clear,
     get_celery_broker_clear_job,
+    get_or_start_clear_by_filter_preview_job,
     redis_delete,
     request_cancel_celery_broker_clear_job,
+    resolve_clear_by_filter_preview_count,
     start_celery_broker_clear_job,
     streaming_celery_count,
 )
@@ -1774,7 +1776,23 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             self.admin_site.admin_view(self.clear_by_filter_view),
             name=f"{opts.app_label}_{opts.model_name}_clear_by_filter",
         )
-        # Three new URLs for the chunked-clear background job: a
+        # Lazy preview JSON endpoint hit by the page's JS to fill in
+        # the count + sample once the skeleton has rendered. Two
+        # response modes (synchronous count vs. background job) are
+        # documented on `clear_by_filter_preview_view`.
+        clear_preview_url = path(
+            "clear-by-filter/preview/",
+            self.admin_site.admin_view(self.clear_by_filter_preview_view),
+            name=(f"{opts.app_label}_{opts.model_name}_clear_by_filter_preview"),
+        )
+        # Tier 4 escape hatch: re-renders the preview page with the
+        # count card hidden + destructive submit buttons unlocked.
+        clear_skip_count_url = path(
+            "clear-by-filter/skip-count/",
+            self.admin_site.admin_view(self.clear_by_filter_skip_count_view),
+            name=(f"{opts.app_label}_{opts.model_name}_clear_by_filter_skip_count"),
+        )
+        # Three URLs for the chunked-clear background job: a
         # progress page (HTML), a status JSON endpoint that the
         # progress page polls, and a cancel POST endpoint. All three
         # are routed under `clear-by-filter/job/<uuid:job_id>/...`
@@ -1804,12 +1822,117 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         # custom routes don't get swallowed as object_ids.
         return [
             clear_url,
+            clear_preview_url,
+            clear_skip_count_url,
             clear_progress_url,
             clear_status_url,
             clear_cancel_url,
             chart_fragment_url,
             *urls,
         ]
+
+    @staticmethod
+    def _build_clear_by_filter_querystring(
+        *,
+        queue_name: str,
+        task_name: str | None,
+        repoid: int | None,
+        commitid: str | None,
+        extras: dict[str, str] | None = None,
+    ) -> str:
+        """Single source of truth for the filter querystring the
+        clear-by-filter views hand each other.
+
+        `clear_by_filter_view` uses it twice (preview-endpoint URL
+        and skip-count URL); `clear_by_filter_skip_count_view` uses
+        it again with `extras={"count_skipped": "1"}`. The dict-
+        comprehension `if v != ""` filter is preserved so an unset
+        `task_name` doesn't bloat the URL with an empty key.
+
+        Centralising it prevents the four call sites from drifting
+        apart when the filter shape evolves (a future commit
+        tightening `commitid` length or adding a new narrower
+        would otherwise need touching every callsite).
+        """
+
+        items: dict[str, str] = {
+            "queue_name": queue_name,
+            "task_name": task_name or "",
+            "repoid": "" if repoid is None else str(repoid),
+            "commitid": commitid or "",
+        }
+        if extras:
+            items.update(extras)
+        return urlencode({k: v for k, v in items.items() if v != ""})
+
+    def _parse_clear_by_filter_params(
+        self, request: HttpRequest
+    ) -> tuple[dict[str, Any], HttpResponseRedirect | None]:
+        """Shared params extraction + validation for the clear-by-filter
+        family of views (`clear_by_filter_view`,
+        `clear_by_filter_preview_view`, `clear_by_filter_skip_count_view`).
+
+        Returns `(parsed, redirect)`. On a validation error `redirect`
+        is a redirect to the changelist with a flash message; on
+        success `redirect is None` and `parsed` carries
+        `{queue_name, task_name, repoid, commitid, changelist_url,
+         opts}`. This split lets the JSON preview endpoint surface the
+        same shape errors as a 400 response without duplicating the
+        validation rules across views.
+        """
+
+        params = request.POST if request.method == "POST" else request.GET
+        queue_name = (params.get("queue_name") or "").strip()
+        task_name = (params.get("task_name") or "").strip()
+        repoid_raw = (params.get("repoid") or "").strip()
+        commitid = (params.get("commitid") or "").strip()
+
+        opts = self.model._meta
+        changelist_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist")
+        if queue_name:
+            changelist_url = (
+                f"{changelist_url}?{urlencode({'queue_name__exact': queue_name})}"
+            )
+
+        if not queue_name:
+            messages.error(request, "queue_name is required for clear-by-filter")
+            return {}, HttpResponseRedirect(changelist_url)
+
+        repoid: int | None = None
+        if repoid_raw:
+            try:
+                repoid = int(repoid_raw)
+            except ValueError:
+                messages.error(
+                    request,
+                    f"repoid must be an integer; got {repoid_raw!r}",
+                )
+                return {}, HttpResponseRedirect(changelist_url)
+
+        # At least one narrowing filter beyond the queue is required —
+        # otherwise this view collapses into "clear the whole queue",
+        # which the M5 `clear_by_scope` flow already owns. Keeping
+        # the surfaces non-overlapping prevents two ways to do the
+        # same thing with subtly different audit-log shapes.
+        if repoid is None and not commitid and not task_name:
+            messages.error(
+                request,
+                "Refusing to clear: at least one of task_name, repoid, "
+                "or commitid must be set",
+            )
+            return {}, HttpResponseRedirect(changelist_url)
+
+        return (
+            {
+                "queue_name": queue_name,
+                "task_name": task_name,
+                "repoid": repoid,
+                "commitid": commitid,
+                "changelist_url": changelist_url,
+                "opts": opts,
+            },
+            None,
+        )
 
     def clear_by_filter_view(self, request: HttpRequest) -> HttpResponse:
         """Targeted clear by `(queue_name, task_name?, repoid?, commitid?)`.
@@ -1848,6 +1971,19 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         `services.celery_broker_clear`, which runs the LSET-tombstone
         path and writes the audit log entry under
         `scope="celery_broker_clear"`.
+
+        **GET path is fast.** Renders the form, filter summary, and
+        skeleton placeholders for the count + sample table; the JS
+        in `celery_clear_by_filter_preview.js` then fetches
+        `clear-by-filter/preview/?…` to fill them in. The previous
+        version did the streaming count + a queryset materialise
+        inside the GET handler, which on a 1M-deep queue was
+        dozens of seconds of blocking work in the gunicorn request
+        thread before the operator saw anything. The
+        `count_skipped` query string sets a flag for the
+        skip-count escape hatch (Tier 4) so the preview page
+        renders without the count card and the destructive submit
+        buttons are unlocked from page-load.
         """
 
         if not request.user.is_superuser:
@@ -1855,11 +1991,16 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
                 "redis_admin clear-by-filter is restricted to superusers"
             )
 
-        params = request.POST if request.method == "POST" else request.GET
-        queue_name = (params.get("queue_name") or "").strip()
-        task_name = (params.get("task_name") or "").strip()
-        repoid_raw = (params.get("repoid") or "").strip()
-        commitid = (params.get("commitid") or "").strip()
+        parsed, redirect = self._parse_clear_by_filter_params(request)
+        if redirect is not None:
+            return redirect
+        queue_name = parsed["queue_name"]
+        task_name = parsed["task_name"]
+        repoid = parsed["repoid"]
+        commitid = parsed["commitid"]
+        changelist_url = parsed["changelist_url"]
+        opts = parsed["opts"]
+
         action = (request.POST.get("action") or "").strip()
         # Backward-compat alias: the previous version of this view
         # used `action=confirm` paired with a `mode` form input. New
@@ -1869,130 +2010,13 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             legacy_mode = (request.POST.get("mode") or "").strip()
             action = "clear_keep_one" if legacy_mode == "keep_one" else "clear_all"
 
-        opts = self.model._meta
-        changelist_url = reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist")
-        if queue_name:
-            changelist_url = (
-                f"{changelist_url}?{urlencode({'queue_name__exact': queue_name})}"
-            )
-
-        if not queue_name:
-            messages.error(request, "queue_name is required for clear-by-filter")
-            return HttpResponseRedirect(changelist_url)
-
-        repoid: int | None = None
-        if repoid_raw:
-            try:
-                repoid = int(repoid_raw)
-            except ValueError:
-                messages.error(
-                    request,
-                    f"repoid must be an integer; got {repoid_raw!r}",
-                )
-                return HttpResponseRedirect(changelist_url)
-
-        # At least one narrowing filter beyond the queue is required —
-        # otherwise this view collapses into "clear the whole queue",
-        # which the M5 `clear_by_scope` flow already owns. Keeping
-        # the surfaces non-overlapping prevents two ways to do the
-        # same thing with subtly different audit-log shapes.
-        if repoid is None and not commitid and not task_name:
-            messages.error(
-                request,
-                "Refusing to clear: at least one of task_name, repoid, "
-                "or commitid must be set",
-            )
-            return HttpResponseRedirect(changelist_url)
-
-        queryset = self.model._default_manager.all().filter(
-            queue_name__exact=queue_name
-        )
-        if task_name:
-            queryset = queryset.filter(task_name__exact=task_name)
-        if repoid is not None:
-            queryset = queryset.filter(repoid=repoid)
-        if commitid:
-            queryset = queryset.filter(commitid__startswith=commitid)
-        # Cap-bounded sample for the preview table (cheap, in-memory).
-        # The queryset materialises the first `CELERY_BROKER_DISPLAY_LIMIT`
-        # messages, then filters; we trim further to keep the rendered
-        # table compact.
-        sample_targets = sorted(queryset, key=lambda row: row.index_in_queue or 0)[
-            :_CLEAR_BY_FILTER_SAMPLE_SIZE
-        ]
-
-        # `match_count` and `kept_index` come from a streaming pass
-        # over the full queue so the preview agrees with what the
-        # actual clear (also unbounded) would do. Going through the
-        # queryset would underreport whenever `LLEN(queue) >
-        # CELERY_BROKER_DISPLAY_LIMIT` (anything past the 2k materialise
-        # window).
-        try:
-            match_count, kept_index = streaming_celery_count(
-                queue_name,
-                task_name=task_name or None,
-                repoid=repoid,
-                commitid=commitid or None,
-            )
-        except Exception:
-            log.exception(
-                "redis_admin.clear_by_filter: streaming count failed for %r",
-                queue_name,
-            )
-            # Defensive fallback: degrade to the queryset count rather
-            # than render a 500. The operator at least sees something
-            # and can still hit "Clear all" — the streaming clear path
-            # has its own error handling.
-            match_count = len(sample_targets)
-            kept_index = sample_targets[0].index_in_queue if sample_targets else None
-        # Build a single synthetic target carrying the operator's
-        # *exact* filter (queue + task_name? + repoid? + commitid?)
-        # so `_celery_broker_clear` always derives the same
-        # `frozenset({(task_name or None, repoid, commitid or None)})`
-        # that `streaming_celery_count` walked the full queue with.
-        #
-        # Without this, the clear path inferred its filter set from
-        # `sample_targets` — the materialised window capped by
-        # `CELERY_BROKER_DISPLAY_LIMIT` (default 2_000). That had two
-        # silent-no-op modes:
-        #
-        # 1. All matches sit beyond the display window (e.g. a recent
-        #    burst on a queue with `LLEN > 2_000`): `sample_targets`
-        #    is empty, `by_queue_filters` becomes `{}`, the streaming
-        #    clear loop doesn't iterate, and the queue is never
-        #    touched even though `match_count > 0` from streaming.
-        # 2. Operator filtered by `repoid` only: each `sample_target`
-        #    contributes a *specific* `(task_name, repoid, commitid)`
-        #    triple, so the filter set excludes any task name not
-        #    represented in the first 2_000 messages — those messages
-        #    survive the clear.
-        #
-        # The synthetic target restores the streaming-clear semantic
-        # of "match every envelope whose `(task, repoid, commitid)`
-        # equals the operator's input." Per-message and bulk-select
-        # paths (`delete_model`, `clear_selected`, `delete_queryset`,
-        # `clear_dry_run`) still pass real materialised rows — those
-        # are intentionally index-driven, not filter-driven, so they
-        # don't go through this code path.
-        # `_FILTER_ANY` (not `None`) for unset slots so the
-        # streaming match treats them as wildcards. `None` would
-        # require an exact-equality match against `meta.task is
-        # None` / `meta.repoid is None` / `meta.commitid is None`,
-        # which the per-message paths legitimately rely on for
-        # tasks like `sync_repos` whose envelope leaves repoid /
-        # commitid as `None`.
-        task_any, repoid_any, commitid_any = _substitute_filter_any(
-            task_name, repoid, commitid
-        )
-        filter_target = CeleryBrokerQueue(
-            pk_token=f"{queue_name}#{kept_index if kept_index is not None else 'filter'}",
-            queue_name=queue_name,
-            index_in_queue=kept_index,
-            task_name=task_any,
-            repoid=repoid_any,
-            commitid=commitid_any,
-        )
-        matches = [filter_target]
+        # Tier 4 escape hatch: when the operator clicked "Skip count"
+        # the preview page renders without the count card and the
+        # destructive submit buttons unlock from page-load. The flag
+        # round-trips on every form rerender so a typed-confirmation
+        # error doesn't snap the count card back into view.
+        params = request.POST if request.method == "POST" else request.GET
+        count_skipped = (params.get("count_skipped") or "").strip() == "1"
 
         expected_confirm = queue_name
         typed_confirm = (request.POST.get("typed_confirm") or "").strip()
@@ -2001,64 +2025,128 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
         destructive_actions = {"clear_keep_one", "clear_all"}
         valid_actions = destructive_actions | {"dry_run"}
 
-        # The chart-driven submit lands here with no `action` set
-        # (the chart's button just opens the preview page); fall
-        # through to the render path without invoking the service or
-        # writing a LogEntry.
+        # The destructive POST path needs `match_count` / `kept_index`
+        # for the safety checks (`match_count == 0` early-return,
+        # `clear_keep_one` single-match guard) and the dry-run banner.
+        # We compute it lazily — only on POST with a valid action —
+        # so the GET handler stays Redis-free.
+        match_count: int | None = None
+        kept_index: int | None = None
+        count_failed = False
         if request.method == "POST" and action in valid_actions:
-            if match_count == 0:
+            try:
+                match_count, kept_index = streaming_celery_count(
+                    queue_name,
+                    task_name=task_name or None,
+                    repoid=repoid,
+                    commitid=commitid or None,
+                )
+            except Exception:
+                log.exception(
+                    "redis_admin.clear_by_filter: streaming count failed for %r",
+                    queue_name,
+                )
+                # Defensive fallback: skip the count-based safety
+                # checks rather than render a 500 *or* a misleading
+                # "nothing to clear" no-op redirect. A transient
+                # Redis blip during the count must not silently
+                # convert a legitimate destructive action into a
+                # neutral redirect — the operator typed-confirmed
+                # the queue name, that's the real safety gate. The
+                # destructive paths still re-snapshot the queue
+                # depth from `start_celery_broker_clear_job` so the
+                # progress page total is accurate.
+                count_failed = True
+                match_count = None
+                kept_index = None
+
+            if not count_failed and match_count == 0:
                 messages.info(
                     request,
                     "No messages match the filter — nothing to clear.",
                 )
                 return HttpResponseRedirect(changelist_url)
 
-            if action == "clear_keep_one":
-                if match_count <= 1:
-                    # Single-message bucket: there's nothing to clear
-                    # without removing the only in-flight message,
-                    # which defeats the "keep first" semantic. The
-                    # preview page only renders this button for
-                    # buckets with match_count >= 2, but a hand-
-                    # crafted POST or a count change between render
-                    # and submit could still land here.
-                    messages.info(
-                        request,
-                        f"Nothing to clear: only {match_count} message(s) "
-                        f"match and 'clear all but first' would leave "
-                        f"them all in place.",
-                    )
-                    return HttpResponseRedirect(changelist_url)
-
-            targets = list(matches)
+            if (
+                not count_failed
+                and action == "clear_keep_one"
+                and match_count is not None
+                and match_count <= 1
+            ):
+                # Single-message bucket: there's nothing to clear
+                # without removing the only in-flight message,
+                # which defeats the "keep first" semantic. The
+                # preview page only renders this button for
+                # buckets with match_count >= 2, but a hand-
+                # crafted POST or a count change between render
+                # and submit could still land here.
+                messages.info(
+                    request,
+                    f"Nothing to clear: only {match_count} message(s) "
+                    f"match and 'clear all but first' would leave "
+                    f"them all in place.",
+                )
+                return HttpResponseRedirect(changelist_url)
 
             if action in destructive_actions and typed_confirm != expected_confirm:
                 confirm_error = f"Typed confirmation must equal {expected_confirm!r}"
             else:
                 dry_run = action == "dry_run"
                 keep_one = action == "clear_keep_one"
-                # Dry-run keeps the synchronous shape: the request
-                # already does the streaming-count walk above, so
-                # the dry-run service call is fast (no LSET/LREM)
-                # and the operator gets the audit-log entry +
-                # re-rendered preview in one shot. The destructive
-                # actions, by contrast, fan out to a background
-                # thread so a 500k-deep queue clear never sits on
-                # the gunicorn worker.
                 if dry_run:
+                    # Build a single synthetic target carrying the
+                    # operator's *exact* filter so
+                    # `_celery_broker_clear` always derives the
+                    # same `frozenset({(task_name or None, repoid,
+                    # commitid or None)})` that
+                    # `streaming_celery_count` walked the full
+                    # queue with. Substituting `_FILTER_ANY` (not
+                    # `None`) for unset slots so the streaming
+                    # match treats them as wildcards.
+                    task_any, repoid_any, commitid_any = _substitute_filter_any(
+                        task_name, repoid, commitid
+                    )
+                    filter_target = CeleryBrokerQueue(
+                        pk_token=(
+                            f"{queue_name}#"
+                            f"{kept_index if kept_index is not None else 'filter'}"
+                        ),
+                        queue_name=queue_name,
+                        index_in_queue=kept_index,
+                        task_name=task_any,
+                        repoid=repoid_any,
+                        commitid=commitid_any,
+                    )
                     result = celery_broker_clear(
-                        targets,
+                        [filter_target],
                         user=request.user,
                         dry_run=True,
                         keep_one=keep_one,
                     )
-                    messages.info(
-                        request,
-                        f"Dry-run: would clear {result.count} of {match_count} "
-                        f"matching message(s) from {queue_name} (audit log "
-                        f"entry written; queue untouched).",
-                    )
+                    if match_count is None:
+                        # Count probe failed earlier; surface that
+                        # in the banner so the operator knows the
+                        # "of N" denominator is missing on purpose.
+                        messages.info(
+                            request,
+                            f"Dry-run: would clear {result.count} matching "
+                            f"message(s) from {queue_name} (count probe "
+                            f"failed; audit log entry written; queue "
+                            f"untouched).",
+                        )
+                    else:
+                        messages.info(
+                            request,
+                            f"Dry-run: would clear {result.count} of "
+                            f"{match_count} matching message(s) from "
+                            f"{queue_name} (audit log entry written; "
+                            f"queue untouched).",
+                        )
                 else:
+                    # Destructive: fan out to a background thread so a
+                    # 500k-deep queue clear never sits on the gunicorn
+                    # worker. The progress page handles the polling +
+                    # cancel UX.
                     job_id = start_celery_broker_clear_job(
                         queue_name,
                         user=request.user,
@@ -2075,6 +2163,42 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
                     )
                     return HttpResponseRedirect(progress_url)
 
+        # URL the JS preview client hits to fetch the count + sample
+        # asynchronously. We resolve it server-side and pass it as a
+        # data attribute on the page root so the JS doesn't need to
+        # know URL names.
+        preview_url = reverse(
+            f"admin:{opts.app_label}_{opts.model_name}_clear_by_filter_preview"
+        )
+        preview_query = self._build_clear_by_filter_querystring(
+            queue_name=queue_name,
+            task_name=task_name,
+            repoid=repoid,
+            commitid=commitid,
+        )
+        preview_full_url = (
+            f"{preview_url}?{preview_query}" if preview_query else preview_url
+        )
+
+        # Skip-count link target (Tier 4): re-renders this same view
+        # with `count_skipped=1` flag set so the preview page comes
+        # back without the count card and with the destructive buttons
+        # unlocked from page-load.
+        skip_count_url = reverse(
+            f"admin:{opts.app_label}_{opts.model_name}_clear_by_filter_skip_count"
+        )
+        skip_count_query = self._build_clear_by_filter_querystring(
+            queue_name=queue_name,
+            task_name=task_name,
+            repoid=repoid,
+            commitid=commitid,
+        )
+        skip_count_full_url = (
+            f"{skip_count_url}?{skip_count_query}"
+            if skip_count_query
+            else skip_count_url
+        )
+
         ctx = {
             **self.admin_site.each_context(request),
             "title": f"Clear {queue_name} by filter",
@@ -2083,17 +2207,247 @@ class CeleryBrokerQueueAdmin(admin.ModelAdmin):
             "task_name": task_name,
             "repoid": repoid,
             "commitid": commitid,
+            # `match_count` / `kept_index` are populated only on the
+            # destructive POST path; the GET render uses the skeleton
+            # placeholder until the JS fetches them. Templates fall
+            # back to the placeholder when these are `None`.
             "match_count": match_count,
             "kept_index": kept_index,
-            "sample_targets": sample_targets,
             "expected_confirm": expected_confirm,
             "typed_confirm": typed_confirm,
             "confirm_error": confirm_error,
             "changelist_url": changelist_url,
+            "preview_url": preview_full_url,
+            "skip_count_url": skip_count_full_url,
+            "count_skipped": count_skipped,
         }
         return render(
             request, "admin/redis_admin/celerybrokerqueue/clear_by_filter.html", ctx
         )
+
+    # ---- Lazy preview: JSON endpoint --------------------------------------
+    #
+    # The preview page renders a skeleton in <200ms; the JS then hits
+    # `clear-by-filter/preview/?…` to populate the count + sample
+    # table. Two response shapes:
+    #
+    # * `mode="synchronous"` — small queues. Body carries
+    #   `match_count`, `kept_index`, `sample`, `cached_at?`. The cache
+    #   layer (`resolve_clear_by_filter_preview_count`) covers
+    #   refresh / Back-Forward; `?bust=1` skips the cache so the
+    #   "refresh count" button can recompute.
+    # * `mode="job"` — deep queues (above
+    #   `CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT`). Body carries
+    #   `{job_id, status_url}`; the JS switches into polling mode and
+    #   reads `total_found` off the job hash on completion. The job
+    #   itself is a `dry_run=True` chunked clear, reusing the
+    #   existing `start_celery_broker_clear_job` machinery.
+    #
+    # The sample materialisation stays synchronous in *both* modes:
+    # it's bounded by `CELERY_BROKER_DISPLAY_LIMIT` (LRANGE 0 N-1 +
+    # parse), which is fast even on multi-million-deep queues. Only
+    # the count is escalated to job mode.
+
+    def clear_by_filter_preview_view(self, request: HttpRequest) -> JsonResponse:
+        """JSON preview endpoint for the lazy clear-by-filter page.
+
+        Same superuser guard + filter validation as
+        `clear_by_filter_view`. Returns a 400 on missing /
+        misshapen filters with a `{error, detail}` body so the
+        JS can surface it directly.
+        """
+
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "redis_admin clear-by-filter is restricted to superusers"
+            )
+
+        parsed, redirect = self._parse_clear_by_filter_params(request)
+        if redirect is not None:
+            # Re-pack the validation flash into a JSON 400 so the JS
+            # client can render it inline rather than following the
+            # changelist redirect we'd hand a browser GET.
+            stored = list(messages.get_messages(request))
+            detail = stored[-1].message if stored else "invalid filter"
+            return JsonResponse(
+                {"error": "invalid_filter", "detail": str(detail)},
+                status=400,
+            )
+        queue_name = parsed["queue_name"]
+        task_name = parsed["task_name"]
+        repoid = parsed["repoid"]
+        commitid = parsed["commitid"]
+
+        bust_cache = (request.GET.get("bust") or "").strip() == "1"
+
+        # Sample materialise is wrapped in try/except so a broker
+        # outage degrades to an empty sample table instead of
+        # bubbling Django's HTML 500 page out of a JSON endpoint.
+        # Mirrors the LLEN fallback below — both are best-effort
+        # decorations on the count payload, not the count itself.
+        try:
+            sample_targets = self._materialise_sample_targets(
+                queue_name=queue_name,
+                task_name=task_name or None,
+                repoid=repoid,
+                commitid=commitid or None,
+            )
+        except Exception:
+            log.exception(
+                "redis_admin.clear_by_filter_preview: sample materialise failed for %r",
+                queue_name,
+            )
+            sample_targets = []
+        sample_payload = [
+            {
+                "index_in_queue": t.index_in_queue,
+                "task_name": t.task_name or "",
+                "repoid": t.repoid,
+                "commitid": t.commitid or "",
+                "task_id": t.task_id or "",
+            }
+            for t in sample_targets
+        ]
+
+        # Threshold check: above the inline limit we hand the count
+        # off to a chunked dry-run job so the HTTP request returns
+        # immediately. `LLEN` itself is O(1), so the threshold
+        # check is free.
+        try:
+            broker = _conn.get_connection(kind="broker")
+            queue_depth = int(broker.llen(queue_name) or 0)
+        except Exception:
+            log.exception(
+                "redis_admin.clear_by_filter_preview: LLEN failed for %r",
+                queue_name,
+            )
+            queue_depth = 0
+
+        inline_limit = redis_admin_settings.CLEAR_BY_FILTER_PREVIEW_INLINE_LIMIT
+        if queue_depth > inline_limit:
+            opts = self.model._meta
+            # Dedup: refresh / multi-tab / JS retry must not spawn N
+            # parallel full-queue scans for the same filter. The
+            # helper returns the in-flight job_id when one is still
+            # running for this filter hash, else spawns a fresh
+            # `dry_run=True` job and caches its id under a short TTL.
+            job_id = get_or_start_clear_by_filter_preview_job(
+                queue_name,
+                user=request.user,
+                task_name=task_name or None,
+                repoid=repoid,
+                commitid=commitid or None,
+            )
+            status_url = reverse(
+                f"admin:{opts.app_label}_{opts.model_name}_clear_by_filter_status",
+                kwargs={"job_id": job_id},
+            )
+            return JsonResponse(
+                {
+                    "mode": "job",
+                    "job_id": job_id,
+                    "status_url": status_url,
+                    "queue_depth": queue_depth,
+                    "inline_limit": inline_limit,
+                    "sample": sample_payload,
+                }
+            )
+
+        try:
+            count_payload = resolve_clear_by_filter_preview_count(
+                queue_name,
+                task_name=task_name or None,
+                repoid=repoid,
+                commitid=commitid or None,
+                bust_cache=bust_cache,
+            )
+        except Exception:
+            log.exception(
+                "redis_admin.clear_by_filter_preview: count failed for %r",
+                queue_name,
+            )
+            return JsonResponse(
+                {"error": "count_failed", "detail": "streaming count raised"},
+                status=500,
+            )
+
+        body = {
+            "mode": "synchronous",
+            "match_count": count_payload["match_count"],
+            "kept_index": count_payload["kept_index"],
+            "queue_depth": queue_depth,
+            "inline_limit": inline_limit,
+            "sample": sample_payload,
+        }
+        if "cached_at" in count_payload and count_payload["cached_at"]:
+            body["cached_at"] = count_payload["cached_at"]
+        return JsonResponse(body)
+
+    def _materialise_sample_targets(
+        self,
+        *,
+        queue_name: str,
+        task_name: str | None,
+        repoid: int | None,
+        commitid: str | None,
+    ) -> list[CeleryBrokerQueue]:
+        """Materialise up to `_CLEAR_BY_FILTER_SAMPLE_SIZE` matching rows.
+
+        Bounded by `CELERY_BROKER_DISPLAY_LIMIT` upstream (the
+        queryset only walks the first N envelopes), so even on a
+        million-deep queue this is just an `LRANGE 0 N-1` + parse.
+        Returned rows are sorted by `index_in_queue` so the
+        preview table renders head-of-queue first, matching the
+        operator's "next message Celery would pop" mental model.
+        """
+
+        queryset = self.model._default_manager.all().filter(
+            queue_name__exact=queue_name
+        )
+        if task_name:
+            queryset = queryset.filter(task_name__exact=task_name)
+        if repoid is not None:
+            queryset = queryset.filter(repoid=repoid)
+        if commitid:
+            queryset = queryset.filter(commitid__startswith=commitid)
+        return sorted(queryset, key=lambda row: row.index_in_queue or 0)[
+            :_CLEAR_BY_FILTER_SAMPLE_SIZE
+        ]
+
+    def clear_by_filter_skip_count_view(self, request: HttpRequest) -> HttpResponse:
+        """Tier 4 escape hatch: route the operator straight to the
+        typed-confirm form without rendering the count card.
+
+        Re-validates the same filter combo as
+        `clear_by_filter_view` (so a hand-crafted skip-count URL
+        can't bypass the narrowing-filter requirement) and 302s
+        back to the preview page with `count_skipped=1` set, which
+        the GET handler reads to render the form without the count
+        skeleton and with the destructive submit buttons unlocked
+        from page-load.
+        """
+
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "redis_admin clear-by-filter is restricted to superusers"
+            )
+
+        parsed, redirect = self._parse_clear_by_filter_params(request)
+        if redirect is not None:
+            return redirect
+
+        opts = parsed["opts"]
+        preview_url = reverse(
+            f"admin:{opts.app_label}_{opts.model_name}_clear_by_filter"
+        )
+        query = self._build_clear_by_filter_querystring(
+            queue_name=parsed["queue_name"],
+            task_name=parsed["task_name"],
+            repoid=parsed["repoid"],
+            commitid=parsed["commitid"],
+            extras={"count_skipped": "1"},
+        )
+        return HttpResponseRedirect(f"{preview_url}?{query}")
 
     # ---- Chunked-clear background-job views ------------------------------
     #

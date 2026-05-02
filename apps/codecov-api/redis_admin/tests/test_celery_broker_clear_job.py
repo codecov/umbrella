@@ -513,9 +513,18 @@ def test_clear_job_status_view_returns_json_for_running_job(patched_broker, supe
     assert payload["queue_name"] == queue
     assert payload["filter_repoid"] == "1"
     assert payload["dry_run"] is True
-    # ints stay ints in JSON, not stringified.
+    # ints stay ints in JSON, not stringified. `matched` is what
+    # the lazy-preview JS in `celery_clear_by_filter_preview.js`
+    # gates `match_count` on (`typeof snapshot.matched === 'number'`)
+    # — pin it explicitly so a future regression that drops the
+    # `_int(...)` cast in `_job_progress_context` lands here loudly
+    # instead of silently re-rendering "0 matching messages" on the
+    # operator's preview page.
     assert isinstance(payload["total_estimated"], int)
     assert isinstance(payload["processed"], int)
+    assert isinstance(payload["matched"], int)
+    assert isinstance(payload["drifted"], int)
+    assert isinstance(payload["passes_run"], int)
 
 
 def test_clear_job_cancel_view_requires_post(patched_broker, superuser):

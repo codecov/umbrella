@@ -26,6 +26,7 @@ import base64
 import json
 from types import SimpleNamespace
 from typing import Any
+from unittest import mock
 
 import fakeredis
 import pytest
@@ -1266,9 +1267,14 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
     def test_chart_open_renders_preview_with_three_actions(self):
         # The chart's "Clear queue" button POSTs the bucket's scope
         # without an `action` value; the view should land on the
-        # preview page rather than mutating anything. The preview
-        # page must render all three submit buttons (dry-run,
-        # clear-all-but-first, clear-all) when match_count >= 2.
+        # preview page rather than mutating anything. With the
+        # lazy preview (PR #907) the page renders a skeleton in
+        # <200ms and the JS in `celery_clear_by_filter_preview.js`
+        # fetches the count + sample asynchronously, so this
+        # render path no longer touches Redis. All three submit
+        # buttons must still ship in the rendered HTML (the JS
+        # toggles `clear_keep_one`'s visibility based on the
+        # JSON preview's `match_count`).
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
 
@@ -1283,7 +1289,11 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        assert "Matched: 2 message(s)" in body
+        # Skeleton placeholders + data attributes are the contract
+        # the JS preview client reads on DOMContentLoaded.
+        assert "celery-clear-by-filter-preview-root" in body
+        assert "celery-clear-preview-loader" in body
+        assert "Counting matches" in body
         # All three action buttons are wired up via distinct
         # `action` values — assert on the form-input markers, not
         # on the visible labels, so a future copy tweak doesn't
@@ -1314,7 +1324,11 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        assert "Matched: 2 message(s)" in body
+        # The dry-run banner is surfaced via the Django messages
+        # framework (rendered by `admin/base.html`'s `{% block
+        # messages %}`) so the operator sees the matched count
+        # without depending on the JS preview round-trip.
+        assert "would clear 2 of 2 matching message(s)" in body
         # Dry-run did not pop the queue.
         assert self.redis.llen("celery") == 3
 
@@ -1526,16 +1540,27 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        # Dry-run re-renders the preview (200, no redirect) and the
-        # full match set survives in the queue.
-        assert "Matched: 3" in body
+        # Dry-run re-renders the preview (200, no redirect) with
+        # the matched count surfaced as a Django messages flash.
+        # The full match set survives in the queue.
+        assert "would clear 3 of 3 matching message(s)" in body
         assert self.redis.llen("celery") == 3
 
-    def test_clear_keep_one_button_hidden_when_only_one_match(self):
-        # Single-match preview: the destructive "Clear all but
-        # first" button must not render — there's only one message
-        # and the keep-first semantic would clear nothing. The
-        # "Clear all" button still shows.
+    def test_clear_keep_one_button_starts_hidden_in_skeleton_render(self):
+        # The lazy preview (PR #907) always server-renders all
+        # three buttons in the skeleton — visibility for the
+        # `clear_keep_one` button is JS-driven on the count
+        # response (the JS hides it when match_count <= 1). Pin
+        # the server-rendered shape: the keep-one button ships
+        # with the `celery-clear-preview-hidden` CSS class so
+        # the skeleton paint never flashes a button the JS
+        # would have hidden anyway. Server-side `not in body`
+        # assertions on the keep-one button no longer apply —
+        # the single-match-hides-keep-one invariant is now
+        # tested over the JSON preview endpoint in
+        # `test_clear_by_filter_preview.py`, plus the runtime
+        # POST guard in `test_clear_keep_one_is_noop_when_only_
+        # one_match` below.
         self._push(
             task="app.tasks.notify.NotifyTask",
             kwargs={"repoid": 1, "commitid": "aaaa"},
@@ -1553,10 +1578,14 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        assert "Matched: 1 message(s)" in body
         assert 'name="action" value="dry_run"' in body
         assert 'name="action" value="clear_all"' in body
-        assert 'name="action" value="clear_keep_one"' not in body
+        assert 'name="action" value="clear_keep_one"' in body
+        # Skeleton render: the keep-one submit button starts
+        # hidden until the JS reads `match_count` off the JSON
+        # preview and decides whether to surface it.
+        assert "celery-clear-preview-button-keep-one" in body
+        assert "celery-clear-keep-one celery-clear-preview-hidden" in body
 
     def test_clear_keep_one_is_noop_when_only_one_match(self):
         # Single-message bucket: `action=clear_keep_one` would have
@@ -1592,6 +1621,90 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         assert len(remaining) == 1
         envelope = json.loads(remaining[0])
         assert envelope["headers"]["id"] == "only-one"
+
+    def test_clear_all_proceeds_when_count_probe_raises(self):
+        # Bugbot caught: when `streaming_celery_count` raised, the
+        # original lazy-preview commit fell back to `match_count =
+        # 0`, which then triggered the very next `match_count == 0`
+        # safety check and silently 302'd to "nothing to clear" —
+        # converting a typed-confirmed destructive action into a
+        # misleading no-op redirect on a transient Redis blip.
+        # The fix: skip the count-based safety checks entirely when
+        # the count probe fails, since the typed-confirmation is
+        # the real safety gate (and the background job re-snapshots
+        # `LLEN(queue)` itself).
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+
+        with mock.patch(
+            "redis_admin.admin.streaming_celery_count",
+            side_effect=RuntimeError("simulated redis blip"),
+        ):
+            response = self.client.post(
+                "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+                {
+                    "queue_name": "celery",
+                    "repoid": "1",
+                    "commitid": "aaaa",
+                    "action": "clear_all",
+                    "typed_confirm": "celery",
+                },
+                follow=False,
+            )
+
+        # Must NOT bounce back to the changelist with a "nothing to
+        # clear" flash. The destructive path is allowed to proceed
+        # and lands on the background-job progress page (URL pattern
+        # `clear-by-filter/job/<uuid>/` per `get_urls`), which does
+        # the real `LLEN(queue)` snapshot itself.
+        assert response.status_code in (302, 303)
+        location = response["Location"]
+        assert "/clear-by-filter/job/" in location, (
+            f"expected redirect to the background-job progress page "
+            f"after a typed-confirmed clear_all even when the count "
+            f"probe failed; got Location={location!r}"
+        )
+        # And specifically NOT the "nothing to clear" no-op redirect
+        # back to the queue's changelist that the original (buggy)
+        # commit produced (which would land on a `?queue_name__exact=…`
+        # URL with no `clear-by-filter/job/` segment).
+        assert "/clear-by-filter/job/" in location and "queue_name__exact" not in (
+            location
+        )
+
+    def test_dry_run_surfaces_count_failed_banner_when_count_raises(self):
+        # When the count probe raises, the dry-run path still runs
+        # (the dry-run itself walks the queue with the real filter
+        # and is the source of truth for `result.count`). The
+        # banner just drops the misleading "of N" denominator and
+        # surfaces that the count probe failed so the operator
+        # knows why the matched-total is missing.
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+
+        with mock.patch(
+            "redis_admin.admin.streaming_celery_count",
+            side_effect=RuntimeError("simulated redis blip"),
+        ):
+            response = self.client.post(
+                "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+                {
+                    "queue_name": "celery",
+                    "repoid": "1",
+                    "commitid": "aaaa",
+                    "action": "dry_run",
+                },
+                follow=False,
+            )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        # The "of {match_count}" denominator is suppressed and the
+        # banner explicitly says the count probe failed.
+        assert "would clear 2 matching message(s)" in body
+        assert "count probe failed" in body
+        # Dry-run still doesn't mutate the queue.
+        assert self.redis.llen("celery") == 2
 
     def test_legacy_confirm_action_still_clears_all(self):
         # Backward-compat shim: the previous version of this view
