@@ -36,7 +36,6 @@ from django.test import Client as DjClient
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
-from redis_admin import services as redis_admin_services
 from redis_admin import settings as redis_admin_settings
 from redis_admin.admin import CeleryBrokerQueueAdmin, _resolve_repo_displays
 from redis_admin.families import parse_celery_envelope
@@ -55,7 +54,6 @@ from redis_admin.services import (
     _streaming_celery_clear,
     _substitute_filter_any,
     celery_broker_clear,
-    streaming_celery_count,
 )
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
@@ -627,10 +625,10 @@ def test_substitute_filter_any_passes_through_set_slots():
 
 def test_substitute_filter_any_substitutes_unset_slots_with_wildcard():
     """All-`None` input becomes the all-wildcards triple — the
-    "unconstrained operator filter" shape that
-    `streaming_celery_count`, the chunked clear job, and the
-    `clear_by_filter_view` synthetic target all need to share so
-    they agree on which envelopes match.
+    "unconstrained operator filter" shape that the chunked clear
+    job needs so its filter target matches every envelope whose
+    explicitly-set slots equal the operator's input (and ignores
+    any unset slots).
     """
 
     triple = _substitute_filter_any(None, None, None)
@@ -654,16 +652,16 @@ def test_substitute_filter_any_treats_empty_string_as_unset_for_strings_only():
 
 def test_substitute_filter_any_keeps_streaming_count_and_clear_job_in_sync():
     """Regression for Bugbot review on PR #904 (LOW severity):
-    the `_FILTER_ANY`-substitution rule is shared across
-    `streaming_celery_count`, `_run_celery_broker_clear_job_body`,
-    and the `clear_by_filter_view` filter target. All three must
-    produce the same triple for the same operator input or the
-    dry-run count would silently disagree with the chunked
+    the `_FILTER_ANY`-substitution rule lives in
+    `_run_celery_broker_clear_job_body` (the chunked clear job)
+    where dry-run, keep-one and live-clear passes all derive
+    their filter triple from the same helper. If the rule drifts,
+    the dry-run count would silently disagree with the live
     clear's matched count — a data-loss vector.
 
-    Pin the contract here so a future helper-edit that breaks one
-    consumer breaks the test rather than letting the three call
-    sites drift.
+    Pin the helper's contract here so a future edit that breaks
+    one consumer breaks the test rather than letting the call
+    sites silently drift.
     """
 
     inputs = [
@@ -1264,59 +1262,165 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
     def _push(self, **kwargs):
         self.redis.rpush("celery", _build_envelope(**kwargs))
 
-    def _post_clear(self, **post_data):
-        """Submit a clear-by-filter POST and join the chunked clear
-        worker thread before returning so tests asserting on queue
-        state don't race the LSET / LREM background work.
+    # ---- GET render: zero-Redis -------------------------------------
 
-        The clear-by-filter view spawns a daemon worker (see
-        `start_celery_broker_clear_job`) and 302s immediately. With
-        the streaming-clear path running pipelined LSETs (per the
-        pre-#899 restoration in this PR), the worker can take a few
-        ms longer than before; CI runners with noisy neighbours have
-        observed the test asserting before the LREM lands. Parses
-        the redirect's `<job_id>` segment and `thread.join`s the
-        matching worker thread (with a generous timeout). Falls back
-        to joining every live worker thread if the redirect target
-        isn't a progress page (e.g. typed-confirm validation failed
-        and the view 200-rendered the form).
+    def _instrument_redis(self):
+        """Wrap fakeredis in a counting MagicMock so the GET-no-Redis
+        tests can assert `proxy.method_calls == []`. The class's
+        `tearDown` restores the original `redis_admin_conn.get_connection`.
         """
 
-        response = self.client.post(
-            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
-            post_data,
-            follow=False,
-        )
-        location = response.get("Location") or ""
-        job_id: str | None = None
-        if "/clear-by-filter/job/" in location:
-            tail = location.rstrip("/").rsplit("/", 1)[-1]
-            if len(tail) == 36 and tail.count("-") == 4:
-                job_id = tail
-        threads_to_join: list = []
-        with redis_admin_services._clear_job_threads_lock:
-            if job_id is not None:
-                t = redis_admin_services._clear_job_threads.get(job_id)
-                if t is not None:
-                    threads_to_join.append(t)
-            else:
-                threads_to_join.extend(
-                    list(redis_admin_services._clear_job_threads.values())
-                )
-        for t in threads_to_join:
-            t.join(timeout=10.0)
-            assert not t.is_alive(), (
-                f"clear-job worker thread {t.name} did not exit within 10s"
-            )
-        return response
+        from unittest.mock import MagicMock  # noqa: PLC0415
 
-    def test_chart_open_renders_preview_with_three_actions(self):
-        # The chart's "Clear queue" button POSTs the bucket's scope
-        # without an `action` value; the view should land on the
-        # preview page rather than mutating anything. The preview
-        # page must render all three submit buttons (dry-run,
-        # clear-all-but-first, clear-all) when match_count >= 2.
-        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+        proxy = MagicMock(wraps=self.redis)
+        redis_admin_conn.get_connection = lambda kind="default": proxy  # type: ignore[assignment]
+        return proxy
+
+    def test_get_with_chart_hints_renders_approx_callout_without_redis_calls(self):
+        """The chart-driven GET passes (queue, task, repoid, commit)
+        plus four display hints. The view must render the
+        approximate-count callout from the hints alone — zero Redis
+        I/O, so the page returns instantly even on a 500k-deep queue.
+        Approximation is `round(bucket_count / total_visible *
+        total_depth)`.
+        """
+
+        proxy = self._instrument_redis()
+
+        response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "task_name": "app.tasks.bundle_analysis.BundleAnalysisProcessor",
+                "repoid": "1",
+                "commitid": "aaaaaaa1234567890bcdef0123456789abcdef01",
+                "bucket_count": "7400",
+                "bucket_pct": "37.0",
+                "total_visible": "20000",
+                "total_depth": "211000",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        # round(7400 / 20000 * 211000) == 78_070; bucket_pct comes
+        # straight from the URL.
+        assert "Will tombstone approximately" in body
+        assert "78070" in body
+        assert "37.0" in body
+        assert "211000" in body
+        # Confirmation actions still wired up.
+        assert 'name="action" value="dry_run"' in body
+        assert 'name="action" value="clear_keep_one"' in body
+        assert 'name="action" value="clear_all"' in body
+        # Zero Redis ops on the GET — the whole point of this PR.
+        assert proxy.method_calls == [], (
+            f"GET clear-by-filter must not touch Redis; saw {proxy.method_calls!r}"
+        )
+
+    def test_get_without_chart_hints_renders_unknown_callout_without_redis_calls(self):
+        """Hand-crafted URL without hints renders the
+        "Approximate count not available" branch — still no Redis.
+        """
+
+        proxy = self._instrument_redis()
+
+        response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "repoid": "1",
+                "commitid": "aaaaaaa1234567890bcdef0123456789abcdef01",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        assert "Approximate count not available" in body
+        assert 'name="action" value="dry_run"' in body
+        assert 'name="action" value="clear_all"' in body
+        assert proxy.method_calls == [], (
+            f"GET clear-by-filter without hints must not touch Redis; "
+            f"saw {proxy.method_calls!r}"
+        )
+
+    def test_get_with_malformed_hints_falls_back_gracefully(self):
+        """Garbage hints coerce to `None` via `_coerce_int` /
+        `_coerce_float` and route to the "not available" branch
+        instead of raising.
+        """
+
+        proxy = self._instrument_redis()
+
+        response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "repoid": "1",
+                "bucket_count": "not-a-number",
+                "bucket_pct": "37%",
+                "total_visible": "twenty thousand",
+                "total_depth": "",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        assert "Approximate count not available" in body
+        assert proxy.method_calls == []
+
+    def test_get_with_zero_total_visible_falls_back_gracefully(self):
+        """Divide-by-zero guard: `total_visible == 0` would raise
+        `ZeroDivisionError`. The view must route to the "not
+        available" branch instead.
+        """
+
+        proxy = self._instrument_redis()
+
+        response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "repoid": "1",
+                "bucket_count": "100",
+                "bucket_pct": "0.0",
+                "total_visible": "0",
+                "total_depth": "100",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8", errors="replace")
+        assert "Approximate count not available" in body
+        assert proxy.method_calls == []
+
+    def test_get_renders_repo_admin_link_when_repoid_present(self):
+        """The filter row's `Repo` cell links into the Django admin
+        Repository change page so the chart's repo cell and the
+        confirmation page's link round-trip to the same URL.
+        """
+
+        self._instrument_redis()
+
+        response = self.client.get(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "repoid": "42",
+                "commitid": "aaaaaaa1234567890bcdef0123456789abcdef01",
+            },
+        )
+        body = response.content.decode("utf-8", errors="replace")
+        assert "/core/repository/42/" in body
+
+    # ---- POST: redirects to chunked progress page -------------------
+
+    def test_post_clear_all_with_typed_confirm_redirects_to_progress_page(self):
+        """All three actions fan out to the chunked-job worker; the
+        view returns a 302 to the progress page. The view path
+        itself does no Redis I/O — the worker thread does.
+        """
+
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
 
         response = self.client.post(
@@ -1325,29 +1429,22 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
                 "queue_name": "celery",
                 "repoid": "1",
                 "commitid": "aaaa",
+                "action": "clear_all",
+                "typed_confirm": "celery",
             },
+            follow=False,
         )
 
-        assert response.status_code == 200
-        body = response.content.decode("utf-8", errors="replace")
-        assert "Matched: 2 message(s)" in body
-        # All three action buttons are wired up via distinct
-        # `action` values — assert on the form-input markers, not
-        # on the visible labels, so a future copy tweak doesn't
-        # silently weaken the test.
-        assert 'name="action" value="dry_run"' in body
-        assert 'name="action" value="clear_keep_one"' in body
-        assert 'name="action" value="clear_all"' in body
-        # Both destructive buttons share the `celery-destructive-
-        # button` class, which carries the red-text styling.
-        assert "celery-destructive-button" in body
-        # No mutation happened.
-        assert self.redis.llen("celery") == 2
+        assert response.status_code in (302, 303)
+        assert "/clear-by-filter/job/" in response["Location"]
 
-    def test_dry_run_lists_targets_without_mutating(self):
+    def test_post_dry_run_redirects_to_progress_page(self):
+        """Dry-run no longer keeps a synchronous shape; it fans out
+        to the chunked worker (with `dry_run=True`) and 302s to the
+        progress page like the destructive actions.
+        """
+
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
-        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
-        self._push(kwargs={"repoid": 2, "commitid": "bbbb"})
 
         response = self.client.post(
             "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
@@ -1357,37 +1454,31 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
                 "commitid": "aaaa",
                 "action": "dry_run",
             },
-        )
-
-        assert response.status_code == 200
-        body = response.content.decode("utf-8", errors="replace")
-        assert "Matched: 2 message(s)" in body
-        # Dry-run did not pop the queue.
-        assert self.redis.llen("celery") == 3
-
-    def test_clear_all_clears_only_matching_messages(self):
-        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
-        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
-        self._push(kwargs={"repoid": 2, "commitid": "bbbb"})
-
-        response = self._post_clear(
-            queue_name="celery",
-            repoid="1",
-            commitid="aaaa",
-            action="clear_all",
-            typed_confirm="celery",
+            follow=False,
         )
 
         assert response.status_code in (302, 303)
-        # The two repoid=1 messages were tombstoned and LREM'd; the
-        # repoid=2 message remains. The kombu envelope's body is
-        # base64-encoded, so re-parse it to check the kwargs.
-        remaining = self.redis.lrange("celery", 0, -1)
-        assert len(remaining) == 1
-        envelope = json.loads(remaining[0])
-        body = json.loads(base64.b64decode(envelope["body"]).decode("utf-8"))
-        assert body[1].get("repoid") == 2
-        assert body[1].get("commitid") == "bbbb"
+        assert "/clear-by-filter/job/" in response["Location"]
+
+    def test_post_clear_keep_one_with_typed_confirm_redirects_to_progress_page(self):
+        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "repoid": "1",
+                "commitid": "aaaa",
+                "action": "clear_keep_one",
+                "typed_confirm": "celery",
+            },
+            follow=False,
+        )
+
+        assert response.status_code in (302, 303)
+        assert "/clear-by-filter/job/" in response["Location"]
+
+    # ---- POST: typed-confirm gate -----------------------------------
 
     def test_clear_all_requires_typed_confirmation(self):
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
@@ -1433,115 +1524,20 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
         assert "Typed confirmation must equal" in body
         assert self.redis.llen("celery") == 2
 
-    def test_task_name_filter_narrows_to_matching_task_only(self):
-        # Two task classes share `(repoid, commitid)`. The chart's
-        # row-level "Clear queue" submits `task_name` alongside
-        # repoid/commitid; that combination must clear only the
-        # targeted task and leave the other one in the queue.
-        self._push(
-            task="app.tasks.bundle_analysis.BundleAnalysisProcessor",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
-        )
-        self._push(
-            task="app.tasks.notify.NotifyTask",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
-        )
+    # ---- POST: legacy `action=confirm` shim ------------------------
+    #
+    # End-to-end exercise of the chunked worker (queue actually
+    # drained, audit-log shape, etc.) lives in
+    # `test_celery_broker_clear_job.py`. The tests below pin only
+    # the view's URL-shape contract — that the legacy POST shapes
+    # still 302 to the progress page rather than 404'ing or
+    # re-rendering the changelist.
 
-        response = self._post_clear(
-            queue_name="celery",
-            task_name="app.tasks.bundle_analysis.BundleAnalysisProcessor",
-            repoid="1",
-            commitid="aaaa",
-            action="clear_all",
-            typed_confirm="celery",
-        )
-
-        assert response.status_code in (302, 303)
-        remaining = self.redis.lrange("celery", 0, -1)
-        assert len(remaining) == 1
-        envelope = json.loads(remaining[0])
-        # The surviving message is the unrelated `notify` task.
-        assert envelope["headers"]["task"] == "app.tasks.notify.NotifyTask"
-
-    def test_task_name_alone_is_a_valid_narrowing_filter(self):
-        # task_name on its own (no repoid / commitid) is enough to
-        # clear — the chart's leftmost column lets operators clear
-        # "every notify task in this queue" without needing to pin
-        # a repo or commit.
-        self._push(
-            task="app.tasks.notify.NotifyTask",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
-        )
-        self._push(
-            task="app.tasks.bundle_analysis.BundleAnalysisProcessor",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
-        )
-
-        response = self._post_clear(
-            queue_name="celery",
-            task_name="app.tasks.notify.NotifyTask",
-            action="clear_all",
-            typed_confirm="celery",
-        )
-
-        assert response.status_code in (302, 303)
-        remaining = self.redis.lrange("celery", 0, -1)
-        assert len(remaining) == 1
-        envelope = json.loads(remaining[0])
-        assert envelope["headers"]["task"] == (
-            "app.tasks.bundle_analysis.BundleAnalysisProcessor"
-        )
-
-    def test_clear_keep_one_leaves_lowest_index_match_in_queue(self):
-        # `action=clear_keep_one` should clear every match EXCEPT
-        # the one with the lowest `index_in_queue` — i.e. the head-
-        # of-queue, the next message a Celery worker would pop.
-        # With three matching messages at indexes 0/1/2, indexes 1
-        # and 2 are cleared and index 0 stays.
-        self._push(
-            task="app.tasks.notify.NotifyTask",
-            task_id="keep-this-one",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
-        )
-        self._push(
-            task="app.tasks.notify.NotifyTask",
-            task_id="drop-1",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
-        )
-        self._push(
-            task="app.tasks.notify.NotifyTask",
-            task_id="drop-2",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
-        )
-        # Plus an unrelated task that should be untouched regardless.
-        self._push(
-            task="app.tasks.notify.NotifyTask",
-            task_id="unrelated",
-            kwargs={"repoid": 99, "commitid": "zzzz"},
-        )
-
-        response = self._post_clear(
-            queue_name="celery",
-            task_name="app.tasks.notify.NotifyTask",
-            repoid="1",
-            commitid="aaaa",
-            action="clear_keep_one",
-            typed_confirm="celery",
-        )
-
-        assert response.status_code in (302, 303)
-        remaining = self.redis.lrange("celery", 0, -1)
-        # Only `keep-this-one` (lowest-index match) and the
-        # unrelated repo=99 message survive.
-        surviving_task_ids = {json.loads(item)["headers"]["id"] for item in remaining}
-        assert surviving_task_ids == {"keep-this-one", "unrelated"}
-
-    def test_dry_run_audited_via_service_does_not_mutate(self):
-        # The dry-run button on the preview page funnels through
-        # `celery_broker_clear(dry_run=True)` so the audit log
-        # captures it; the queue itself is untouched.
-        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
-        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+    def test_legacy_confirm_action_still_redirects_to_progress_page(self):
+        # The previous version of this view used `action=confirm`.
+        # The shim normalises that to `clear_all` (or
+        # `clear_keep_one` when `mode=keep_one` is set) so stale
+        # tabs / scripts keep working through this PR's deploy.
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
 
         response = self.client.post(
@@ -1550,131 +1546,43 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
                 "queue_name": "celery",
                 "repoid": "1",
                 "commitid": "aaaa",
-                "action": "dry_run",
-            },
-            follow=False,
-        )
-
-        assert response.status_code == 200
-        body = response.content.decode("utf-8", errors="replace")
-        # Dry-run re-renders the preview (200, no redirect) and the
-        # full match set survives in the queue.
-        assert "Matched: 3" in body
-        assert self.redis.llen("celery") == 3
-
-    def test_clear_keep_one_button_hidden_when_only_one_match(self):
-        # Single-match preview: the destructive "Clear all but
-        # first" button must not render — there's only one message
-        # and the keep-first semantic would clear nothing. The
-        # "Clear all" button still shows.
-        self._push(
-            task="app.tasks.notify.NotifyTask",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
-        )
-
-        response = self.client.post(
-            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
-            {
-                "queue_name": "celery",
-                "task_name": "app.tasks.notify.NotifyTask",
-                "repoid": "1",
-                "commitid": "aaaa",
-            },
-        )
-
-        assert response.status_code == 200
-        body = response.content.decode("utf-8", errors="replace")
-        assert "Matched: 1 message(s)" in body
-        assert 'name="action" value="dry_run"' in body
-        assert 'name="action" value="clear_all"' in body
-        assert 'name="action" value="clear_keep_one"' not in body
-
-    def test_clear_keep_one_is_noop_when_only_one_match(self):
-        # Single-message bucket: `action=clear_keep_one` would have
-        # to drop the only in-flight message to do anything, which
-        # defeats the "keep first" semantic. The preview page only
-        # renders the button for match_count >= 2, but a hand-
-        # crafted POST or a count change between render and submit
-        # could still land here — the view must short-circuit with
-        # a friendly info message and leave the queue untouched.
-        self._push(
-            task="app.tasks.notify.NotifyTask",
-            task_id="only-one",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
-        )
-
-        response = self.client.post(
-            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
-            {
-                "queue_name": "celery",
-                "task_name": "app.tasks.notify.NotifyTask",
-                "repoid": "1",
-                "commitid": "aaaa",
-                "action": "clear_keep_one",
+                "action": "confirm",
                 "typed_confirm": "celery",
             },
             follow=False,
         )
 
-        # Redirected back to the queue's changelist with an info
-        # message; the message is still in the queue.
         assert response.status_code in (302, 303)
-        remaining = self.redis.lrange("celery", 0, -1)
-        assert len(remaining) == 1
-        envelope = json.loads(remaining[0])
-        assert envelope["headers"]["id"] == "only-one"
+        assert "/clear-by-filter/job/" in response["Location"]
 
-    def test_legacy_confirm_action_still_clears_all(self):
-        # Backward-compat shim: the previous version of this view
-        # used `action=confirm`. New callers send `clear_all` /
-        # `clear_keep_one`; the shim keeps stale tabs / scripts
-        # working without re-loading.
-        self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
+    def test_legacy_confirm_with_mode_keep_one_routes_to_keep_one(self):
+        # `action=confirm` + `mode=keep_one` must coerce to the new
+        # `clear_keep_one` action and 302 to the progress page.
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
 
-        response = self._post_clear(
-            queue_name="celery",
-            repoid="1",
-            commitid="aaaa",
-            action="confirm",
-            typed_confirm="celery",
+        response = self.client.post(
+            "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
+            {
+                "queue_name": "celery",
+                "repoid": "1",
+                "commitid": "aaaa",
+                "mode": "keep_one",
+                "action": "confirm",
+                "typed_confirm": "celery",
+            },
+            follow=False,
         )
 
         assert response.status_code in (302, 303)
-        assert self.redis.llen("celery") == 0
+        assert "/clear-by-filter/job/" in response["Location"]
 
-    def test_legacy_confirm_with_mode_keep_one_routes_correctly(self):
-        # The old form posted `action=confirm` + `mode=keep_one` for
-        # the keep-first variant; the shim must route that to the
-        # new `clear_keep_one` action so the lowest-index match
-        # survives.
-        self._push(
-            task="t.K",
-            task_id="keep",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
-        )
-        self._push(
-            task="t.K",
-            task_id="drop",
-            kwargs={"repoid": 1, "commitid": "aaaa"},
-        )
-
-        response = self._post_clear(
-            queue_name="celery",
-            task_name="t.K",
-            repoid="1",
-            commitid="aaaa",
-            mode="keep_one",
-            action="confirm",
-            typed_confirm="celery",
-        )
-
-        assert response.status_code in (302, 303)
-        remaining = self.redis.lrange("celery", 0, -1)
-        assert len(remaining) == 1
-        assert json.loads(remaining[0])["headers"]["id"] == "keep"
+    # ---- Guards -----------------------------------------------------
 
     def test_refuses_clear_without_narrowing_filter(self):
+        # `clear_by_filter` is the per-bucket flow; "drain the
+        # whole queue" lives in the M5 `clear_by_scope` flow.
+        # Refusing the unscoped clear keeps the two surfaces non-
+        # overlapping (and prevents an audit-log shape collision).
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
 
         response = self.client.post(
@@ -1684,33 +1592,36 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
                 "action": "clear_all",
                 "typed_confirm": "celery",
             },
-            follow=True,
+            follow=False,
         )
 
-        # Redirected back to changelist with an error message; queue
-        # unchanged because we refuse the empty-narrowing case.
-        assert response.status_code == 200
-        # Sanity: the message in `messages` framework is rendered as
-        # part of the changelist response.
+        # Redirected back to the changelist (not the progress
+        # page); no chunked job spawned, queue untouched.
+        assert response.status_code in (302, 303)
+        assert "/clear-by-filter/job/" not in response["Location"]
         assert self.redis.llen("celery") == 1
 
     def test_non_superuser_is_refused(self):
+        # Both GET and POST require superuser; a staff-only user
+        # must not reach the view body.
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
         staff_user = UserFactory(is_staff=True, is_superuser=False)
         self.client.force_login(staff_user)
 
-        response = self.client.post(
+        response = self.client.get(
             "/admin/redis_admin/celerybrokerqueue/clear-by-filter/",
             {
                 "queue_name": "celery",
                 "repoid": "1",
-                "action": "clear_all",
-                "typed_confirm": "celery",
             },
         )
 
+        # Either a 403 (PermissionDenied raised inside the admin
+        # view) or a 302 to the admin login page (the
+        # `admin.site.admin_view` wrapper redirects when the
+        # staff-check fails first). Both indicate the view body
+        # was not reached.
         assert response.status_code in (403, 302)
-        assert self.redis.llen("celery") == 1
 
 
 # ---- Summary-mode queryset -------------------------------------------------
@@ -2223,11 +2134,41 @@ def test_streaming_clear_single_pass_no_drift(broker_redis):
     assert survivor["headers"]["task"] == "t.B"
 
 
-# Removed `test_streaming_clear_verify_before_lset_skips_drifted_entry`
-# alongside dropping the verify-before-LSET guard. The streaming clear
-# now runs pipelined unconditional LSETs (PR #895's pre-#899 pattern),
-# trading the "skip drifted slots" guarantee for actually draining busy
-# queues. See `_streaming_celery_clear` docstring for the rationale.
+@pytest.mark.django_db
+def test_streaming_clear_verify_before_lset_skips_drifted_entry(broker_redis):
+    """Verify-before-LSET skips a slot whose bytes changed between
+    LRANGE snapshot and LINDEX re-read.
+    """
+
+    raw_a = _build_envelope(task="t.A", kwargs={"repoid": 1, "commitid": "x"})
+    broker_redis.rpush("notify", raw_a)
+
+    # Intercept lindex to simulate drift: return different bytes.
+    real_lindex = broker_redis.lindex
+
+    def drifted_lindex(name, idx):
+        if name == "notify" and idx == 0:
+            # Return bytes for a *different* message.
+            return _build_envelope(
+                task="t.OTHER", kwargs={"repoid": 99, "commitid": "z"}
+            ).encode()
+        return real_lindex(name, idx)
+
+    broker_redis.lindex = drifted_lindex
+
+    tombstone = f"{_CELERY_TOMBSTONE_PREFIX}:test-drift"
+    filter_tuples = _make_filter(("t.A", 1, "x"))
+    stats = _streaming_celery_clear(
+        broker_redis, "notify", filter_tuples, tombstone, dry_run=False
+    )
+
+    # The drifted slot was skipped, nothing tombstoned.
+    assert stats.total_lset == 0
+    # Persistent drift causes the loop to retry; each pass records a drift hit.
+    assert stats.total_drifted >= 1
+    assert stats.passes_run == 2
+    # Original message still in queue (bytes unchanged — we only faked lindex).
+    assert broker_redis.llen("notify") == 1
 
 
 @pytest.mark.django_db
@@ -2527,53 +2468,6 @@ def test_streaming_clear_dry_run_returns_full_queue_match_count(patched_broker):
     assert patched_broker.llen(queue) == n
 
 
-def test_streaming_celery_count_returns_full_queue_match_count(patched_broker):
-    """Regression for the case where the clear-by-filter preview page
-    reported only ~2k matches on a queue with ~190k matches. The
-    streaming counter must walk the full LLEN(queue), not the capped
-    queryset window — the queryset path materialises only the first
-    `CELERY_BROKER_DISPLAY_LIMIT` (default 2_000) messages before
-    filtering, so on a queue dominated by one filter triple the
-    preview's `match_count` would underreport while "Clear all"
-    (unbounded) drained the full set.
-
-    `clear_by_filter_view` is a thin wrapper around this helper, so
-    pinning the helper's behaviour here covers the view fix too
-    without requiring the Django test client / Postgres.
-    """
-
-    queue = "bundle_analysis"
-    task = "app.tasks.bundle_analysis.BundleAnalysisProcessor"
-    repoid = 21222368
-    commitid = "0832c11a1f43c5e2a1b9f8a3e5d1c2b7e9a8d3f0"
-
-    # > CELERY_BROKER_DISPLAY_LIMIT so the queryset-bounded window
-    # would have underreported by `n - DISPLAY_LIMIT`.
-    n = redis_admin_settings.CELERY_BROKER_DISPLAY_LIMIT + 1_000
-    pipe = patched_broker.pipeline(transaction=False)
-    for _ in range(n):
-        pipe.rpush(
-            queue,
-            _build_envelope(task=task, kwargs={"repoid": repoid, "commitid": commitid}),
-        )
-    pipe.execute()
-
-    match_count, first_index = streaming_celery_count(
-        queue,
-        task_name=task,
-        repoid=repoid,
-        commitid=commitid,
-    )
-
-    assert match_count == n
-    # First match is at index 0 (every message in the queue matches
-    # the filter, and pass 1 walks ascending).
-    assert first_index == 0
-    # No mutation — `streaming_celery_count` is built on the dry-run
-    # streaming clear path.
-    assert patched_broker.llen(queue) == n
-
-
 def test_streaming_clear_dry_run_keep_one_skips_empty_queues(patched_broker):
     """Regression for Bugbot review on PR #903: when the dry-run
     preview spans multiple queues with `keep_one=True`, the
@@ -2643,7 +2537,7 @@ def test_celery_broker_clear_with_synthetic_filter_target_clears_full_queue(
     patched_broker,
 ):
     """Regression for Bugbot review on PR #903 (HIGH severity):
-    `clear_by_filter_view` previously passed `sample_targets` (the
+    the per-bucket clear path used to pass `sample_targets` (the
     materialised window capped at `CELERY_BROKER_DISPLAY_LIMIT`) as
     the `targets` arg to `celery_broker_clear`. When every match
     sat *beyond* that window -- e.g. a recent burst that filled the
@@ -2653,7 +2547,8 @@ def test_celery_broker_clear_with_synthetic_filter_target_clears_full_queue(
     executed, and the operator saw "Cleared 0 of N matching
     message(s)" while the queue stayed full.
 
-    The view now synthesises a single `CeleryBrokerQueue` directly
+    The chunked clear job (`_run_celery_broker_clear_job_body`)
+    now constructs a single synthetic `CeleryBrokerQueue` directly
     from the operator's filter inputs (queue + task_name? +
     repoid? + commitid?). This test pins that contract: a single
     synthetic target carrying just the filter triple must fan out
@@ -2704,73 +2599,17 @@ def test_celery_broker_clear_with_synthetic_filter_target_clears_full_queue(
     assert patched_broker.llen(queue) == 0
 
 
-def test_streaming_celery_count_wildcard_task_name_matches_any_task(patched_broker):
-    """Regression for the pre-existing wildcard bug surfaced by the
-    synthetic-target fix on PR #903: `streaming_celery_count` (and
-    the underlying `_streaming_celery_clear` filter) used exact-
-    tuple equality on `(task, repoid, commit)`. When the operator
-    left `task_name` unset (None), the filter tuple
-    `(None, 1, "aaaa")` could never match a real envelope (whose
-    `meta.task` is always populated), so the preview reported zero
-    matches even when the queryset's
-    `filter(repoid=1, commitid__startswith="aaaa")` would surface
-    rows.
-
-    With the wildcard fix, `None` slots in a filter tuple act as
-    "don't constrain on this field" -- mirroring the queryset's
-    "filter by what's set" semantic -- so the streaming counter
-    and the streaming clear agree with the queryset's match set.
-    """
-
-    queue = "celery"
-    repoid = 7
-    commitid = "deadbeefcafebabe1111222233334444aaaaaaaa"
-    task_a = "app.tasks.notify.NotifyTask"
-    task_b = "app.tasks.upload.UploadTask"
-
-    pipe = patched_broker.pipeline(transaction=False)
-    for _ in range(3):
-        pipe.rpush(
-            queue,
-            _build_envelope(
-                task=task_a, kwargs={"repoid": repoid, "commitid": commitid}
-            ),
-        )
-    for _ in range(2):
-        pipe.rpush(
-            queue,
-            _build_envelope(
-                task=task_b, kwargs={"repoid": repoid, "commitid": commitid}
-            ),
-        )
-    pipe.rpush(
-        queue,
-        _build_envelope(
-            task=task_a, kwargs={"repoid": repoid + 1, "commitid": commitid}
-        ),
-    )
-    pipe.execute()
-
-    match_count, first_index = streaming_celery_count(
-        queue,
-        task_name=None,
-        repoid=repoid,
-        commitid=commitid,
-    )
-    assert match_count == 5
-    assert first_index == 0
-    assert patched_broker.llen(queue) == 6
-
-
 def test_celery_broker_clear_synthetic_target_with_wildcard_task_name_drains_all_matches(
     patched_broker,
 ):
     """Companion for the wildcard fix: the synthetic-target path
-    constructed by `clear_by_filter_view` carries `task_name=None`
+    constructed by the chunked clear job carries `task_name=None`
     when the operator filtered by repoid/commit only, so the
-    clear path must honour the same wildcard semantic the
-    streaming counter uses -- otherwise the preview reports N
-    matches but "Clear all" silently no-ops.
+    streaming clear must honour the same wildcard semantic the
+    chunked job's filter-tuple builder uses — otherwise an
+    operator filter pinned only to repoid/commit would silently
+    no-op against any envelope whose task slot is non-null
+    (i.e. all real envelopes).
     """
 
     queue = "celery"

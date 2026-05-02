@@ -499,9 +499,12 @@ def _substitute_filter_any(
     converts the operator's per-slot `None` / empty-string into
     the wildcard sentinel before handing the triple to
     `_envelope_matches_any_filter`. Centralising the substitution
-    rule means the dry-run and live chunked-clear counts can never
-    disagree about which envelopes match — a divergence there would
-    be a data-loss vector.
+    rule keeps the dry-run pass, the keep-one pass, and the
+    live chunked-clear pass from drifting if the rule later
+    changes (e.g. a new filter field is added or a slot's
+    truthiness check is loosened) — a divergence there, or a
+    drift between the dry-run count and the live chunked clear,
+    would be a data-loss vector.
 
     The truthiness-vs-`is None` asymmetry is intentional:
     `repoid` is an integer where `0` could in principle be a
@@ -953,51 +956,6 @@ def _streaming_celery_clear(
         passes_run=passes_run,
         cancelled=cancelled,
     )
-
-
-def streaming_celery_count(
-    queue_name: str,
-    *,
-    task_name: str | None = None,
-    repoid: int | None = None,
-    commitid: str | None = None,
-) -> tuple[int, int | None]:
-    """Streaming `(match_count, lowest_index_match)` for the
-    `(queue_name, task_name?, repoid?, commitid?)` filter.
-
-    Walks the full `LLEN(queue)` so the returned count agrees
-    with what `celery_broker_clear` would actually tombstone.
-    Used by `clear_by_filter_view` to render the preview page;
-    the queryset path is bounded by `CELERY_BROKER_DISPLAY_LIMIT`
-    and would underreport on deep queues.
-
-    The filter compares envelope tuples by exact equality. The
-    admin view passes `commitid` straight from the chart row
-    (full 40-char hash), so this matches the
-    `queryset.filter(commitid__startswith=...)` path the
-    changelist uses for full-length input. Partial-prefix
-    commits (rare; only reachable via manual URL editing) will
-    count as zero — that's a documented limitation; the user
-    can still browse via the changelist filters.
-    """
-
-    redis = _conn.get_connection(kind="broker")
-    # Substitute `_FILTER_ANY` (not `None`) for unset slots so the
-    # streaming match treats them as wildcards. `None` would mean
-    # "match only envelopes whose corresponding field is literally
-    # `None`" which would zero-out the count for any operator
-    # input that didn't pin every slot of the triple.
-    filter_tuples = frozenset({_substitute_filter_any(task_name, repoid, commitid)})
-    tombstone = _celery_clear_tombstone()
-    stats = _streaming_celery_clear(
-        redis,
-        queue_name,
-        filter_tuples,
-        tombstone,
-        keep_one=False,
-        dry_run=True,
-    )
-    return stats.total_found, stats.first_match_index
 
 
 def celery_broker_clear(
@@ -1461,10 +1419,10 @@ def _run_celery_broker_clear_job_body(
     cache.hset(key, "status", "running")
     cache.hset(key, "updated_at", _utc_now_iso())
 
-    # Substitute `_FILTER_ANY` for unset operator slots so an
-    # empty form field acts as a wildcard rather than an exact-
-    # `None` match (which would zero-match for any envelope
-    # whose field wasn't literally `None`).
+    # Substitute `_FILTER_ANY` (not `None`) for unset operator
+    # slots so an empty form field acts as a wildcard rather than
+    # an exact-`None` match (which would zero-match for any
+    # envelope whose field wasn't literally `None`).
     filter_tuples = frozenset({_substitute_filter_any(task_name, repoid, commitid)})
 
     def _progress_callback(snapshot: _ChunkProgress) -> bool:
