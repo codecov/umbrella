@@ -1266,9 +1266,14 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
     def test_chart_open_renders_preview_with_three_actions(self):
         # The chart's "Clear queue" button POSTs the bucket's scope
         # without an `action` value; the view should land on the
-        # preview page rather than mutating anything. The preview
-        # page must render all three submit buttons (dry-run,
-        # clear-all-but-first, clear-all) when match_count >= 2.
+        # preview page rather than mutating anything. With the
+        # lazy preview (PR #907) the page renders a skeleton in
+        # <200ms and the JS in `celery_clear_by_filter_preview.js`
+        # fetches the count + sample asynchronously, so this
+        # render path no longer touches Redis. All three submit
+        # buttons must still ship in the rendered HTML (the JS
+        # toggles `clear_keep_one`'s visibility based on the
+        # JSON preview's `match_count`).
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
         self._push(kwargs={"repoid": 1, "commitid": "aaaa"})
 
@@ -1283,7 +1288,11 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        assert "Matched: 2 message(s)" in body
+        # Skeleton placeholders + data attributes are the contract
+        # the JS preview client reads on DOMContentLoaded.
+        assert "celery-clear-by-filter-preview-root" in body
+        assert "celery-clear-preview-loader" in body
+        assert "Counting matches" in body
         # All three action buttons are wired up via distinct
         # `action` values — assert on the form-input markers, not
         # on the visible labels, so a future copy tweak doesn't
@@ -1314,7 +1323,11 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        assert "Matched: 2 message(s)" in body
+        # The dry-run banner is surfaced via the Django messages
+        # framework (rendered by `admin/base.html`'s `{% block
+        # messages %}`) so the operator sees the matched count
+        # without depending on the JS preview round-trip.
+        assert "would clear 2 of 2 matching message(s)" in body
         # Dry-run did not pop the queue.
         assert self.redis.llen("celery") == 3
 
@@ -1526,16 +1539,27 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        # Dry-run re-renders the preview (200, no redirect) and the
-        # full match set survives in the queue.
-        assert "Matched: 3" in body
+        # Dry-run re-renders the preview (200, no redirect) with
+        # the matched count surfaced as a Django messages flash.
+        # The full match set survives in the queue.
+        assert "would clear 3 of 3 matching message(s)" in body
         assert self.redis.llen("celery") == 3
 
-    def test_clear_keep_one_button_hidden_when_only_one_match(self):
-        # Single-match preview: the destructive "Clear all but
-        # first" button must not render — there's only one message
-        # and the keep-first semantic would clear nothing. The
-        # "Clear all" button still shows.
+    def test_clear_keep_one_button_starts_hidden_in_skeleton_render(self):
+        # The lazy preview (PR #907) always server-renders all
+        # three buttons in the skeleton — visibility for the
+        # `clear_keep_one` button is JS-driven on the count
+        # response (the JS hides it when match_count <= 1). Pin
+        # the server-rendered shape: the keep-one button ships
+        # with the `celery-clear-preview-hidden` CSS class so
+        # the skeleton paint never flashes a button the JS
+        # would have hidden anyway. Server-side `not in body`
+        # assertions on the keep-one button no longer apply —
+        # the single-match-hides-keep-one invariant is now
+        # tested over the JSON preview endpoint in
+        # `test_clear_by_filter_preview.py`, plus the runtime
+        # POST guard in `test_clear_keep_one_is_noop_when_only_
+        # one_match` below.
         self._push(
             task="app.tasks.notify.NotifyTask",
             kwargs={"repoid": 1, "commitid": "aaaa"},
@@ -1553,10 +1577,14 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8", errors="replace")
-        assert "Matched: 1 message(s)" in body
         assert 'name="action" value="dry_run"' in body
         assert 'name="action" value="clear_all"' in body
-        assert 'name="action" value="clear_keep_one"' not in body
+        assert 'name="action" value="clear_keep_one"' in body
+        # Skeleton render: the keep-one submit button starts
+        # hidden until the JS reads `match_count` off the JSON
+        # preview and decides whether to surface it.
+        assert "celery-clear-preview-button-keep-one" in body
+        assert "celery-clear-keep-one celery-clear-preview-hidden" in body
 
     def test_clear_keep_one_is_noop_when_only_one_match(self):
         # Single-message bucket: `action=clear_keep_one` would have
