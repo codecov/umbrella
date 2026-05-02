@@ -1654,13 +1654,22 @@ class CeleryBrokerClearByFilterViewTest(TestCase):
 
         # Must NOT bounce back to the changelist with a "nothing to
         # clear" flash. The destructive path is allowed to proceed
-        # (the background job page does the real depth snapshot).
+        # and lands on the background-job progress page (URL pattern
+        # `clear-by-filter/job/<uuid>/` per `get_urls`), which does
+        # the real `LLEN(queue)` snapshot itself.
         assert response.status_code in (302, 303)
         location = response["Location"]
-        assert "/clear-by-filter/progress/" in location, (
-            f"expected redirect to the progress page after a typed-"
-            f"confirmed clear_all even when the count probe failed; "
-            f"got Location={location!r}"
+        assert "/clear-by-filter/job/" in location, (
+            f"expected redirect to the background-job progress page "
+            f"after a typed-confirmed clear_all even when the count "
+            f"probe failed; got Location={location!r}"
+        )
+        # And specifically NOT the "nothing to clear" no-op redirect
+        # back to the queue's changelist that the original (buggy)
+        # commit produced (which would land on a `?queue_name__exact=…`
+        # URL with no `clear-by-filter/job/` segment).
+        assert "/clear-by-filter/job/" in location and "queue_name__exact" not in (
+            location
         )
 
     def test_dry_run_surfaces_count_failed_banner_when_count_raises(self):
