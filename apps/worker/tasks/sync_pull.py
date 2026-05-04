@@ -184,6 +184,17 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
                 "pull_updated": False,
                 "reason": "no_db_pull",
             }
+        if pull.state != "open":
+            log.info(
+                "Skipping sync for non-open pull",
+                extra=extra_info,
+            )
+            return {
+                "notifier_called": False,
+                "commit_updates_done": {"merged_count": 0, "soft_deleted_count": 0},
+                "pull_updated": False,
+                "reason": "pull_not_open",
+            }
         if enriched_pull.provider_pull is None:
             log.info(
                 "Not syncing pull since we can't find it in the provider. There is nothing to sync",
