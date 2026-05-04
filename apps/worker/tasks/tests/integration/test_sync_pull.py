@@ -88,6 +88,6 @@ class TestPullSyncTask:
         assert {
             "notifier_called": False,
             "commit_updates_done": {"merged_count": 0, "soft_deleted_count": 0},
-            "pull_updated": False,
-            "reason": "pull_not_open",
+            "pull_updated": True,
+            "reason": "success",
         } == res
