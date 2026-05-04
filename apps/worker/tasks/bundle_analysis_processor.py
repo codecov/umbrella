@@ -80,11 +80,10 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
     before lock acquisition. The file is cleaned up automatically on exit.
 
     Yields:
-        str: Empty string for carryforward tasks (no upload_id), where no file
-             is expected. For all other tasks a non-empty path is always yielded.
-             The file may be empty if the upload record was not yet committed
-             or the download failed; process_upload treats an empty file as a
-             retryable error.
+        str: Empty string when no file is expected (carryforward tasks, upload
+             record not yet committed, or upload has no storage path). A real
+             path when a download was attempted; the file will be empty if the
+             download failed, which triggers a pre-lock retry.
     """
     temp_file_path = None
 
@@ -94,17 +93,19 @@ def temporary_upload_file(db_session, repoid: int, upload_params: UploadArgument
             yield ""
             return
 
-        # Create the temp file before querying the upload record so that
-        # non-carryforward tasks always yield a str path, never None.
-        # An empty file signals a failed download; process_upload treats it
-        # as a retryable error.
-        fd, temp_file_path = tempfile.mkstemp()
-        os.close(fd)
-
         upload = db_session.query(Upload).filter_by(id_=upload_id).first()
         if upload is None or not upload.storage_path:
-            yield temp_file_path
+            # No file to download: upload doesn't exist yet or has no storage
+            # path. Yield "" so the pre-lock check doesn't mistake this for a
+            # failed download. process_impl_within_lock handles these cases.
+            yield ""
             return
+
+        # Only create the temp file when we have a real storage path to download.
+        # An empty file after this point means the download failed; the pre-lock
+        # check will retry without entering the lock.
+        fd, temp_file_path = tempfile.mkstemp()
+        os.close(fd)
 
         commit = upload.report.commit
         archive_service = ArchiveService(commit.repository)
@@ -200,6 +201,30 @@ class BundleAnalysisProcessorTask(
                 return processing_results
 
         with temporary_upload_file(db_session, repoid, params) as pre_downloaded_path:
+            # If pre-download failed (empty file), retry without entering the lock.
+            # pre_downloaded_path is "" when no file is expected (carryforward,
+            # upload not found, no storage path) — only check real paths.
+            if pre_downloaded_path and (
+                not os.path.exists(pre_downloaded_path)
+                or os.path.getsize(pre_downloaded_path) == 0
+            ):
+                log.warning(
+                    "Pre-downloaded file missing or empty; retrying without lock",
+                    extra={"repoid": repoid, "commit": commitid},
+                )
+                if self._has_exceeded_max_attempts(self.max_retries):
+                    _log_max_retries_exceeded(
+                        commitid=commitid,
+                        repoid=repoid,
+                        attempts=self.attempts,
+                        max_retries=self.max_retries,
+                    )
+                    return previous_result if isinstance(previous_result, list) else []
+                self.retry(
+                    max_retries=self.max_retries,
+                    countdown=30 * (2**self.request.retries),
+                )
+
             lock_manager = get_bundle_analysis_lock_manager(
                 repoid=repoid,
                 commitid=commitid,

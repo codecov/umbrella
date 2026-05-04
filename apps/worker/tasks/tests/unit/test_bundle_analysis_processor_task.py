@@ -150,40 +150,31 @@ def test_bundle_analysis_processor_task_error(
     dbsession.flush()
 
     task = BundleAnalysisProcessorTask()
-    retry = mocker.patch.object(task, "retry")
+    retry = mocker.patch.object(task, "retry", side_effect=Retry())
     task.request.retries = 0
     task.request.headers = {}
 
-    result = task.run_impl(
-        dbsession,
-        [{"previous": "result"}],
-        repoid=commit.repoid,
-        commitid=commit.commitid,
-        commit_yaml={},
-        params={
-            "upload_id": upload.id_,
-            "commit": commit.commitid,
-        },
-    )
-    assert result == [
-        {"previous": "result"},
-        {
-            "error": {
-                "code": "file_not_in_storage",
-                "params": {"location": "invalid-storage-path"},
+    # Pre-download fails before the lock, so retry is raised without entering
+    # the lock. Upload state is unchanged (not yet marked error).
+    with pytest.raises(Retry):
+        task.run_impl(
+            dbsession,
+            [{"previous": "result"}],
+            repoid=commit.repoid,
+            commitid=commit.commitid,
+            commit_yaml={},
+            params={
+                "upload_id": upload.id_,
+                "commit": commit.commitid,
             },
-            "session_id": None,
-            "upload_id": upload.id_,
-            "bundle_name": None,
-        },
-    ]
+        )
 
-    assert commit.state == "error"
-    assert upload.state == "error"
     retry.assert_called_once()
     assert retry.call_args[1]["max_retries"] == task.max_retries
     expected_countdown = 30 * (2**task.request.retries)
     assert retry.call_args[1]["countdown"] == expected_countdown
+    # Upload not marked error yet — task will retry and re-attempt the download
+    assert upload.state != "error"
 
 
 def test_bundle_analysis_processor_task_general_error(
@@ -219,7 +210,7 @@ def test_bundle_analysis_processor_task_general_error(
 
     upload = UploadFactory.create(
         state="started",
-        storage_path="invalid-storage-path",
+        storage_path=storage_path,  # valid path so pre-download succeeds
         report=commit_report,
     )
     dbsession.add(upload)
@@ -2205,12 +2196,11 @@ def test_pre_download_upload_file_upload_not_found(
     mocker,
     dbsession,
 ):
-    """Test that temporary_upload_file yields an empty file when upload doesn't exist"""
+    """Test that temporary_upload_file yields empty string when upload doesn't exist"""
     params = {"upload_id": 99999, "commit": "abc123"}  # Non-existent upload_id
 
     with temporary_upload_file(dbsession, 123, params) as result:
-        assert result is not None
-        assert os.path.getsize(result) == 0
+        assert result == ""
 
 
 @pytest.mark.django_db(databases={"default", "timeseries"})

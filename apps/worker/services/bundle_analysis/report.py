@@ -253,12 +253,12 @@ class BundleAnalysisReportService(BaseReportService):
         try:
             session_id, prev_bar, bundle_name = None, None, None
             if upload.storage_path != "":
-                # pre_downloaded_path is None only if the calling code skips
-                # temporary_upload_file; in normal flow it's always a path.
-                # An empty file means the pre-download failed before the lock.
+                # Safety net: the pre-lock check in run_impl should have already
+                # retried if the file was missing or empty. This handles the rare
+                # case where the file disappears between pre-download and lock
+                # acquisition.
                 if (
-                    not pre_downloaded_path
-                    or not os.path.exists(pre_downloaded_path)
+                    not os.path.exists(pre_downloaded_path)
                     or os.path.getsize(pre_downloaded_path) == 0
                 ):
                     log.warning(
