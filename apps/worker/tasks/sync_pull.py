@@ -187,7 +187,7 @@ class PullSyncTask(BaseCodecovTask, name=pulls_task_name):
         if pull.state != "open":
             log.info(
                 "Skipping sync for non-open pull",
-                extra=extra_info,
+                extra={**extra_info, "pull_state": pull.state},
             )
             return {
                 "notifier_called": False,
