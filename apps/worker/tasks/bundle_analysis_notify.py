@@ -84,7 +84,17 @@ class BundleAnalysisNotifyTask(BaseCodecovTask, name=bundle_analysis_notify_task
                     "notify_attempted": False,
                     "notify_succeeded": None,
                 }
-            self.retry(max_retries=self.max_retries, countdown=retry.countdown)
+            # Cap at 870s (30s below the 900s Redis visibility timeout) so the
+            # message is never held unacked longer than the visibility window.
+            # Without this cap, LockManager can hand back countdowns up to
+            # MAX_RETRY_COUNTDOWN_SECONDS (5 hours), and any value over 900s
+            # causes the broker to redeliver the still-unacked ETA message to
+            # additional workers - producing exponential task amplification on
+            # the bundles_analysis queue. Mirrors the cap PR #852 applied to
+            # the analogous LockRetry path in bundle_analysis_processor.py.
+            self.retry(
+                max_retries=self.max_retries, countdown=min(retry.countdown, 870)
+            )
 
     @sentry_sdk.trace
     def process_impl_within_lock(

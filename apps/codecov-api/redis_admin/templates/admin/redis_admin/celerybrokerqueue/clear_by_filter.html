@@ -1,0 +1,250 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-list{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{{ changelist_url }}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; Clear by filter
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <p>
+    Clears every kombu message in <code>{{ queue_name }}</code> whose
+    decoded envelope matches the
+    <em>(task_name, repoid, commitid)</em> filter below. Uses the
+    LSET-tombstone path so concurrent celery consumers stay safe (race
+    window can only ever turn a real message into a no-op tombstone,
+    never the other way around).
+  </p>
+  <p>
+    Three actions are available below. <strong>Dry-run</strong> is the
+    safe first move &mdash; it writes a <code>LogEntry</code> under
+    <code>scope=&quot;celery_broker_clear&quot;</code> but leaves the
+    queue untouched. The two destructive actions both gate on the
+    typed-confirmation field; both also write the same audit log
+    entry on success. All three fan out to a chunked background-job
+    worker that streams the queue and reports exact match counts as
+    it scans &mdash; this preview page itself does no Redis I/O.
+  </p>
+
+  {# ---- Filter rows: queue, task, repoid (linked), commit (truncated) ---- #}
+  <fieldset class="module">
+    <h2>Filter</h2>
+    <table class="celery-clear-filter">
+      <tr>
+        <th scope="row">Queue</th>
+        <td><code>{{ queue_name }}</code></td>
+      </tr>
+      <tr>
+        <th scope="row">Task</th>
+        <td>
+          {% if task_name %}<code>{{ task_name }}</code>{% else %}<em>(any)</em>{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th scope="row">Repo</th>
+        <td>
+          {% if repoid is not None %}
+            {% if repo_change_url %}
+              <a href="{{ repo_change_url }}" title="repoid={{ repoid }}"><code>{{ repoid }}</code></a>
+            {% else %}
+              <code>{{ repoid }}</code>
+            {% endif %}
+          {% else %}
+            <em>(any)</em>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th scope="row">Commit</th>
+        <td>
+          {% if commitid %}
+            <code title="{{ commitid }}">{{ commitid|slice:":7" }}</code>
+          {% else %}
+            <em>(any)</em>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+  </fieldset>
+
+  {# ---- Approximate-count callout (no Redis call; values come from the chart) ---- #}
+  {#
+    The chart already has the bucket count and queue depth from its
+    LRANGE snapshot, so the approximate "will tombstone ~X" string is
+    derived in pure Python in the view (`approx` dict). When the
+    operator hand-edits the URL or arrives via a non-chart link any
+    of the four hints may be missing; we render the "not available"
+    fallback instead of computing a misleading number. The chunked
+    background-job worker computes the exact match count as it walks
+    so the audit log stays precise.
+  #}
+  <fieldset class="module">
+    <h2>Approximate impact</h2>
+    {% if approx %}
+      <p class="celery-approx-callout">
+        Will tombstone approximately
+        <strong>{{ approx.count|default_if_none:"&mdash;" }}</strong>
+        message(s)
+        {% if approx.pct is not None %}
+          (<strong>~{{ approx.pct|floatformat:1 }}%</strong> of the
+          queue at depth ~{{ approx.depth }}).
+        {% else %}
+          (queue depth ~{{ approx.depth }}).
+        {% endif %}
+      </p>
+      <p class="help">
+        Approximation derived from the chart's sampled-window bucket
+        size projected onto the live queue depth; the chunked clear
+        will compute the exact match count as it scans.
+      </p>
+    {% else %}
+      <p class="celery-approx-callout celery-approx-unknown">
+        <em>Approximate count not available</em> &mdash; the chunked
+        clear will compute the exact match count as it scans.
+      </p>
+    {% endif %}
+  </fieldset>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="queue_name" value="{{ queue_name }}">
+    {% if task_name %}<input type="hidden" name="task_name" value="{{ task_name }}">{% endif %}
+    {% if repoid is not None %}<input type="hidden" name="repoid" value="{{ repoid }}">{% endif %}
+    {% if commitid %}<input type="hidden" name="commitid" value="{{ commitid }}">{% endif %}
+    {# Round-trip the chart's display hints so a typed-confirm failure
+       doesn't drop the approximate-count callout. The hints originate
+       on the chart's GET form; without these mirrors the re-render
+       after a bad confirm would fall through to "Approximate count
+       not available" because `request.POST` doesn't carry them. #}
+    {% if bucket_count_hint %}<input type="hidden" name="bucket_count" value="{{ bucket_count_hint }}">{% endif %}
+    {% if bucket_pct_hint %}<input type="hidden" name="bucket_pct" value="{{ bucket_pct_hint }}">{% endif %}
+    {% if total_visible_hint %}<input type="hidden" name="total_visible" value="{{ total_visible_hint }}">{% endif %}
+    {% if total_depth_hint %}<input type="hidden" name="total_depth" value="{{ total_depth_hint }}">{% endif %}
+
+    <fieldset class="module">
+      <h2>Confirm and clear</h2>
+      <div class="form-row{% if confirm_error %} errors{% endif %}">
+        <div>
+          {% if confirm_error %}<ul class="errorlist"><li>{{ confirm_error }}</li></ul>{% endif %}
+          <label for="id_typed_confirm">Type <code>{{ expected_confirm }}</code> to confirm:</label>
+          <input type="text" name="typed_confirm" id="id_typed_confirm" value="{{ typed_confirm }}" autocomplete="off">
+          <div class="help">
+            Re-type the queue name above to enable the destructive
+            actions on the right. Dry-run does not require it.
+          </div>
+        </div>
+      </div>
+
+      {% comment %}
+      Three submit buttons share the form. Server-side dispatch on
+      the `action` value:
+
+      * `dry_run` &mdash; neutral / `default` styling. Spawns the
+        chunked background-job worker with `dry_run=True`; queue
+        untouched. Writes a `LogEntry` on completion.
+      * `clear_keep_one` &mdash; destructive (red text). Clears
+        every match EXCEPT the lowest-index one; "drop duplicate
+        retries but leave one running."
+      * `clear_all` &mdash; destructive (red text). Clears every
+        match.
+
+      The two destructive buttons are stacked vertically and
+      anchored to the right edge so they read as a distinct "what
+      to do once you've confirmed" cluster, separated visually
+      both from the dry-run button on the left and from each
+      other.
+      {% endcomment %}
+      <div class="submit-row celery-clear-actions">
+        <button type="submit" name="action" value="dry_run" class="default">
+          Dry-run (audit only, no mutations)
+        </button>
+        <div class="celery-destructive-actions">
+          <button type="submit" name="action" value="clear_keep_one"
+                  class="button celery-destructive-button celery-clear-keep-one">
+            Clear all but first
+          </button>
+          <button type="submit" name="action" value="clear_all"
+                  class="button celery-destructive-button celery-clear-all">
+            Clear all from {{ queue_name }}
+          </button>
+        </div>
+      </div>
+    </fieldset>
+
+    <p>
+      <a href="{{ changelist_url }}">&larr; back to {{ queue_name }} messages</a>
+    </p>
+  </form>
+
+</div>
+
+<style>
+  /* Theme-safe styling: red TEXT (not red background) on the two
+     destructive buttons so they read as obviously dangerous while
+     staying readable on Django's light/dark admin themes. We
+     deliberately don't use Django admin's `deletelink` class here
+     because that swaps the background to red and the foreground to
+     white; the user spec for this surface is "red text". */
+  .celery-clear-filter {
+    border-collapse: collapse;
+  }
+  .celery-clear-filter th,
+  .celery-clear-filter td {
+    padding: 4px 12px 4px 0;
+    text-align: left;
+    vertical-align: top;
+  }
+  .celery-clear-filter th {
+    width: 6em;
+    font-weight: 600;
+    color: var(--body-quiet-color, inherit);
+  }
+  .celery-approx-callout {
+    font-size: 1.05em;
+    margin: 0.25em 0;
+  }
+  .celery-approx-unknown {
+    color: var(--body-quiet-color, inherit);
+  }
+  .celery-clear-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em 1em;
+    align-items: flex-start;
+  }
+  .celery-destructive-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75em;
+    margin-left: auto;
+    padding-left: 1em;
+    border-left: 1px solid var(--border-color, var(--hairline-color, #ccc));
+  }
+  .celery-destructive-button {
+    color: var(--error-fg, #ba2121);
+    font-weight: 600;
+  }
+  .celery-destructive-button:hover,
+  .celery-destructive-button:focus {
+    color: var(--error-fg, #ba2121);
+    text-decoration: underline;
+  }
+  /* Vertical separator between the two destructive options so they
+     don't read as a single chunk; the gap+border combo keeps the
+     two visually distinct without needing extra DOM. */
+  .celery-destructive-actions > .celery-clear-all {
+    margin-top: 0.25em;
+    border-top: 1px dashed var(--border-color, var(--hairline-color, #ccc));
+    padding-top: 0.75em;
+  }
+</style>
+{% endblock %}

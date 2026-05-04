@@ -1,0 +1,69 @@
+/* Loading card shown while the celery_broker frequency chart fragment
+ * is fetched. Replaces the previous subtle "Loading…" help line so the
+ * loading state is obvious at the top of the changelist while the user
+ * waits for the fragment endpoint to materialise the chart (which can
+ * take a few seconds on deep queues — the aggregator samples up to
+ * CELERY_BROKER_SCAN_LIMIT messages).
+ *
+ * Lives in an external file so it survives the production CSP, which
+ * blocks inline <style> tags. See settings_base.py CSP_DEFAULT_SRC.
+ */
+
+.celery-chart-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  margin: 16px 0;
+  padding: 28px 24px;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 6px;
+  background: var(--darkened-bg, #f8f8f8);
+  color: var(--body-fg, #333);
+  min-height: 120px;
+  box-sizing: border-box;
+}
+
+.celery-chart-loader__spinner {
+  width: 36px;
+  height: 36px;
+  border: 4px solid var(--border-color, #ddd);
+  border-top-color: var(--primary, #417690);
+  border-radius: 50%;
+  animation: celery-chart-spin 0.85s linear infinite;
+}
+
+.celery-chart-loader__label {
+  margin: 6px 0 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.celery-chart-loader__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--body-quiet-color, #666);
+  max-width: 480px;
+  line-height: 1.4;
+}
+
+@keyframes celery-chart-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Respect operators who set reduced-motion in their OS — the spinner
+ * still gets a subtle pulse so the loading affordance survives. */
+@media (prefers-reduced-motion: reduce) {
+  .celery-chart-loader__spinner {
+    animation: celery-chart-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes celery-chart-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}

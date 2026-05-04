@@ -17,13 +17,15 @@ from __future__ import annotations
 
 import base64
 import fnmatch
-import json
 import logging
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+import orjson
 import sentry_sdk
+
+from shared.config import get_config
 
 from . import conn as _conn
 from . import settings as redis_admin_settings
@@ -33,11 +35,12 @@ log = logging.getLogger(__name__)
 
 RedisType = Literal["list", "set", "hash", "string"]
 
-# Which Redis connection a family lives on. `default` = cache Redis at
-# `services.redis_url`; `broker` = Celery broker at
-# `services.celery_broker`, which is a separate Memorystore instance in
-# production. See `redis_admin.conn` for the URL plumbing.
-ConnectionKind = Literal["default", "broker"]
+# Which Redis connection a family lives on. Re-exported from
+# `redis_admin.conn` so callers can keep their `ConnectionKind`
+# imports family-shaped (`from .families import ConnectionKind`)
+# without spawning a duplicate definition that could silently drift
+# from the canonical one in `conn.py`.
+ConnectionKind = _conn.ConnectionKind
 
 
 @dataclass(frozen=True)
@@ -174,25 +177,80 @@ def _parse_celery_broker_key(_: str) -> ParsedKey:
     return ParsedKey(family="celery_broker")
 
 
+def _operator_configured_celery_queues() -> tuple[str, ...]:
+    """Read the deployment's declared list of Celery queue names.
+
+    The actual production queue topology lives in private deployment
+    config (`setup.tasks.*.queue` env vars on worker pods). The API
+    pod doesn't get those, so `BaseCeleryConfig.task_routes` inside
+    the API process resolves every route to `task_default_queue`
+    (`"celery"`) and the admin can't see queues like `uploads`,
+    `notify`, `sync`, etc. — even though they exist on the broker.
+
+    Operators close that gap by setting
+
+        SETUP__REDIS_ADMIN__CELERY_QUEUES="uploads,notify,sync,..."
+
+    on the API pod (or the equivalent in `codecov.yaml`). The names
+    are deployment-specific and intentionally not committed to this
+    OSS repo. `iter_keys` runs `EXISTS` against every entry, so
+    listing a queue that doesn't exist in Redis is harmless: it just
+    won't show up in the admin.
+    """
+
+    raw = get_config("setup", "redis_admin", "celery_queues", default=None)
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        candidates: Iterable[str] = raw.split(",")
+    elif isinstance(raw, list | tuple | set):
+        candidates = raw
+    else:  # pragma: no cover - defensive
+        log.warning(
+            "setup.redis_admin.celery_queues has unexpected type %s; ignoring",
+            type(raw).__name__,
+        )
+        return ()
+    cleaned = [str(name).strip() for name in candidates]
+    return tuple(name for name in cleaned if name)
+
+
 def _resolve_celery_queue_names() -> tuple[str, ...]:
     """Best-effort enumeration of the well-known Celery queue names.
 
-    Reads from the live `BaseCeleryConfig` so we pick up any queues an
-    operator configured via `setup.tasks.*.queue`. Falls back to the two
-    documented defaults if the import fails (e.g. during tests or in a
-    minimal environment).
+    Combines, in order of authority:
+
+    1. `setup.redis_admin.celery_queues` from the running config —
+       the deployment-specific list operators populate (see
+       `_operator_configured_celery_queues`). This is how a
+       production API pod learns about queues like `uploads` /
+       `notify` / `sync` that aren't reachable via
+       `BaseCeleryConfig` because the API doesn't carry the
+       worker-side `setup.tasks.*.queue` env vars.
+    2. `BaseCeleryConfig.task_routes[*]['queue']` — picks up any
+       queues *this* process has been told about via
+       `setup.tasks.*.queue` (rare in the API, normal in workers).
+    3. `task_default_queue` / `health_check_default_queue` so the
+       `celery` / `healthcheck` names are always present even on a
+       bare-bones deploy that hasn't set anything else.
+
+    Falls back to just (1) + the hardcoded `("celery",
+    "healthcheck")` defaults if `BaseCeleryConfig` can't be imported
+    (e.g. minimal-env tests).
     """
+
+    names: set[str] = set(_operator_configured_celery_queues())
 
     try:
         from shared.celery_config import BaseCeleryConfig  # noqa: PLC0415
     except Exception:  # pragma: no cover - defensive: any import error
         log.warning(
             "redis_admin: could not import BaseCeleryConfig; "
-            "using ('celery', 'healthcheck') only"
+            "falling back to operator-configured queues plus defaults"
         )
-        return ("celery", "healthcheck")
+        names.update(("celery", "healthcheck"))
+        return tuple(sorted(names))
 
-    names: set[str] = set()
     names.add(getattr(BaseCeleryConfig, "task_default_queue", "celery") or "celery")
     names.add(
         getattr(BaseCeleryConfig, "health_check_default_queue", "healthcheck")
@@ -207,45 +265,121 @@ def _resolve_celery_queue_names() -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
-def _peek_celery_envelope(decoded: str) -> tuple[str | None, int | None, str | None]:
-    """Pull `(task, repoid, commitid)` from a kombu JSON envelope.
+@dataclass(frozen=True)
+class CeleryEnvelopeMeta:
+    """Structured view of a kombu broker envelope.
 
-    Returns `(None, None, None)` for anything we can't parse so the
-    fallback is "show the raw payload" rather than "crash the admin".
+    The admin's `CeleryBrokerQueue` model surfaces these fields as
+    columns and accepts them as filters, so they're typed and
+    optional — a malformed or unrecognised envelope yields an
+    instance with everything set to `None`.
+
+    `kwargs` carries the raw decoded keyword-args dict (the second
+    element of the kombu body list) when present, so the admin can
+    render a `payload_preview` without re-parsing the envelope.
+    """
+
+    task: str | None = None
+    task_id: str | None = None
+    repoid: int | None = None
+    commitid: str | None = None
+    ownerid: int | None = None
+    pullid: int | None = None
+    kwargs: dict[str, Any] | None = None
+
+
+def _coerce_int(value: Any) -> int | None:
+    """Best-effort int coercion that survives JSON's int/str ambiguity."""
+
+    if isinstance(value, bool):  # `bool` subclasses `int`; reject.
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
+    """Parse a kombu broker envelope into structured metadata.
+
+    Returns an empty `CeleryEnvelopeMeta()` for anything we can't
+    parse so the fallback is "show the raw payload" rather than
+    "crash the admin".
+
+    Kombu envelopes shape:
+        {"body": "<base64 JSON>", "headers": {"task": "...", "id": "..."}, ...}
+
+    Inside the decoded body, index `[1]` is the task's keyword-args
+    dict — `repoid`, `commitid`, `ownerid`, `pullid` are read from
+    there. Different worker tasks carry different subsets (notify
+    has repoid+commitid, sync_pull has repoid+pullid, sync_repos
+    has ownerid only) so callers should treat every field as
+    independently optional.
     """
 
     try:
-        envelope = json.loads(decoded)
+        envelope = orjson.loads(decoded)
     except (ValueError, TypeError):
-        return (None, None, None)
+        return CeleryEnvelopeMeta()
     if not isinstance(envelope, dict):
-        return (None, None, None)
+        return CeleryEnvelopeMeta()
 
     headers = envelope.get("headers") or {}
-    task = headers.get("task") if isinstance(headers, dict) else None
-    if not isinstance(task, str):
-        task = None
+    task: str | None = None
+    task_id: str | None = None
+    if isinstance(headers, dict):
+        raw_task = headers.get("task")
+        if isinstance(raw_task, str):
+            task = raw_task
+        raw_task_id = headers.get("id")
+        if isinstance(raw_task_id, str) and raw_task_id:
+            task_id = raw_task_id
 
     repoid: int | None = None
     commitid: str | None = None
+    ownerid: int | None = None
+    pullid: int | None = None
+    kwargs: dict[str, Any] | None = None
     body_b64 = envelope.get("body")
     if isinstance(body_b64, str) and body_b64:
         try:
             body_bytes = base64.b64decode(body_b64, validate=False)
-            body = json.loads(body_bytes.decode("utf-8", errors="replace"))
+            # orjson.loads accepts bytes directly — faster than
+            # body_bytes.decode("utf-8") → json.loads(str)
+            body = orjson.loads(body_bytes)
         except (ValueError, TypeError, UnicodeDecodeError):
             body = None
         if isinstance(body, list) and len(body) >= 2 and isinstance(body[1], dict):
             kwargs = body[1]
-            rid = kwargs.get("repoid")
-            if isinstance(rid, int):
-                repoid = rid
-            elif isinstance(rid, str) and rid.isdigit():
-                repoid = int(rid)
+            repoid = _coerce_int(kwargs.get("repoid"))
             cid = kwargs.get("commitid")
             if isinstance(cid, str) and cid:
                 commitid = cid
-    return (task, repoid, commitid)
+            ownerid = _coerce_int(kwargs.get("ownerid"))
+            pullid = _coerce_int(kwargs.get("pullid"))
+    return CeleryEnvelopeMeta(
+        task=task,
+        task_id=task_id,
+        repoid=repoid,
+        commitid=commitid,
+        ownerid=ownerid,
+        pullid=pullid,
+        kwargs=kwargs,
+    )
+
+
+def _peek_celery_envelope(decoded: str) -> tuple[str | None, int | None, str | None]:
+    """Backwards-compatible 3-tuple shim around `parse_celery_envelope`.
+
+    Kept for the existing `_celery_decode_value` summary line and any
+    downstream import that used the M4 signature; new callers should
+    prefer `parse_celery_envelope` to reach the additional fields
+    (`task_id`, `ownerid`, `pullid`, `kwargs`).
+    """
+
+    meta = parse_celery_envelope(decoded)
+    return (meta.task, meta.repoid, meta.commitid)
 
 
 def _celery_decode_value(raw_decoded: str) -> str:
@@ -689,10 +823,36 @@ def find_family(key: str) -> Family | None:
     return None
 
 
+def iter_families(
+    *,
+    category: Literal["queue", "lock"] | None = None,
+    exclude: Iterable[str] = (),
+) -> Iterator[Family]:
+    """Yield registered families, optionally narrowed by category / name.
+
+    Single entry point for admin UI surfaces (`FamilyFilter.lookups`,
+    the clear-by-scope family picker) that need to enumerate the
+    family registry with a consistent exclusion list. Keeping the
+    filtering here means a family that's served by its own dedicated
+    admin (today: `celery_broker`, surfaced by
+    `CeleryBrokerQueueAdmin`) can be dropped from generic enumerators
+    without each caller re-implementing the same skip list.
+    """
+
+    exclude_set = frozenset(exclude)
+    for family in FAMILIES:
+        if category is not None and family.category != category:
+            continue
+        if family.name in exclude_set:
+            continue
+        yield family
+
+
 def iter_keys(
     redis=None,
     *,
     family: str | None = None,
+    family_exclude: Iterable[str] | None = None,
     repoid: int | None = None,
     commitid_prefix: str | None = None,
     category: Literal["queue", "lock"] | None = None,
@@ -751,6 +911,7 @@ def iter_keys(
         yield from _iter_keys_inner(
             resolve_client,
             family=family,
+            family_exclude=frozenset(family_exclude or ()),
             category=category,
             cap=cap,
             count=count,
@@ -762,6 +923,7 @@ def _iter_keys_inner(
     resolve_client: Callable[[ConnectionKind], Any],
     *,
     family: str | None,
+    family_exclude: frozenset[str],
     category: Literal["queue", "lock"] | None,
     cap: int,
     count: int,
@@ -779,6 +941,11 @@ def _iter_keys_inner(
 
     for fam in FAMILIES:
         if family and fam.name != family:
+            continue
+        if family_exclude and fam.name in family_exclude:
+            # Caller (typically `RedisQueueAdmin`) opted this family
+            # out of the changelist — skip both `fixed_keys` and SCAN
+            # entirely so we don't even open a connection for it.
             continue
         if category is not None and fam.category != category:
             continue

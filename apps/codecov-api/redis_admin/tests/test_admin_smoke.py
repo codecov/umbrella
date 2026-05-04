@@ -18,9 +18,89 @@ from django.contrib.admin.models import LogEntry
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
+from redis_admin.admin import FamilyFilter, LockFamilyFilter, QueueFamilyFilter
+from redis_admin.families import (
+    _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701
+)
 from shared.django_apps.codecov_auth.tests.factories import UserFactory
 from shared.django_apps.core.tests.factories import OwnerFactory, RepositoryFactory
 from utils.test_utils import Client
+
+# ---- Family filter lookups (does not require django_db / TestCase) --------
+
+
+def _family_filter_choices(filter_cls):
+    """Return `lookups()` output for `filter_cls` without running the
+    Django `SimpleListFilter.__init__` (which wants a real request,
+    params, model, and model_admin). `lookups` only reads class-level
+    `category` / `excluded_names`, so bypassing __init__ keeps the
+    test a pure unit test that never touches the DB or the HTTP
+    stack.
+    """
+
+    instance = filter_cls.__new__(filter_cls)
+    return dict(instance.lookups(request=None, model_admin=None))
+
+
+def test_queue_family_filter_lookups_omit_celery_broker():
+    """The RedisQueue changelist hides `celery_broker` rows via
+    `family_exclude`, so its sidebar filter must not offer
+    `celery_broker` as a clickable choice — that would be a dead
+    option that filters the page to zero rows.
+    """
+
+    choices = _family_filter_choices(QueueFamilyFilter)
+
+    assert "celery_broker" not in choices
+
+
+def test_queue_family_filter_lookups_keep_other_queue_families():
+    """Safety rail: the exclusion above must leave the *other*
+    queue-category families in the dropdown, so the filter still
+    works as a filter.
+    """
+
+    choices = _family_filter_choices(QueueFamilyFilter)
+
+    assert "uploads" in choices
+    assert "ta_flake_key" in choices
+    assert "latest_upload" in choices
+
+
+def test_queue_family_filter_rejects_lock_family_choices():
+    """`category='queue'` must not leak lock-category families
+    (coordination_lock, ta_flake_lock, etc.) into the queue filter
+    dropdown; those live on the RedisLock admin instead.
+    """
+
+    choices = _family_filter_choices(QueueFamilyFilter)
+
+    assert "coordination_lock" not in choices
+    assert "ta_flake_lock" not in choices
+
+
+def test_base_family_filter_still_exposes_celery_broker_for_non_queue_callers():
+    """`FamilyFilter` itself (no exclusion) still returns
+    `celery_broker` so other non-queue-admin callers — or a future
+    admin that intentionally *wants* the family visible — aren't
+    silently stripped of it.
+    """
+
+    choices = _family_filter_choices(FamilyFilter)
+
+    assert "celery_broker" in choices
+
+
+def test_lock_family_filter_unaffected_by_celery_exclusion():
+    """Sanity check: the locks filter is on a separate category and
+    has no overlap with celery_broker either way; make sure we
+    didn't bleed the exclusion into a different subclass by mistake.
+    """
+
+    choices = _family_filter_choices(LockFamilyFilter)
+
+    assert "celery_broker" not in choices
+    assert "coordination_lock" in choices
 
 
 class RedisAdminSmokeTest(TestCase):
@@ -322,6 +402,63 @@ class RedisAdminFiltersAndSearchTest(TestCase):
         # Fallback is the em-dash placeholder.
         assert "—" in body
 
+    def _populate_celery_queues(self):
+        """Push one envelope onto each well-known Celery broker queue
+        plus an unrelated `uploads/` row so we can prove the filter
+        narrows by *both* family and name."""
+
+        self._celery_names = _celery_queue_names()
+        # Every well-known queue gets at least one item so it shows up
+        # on the changelist (zero-depth queues are filtered out by
+        # `iter_keys` since the underlying key doesn't exist).
+        for name in self._celery_names:
+            self.redis.rpush(name, "envelope")
+        # An unrelated non-celery row so a working filter must
+        # actively *exclude* it, not just include the celery row.
+        self.redis.rpush("uploads/1/sha", "x")
+
+    def test_redisqueue_admin_excludes_celery_broker_queues(self):
+        """`celery_broker` queues are surfaced one-per-row by the
+        new `CeleryBrokerQueueAdmin` (with a per-`(repoid, commitid)`
+        frequency chart and clear flow). They're hidden from the
+        `RedisQueue` changelist via
+        `RedisQueueQuerySet.family_exclude("celery_broker")` so the
+        two admins don't compete for the same row.
+        """
+
+        self._populate_celery_queues()
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # The non-celery row is still listed.
+        assert "uploads/1/sha" in body
+        # Every celery_broker queue we just pushed is hidden — the
+        # per-row anchor href would be the most specific evidence
+        # of a row, so check for that shape.
+        for name in self._celery_names:
+            assert f"/admin/redis_admin/redisqueue/{name}/change/" not in body, (
+                f"expected `{name}` to be hidden by family_exclude, but it rendered"
+            )
+
+    def test_redisqueue_admin_no_longer_renders_celery_queue_filter(self):
+        """The standalone `CeleryQueueFilter` sidebar entry was removed
+        when `CeleryBrokerQueueAdmin` took over discovery: its summary
+        landing page (one row per queue + drill-in link) replaces the
+        sidebar shortcut. Make sure the old `?celery_queue=` href
+        doesn't render anywhere on the changelist.
+        """
+
+        self._populate_celery_queues()
+        response = self.client.get("/admin/redis_admin/redisqueue/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # No `?celery_queue=` filter URLs anywhere in the page.
+        assert "celery_queue=" not in body
+        # No filter section header for the removed filter.
+        assert "By celery queue" not in body
+
 
 class RedisLockAdminSmokeTest(TestCase):
     """M4.3 end-to-end checks for the read-only locks changelist."""
@@ -440,7 +577,37 @@ class RedisQueueAdminChangePageTest(TestCase):
             in body
         )
         # And the footer link points at the full items changelist.
-        assert "queue_name__exact=uploads/123/abc123" in body
+        # The queue name is `urlencode`'d so `/` round-trips as `%2F`,
+        # matching the `items_link` column on the changelist (and the
+        # behaviour of every other URL-building admin helper).
+        assert "queue_name__exact=uploads%2F123%2Fabc123" in body
+
+    def test_inline_items_preview_url_encodes_special_chars_in_queue_name(self):
+        """Regression for the Bugbot review on PR #888: `_render_items_inline`
+        embedded `obj.name` directly into a query string via `format_html`,
+        which only HTML-escapes — keys containing `&` or `#` would split the
+        query parameter and silently land the operator on the wrong items
+        view. The footer link must round-trip the full key via `urlencode`.
+        """
+
+        # `&` would otherwise terminate the `queue_name__exact` value.
+        weird_key = "uploads/1/sha&extra#frag"
+        self.redis.rpush(weird_key, "payload")
+
+        # The change-form URL still uses Django admin's `quote` (`/` →
+        # `_2F`, `&` → `_26`, `#` → `_23`) for the path component.
+        encoded_pk = "uploads_2F1_2Fsha_26extra_23frag"
+        response = self.client.get(
+            f"/admin/redis_admin/redisqueue/{encoded_pk}/change/"
+        )
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
+        # The footer "view all items →" link percent-encodes each
+        # special character. The naked key would surface as a substring
+        # of the bare anchor href — and would split the query string in
+        # browsers — so insist on the encoded form.
+        assert "queue_name__exact=uploads%2F1%2Fsha%26extra%23frag" in body
 
     def test_change_page_renders_inline_items_preview_for_string_key(self):
         # `latest_upload/<repoid>/<sha>` is a STRING; the held value

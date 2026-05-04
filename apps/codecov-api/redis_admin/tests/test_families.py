@@ -33,6 +33,7 @@ from redis_admin.families import (
     _ta_flake_pattern,
     _uploads_pattern,
     find_family,
+    iter_families,
     iter_keys,
 )
 
@@ -229,6 +230,74 @@ def test_celery_broker_family_resolves_known_queue_names():
     family = next(f for f in FAMILIES if f.name == "celery_broker")
     assert "celery" in family.fixed_keys
     assert "healthcheck" in family.fixed_keys
+
+
+def test_resolve_celery_queue_names_includes_operator_configured_queues(monkeypatch):
+    """Real production queues (`uploads`, `notify`, `sync`, ...) live in
+    private deployment config, not in the OSS `BaseCeleryConfig`. The
+    API pod surfaces them via `setup.redis_admin.celery_queues`. Without
+    this we silently miss every non-default queue on the broker — the
+    exact regression that motivated this change.
+    """
+
+    from redis_admin import families as families_mod  # noqa: PLC0415
+
+    config_overrides = {
+        ("setup", "redis_admin", "celery_queues"): "uploads, notify ,sync,",
+    }
+
+    def fake_get_config(*keys, default=None):
+        return config_overrides.get(tuple(keys), default)
+
+    monkeypatch.setattr(families_mod, "get_config", fake_get_config)
+
+    names = families_mod._resolve_celery_queue_names()
+    assert "uploads" in names
+    assert "notify" in names
+    assert "sync" in names
+    assert "celery" in names
+    assert "healthcheck" in names
+    assert "" not in names
+
+
+def test_resolve_celery_queue_names_accepts_list_form(monkeypatch):
+    """`get_config` returns a list when the value is set via
+    JSON/YAML rather than a comma-separated env var; we treat both
+    shapes identically so operators don't have to care which knob
+    they used.
+    """
+
+    from redis_admin import families as families_mod  # noqa: PLC0415
+
+    config_overrides = {
+        ("setup", "redis_admin", "celery_queues"): ["uploads", "  notify  ", ""],
+    }
+
+    def fake_get_config(*keys, default=None):
+        return config_overrides.get(tuple(keys), default)
+
+    monkeypatch.setattr(families_mod, "get_config", fake_get_config)
+
+    names = families_mod._resolve_celery_queue_names()
+    assert "uploads" in names
+    assert "notify" in names
+    assert "" not in names
+
+
+def test_resolve_celery_queue_names_unset_keeps_defaults(monkeypatch):
+    """When the operator hasn't configured anything we still get the
+    `task_default_queue` / `health_check_default_queue` baseline so a
+    bare-bones deploy (dev, enterprise) keeps working unchanged.
+    """
+
+    from redis_admin import families as families_mod  # noqa: PLC0415
+
+    monkeypatch.setattr(
+        families_mod, "get_config", lambda *_args, default=None: default
+    )
+    names = families_mod._resolve_celery_queue_names()
+    assert "celery" in names
+    assert "healthcheck" in names
 
 
 def test_iter_keys_yields_celery_queues_via_fixed_keys(patched_redis):
@@ -570,3 +639,48 @@ def test_iter_keys_finds_ta_notifier_fence_filtered_by_repoid_and_commit(
     }
 
     assert rows == {"ta_notifier_fence:42_abcdef"}
+
+
+# ---- iter_families ---------------------------------------------------------
+
+
+def test_iter_families_unfiltered_matches_full_registry():
+    """Without a category or exclude filter `iter_families` must yield
+    every registered family in order — it's the single entry point
+    the admin filter UIs call, so a drift here would silently drop
+    families from every list filter at once.
+    """
+
+    assert tuple(iter_families()) == FAMILIES
+
+
+def test_iter_families_narrows_by_category():
+    """`category='queue'` / `category='lock'` partitions the registry
+    so the admin UI can render the right subset per surface.
+    """
+
+    queue_families = {f.name for f in iter_families(category="queue")}
+    lock_families = {f.name for f in iter_families(category="lock")}
+
+    assert "uploads" in queue_families
+    assert "celery_broker" in queue_families
+    assert queue_families.isdisjoint(lock_families)
+    assert "coordination_lock" in lock_families
+
+
+def test_iter_families_drops_excluded_names():
+    """`exclude` lets the queue filter hide families served by a
+    dedicated admin (today: `celery_broker`) so operators don't see
+    a clickable option that returns zero rows on the generic queue
+    changelist.
+    """
+
+    queue_families = {
+        f.name for f in iter_families(category="queue", exclude=["celery_broker"])
+    }
+
+    assert "celery_broker" not in queue_families
+    # Sanity: unrelated queue families are still present so we
+    # didn't accidentally drop the whole category.
+    assert "uploads" in queue_families
+    assert "ta_flake_key" in queue_families
