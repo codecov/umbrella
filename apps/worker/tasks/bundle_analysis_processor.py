@@ -298,7 +298,7 @@ class BundleAnalysisProcessorTask(
         commit_yaml: UserYaml,
         params: UploadArguments,
         previous_result: list[dict[str, Any]],
-        pre_downloaded_path: str | None = None,
+        pre_downloaded_path: str = "",
     ):
         log.info(
             "Running bundle analysis processor",
