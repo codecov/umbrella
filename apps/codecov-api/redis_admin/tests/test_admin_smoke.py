@@ -493,15 +493,17 @@ class RedisLockAdminSmokeTest(TestCase):
         # Queue keys must not bleed into the locks page.
         assert "uploads/1234/abc" not in body
 
-    def test_locks_changelist_has_no_delete_action(self):
+    def test_staff_changelist_has_no_delete_action(self):
+        # Staff users (non-superuser) must not see the bulk delete
+        # action in the locks changelist — destructive lock release
+        # is superuser-only.
         self.redis.set("upload_lock_1_abc", "1")
 
         response = self.client.get("/admin/redis_admin/redislock/")
 
         assert response.status_code == 200
         body = response.content.decode("utf-8")
-        # The default "Delete selected" action must be stripped.
-        assert "delete_selected" not in body
+        assert 'value="delete_selected"' not in body
 
 
 class RedisQueueAdminChangePageTest(TestCase):
@@ -1177,7 +1179,9 @@ class RedisAdminSuperuserOnlyDeletionTest(TestCase):
 
     The rule, restated for the reader of these tests:
       - `RedisQueueAdmin`        deletion gated to `is_superuser`
-      - `RedisLockAdmin`         deletion disabled for everyone
+      - `RedisLockAdmin`         deletion gated to `is_superuser`
+                                 (routes through `redis_delete(...,
+                                 allow_locks=True)`; staff are blocked)
       - `RedisQueueItemAdmin`    deletion disabled for everyone
 
     These tests stay tight on URL/action endpoints because that's what
@@ -1305,11 +1309,12 @@ class RedisAdminSuperuserOnlyDeletionTest(TestCase):
 
     # ---- RedisLockAdmin ------------------------------------------------
 
-    def test_locks_are_undeletable_even_by_superusers(self):
-        # Locks are blanket-disabled, not just superuser-gated. This
-        # is a stricter rule than "deletion is superuser-only" and
-        # exists because the worker's `LockManager` is the only
-        # legitimate releaser of those keys.
+    def test_superuser_sees_bulk_delete_action_on_locks_changelist(self):
+        # Superusers can release stuck locks via the standard bulk
+        # `delete_selected` action — this is the on-call escape hatch
+        # for a crashed task that couldn't run its `finally`-block
+        # release. The action routes through `redis_delete(...,
+        # allow_locks=True)` so the audit log captures the release.
         superuser = UserFactory(is_staff=True, is_superuser=True)
         self.client.force_login(superuser)
 
@@ -1317,18 +1322,26 @@ class RedisAdminSuperuserOnlyDeletionTest(TestCase):
 
         assert response.status_code == 200
         body = response.content.decode("utf-8")
-        # No bulk action dropdown options at all (`actions={}` for
-        # locks). Most importantly: no `delete_selected`.
+        assert 'value="delete_selected"' in body
+
+    def test_staff_does_not_see_bulk_delete_action_on_locks_changelist(self):
+        # Staff users continue to see the read-only changelist;
+        # `has_delete_permission` returns False for them so the bulk
+        # action is filtered out by Django's stock permission gate.
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        response = self.client.get("/admin/redis_admin/redislock/")
+
+        assert response.status_code == 200
+        body = response.content.decode("utf-8")
         assert 'value="delete_selected"' not in body
-        # And there's no clear_* siblings either.
-        assert 'value="clear_selected"' not in body
-        assert 'value="clear_dry_run"' not in body
 
     def test_staff_cannot_post_delete_to_lock_change_page(self):
         staff = UserFactory(is_staff=True, is_superuser=False)
         self.client.force_login(staff)
 
-        # Even if staff somehow handcraft a delete POST to the lock
+        # Even if staff handcraft a delete POST to the lock
         # change-form URL, it must be refused.
         response = self.client.post(
             "/admin/redis_admin/redislock/upload_finisher_gate_5F1_5Faaa/delete/",
@@ -1339,6 +1352,90 @@ class RedisAdminSuperuserOnlyDeletionTest(TestCase):
         # must still be in Redis.
         assert response.status_code in (302, 403, 404)
         assert self.redis.exists("upload_finisher_gate_1_aaa") == 1
+
+    def test_staff_bulk_delete_post_does_not_release_lock(self):
+        # Belt-and-braces: staff posting `action=delete_selected`
+        # against the locks changelist must not release the lock,
+        # even if a future template change started rendering the
+        # action.
+        staff = UserFactory(is_staff=True, is_superuser=False)
+        self.client.force_login(staff)
+
+        self.client.post(
+            "/admin/redis_admin/redislock/",
+            {
+                "action": "delete_selected",
+                "_selected_action": ["upload_finisher_gate_1_aaa"],
+            },
+            follow=True,
+        )
+
+        assert self.redis.exists("upload_finisher_gate_1_aaa") == 1
+
+    def test_superuser_can_release_lock_from_change_page(self):
+        # End-to-end: a superuser POSTs the standard delete-confirmation
+        # form, the lock is gone from Redis, and audit rows are
+        # written.
+        #
+        # Two LogEntry rows land per delete: Django's stock
+        # `delete_view` calls `self.log_deletion(...)` *before*
+        # `self.delete_model(...)`, and our `delete_model` then calls
+        # `redis_delete()` which writes its own `_record_audit` row.
+        # The two-row trail is intentional — Django's row attributes
+        # the action to the user with the standard admin
+        # representation, ours captures the redis-specific scope
+        # (family, count, refused, sample) for grep-ability.
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+        prior_logs = LogEntry.objects.count()
+
+        response = self.client.post(
+            "/admin/redis_admin/redislock/upload_finisher_gate_5F1_5Faaa/delete/",
+            {"post": "yes"},
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        assert self.redis.exists("upload_finisher_gate_1_aaa") == 0
+        assert LogEntry.objects.count() == prior_logs + 2
+
+    def test_superuser_can_bulk_release_locks_from_changelist(self):
+        # Stock `delete_selected` runs an interstitial confirmation
+        # page first; we re-post with `post=yes` to commit the
+        # release. The lock is gone after the second POST.
+        self.redis.set("upload_finisher_gate_2_bbb", "1")
+        superuser = UserFactory(is_staff=True, is_superuser=True)
+        self.client.force_login(superuser)
+
+        # Stage 1: the action POST renders the confirmation page.
+        stage1 = self.client.post(
+            "/admin/redis_admin/redislock/",
+            {
+                "action": "delete_selected",
+                "_selected_action": [
+                    "upload_finisher_gate_1_aaa",
+                    "upload_finisher_gate_2_bbb",
+                ],
+            },
+        )
+        assert stage1.status_code == 200
+        # Stage 2: the confirmation form re-posts with `post=yes`.
+        stage2 = self.client.post(
+            "/admin/redis_admin/redislock/",
+            {
+                "action": "delete_selected",
+                "_selected_action": [
+                    "upload_finisher_gate_1_aaa",
+                    "upload_finisher_gate_2_bbb",
+                ],
+                "post": "yes",
+            },
+            follow=True,
+        )
+
+        assert stage2.status_code == 200
+        assert self.redis.exists("upload_finisher_gate_1_aaa") == 0
+        assert self.redis.exists("upload_finisher_gate_2_bbb") == 0
 
     # ---- RedisQueueItemAdmin -------------------------------------------
 

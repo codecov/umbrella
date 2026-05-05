@@ -491,6 +491,27 @@ def test_lock_families_are_marked_undeletable_and_lock_category():
             assert fam.category == "queue", fam.name
 
 
+def test_no_non_lock_family_is_undeletable():
+    """The `RedisLockAdmin`'s `redis_delete(..., allow_locks=True)`
+    bypass is gated on `family.category == "lock"` so it never
+    silently allows the deletion of a non-lock family that happens
+    to also be `is_deletable=False`. That guard only earns its keep
+    if the registry invariant holds: every undeletable family is
+    lock-category. A future "singleton config key, never delete"
+    family registered as `is_deletable=False, category="queue"`
+    would silently break that bypass-precision guarantee, so trip
+    this test and force a re-evaluation of the bypass shape
+    instead.
+    """
+    offenders = [
+        f.name for f in FAMILIES if not f.is_deletable and f.category != "lock"
+    ]
+    assert offenders == [], (
+        f"Non-lock families flagged is_deletable=False: {offenders}. "
+        "Re-evaluate the `allow_locks` bypass in services.redis_delete."
+    )
+
+
 def test_iter_keys_with_category_lock_only_returns_locks(patched_redis):
     patched_redis.rpush("uploads/1/abc", "x")
     patched_redis.set("upload_lock_1_abc", "owned")
