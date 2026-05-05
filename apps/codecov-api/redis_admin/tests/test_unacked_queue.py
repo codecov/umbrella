@@ -550,6 +550,47 @@ def test_unacked_frequency_chart_aggregates_by_task_repo_commit(
     ]
 
 
+def test_unacked_frequency_chart_pcts_sum_to_100_with_unparseable_envelopes(
+    patched_broker,
+):
+    """Regression for a Bugbot-flagged frequency-chart percentage
+    bug found on PR #911: every all-None unparseable envelope
+    incremented `total` (the percentage denominator) but never
+    landed in `counter`, so the rendered percentages summed to
+    less than 100% on a HASH that mixed parseable and
+    unparseable messages. Now `total` is re-normalised from the
+    surviving counter (matching the cached path's
+    `total = sum(counter.values())` behaviour) so the chart's
+    bars always sum to 100% across the rendered buckets.
+    """
+
+    _push_unacked(
+        patched_broker,
+        delivery_tag="t-real",
+        routing_key="celery",
+        envelope=_build_envelope(task="t.A", kwargs={"repoid": 9, "commitid": "x"}),
+    )
+    # All-None, no routing_key — drops out of the chart (matches
+    # `test_unacked_frequency_chart_drops_fully_empty_rows`).
+    _push_unacked(
+        patched_broker,
+        delivery_tag="t-empty",
+        routing_key="",
+        envelope=_build_envelope(task=None, kwargs={}),
+    )
+
+    buckets, _total = _stream_unacked_frequency_aggregate(patched_broker)
+
+    assert len(buckets) == 1, (
+        f"unparseable + 1 real → 1 visible bucket; got {len(buckets)}"
+    )
+    total_pct = sum(b.pct for b in buckets)
+    assert 99.0 < total_pct < 101.0, (
+        f"chart percentages must sum to 100% across rendered buckets, got "
+        f"{total_pct!r} — pre-fix denominator included dropped all-None rows"
+    )
+
+
 def test_unacked_frequency_chart_drops_fully_empty_rows(patched_broker):
     """An envelope with no task/repoid/commitid AND no
     routing_key would produce a chart row whose "Clear" button
