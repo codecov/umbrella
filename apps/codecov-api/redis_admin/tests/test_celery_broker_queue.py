@@ -157,6 +157,310 @@ def test_parse_envelope_handles_string_int_repoid():
     assert meta.repoid == 1234
 
 
+def test_parse_envelope_aliases_repo_id_and_commit_sha():
+    """`UploadBreadcrumbTask` carries snake_case `repo_id`/`commit_sha`
+    rather than the canonical `repoid`/`commitid`. Surface them so the
+    admin renders structured columns and accepts repoid/commitid
+    filters on those messages.
+    """
+
+    envelope = _build_envelope(
+        task="app.tasks.upload_breadcrumb.UploadBreadcrumbTask",
+        kwargs={
+            "repo_id": 18802842,
+            "commit_sha": "af73fb73310312d4d2633449e50e6e141191c28c",
+            "upload_ids": [],
+        },
+    )
+
+    meta = parse_celery_envelope(envelope)
+
+    assert meta.repoid == 18802842
+    assert meta.commitid == "af73fb73310312d4d2633449e50e6e141191c28c"
+
+
+def test_parse_envelope_repoid_canonical_wins_over_alias():
+    """When both `repoid` and `repo_id` are present (defensive belt-and-
+    braces), prefer the canonical name so a task that sets both stays
+    consistent with every other call site.
+    """
+
+    envelope = _build_envelope(
+        kwargs={"repoid": 1, "repo_id": 2, "commitid": "abc", "commit_sha": "xyz"},
+    )
+
+    meta = parse_celery_envelope(envelope)
+
+    assert meta.repoid == 1
+    assert meta.commitid == "abc"
+
+
+def test_parse_envelope_extracts_comparison_id():
+    """`ComputeComparisonTask` only carries `comparison_id` in kwargs;
+    the queryset's hydrate pass turns it into `(repoid, commitid)`,
+    but the parser surface keeps it on `CeleryEnvelopeMeta` so the
+    queryset has something to hydrate from.
+    """
+
+    envelope = _build_envelope(
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 7777},
+    )
+
+    meta = parse_celery_envelope(envelope)
+
+    assert meta.comparison_id == 7777
+    assert meta.repoid is None
+    assert meta.commitid is None
+
+
+def test_parse_envelope_comparison_id_handles_string_int():
+    """JSON ints sometimes round-trip as strings; the comparison_id
+    coercion mirrors `repoid` so a stringified value is still picked
+    up by the chart hydration pass.
+    """
+
+    envelope = _build_envelope(kwargs={"comparison_id": "42"})
+
+    meta = parse_celery_envelope(envelope)
+
+    assert meta.comparison_id == 42
+
+
+# ---- ComputeComparison hydration ------------------------------------------
+
+
+def test_materialise_hydrates_comparison_rows_from_db(patched_broker, monkeypatch):
+    """A `ComputeComparisonTask` envelope only carries `comparison_id`,
+    but after `_materialise` the row should expose the resolved
+    `(repoid, commitid)` pair so the changelist can render and filter
+    on those columns.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {7777: (4242, "deadbeef")},
+    )
+
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 7777},
+    )
+
+    rows = list(
+        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify")
+    )
+
+    assert len(rows) == 1
+    assert rows[0].repoid == 4242
+    assert rows[0].commitid == "deadbeef"
+
+
+def test_materialise_comparison_filter_by_repoid_after_hydration(
+    patched_broker, monkeypatch
+):
+    """Hydration must run before `_matches_filters`, so a
+    `repoid__exact` filter pushed down from the changelist still
+    narrows ComputeComparisonTask rows whose envelope only carries
+    `comparison_id`.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {1: (10, "aaa"), 2: (20, "bbb")},
+    )
+
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 1},
+    )
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 2},
+    )
+
+    rows = list(
+        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify").filter(
+            repoid__exact=20
+        )
+    )
+
+    assert {r.repoid for r in rows} == {20}
+    assert {r.commitid for r in rows} == {"bbb"}
+
+
+def test_materialise_uses_one_orm_call_for_full_window(
+    patched_broker, monkeypatch
+):
+    """The hydrate helper must batch every comparison_id in the
+    materialised window into a single ORM lookup so a 100-deep
+    queue of ComputeComparison messages doesn't issue 100 queries.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset
+
+    call_count = {"n": 0}
+
+    def _fake_resolver(ids):
+        call_count["n"] += 1
+        return {cid: (100 + cid, f"sha-{cid}") for cid in ids}
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        _fake_resolver,
+    )
+
+    for cid in range(1, 11):
+        _push(
+            patched_broker,
+            "notify",
+            task="app.tasks.compute_comparison.ComputeComparison",
+            kwargs={"comparison_id": cid},
+        )
+
+    rows = list(
+        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify")
+    )
+
+    assert len(rows) == 10
+    assert call_count["n"] == 1
+
+
+def test_materialise_skips_resolver_when_no_comparison_ids(
+    patched_broker, monkeypatch
+):
+    """A queue carrying only ordinary repoid/commitid envelopes (i.e.
+    the hot path) must not pay the ORM round-trip — operators run
+    this admin without a CommitComparison-app deployment in some
+    tests.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset
+
+    call_count = {"n": 0}
+
+    def _fake_resolver(ids):
+        call_count["n"] += 1
+        return {}
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        _fake_resolver,
+    )
+
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.notify.NotifyTask",
+        kwargs={"repoid": 1, "commitid": "a"},
+    )
+
+    rows = list(
+        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify")
+    )
+
+    assert len(rows) == 1
+    assert call_count["n"] == 0
+
+
+def test_materialise_keeps_comparison_id_when_resolution_returns_empty(
+    patched_broker, monkeypatch
+):
+    """If the lookup misses (id deleted, ORM unavailable), the row
+    falls back to bare `(None, None)` rather than crashing the
+    changelist render.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {},
+    )
+
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 9999},
+    )
+
+    rows = list(
+        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify")
+    )
+
+    assert len(rows) == 1
+    assert rows[0].repoid is None
+    assert rows[0].commitid is None
+    assert rows[0]._comparison_id == 9999
+
+
+def test_stream_frequency_aggregate_resolves_comparison_buckets(
+    patched_broker, monkeypatch
+):
+    """The chart aggregator must surface ComputeComparison messages
+    under their resolved `(task, repoid, commitid)` bucket rather
+    than collapsing every one into the all-None row.
+    """
+
+    from redis_admin import queryset as redis_admin_queryset
+
+    monkeypatch.setattr(
+        redis_admin_queryset,
+        "_resolve_comparison_repo_commits",
+        lambda ids: {1: (10, "aaa"), 2: (20, "bbb")},
+    )
+
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 1},
+    )
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 1},
+    )
+    _push(
+        patched_broker,
+        "notify",
+        task="app.tasks.compute_comparison.ComputeComparison",
+        kwargs={"comparison_id": 2},
+    )
+
+    buckets, total = _stream_frequency_aggregate(patched_broker, "notify")
+
+    assert total == 3
+    keys = {(b.task_name, b.repoid, b.commitid) for b in buckets}
+    assert (
+        "app.tasks.compute_comparison.ComputeComparison",
+        10,
+        "aaa",
+    ) in keys
+    assert (
+        "app.tasks.compute_comparison.ComputeComparison",
+        20,
+        "bbb",
+    ) in keys
+
+
 def test_parse_envelope_rejects_bool_in_int_fields():
     """`bool` subclasses `int`; refuse to coerce True/False to 1/0."""
 
