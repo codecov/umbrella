@@ -2789,7 +2789,25 @@ class UnackedQueueAdmin(admin.ModelAdmin):
 
     @staticmethod
     def _is_summary_request(request: HttpRequest) -> bool:
-        return not request.GET.get("routing_key__exact")
+        # Detail mode flips on either:
+        #   - `routing_key__exact=<queue>` — slice to one queue's
+        #     reservations (default drill-in surface, mirrors
+        #     `CeleryBrokerQueueAdmin`'s `queue_name__exact` pivot).
+        #   - `view_all=1` — show every reserved message regardless
+        #     of routing_key. Needed because the unacked HASH is
+        #     one global bucket carrying every queue's
+        #     reservations: the summary row has no single
+        #     routing_key to point at, so the summary's drill-in
+        #     link uses `?view_all=1` to land on detail mode and
+        #     then lets the operator narrow via the sidebar
+        #     `routing_key` filter. Without this, the drill-in
+        #     link looped back to summary mode (Bugbot review on
+        #     PR #911).
+        if request.GET.get("routing_key__exact"):
+            return False
+        if request.GET.get("view_all") == "1":
+            return False
+        return True
 
     def get_ordering(self, request: HttpRequest):
         if self._is_summary_request(request):
@@ -3488,11 +3506,15 @@ class UnackedQueueAdmin(admin.ModelAdmin):
         # Wildcard routing_key: render every unacked message in
         # the HASH. The sidebar `routing_key` filter narrows
         # from there. The summary row has no routing_key value
-        # itself (depth-only marker), so we don't have a single
-        # queue to point at — operators use the sidebar to
-        # slice.
+        # itself (depth-only marker), so the link adds
+        # `?view_all=1` rather than `?routing_key__exact=<queue>`.
+        # `_is_summary_request` recognises `view_all=1` as the
+        # explicit "show every reservation" flag and flips into
+        # detail mode without filtering — without this the link
+        # looped back to summary mode (Bugbot review on PR #911).
+        url = f"{base}?view_all=1"
         return format_html(
             '<a href="{}">view {} unacked message(s) \u2192</a>',
-            base,
+            url,
             depth,
         )
