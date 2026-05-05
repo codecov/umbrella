@@ -79,10 +79,15 @@ def _classify_queues(
 ) -> tuple[list[str], list[str], list[str]]:
     """Bucket `RedisQueue` rows into (deletable_keys, refused_keys, families).
 
-    `allow_locks=True` lifts the `is_deletable=False` refusal so the
-    lock admin's superuser-only delete path can release stuck locks.
-    Every other caller leaves it `False` so a URL-tampered queue-admin
-    request that smuggles a lock key still refuses.
+    `allow_locks=True` lifts the `is_deletable=False` refusal *only
+    for lock-category families* so the lock admin's superuser-only
+    delete path can release stuck locks. The `category == "lock"`
+    guard keeps the bypass precise: any future non-lock family that
+    registers as `is_deletable=False` (e.g. a singleton config key
+    we never want operators to clear) stays refused even on the
+    `allow_locks=True` path. Every other caller leaves the kwarg
+    `False` so a URL-tampered queue-admin request that smuggles a
+    lock key still refuses too.
     """
 
     deletable: list[str] = []
@@ -93,7 +98,7 @@ def _classify_queues(
         if family is None:
             refused.append(queue.name)
             continue
-        if not family.is_deletable and not allow_locks:
+        if not family.is_deletable and not (allow_locks and family.category == "lock"):
             refused.append(queue.name)
             continue
         deletable.append(queue.name)

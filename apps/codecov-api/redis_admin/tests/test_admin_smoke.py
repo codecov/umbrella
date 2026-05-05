@@ -1374,8 +1374,17 @@ class RedisAdminSuperuserOnlyDeletionTest(TestCase):
 
     def test_superuser_can_release_lock_from_change_page(self):
         # End-to-end: a superuser POSTs the standard delete-confirmation
-        # form, the lock is gone from Redis, and an audit row is
+        # form, the lock is gone from Redis, and audit rows are
         # written.
+        #
+        # Two LogEntry rows land per delete: Django's stock
+        # `delete_view` calls `self.log_deletion(...)` *before*
+        # `self.delete_model(...)`, and our `delete_model` then calls
+        # `redis_delete()` which writes its own `_record_audit` row.
+        # The two-row trail is intentional — Django's row attributes
+        # the action to the user with the standard admin
+        # representation, ours captures the redis-specific scope
+        # (family, count, refused, sample) for grep-ability.
         superuser = UserFactory(is_staff=True, is_superuser=True)
         self.client.force_login(superuser)
         prior_logs = LogEntry.objects.count()
@@ -1388,7 +1397,7 @@ class RedisAdminSuperuserOnlyDeletionTest(TestCase):
 
         assert response.status_code == 200
         assert self.redis.exists("upload_finisher_gate_1_aaa") == 0
-        assert LogEntry.objects.count() == prior_logs + 1
+        assert LogEntry.objects.count() == prior_logs + 2
 
     def test_superuser_can_bulk_release_locks_from_changelist(self):
         # Stock `delete_selected` runs an interstitial confirmation
