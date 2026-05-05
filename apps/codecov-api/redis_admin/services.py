@@ -1822,15 +1822,34 @@ def _streaming_unacked_clear(
                 if dry_run:
                     continue
                 chunk_targets.append(field_name)
+                # `pass_matches` accumulates exactly once per
+                # match here. The post-pass-1 keep_one branch
+                # below intentionally does NOT extend it again:
+                # before the bugfix, every keep_one pass-1 match
+                # was stashed in `pass_matches` twice (once via
+                # this append, once via a now-removed
+                # `pass_matches.extend(chunk_targets)`). The
+                # post-pass HDEL+ZREM pipeline then issued
+                # duplicate commands per non-keeper. Idempotent
+                # on Redis (second HDEL/ZREM returns 0, leaving
+                # counters truthful) but doubled the round-trip
+                # volume on a long clear. Test
+                # `test_unacked_clear_keep_one_pass_one_does_not_double_pipeline`
+                # pins the no-duplicate-pipeline contract.
                 pass_matches.append(field_name)
 
             if chunk_targets and pass_num == 0 and keep_one:
-                # On pass 1 we can't HDEL yet (the keeper is
-                # determined post-pass), so defer: stash matches
-                # into `pass_matches` only. The post-pass HDEL/ZREM
-                # below will run one big pipeline against the full
-                # filtered list, minus the keeper.
-                pass_matches.extend(chunk_targets)
+                # On pass 1 we can't HDEL yet — the keeper is the
+                # lowest-deadline match across the *full pass*,
+                # determined post-pass via batched ZSCORE. The
+                # per-field `pass_matches.append(field_name)`
+                # above already stashed every chunk-level match
+                # exactly once; we deliberately don't extend
+                # `pass_matches` again here (see comment above).
+                # The post-pass HDEL+ZREM pipeline below runs one
+                # big batch against `pass_matches` minus the
+                # resolved keeper.
+                pass
             elif chunk_targets:
                 pipe = redis.pipeline(transaction=False)
                 for field_name in chunk_targets:
