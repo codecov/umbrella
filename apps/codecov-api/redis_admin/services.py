@@ -37,7 +37,12 @@ from django.db import close_old_connections
 
 from . import conn as _conn
 from . import settings as redis_admin_settings
-from .families import ConnectionKind, find_family, parse_celery_envelope
+from .families import (
+    CeleryEnvelopeMeta,
+    ConnectionKind,
+    find_family,
+    parse_celery_envelope,
+)
 from .families import _decode as _decode_value
 from .models import (
     CeleryBrokerQueue,
@@ -1912,9 +1917,13 @@ def _streaming_unacked_clear(
                 decoded = _decode_value(raw_value)
                 envelope_str, _exchange, routing_key = _decode_unacked_value(decoded)
                 if envelope_str is None:
-                    meta = type(
-                        "M", (), {"task": None, "repoid": None, "commitid": None}
-                    )()
+                    # Use the canonical empty `CeleryEnvelopeMeta`
+                    # rather than an ad-hoc fake. The fake was
+                    # missing fields (e.g. `comparison_id`) that
+                    # any future filter expansion would touch and
+                    # raise `AttributeError` on (Bugbot review on
+                    # PR #911).
+                    meta = CeleryEnvelopeMeta()
                 else:
                     meta = parse_celery_envelope(envelope_str)
                 chunk_buffer.append((field_name, routing_key, meta))
