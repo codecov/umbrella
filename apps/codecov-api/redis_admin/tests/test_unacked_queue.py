@@ -702,6 +702,73 @@ def test_unacked_clear_keep_one_keeps_lowest_deadline_match(patched_broker):
     assert patched_broker.hexists("unacked", "late") is False
 
 
+def test_unacked_clear_keep_one_pass_one_does_not_double_pipeline(
+    patched_broker, monkeypatch
+):
+    """Regression for a Bugbot-flagged duplicate-pipeline bug
+    found on PR #911: when `keep_one=True` and pass 1 walked a
+    chunk-buffer with multiple matches, `pass_matches` was
+    accumulated twice (once via the per-field
+    `pass_matches.append(field_name)`, once via a then-present
+    `pass_matches.extend(chunk_targets)`). The post-pass HDEL+ZREM
+    pipeline then issued two commands per non-keeper. Idempotent
+    on Redis (second HDEL/ZREM returns 0, so counters stayed
+    truthful) but doubled the round-trip volume on a long clear.
+
+    We assert each non-keeper field appears in the actual HDEL
+    pipeline call exactly once by patching `pipeline.hdel` to
+    record arg lists. Pinning this contract so a future refactor
+    of the post-pass keep_one branch can't quietly reintroduce
+    the duplicate.
+    """
+
+    deadlines = {"a": 100.0, "b": 200.0, "c": 300.0, "d": 400.0}
+    for tag, deadline in deadlines.items():
+        _push_unacked(
+            patched_broker,
+            delivery_tag=tag,
+            routing_key="celery",
+            deadline=deadline,
+            envelope=_build_envelope(task="t", kwargs={"repoid": 1, "commitid": "z"}),
+        )
+
+    hdel_calls: list[tuple[str, ...]] = []
+    real_pipeline = patched_broker.pipeline
+
+    def _spy_pipeline(*args, **kwargs):
+        pipe = real_pipeline(*args, **kwargs)
+        real_hdel = pipe.hdel
+
+        def _hdel(name, *fields):
+            hdel_calls.append(tuple(fields))
+            return real_hdel(name, *fields)
+
+        pipe.hdel = _hdel
+        return pipe
+
+    monkeypatch.setattr(patched_broker, "pipeline", _spy_pipeline)
+
+    filter_tuple = _substitute_filter_any_unacked("celery", "t", 1, "z")
+    stats = _streaming_unacked_clear(
+        patched_broker,
+        frozenset({filter_tuple}),
+        keep_one=True,
+    )
+
+    assert stats.total_found == 4
+    # Three non-keepers HDELed; the lowest-deadline `a` is kept.
+    assert stats.total_hdel == 3
+    # Across all pipelines, each non-keeper field must appear
+    # exactly once. Flatten the recorded HDEL arg lists and count.
+    flat = [field for fields in hdel_calls for field in fields]
+    counts = {field: flat.count(field) for field in flat}
+    for field, n in counts.items():
+        assert n == 1, (
+            f"field {field!r} HDELed {n} times across pipelines — "
+            "duplicate pipeline regression"
+        )
+
+
 def test_unacked_clear_filter_any_wildcards_match_correctly(patched_broker):
     """`_FILTER_ANY` in any slot wildcards that axis. Verify the
     full-wildcard `(routing_key=ANY, task=ANY, repoid=ANY,
