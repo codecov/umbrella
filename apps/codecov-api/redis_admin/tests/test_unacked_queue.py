@@ -35,6 +35,7 @@ from django.contrib.messages.storage.fallback import FallbackStorage
 from django.test import RequestFactory
 
 from redis_admin import conn as redis_admin_conn
+from redis_admin import queryset as redis_admin_queryset
 from redis_admin import services as redis_admin_services
 from redis_admin.admin import UnackedQueueAdmin
 from redis_admin.families import (
@@ -478,8 +479,6 @@ def test_unacked_queryset_hydrates_comparison_rows(patched_broker, monkeypatch):
     behave the same as for every other task.
     """
 
-    from redis_admin import queryset as redis_admin_queryset
-
     monkeypatch.setattr(
         redis_admin_queryset,
         "_resolve_comparison_repo_commits",
@@ -513,8 +512,6 @@ def test_unacked_queryset_filter_by_repoid_after_comparison_hydration(
     `comparison_id` — that's the point of running the hydrate pass
     before `_matches_filters` walks the row list.
     """
-
-    from redis_admin import queryset as redis_admin_queryset
 
     monkeypatch.setattr(
         redis_admin_queryset,
@@ -561,8 +558,6 @@ def test_unacked_queryset_get_hydrates_singleton_comparison_row(
     sees the resolved repoid/commitid.
     """
 
-    from redis_admin import queryset as redis_admin_queryset
-
     monkeypatch.setattr(
         redis_admin_queryset,
         "_resolve_comparison_repo_commits",
@@ -593,8 +588,6 @@ def test_stream_unacked_frequency_aggregate_resolves_comparison_buckets(
     `(routing_key, task, repoid, commitid)` instead of collapsing
     every one into a single all-None row alongside the routing_key.
     """
-
-    from redis_admin import queryset as redis_admin_queryset
 
     monkeypatch.setattr(
         redis_admin_queryset,

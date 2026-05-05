@@ -36,6 +36,7 @@ from django.test import Client as DjClient
 from django.test import TestCase
 
 from redis_admin import conn as redis_admin_conn
+from redis_admin import queryset as redis_admin_queryset
 from redis_admin import settings as redis_admin_settings
 from redis_admin.admin import CeleryBrokerQueueAdmin, _resolve_repo_displays
 from redis_admin.families import parse_celery_envelope
@@ -237,8 +238,6 @@ def test_materialise_hydrates_comparison_rows_from_db(patched_broker, monkeypatc
     on those columns.
     """
 
-    from redis_admin import queryset as redis_admin_queryset
-
     monkeypatch.setattr(
         redis_admin_queryset,
         "_resolve_comparison_repo_commits",
@@ -252,9 +251,7 @@ def test_materialise_hydrates_comparison_rows_from_db(patched_broker, monkeypatc
         kwargs={"comparison_id": 7777},
     )
 
-    rows = list(
-        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify")
-    )
+    rows = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
 
     assert len(rows) == 1
     assert rows[0].repoid == 4242
@@ -269,8 +266,6 @@ def test_materialise_comparison_filter_by_repoid_after_hydration(
     narrows ComputeComparisonTask rows whose envelope only carries
     `comparison_id`.
     """
-
-    from redis_admin import queryset as redis_admin_queryset
 
     monkeypatch.setattr(
         redis_admin_queryset,
@@ -301,15 +296,11 @@ def test_materialise_comparison_filter_by_repoid_after_hydration(
     assert {r.commitid for r in rows} == {"bbb"}
 
 
-def test_materialise_uses_one_orm_call_for_full_window(
-    patched_broker, monkeypatch
-):
+def test_materialise_uses_one_orm_call_for_full_window(patched_broker, monkeypatch):
     """The hydrate helper must batch every comparison_id in the
     materialised window into a single ORM lookup so a 100-deep
     queue of ComputeComparison messages doesn't issue 100 queries.
     """
-
-    from redis_admin import queryset as redis_admin_queryset
 
     call_count = {"n": 0}
 
@@ -331,24 +322,18 @@ def test_materialise_uses_one_orm_call_for_full_window(
             kwargs={"comparison_id": cid},
         )
 
-    rows = list(
-        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify")
-    )
+    rows = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
 
     assert len(rows) == 10
     assert call_count["n"] == 1
 
 
-def test_materialise_skips_resolver_when_no_comparison_ids(
-    patched_broker, monkeypatch
-):
+def test_materialise_skips_resolver_when_no_comparison_ids(patched_broker, monkeypatch):
     """A queue carrying only ordinary repoid/commitid envelopes (i.e.
     the hot path) must not pay the ORM round-trip — operators run
     this admin without a CommitComparison-app deployment in some
     tests.
     """
-
-    from redis_admin import queryset as redis_admin_queryset
 
     call_count = {"n": 0}
 
@@ -369,9 +354,7 @@ def test_materialise_skips_resolver_when_no_comparison_ids(
         kwargs={"repoid": 1, "commitid": "a"},
     )
 
-    rows = list(
-        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify")
-    )
+    rows = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
 
     assert len(rows) == 1
     assert call_count["n"] == 0
@@ -384,8 +367,6 @@ def test_materialise_keeps_comparison_id_when_resolution_returns_empty(
     falls back to bare `(None, None)` rather than crashing the
     changelist render.
     """
-
-    from redis_admin import queryset as redis_admin_queryset
 
     monkeypatch.setattr(
         redis_admin_queryset,
@@ -400,9 +381,7 @@ def test_materialise_keeps_comparison_id_when_resolution_returns_empty(
         kwargs={"comparison_id": 9999},
     )
 
-    rows = list(
-        CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify")
-    )
+    rows = list(CeleryBrokerQueueQuerySet(CeleryBrokerQueue, queue_name="notify"))
 
     assert len(rows) == 1
     assert rows[0].repoid is None
@@ -417,8 +396,6 @@ def test_stream_frequency_aggregate_resolves_comparison_buckets(
     under their resolved `(task, repoid, commitid)` bucket rather
     than collapsing every one into the all-None row.
     """
-
-    from redis_admin import queryset as redis_admin_queryset
 
     monkeypatch.setattr(
         redis_admin_queryset,
