@@ -1216,9 +1216,7 @@ class RedisLockAdmin(admin.ModelAdmin):
     # needed.
 
     def delete_model(self, request: HttpRequest, obj: RedisLock) -> None:
-        result = redis_delete(
-            [obj], user=request.user, dry_run=False, allow_locks=True
-        )
+        result = redis_delete([obj], user=request.user, dry_run=False, allow_locks=True)
         self.message_user(
             request,
             f"Released Redis lock {obj.name!r} ({result.count} removed).",
