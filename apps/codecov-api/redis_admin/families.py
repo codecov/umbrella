@@ -293,6 +293,13 @@ class CeleryEnvelopeMeta:
     `kwargs` carries the raw decoded keyword-args dict (the second
     element of the kombu body list) when present, so the admin can
     render a `payload_preview` without re-parsing the envelope.
+
+    `comparison_id` is read from `ComputeComparisonTask` envelopes,
+    which only carry `comparison_id` (no repoid / commitid) in their
+    kwargs; the queryset later batch-resolves it to a `(repoid,
+    commitid)` pair via the `compare_commitcomparison` table so
+    operators can still filter those messages by repo or commit on
+    the changelist.
     """
 
     task: str | None = None
@@ -301,6 +308,7 @@ class CeleryEnvelopeMeta:
     commitid: str | None = None
     ownerid: int | None = None
     pullid: int | None = None
+    comparison_id: int | None = None
     kwargs: dict[str, Any] | None = None
 
 
@@ -332,6 +340,20 @@ def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
     has repoid+commitid, sync_pull has repoid+pullid, sync_repos
     has ownerid only) so callers should treat every field as
     independently optional.
+
+    A handful of worker tasks use snake_case kwarg names instead of
+    the codecov-historic `repoid`/`commitid` shape:
+
+    * `UploadBreadcrumbTask` (and `transplant_report`,
+      `process_flakes`, `detect_flakes`) carry `repo_id` /
+      `commit_sha`. We accept those as aliases so the admin still
+      surfaces a structured `(repoid, commitid)` for them without
+      each call site having to remember the right kwarg shape.
+    * `ComputeComparisonTask` carries only `comparison_id`. We pull
+      that into a dedicated field on `CeleryEnvelopeMeta`; the
+      queryset later batch-resolves it to a `(repoid, commitid)`
+      pair via the `compare_commitcomparison` table so filtering
+      and display still work on those messages.
     """
 
     try:
@@ -356,6 +378,7 @@ def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
     commitid: str | None = None
     ownerid: int | None = None
     pullid: int | None = None
+    comparison_id: int | None = None
     kwargs: dict[str, Any] | None = None
     body_b64 = envelope.get("body")
     if isinstance(body_b64, str) and body_b64:
@@ -368,12 +391,21 @@ def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
             body = None
         if isinstance(body, list) and len(body) >= 2 and isinstance(body[1], dict):
             kwargs = body[1]
+            # Prefer the canonical `repoid` / `commitid` shape, but fall
+            # through to the snake_case `repo_id` / `commit_sha` aliases
+            # used by `UploadBreadcrumbTask` and a few other newer tasks
+            # so a single envelope shape covers both conventions.
             repoid = _coerce_int(kwargs.get("repoid"))
+            if repoid is None:
+                repoid = _coerce_int(kwargs.get("repo_id"))
             cid = kwargs.get("commitid")
+            if not (isinstance(cid, str) and cid):
+                cid = kwargs.get("commit_sha")
             if isinstance(cid, str) and cid:
                 commitid = cid
             ownerid = _coerce_int(kwargs.get("ownerid"))
             pullid = _coerce_int(kwargs.get("pullid"))
+            comparison_id = _coerce_int(kwargs.get("comparison_id"))
     return CeleryEnvelopeMeta(
         task=task,
         task_id=task_id,
@@ -381,6 +413,7 @@ def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
         commitid=commitid,
         ownerid=ownerid,
         pullid=pullid,
+        comparison_id=comparison_id,
         kwargs=kwargs,
     )
 
