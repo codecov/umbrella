@@ -44,6 +44,7 @@ from redis_admin.families import (
 )
 from redis_admin.models import UnackedQueueItem
 from redis_admin.queryset import (
+    _UNACKED_KEY,
     UnackedFrequencyBucket,
     UnackedQueueQuerySet,
     _decode_unacked_value,
@@ -1271,3 +1272,53 @@ def test_synchronous_unacked_clear_drains_targets(patched_broker, superuser):
     assert result.count == 2
     assert patched_broker.hlen("unacked") == 0
     assert patched_broker.zcard("unacked_index") == 0
+
+
+def test_unacked_admin_summary_drill_in_link_uses_view_all_query_param():
+    """Regression for a Bugbot-flagged self-referencing link bug
+    found on PR #911: the summary row's `messages_link` rendered
+    a URL with no `routing_key__exact` query param. Since
+    `_is_summary_request` returned True whenever
+    `routing_key__exact` was absent, clicking the drill-in link
+    re-rendered the summary page — a self-loop. The unacked
+    summary row has no single routing_key to point at because
+    the unacked HASH is one global bucket carrying every queue's
+    reservations.
+
+    The fix uses a dedicated `view_all=1` flag that
+    `_is_summary_request` recognises as the explicit "show every
+    reservation" mode. We pin both halves of the contract: the
+    rendered URL carries `view_all=1`, and `_is_summary_request`
+    treats `view_all=1` as a detail-mode request even when
+    `routing_key__exact` is empty.
+    """
+
+    admin_instance = UnackedQueueAdmin(UnackedQueueItem, AdminSite())
+    summary_obj = UnackedQueueItem(
+        delivery_tag=_UNACKED_KEY,
+        routing_key="",
+        depth=42,
+    )
+
+    rendered = admin_instance.messages_link(summary_obj)
+
+    assert "view_all=1" in rendered, (
+        f"summary drill-in link must carry view_all=1, got {rendered!r}"
+    )
+    assert "view 42 unacked message(s)" in rendered
+
+    factory = RequestFactory()
+    detail_request_via_view_all = factory.get(
+        "/admin/redis_admin/unackedqueueitem/", {"view_all": "1"}
+    )
+    assert UnackedQueueAdmin._is_summary_request(detail_request_via_view_all) is False
+
+    summary_request = factory.get("/admin/redis_admin/unackedqueueitem/")
+    assert UnackedQueueAdmin._is_summary_request(summary_request) is True
+
+    detail_request_via_routing_key = factory.get(
+        "/admin/redis_admin/unackedqueueitem/", {"routing_key__exact": "celery"}
+    )
+    assert (
+        UnackedQueueAdmin._is_summary_request(detail_request_via_routing_key) is False
+    )
