@@ -125,6 +125,8 @@ dev = [
     "djangorestframework-stubs[compatible-mypy]>=3.16.0",
     "pytest-freezer>=0.4.9",
     "django-debug-toolbar>=6.0.0",
+    "django-extensions>=4.1",
+    "ipython>=9.13.0",
 ]
 
 prod = [{ include-group = "codecov-api" }, { include-group = "worker" }]
