@@ -1932,6 +1932,18 @@ def _stream_unacked_frequency_aggregate(
     if not counter or total == 0:
         return [], 0
 
+    # Re-normalise `total` from the surviving counter so the
+    # rendered percentages sum to 100% across the chart's
+    # buckets. Without this, all-None unparseable envelopes
+    # (which `total += 1` but never land in `counter`) inflate
+    # the denominator and make percentages add up to less than
+    # 100% (Bugbot review on PR #911 — same shape as the
+    # cached path's `total = sum(counter.values())` re-norm
+    # in `frequency_by_routing_task_repo_commit`).
+    total = sum(counter.values())
+    if total == 0:
+        return [], 0
+
     ordered = sorted(
         counter.items(),
         key=lambda kv: (
