@@ -177,6 +177,22 @@ def _parse_celery_broker_key(_: str) -> ParsedKey:
     return ParsedKey(family="celery_broker")
 
 
+def _parse_unacked_key(_: str) -> ParsedKey:
+    """Kombu's unacked HASH (`unacked`) and its sibling ZSET
+    (`unacked_index`) carry no repo / commit / task info in the
+    *key* — that's all in the values. Per-value decoding (see
+    `_unacked_decode_value`) is what surfaces those fields. Same
+    pattern as `_parse_celery_broker_key`.
+
+    Verified against
+    `kombu.transport.redis.Channel.unacked_key` /
+    `unacked_index_key` (defaults: `"unacked"` and
+    `"unacked_index"`).
+    """
+
+    return ParsedKey(family="unacked")
+
+
 def _operator_configured_celery_queues() -> tuple[str, ...]:
     """Read the deployment's declared list of Celery queue names.
 
@@ -399,6 +415,62 @@ def _celery_decode_value(raw_decoded: str) -> str:
     return raw_decoded
 
 
+def _unacked_decode_value(raw_decoded: str) -> str:
+    """Prefix one HASH-value triple with a one-line summary if we can.
+
+    Each unacked HASH value is the JSON-encoded triple
+    `[envelope_dict, exchange_str, routing_key_str]`. We pluck the
+    envelope, run the same `parse_celery_envelope` we use for the
+    celery_broker family, and prepend a `[task=… repoid=… commit=…
+    rk=…]` summary so an operator viewing the raw HASH from the
+    generic `RedisQueueItem` admin (URL-tampering / curiosity path
+    only — the dedicated `UnackedQueueAdmin` is the supported
+    surface) still sees the structured shape at a glance.
+
+    The `rk=` segment is the Kombu `routing_key` slot from the
+    triple — important on this family specifically because
+    `unacked` spans every queue, so the operator needs to know
+    which queue this stuck message came from. Falls back to
+    returning the raw value verbatim when the envelope can't be
+    parsed.
+    """
+
+    try:
+        outer = orjson.loads(raw_decoded)
+    except (ValueError, TypeError):
+        return raw_decoded
+    if not isinstance(outer, list) or len(outer) < 1:
+        return raw_decoded
+    envelope = outer[0]
+    routing_key = outer[2] if len(outer) >= 3 and isinstance(outer[2], str) else None
+
+    envelope_str: str | None
+    if isinstance(envelope, str):
+        envelope_str = envelope
+    elif isinstance(envelope, dict):
+        try:
+            envelope_str = orjson.dumps(envelope).decode("utf-8")
+        except (TypeError, ValueError):
+            envelope_str = None
+    else:
+        envelope_str = None
+
+    parts: list[str] = []
+    if envelope_str is not None:
+        task, repoid, commitid = _peek_celery_envelope(envelope_str)
+        if task:
+            parts.append(f"task={task}")
+        if repoid is not None:
+            parts.append(f"repoid={repoid}")
+        if commitid:
+            parts.append(f"commit={commitid[:7]}")
+    if routing_key:
+        parts.append(f"rk={routing_key}")
+    if parts:
+        return f"[{' '.join(parts)}] {raw_decoded}"
+    return raw_decoded
+
+
 def _celery_pattern(filters: Mapping[str, Any]) -> str | None:
     """Celery queue *keys* don't carry repoid/commitid; if those filters
     are set, every Celery queue would be dropped post-scan, so skip the
@@ -408,6 +480,27 @@ def _celery_pattern(filters: Mapping[str, Any]) -> str | None:
     if filters.get("repoid") is not None or filters.get("commitid_prefix"):
         return None
     return "enterprise_*"
+
+
+def _unacked_pattern(filters: Mapping[str, Any]) -> str | None:
+    """Unacked HASH / ZSET keys (`unacked`, `unacked_index`) don't
+    carry repoid / commitid in the *key* — that's all in the
+    values. Skip the family entirely if either filter is set so
+    `iter_keys` doesn't run a doomed SCAN.
+
+    The `unacked_index` ZSET sibling is intentionally NOT
+    surfaced via SCAN (we don't want it appearing as its own
+    queue row); the family registers `fixed_keys=("unacked",)`
+    only, so iter_keys stops at the HASH. The ZSET is read by
+    `UnackedQueueQuerySet` directly via ZSCORE per row.
+    """
+
+    if filters.get("repoid") is not None or filters.get("commitid_prefix"):
+        return None
+    # No SCAN needed — the only fixed key is `unacked`. Returning
+    # an empty string skips the SCAN loop in `iter_keys` while
+    # still letting the `fixed_keys` enumeration run.
+    return ""
 
 
 # ---- Lock parsers (M4.3) ---------------------------------------------------
@@ -740,6 +833,28 @@ FAMILIES: tuple[Family, ...] = (
         # Celery queues live on the broker Redis (`services.celery_broker`),
         # which in production is a separate Memorystore from the cache Redis
         # the rest of the families use. See `redis_admin.conn` for details.
+        connection_kind="broker",
+    ),
+    Family(
+        name="unacked",
+        # `unacked` is a singleton HASH (one per broker), so there's
+        # no SCAN pattern to match — `fixed_keys=("unacked",)` is the
+        # whole story. `unacked_index` (ZSET) is deliberately NOT a
+        # fixed key because surfacing it as its own queue row would
+        # double-count (it's an internal index, not a queue) and
+        # invite operators to clear it independently of the HASH —
+        # which would orphan the ZSET members and break Kombu's
+        # restore-loop. The dedicated `UnackedQueueAdmin` reads the
+        # ZSET via ZSCORE per row instead.
+        scan_pattern="",
+        redis_type="hash",
+        parse_key=_parse_unacked_key,
+        pattern_for=_unacked_pattern,
+        fixed_keys=("unacked",),
+        decode_value=_unacked_decode_value,
+        # Same Redis as celery_broker — Kombu's unacked bookkeeping
+        # lives next to the queue keys themselves on the broker
+        # Memorystore in production.
         connection_kind="broker",
     ),
     # ---- Locks (M4.3) -----------------------------------------------------

@@ -1,0 +1,248 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-list{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{{ changelist_url }}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; Clear by filter
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+  <p>
+    Clears every Kombu unacked message whose decoded envelope matches
+    the <em>(routing_key, task_name, repoid, commitid)</em> filter
+    below. Each match resolves to a paired
+    <code>HDEL unacked &lt;delivery_tag&gt;</code> +
+    <code>ZREM unacked_index &lt;delivery_tag&gt;</code> in a Redis
+    pipeline; skipping the ZREM would leave a phantom in
+    <code>unacked_index</code> that points at a non-existent HASH
+    field and break Kombu's restore-loop, so the pairing is
+    enforced unconditionally.
+  </p>
+  <p>
+    Three actions are available below. <strong>Dry-run</strong> is
+    the safe first move &mdash; it writes a <code>LogEntry</code>
+    under <code>scope=&quot;unacked_clear&quot;</code> but leaves
+    the HASH untouched. The two destructive actions both gate on
+    the typed-confirmation field; both also write the same audit
+    log entry on success. All three fan out to a chunked
+    background-job worker that streams the HASH and reports exact
+    match counts as it scans &mdash; this preview page itself does
+    no Redis I/O.
+  </p>
+
+  {# ---- Filter rows: routing_key, task, repoid (linked), commit (truncated) ---- #}
+  <fieldset class="module">
+    <h2>Filter</h2>
+    <table class="celery-clear-filter">
+      <tr>
+        <th scope="row">Routing key</th>
+        <td>
+          {% if routing_key %}<code>{{ routing_key }}</code>{% else %}<em>(any &mdash; spans every queue)</em>{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th scope="row">Task</th>
+        <td>
+          {% if task_name %}<code>{{ task_name }}</code>{% else %}<em>(any)</em>{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th scope="row">Repo</th>
+        <td>
+          {% if repoid is not None %}
+            {% if repo_change_url %}
+              <a href="{{ repo_change_url }}" title="repoid={{ repoid }}"><code>{{ repoid }}</code></a>
+            {% else %}
+              <code>{{ repoid }}</code>
+            {% endif %}
+          {% else %}
+            <em>(any)</em>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th scope="row">Commit</th>
+        <td>
+          {% if commitid %}
+            <code title="{{ commitid }}">{{ commitid|slice:":7" }}</code>
+          {% else %}
+            <em>(any)</em>
+          {% endif %}
+        </td>
+      </tr>
+    </table>
+  </fieldset>
+
+  {# ---- Approximate-count callout (no Redis call; values come from the chart) ---- #}
+  {#
+    The chart already has the bucket count and HLEN from its
+    HSCAN snapshot, so the approximate "will clear ~X" string is
+    derived in pure Python in the view (`approx` dict). When any
+    of the four hints is missing we render the "not available"
+    fallback instead of computing a misleading number. The
+    chunked background-job worker computes the exact match count
+    as it walks so the audit log stays precise.
+  #}
+  <fieldset class="module">
+    <h2>Approximate impact</h2>
+    {% if approx %}
+      <p class="celery-approx-callout">
+        Will clear approximately
+        <strong>{{ approx.count|default_if_none:"&mdash;" }}</strong>
+        message(s)
+        {% if approx.pct is not None %}
+          (<strong>~{{ approx.pct|floatformat:1 }}%</strong> of the
+          unacked HASH at depth ~{{ approx.depth }}).
+        {% else %}
+          (HASH depth ~{{ approx.depth }}).
+        {% endif %}
+      </p>
+      <p class="help">
+        Approximation derived from the chart's sampled-window
+        bucket size projected onto the live HASH depth; the
+        chunked clear will compute the exact match count as it
+        scans.
+      </p>
+    {% else %}
+      <p class="celery-approx-callout celery-approx-unknown">
+        <em>Approximate count not available</em> &mdash; the
+        chunked clear will compute the exact match count as it
+        scans.
+      </p>
+    {% endif %}
+  </fieldset>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if routing_key %}<input type="hidden" name="routing_key" value="{{ routing_key }}">{% endif %}
+    {% if task_name %}<input type="hidden" name="task_name" value="{{ task_name }}">{% endif %}
+    {% if repoid is not None %}<input type="hidden" name="repoid" value="{{ repoid }}">{% endif %}
+    {% if commitid %}<input type="hidden" name="commitid" value="{{ commitid }}">{% endif %}
+    {# Round-trip the chart's display hints so a typed-confirm
+       failure doesn't drop the approximate-count callout. Same
+       pattern as the celery_broker preview. #}
+    {% if bucket_count_hint %}<input type="hidden" name="bucket_count" value="{{ bucket_count_hint }}">{% endif %}
+    {% if bucket_pct_hint %}<input type="hidden" name="bucket_pct" value="{{ bucket_pct_hint }}">{% endif %}
+    {% if total_visible_hint %}<input type="hidden" name="total_visible" value="{{ total_visible_hint }}">{% endif %}
+    {% if total_depth_hint %}<input type="hidden" name="total_depth" value="{{ total_depth_hint }}">{% endif %}
+
+    <fieldset class="module">
+      <h2>Confirm and clear</h2>
+      <div class="form-row{% if confirm_error %} errors{% endif %}">
+        <div>
+          {% if confirm_error %}<ul class="errorlist"><li>{{ confirm_error }}</li></ul>{% endif %}
+          <label for="id_typed_confirm">Type <code>{{ expected_confirm }}</code> to confirm:</label>
+          <input type="text" name="typed_confirm" id="id_typed_confirm" value="{{ typed_confirm }}" autocomplete="off">
+          <div class="help">
+            Re-type the value above to enable the destructive
+            actions on the right. Dry-run does not require it.
+            {% if not routing_key %}
+            (When the routing_key filter is unset, the typed
+            confirmation is the literal <code>unacked</code>
+            because the clear spans every queue.)
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {% comment %}
+      Three submit buttons share the form. Server-side dispatch
+      on the `action` value:
+
+      * `dry_run` &mdash; neutral / `default` styling. Spawns the
+        chunked worker with `dry_run=True`; HASH untouched.
+        Writes a `LogEntry` on completion.
+      * `clear_keep_one` &mdash; destructive. Clears every match
+        EXCEPT the one with the lowest `ZSCORE` from
+        `unacked_index` (i.e. the message Kombu is most likely
+        to re-enqueue first via its restore-loop). "Drop the
+        duplicate retries but leave one in flight so the
+        operator's debug tooling can catch it."
+      * `clear_all` &mdash; destructive. Clears every match.
+      {% endcomment %}
+      <div class="submit-row celery-clear-actions">
+        <button type="submit" name="action" value="dry_run" class="default">
+          Dry-run (audit only, no mutations)
+        </button>
+        <div class="celery-destructive-actions">
+          <button type="submit" name="action" value="clear_keep_one"
+                  class="button celery-destructive-button celery-clear-keep-one">
+            Clear all but lowest-deadline
+          </button>
+          <button type="submit" name="action" value="clear_all"
+                  class="button celery-destructive-button celery-clear-all">
+            Clear all matching unacked messages
+          </button>
+        </div>
+      </div>
+    </fieldset>
+
+    <p>
+      <a href="{{ changelist_url }}">&larr; back to unacked messages</a>
+    </p>
+  </form>
+
+</div>
+
+<style>
+  /* Mirrors the celery_broker preview's theme-safe styles. */
+  .celery-clear-filter {
+    border-collapse: collapse;
+  }
+  .celery-clear-filter th,
+  .celery-clear-filter td {
+    padding: 4px 12px 4px 0;
+    text-align: left;
+    vertical-align: top;
+  }
+  .celery-clear-filter th {
+    width: 8em;
+    font-weight: 600;
+    color: var(--body-quiet-color, inherit);
+  }
+  .celery-approx-callout {
+    font-size: 1.05em;
+    margin: 0.25em 0;
+  }
+  .celery-approx-unknown {
+    color: var(--body-quiet-color, inherit);
+  }
+  .celery-clear-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em 1em;
+    align-items: flex-start;
+  }
+  .celery-destructive-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75em;
+    margin-left: auto;
+    padding-left: 1em;
+    border-left: 1px solid var(--border-color, var(--hairline-color, #ccc));
+  }
+  .celery-destructive-button {
+    color: var(--error-fg, #ba2121);
+    font-weight: 600;
+  }
+  .celery-destructive-button:hover,
+  .celery-destructive-button:focus {
+    color: var(--error-fg, #ba2121);
+    text-decoration: underline;
+  }
+  .celery-destructive-actions > .celery-clear-all {
+    margin-top: 0.25em;
+    border-top: 1px dashed var(--border-color, var(--hairline-color, #ccc));
+    padding-top: 0.75em;
+  }
+</style>
+{% endblock %}

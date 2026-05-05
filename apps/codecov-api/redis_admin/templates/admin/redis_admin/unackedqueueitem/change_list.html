@@ -1,0 +1,45 @@
+{% extends "admin/change_list.html" %}
+{% load admin_urls %}
+{% load static %}
+
+{% comment %}
+Unacked drill-down: when `routing_key` is set we inject a lazy
+frequency chart above the result list. Same loader pattern as
+the celery_broker drill-down — the chart is fetched async from
+`chart_fragment_view` so the changelist renders immediately
+regardless of the unacked HASH's depth.
+
+The fetch helper + loader styles are the same external assets
+used by the celery_broker chart (`celery_chart_fragment.js` /
+`celery_chart_fragment.css`); they key on the
+`#celery-chart-fragment` element id rather than anything
+celery-specific, so reusing them keeps CSP setup minimal
+(production admin allows `'self'` + a single fixed sha256 for
+inline scripts) and avoids a second copy of the same fetch
+dance.
+
+In summary mode (no `routing_key`) the block renders nothing
+extra — the summary changelist has one row carrying
+`HLEN(unacked)` and there's no per-routing-key axis to chart.
+{% endcomment %}
+{% block extrastyle %}
+  {{ block.super }}
+  {% if routing_key %}
+    <link rel="stylesheet" href="{% static 'redis_admin/css/celery_chart_fragment.css' %}">
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  {% if routing_key %}
+    <div id="celery-chart-fragment"
+         data-fragment-url="{% url 'admin:unackedqueueitem-chart-fragment' routing_key=routing_key %}">
+      <div class="celery-chart-loader" role="status" aria-live="polite">
+        <div class="celery-chart-loader__spinner" aria-hidden="true"></div>
+        <p class="celery-chart-loader__label">Loading frequency chart&hellip;</p>
+        <p class="celery-chart-loader__hint">Sampling up to {{ scan_limit_label|default:"20,000" }} unacked messages for routing key <code>{{ routing_key }}</code> &mdash; this can take a few seconds on a deep HASH.</p>
+      </div>
+    </div>
+    <script src="{% static 'redis_admin/js/celery_chart_fragment.js' %}" defer></script>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
