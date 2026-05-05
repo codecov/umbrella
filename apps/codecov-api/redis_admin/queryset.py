@@ -1976,6 +1976,7 @@ class UnackedQueueQuerySet:
         model,
         *,
         routing_key: str | None = None,
+        view_all: bool = False,
         ordering: tuple[str, ...] = (),
         filters: dict[str, Any] | None = None,
         request: Any = None,
@@ -1984,6 +1985,13 @@ class UnackedQueueQuerySet:
     ) -> None:
         self.model = model
         self.routing_key = routing_key
+        # `view_all` lets the admin's "view N unacked message(s) →"
+        # link drop into per-message detail mode without picking a
+        # specific routing_key. Without this flag the queryset
+        # would still report `is_summary_mode()` and feed a single
+        # summary row to the admin's detail-column rendering — a
+        # row of dashes (Bugbot review on PR #911).
+        self.view_all = view_all
         self._ordering = ordering
         self._filters: dict[str, Any] = dict(filters or {})
         self._result_cache: list | None = None
@@ -2006,12 +2014,14 @@ class UnackedQueueQuerySet:
         self,
         *,
         routing_key: Any = _UNSET,
+        view_all: Any = _UNSET,
         ordering: tuple[str, ...] | None = None,
         filters: dict[str, Any] | None = None,
     ) -> UnackedQueueQuerySet:
         return UnackedQueueQuerySet(
             self.model,
             routing_key=self.routing_key if routing_key is _UNSET else routing_key,
+            view_all=self.view_all if view_all is _UNSET else view_all,
             ordering=self._ordering if ordering is None else ordering,
             filters=(
                 {**self._filters, **(filters or {})} if filters else dict(self._filters)
@@ -2259,12 +2269,18 @@ class UnackedQueueQuerySet:
         )
 
     def is_summary_mode(self) -> bool:
-        """No `routing_key__exact` filter → render the single
-        summary row (one per HASH, since there's only one
-        `unacked` HASH per broker).
+        """No `routing_key__exact` filter and no `view_all` flag
+        → render the single summary row (one per HASH, since
+        there's only one `unacked` HASH per broker).
+
+        `view_all` lets the admin land on detail-mode without
+        scoping to a single routing_key (the summary drill-in
+        link's behaviour); the materialiser then surfaces every
+        reserved message and the operator narrows via the
+        sidebar `routing_key` filter.
         """
 
-        return self.routing_key is None
+        return self.routing_key is None and not self.view_all
 
     @sentry_sdk.trace
     def _materialise_summary(self) -> list:
@@ -2333,9 +2349,14 @@ class UnackedQueueQuerySet:
 
     _REQUEST_CACHE_ATTR: str = "_unacked_hscan_cache"
 
-    def _request_cache_key(self) -> tuple[str, int]:
+    def _request_cache_key(self) -> tuple[str, bool, int]:
+        # `view_all` rides on the cache key so a routing_key-scoped
+        # render and a `view_all=1` render don't share a snapshot:
+        # the routing_key path narrows in `_matches_filters` after
+        # caching, while `view_all=1` keeps every row.
         return (
             self.routing_key or "",
+            self.view_all,
             redis_admin_settings.CELERY_BROKER_DISPLAY_LIMIT,
         )
 

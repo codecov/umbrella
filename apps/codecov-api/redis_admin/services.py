@@ -1752,9 +1752,6 @@ def _streaming_unacked_clear(
     # still exists; if a worker drained it between passes, the
     # next pass's lowest-deadline match becomes the new keeper.
     keeper_field: str | None = None
-    # Per-pass collected match list so pass 1 can compute the
-    # ZSCORE-based keeper after the full sweep.
-    pass1_match_fields: list[str] = []
 
     for pass_num in range(_UNACKED_MAX_PASSES):
         passes_run = pass_num + 1
@@ -1808,8 +1805,6 @@ def _streaming_unacked_clear(
                 matches_found += 1
                 if first_match_field is None:
                     first_match_field = field_name
-                if pass_num == 0:
-                    pass1_match_fields.append(field_name)
                 # `keep_one`: skip the keeper across all passes.
                 # On pass 1 we don't yet know the lowest-deadline
                 # match (that's computed after the pass), so we
@@ -1944,6 +1939,15 @@ def _streaming_unacked_clear(
             )
             targets = [f for f in pass_matches if f != keeper_field]
             if targets:
+                # Capture pre-drain counters so the post-pass
+                # progress callback below can report `matched_delta`
+                # and the cumulative `zrem_removed`. Without this,
+                # the operator's progress page permanently reports
+                # `matched=0` and `zrem_removed=0` for keep_one
+                # clears: the per-chunk callback runs while pass-1
+                # keep_one is still deferring all mutations to this
+                # post-pass pipeline (Bugbot review on PR #911).
+                pre_drain_hdel = matches_hdel
                 pipe = redis.pipeline(transaction=False)
                 for field_name in targets:
                     pipe.hdel(unacked_key, field_name)
@@ -1971,6 +1975,36 @@ def _streaming_unacked_clear(
                         matches_zrem += int(reply or 0)
                     except (TypeError, ValueError):
                         pass
+                # Notify the progress callback now that the deferred
+                # post-pass HDEL+ZREM have actually mutated the
+                # broker. Without this tick, the operator's progress
+                # page on a keep_one clear permanently shows
+                # `matched=0` / `zrem_removed=0` because every
+                # per-chunk tick during the pass-1 sweep reported
+                # zero deltas (mutations were all deferred to here).
+                if progress_callback is not None:
+                    snapshot = _UnackedChunkProgress(
+                        pass_num=passes_run,
+                        chunk_index=chunk_index,
+                        processed_delta=0,
+                        matched_delta=matches_hdel - pre_drain_hdel,
+                        found_delta=0,
+                        total_hdel=total_hdel + matches_hdel,
+                        total_zrem=total_zrem + matches_zrem,
+                        total_found=total_found + matches_found,
+                    )
+                    try:
+                        cancel_now = bool(progress_callback(snapshot))
+                    except Exception:  # pragma: no cover - defensive
+                        log.exception(
+                            "redis_admin._streaming_unacked_clear: "
+                            "post-pass keep_one progress_callback raised; "
+                            "treating as no-cancel"
+                        )
+                        cancel_now = False
+                    chunk_index += 1
+                    if cancel_now:
+                        cancelled = True
 
         log.info(
             "redis_admin.unacked_clear: pass=%d depth=%d "

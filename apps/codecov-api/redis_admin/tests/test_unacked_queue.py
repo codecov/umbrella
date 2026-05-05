@@ -1322,3 +1322,61 @@ def test_unacked_admin_summary_drill_in_link_uses_view_all_query_param():
     assert (
         UnackedQueueAdmin._is_summary_request(detail_request_via_routing_key) is False
     )
+
+
+def test_unacked_admin_view_all_drill_in_renders_per_message_rows(patched_broker):
+    """Regression for a Bugbot-flagged HIGH-severity bug found on
+    PR #911: clicking the summary row's "view N unacked
+    message(s) →" link landed on `?view_all=1` and
+    `_is_summary_request` correctly flipped to detail mode for
+    rendering, but `get_queryset` only flipped the queryset out
+    of summary mode when `routing_key__exact` was set. With
+    `view_all=1`, the queryset's `routing_key` stayed `None`,
+    `is_summary_mode()` returned `True`, and the admin rendered
+    a single dashes-row under the per-message detail columns —
+    breaking the feature at its primary navigation entry point.
+    The fix wires `view_all=1` through to the queryset so it
+    materialises every reservation regardless of routing_key,
+    and the operator narrows from there via the sidebar
+    `routing_key` filter.
+    """
+
+    _push_unacked(
+        patched_broker,
+        delivery_tag="d-celery",
+        routing_key="celery",
+        deadline=1.0,
+        envelope=_build_envelope(task="app.tasks.notify", kwargs={"repoid": 1}),
+    )
+    _push_unacked(
+        patched_broker,
+        delivery_tag="d-uploads",
+        routing_key="uploads",
+        deadline=2.0,
+        envelope=_build_envelope(task="app.tasks.upload", kwargs={"repoid": 2}),
+    )
+
+    factory = RequestFactory()
+    request = factory.get("/admin/redis_admin/unackedqueueitem/", {"view_all": "1"})
+    admin_instance = UnackedQueueAdmin(UnackedQueueItem, AdminSite())
+
+    queryset = admin_instance.get_queryset(request)
+
+    assert queryset.is_summary_mode() is False, (
+        "view_all=1 must flip the queryset out of summary mode so the "
+        "admin's detail columns render per-message rows."
+    )
+    rows = list(queryset)
+    delivery_tags = sorted(r.delivery_tag for r in rows)
+    assert delivery_tags == ["d-celery", "d-uploads"], (
+        f"view_all=1 must surface every reserved message regardless of "
+        f"routing_key; got {delivery_tags!r}"
+    )
+    routing_keys = sorted(r.routing_key for r in rows)
+    assert routing_keys == ["celery", "uploads"], (
+        f"view_all=1 must preserve each row's source routing_key; got {routing_keys!r}"
+    )
+    assert all(r.depth is None for r in rows), (
+        "view_all=1 rows must be per-message (depth=None), not summary "
+        "rows wearing detail columns."
+    )

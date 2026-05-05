@@ -2850,6 +2850,15 @@ class UnackedQueueAdmin(admin.ModelAdmin):
         routing_key = request.GET.get("routing_key__exact")
         if routing_key:
             queryset = queryset.filter(routing_key__exact=routing_key)
+        elif request.GET.get("view_all") == "1":
+            # Summary drill-in passes `view_all=1` so the queryset
+            # joins the admin in detail mode (`is_summary_mode()`
+            # returns False) without scoping to a single
+            # routing_key. Without this the queryset stayed in
+            # summary mode and `_materialise_summary` produced a
+            # single dashes-row under the detail columns (Bugbot
+            # review on PR #911).
+            queryset.view_all = True
         # Plumb the request through so the changelist and the
         # frequency-chart context builder share a single HSCAN +
         # parse pass per render. Mirrors the celery_broker pattern.
