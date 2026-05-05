@@ -2164,11 +2164,7 @@ def _stream_unacked_frequency_aggregate(
         # ComputeComparisonTask side-channel: track separately so
         # the post-loop merge can swap in resolved
         # `(repoid, commitid)` from `compare_commitcomparison`.
-        if (
-            meta.comparison_id is not None
-            and meta.repoid is None
-            and not meta.commitid
-        ):
+        if meta.comparison_id is not None and meta.repoid is None and not meta.commitid:
             comparison_counter[(routing_key, meta.task, meta.comparison_id)] += 1
             total += 1
             continue
