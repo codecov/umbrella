@@ -300,6 +300,117 @@ def test_resolve_celery_queue_names_unset_keeps_defaults(monkeypatch):
     assert "healthcheck" in names
 
 
+# ---- Live broker queue discovery -------------------------------------------
+
+
+def test_discover_celery_queues_from_broker_returns_only_list_keys():
+    """`_discover_celery_queues_from_broker` must SCAN with TYPE=list
+    so kombu's HASH (`unacked`) and ZSET (`unacked_index`) — which
+    live on the same broker Redis — never surface as queues.
+    """
+
+    from redis_admin.families import (  # noqa: PLC0415
+        _discover_celery_queues_from_broker,
+    )
+
+    broker = fakeredis.FakeStrictRedis()
+    broker.rpush("uploads", "x")
+    broker.rpush("notify", "y")
+    broker.rpush("enterprise_uploads_dropbox", "z")
+    broker.hset("unacked", "tag-1", "envelope")
+    broker.zadd("unacked_index", {"tag-1": 1.0})
+    broker.set("celery-task-meta-abc", "result")
+
+    discovered = _discover_celery_queues_from_broker(broker)
+
+    assert set(discovered) == {"uploads", "notify", "enterprise_uploads_dropbox"}
+
+
+def test_discover_celery_queues_from_broker_skips_kombu_internal_prefixes():
+    """List-typed kombu / redis_admin internal keys (e.g. `_kombu.*`,
+    LSET tombstone prefix) must be deny-listed even though the
+    TYPE=list filter would otherwise let them through. Future-proofs
+    against kombu releases that introduce list-typed bookkeeping
+    keys we don't want to surface as celery queues.
+    """
+
+    from redis_admin.families import (  # noqa: PLC0415
+        _discover_celery_queues_from_broker,
+    )
+
+    broker = fakeredis.FakeStrictRedis()
+    broker.rpush("uploads", "x")
+    broker.rpush("_kombu.binding.celery", "binding-1")
+    broker.rpush(
+        "__redis_admin_celery_tombstone__:abc123",
+        "tombstone-as-top-level-key",
+    )
+
+    discovered = _discover_celery_queues_from_broker(broker)
+
+    assert set(discovered) == {"uploads"}
+
+
+def test_discover_celery_queues_from_broker_returns_sorted_tuple():
+    """Stable ordering matters because the summary changelist and the
+    `CeleryQueueFilter` dropdown both render the names directly; an
+    unstable order would reshuffle the page on every refresh.
+    """
+
+    from redis_admin.families import (  # noqa: PLC0415
+        _discover_celery_queues_from_broker,
+    )
+
+    broker = fakeredis.FakeStrictRedis()
+    for name in ("zeta", "alpha", "mu"):
+        broker.rpush(name, "x")
+
+    discovered = _discover_celery_queues_from_broker(broker)
+
+    assert discovered == ("alpha", "mu", "zeta")
+
+
+def test_discover_celery_queues_from_broker_handles_scan_errors_gracefully():
+    """Older Redis builds reject `SCAN ... TYPE`, and a broker outage
+    can surface here too. The helper must log and return `()` so the
+    summary admin falls back to the static enumeration rather than
+    crashing the changelist render.
+    """
+
+    from redis_admin.families import (  # noqa: PLC0415
+        _discover_celery_queues_from_broker,
+    )
+
+    class _BrokenBroker:
+        def scan_iter(self, **_kwargs):
+            raise RuntimeError("ERR syntax error: TYPE not supported")
+
+    discovered = _discover_celery_queues_from_broker(_BrokenBroker())
+
+    assert discovered == ()
+
+
+def test_discover_celery_queues_from_broker_respects_max_scan_keys(monkeypatch):
+    """`MAX_SCAN_KEYS` bounds the discovery sweep so an unexpectedly
+    large broker keyspace can't pin the api process. Drop the cap to
+    a small number and confirm we stop early.
+    """
+
+    from redis_admin import settings as redis_admin_settings  # noqa: PLC0415
+    from redis_admin.families import (  # noqa: PLC0415
+        _discover_celery_queues_from_broker,
+    )
+
+    monkeypatch.setattr(redis_admin_settings, "MAX_SCAN_KEYS", 3)
+    broker = fakeredis.FakeStrictRedis()
+    for i in range(20):
+        broker.rpush(f"queue_{i:02d}", "x")
+
+    discovered = _discover_celery_queues_from_broker(broker)
+
+    assert len(discovered) == 3
+
+
 def test_iter_keys_yields_celery_queues_via_fixed_keys(patched_redis):
     patched_redis.rpush("celery", '{"task": "x"}')
     patched_redis.rpush("healthcheck", '{"task": "y"}')

@@ -237,6 +237,14 @@ def _resolve_celery_queue_names() -> tuple[str, ...]:
     Falls back to just (1) + the hardcoded `("celery",
     "healthcheck")` defaults if `BaseCeleryConfig` can't be imported
     (e.g. minimal-env tests).
+
+    This is the *static* enumeration. The summary admin and the
+    `CeleryQueueFilter` sidebar union this with
+    `_discover_celery_queues_from_broker()` (a live SCAN of the
+    broker Redis) so deployments that haven't set
+    `setup.redis_admin.celery_queues` still see every queue that
+    actually exists, while empty-but-known queues never disappear
+    just because they happen to be drained at render time.
     """
 
     names: set[str] = set(_operator_configured_celery_queues())
@@ -263,6 +271,93 @@ def _resolve_celery_queue_names() -> tuple[str, ...]:
             if isinstance(queue_name, str) and queue_name:
                 names.add(queue_name)
     return tuple(sorted(names))
+
+
+# Top-level keys on the broker Redis that are list-typed but *not*
+# celery queues. Kombu's `unacked` (HASH) and `unacked_index` (ZSET)
+# live on the same broker but are filtered out by the SCAN's
+# `TYPE=list` guard already, so they don't need entries here. The
+# prefixes catch:
+#
+# * `__redis_admin_celery_tombstone__:<uuid>` — our own LSET
+#   tombstones for the celery_broker clear path
+#   (see `services._celery_clear_tombstone`). Tombstones live as
+#   *list elements* inside a queue, never as top-level keys, but
+#   we deny-list the prefix defensively in case a future cleanup
+#   path ever lands one at the key level.
+# * `_kombu.` — kombu's own bookkeeping keys. These are SET / HASH
+#   typed in current versions and would be filtered by `TYPE=list`,
+#   but kombu's internals have shifted before so the prefix match
+#   is cheap insurance against a future kombu release adding a
+#   list-typed bookkeeping key.
+_INTERNAL_BROKER_KEY_PREFIXES: tuple[str, ...] = (
+    "__redis_admin_celery_tombstone__",
+    "_kombu.",
+)
+
+
+def _is_internal_broker_key(name: str) -> bool:
+    """Return True if `name` looks like a kombu / redis_admin internal
+    list key on the broker rather than a celery queue.
+    """
+
+    return any(name.startswith(prefix) for prefix in _INTERNAL_BROKER_KEY_PREFIXES)
+
+
+@sentry_sdk.trace
+def _discover_celery_queues_from_broker(redis: Any) -> tuple[str, ...]:
+    """Live SCAN of the broker Redis for list-typed celery queue keys.
+
+    Production deploys put the celery broker on a dedicated Redis
+    Memorystore (see `redis_admin.conn._broker_connection`), so
+    virtually every list-typed top-level key on it IS a celery
+    queue. `SCAN ... TYPE list` (Redis 6.0+) filters server-side, so
+    we avoid a `TYPE` round-trip per key on top of the SCAN itself —
+    on a 12-base-queues × 4-enterprise-variants topology that's the
+    difference between one SCAN cursor sweep and ~50 extra round-trips.
+    Kombu-internal keys (`_kombu.*`) and our own LSET tombstone
+    prefix are skipped via `_is_internal_broker_key` so the summary
+    stays scoped to real queues.
+
+    Bounded by `MAX_SCAN_KEYS` for the same reason `iter_keys` is
+    bounded — a runaway scan on an unexpectedly large broker
+    keyspace can't pin the api process. On exception (older Redis
+    builds that don't accept the `TYPE` arg, broker outage, etc.)
+    we log and return `()`; the caller falls back to the static
+    `_resolve_celery_queue_names()` enumeration so the admin
+    landing page still renders something useful.
+
+    Returned tuple is sorted for deterministic ordering at the
+    callsite (the summary changelist and the
+    `CeleryQueueFilter` dropdown both render in stable order).
+    """
+
+    cap = redis_admin_settings.MAX_SCAN_KEYS
+    count = redis_admin_settings.SCAN_COUNT
+    discovered: set[str] = set()
+    try:
+        for raw in redis.scan_iter(match="*", count=count, _type="list"):
+            name = _decode(raw)
+            if not name or _is_internal_broker_key(name):
+                continue
+            discovered.add(name)
+            if len(discovered) >= cap:
+                log.warning(
+                    "redis_admin: hit MAX_SCAN_KEYS=%s during live broker "
+                    "queue discovery; truncating",
+                    cap,
+                )
+                break
+    except Exception:
+        # Older Redis builds (<6.0) reject `TYPE`; broker outage or a
+        # misbehaving fakeredis double can also surface here. Either
+        # way, fall back rather than crash the admin landing page.
+        log.exception(
+            "redis_admin: live broker queue discovery failed; "
+            "falling back to static queue enumeration"
+        )
+        return ()
+    return tuple(sorted(discovered))
 
 
 @dataclass(frozen=True)
