@@ -293,6 +293,13 @@ class CeleryEnvelopeMeta:
     `kwargs` carries the raw decoded keyword-args dict (the second
     element of the kombu body list) when present, so the admin can
     render a `payload_preview` without re-parsing the envelope.
+
+    `comparison_id` is read from `ComputeComparisonTask` envelopes,
+    which carry only `comparison_id` (no `repoid` / `commitid`)
+    in their kwargs; the queryset later batch-resolves it to a
+    `(repoid, commitid)` pair via the `compare_commitcomparison`
+    table so operators can still filter those messages by repo
+    or commit on the changelist.
     """
 
     task: str | None = None
@@ -301,6 +308,7 @@ class CeleryEnvelopeMeta:
     commitid: str | None = None
     ownerid: int | None = None
     pullid: int | None = None
+    comparison_id: int | None = None
     kwargs: dict[str, Any] | None = None
 
 
@@ -356,6 +364,7 @@ def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
     commitid: str | None = None
     ownerid: int | None = None
     pullid: int | None = None
+    comparison_id: int | None = None
     kwargs: dict[str, Any] | None = None
     body_b64 = envelope.get("body")
     if isinstance(body_b64, str) and body_b64:
@@ -374,6 +383,12 @@ def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
                 commitid = cid
             ownerid = _coerce_int(kwargs.get("ownerid"))
             pullid = _coerce_int(kwargs.get("pullid"))
+            # `ComputeComparisonTask` carries only `comparison_id`
+            # in its kwargs — pull it into a dedicated field so the
+            # queryset's post-materialisation hydration path can
+            # batch-resolve it to a `(repoid, commitid)` pair via
+            # the `compare_commitcomparison` table.
+            comparison_id = _coerce_int(kwargs.get("comparison_id"))
     return CeleryEnvelopeMeta(
         task=task,
         task_id=task_id,
@@ -381,6 +396,7 @@ def parse_celery_envelope(decoded: str) -> CeleryEnvelopeMeta:
         commitid=commitid,
         ownerid=ownerid,
         pullid=pullid,
+        comparison_id=comparison_id,
         kwargs=kwargs,
     )
 
