@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import logging
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -37,7 +38,197 @@ from .families import (
     _resolve_celery_queue_names as _celery_queue_names,  # noqa: PLC2701
 )
 
+log = logging.getLogger(__name__)
+
 _UNSET: Any = object()
+
+
+# ---- ComputeComparison hydration ------------------------------------------
+#
+# `ComputeComparisonTask` envelopes only carry `comparison_id` in kwargs;
+# the (repoid, commitid) the rest of the admin filters / displays on
+# lives in the `compare_commitcomparison` row that id points at. We
+# batch-resolve those ids in one Django ORM query at materialisation
+# time so the queryset's `_matches_filters` (repoid / commitid pushdown)
+# still narrows correctly on those messages and the changelist columns
+# render the same `(repoid, commitid)` shape operators see for every
+# other task.
+
+
+@sentry_sdk.trace
+def _resolve_comparison_repo_commits(
+    comparison_ids: Iterable[int],
+) -> dict[int, tuple[int | None, str | None]]:
+    """Batch-fetch `{comparison_id: (repoid, commitid)}` for the given ids.
+
+    One ORM round-trip regardless of how many ids are supplied; falsy
+    ids are filtered out before the query so `comparison_id=0` /
+    `None` don't pull a doomed empty `IN ()` clause. Returns an empty
+    dict on any error (missing app, DB unreachable, schema mismatch
+    on a bare-metal test) so callers always degrade to "show the bare
+    `comparison_id`" rather than 500'ing the changelist.
+    """
+
+    ids = {cid for cid in comparison_ids if cid}
+    if not ids:
+        return {}
+    try:
+        # Local import: queryset.py is imported by the redis_admin
+        # admin module on Django startup, and `compare.models` depends
+        # on `django_apps.compare` being installed. Keep the import
+        # inside the call so a deployment that strips the `compare`
+        # app (rare, but) doesn't fail to import the admin module
+        # wholesale.
+        from shared.django_apps.compare.models import (  # noqa: PLC0415
+            CommitComparison,
+        )
+    except Exception:  # pragma: no cover - defensive: missing app
+        log.warning(
+            "redis_admin: CommitComparison import failed; "
+            "ComputeComparison rows will not be hydrated"
+        )
+        return {}
+    try:
+        rows = CommitComparison.objects.filter(id__in=ids).values_list(
+            "id",
+            "compare_commit__repository_id",
+            "compare_commit__commitid",
+        )
+        return {row[0]: (row[1], row[2]) for row in rows}
+    except Exception:  # pragma: no cover - defensive: DB hiccup
+        log.warning(
+            "redis_admin: CommitComparison hydration failed; "
+            "falling back to bare comparison_id",
+            exc_info=True,
+        )
+        return {}
+
+
+def _hydrate_comparison_rows(rows: list) -> None:
+    """Fill in `repoid` / `commitid` on rows whose envelope only carried
+    a `comparison_id`.
+
+    Walks the row list once to gather the `comparison_id`s of rows
+    that need hydration (`repoid is None and _comparison_id is not
+    None`), runs a single batched ORM lookup, and patches the
+    matching rows in place. Rows that already have `repoid` set
+    (every other task shape) are left untouched, so the cost is only
+    paid by deployments that actually queue `ComputeComparisonTask`
+    messages.
+    """
+
+    pending_ids: set[int] = set()
+    for row in rows:
+        cid = getattr(row, "_comparison_id", None)
+        if cid and row.repoid is None:
+            pending_ids.add(cid)
+    if not pending_ids:
+        return
+    mapping = _resolve_comparison_repo_commits(pending_ids)
+    if not mapping:
+        return
+    for row in rows:
+        cid = getattr(row, "_comparison_id", None)
+        if not cid or row.repoid is not None:
+            continue
+        resolved = mapping.get(cid)
+        if not resolved:
+            continue
+        repoid, commitid = resolved
+        if repoid is not None:
+            row.repoid = repoid
+        if commitid:
+            row.commitid = commitid
+
+
+def _hydrate_unacked_comparison_rows(rows: list) -> None:
+    """`_hydrate_comparison_rows` analogue for the unacked queryset.
+
+    Unacked rows store `commitid` as a non-nullable `CharField`
+    defaulting to `""` (rather than `None` like the celery_broker
+    model), so the predicate has to treat both equivalently. Repoid
+    stays nullable in both models, so the `repoid is None` check
+    matches the celery_broker helper.
+    """
+
+    pending_ids: set[int] = set()
+    for row in rows:
+        cid = getattr(row, "_comparison_id", None)
+        if cid and row.repoid is None:
+            pending_ids.add(cid)
+    if not pending_ids:
+        return
+    mapping = _resolve_comparison_repo_commits(pending_ids)
+    if not mapping:
+        return
+    for row in rows:
+        cid = getattr(row, "_comparison_id", None)
+        if not cid or row.repoid is not None:
+            continue
+        resolved = mapping.get(cid)
+        if not resolved:
+            continue
+        repoid, commitid = resolved
+        if repoid is not None:
+            row.repoid = repoid
+        if commitid:
+            row.commitid = commitid
+
+
+def _merge_comparison_counter_into_main(
+    comparison_counter: Counter[tuple[str | None, int]],
+    counter: Counter[tuple[str | None, int | None, str | None]],
+) -> None:
+    """Merge a `(task, comparison_id)` side-counter back into the main
+    `(task, repoid, commitid)` chart counter using a batched
+    `compare_commitcomparison` lookup.
+
+    `_stream_frequency_aggregate` uses this to keep
+    `ComputeComparisonTask` messages off the all-None chart bucket:
+    they're tracked separately during streaming and merged in at the
+    end so each one lands under its resolved
+    `(task, repoid, commitid)` bucket. Resolutions that fail (id
+    missing in DB, ORM unavailable) collapse into the
+    `(task, None, None)` bucket so we don't drop counts.
+    """
+
+    if not comparison_counter:
+        return
+    ids = {cid for _, cid in comparison_counter if cid}
+    mapping = _resolve_comparison_repo_commits(ids) if ids else {}
+    for (task, cid), count in comparison_counter.items():
+        resolved = mapping.get(cid)
+        if resolved is None:
+            counter[(task, None, None)] += count
+            continue
+        repoid, commitid = resolved
+        counter[(task, repoid, commitid or None)] += count
+
+
+def _merge_unacked_comparison_counter_into_main(
+    comparison_counter: Counter[tuple[str | None, str | None, int]],
+    counter: Counter[tuple[str | None, str | None, int | None, str | None]],
+) -> None:
+    """`_merge_comparison_counter_into_main` analogue for the unacked
+    chart's 4-tuple bucket key.
+
+    The unacked chart groups by `(routing_key, task_name, repoid,
+    commitid)` rather than the celery_broker chart's 3-tuple, so the
+    side-counter carries an extra `routing_key` axis and the merge
+    writes back into the same 4-tuple shape.
+    """
+
+    if not comparison_counter:
+        return
+    ids = {cid for _, _, cid in comparison_counter if cid}
+    mapping = _resolve_comparison_repo_commits(ids) if ids else {}
+    for (routing_key, task, cid), count in comparison_counter.items():
+        resolved = mapping.get(cid)
+        if resolved is None:
+            counter[(routing_key, task, None, None)] += count
+            continue
+        repoid, commitid = resolved
+        counter[(routing_key, task, repoid, commitid or None)] += count
 
 
 def _ordering_key(obj: Any, attr: str) -> tuple:
@@ -1134,10 +1325,22 @@ def _stream_frequency_aggregate(
       materialised a capped window; the chart needs the full depth).
     * The `chart_fragment_view` admin endpoint which renders the chart
       in isolation without first materialising the changelist.
+
+    `ComputeComparisonTask` envelopes carry only `comparison_id` in
+    kwargs, so a naive bucketisation would collapse every
+    ComputeComparison message into a single
+    `(ComputeComparison, None, None)` row. We track those in a side
+    `comparison_counter` keyed on `(task, comparison_id)` during
+    streaming, then `_merge_comparison_counter_into_main` runs one
+    batched ORM lookup at the end and folds each entry back into
+    the main counter under its resolved `(task, repoid, commitid)`
+    bucket. Memory stays bounded by unique comparison_ids rather
+    than queue depth.
     """
 
     cap = redis_admin_settings.CELERY_BROKER_SCAN_LIMIT
     counter: Counter[tuple[str | None, int | None, str | None]] = Counter()
+    comparison_counter: Counter[tuple[str | None, int]] = Counter()
     total = 0
 
     depth = int(redis.llen(queue_name) or 0)
@@ -1150,8 +1353,21 @@ def _stream_frequency_aggregate(
             if meta.task is None and meta.repoid is None and meta.commitid is None:
                 total += 1
                 continue
+            # ComputeComparison split: the kwargs-only path stashes
+            # the count under (task, comparison_id) so the post-
+            # loop merge can substitute resolved (repoid, commitid).
+            if (
+                meta.comparison_id is not None
+                and meta.repoid is None
+                and not meta.commitid
+            ):
+                comparison_counter[(meta.task, meta.comparison_id)] += 1
+                total += 1
+                continue
             counter[(meta.task, meta.repoid, meta.commitid)] += 1
             total += 1
+
+    _merge_comparison_counter_into_main(comparison_counter, counter)
 
     if not counter or total == 0:
         return [], 0
@@ -1439,6 +1655,12 @@ class CeleryBrokerQueueQuerySet:
             payload_preview="",
         )
         row._kwargs_for_preview = meta.kwargs
+        # `ComputeComparisonTask` envelopes only carry `comparison_id`
+        # in kwargs; stash it so `_hydrate_comparison_rows` can
+        # batch-resolve `(repoid, commitid)` for the materialised
+        # window in a single ORM query before `_matches_filters`
+        # runs the user's `repoid`/`commitid` pushdown predicate.
+        row._comparison_id = meta.comparison_id
         return row
 
     def _build_summary_row(self, queue: str, depth: int) -> Any:
@@ -1515,6 +1737,12 @@ class CeleryBrokerQueueQuerySet:
             decoded = _decode_value(raw)
             meta = parse_celery_envelope(decoded)
             rows.append(self._build_row(offset, meta))
+        # Resolve `comparison_id` → `(repoid, commitid)` before the
+        # request-cache snapshot is taken, so a downstream `_clone()`
+        # that reads from the cache (e.g. `ChangeList`'s filter clone)
+        # already sees the hydrated columns and applies the user's
+        # `repoid` / `commitid` filter against the resolved values.
+        _hydrate_comparison_rows(rows)
         self._write_request_cache(rows)
         return rows
 
@@ -1889,10 +2117,17 @@ def _stream_unacked_frequency_aggregate(
     chart, but iterates via HSCAN (HASH) instead of LRANGE (LIST)
     and groups by an additional `routing_key` axis since the
     unacked HASH spans every queue.
+
+    Same `ComputeComparisonTask` side-counter pattern as the
+    celery_broker streamer: messages whose envelope only carries
+    `comparison_id` get tracked under
+    `(routing_key, task, comparison_id)` and merged in post-stream
+    so the chart shows their resolved `(repoid, commitid)` values.
     """
 
     cap = redis_admin_settings.CELERY_BROKER_SCAN_LIMIT
     counter: Counter[tuple[str | None, str | None, int | None, str | None]] = Counter()
+    comparison_counter: Counter[tuple[str | None, str | None, int]] = Counter()
     total = 0
 
     if not redis.exists(unacked_key):
@@ -1926,8 +2161,21 @@ def _stream_unacked_frequency_aggregate(
         ):
             total += 1
             continue
+        # ComputeComparisonTask side-channel: track separately so
+        # the post-loop merge can swap in resolved
+        # `(repoid, commitid)` from `compare_commitcomparison`.
+        if (
+            meta.comparison_id is not None
+            and meta.repoid is None
+            and not meta.commitid
+        ):
+            comparison_counter[(routing_key, meta.task, meta.comparison_id)] += 1
+            total += 1
+            continue
         counter[(routing_key, meta.task, meta.repoid, meta.commitid)] += 1
         total += 1
+
+    _merge_unacked_comparison_counter_into_main(comparison_counter, counter)
 
     if not counter or total == 0:
         return [], 0
@@ -2175,6 +2423,11 @@ class UnackedQueueQuerySet:
             deadline=deadline,
             meta=meta,
         )
+        # Hydrate the singleton row before previewing so the
+        # change_form sees the resolved `(repoid, commitid)` pair
+        # for `ComputeComparisonTask` messages reached via the
+        # delivery_tag-out-of-window fallback path.
+        _hydrate_unacked_comparison_rows([row])
         # Eagerly resolve the preview here so the change_form
         # readonly field surface (which reads `obj.payload_preview`
         # directly) shows the body kwargs. Singleton call — cost
@@ -2239,6 +2492,11 @@ class UnackedQueueQuerySet:
             depth=None,
         )
         row._kwargs_for_preview = meta.kwargs
+        # `_hydrate_unacked_comparison_rows` resolves this to a
+        # `(repoid, commitid)` pair after materialisation so
+        # `ComputeComparisonTask` messages still surface and filter
+        # correctly inside the unacked admin.
+        row._comparison_id = meta.comparison_id
         return row
 
     def _build_summary_row(self, depth: int) -> Any:
@@ -2326,6 +2584,11 @@ class UnackedQueueQuerySet:
                     meta=meta,
                 )
             )
+        # Resolve `comparison_id` → `(repoid, commitid)` before the
+        # snapshot is cached so a clone reading from the cache
+        # already sees the hydrated columns and `_matches_filters`
+        # narrows correctly.
+        _hydrate_unacked_comparison_rows(rows)
         self._write_request_cache(rows)
         return rows
 
