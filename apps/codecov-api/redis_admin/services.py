@@ -8,7 +8,10 @@ single chokepoint for:
 - Family-aware command dispatch (`DEL` for top-level keys, `LREM` /
   `SREM` / `HDEL` for individual list/set/hash items).
 - Locks safety: any key whose family has `is_deletable=False` is
-  refused, even when the queryset somehow surfaces it.
+  refused by default — the queue admin's URL-tampering safety net.
+  `RedisLockAdmin` opts in via `allow_locks=True` so superusers can
+  release stuck locks from the locks changelist; every other caller
+  inherits the refuse-by-default behaviour.
 - Pipeline batching: `DELETE_BATCH_SIZE` ops per pipeline so a single
   delete action doesn't block Redis with one giant MULTI.
 - Audit logging: every call (dry-run included) writes a
@@ -71,8 +74,16 @@ class _PendingItem:
 
 def _classify_queues(
     queues: Iterable[RedisQueue],
+    *,
+    allow_locks: bool = False,
 ) -> tuple[list[str], list[str], list[str]]:
-    """Bucket `RedisQueue` rows into (deletable_keys, refused_keys, families)."""
+    """Bucket `RedisQueue` rows into (deletable_keys, refused_keys, families).
+
+    `allow_locks=True` lifts the `is_deletable=False` refusal so the
+    lock admin's superuser-only delete path can release stuck locks.
+    Every other caller leaves it `False` so a URL-tampered queue-admin
+    request that smuggles a lock key still refuses.
+    """
 
     deletable: list[str] = []
     refused: list[str] = []
@@ -82,7 +93,7 @@ def _classify_queues(
         if family is None:
             refused.append(queue.name)
             continue
-        if not family.is_deletable:
+        if not family.is_deletable and not allow_locks:
             refused.append(queue.name)
             continue
         deletable.append(queue.name)
@@ -262,13 +273,19 @@ def redis_delete(
     *,
     user,
     dry_run: bool = False,
+    allow_locks: bool = False,
 ) -> DeleteResult:
     """Delete every item in `targets` from Redis, with safety + audit.
 
     `targets` may be a mix of `RedisQueue` (top-level DEL) and
     `RedisQueueItem` (LREM/SREM/HDEL) — the family registry decides
     which command to issue. Lock-flagged families (`is_deletable=False`)
-    are refused regardless of how they were surfaced.
+    are refused unless the caller explicitly opts in with
+    `allow_locks=True` — `RedisLockAdmin`'s superuser-only delete is
+    the only path that does so. Every other surface (the queue admin's
+    `delete_selected` / `delete_model` / `clear-by-scope`) leaves it
+    `False` so a URL-tampered request that smuggles a lock key still
+    refuses.
 
     `user` is the Django user driving the action; used to attribute the
     `LogEntry`. `dry_run=True` returns the same shape but issues no
@@ -279,9 +296,16 @@ def redis_delete(
     with sentry_sdk.start_span(op="redis.admin.delete", name=span_name) as span:
         try:
             span.set_tag("redis_admin.dry_run", dry_run)
+            span.set_tag("redis_admin.allow_locks", allow_locks)
         except AttributeError:  # pragma: no cover - older sdks
             pass
-        return _redis_delete(targets, user=user, dry_run=dry_run, span=span)
+        return _redis_delete(
+            targets,
+            user=user,
+            dry_run=dry_run,
+            allow_locks=allow_locks,
+            span=span,
+        )
 
 
 def _redis_delete(
@@ -289,6 +313,7 @@ def _redis_delete(
     *,
     user,
     dry_run: bool,
+    allow_locks: bool,
     span,
 ) -> DeleteResult:
     queue_targets: list[RedisQueue] = []
@@ -297,10 +322,12 @@ def _redis_delete(
         if isinstance(target, RedisQueueItem):
             item_targets.append(target)
         elif isinstance(target, RedisQueue | RedisLock):
-            # `RedisLock` reaches us only via the URL-tampering safety
-            # net described above; the family registry will refuse it
-            # in `_classify_queues` because its family has
-            # `is_deletable=False`. Cast to `RedisQueue` for the rest
+            # `RedisLock` arrives through two paths: (1) the lock
+            # admin's superuser-only delete, which sets
+            # `allow_locks=True` so `_classify_queues` lets it
+            # through, and (2) URL-tampering against the queue admin,
+            # which leaves `allow_locks=False` so the family-registry
+            # refusal still fires. Cast to `RedisQueue` for the rest
             # of the pipeline since the field shape matches.
             queue_targets.append(target)
         else:
@@ -309,7 +336,9 @@ def _redis_delete(
                 type(target),
             )
 
-    deletable_keys, refused_keys, queue_families = _classify_queues(queue_targets)
+    deletable_keys, refused_keys, queue_families = _classify_queues(
+        queue_targets, allow_locks=allow_locks
+    )
     pending_items, refused_items, item_families = _classify_items(item_targets)
 
     refused = tuple(refused_keys + refused_items)

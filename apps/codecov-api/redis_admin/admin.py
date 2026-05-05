@@ -1112,14 +1112,21 @@ class RedisQueueAdmin(admin.ModelAdmin):
 
 @admin.register(RedisLock)
 class RedisLockAdmin(admin.ModelAdmin):
-    """Read-only admin for coordination locks, gates, and fences.
+    """Admin for coordination locks, gates, and fences.
 
-    Operators can browse to confirm a stuck task left a lock behind, but
-    deletion is hard-disabled: the worker tasks that own these locks
-    rely on them being released by `LockManager`, not by an operator
-    clicking around in the admin. M5's delete service additionally
-    refuses any key whose family has `is_deletable=False` so accidental
-    URL-tampering can't bypass this.
+    Operators can browse to confirm a stuck task left a lock behind.
+    Deletion is **superuser-only** and routes through `redis_delete(
+    ..., allow_locks=True)` so the audit log captures who released
+    which lock. The worker's `LockManager` is still the legitimate
+    releaser in normal operation; the admin path is the on-call
+    escape hatch for genuinely stuck locks (a crashed task that
+    couldn't run its `finally`-block release).
+
+    Staff users still see the read-only changelist + change page.
+    The destructive button / bulk action is hidden from them by
+    `has_delete_permission`, and `services.redis_delete` continues
+    to refuse lock keys that arrive without `allow_locks=True`, so
+    URL-tampering against `RedisQueueAdmin` still can't reach them.
     """
 
     list_display = (
@@ -1161,22 +1168,15 @@ class RedisLockAdmin(admin.ModelAdmin):
     def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
         return bool(request.user and request.user.is_staff)
 
-    # Locks are never deletable from the admin, regardless of role; the
-    # worker's `LockManager` is the only legitimate releaser. This is
-    # stricter than the per-admin "superuser-only deletion" invariant
-    # — locks aren't even superuser-deletable. `services.redis_delete`
-    # additionally refuses any key whose family has `is_deletable=
-    # False` so URL-tampering can't bypass this.
+    # Lock deletion is gated to `is_superuser`, matching the queue
+    # admin's "anything destructive is superuser-only" invariant.
+    # Stock Django `delete_selected` and the change-page delete
+    # button both honour this gate, so staff users see neither.
+    # The actual mutation runs through `services.redis_delete(
+    # ..., allow_locks=True)` so the audit log records who
+    # released which lock.
     def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
-        return False
-
-    def get_actions(self, request):
-        # Strip the default `delete_selected` even though
-        # `has_delete_permission` already blocks it; this keeps the
-        # action dropdown empty so there's nothing to click.
-        actions = super().get_actions(request)
-        actions.pop("delete_selected", None)
-        return actions
+        return bool(request.user and request.user.is_superuser)
 
     def get_fieldsets(self, request, obj=None):
         return ((None, {"fields": list(self.readonly_fields)}),)
@@ -1201,6 +1201,43 @@ class RedisLockAdmin(admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         raise RuntimeError("RedisLock rows are read-only.")
+
+    # ---- Delete (superuser only) ---------------------------------------
+    #
+    # Stock `delete_selected` (changelist bulk action) and the
+    # change-page delete button both call into one of the two hooks
+    # below; we override them so the actual mutation routes through
+    # `redis_delete(..., allow_locks=True)` and gets the same audit-
+    # log treatment queue deletes do. We deliberately don't strip
+    # `delete_selected` (the queue admin does, in favour of its
+    # dry-run-mandatory `clear_selected`): a lock key is a single
+    # STRING value with no items beneath it, so the standard
+    # confirmation interstitial is enough — no second dry-run gate
+    # needed.
+
+    def delete_model(self, request: HttpRequest, obj: RedisLock) -> None:
+        result = redis_delete(
+            [obj], user=request.user, dry_run=False, allow_locks=True
+        )
+        self.message_user(
+            request,
+            f"Released Redis lock {obj.name!r} ({result.count} removed).",
+            level=messages.SUCCESS,
+        )
+
+    def delete_queryset(self, request: HttpRequest, queryset) -> None:
+        result = redis_delete(
+            list(queryset), user=request.user, dry_run=False, allow_locks=True
+        )
+        self.message_user(
+            request,
+            (
+                f"Released {result.count} Redis lock(s) across "
+                f"families={list(result.families) or '[]'}"
+                + (f"; refused={list(result.refused[:5])}" if result.refused else "")
+            ),
+            level=messages.SUCCESS,
+        )
 
     def get_search_results(self, request, queryset, search_term):
         if not search_term:

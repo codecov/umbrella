@@ -94,11 +94,11 @@ class TestRedisDeleteService(TestCase):
         assert self.server.exists("uploads/1/abc") == 0
         assert self.server.exists("uploads/2/def") == 0
 
-    def test_locks_are_refused_even_on_real_run(self):
-        """Lock-flagged families MUST NOT be deletable from this service.
-        This is the last line of defence against an operator mistake;
-        the lock admin already hides the delete UI but the service
-        refuses regardless of how the row was constructed.
+    def test_locks_are_refused_by_default(self):
+        """Lock-flagged families MUST be refused unless the caller
+        opts in with `allow_locks=True`. This is the URL-tampering
+        safety net for `RedisQueueAdmin`: even if the queueset
+        somehow surfaces a lock key, the service refuses it.
         """
 
         self.server.set("upload_lock_1_abc", "owned")
@@ -118,6 +118,50 @@ class TestRedisDeleteService(TestCase):
         # Locks remain in redis.
         assert self.server.exists("upload_lock_1_abc") == 1
         assert self.server.exists("ta_flake_lock:1") == 1
+
+    def test_locks_are_released_with_allow_locks_opt_in(self):
+        """`RedisLockAdmin`'s superuser-only delete passes
+        `allow_locks=True` so stuck locks can actually be released.
+        Verify the keys disappear from Redis and the result
+        accounts for the count.
+        """
+
+        self.server.set("upload_lock_1_abc", "owned")
+        self.server.set("ta_flake_lock:1", "owned")
+
+        result = redis_delete(
+            [
+                _make_lock("upload_lock_1_abc", family="coordination_lock"),
+                _make_lock("ta_flake_lock:1", family="ta_flake_lock"),
+            ],
+            user=self.user,
+            dry_run=False,
+            allow_locks=True,
+        )
+
+        assert result.count == 2
+        assert result.refused == ()
+        assert self.server.exists("upload_lock_1_abc") == 0
+        assert self.server.exists("ta_flake_lock:1") == 0
+
+    def test_allow_locks_dry_run_does_not_mutate(self):
+        """Dry-run with `allow_locks=True` must still issue zero
+        mutations — the opt-in is purely a refusal-bypass, not a
+        force-write.
+        """
+
+        self.server.set("upload_lock_1_abc", "owned")
+
+        result = redis_delete(
+            [_make_lock("upload_lock_1_abc", family="coordination_lock")],
+            user=self.user,
+            dry_run=True,
+            allow_locks=True,
+        )
+
+        assert result.count == 1
+        assert result.dry_run is True
+        assert self.server.exists("upload_lock_1_abc") == 1
 
     def test_unknown_families_are_refused(self):
         """Sanity: a key that doesn't match any family (operator typed
